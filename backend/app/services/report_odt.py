@@ -1,30 +1,23 @@
 """
 Module: services.report_odt
 
-Renders a neutral `ReportDocument` (`services.report_model`) to an editable OpenDocument Text (ODT) file: the
-ODT counterpart of `report_docx` and `report_pdf`, showing the same blocks.
+Renders a neutral `ReportDocument` (`services.report_model`) to an editable OpenDocument Text (ODT) file, the
+counterpart of `report_docx` and `report_pdf` with the same blocks.
 
-Editable by design: headings are real heading paragraphs with outline levels (so a table of contents can be
-inserted), tables are real tables with a repeating, accent-shaded header row, lists are real lists, and the footer
-carries a live page-number field. Nothing is an image of text or of a table.
+Editable by design: real outline-level headings, tables with a repeating accent-shaded header row, real lists and a
+live page-number footer field; nothing is an image of text or of a table.
 
 Design decisions:
-- **Written as XML text** (`report_odf`), not through an object library: a report of many thousands of table rows
-  stays proportional to the size of the file instead of costing about 10 KB of objects per row.
-- **Every string passes `report_odf.xml_text` or `xml_attr`**, so record text is only ever element content: a
-  `<script>`, `<text:...>` or `<draw:...>` string is stored as literal text. Colours are checked as six hex digits,
-  lengths are formatted from numbers, and an image's type is sniffed from its bytes. A link is written only for an address
-  `report_model.finalize_links` has checked, as an attribute value; there is no macro, field code or external object, and
-  the one field is the fixed page number.
-- **Equations are pictures** (the same drawing the PDF embeds, with a baseline offset inline), then the author's
-  source when one cannot be drawn. They are not native formula objects: those need an embedded sub-document in
-  StarMath/MathML whose rendering differs between office suites, so a picture is the faithful form (`docs/decisions.md`,
-  "ODT and ODS renderers").
-- Branding, cover page, orientation, tone fills and header text contrast follow `report_docx` and use the same
-  helpers (`text_on`, `readable_on_white`, `TONE_FILL`), so formats cannot drift.
+- Written as XML text (`report_odf`), so a report of many thousands of table rows stays proportional to the file size.
+- Every string passes `xml_text` or `xml_attr`, so record text is only element content; colours are six hex digits,
+  lengths come from numbers, image types are sniffed. A link is written only for an address `finalize_links` checked;
+  there is no macro, field code or external object, and the one field is the page number.
+- Equations are pictures (as in the PDF, with a baseline offset inline), then the author's source; native formula
+  objects need an embedded sub-document whose rendering differs between suites (docs/decisions.md, ODT and ODS renderers).
+- Branding, cover, orientation, tone fills and header contrast use `report_docx`'s helpers (`text_on`,
+  `readable_on_white`, `TONE_FILL`) so the formats cannot drift.
 
-Dependencies: `services.report_odf` (package, escaping), `services.report_model`, `services.report_math`,
-`services.report_svg`, `services.branding`.
+Dependencies: `report_odf`, `report_model`, `report_math`, `report_svg`, `branding`.
 """
 
 from __future__ import annotations

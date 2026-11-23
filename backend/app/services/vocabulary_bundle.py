@@ -1,19 +1,17 @@
 """
 Module: services.vocabulary_bundle
 
-Bundle (export / import) halves of a two-tier typed list (`services.type_vocabulary.TypeVocabulary`), shared so the
-external system list and Product Feedback's request channel list travel the same way (a vocabulary's
-`extra_columns`, such as an external system's `url_template`, travel with each entry):
+Bundle (export / import) halves of a two-tier typed list (`services.type_vocabulary.TypeVocabulary`), shared by the
+external system list and Product Feedback's request channels; a vocabulary's `extra_columns` (such as `url_template`) travel
+with each entry.
 
-- Organisation level: the organisation's entries by name, order and active flag; an import skips names the
-  organisation already has, so a fresh organisation's seeded defaults are not doubled.
-- Project level: the project's own rows (an override of an organisation entry by its name, or a project-local entry)
-  and the organisation entries it has hidden, by name.
-- `NameResolver`: turns an entry name in an imported record into the row the record stores, creating a
-  passthrough row for an organisation entry and a project-local entry for a name nothing matches (with a warning), so
-  a reference or channel is never silently dropped.
+Responsibilities:
+- Organisation level: entries by name, order and active flag; an import skips names already present so seeded defaults
+  are not doubled. Project level: the project's own rows (overrides by name, local entries) and hidden organisation entries.
+- `NameResolver`: turns an entry name in an imported record into the stored row (a passthrough row for an organisation
+  entry, a project-local entry with a warning for an unknown name), so a reference is never silently dropped.
 
-Cross-references are always by name, never id, so a bundle moves between organisations.
+Cross-references are by name, never id, so a bundle moves between organisations.
 """
 
 from __future__ import annotations

@@ -1,17 +1,13 @@
 """
 Module: routers.reports
 
-Report generation: a single `POST /api/v1/projects/{project_id}/reports`
-endpoint generating a PDF (R-F-01), Word (DOCX) or CSV (R-F-02) export of a
-project's requirements, selected via `ReportRequest.format` — merged from
-two separate `/reports/pdf`/`/reports/csv` endpoints on 2026-09-22 (see
-docs/decisions.md) since they differed only in output format, not in data
-collection, and a single parameterized endpoint leaves one place for a
-future report-type/template parameter to land. Supports requirement filters (R-G-03), organisation
-shared resource files rendered as additional report sections (R-G-04), and
-images embedded in those Markdown sections via `report_document.resolve_report_images`
-(see its docstring for the tenant-isolation check it performs before any
-image reaches the PDF).
+Report generation: a single `POST /api/v1/projects/{project_id}/reports` endpoint generating a PDF (R-F-01),
+Word (DOCX) or CSV (R-F-02) export of a project's requirements, selected via `ReportRequest.format` (the
+formats differ only in output, not in data collection, so one parameterised endpoint holds a place for a
+report-type or template parameter; see docs/decisions.md). Supports requirement filters (R-G-03),
+organisation shared resource files rendered as additional report sections (R-G-04) and images embedded in
+those Markdown sections via `report_document.resolve_report_images` (which performs the tenant-isolation
+check before any image reaches the PDF).
 """
 
 from __future__ import annotations

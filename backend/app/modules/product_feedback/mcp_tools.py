@@ -1,22 +1,12 @@
 """
 Module: modules.product_feedback.mcp_tools
 
-The Product Feedback module's MCP tool declarations (`docs/modules.md` section 6). Each tool proxies an existing
-router endpoint, so the endpoint's own authorisation, guards and audit logging apply unchanged; declaring a tool
-grants nothing.
-
-Responsibilities:
-- `build_mcp_tools`: read tools (requests, versions, comments, demand, merges, close-the-loop, settings) and write tools
-  (create, update, lifecycle move, comment, merge, unmerge, record requesters as told, scoring scheme) for a project,
-  plus list, create, scoring scheme and move-into-a-project for the organisation's inbox.
-
-Design decisions:
-- Write-enabled (**Decided by: User**, as for every module's MCP tools). Writes still need `MCP_WRITES_ENABLED`
-  and the caller's own role.
-- No tool decides on a person's behalf beyond what the endpoint allows; there is no delete tool and no tool for
-  changing the project's submission policy (a project administrator's setting).
-
-Dependencies: `modules.registry` (`McpToolDefinition`).
+MCP tool declarations (`docs/modules.md` section 6). Each tool proxies an
+existing endpoint, so its authorisation, guards and audit apply unchanged.
+`build_mcp_tools` declares project read and write tools (requests, versions,
+comments, demand, merges, close-the-loop, scoring scheme) and the organisation
+inbox tools. Writes need `MCP_WRITES_ENABLED` and the caller's role; there is no
+delete tool and none for the submission policy.
 """
 
 from __future__ import annotations

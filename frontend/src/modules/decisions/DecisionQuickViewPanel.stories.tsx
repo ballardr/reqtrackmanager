@@ -29,12 +29,7 @@ function decision(overrides: Partial<Decision> = {}): Decision {
   };
 }
 
-/**
- * A minimal, read-only peek — see this component's
- * own docstring and `docs/ux-style-guide.md`'s "Pattern: entity detail
- * panel" checklist. Portals via `SidePanel` (`createPortal`), so
- * assertions query `document.body`, not `canvasElement`.
- */
+/** A minimal read-only peek (`docs/ux-style-guide.md` "Pattern: entity detail panel"). It portals through `SidePanel`, so assertions query `document.body`, not `canvasElement`. */
 const meta: Meta<typeof DecisionQuickViewPanel> = {
   title: "Modules/Decisions/DecisionQuickViewPanel",
   component: DecisionQuickViewPanel,

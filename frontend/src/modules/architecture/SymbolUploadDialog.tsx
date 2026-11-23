@@ -1,19 +1,10 @@
 /**
  * Module: modules/architecture/SymbolUploadDialog
  *
- * The dialog that uploads symbols to the library: one or more files at once, filed in a chosen folder (the one open on the
- * page by default).
- *
- * Responsibilities:
- * - Send the chosen files one after another through the same upload call as a single file, so each goes through the server's
- *   sanitiser alone and a refusal is shown beside its own file name; the others still upload.
- * - Show each file's outcome (uploaded or the server's refusal) and say in one toast how many were added.
- *
- * Design decisions:
- * - Files upload as soon as they are chosen, like the single-file control it replaces; the folder is chosen first.
- * - One request per file, not one request for all: a refusal, a name clash or a storage limit is then specific to a file, and a
- *   long upload can be followed file by file.
- * - A ZIP of an icon pack is not accepted (each file is checked on its own).
+ * The dialog that uploads one or more symbol files to the library, filed in a chosen folder (the one open on the page by default).
+ * Files upload as soon as they are chosen, one request per file through the single-file upload call, so each goes through the
+ * server's sanitiser alone and a refusal, name clash or storage limit is shown beside its own file while the others still
+ * upload. Each file's outcome is listed and one toast says how many were added. A ZIP of an icon pack is not accepted.
  */
 import { useState } from "react";
 

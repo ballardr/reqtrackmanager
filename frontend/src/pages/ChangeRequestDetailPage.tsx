@@ -53,11 +53,8 @@ import { markdownPlainText } from "../utils/markdownPlain";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
- * A MODIFY_REQUIREMENT change request only shows the fields it actually
- * proposes to change (`cr.changed_fields`) — a field not listed there was
- * never touched, so its `proposed_*` value (usually null) isn't rendered
- * at all, rather than showing a misleading "no change" line for every
- * possible field.
+ * A MODIFY_REQUIREMENT request renders only the fields listed in
+ * `cr.changed_fields`; an unlisted field has no proposed value to show.
  */
 export function ChangeRequestDetailPage() {
   const run = useMutation();
@@ -89,18 +86,12 @@ export function ChangeRequestDetailPage() {
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
   const [showVoteComments, setShowVoteComments] = useState(false);
-  // ADD_ACTION/REMOVE_ACTION-only (extended to the remove side) — the action type list to resolve
-  // `proposed_action_type_id` to a name, and (link-existing/remove mode
-  // only) the action itself, so a reviewer can see what they're actually
-  // approving rather than a bare id.
+  // ADD_ACTION/REMOVE_ACTION only: action types resolve `proposed_action_type_id` to a name and
+  // the preview shows the linked action (link-existing/remove mode), so a reviewer sees more than an id.
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [linkedActionPreview, setLinkedActionPreview] = useState<RequirementAction | null>(null);
-  // REMOVE_LINK-only — the same
-  // "resolve the id to something a reviewer can actually read" purpose as
-  // the action fields above: the existing link (its `display_name`/other-
-  // requirement fields are already server-resolved the same way the Links
-  // card on `RequirementDetailPage.tsx` uses them). Links an add-link,
-  // new or modify request proposes arrive resolved on `cr.proposed_links`.
+  // REMOVE_LINK only: the existing link, server-resolved as on the Links card.
+  // Links an add-link, new or modify request proposes arrive resolved on `cr.proposed_links`.
   const [linkPreview, setLinkPreview] = useState<RequirementLink | null>(null);
   // Approving a request that proposes links goes through a dialog where the approver
   // chooses which to merge; `clearCompletion` carries the second approve button.
@@ -471,13 +462,9 @@ export function ChangeRequestDetailPage() {
               >
                 {strings.changeRequests.approve}
               </button>
-              {/* C-G-11: an explicit, opt-in second action — shown only for
-                  a MODIFY_REQUIREMENT change request whose target is
-                  currently completed, since only then is there a
-                  meaningful choice between "keep completion" (plain
-                  Approve, above) and "this change is substantial enough to
-                  need re-verifying" (this button). Every other case keeps
-                  the single Approve button unchanged. */}
+              {/* C-G-11: second approve action, only for a MODIFY_REQUIREMENT request whose
+                  target is completed: plain Approve keeps completion, this button clears it
+                  so the change is re-verified. */}
               {cr.kind === "modify_requirement" && requirement?.is_completed && (
                 <button
                   className="btn"

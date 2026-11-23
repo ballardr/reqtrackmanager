@@ -55,14 +55,10 @@ function mapping(overrides: Partial<ComplianceRequirementMapping> = {}): Complia
 }
 
 /**
- * Mocks the four read endpoints this modal loads on mount/selection change
- * (mappings for the source requirement, the org's relationship-type
- * vocabulary, the org's standards, then versions/requirements for whichever
- * standard/version the cascading picker currently has selected) plus the
- * three write endpoints (create/archive/unarchive a mapping) — enough to
- * exercise the full cascading standard -> version -> requirement picker and
- * the create/archive round trip described in this component's own
- * docstring.
+ * Mocks the read endpoints the modal loads (mappings for the source requirement, the organisation's relationship-type
+ * vocabulary and standards, then versions and requirements for the standard and version the cascading picker has selected)
+ * and the three write endpoints (create, archive, unarchive a mapping), enough to exercise the cascading standard -> version ->
+ * requirement picker and the create and archive round trip.
  */
 function mockMappingsApis(overrides: { mappings?: ComplianceRequirementMapping[] } = {}) {
   let mappings = overrides.mappings ?? [mapping()];

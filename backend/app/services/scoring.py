@@ -1,57 +1,29 @@
 """
 Module: services.scoring
 
-Core, module-agnostic logic for configurable scoring matrices (Context & Strategy). Modules register scoring schemes on
-`ModuleDefinition.scoring_schemes`; this service seeds, edits, resolves and
-computes against them using the scheme/axis/model *keys* only, so core
-never contains module-specific code (Pain Points use it first; Risk,
-reuses it by registering its own scheme).
+Core, module-agnostic logic for configurable scoring matrices. Modules register schemes on
+`ModuleDefinition.scoring_schemes`; this service seeds, edits, resolves and computes against them using scheme, axis and
+model keys only.
 
 Responsibilities:
-- Seeding each organisation's axis levels from registry defaults
-  (`seed_missing_scoring_levels` on org creation/import,
-  `sync_scoring_levels` at every process start, so modules installed after
-  an org exists still get their levels).
-- Level CRUD with the definition-table rules: ≥2 levels per axis, unique
-  names and weights, and delete-with-reassignment via the scheme's own
-  `count_level_usage`/`reassign_level_usage` hooks.
-- Resolving the effective default model and rating bands along
-  project → nearest ancestor → org → registry default, following
-  `services.project_hierarchy.resolve_effective_action_types` (always on,
-  independent of RBAC inheritance).
-- Per-cell rating overrides for two-axis models: an
-  explicit (level, level) -> band label mapping that takes precedence over
-  the threshold bands for that cell, resolved and written like bands. Only a
-  single cell's own score uses it; a blended score (a roll-up of several
-  cells) has no cell, so it keeps the threshold bands.
-- Derived axes (`ScoringAxisDefinition.derived_source`): a module computes a number (e.g. a weighted demand) and
-  `derived_level` buckets it into the axis's levels by each level's `threshold`, so the score keeps a defined best
-  case and bands still normalise. The thresholds are org-editable like weights.
-- Enabled models (`resolve_enabled_models`): the set of models a scheme shows side by side, resolved project →
-  nearest ancestor → org → every registered model; the effective default is always in it.
-- Score maths: a model's score is the product of its axes' level weights
-  (each optionally raised to an importance exponent), divided by the weights of its divisor axes (RICE's Effort), or
-  a weighted sum of the axes scaled to their best level; it is "not
-  scored under this model" if any of those inputs is missing. Bands use the
-  normalised score (score ÷ the model's best possible score) so they survive
-  re-weighting.
+- Seed each organisation's axis levels from registry defaults (`seed_missing_scoring_levels`, `sync_scoring_levels` at start).
+- Level CRUD (at least 2 levels per axis, unique names and weights, delete with reassignment through the scheme's
+  `count_level_usage` / `reassign_level_usage` hooks).
+- Resolve the default model, rating bands and enabled models (`resolve_enabled_models`) along project, nearest ancestor,
+  organisation, registry default (as `resolve_effective_action_types`; always on, independent of RBAC inheritance).
+- Per-cell rating overrides for two-axis models (a single cell only; a blended score keeps the threshold bands) and derived
+  axes (`derived_source`; `derived_level` buckets a number by each level's `threshold`).
+- Score maths: the product of axis level weights (optionally raised to an importance exponent) divided by the divisor axes,
+  or a weighted sum scaled to the best level; "not scored" if an input is missing. Bands use the normalised score.
 
 Design decisions:
-- Levels are org-only (module rows reference them by id), whereas the
-  default model and bands are org defaults a project may override
-  (Decided by: User). A derived axis's *thresholds* (where a value reaches each level) are the one part of a
-  level a project may also override, as a set covering every level of the axis that resolves project → nearest
-  ancestor → organisation; names and weights stay shared so a level means the same thing everywhere
-  (Decided by: User, set semantics Decided by: Agent: a mixed per-level fallback could put thresholds out of order).
-- Levels are ordered by weight, not a separate sort order (Decided by:
-  Agent): the order a scorer sees and the maths can never disagree, and
-  the top level (e.g. Severity "Blocker") is simply the highest weight.
-- Unknown stored keys (e.g. a module dropped a model) are skipped during
-  resolution rather than erroring, so a registry change degrades to the
-  next tier instead of breaking reads.
+- Levels are org-only (**Decided by: User**); the default model and bands are org defaults a project may override. A
+  derived axis's thresholds are the one level part a project may override, as a set covering every level (set semantics
+  **Decided by: Agent**: a per-level fallback could put thresholds out of order).
+- Levels are ordered by weight, not a separate sort order (**Decided by: Agent**), so order and maths cannot disagree.
+- Unknown stored keys (a dropped model) are skipped in resolution, degrading to the next tier.
 
-All writers add to the session and audit-log via `services.audit.
-log_event`; callers commit.
+Writers add to the session and audit via `services.audit.log_event`; callers commit.
 """
 
 from __future__ import annotations

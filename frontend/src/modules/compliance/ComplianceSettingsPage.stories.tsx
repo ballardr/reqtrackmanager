@@ -31,13 +31,9 @@ function mockSettingsApis() {
 }
 
 /**
- * `ComplianceSettingsPage` — org-level compliance settings at `/standards/
- * settings/:orgId`, the two
- * extensible vocabularies (`ActionTypesPanel`, `MappingTypesPanel`) that
- * used to be tabs inside the now-deleted `ComplianceAdminPanel.tsx`,
- * re-hosted behind a `ResourceMenu` instead — a fixed pair of org-wide
- * settings screens, not a project-like drill-down entity, so this gets a
- * `ResourceMenu`, not a nav-rail section (see docs/ux-style-guide.md's
+ * `ComplianceSettingsPage`: org-level compliance settings at `/standards/settings/:orgId`, the two extensible vocabularies
+ * (`ActionTypesPanel`, `MappingTypesPanel`) behind a `ResourceMenu`, because they are a fixed set of org-wide settings screens,
+ * not a project-like drill-down entity that would earn a nav-rail section (docs/ux-style-guide.md,
  * "Pattern: project-like drill-down entities").
  */
 const meta: Meta<typeof ComplianceSettingsPage> = {

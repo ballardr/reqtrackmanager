@@ -12,7 +12,7 @@ const API = "http://localhost:8000/api/v1";
 
 /**
  * Job to be done: have every downloaded or stored report named the way the team files them, for example
- * "ACME-Quarterly review-2026-10-29.pdf", from a template with placeholders that is checked as it is typed, set once
+ * "ACME-Quarterly review-<date>.pdf", from a template with placeholders that is checked as it is typed, set once
  * on a pack or for the whole organisation.
  *
  * Each test works in its own disposable organisation (created and deleted through the API) with uniquely named

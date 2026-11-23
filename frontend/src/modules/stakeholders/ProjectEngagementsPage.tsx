@@ -1,18 +1,15 @@
 /**
  * Module: modules/stakeholders/ProjectEngagementsPage
  *
- * The project's Engagement log, mounted at `/projects/:projectId/modules/
- * stakeholders/engagements` (`module.ts`, reached via the "Engagements" nav-rail
- * entry). An engagement is project-scoped only, so there is no scope column; the
- * list/filter/create UI is the shared `RecordListView`, with the channel as its
- * "type" column and filter. An engagement has no status or archive, so those
- * controls are left out. Filters the list cannot do client-side (a participant,
- * a covered Persona, a date range, retention due) go to the API and refetch.
+ * The project's Engagement log, mounted at `/projects/:projectId/modules/stakeholders/engagements` (`module.ts`, the
+ * "Engagements" nav-rail entry). An engagement is project-scoped only, so there is no scope column; the list, filter
+ * and create UI is the shared `RecordListView`, with the channel as its "type" column and filter. An engagement has no
+ * status or archive, so those controls are left out. Filters the list cannot apply client-side (a participant, a
+ * covered Persona, a date range, retention due) go to the API and refetch.
  *
- * Also the landing route for a research finding (`?finding=<id>`, the path the
- * module registers for the `research_finding` artefact type): the finding's
- * engagement is looked up and the page redirects there, so a link to a finding
- * from the Links panel never dead-ends.
+ * It is also the landing route for a research finding (`?finding=<id>`, the path the module registers for the
+ * `research_finding` artefact type): the finding's engagement is looked up and the page redirects there, so a link to
+ * a finding from the Links panel never dead-ends.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";

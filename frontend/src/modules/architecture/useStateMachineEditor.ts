@@ -1,24 +1,17 @@
 /**
  * Module: modules/architecture/useStateMachineEditor
  *
- * The state machine diagram editor's state for one diagram: the model read from the server, the drawing being edited with
- * its undo/redo history, and the calls that store changes. The pure parts are in `stateMachineModel`; this hook adds
- * loading, saving and conflict handling.
- *
- * Responsibilities:
- * - Load the model (diagram, states, transitions, issues) and read it again after a stored change, merging the result into
- *   the unsaved drawing so nothing is lost.
- * - Save the drawing (`save`), which quotes the diagram's `version`; a stale version sets `conflict` so the page offers a
- *   reload instead of overwriting a newer save.
- * - Run the writes that are stored at once (`write`: add or edit a state, add, edit or delete a transition, change the
- *   diagram's fields): each quotes the current version and is followed by a read, so the issues and counts are current.
- *
- * Design decisions:
- * - Only the drawing (positions, sizes, nesting, attach points) is local until Save, as in the block diagram editor. A
- *   state's or transition's content is stored when its form is saved, because the issues depend on it and because a state
- *   needs its code, which only the server gives.
- * - The server answers a stale version and a refused move (for example an activation with errors) with the same status; only
- *   the stale version is a conflict, told apart by its message, so a refusal never offers to discard the person's work.
+ * The state machine diagram editor's state for one diagram: the model read from the server, the drawing being edited with its
+ * undo/redo history, and the calls that store changes. The pure parts are in `stateMachineModel`; this hook adds loading,
+ * saving and conflict handling.
+ * - Loads the model and reads it again after a stored change, merging into the unsaved drawing so nothing is lost.
+ * - `save` stores the drawing quoting the diagram's `version`; a stale version sets `conflict` so the page offers a reload.
+ * - `write` runs the writes stored at once (states, transitions, the diagram's fields), each quoting the version and followed
+ *   by a read so issues and counts are current.
+ * - Only the drawing (positions, sizes, nesting, attach points) is local until Save. A state's or transition's content is
+ *   stored when its form is saved, because the issues depend on it and a state's code comes from the server.
+ * - The server answers a stale version and a refused move (for example an activation with errors) with the same status;
+ *   only the stale version is a conflict, told apart by its message, so a refusal never offers to discard the person's work.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 

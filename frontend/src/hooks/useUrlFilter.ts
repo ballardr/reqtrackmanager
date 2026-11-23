@@ -1,10 +1,9 @@
 /**
  * Module: hooks/useUrlFilter
  *
- * A list's filters, sort and search kept in the URL's query string instead of component state, with the
- * same `[value, setter]` shape as `useState`. This is what lets a list come back as it was left after a
- * trip to a record (the browser's Back restores the URL, so the filters follow) and lets a filtered list
- * be bookmarked or shared; `useListPosition` keys the saved scroll position by that URL.
+ * A list's filters, sort and search kept in the URL's query string instead of component state, with the same
+ * `[value, setter]` shape as `useState`. The browser's Back restores the URL, so a list comes back as it was left,
+ * and a filtered list can be bookmarked or shared; `useListPosition` keys the saved scroll position by that URL.
  *
  * Responsibilities:
  * - `useUrlText` / `useUrlFlag` / `useUrlChoice` / `useUrlList` / `useUrlSort`: one query parameter each.
@@ -12,13 +11,13 @@
  *   and keep every other parameter.
  *
  * Design decisions:
- * - A parameter at its default is absent from the URL, so a plain link to the list stays short and a value
- *   a deep link names (`?status=draft`) is just the same parameter set by hand.
- * - The router applies a URL change after the event that caused it, so each hook also shows the value it was
- *   just given until the URL catches up; otherwise a controlled input would flip back for a render (a caret
- *   that jumps in a search box, a checkbox that seems not to have changed).
- * - Setters called in the same tick (a "clear filters" handler) accumulate: React Router's own functional
- *   update would apply each to the same stale parameters and keep only the last.
+ * - A parameter at its default is absent from the URL, so a plain link to the list stays short and a deep link
+ *   (`?status=draft`) sets the same parameter.
+ * - The router applies a URL change after the event that caused it, so each hook also shows the value it was just
+ *   given until the URL catches up; otherwise a controlled input would flip back for a render (a jumping caret in
+ *   a search box, a checkbox that seems unchanged).
+ * - Setters called in the same tick (a "clear filters" handler) accumulate: React Router's functional update would
+ *   apply each to the same stale parameters and keep only the last.
  * - A page-local concern that is not a filter (a dialog being open, a selection) stays in `useState`.
  */
 import { useEffect, useMemo, useState } from "react";
@@ -96,7 +95,7 @@ export function useUrlText(name: string, inUrl = true): [string, UrlSetter<strin
  * @param name The query parameter.
  * @param defaultValue The value when the parameter is absent; setting it back to the default removes the parameter.
  * @param options `explicit`: always keep the value in the URL (written on mount when absent), for a default the
- *   page works out from how it was opened and must not re-derive after the person has changed other filters.
+ *   page derives from how it was opened and must not re-derive after the person has changed other filters.
  * @returns The current value and its setter.
  */
 export function useUrlFlag(name: string, defaultValue = false, options: { explicit?: boolean } = {}): [boolean, UrlSetter<boolean>] {

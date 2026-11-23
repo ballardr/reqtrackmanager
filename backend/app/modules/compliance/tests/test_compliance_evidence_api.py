@@ -1,20 +1,13 @@
-"""Tests for the Compliance Module's Evidence API
-(§13-§15): creating evidence and linking it to a
-requirement's/required action's own project-specific assessment (§13's
-multi-linkage), updating metadata, archiving, revalidation and its
-append-only history (§15), the §14 valid/expiring/expired derivation and
-the `compliance_list_expiring_evidence` MCP-tool-backing endpoint, file
-attachments reusing `services.files.upload_file` (§13), the compliance_
-officer/PROJECT_MANAGER RBAC composition, and cross-project isolation
-(including through the generic `GET /api/v1/files/{id}` download endpoint,
-now resolved via `app.modules.registry.resolve_module_file_project_id`).
+"""Tests for the Compliance Module's Evidence API (§13-§15): creating evidence and linking it to a requirement's or
+required action's project-specific assessment (multi-linkage), updating metadata, archiving, revalidation and its
+append-only history (§15), the §14 valid, expiring and expired derivation, the expiring-evidence endpoint behind the
+`compliance_list_expiring_evidence` MCP tool, file attachments through `services.files.upload_file` (§13), the
+`compliance_officer` and `PROJECT_MANAGER` RBAC composition, and cross-project isolation (including through the generic
+`GET /api/v1/files/{id}` download, resolved by `app.modules.registry.resolve_module_file_project_id`).
 
-Reuses `test_compliance_standards_api.py`'s helpers for the
-standards-catalog side of setup and `test_project_compliance_api.py`'s
-helpers for the assignment/assessment side, the same way that file
-already reuses the former — this file's own job starts once a project has
-a materialised requirement/required-action assessment to attach evidence
-to.
+Catalogue setup uses `test_compliance_standards_api.py` helpers and assignment and assessment setup
+`test_project_compliance_api.py` helpers; this file starts once a project has a materialised assessment to attach
+evidence to.
 """
 
 from __future__ import annotations
@@ -358,10 +351,8 @@ def test_evidence_file_upload_download_and_isolation(client, admin_token, org_id
     assert listed.status_code == 200
     assert [f["id"] for f in listed.json()] == [file_id]
 
-    # Downloadable by a project member via the generic, module-agnostic
-    # download endpoint — resolved through `resolve_module_file_project_id`
-    # rather than any core file-link table (there is no requirement/action
-    # in the chain at all here).
+    # Downloadable by a project member through the module-agnostic download endpoint (resolved by
+    # `resolve_module_file_project_id`, with no requirement or action in the chain).
     download = client.get(f"/api/v1/files/{file_id}", headers=auth_headers(admin_token))
     assert download.status_code == 200
     assert download.content == b"%PDF-1.4 fake certificate"

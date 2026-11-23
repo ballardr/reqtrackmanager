@@ -1,26 +1,23 @@
 /**
  * Module: modules/stakeholders/StakeholderGroupsPanel
  *
- * The Stakeholder group manager: the group tree with create, rename,
- * move, reorder, "one branch per stakeholder" and delete, the selected group's
- * members, and the "create groups from Organisation / group text" action. One
- * component serves both tiers — the organisation overview (`organizationId`) and
- * a project (`projectId`) — because the tree, rules and controls are identical;
- * only the API and which groups are editable differ.
+ * The Stakeholder group manager: the group tree with create, rename, move, reorder, "one branch per stakeholder" and
+ * delete, the selected group's members, and the "create groups from Organisation / group text" action. One component
+ * serves both tiers, the organisation overview (`organizationId`) and a project (`projectId`), because the tree, rules
+ * and controls are identical; only the API and the editable groups differ.
  *
  * Layout: the groups are the shared `FolderTreeList` grid (Name, Code, Members, Scope, Rule and a row actions menu), so
- * every column lines up whatever the names hold, and the selected group's members are a `DirectoryTable` under it.
- * A group with child groups is a folder row (its name opens and closes it) and a group without is an item row (its name
- * selects it); the Members count selects either, and the selected row is outlined. The folders a person collapsed are
- * remembered per list (`useOpenFolders`); every folder starts open.
+ * columns line up whatever the names hold, and the selected group's members are a `DirectoryTable` under it. A group
+ * with child groups is a folder row (its name opens and closes it) and a group without is an item row (its name
+ * selects it); the Members count selects either, and the selected row is outlined. Collapsed folders are remembered
+ * per list (`useOpenFolders`); every folder starts open.
  *
- * In a project the tree also shows the organisation's groups, marked
- * "Organisation" and read-only (they are edited from the organisation view; their Export is on the People page); a
- * project group can be created under one. Deleting is a tier-1 `ConfirmDialog`
- * that states the member and child counts, since it removes memberships and
- * moves child groups up but never deletes a stakeholder. Every mutating control
- * always renders; the backend enforces the Stakeholder manage permission and a
- * 403 surfaces as a toast. The organisation view also offers the shared Export and Import of its own groups.
+ * In a project the tree also shows the organisation's groups, marked "Organisation" and read-only (edited from the
+ * organisation view; their Export is on the People page); a project group can be created under one. Deleting is a
+ * tier-1 `ConfirmDialog` stating the member and child counts, since it removes memberships and moves child groups up
+ * but never deletes a stakeholder. Mutating controls always render; the backend enforces the Stakeholder manage
+ * permission and a 403 surfaces as a toast. The organisation view also offers the shared Export and Import of its
+ * groups.
  */
 import { Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

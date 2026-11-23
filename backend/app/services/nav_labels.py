@@ -2,26 +2,22 @@
 Module: services.nav_labels
 
 Navigation names: a project or an organisation renames an entry of the project navigation ("Decisions" to
-"ADRs"), and the new name is shown in the navigation, the page title, the breadcrumb-style back link and the
-module's own page heading.
+"ADRs"), shown in the navigation, page title, back link and the module's page heading.
 
-Responsibilities:
-- Define the stable navigation keys: a fixed key for each core entry and one derived from the registry for each
-  module entry (`nav_key`), so a key never contains a project id and means the same in every project.
-- Validate an override map (known keys only, plain single-line text, length limited).
-- Resolve the effective name per key for a project: its own name, else the nearest ancestor's, else the
-  organisation's, else none (the built-in name applies).
-- Set the project's or the organisation's own names, audited with the keys changed and never the text.
+Responsibilities: define stable navigation keys (a fixed key per core entry, one derived from the registry per
+module entry via `nav_key`, never containing a project id); validate an override map (known keys, plain
+single-line text, limited length); resolve the effective name per key for a project (its own, else the nearest
+ancestor's, else the organisation's, else none, so the built-in name applies); set the project's or
+organisation's names, audited with the keys changed and never the text.
 
 Design decisions:
-- Resolution is per key, not all-or-nothing: a child project that renames one entry still inherits the others.
-- Keys are validated against every registered module entry, whether or not the module is enabled, so switching a
-  module off does not invalidate the names stored for it; the catalogue shown to a person lists only what the
-  project (or organisation) can currently reach.
-- Only the navigation name changes. Record nouns (a requirement, a change request) keep the terminology feature.
-- No module is named here: module entries come from `ModuleFrontendManifest.all_nav_entries`.
+- Resolution is per key, so a child that renames one entry still inherits the others.
+- Keys are validated against every registered module entry whether or not the module is enabled, so switching a
+  module off keeps its stored names; the catalogue shown lists only what is currently reachable.
+- Only the navigation name changes; record nouns keep the terminology feature.
+- No module is named here: entries come from `ModuleFrontendManifest.all_nav_entries`.
 
-External dependencies: the module registry, `services.project_hierarchy` (ancestor chain), `services.audit`.
+Dependencies: the module registry, `services.project_hierarchy`, `services.audit`.
 """
 
 from __future__ import annotations

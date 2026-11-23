@@ -1,11 +1,11 @@
 /**
  * Module: utils/listFilterParams
  *
- * The two filters every project record list shares, written as the query parameters the list's request and its
- * Export (`ListActions`) both take: the tag, component and external reference filter (`tag`, `tag_mode`, `component_id`,
+ * The two filters every project record list shares, as the query parameters the
+ * list's request and its Export (`ListActions`) both take: the tag, component
+ * and external reference filter (`tag`, `tag_mode`, `component_id`,
  * `category_id`, `external_system`, `external_key`) and the nested-project scope
- * (`project_scope`). A list builds the rest of its parameters itself and calls this for these; `filterString` writes
- * a simple list's whole filter set (an organisation panel's).
+ * (`project_scope`). `filterString` writes a simple list's whole filter set.
  */
 import { appendReferenceParams } from "../api/externalReferences";
 import { appendPlacementParams } from "../api/placements";

@@ -8,21 +8,19 @@ import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "
 installCleanupHook();
 
 /**
- * Job to be done: a record with a very long title, or a status with a long name, must not push its
- * Delete/Edit control onto a new line or make a pill change height. Text wraps; the controls beside
- * it do not.
+ * Job to be done: a record with a very long title, or a status with a long name, must not push its Delete/Edit
+ * control onto a new line or make a pill change height. Text wraps; the controls beside it do not.
  *
  * Also asserts every icon inside a button is the size its button calls for (16px medium, 14px small;
- * `iconSizeGeometry`, the same check the Storybook stories run). Set `ICON_REPORT=1` to print each
- * icon measurement per page.
+ * `iconSizeGeometry`, the same check the Storybook stories run). Set `ICON_REPORT=1` to print each icon
+ * measurement per page.
  *
- * Covers: the main project lists and detail pages (with a 200-character requirement name and action
- * title, one link between two such requirements) and the admin pages, at 1280px and 1440px, against
- * `orphanedControlViolations` (the same check the Storybook stories run).
+ * Covers: the main project lists and detail pages (with a 200-character requirement name and action title, one link
+ * between two such requirements) and the admin pages, at 1280px and 1440px, against `orphanedControlViolations`
+ * (the same check the Storybook stories run). Set `ORPHAN_REPORT=1` to print every pill and button measurement.
  *
- * Each test builds its own project and long-titled records through the API, so it depends on no shared
- * fixture or earlier run. Set `ORPHAN_REPORT=1` to print every pill and button measurement for the pages
- * visited (the baseline table for the layout contract).
+ * Each test builds its own project and long-titled records through the API, so it depends on no shared fixture or
+ * earlier run.
  */
 
 const api = "http://localhost:8000/api/v1";

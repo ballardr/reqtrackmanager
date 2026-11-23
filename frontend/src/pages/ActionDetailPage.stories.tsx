@@ -170,10 +170,7 @@ export const ArchivedActionIsReadOnly: Story = {
   },
 };
 
-/** Clicking Restore calls the new `/unarchive` endpoint directly — no
- * `ConfirmDialog`, unlike Archive above (mirrors `ProjectAdminPage.tsx`'s
- * existing unarchive button, which also fires immediately) — and shows a
- * success toast. */
+/** Clicking Restore calls the `/unarchive` endpoint directly, with no `ConfirmDialog` (unlike Archive above, as `ProjectAdminPage.tsx`'s unarchive button), and shows a success toast. */
 export const RestoreActionShowsToast: Story = {
   beforeEach: () => {
     mockActionDetailApis(

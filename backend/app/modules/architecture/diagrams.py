@@ -1,47 +1,48 @@
 """
 Module: modules.architecture.diagrams
 
-The rules for diagrams and what they hold: create, edit, move between statuses, archive and delete a diagram; replace
-its layout (placements, notes, line anchors and boundary boxes) or its toggles; place or unplace one element. The read side (the resolved view) is in
-`diagram_view`.
+The rules for diagrams and what they hold: create, edit, move between statuses, archive and delete a diagram;
+replace its layout (placements, notes, line anchors and boundary boxes) or toggles; place or unplace one
+element. The read side (the resolved view) is in `diagram_view`.
 
 Responsibilities:
-- Validate every reference a diagram stores: a scope or placed element the viewer may read, a toggle member, a rule's
-  types.
-- Advance the diagram's `version` on every change to the diagram or to anything it holds, and write one audit event per
-  change holding ids, counts and field names, never names or text.
+- Validate every reference a diagram stores: a scope or placed element the viewer may read, a toggle member,
+  a rule's types.
+- Advance the diagram's `version` on every change to the diagram or anything it holds, and write one audit
+  event per change holding ids, counts and field names, never names or text.
 - Read lists in bulk (`diagram_outs`): one statement per kind of related row however many diagrams are listed.
 
 Design decisions:
-- **A diagram is a view.** Deleting a diagram, or a placement, loses nothing from the model; deleting an element removes
-  its placements (a database cascade). The model's own rules (an element another project uses cannot be deleted) are
-  unchanged.
-- **One lock for the whole diagram.** A save quotes the `version` it was based on, and the row is locked while it is
-  checked. Moving a box and adding a toggle advance the same counter, so an editor holding a stale copy is told before it
+- A diagram is a view: deleting a diagram or a placement loses nothing from the model; deleting an element
+  removes its placements (a database cascade). The model's own rules (an element another project uses cannot
+  be deleted) apply.
+- One lock for the whole diagram: a save quotes the `version` it was based on and the row is locked while it
+  is checked. Moving a box and adding a toggle advance the same counter, so a stale editor is told before it
   overwrites.
-- **Who may be placed.** An element the viewer can read: the project's own, or one another owner shares with it. A
-  retired shared element cannot be newly placed (as for a connection), but a placement already on the diagram is kept
-  when the diagram is saved again, so a revoked or retired element never makes a diagram unsaveable. An archived element
-  cannot be newly placed.
-- **Layout save replaces.** The editor owns undo and redo, so it saves the complete placement and note lists; an element
-  left out is unplaced. An id that names a note or toggle of another diagram is refused.
-- **One note mechanism for both diagram types.** A state machine diagram's notes are rows of the same tables as a block
-  diagram's (`sync_notes`, `machine_notes_of`); only what a leader may point at differs, so the owner passes that check.
-- **Line anchors follow the boxes.** An anchor joins two placed elements, so unplacing either removes it (the layout save and
-  `remove_placement` both do), and a save may not name an element that is not placed. An anchor whose line is not drawn
-  at the moment (a view switch hides an end, or roll-up draws another pair) is kept and simply unused.
-- **A route belongs to a pair of boxes or to one connection.** A pair's route moves every connection on the line; a
-  connection's own route (`connection_id`, one per connection, the connection must be the project's) draws that connection
-  as a line apart. Deleting the connection removes its route (a database cascade); a route whose boxes the connection no
-  longer joins is kept and not used.
-- **Boundary boxes follow the scope.** A box stands for an outer connection of the diagram's scope (`boundaries`), is
-  saved with the layout, and is removed when the scope changes; a stored box whose connection later stops being outer is
-  kept and not drawn.
-- **Toggle rules name vocabulary rows (types and domains) and tag names, never records;** a toggle's manual members are the only
-  record references, and each must be readable.
+- Who may be placed: an element the viewer can read (the project's own, or shared by another owner). A
+  retired shared element cannot be newly placed, but an existing placement is kept when the diagram is saved
+  again, so a revoked or retired element never makes a diagram unsaveable. An archived element cannot be
+  newly placed.
+- A layout save replaces: the editor owns undo and redo, so it saves the complete placement and note lists
+  and an element left out is unplaced. An id naming a note or toggle of another diagram is refused.
+- One note mechanism for both diagram types: a state machine diagram's notes are rows of the same tables as a
+  block diagram's (`sync_notes`, `machine_notes_of`); only what a leader may point at differs, so the owner
+  passes that check.
+- Line anchors follow the boxes: an anchor joins two placed elements, so unplacing either removes it (the
+  layout save and `remove_placement`), and a save may not name an unplaced element. An anchor whose line is
+  not currently drawn (a view switch hides an end, or roll-up draws another pair) is kept and unused.
+- A route belongs to a pair of boxes or to one connection: a pair's route moves every connection on the line;
+  a connection's own route (`connection_id`, one per connection, which must be the project's) draws it apart.
+  Deleting the connection removes its route (a database cascade); a route whose boxes the connection no longer
+  joins is kept and unused.
+- Boundary boxes follow the scope: a box stands for an outer connection of the diagram's scope
+  (`boundaries`), is saved with the layout and is removed when the scope changes; a stored box whose
+  connection stops being outer is kept and not drawn.
+- Toggle rules name vocabulary rows (types and domains) and tag names, never records; a toggle's manual
+  members are the only record references and each must be readable.
 
-Dependencies: `records` (the shared rule errors, version lock and audit helpers), `visibility`, `service`, core
-`services.sequences`, `services.tags`, `services.placements`, `services.audit`.
+Dependencies: `records` (the shared rule errors, version lock and audit helpers), `visibility`, `service`,
+core `services.sequences`, `services.tags`, `services.placements`, `services.audit`.
 """
 
 from __future__ import annotations

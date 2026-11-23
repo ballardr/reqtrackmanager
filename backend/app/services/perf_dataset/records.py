@@ -1,26 +1,24 @@
 """
 Module: services.perf_dataset.records
 
-The building blocks every non-core artefact type's dataset generator uses, so a module's generator is the type's own
-columns and nothing else.
+The building blocks every non-core artefact type's dataset generator uses, so a module's generator is the
+type's own columns and nothing else.
 
 Responsibilities:
-- `RecordBatch`: collects a type's identity rows, satellite rows (versions, scores, reviews) and "created" audit
-  events, then writes them with chunked Core inserts and moves the project's sequence counter past the generated
-  codes.
-- `add_comments`, `add_tags`: comment threads and tags on a type's records, in the same proportions as requirements.
-- `link_to_earlier`: cross-type links from a type's records to records of types generated before it, with a
-  heavy-tailed number of links per target (hubs) and a share to the parent project.
-- `scoring_levels`, `org_link_types`, `pick_*`: small lookups of organisation vocabulary the rows must reference.
+- `RecordBatch`: collects a type's identity rows, satellite rows (versions, scores, reviews) and "created"
+  audit events, writes them with chunked Core inserts and moves the project's sequence counter past the codes.
+- `add_comments`, `add_tags`: comment threads and tags in the proportions of requirements.
+- `link_to_earlier`: cross-type links to records of earlier-generated types, with a heavy-tailed number of
+  links per target (hubs) and a share to the parent project.
+- `scoring_levels`, `org_link_types`, `pick_*`: lookups of organisation vocabulary the rows reference.
 
 Design decisions:
-- A module registers only its own `PerfDatasetGenerator`; nothing here names a module's type. A type's link partners
-  are the types it asks for by string, which must have been generated earlier (`PerfDatasetGenerator.order`).
-- Counters are written as the application leaves them: one `ProjectSequenceCounter` row per type with `next_seq`
-  one past the last generated code, so the next record a person creates is numbered correctly.
-- Cross-type links use a link type that permits both ends when the organisation has one, else are untyped (the
-  application stores untyped links too); a cross-level link needs a type with the ancestor scope and is skipped for a
-  pair that has none.
+- A module registers only its own `PerfDatasetGenerator`; nothing here names a module's type. Link partners are
+  types asked for by string and must be generated earlier (`PerfDatasetGenerator.order`).
+- Counters are written as the application leaves them: one `ProjectSequenceCounter` per type with `next_seq`
+  one past the last code, so the next created record is numbered correctly.
+- Cross-type links use a link type permitting both ends when the organisation has one, else are untyped; a
+  cross-level link needs a type with the ancestor scope and is skipped for a pair that has none.
 
 Dependencies: SQLAlchemy models, `perf_dataset.context/core/textgen`.
 """

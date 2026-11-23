@@ -17,25 +17,18 @@ import { Badge } from "../components/Badge";
 import { Tooltip } from "../components/Tooltip";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
-/** Project overview dashboard (U-P-05): the widgets of the layout in force, which a project manager arranges
- * ("Customise overview"). The built-in layout is the key metrics, a total-records chart split by record type,
- * status and outcome charts, per-stage progress and a recent activity feed. Every tile, chart segment and
- * stage bar navigates to the list it summarises, pre-filtered to match what was clicked (UX review).
- * The figures of every visible widget arrive in one batched request (`useOverviewMetrics`); a module's tiles
- * and widgets come from the registry, so this page never imports a specific module. */
+/** Project overview dashboard (U-P-05): the widgets of the layout in force, arranged by a project manager ("Customise overview").
+ * The built-in layout is key metrics, a total-records chart by record type, status and outcome charts, per-stage progress and
+ * a recent activity feed. Every tile, segment and bar opens the list it summarises, pre-filtered. All visible widgets' figures
+ * arrive in one batched request (`useOverviewMetrics`); module widgets come from the registry, so no module is imported. */
 export function ProjectOverviewPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [layout, setLayout] = useState<OverviewLayout | null>(null);
   const [editing, setEditing] = useState(false);
-  // Hierarchical projects (docs/decisions.md): root-first ancestor
-  // breadcrumb and "Child of/Parent of" labels, previously shown on
-  // ProjectListPage/FavouritesPage but never here. Both default to `[]`
-  // rather than `null` — an empty result (no parent/no children, or every
-  // ancestor redacted) is a normal, renderable state, not a loading one,
-  // so these don't gate the page's initial `<Spinner />` the way
-  // project/layout do.
+  // Hierarchical projects (docs/decisions.md): root-first ancestor breadcrumb and "Child of/Parent of" labels. Both default to
+  // `[]` (an empty result is a normal state), so they do not gate the initial `<Spinner />`.
   const [ancestors, setAncestors] = useState<ProjectAncestor[]>([]);
   const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,11 +57,8 @@ export function ProjectOverviewPage() {
   if (loadError) return <p style={{ color: "var(--color-danger)" }}>{loadError}</p>;
   if (!project || !layout || !metrics.results) return <Spinner />;
 
-  // Built from the single-`Project` GET response plus the `children` list
-  // fetched above — `ProjectOverviewPage` has no `ProjectListItem` of its
-  // own (list-only fields like `current_stage_name`/`my_roles` don't apply
-  // to a single-project dashboard), so this assembles just the fields
-  // `ProjectHierarchyLabels` actually needs (see `ProjectHierarchySummary`).
+  // Built from the single-`Project` response and the `children` list: the page has no `ProjectListItem`, so this assembles only the
+  // fields `ProjectHierarchyLabels` needs (`ProjectHierarchySummary`).
   const hierarchySummary: ProjectHierarchySummary = {
     id: project.id,
     parent_project_id: project.parent_project_id,

@@ -1,13 +1,13 @@
 /**
  * Module: pages/AddUserModal
  *
- * Server Management → Users → "Add user ▾" (`AddUserMenu`): a server administrator creates an account,
- * either by emailing an invite (mode `invite`, the person sets their own password) or with a password the
- * administrator types (mode `password`, the "New user" dialog). The menu picks the mode; each is its own
- * dialog. Either way the account may belong to no organisation.
+ * Server Management -> Users -> "Add user" (`AddUserMenu`): a server administrator creates an account, either by
+ * emailing an invite (mode `invite`, the person sets their own password) or with a password the administrator types
+ * (mode `password`, the "New user" dialog). The menu picks the mode; each is its own dialog. The account may belong
+ * to no organisation.
  *
- * Responsibilities: collect the fields, call `POST /api/v1/system/users`, report the outcome through the
- * parent's `onCreated`. It never shows or stores the typed password beyond the form's own state.
+ * Responsibilities: collect the fields, call `POST /api/v1/system/users`, report the outcome through the parent's
+ * `onCreated`. It never shows or stores the typed password beyond the form's own state.
  * Dependencies: `NewUserFields` (shared with Org Admin), `Modal`, `FormActions`.
  */
 import { useEffect, useState } from "react";

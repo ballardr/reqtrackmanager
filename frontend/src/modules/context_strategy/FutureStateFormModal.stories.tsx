@@ -4,11 +4,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import type { FutureState } from "./types";
 
-/**
- * `FutureStateFormModal` renders via `Modal`, which portals to
- * `document.body` — every assertion here queries `within(document.body)`,
- * mirroring `StrategyFormModal.stories.tsx`'s own identical convention.
- */
+/** `Modal` portals to `document.body`, so every assertion queries `within(document.body)`, as in `StrategyFormModal.stories.tsx`. */
 const meta: Meta<typeof FutureStateFormModal> = {
   title: "Modules/ContextStrategy/FutureStateFormModal",
   component: FutureStateFormModal,

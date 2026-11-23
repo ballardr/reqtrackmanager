@@ -8,40 +8,15 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: Playwright e2e coverage for Guiding Principle's
- * full lifecycle. Exercises the Context & Strategy frontend's fourth
- * artefact type (`frontend/src/modules/context_strategy/`) against a real
- * backend.
+ * Job to be done: e2e coverage of Guiding Principle's full lifecycle (`frontend/src/modules/context_strategy/`)
+ * against a real backend.
  *
- * Mirrors `strategy-lifecycle.spec.ts`'s/`future-state-lifecycle.spec.ts`'s/
- * `pain-point-lifecycle.spec.ts`'s own structure and reasoning closely:
- *
- * - **Disposable org + admin + project, created via the API**, not shared
- *   seeded state — same reasoning as those three specs: Context & Strategy
- *   is `default_enabled=False`, so this spec must toggle it on for whichever
- *   org it runs against, and every identifier is `Date.now()`-suffixed per
- *   CLAUDE.md's "tests must not depend on state left behind by another test"
- *   rule.
- * - **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
- * (Decided by: Agent)** — matching the other lifecycle specs' identical
- * precedent and reasoning exactly (see their docstrings): a
- *   disposable org created via the API already satisfies this repo's own
- *   "prefer dynamically-named fixtures over mutating shared named seed
- *   data" rule more directly than adding unused fixed fixture data would.
- * - The project-scoped flow only (org-scoped Guiding Principle's own
- *   lifecycle is identical server-side — same schemas, same transition
- *   endpoints, `orgGuidingPrincipleApi`/`projectGuidingPrincipleApi` share
- *   one factory, `modules/context_strategy/api.ts` — so it is not
- * independently at risk here; this matches the other specs' "project-
- *   scoped at minimum" bar).
- * - Unlike Strategy's/Future State's seven-state lifecycle, Guiding
- *   Principle has **no "Under review" step** — `Propose` is followed
- *   directly by `Approve`/`Send back`, not `Submit for review`. This spec
- *   walks the send-back path first (mandatory comment, this module's
- *   "reject"-equivalent) before re-proposing and completing the lifecycle to
- *   `Active`, so both the rework path and the happy path get real coverage
- *   in one spec, mirroring `pain-point-lifecycle.spec.ts`'s own "both a
- *   branch and the happy path" precedent.
+ * Mirrors `strategy-lifecycle.spec.ts` for setup: a disposable org + admin + project created via the API
+ * (Context & Strategy is `default_enabled=False`), `Date.now()`-suffixed names, no `seed_e2e_dataset.py`
+ * fixtures, and the project-scoped flow only (the org-scoped lifecycle shares one API factory in
+ * `modules/context_strategy/api.ts`). Unlike Strategy's seven states, Guiding Principle has no "Under review"
+ * step: `Propose` is followed by `Approve`/`Send back`. The spec walks the send-back path (mandatory comment)
+ * before re-proposing and completing to `Active`, covering rework and happy path together.
  */
 test.describe("Context & Strategy: create -> propose -> send back -> re-propose -> approve -> activate a Guiding Principle", () => {
   test("moves a project-scoped Guiding Principle through its lifecycle to Active", async ({ page }) => {
@@ -51,13 +26,9 @@ test.describe("Context & Strategy: create -> propose -> send back -> re-propose 
     const projectName = `E2E Guiding Principle Project ${suffix}`;
     const guidingPrincipleName = `Field data is captured once ${suffix}`;
 
-    // --- Disposable org + admin + project, via the API (server admin
-    // creates the org and its first admin; that admin then creates their
-    // own project, becoming its ProjectRole.PROJECT_MANAGER — which
-    // auto-composes with every module-contributed project-scoped role's
-    // override, so this one persona can both propose and approve without
-    // any extra role grant, the same reasoning `strategy-lifecycle.spec.ts`
-    // already relies on for its own single admin persona).
+    // Disposable org + admin + project, via the API: the server admin creates the org and its first admin, who
+    // creates their own project and becomes its ProjectRole.PROJECT_MANAGER, which composes with every
+    // module-contributed project-scoped role's override, so this one persona can both propose and approve without any extra role grant.
     const serverAdminLoginResp = await page.request.post(`${API_BASE_URL}/api/v1/auth/login`, {
       data: { email: "admin@example.com", password: "ChangeMe123!" },
     });
@@ -87,21 +58,16 @@ test.describe("Context & Strategy: create -> propose -> send back -> re-propose 
       })
     ).json();
 
-    // --- Enable Context & Strategy for this org (default_enabled=False —
-    // `module.py`'s deliberate opt-in design). `OrgListPage.tsx` auto-
-    // redirects straight to `/orgs/:orgId/admin` when the caller belongs to
-    // exactly one org (true here), so there's no "org link" to click first.
+    // Enable Context & Strategy for this org (`default_enabled=False`, an opt-in module). `OrgListPage.tsx`
+    // redirects to `/orgs/:orgId/admin` when the caller belongs to exactly one org, so there is no "org link" to click.
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
     await selectOrgAdminGroup(page, "Modules");
     await expect(page.getByRole("combobox", { name: "Context & Strategy availability", exact: true })).toHaveValue("off");
     await setOrgModuleAvailability(page, "Context & Strategy", "default_on");
 
-    // --- Navigate into the project's own new "Guiding Principle" nav entry
-    // (`exact: true` disambiguates from the header's own user-menu link,
-    // whose display name — "E2E Guiding Principle Admin" — also contains
-    // the substring "Guiding Principle", the same disambiguation
-    // `strategy-lifecycle.spec.ts` needs for its own persona name).
+    // Navigate into the project's "Guiding Principle" nav entry. `exact: true` disambiguates from the header's user-menu
+    // link, whose display name ("E2E Guiding Principle Admin") contains the same substring.
     await page.goto(`/projects/${project.id}`);
     await page.getByRole("link", { name: "Guiding Principle", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/guiding-principles(?:\\?.*)?$`));
@@ -112,10 +78,8 @@ test.describe("Context & Strategy: create -> propose -> send back -> re-propose 
     await dialog.getByLabel("Guiding Principle name").fill(guidingPrincipleName);
     await dialog.getByLabel("Principle statement").fill("Every field observation is recorded exactly once, at the point of inspection.");
     await dialog.getByRole("button", { name: "Save" }).click();
-    // `DirectoryTable`'s `onRowClick` renders the first column's cell (Name)
-    // as a real `<button>`, not a bare clickable `<tr>` (accessibility — see
-    // that component's own docstring), so this row is reached the same way
-    // `strategy-lifecycle.spec.ts` reaches its own Title-column button.
+    // `DirectoryTable`'s `onRowClick` renders the first column's cell (Name) as a real `<button>` (accessibility;
+    // see that component's docstring), so the row is reached as `strategy-lifecycle.spec.ts` reaches its Title button.
     await expect(page.getByRole("button", { name: guidingPrincipleName })).toBeVisible();
 
     await page.getByRole("button", { name: guidingPrincipleName }).click();
@@ -123,10 +87,8 @@ test.describe("Context & Strategy: create -> propose -> send back -> re-propose 
     await expect(page.getByRole("heading", { name: guidingPrincipleName })).toBeVisible();
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
 
-    // --- Propose, then send back for rework (mandatory comment) — Guiding
-    // Principle's own "reject"-equivalent, with no "Under review" step in
-    // between (unlike Strategy/Future State, `Propose` goes straight to
-    // offering `Approve`/`Send back`).
+    // Propose, then send back for rework (mandatory comment), Guiding Principle's "reject" equivalent. There is
+    // no "Under review" step: `Propose` goes straight to offering `Approve`/`Send back`.
     await page.getByRole("button", { name: "Propose" }).click();
     await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Submit for review" })).toHaveCount(0);

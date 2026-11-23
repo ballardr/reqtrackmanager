@@ -3,17 +3,15 @@
  *
  * Turns a server-sanitised SVG drawing (an architecture symbol) into an image source that is safe to show.
  *
- * Responsibilities:
- * - Run a second DOMPurify pass (SVG profile) over the markup, as defence in depth after the server's sanitiser.
- * - Return a `data:image/svg+xml` URI, which an `<img>` draws without executing script or loading anything else,
- *   so the markup never joins the page's DOM.
+ * Responsibilities: run a second DOMPurify pass (SVG profile) as defence in depth after the server's sanitiser, and
+ * return a `data:image/svg+xml` URI, which an `<img>` draws without running script or loading anything else.
  *
  * Design decisions:
- * - Markup over `MAX_SVG_CHARS`, or markup that sanitises to nothing, gives `null` and the caller draws no
- *   symbol; a hostile or broken drawing never blocks the node's text label.
+ * - Markup over `MAX_SVG_CHARS`, or that sanitises to nothing, gives `null`, so a hostile or broken drawing never
+ *   blocks the node's text label.
  * - Results are cached per markup string, because a diagram repeats one symbol on many nodes.
- * - A caller may add a `trustedStyle` (its own constant CSS, such as an embedded font) after sanitising; it is
- *   never taken from the markup, so it cannot carry anything the caller did not write.
+ * - A caller's `trustedStyle` (constant CSS such as an embedded font) is added after sanitising and never read from
+ *   the markup.
  *
  * Dependencies: `dompurify`.
  */

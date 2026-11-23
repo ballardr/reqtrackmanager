@@ -4,19 +4,14 @@ Revision ID: 0009
 Revises: 0008
 Create Date: 2026-08-16
 
-Lets an `OrgGroup` contain another `OrgGroup` as a member
-(`OrgGroupMember.member_org_group_id`), transitively resolved (see
-`app/services/rbac.py`'s `_ancestor_org_group_ids`/`_descendant_org_group_ids`)
-— a distinct, new relationship from the existing (and deliberately
-one-level-deep) org-group-in-*project*-group nesting (C-U-12).
+Lets an `OrgGroup` contain another `OrgGroup` as a member (`OrgGroupMember.member_org_group_id`),
+resolved transitively (`app/services/rbac.py`'s `_ancestor_org_group_ids`/`_descendant_org_group_ids`).
+This is distinct from the one-level org-group-in-project-group nesting (C-U-12).
 
-`user_id` becomes nullable (exactly one of `user_id`/`member_org_group_id`
-must be set, enforced by `ck_org_group_member_exactly_one_target`) and the
-existing single-column unique constraint gets an explicit name so both a
-freshly `create_all()`-built database and an upgraded one converge on the
-same schema — done via `pg_constraint` existence checks rather than
-`IF NOT EXISTS` (which Postgres's `ALTER TABLE ... ADD/RENAME CONSTRAINT`
-doesn't support), same idempotency goal as every other migration here.
+`user_id` is nullable: exactly one of `user_id`/`member_org_group_id` is set
+(`ck_org_group_member_exactly_one_target`). The single-column unique constraint gets an explicit name so a
+`create_all()`-built database and an upgraded one converge; `pg_constraint` existence checks replace
+`IF NOT EXISTS`, which `ALTER TABLE ... ADD/RENAME CONSTRAINT` does not support.
 """
 
 from collections.abc import Sequence

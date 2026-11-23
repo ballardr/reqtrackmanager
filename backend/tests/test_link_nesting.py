@@ -762,10 +762,10 @@ def test_decision_in_the_parent_cannot_address_a_pain_point_below_it_but_the_rev
 
 # --- the reader audit, kept as a guard -----------------------------------------------------------
 
-# Files reviewed for how they treat cross-level links (docs/decisions.md): each either asks
-# for them deliberately (the graph, usage counts, deletion, the export count) or filters them out.
-# A new file that queries `ArtefactLink` directly, or asks `services.relationships` for cross-level
-# links, must be reviewed against the "another project's artefact" rule and added here.
+# Files reviewed for how they treat cross-level links (docs/decisions.md): each asks for them
+# deliberately (the graph, usage counts, deletion, the export count) or filters them out. A new
+# file that queries `ArtefactLink` directly, or asks `services.relationships` for cross-level
+# links, is reviewed against the "another project's artefact" rule and added here.
 _REVIEWED_LINK_READERS = {
     "services/bundle_links.py": "same-project links only (source_project_id is null); a cross-level link is not exported",
     "services/link_graph.py": "authorises every end in its own project",

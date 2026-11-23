@@ -4,26 +4,27 @@
  * One diagram as a routed page and its editor (`/projects/:projectId/modules/architecture/diagrams/:diagramId`, also the
  * target other records' links follow). The record header sits above two tabs (`?tab=configuration`; Drawing is the default):
  * Drawing holds a toolbar (Undo, Redo, Save, the Add to diagram menu, Export), the shared graph canvas, the Outline and the
- * Selection card; Configuration holds the connection-detail setting and the view switches. Links and Activity are in the aside.
- * The pending layout, selection and undo history belong to the page, so a change of tab loses none of them.
+ * Selection card; Configuration holds the connection-detail setting and the view switches. Links and Activity are in the
+ * aside. The pending layout, selection and undo history belong to the page, so a change of tab loses none of them.
  *
- * Editing model: boxes, notes, line anchors and boundary boxes are edited locally (move, resize, add, remove, drop from the Add menu, drag a line
- * between two boxes, drag a line's end to another attach point or choose it in the Selection card) with undo and redo, and stored together by Save, which quotes the diagram's version; a 409 offers a reload
- * instead of overwriting a newer save. Creating a connection or deleting an element writes to the model at once, so a
- * pending layout is saved first. An element (a palette type dropped or chosen in the Add menu) and a connection (a line drawn
- * between two boxes) are created at once with defaults (a numbered name; the connection type the ends suggest), selected, and
- * edited in the Selection card through the shared field groups; only a project with no connection type opens the connection dialog,
- * which links to where types are set up. Taking a box off the diagram never deletes its element; deleting the element is a separate,
- * confirmed action. A line that stands for several connections edits each in the shared connection form (the pending layout is kept
- * and the lines redraw). View switches are stored when changed, but flipping one on the page changes only the address.
- * An Outline card (elements as a tree, lines as a table) is the text alternative to the canvas and shares its selection; the
- * canvas is keyboard operable (arrows move, Alt+arrows resize, Delete removes the box from the diagram; Cmd or Ctrl with Z and Shift or Y undo and redo, through `EditHistoryButtons`) and the selection card
- * can start a connection from a list. Export (PNG, SVG, Mermaid text, copy Mermaid) saves a pending layout first, then asks
- * the server for the saved diagram drawn for the switch states on the page.
- * A diagram of an element's inside can draw the connections that cross the element's boundary as boundary boxes (Add to diagram,
- * "Outside this element"); a line drawn from an inner element to a box (or the box's "Connect to" list) creates a connection and
- * marks it as realising the outer connection, and a line's Selection card can set what it realises.
- * Lines, bridging and roll-up are worked out in the browser from the diagram's model data (`GET .../model`) by
+ * Editing model: boxes, notes, line anchors and boundary boxes are edited locally (with undo and redo) and stored
+ * together by Save, which quotes the diagram's version; a 409 offers a reload instead of overwriting a newer save.
+ * Creating a connection or deleting an element writes to the model at once, so a pending layout is saved first. An
+ * element (from the Add menu or a palette drop) and a connection (a line drawn between two boxes) are created at once
+ * with defaults (a numbered name; the connection type the ends suggest), selected, and edited in the Selection card
+ * through the shared field groups; only a project with no connection type opens the connection dialog, which links to
+ * where types are set up. Taking a box off the diagram never deletes its element; deleting the element is a separate,
+ * confirmed action. A line that stands for several connections edits each in the shared connection form.
+ * View switches are stored when changed, but flipping one on the page changes only the address.
+ * The Outline card (elements as a tree, lines as a table) is the text alternative to the canvas and shares its
+ * selection; the canvas is keyboard operable (arrows move, Alt+arrows resize, Delete removes the box from the diagram;
+ * undo and redo through `EditHistoryButtons`) and the selection card can start a connection from a list. Export (PNG,
+ * SVG, Mermaid text, copy Mermaid) saves a pending layout first, then asks the server for the saved diagram drawn for
+ * the switch states on the page.
+ * A diagram of an element's inside can draw the connections that cross the element's boundary as boundary boxes (Add to
+ * diagram, "Outside this element"); a line drawn from an inner element to such a box creates a connection that
+ * realises the outer connection, and a line's Selection card can set what it realises.
+ * Lines, bridging and roll-up are computed in the browser from the diagram's model data (`GET .../model`) by
  * `diagramLines`, so an added box or a flipped switch redraws at once; the server's resolved view (`GET .../view`) gives
  * the boxes, notes and switches on load and stays the authority for the SVG and documents.
  */

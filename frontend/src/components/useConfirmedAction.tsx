@@ -1,13 +1,11 @@
 /**
  * Module: components/useConfirmedAction
  *
- * Pairs one object-action menu item with the confirmation dialog it opens, so a
- * detail page lists its Archive / Delete permanently actions in `RecordHeader`'s
- * menu without hand-rolling `useState` plus a `ConfirmDialog` per action
- * (style guide "Pattern: record header and object actions").
+ * Pairs one object-action menu item with the confirmation dialog it opens, so a detail page lists its Archive / Delete
+ * permanently actions in `RecordHeader`'s menu without its own `useState` and `ConfirmDialog` per action (style guide
+ * "Pattern: record header and object actions").
  *
- * - Tier 1 (plain Cancel/confirm) by default; passing `requireTypedText` makes it
- *   Tier 2 (type the exact name), exactly as `ConfirmDialog` already does.
+ * - Tier 1 (plain Cancel/confirm) by default; `requireTypedText` makes it Tier 2 (type the exact name), as `ConfirmDialog` does.
  * - `useArchiveAction` is the Archive/Unarchive (or Restore) case every record has.
  * - A hidden action (no permission) yields `item: null`; it is never rendered disabled.
  *

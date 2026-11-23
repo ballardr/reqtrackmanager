@@ -1,18 +1,16 @@
 """Every code path that writes the next version of a versioned record takes the
 record's row lock *before* reading the current version.
 
-A versioned edit closes the current version and inserts the next, so two
-unserialised edits both read version N and the loser dies on the
-`(record, version_number)` unique constraint with a 500. The lock makes the
-second edit wait, then apply on top of the first.
+Two unserialised versioned edits both read version N and the loser fails on the
+`(record, version_number)` unique constraint with a 500; the lock makes the second
+edit wait, then apply on top of the first.
 
 Two layers:
-- a structural scan of `app/`: every call to an `apply_*new_version` function
-  must be preceded, in the same function, by a lock call, or the function must
-  be a helper whose every caller is (recursively). A future versioned type that
-  forgets the lock fails here without needing its own test.
-- behavioural: for the core requirement and the Context & Strategy types, an
-  edit made while another transaction holds the row lock blocks, then applies.
+- a structural scan of `app/`: every call to an `apply_*new_version` function is
+  preceded, in the same function, by a lock call, or the function is a helper whose
+  every caller is (recursively); a new versioned type without the lock fails here.
+- behavioural: for the core requirement and the Context & Strategy types, an edit made
+  while another transaction holds the row lock blocks, then applies.
 """
 
 from __future__ import annotations

@@ -5,28 +5,20 @@ Saved variable sets of a report pack, and the per-project overrides of them.
 
 Responsibilities:
 - Create, rename, change and delete a set; set, change and reset a project's override of a pack-defined set.
-- Resolve what a project sees: each set with its base values, the project's own override, and the effective values
-  (`effective_sets`).
-- `set_values_for`: the values a run takes from a chosen set, for a project, with remarks for anything ignored.
-- `stale_warnings`: sets naming a value that is no longer one of the variable's options.
+- `effective_sets` (base values, the project's override and the effective values), `set_values_for` (values a run takes
+  from a set, with remarks for anything ignored), `stale_warnings` (a value no longer one of the variable's options).
 
 Design decisions:
-- **Two kinds of set.** A *pack-defined* set (`project_id` null) is saved with the pack by its owner. A
-  *project-added* set belongs to one project (and is visible to its descendants) and sits beside the pack's own.
-  A project cannot change a pack-defined set; it overrides it.
-- **Override is per variable, nearest first.** The effective value of a variable is the first override found walking
-  from the running project up through its ancestors (`project_hierarchy.get_project_chain_ids`), else the base value.
-  A variable an override does not list falls back; deleting the override resets to the base. A project's override is
-  not inherited by anything but its descendants.
-- **Values are checked against the pack's declared variables when saved** (`report_variables.check_values`), so a set
-  cannot hold a value of the wrong type. A later pack version can drop or retype a variable; the stored value is then
-  ignored at run with a remark (never an error), because people's saved choices should survive an edit of the pack.
-- **A name is unique where it can be seen**: among a pack's own sets, and among the project-added sets of a project
-  and its ancestors plus the pack's own, so a person picking by name always gets one set.
-- Values are configuration: stored with the set, recorded in the manifest and provenance, and never written to a log
-  line or an audit event (events carry ids, names and counts).
+- A pack-defined set (`project_id` null) is saved with the pack and cannot be changed by a project, which overrides it;
+  a project-added set belongs to one project (visible to its descendants).
+- An override is per variable, nearest first: the first override walking from the running project up its ancestors
+  (`project_hierarchy.get_project_chain_ids`), else the base value; deleting it resets to the base.
+- Values are checked when saved (`report_variables.check_values`); a later pack version may drop or retype a variable,
+  and the stored value is then ignored at run with a remark, so saved choices survive a pack edit.
+- A name is unique where it can be seen (a pack's sets, and project-added sets of a project and its ancestors).
+- Values are configuration: never written to a log line or audit event (events carry ids, names and counts).
 
-Dependencies: `models.report_pack`, `services.report_variables`, `services.project_hierarchy`, `services.audit`.
+Dependencies: `models.report_pack`, `report_variables`, `project_hierarchy`, `audit`.
 """
 
 from __future__ import annotations

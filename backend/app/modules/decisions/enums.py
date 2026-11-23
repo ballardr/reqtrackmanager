@@ -1,10 +1,8 @@
 """
 Module: modules.decisions.enums
 
-Decision-Management-owned vocabulary. Kept in this package rather than
-`app.models.enums`, mirroring `app.modules.compliance.enums`'s own
-reasoning — these are domain concepts this module owns, not core
-ReqTrackManager concepts.
+The vocabulary owned by Decision Management, kept in this package rather than
+`app.models.enums` because these are domain concepts of this module.
 """
 
 from __future__ import annotations

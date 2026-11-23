@@ -1,35 +1,20 @@
 """
 Module: models.sequence
 
-The generic per-project (and, for organisation-scoped records, per-organisation),
-per-artefact-type sequence counter every *new* identified artefact type in
-the future-modules roadmap (Decision, Design, Risk, Pain Point, Strategy,
-Guiding Principle, Open Question, Stakeholder/Persona) generates its unique
-code from, instead of each module adding its own `next_<type>_seq` integer
-column to `Project` the way `Requirement.next_requirement_seq` and
-`RequirementAction.next_action_seq` (`models.project.Project`) already do.
+The generic per-artefact-type sequence counters (per project and, for organisation-owned records, per
+organisation) that every identified artefact type generates its unique code from, instead of a
+`next_<type>_seq` column on `Project` (as `Requirement.next_requirement_seq` and
+`RequirementAction.next_action_seq` in `models.project.Project`).
 
-Design decision (Decided by: User, docs/decisions.md's Platform Foundations entry): a single `ProjectSequenceCounter` table
-(`project_id`, `artefact_type`, `next_seq`), one row per artefact type a
-project has ever generated a code for, rather than `Project` accumulating
-one more near-identical column per module. `Project.next_requirement_seq`/
-`next_action_seq` are deliberately left untouched — this table is additive,
-for new artefact types only, not a migration of the existing two.
+A single `ProjectSequenceCounter` table (`project_id`, `artefact_type`, `next_seq`) holds one row per
+artefact type a project has generated a code for (**Decided by: User**, docs/decisions.md's Platform
+Foundations entry). `Project.next_requirement_seq`/`next_action_seq` are unchanged.
 
-`artefact_type` is a plain, module-registrable string, validated at the
-service layer against `app.modules.registry.get_all_registered_artefact_
-types()` — **corrected 2026-09-21** (Decision Management) from this column's original shape, which bound it to the fixed
-`models.enums.ArtefactType` Python enum. That original shape required every
-new artefact-generating module to hand-edit a core enum, the exact
-per-module core-file-edit failure mode `models.relationship.ArtefactLink.
-source_type`/`target_type` was deliberately built to avoid
-(`ModuleDefinition.artefact_types` +
-`get_all_registered_artefact_types`) — this table just didn't get the same
-treatment at first. Now it does: a module declares its own artefact-type
-string(s) on `ModuleDefinition.artefact_types` once, and both this table and
-`ArtefactLink` recognise it with no further core-file changes required for
-the next module. See `docs/decisions.md`'s "Decision Management
-ProjectSequenceCounter made module-registrable" entry.
+`artefact_type` is a plain, module-registrable string validated at the service layer against
+`app.modules.registry.get_all_registered_artefact_types()`, not the fixed `models.enums.ArtefactType` enum,
+so a module declares its type once on `ModuleDefinition.artefact_types` and both this table and
+`ArtefactLink` accept it with no core edit (docs/decisions.md, "Decision Management -
+ProjectSequenceCounter made module-registrable").
 """
 
 from __future__ import annotations
@@ -45,24 +30,16 @@ from app.models.base import TimestampMixin, UUIDPKMixin
 
 
 class ProjectSequenceCounter(UUIDPKMixin, TimestampMixin, Base):
-    """Tracks the next never-reused sequence number for one
-    `(project, artefact_type)` pair, backing `services.sequences.
-    generate_unique_code`.
+    """Tracks the next never-reused sequence number for one `(project, artefact_type)` pair, backing
+    `services.sequences.generate_unique_code`.
 
     Attributes:
         project_id: The project this counter belongs to.
-        artefact_type: Which artefact type this counter is for — a plain
-            string (e.g. `"requirement"`, `"decision"`), validated by
-            `services.sequences.generate_unique_code` against
-            `app.modules.registry.get_all_registered_artefact_types()`
-            rather than typed as a closed Python enum (see module
-            docstring for why). A project has at most one row per distinct
-            value, created lazily the first time that type's code is
-            generated in that project.
-        next_seq: The next sequence number to hand out; advanced under a
-            row lock (see `services.sequences._next_sequence`) so it is
-            never reused, mirroring `next_requirement_seq`'s own
-            never-reused guarantee.
+        artefact_type: The artefact type, a plain string (for example `"requirement"`, `"decision"`)
+            validated by `generate_unique_code` against `get_all_registered_artefact_types()`. A project has
+            at most one row per value, created the first time that type's code is generated.
+        next_seq: The next number to hand out; advanced under a row lock
+            (`services.sequences._next_sequence`) so it is never reused.
     """
 
     __tablename__ = "project_sequence_counters"
@@ -78,12 +55,10 @@ class ProjectSequenceCounter(UUIDPKMixin, TimestampMixin, Base):
 
 
 class OrganizationSequenceCounter(UUIDPKMixin, TimestampMixin, Base):
-    """Tracks the next never-reused sequence number for one
-    `(organization, artefact_type)` pair: the counter behind the codes of
-    organisation-scoped records (`PER-001` owned by an organisation, shown
-    qualified as `ACME-PER-001`). It is the organisation-level twin of
-    `ProjectSequenceCounter`; a type that exists at both scopes keeps one
-    counter per project and one per organisation, so the two never collide.
+    """Tracks the next never-reused sequence number for one `(organization, artefact_type)` pair: the counter
+    behind the codes of organisation-owned records (`PER-001`, shown qualified as `ACME-PER-001`). The
+    organisation-level twin of `ProjectSequenceCounter`; a type at both scopes keeps a counter per project
+    and one per organisation, so the two never collide.
 
     Attributes:
         organization_id: The organisation this counter belongs to.

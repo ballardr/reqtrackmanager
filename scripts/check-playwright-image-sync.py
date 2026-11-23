@@ -9,7 +9,7 @@ project that runs in that container.
 Why: Playwright requires the npm package and the browser build to be the same
 release. A lockfile bump without a matching image bump makes the browser fail
 to launch; vitest then runs zero tests and writes a valid, failure-free
-report, so the drift is easy to miss (it published a 0% coverage badge once).
+report, so the drift is easy to miss (a 0% coverage badge).
 
 Responsibilities:
 - Map each `mcr.microsoft.com/playwright:vX.Y.Z-*` tag to its CI job

@@ -1,38 +1,24 @@
 """
 Module: services.tags
 
-Tags on any record of any registered artefact type: a governed vocabulary, attachment, the
-list filter and the vocabulary-wide maintenance operations (rename, merge, delete, reclassify).
+Tags on any record of any registered artefact type: a governed vocabulary, attachment, the list filter and vocabulary
+maintenance (rename, merge, delete, reclassify).
 
 Responsibilities:
-- Normalise tag names (`normalise_tag_name`) and keep a vocabulary free of near-duplicates.
-- Resolve which vocabulary and mode apply to a record: the project's, the nearest ancestor's
-  when the project has no tags of its own, or the organisation's for an organisation-owned
-  record (`vocabulary_for_project`, `resolve_tag_mode`).
-- Attach, detach and replace the tags of a record (`set_record_tags`, `add_record_tag`,
-  `remove_record_tag`), writing the audit events the record's Activity tab reads.
-- Answer "which records carry these tags" for list endpoints (`tagged_ids`) and the usage tables
-  (`usage_by_type`). `TagFilter` is also the list filter for component/category placements
-  (`services.placements`), so every list takes one filter dependency.
-- Vocabulary maintenance for a project or the organisation (`create_tag`, `update_tag`,
-  `merge_tags`, `delete_tag`, `reclassify`).
-- Keep requirement keywords (`get_keywords`, `set_keywords`): a keyword is a tag.
+- `normalise_tag_name`; resolve the vocabulary and mode for a record (`vocabulary_for_project`, `resolve_tag_mode`);
+  `set_record_tags`, `add_record_tag`, `remove_record_tag` (audited for the Activity tab); `tagged_ids`, `usage_by_type`
+  (`TagFilter` also filters component/category placements); `create_tag`, `update_tag`, `merge_tags`, `delete_tag`,
+  `reclassify`; requirement keywords (`get_keywords`, `set_keywords`; a keyword is a tag).
 
 Design decisions:
-- A project with no tags of its own offers its nearest ancestor's vocabulary and mode, exactly
-  as action types fall back (`services.project_hierarchy.resolve_effective_action_types`). A
-  tag a child coins in free mode is created in the child, which then has a vocabulary of its
-  own; records keep the ancestor tags they already carry.
-- Mode `restricted` only constrains *new* names: a tag a record already carries is never
-  rejected, so an unchanged edit cannot fail because the list later changed.
-- Authority: a tag is metadata, not record content, so it is not blocked by an approved
-  requirement's lock; it needs `manage` on the record's type (or, for requirements and actions,
-  the roles that can edit them). Vocabulary management needs the project's settings authority.
-- Tag names forbid `,` and `;` so CSV keyword columns (`;`-separated) and comma-separated
-  inputs round-trip.
+- A project with no tags of its own uses its nearest ancestor's vocabulary and mode (as `resolve_effective_action_types`);
+  a tag coined in free mode is created in the child, and records keep ancestor tags they carry.
+- Mode `restricted` constrains only new names, so an unchanged edit cannot fail after the list changes.
+- A tag is metadata, not record content, so an approved requirement's lock does not block it; it needs `manage` on the
+  record's type (or the edit roles for requirements and actions); vocabulary management needs settings authority.
+- Names forbid `,` and `;` so CSV keyword columns and comma-separated inputs round-trip.
 
-External dependencies: `models.tag`, `services.link_graph` (record visibility),
-`services.project_hierarchy` (ancestors), `services.audit`, `modules.registry` (types).
+Dependencies: `models.tag`, `services.link_graph`, `services.project_hierarchy`, `services.audit`, `modules.registry`.
 """
 
 from __future__ import annotations

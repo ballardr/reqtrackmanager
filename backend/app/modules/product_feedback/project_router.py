@@ -1,15 +1,12 @@
 """
 Module: modules.product_feedback.project_router
 
-Project-scoped Product Feedback API, mounted at `/api/v1/projects/{project_id}/modules/product_feedback`:
-request CRUD, archive, versions, lifecycle transitions, merging duplicates, the demand breakdown, closing the loop
-(who was told the outcome), comments, files and the project's submission policy.
-
-RBAC: sub-component enablement and project membership to view; any project member may submit a request
-unless the project's administrator restricted submission to triagers; `_shared.require_request_manage`
-(project Feedback Triager role or FGAC grant) to edit, transition, archive or attach evidence; the
-settings need project-settings management. A request's files resolve through
-`service.resolve_request_file_project_id`.
+Project-scoped API at `/api/v1/projects/{project_id}/modules/product_feedback`:
+request CRUD, archive, versions, transitions, merging, demand, closing the loop,
+comments, files and the submission policy. Viewing needs the sub-component and
+membership; submitting any member unless restricted to triagers; edits,
+transitions, archiving and evidence need `_shared.require_request_manage`
+(Feedback Triager role or grant); settings need project-settings management.
 """
 
 from __future__ import annotations

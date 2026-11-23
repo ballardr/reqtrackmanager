@@ -1,40 +1,19 @@
 """
 Module: services.sequences
 
-The generic per-project (or, for an organisation-scoped record,
-per-organisation), per-artefact-type unique-code generator every *new* identified artefact
-type in the future-modules roadmap uses, replacing the
-`next_<type>_seq`-column-on-`Project` plus per-service `generate_unique_code`
-pair that `services.requirements`/`services.actions` each currently
-duplicate (`Project.next_requirement_seq`/`next_action_seq`). Those two are
-deliberately left untouched by this module — this is additive
-infrastructure for new artefact types going forward, not a migration of the
-existing two.
+The generic unique-code generator for every artefact type: per project, or per organisation for an organisation-owned
+record, per artefact type.
 
-`artefact_type` is a plain string, validated here against
-`app.modules.registry.get_all_registered_artefact_types()` — the same
-merged core-plus-every-module set `services.relationships.create_link`
-already validates `ArtefactLink.source_type`/`target_type` against.
-**Corrected 2026-09-21** from an
-earlier shape that took a `models.enums.ArtefactType` enum member, which
-required a core-file hand-edit for every new artefact-generating module —
-see `models.sequence.ProjectSequenceCounter`'s own docstring for the full
-story.
-
-Scope: a record owned by a project is numbered from that project's counter;
-a record owned by an organisation (a Persona shared across projects, say) from
-the organisation's own counter (`OrganizationSequenceCounter`). A type that
-exists at both scopes therefore has independent sequences, and a code is unique
-per owner, never globally.
-
-Concurrency: `_next_sequence` locks the owning project or organisation row
-(`services.rbac.lock_project_for_update` / `lock_organization_for_update`,
-reused as-is) before reading and
-advancing the counter, so two concurrent creations of the same artefact
-type in the same project can never observe and increment the same
-pre-update value — the second transaction blocks on the lock until the
-first commits, then reads the already-advanced counter. See
-`lock_project_for_update`'s own docstring for the general race this closes.
+Design decisions:
+- `artefact_type` is a plain string validated against `app.modules.registry.get_all_registered_artefact_types()` (the
+  set `services.relationships.create_link` uses), so a new module needs no core enum edit
+  (see `models.sequence.ProjectSequenceCounter`).
+- A project-owned record uses the project's counter; an organisation-owned record (a shared Persona) uses
+  `OrganizationSequenceCounter`. A type at both scopes has independent sequences and a code is unique per owner.
+- Concurrency: `_next_sequence` locks the owning row (`services.rbac.lock_project_for_update` /
+  `lock_organization_for_update`) before reading and advancing the counter, so concurrent creations never read the same
+  value.
+- The requirement and action services keep their own `next_*_seq` columns on `Project`.
 """
 
 from __future__ import annotations

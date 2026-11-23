@@ -1,13 +1,11 @@
 /**
  * Module: modules/architecture/TransitionSelectionFields
  *
- * The Selection card's editable view of one transition: the shared field group (`TransitionFieldGroup`) edited in place and stored
- * when the focus leaves the group or Save is pressed, quoting the diagram's version as every other transition edit does. Another
- * save's changes to a field the person has not touched are taken in, and a field being edited is kept.
- *
- * Design decisions:
- * - The draft and its commit are the shared `useSelectionDraft`, the same as a state's card.
- * - The Save button (`SelectionSaveButton`) is on the card's heading line, always present and disabled while nothing has changed, so the header does not change size as the person types.
+ * The Selection card's editable view of one transition: the shared `TransitionFieldGroup` edited in place and stored when
+ * focus leaves the group or Save is pressed, quoting the diagram's version. Other saves' changes to untouched fields are
+ * taken in while a field being edited is kept.
+ * The draft and its commit are the shared `useSelectionDraft`, as on a state's card. The Save button (`SelectionSaveButton`)
+ * is always on the heading line, disabled while nothing has changed, so the header keeps its size.
  */
 import { useEffect, useRef } from "react";
 

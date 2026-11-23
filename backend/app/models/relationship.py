@@ -1,63 +1,33 @@
 """
 Module: models.relationship
 
-The generic, polymorphic
-cross-artefact relationship table every content module in the future-
-modules roadmap builds its own artefact-to-artefact links on top of,
-instead of each module inventing its own per-pair join table the way
-`RequirementLink` (requirement-to-requirement traceability) and
-`RequirementActionLink` (action-to-requirement membership) used to.
+The generic, polymorphic cross-artefact relationship table that every content module builds its
+artefact-to-artefact links on, instead of a per-pair join table.
 
-Design decision (Decided by: User, docs/decisions.md's Platform Foundations entry): a single polymorphic table
-(`source_type`/`source_id`/`target_type`/`target_id`/`link_type_id`)
-rather than a dedicated table per artefact-type pair. `source_id`/
-`target_id` deliberately carry no foreign key — a polymorphic id can't
-reference a single table when the type it points at varies per row — this
-mirrors the same, already-established precedent `ReviewTargetType`/
-`ReviewComment.target_id` uses for exactly the same reason (see
-`models.enums.ReviewTargetType`). The accepted cost: cleaning up orphaned
-`ArtefactLink` rows if an artefact's own table is ever fully removed (not
-just disabled via the module registry) is an application-level
-responsibility, not something the database enforces the way a real FK
-would.
+Design decision (**Decided by: User**, docs/decisions.md's Platform Foundations entry): one polymorphic
+table (`source_type`/`source_id`/`target_type`/`target_id`/`link_type_id`) rather than one per artefact-type
+pair. `source_id`/`target_id` carry no foreign key because a polymorphic id cannot reference one table
+(as `ReviewComment.target_id`, see `models.enums.ReviewTargetType`). Cleaning up orphaned rows when an
+artefact's table is fully removed is an application-level responsibility.
 
-`link_type_id` is nullable and carries two distinct meanings depending on
-whether it's set:
+`link_type_id` is nullable with two meanings:
+- Non-null: an org-defined, typed traceability link; it points at a `RequirementLinkTypeDefinition`.
+- Null: an untyped structural link (many-to-many membership, such as an action's requirements).
 
-- **Non-null**: an org-defined, typed traceability link (what
-  `RequirementLink` used to be) — `link_type_id` points at a
-  `RequirementLinkTypeDefinition` row (reused as-is; not extended with a
-  type-pair constraint — YAGNI).
-- **Null**: an untyped, structural link (what `RequirementActionLink` used
-  to be — it never had a type, just membership in a many-to-many set).
+Links are not gated by an artefact's lock state by default (see `routers.requirements.create_link` for the
+opt-in exception): traceability metadata is not requirement content under C-G-12, as a `ReviewComment` is
+not.
 
-Both meanings share one table rather than two so every future module gets
-one relationship surface regardless of which shape its own links need.
+Duplicate prevention: Postgres treats multiple `NULL`s in a UNIQUE constraint as distinct, so one
+5-column constraint including nullable `link_type_id` would not prevent duplicate untyped links. The
+table has two constraints instead (see `__table_args__`).
 
-Links are not gated by an artefact's own lock state by default (see
-`routers.requirements.create_link`'s docstring for the opt-in exception
-a later opt-in introduced) — traceability metadata isn't
-"requirement content" under C-G-12 any more than a `ReviewComment` is
-(carried over unchanged from `RequirementLink`'s own original docstring,
-which this model replaces).
+The module performs no authorisation or tenant-scoping checks; that stays in the routers (see
+`services.relationships`).
 
-**Correctness note on duplicate prevention**: Postgres treats multiple
-`NULL`s in a UNIQUE constraint as distinct from one another (not equal), so
-a single 5-column unique constraint including nullable `link_type_id` would
-NOT prevent duplicate *untyped* links the way `RequirementActionLink`'s old
-`UniqueConstraint("requirement_id", "action_id")` did. This table therefore
-has two separate constraints instead of one — see `__table_args__` below.
-
-This module intentionally does not perform authorization/tenant-scoping
-checks anywhere — see `services.relationships`' own module docstring for
-why that responsibility stays at the router layer.
-
-`source_type`/`target_type` are plain, validated strings, not a closed
-`ArtefactType` enum column: an enum would need a core file hand-edited per
-module that introduces an artefact type — see `app.models.enums.
-ArtefactType`'s own docstring and `app.modules.registry.ModuleDefinition.
-artefact_types`/`get_all_registered_artefact_types` for the registration
-mechanism that replaced it.
+`source_type`/`target_type` are plain validated strings, not an `ArtefactType` enum column, which would need
+a core edit per module; modules register values through `ModuleDefinition.artefact_types` and
+`get_all_registered_artefact_types` (`app.modules.registry`; see `app.models.enums.ArtefactType`).
 """
 
 from __future__ import annotations
@@ -75,79 +45,49 @@ from app.models.requirement_link_type import RequirementLinkTypeDefinition  # no
 
 
 class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
-    """A relationship between two artefacts of any registered artefact
-    type, replacing both the old `RequirementLink` (requirement-to-
-    requirement traceability) and `RequirementActionLink`
-    (action-to-requirement membership) tables, which this table
-    replaces.
+    """A relationship between two artefacts of any registered artefact type: typed requirement-to-requirement
+    traceability, or untyped membership such as action-to-requirement.
 
     Attributes:
-        source_type / source_id: The link's origin artefact. No FK on
-            `source_id` — see this module's docstring for why. `source_type`
-            is a plain string (not a closed `ArtefactType` enum, as of
-            Platform Foundations) — see `app.services.relationships.
-            create_link`'s docstring for where it's validated.
-        target_type / target_id: The link's destination artefact. Same
-            no-FK caveat and plain-string type as `source_id`/`source_type`.
-        link_type_id: Null for an untyped/structural link (e.g. what
-            `RequirementActionLink` used to represent); non-null for a
-            typed traceability link, pointing at a
-            `RequirementLinkTypeDefinition` row (what `RequirementLink`
-            used to represent). See this module's docstring for the full
-            reasoning.
-        source_project_id / target_project_id: Set (both) only for a link
-            between a project and one of its ancestors or descendants, naming
-            the project each end belongs to; `NULL` for the ordinary
-            same-project link. This is what keeps cross-level links out of
-            every reader that assumes both ends share a project:
-            `services.relationships` excludes rows where these are set unless
-            asked (`include_cross_project`), so a legacy reader can never show an
-            ancestor's artefact to someone who cannot open it.
+        source_type / source_id: The link's origin artefact. No FK on `source_id` (see the module docstring).
+            `source_type` is a plain string validated in `app.services.relationships.create_link`.
+        target_type / target_id: The destination artefact; the same no-FK caveat and plain-string type.
+        link_type_id: Null for an untyped structural link; non-null for a typed traceability link, pointing
+            at a `RequirementLinkTypeDefinition` (see the module docstring).
+        source_project_id / target_project_id: Set (both) only for a link between a project and one of its
+            ancestors or descendants, naming each end's project; `NULL` for a same-project link. This keeps
+            cross-level links out of readers that assume both ends share a project:
+            `services.relationships` excludes rows where these are set unless asked
+            (`include_cross_project`), so no reader shows an ancestor's artefact to someone who cannot open it.
         created_by: The user who created the link.
         note: Optional short provenance text (a carried-over link says where it was copied from).
     """
 
     __tablename__ = "artefact_links"
-    # Explicit short names throughout: this codebase has hit Postgres's
-    # 63-byte NAMEDATALEN limit before on wide, auto-generated constraint
-    # names for multi-column constraints on this exact kind of table (see
-    # migration 0009's own comment and
-    # `RequirementLinkTypeDefinition.__table_args__`'s docstring for the
-    # established fix/precedent) — every constraint/index below is named
-    # explicitly rather than left to SQLAlchemy's default naming.
+    # Every constraint and index is named explicitly: generated names for wide multi-column constraints can
+    # exceed Postgres's 63-byte NAMEDATALEN limit (see `RequirementLinkTypeDefinition.__table_args__`).
     __table_args__ = (
-        # Non-null case: an ordinary 5-column uniqueness rule, mirroring
-        # old `RequirementLink`'s own 3-column constraint extended with the
-        # two new type columns.
+        # Typed case: a 5-column uniqueness rule.
         UniqueConstraint(
             "source_type", "source_id", "target_type", "target_id", "link_type_id",
             name="uq_artefact_links_typed",
         ),
-        # Null case: Postgres's NULL-distinctness means the constraint above
-        # does NOT prevent duplicate untyped links (see module docstring) —
-        # this partial unique index is what actually replaces
-        # `RequirementActionLink`'s old 2-column uniqueness guarantee for
-        # links with no type.
+        # Untyped case: the constraint above does not prevent duplicate untyped links (NULLs are distinct;
+        # see the module docstring), so this partial unique index does.
         Index(
             "ux_artefact_links_untyped", "source_type", "source_id", "target_type", "target_id",
             unique=True, postgresql_where=sa_text("link_type_id IS NULL"),
         ),
-        # Reverse-lookup index ("what links to X") — the two constraints
-        # above already give forward lookups ("what does X link to") a
-        # usable leading-column index via source_type/source_id.
+        # Reverse lookup ("what links to X"); the constraints above serve forward lookups through
+        # source_type/source_id.
         Index("ix_artefact_links_target", "target_type", "target_id"),
         Index("ix_artefact_links_source_project", "source_project_id", postgresql_where=sa_text("source_project_id IS NOT NULL")),
         Index("ix_artefact_links_target_project", "target_project_id", postgresql_where=sa_text("target_project_id IS NOT NULL")),
     )
 
-    # Plain strings, not a `str_enum(ArtefactType, ...)` column (unlike
-    # every other enum-typed column in this codebase) — deliberately, as
-    # of migration 0043: a closed Python `enum.Enum`
-    # can't gain members at runtime, so it can't represent every module's
-    # own registered artefact types, only the two this app owns outright.
-    # Validated at the service layer instead — see `app.services.
-    # relationships.create_link`. Widened from 20 to 40 chars at the same
-    # time, to fit the longest currently-registered value.
+    # Plain strings, not `str_enum(ArtefactType, ...)`: a closed enum cannot represent every module's
+    # registered artefact types. Validated in `app.services.relationships.create_link`; 40 characters fit
+    # the longest registered value.
     source_type: Mapped[str] = mapped_column(String(40))
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     target_type: Mapped[str] = mapped_column(String(40))

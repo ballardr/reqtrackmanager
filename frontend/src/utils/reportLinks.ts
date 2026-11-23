@@ -1,14 +1,12 @@
 /**
  * Module: utils/reportLinks
  *
- * Turns a report figure's route-neutral `ReportLink` into an app URL, so a
- * report can say "this number opens the Pain Points list filtered to
- * Blockers" without a collector, or core, hard-coding UI routes.
- *
- * Figures link only inside a *project* report: the module pages they open
- * (lists of Pain Points, Open Questions, ...) are per project, so an
- * organisation-wide report, which spans projects, has no single page to open
- * and shows plain numbers (`reportLinkResolver` returns `undefined`).
+ * Turns a report figure's route-neutral `ReportLink` into an app URL, so a report
+ * can say "this number opens the Pain Points list filtered to Blockers" without a
+ * collector or core hard-coding UI routes. Figures link only inside a *project*
+ * report (the module pages are per project); an organisation-wide report has no
+ * single page to open and shows plain numbers (`reportLinkResolver` returns
+ * `undefined`).
  */
 import type { ReportLink } from "../api/reports";
 import { humanise } from "./humanise";

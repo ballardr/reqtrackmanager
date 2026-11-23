@@ -2,18 +2,17 @@
  * Module: components/ReportSnippetsPanel
  *
  * The Report snippets section of Report setup (Org Resources → Reports, Project Admin → Report setup): the snippets
- * authors saved from the designer, as a list the scope can manage.
+ * saved from the designer, as a list the scope can manage.
  *
  * Responsibilities:
- * - List the saved snippets the scope can reach (name and description, category, where each comes from, how many blocks,
- *   and the page styles and variables it carries) with search; a project's list shows the ones it hides, flagged.
- * - New snippet, and Edit (details and blocks) for an own snippet, in `ReportSnippetEditorDialog`; make a copy (into the scope, or up to the organisation from a project), delete an own snippet,
- *   hide or show an inherited one in a project; "Add organisation defaults" restores the hidden ones.
- * - Follow the confirmation tiers: delete is Tier 2 (type the name); hiding is Tier 1. Every change ends in a toast.
+ * - List the reachable snippets (name, description, category, source, block count, carried page styles and variables)
+ *   with search; a project's list shows the ones it hides, flagged.
+ * - New and Edit (own snippets, in `ReportSnippetEditorDialog`), copy (into the scope, or up to the organisation), delete
+ *   an own snippet, hide or show an inherited one; "Add organisation defaults" restores the hidden ones. Delete is Tier 2,
+ *   hiding Tier 1; every change toasts.
  *
- * Design decisions: the server authorises each row (a 403 shows the load failure; the panel does not guess permissions). A
- * snippet is written in the layout editors (the dialog reuses them), whether it is made here or saved from the designer. A snippet is
- * configuration, not an artefact type, so it has no code and no link; the list is a plain table (it has no folders).
+ * Design decisions: the server authorises each row (a 403 shows the load failure). A snippet is configuration, not an
+ * artefact type, so it has no code or link; the list is a plain table without folders.
  */
 import { useCallback, useMemo, useState } from "react";
 

@@ -1,14 +1,13 @@
 /**
  * Module: components/ToggleButton
  *
- * A button that is pressed or not (`aria-pressed`), or a plain action button in the same toolbar look: the one
- * button the table editor's toolbar and a block form's on/off setting share.
+ * A button that is pressed or not (`aria-pressed`), or a plain action button in the same toolbar look: the one button the
+ * table editor's toolbar and a block form's on/off setting share.
  *
- * Design decisions: a pressed button carries the accent edge (`btn-marked`), and its state is `aria-pressed`, never
- * colour alone. An icon-only button is named by `label` and shown with a tooltip; one with text (`iconOnly={false}`)
- * is named by that text, so a label lookup finds it either way. `pressed` left out makes it an action button.
- * Help for the button is its tooltip (`help`), never a `(?)` beside it (docs/ux-style-guide.md, "Pattern: help on
- * interactive elements"): an icon-only button's tooltip is its name, then the help on the lines after it.
+ * Design decisions: a pressed button carries the accent edge (`btn-marked`) and `aria-pressed`, never colour alone. An
+ * icon-only button is named by `label` and shown with a tooltip; one with text (`iconOnly={false}`) is named by that
+ * text. Omitting `pressed` makes it an action button. Help is the button's tooltip (`help`), never a `(?)` beside it
+ * (docs/ux-style-guide.md, "Pattern: help on interactive elements"): an icon-only button's tooltip is its name, then the help.
  */
 import { useId, type ReactNode } from "react";
 

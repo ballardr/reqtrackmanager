@@ -1,33 +1,21 @@
 """
 Module: services.type_vocabulary
 
-Generic two-tier type vocabulary: an org base list plus per-project
-rename/reorder/disable/add, shared by every typed module artefact (Persona,
-Stakeholder, Risk) so each is a `TypeVocabulary` instance rather than a copy of
-Context & Strategy's Pain-Point-specific functions. Lives in core so a module
-never imports another module's package.
+Generic two-tier type vocabulary: an organisation base list plus per-project rename, reorder, disable and add, shared by
+every typed module artefact (Persona, Stakeholder, Risk) as a `TypeVocabulary` instance. Lives in core so a module never
+imports another module's package.
 
 Design decisions:
-- Nested projects: by default no ancestor fallback — the org list is the base
-  every project already sees, so an empty project table already means "use org
-  defaults" (Decided by: Agent). A vocabulary opts in with
-  `inherit_from_ancestors=True`: a project with no configuration of its own
-  (no override, local entry or hidden default; a bare passthrough row, which
-  only records that a type was used, is not configuration) shows the nearest
-  ancestor's effective list, else the organisation's. The first change made in
-  such a project copies the inherited configuration into it (`materialize_inherited`),
-  so from then on it is its own, as an Action Type list is.
-- Org types are never deleted while referenced; a project is asked to stop
-  using one, or it is disabled instead. Cross-project reassignment has no
-  single correct target (same reasoning as Pain Point types).
-- `EffectiveType.id` is either an org type id (no override yet) or a project
-  type row id; `get_or_create_project_type` resolves either, lazily creating a
-  passthrough row the first time an org type is selected.
-- A project can hide an org type (`hide_org_type`, a tombstone from
-  `services.definition_suppression`) and restore it. Hidden means "not in the
-  project's list and cannot be newly chosen"; a record that already holds the
-  type keeps it, because it references the project's own type row, which is kept.
-  A type with a row (an override, or one a record uses) is not re-created.
+- Nested projects: by default no ancestor fallback, since an empty project table already means "use organisation defaults"
+  (**Decided by: Agent**). `inherit_from_ancestors=True` opts in: a project with no configuration of its own (a bare
+  passthrough row is not configuration) shows the nearest ancestor's list, else the organisation's, and its first change
+  copies the inherited configuration into it (`materialize_inherited`).
+- Organisation types are never deleted while referenced (cross-project reassignment has no single correct target); a
+  project stops using one or it is disabled.
+- `EffectiveType.id` is an organisation type id or a project type row id; `get_or_create_project_type` resolves either,
+  creating a passthrough row on first selection.
+- A project can hide an organisation type (`hide_org_type`, a `definition_suppression` tombstone) and restore it. Hidden
+  means absent from the list and not newly selectable; a record already holding it keeps it. A type with a row is not re-created.
 """
 
 from __future__ import annotations

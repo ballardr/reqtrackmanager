@@ -3,23 +3,16 @@ import { expect, test } from "@playwright/test";
 import { approveRequirementFromDetail, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
- * Once a requirement is locked
- * (APPROVED/COMPLETED), adding an action to it no longer bypasses the
- * change-request-only-once-locked rule its own fields already follow
- * (`services.requirements.LOCKED_STATUSES`) — "Create and link a new
- * action" now requires a reason and submits an `ADD_ACTION` change request
- * instead of creating the action directly, and the action only actually
- * appears once a project manager approves that change request.
+ * Once a requirement is locked (APPROVED/COMPLETED), adding an action to it follows the change-request-only-once-locked
+ * rule its own fields follow (`services.requirements.LOCKED_STATUSES`): "Create and link a new action" requires a
+ * reason and submits an `ADD_ACTION` change request, and the action appears only once a project manager approves it.
  *
- * The link-existing-action half of the same gate (`proposed_action_link_id`)
- * is covered by `backend/tests/test_requirement_action_change_requests.py`
- * and `RequirementDetailPage.stories.tsx`'s own interaction tests, not
- * duplicated here — this spec proves the one real end-to-end round trip
- * (create-and-link, the more common path) through the actual UI and API.
+ * The link-existing-action half of the gate (`proposed_action_link_id`) is covered by
+ * `backend/tests/test_requirement_action_change_requests.py` and `RequirementDetailPage.stories.tsx`; this spec
+ * proves the end-to-end round trip for create-and-link through the UI and API.
  *
- * Creates its own throwaway requirement + action type rather than
- * approving seeded data (approving isn't reversible from the UI), matching
- * `requirement-approval.spec.ts`'s own established pattern.
+ * Creates its own throwaway requirement and action type rather than approving seeded data (approving is not
+ * reversible from the UI), as `requirement-approval.spec.ts` does.
  */
 test.describe("requirement action change requests", () => {
   test("adding an action to a locked requirement requires an approved change request", async ({ page }) => {

@@ -28,9 +28,8 @@ export function orgResourcesPath(orgId: string, sectionKey?: string): string {
  * The sections the caller is offered, in module order.
  *
  * A module that is off for the organisation contributes nothing; a section tied to a sub-component is left out while
- * that sub-component is off. A section whose key
- * (or group key) is reserved, or already used by another section as a section or a group, is dropped with a console
- * error rather than shadowing the other, because two entries for one address would make one unreachable.
+ * that sub-component is off. A section whose key (or group key) is reserved, or already used by another section or
+ * group, is dropped with a console error, because two entries for one address would make one unreachable.
  *
  * @param modules The installed modules (injectable for tests).
  * @param enabledKeys Keys of the modules enabled for the organisation.

@@ -33,14 +33,9 @@ from app.services.net_guard import assert_public_host, resolve_public_addresses
 
 _HTTP_TIMEOUT = 10.0
 
-# RSA/ECDSA/RSA-PSS only — deliberately excludes "none" and the HMAC (HS*)
-# family. `key_set` below is the IdP's own *public* JWKS; if HS* were
-# accepted, a token signed with that public material used as an HMAC
-# secret would verify successfully (the classic JWT "algorithm confusion"
-# attack — the same vulnerability class as this project's own
-# python-jose/CVE-2024-33663 and Authlib/GHSA-wvwj-cvrp-7pv5 findings,
-# both patched by dependency upgrade elsewhere; here it's closed by never
-# trusting the token's own `alg` header to pick a symmetric algorithm).
+# RSA/ECDSA/RSA-PSS only, excluding "none" and the HMAC (HS*) family. `key_set` is the IdP's public JWKS;
+# accepting HS* would let a token signed with that public material as an HMAC secret verify (JWT algorithm
+# confusion), so the token's own `alg` header never selects a symmetric algorithm.
 _ALLOWED_ID_TOKEN_ALGORITHMS = ("RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512")
 
 
@@ -214,12 +209,8 @@ def verify_id_token(discovery: dict, id_token: str, *, client_id: str, issuer_ur
     key_set = KeySet.import_key_set(cast(Any, jwks))
     try:
         token = jose_jwt.decode(id_token, key_set, algorithms=_ALLOWED_ID_TOKEN_ALGORITHMS)
-        # OIDC Core 1.0 §2 requires iss/aud/exp on every ID token; this app
-        # re-checks iss/aud itself just below (against the specific
-        # per-organisation issuer/client_id, which this generic registry
-        # has no way to know), but still asks the registry to enforce their
-        # *presence* plus exp's value, rather than silently accepting a
-        # token missing them.
+        # OIDC Core 1.0 §2 requires iss/aud/exp on every ID token. The registry enforces their presence and
+        # exp's value; iss/aud values are checked below against the per-organisation issuer and client_id.
         JWTClaimsRegistry(iss={"essential": True}, aud={"essential": True}, exp={"essential": True}).validate(
             token.claims
         )

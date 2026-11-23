@@ -198,11 +198,8 @@ async function request<T>(path: string, options: RequestInit = {}, timeoutMs?: n
 }
 
 /** A page of results from a `limit`/`offset`-paginated list endpoint (U-P-06).
- * `totalUnfiltered` is optional — only the requirements/change-requests/projects
- * list endpoints send the `X-Total-Unfiltered-Count` header it comes from;
- * every other paginated endpoint (and every existing test/story mock built
- * before this field existed) simply omits it, and callers that care fall
- * back to `total` themselves (see `ResultCount`'s callers). */
+ * `totalUnfiltered` is optional: only the requirements, change-requests and projects list endpoints send the
+ * `X-Total-Unfiltered-Count` header it comes from; callers fall back to `total` (see `ResultCount`'s callers). */
 export interface Page<T> {
   items: T[];
   total: number;
@@ -288,11 +285,10 @@ export function wsBaseUrl(): string {
   return BASE_URL.replace(/^http/, "ws");
 }
 
-/** Builds a viewable/downloadable URL for a stored file, e.g. for <img src>,
- * which cannot send an Authorization header, so a credential travels as a
- * query param instead (backend/app/deps.py::get_current_user_header_or_query).
- * That credential is the short-lived media token (`ensureMediaToken`), never the
- * session token: a URL is written to server logs and browser history. */
+/** Builds a viewable/downloadable URL for a stored file, e.g. for <img src>, which cannot send an Authorization
+ * header, so a credential travels as a query parameter (backend/app/deps.py::get_current_user_header_or_query).
+ * That credential is the short-lived media token (`ensureMediaToken`), never the session token: a URL is written
+ * to server logs and browser history. */
 export function fileUrl(fileId: string): string {
   return `${BASE_URL}/api/v1/files/${fileId}?token=${encodeURIComponent(mediaToken ?? "")}`;
 }
@@ -301,10 +297,8 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
-/** Builds an absolute backend URL for endpoints the browser must navigate to
- * directly (full-page redirects) rather than call via fetch, e.g. the OIDC
- * login entry point (E-U-01), which itself issues a 302 to the identity
- * provider. */
+/** Builds an absolute backend URL for endpoints the browser navigates to directly (full-page redirects) rather
+ * than calls via fetch, e.g. the OIDC login entry point (E-U-01), which issues a 302 to the identity provider. */
 export function apiUrl(path: string): string {
   return `${BASE_URL}${path}`;
 }

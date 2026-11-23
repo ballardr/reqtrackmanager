@@ -2,7 +2,7 @@
  * Module: hooks/usePageReferences
  *
  * The external references of the rows a list is showing, read in one request for the whole page, for the list's
- * External references column (`DirectoryTable`'s `placements` config carries it, a hand-written table calls this and
+ * External references column (`DirectoryTable`'s `placements` config carries it, any other table calls this and
  * `referencesText`). A failed read, or references switched off for the type, shows no column rather than an error.
  */
 import { recordReferencesApi, type ExternalReference, type RecordReferencesApi } from "../api/externalReferences";

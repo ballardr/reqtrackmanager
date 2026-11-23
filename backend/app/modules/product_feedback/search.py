@@ -1,19 +1,11 @@
 """
 Module: modules.product_feedback.search
 
-The `ArtefactSearchProvider` for the `enhancement_request` artefact type, so the global search finds requests
-by code, title, tags and the request's descriptive text.
-
-Responsibilities:
-- Declare the columns the search reads (from the request's current version) and the free-text fields it may match.
-
-Design decisions:
-- Opt-in fields: the description and the keys of the external references (a ticket number finds the request). The
-  decline reason, change notes and reference links are not matched.
-- An organisation's inbox request is found only where the `organization_requests` sub-component is on
-  (`organization_subcomponent`), and opens on the organisation's inbox page.
-
-Dependencies: this module's models and labels; `services.search_core` (builders).
+The `ArtefactSearchProvider` for `enhancement_request`: the columns the search
+reads (from the current version) and the opt-in text fields (the description
+and external reference keys; not the decline reason, change notes or links).
+An inbox request is found only where `organization_requests` is on and opens on
+the inbox page. Dependencies: this module's models and labels; `services.search_core`.
 """
 
 from __future__ import annotations

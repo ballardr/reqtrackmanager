@@ -3,13 +3,11 @@ its comments and its link graph does not grow with the records it serves.
 
 Each type declares a `ScalingProbe` (`ModuleDefinition.scaling_probes`; core types in `services.scaling_probes_core`)
 that creates records through the real create endpoint. The test fills a fresh project with a few records, counts the
-statements a request issues, adds more records and counts again. A statement count that grows with rows is a lookup
-per row (an N+1), the shape the requirement fixes removed; unlike a timing it is deterministic, so it runs with the
-rest of the suite. The response may grow with its rows (an unpaged list returns them all); the statements may not.
+statements a request issues, adds more records and counts again. A count that grows with rows is a lookup per row
+(an N+1); unlike a timing it is deterministic. The response may grow with its rows; the statements may not.
 
-A type whose count does grow is listed in `KNOWN_GROWING` against the check and the finding that will remove it. The
-entry is strict both ways: a check that grows and is not listed fails, and a listed check that no longer grows fails
-until the entry is removed, so the list can only shrink as the fixes land.
+A type whose count grows is listed in `KNOWN_GROWING` against the check and the finding that will remove it. The entry
+is strict both ways: a growing check not listed fails, and a listed check that does not grow fails until removed.
 """
 
 from __future__ import annotations
@@ -46,9 +44,9 @@ TRACKED_GAPS = frozenset(
 )
 
 #: `{artefact type: {check: finding}}` for a check whose statements grow with the records today. Checks are `list`,
-#: `detail`, `comments`, `links` (the link graph of a record with N linked requirements), `activity` (its timeline) and
-#: `export` (the project bundle, which carries every module's records), `record_export` (the type's own CSV export, the list's
-#: Export action) and `record_import` (the preview of importing that CSV back, every row an update).
+#: `detail`, `comments`, `links` (the link graph of a record with N linked requirements), `activity` (its timeline),
+#: `export` (the project bundle, which carries every module's records), `record_export` (the type's own CSV export, the
+#: list's Export action) and `record_import` (the preview of importing that CSV back, every row an update).
 KNOWN_GROWING: dict[str, dict[str, str]] = {}
 
 

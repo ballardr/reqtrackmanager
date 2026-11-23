@@ -3,24 +3,14 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Two real gaps from a first-pass UX review of the 2026-08 audit's own
- * fixes:
+ * Pins the admin page titles and the version footer:
  *
- * 1. Org Admin's resource-menu restructure (docs/decisions.md, "Org Admin
- *    -> resource-menu restructure") left the organisation's own name
- *    visible only on the Overview group's content — every other group
- *    (Users, Groups, Projects & workflow, Branding & defaults, ...) had no
- *    page title at all, so there was no way to tell which org you were
- *    editing once you'd navigated off Overview. Fixed by giving
- *    `ResourceMenu` a `title`/`subtitle` rendered once, above the
- *    menu+content grid, so it persists across every group.
- * 2. Project Admin's own `<h1>` was the generic "{Project} admin" label
- *    with no project name anywhere on the page — fixed the same way,
- *    showing the project's own name as the heading.
+ * 1. Org Admin shows the organisation's name as the page title in every group (Users, Groups, Projects & workflow,
+ *    Branding & defaults, ...), through the `title`/`subtitle` that `ResourceMenu` renders once above the
+ *    menu and content grid (docs/decisions.md, "Org Admin -> resource-menu restructure").
+ * 2. Project Admin's `<h1>` shows the project's own name.
  *
- * A third, unrelated first-pass finding — no way to see the running
- * frontend/backend build version from the UI — is covered by the nav
- * rail's new version footer, asserted in its own test below.
+ * The nav rail's version footer shows the running frontend and backend build version, asserted in its own test.
  */
 
 test("Org Admin shows the organisation's own name as the page title, persisting across every group", async ({

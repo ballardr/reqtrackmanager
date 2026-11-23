@@ -6,14 +6,12 @@ const apiBaseUrl = "http://localhost:8000";
 
 /**
  * Style guide "Pattern: platform default vs. override": an organisation's company settings carry no "Custom" pill
- * and no reset link. An empty text field uses the platform value, which the field shows as its placeholder; the
- * logo and login background cannot be emptied, so each has a Remove button while the organisation has its own file.
+ * and no reset link. An empty text field uses the platform value, shown as its placeholder; the logo and login
+ * background cannot be emptied, so each has a Remove button while the organisation has its own file.
  * The seeded Alpha org has its email footer fields set (`seed_e2e_dataset.py`) and its header title empty. The header
  * title is on Branding & defaults; the company details and the logo are on Organisation details.
  *
- * Mutates real org branding, so it restores the seeded values afterward
- * (`afterEach`, runs even if an assertion above it fails) rather than
- * leaving this shared org's data changed for later spec runs.
+ * Mutates real organisation branding, so `afterEach` restores the seeded values even if an assertion fails.
  */
 test.describe("org branding: the platform value is the placeholder; files have a Remove button", () => {
   const original = {

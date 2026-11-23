@@ -6,12 +6,8 @@ import { expect, userEvent, waitFor, within } from "storybook/test";
 import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
 
-/** Wraps `FilterPanel` the way `RequirementsPage`/`ProjectListPage`
- * actually compose it post-restructure. Needs a
- * real, stateful `AuthContext` (`withStatefulAuth`, not the no-op stub
- * `withAuth` defaults to) because the collapsible body goes through
- * `CollapsibleSection`, which persists collapsed/expanded state via
- * `useUiPreference` → `useAuth()`. */
+/** Wraps `FilterPanel` as the list pages compose it. Needs a stateful `AuthContext` (`withStatefulAuth`) because
+ * the collapsible body goes through `CollapsibleSection`, which persists state via `useUiPreference`. */
 function Interactive({
   matching = 57,
   total = 57,
@@ -53,11 +49,8 @@ export default meta;
 
 type Story = StoryObj<typeof Interactive>;
 
-/** Desktop/wide viewport, above `FilterPanel`'s 860px mobile breakpoint
- * (theme.css's own `.side-grid` collapse width): the result count and the
- * relocated search field sit in the always-visible header, and the filter
- * body renders fully expanded with no toggle affordance at all — "no
- * visible toggle friction" on desktop. */
+/** Wide viewport, above `FilterPanel`'s 860px breakpoint (theme.css `.side-grid` collapse width): the result
+ * count and search sit in the always-visible header and the body is fully expanded with no toggle. */
 export const DesktopAlwaysExpanded: Story = {
   play: async ({ canvasElement }) => {
     await page.viewport(1280, 800);
@@ -71,11 +64,8 @@ export const DesktopAlwaysExpanded: Story = {
   },
 };
 
-/** `ResultCount`'s two display states, exercised through `FilterPanel`
- * itself (`ResultCount.stories.tsx` covers the component in isolation) —
- * this pins that the header actually renders the `matching`/`total` props
- * each of the three consuming pages passes through, the same way a real
- * search/filter narrowing the list would drive it. */
+/** `ResultCount`'s two display states through `FilterPanel` (`ResultCount.stories.tsx` covers it alone): the
+ * header renders the `matching` and `total` props the consuming pages pass. */
 export const MatchingCountShownWhenFiltered: Story = {
   args: { matching: 12, total: 57 },
   play: async ({ canvasElement }) => {
@@ -85,42 +75,31 @@ export const MatchingCountShownWhenFiltered: Story = {
   },
 };
 
-/** Below the mobile breakpoint, the filter body defaults to collapsed —
- * the header (result count + search) stays visible regardless, and a
- * click on the "Filters" toggle expands it — matching
- * `CollapsibleSection`'s own accordion behaviour
- * (`CollapsibleSection.stories.tsx`'s `CollapsedByDefault`). */
+/** Below the mobile breakpoint the filter body defaults to collapsed, the header (result count and search)
+ * stays visible, and the "Filters" toggle expands it, as `CollapsibleSection` does. */
 export const MobileCollapsedByDefault: Story = {
   play: async ({ canvasElement }) => {
     await page.viewport(400, 800);
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("57 total")).toBeInTheDocument());
     await expect(canvas.getByPlaceholderText("Search")).toBeInTheDocument();
-    // The `matchMedia` "change" listener that flips `useNarrowViewport`'s
-    // state fires asynchronously relative to `page.viewport()` resolving,
-    // so the collapse (and the toggle it introduces) may not be reflected
-    // in the DOM the instant control returns here.
+    // The `matchMedia` "change" listener behind `useNarrowViewport` fires asynchronously relative to
+    // `page.viewport()`, so the collapse and its toggle may not be in the DOM immediately.
     const toggle = await waitFor(() => canvas.getByRole("button", { name: "Filters section" }));
     await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
     await expect(canvas.queryByText("Include archived")).not.toBeInTheDocument();
 
     await userEvent.click(toggle);
     await expect(canvas.getByText("Include archived")).toBeInTheDocument();
-    // `CollapsibleSection` renders an entirely new node for its expanded
-    // state rather than toggling an attribute on the same one (mirrors
-    // `CollapsibleSection.stories.tsx`'s own collapsed/expanded pair), so
-    // the pre-click `toggle` reference is stale here — re-query it.
+    // `CollapsibleSection` renders a new node for its expanded state, so the pre-click `toggle` reference is
+    // stale: re-query it.
     await expect(canvas.getByRole("button", { name: "Filters section" })).toHaveAttribute("aria-expanded", "true");
   },
 };
 
-/** `children={null}` (Org Groups, Project Groups, `OrgListPage.tsx`): a page
- * with only the header's search box and no `FilterField`/`FilterCheckbox`
- * controls at all. `FilterPanel` must omit the `"Filters"` heading (and, on
- * mobile, the collapsible accordion around it) entirely rather than
- * rendering a heading over an empty body — the bug this story pins against
- * a regression of (see docs/ux-style-guide.md's "Pattern: `FilterPanel`",
- * "No filter fields beyond search"). */
+/** `children={null}` (Org Groups, Project Groups, `OrgListPage.tsx`): a page with only the search box. `FilterPanel`
+ * omits the "Filters" heading (and the mobile accordion) rather than a heading over an empty body (style guide
+ * "Pattern: `FilterPanel`", "No filter fields beyond search"). */
 export const NoFilterFieldsDesktop: Story = {
   args: { noFilterFields: true },
   play: async ({ canvasElement }) => {
@@ -152,14 +131,9 @@ export const NoFilterFieldsMobile: Story = {
 export const LightTheme: Story = { ...DesktopAlwaysExpanded, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...DesktopAlwaysExpanded, globals: { theme: "dark" } };
 
-/** `layout="top"` (follow-up UX fix, see docs/decisions.md and
- * docs/ux-style-guide.md's "Pattern: filter panel placement — side vs.
- * top") — used above wide, many-column tables (Org Users, Server Admin's
- * Access Review, `ProjectMembersTable`) instead of the default `"side"`
- * sidebar shell. On desktop, the header (result count + search) and the
- * filter fields both render in a single wrapping horizontal row, and —
- * unlike `"side"` — there's no `"Filters"` heading above the fields, since
- * a horizontal bar of visible controls doesn't need one. */
+/** `layout="top"` (style guide "Pattern: filter panel placement - side vs. top"): above wide, many-column tables
+ * (Org Users, Access Review, `ProjectMembersTable`). On desktop the header and filter fields render in one wrapping
+ * horizontal row with no "Filters" heading. */
 export const TopLayoutDesktop: Story = {
   args: { layout: "top" },
   play: async ({ canvasElement }) => {

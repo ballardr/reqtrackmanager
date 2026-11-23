@@ -1,19 +1,18 @@
 /**
  * Module: components/ComponentTracksList
  *
- * Every component's track through the stages when component phases are on, with a phase picker for each: the list shared by
- * project administration (where it also edits a track) and the "Delivery status" page (where a track's owner moves theirs).
+ * Every component's track through the stages when component phases are on, with a phase picker each: shared by
+ * project administration (which also edits a track) and the "Delivery status" page (where a track's owner moves
+ * theirs).
  *
- * Responsibilities:
- * - Show one flat table row per component and stage (component, stage, phase, workflow, owner, state), in component then
- *   stage order; filter by stage and by "tracks I can move" so a project with many components and stages stays readable.
- * - Move a track (a closed phase first asks whether to complete the component's approved requirements too) and report it
- *   through `onChanged`; the server decides who may move (`can_move`), this list only disables the picker.
- * - With `plans`, also show each track's progress, expected range and overdue state (`utils/deliveryPlan`), and offer the
- *   same rows as a timeline (`view="timeline"`); `onSchedule` adds a control to set the current phase's expected range.
- *
- * Design decisions: a locked-phase move by a person who cannot make it is not offered as a choice; the server enforces it
- * regardless. Editing a track (workflow, applicability, owner) is offered only where the host passes `onEdit`.
+ * - One flat row per component and stage (component, stage, phase, workflow, owner, state), filterable by stage
+ *   and by "tracks I can move".
+ * - Moving a track (a closed phase first asks whether to complete the approved requirements too) is reported
+ *   through `onChanged`. The server decides who may move (`can_move`); the list only disables the picker, and a
+ *   locked-phase move by someone who cannot make it is not offered.
+ * - With `plans`, it shows progress, expected range and overdue state (`utils/deliveryPlan`) and a timeline view
+ *   (`view="timeline"`); `onSchedule` adds a control for the current phase's expected range. Editing a track is
+ *   offered only where the host passes `onEdit`.
  */
 import { CalendarRange, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";

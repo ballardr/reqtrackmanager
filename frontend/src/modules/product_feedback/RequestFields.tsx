@@ -1,19 +1,19 @@
 /**
  * Module: modules/product_feedback/RequestFields
  *
- * The fields of an enhancement request, shared by the create and the edit form (`RequestFormModal`) so a field
- * added later reaches both: title, description, owner and the scoring levels, plus the external references on a
- * create (an existing request's references change on its page, as they are not versions of it). The form owns the
- * draft; this component only edits it.
+ * The fields of an enhancement request, shared by the create and edit form (`RequestFormModal`) so a field added later
+ * reaches both: title, description, owner and the scoring levels, plus the external references on a create (an
+ * existing request's references change on its page, as they are not versions of it). The form owns the draft; this
+ * component only edits it.
  *
  * Scoring levels are built from the scheme's axes, so an axis an organisation or project defines appears with no
- * change here. A derived axis (Demand) is calculated from the request's requesters and is shown with that level
- * as its placeholder; choosing a level overrides it and clearing the choice goes back to the worked-out one.
- * Inbox requests (no `projectId`) offer the same fields; the scheme passed in is the organisation's own.
+ * change here. A derived axis (Demand) is calculated from the request's requesters and shown with that level as its
+ * placeholder; choosing a level overrides it and clearing the choice returns to the calculated one. Inbox requests (no
+ * `projectId`) offer the same fields with the organisation's own scheme.
  *
- * Layout: title and description take the row; the owner shares a row with `beside` (tags on a create, the change
- * note on an edit); the criteria pickers sit in one wrapping grid (titled Criteria) and the live scores, in their own block titled Scores, come after them, so each
- * choice shows its effect before saving.
+ * Layout: title and description take the row; the owner shares a row with `beside` (tags on a create, the change note
+ * on an edit); the criteria pickers sit in one wrapping grid (Criteria) and the live scores in their own block
+ * (Scores) after them, so each choice shows its effect before saving.
  */
 import type { ReactNode } from "react";
 

@@ -1,13 +1,12 @@
 /**
  * Module: modules/stakeholders/OrgStakeholdersPanel
  *
- * An organisation's own org-scoped Stakeholders (one live, shared record every project can see), rendered as an
+ * An organisation's own Stakeholders (one live, shared record every project can see), rendered as an
  * `OrgResourcesPage` `ResourceMenu` group (`module.ts`'s `orgResourceSections`).
  *
- * Placement mirrors `OrgPersonasPanel` (Decided by: Agent): an org stakeholder is org-level content its owners work
- * with and projects reuse, not a configuration table — the Stakeholder *types* and scoring levels are the configuration and
- * live on `orgAdminSections`. The list/filter/create UI is the shared
- * `StakeholderListView`.
+ * Placement mirrors `OrgPersonasPanel`: an organisation stakeholder is content its owners work with and projects
+ * reuse, not configuration; the Stakeholder types and scoring levels are the configuration and live on
+ * `orgAdminSections`. The list, filter and create UI is the shared `StakeholderListView`.
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";

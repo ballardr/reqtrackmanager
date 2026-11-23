@@ -1,29 +1,24 @@
 """
 Module: services.notification_targets
 
-Declares where each core notification type takes the person who opens it, as a
-target kind (a short name such as `delivery_status`) rather than a URL. The
-browser turns a kind into a page (`frontend/src/modules/notificationTargets.ts`),
-so the bell, the notification list, the email and the digest share one resolver
-and no module's route templates are copied onto the server.
+Declares where each core notification type takes the person who opens it, as a target kind (a short name such
+as `delivery_status`) rather than a URL. The browser turns a kind into a page
+(`frontend/src/modules/notificationTargets.ts`), so the bell, the list, the email and the digest share one
+resolver and no module's route templates are copied onto the server.
 
-Responsibilities:
-- `CORE_TARGET_KINDS`: the kinds the core frontend resolver knows.
-- `CORE_NOTIFICATION_TARGETS`: the ordered kinds of every core type that no
-  module owns. A type lists several kinds when the data decides: the first kind
-  whose data the notification carries wins, and the notification detail page is
-  the fallback for a stored notification that carries none of it.
-- `subject_available`: whether the person may still open the notification's subject.
+Responsibilities: `CORE_TARGET_KINDS` (the kinds the core resolver knows); `CORE_NOTIFICATION_TARGETS` (the
+ordered kinds of each core type no module owns; where data decides, the first kind whose data the notification
+carries wins, with the detail page as the fallback); `subject_available` (whether the person may still open
+the subject).
 
 Design decisions:
-- The Compliance types are members of the core enum but belong to the Compliance
-  module, so that module declares their kinds (`ModuleDefinition.notification_targets`)
-  and the kinds only it can resolve (`notification_target_kinds`); core never names them.
+- The Compliance types belong to the Compliance module although they are in the core enum, so it declares
+  their kinds (`ModuleDefinition.notification_targets`, `notification_target_kinds`); core never names them.
   `registry.get_all_notification_targets` merges both.
-- `detail` is implicit: every notification can open its detail page, so no type lists it
-  unless that is its only page (an announcement).
+- `detail` is implicit (every notification opens its detail page), so a type lists it only when it is the
+  only page (an announcement).
 
-External dependencies: `services.link_nesting` for project access, `services.rbac` for organisation membership.
+Dependencies: `services.link_nesting` (project access), `services.rbac` (organisation membership).
 """
 
 from __future__ import annotations

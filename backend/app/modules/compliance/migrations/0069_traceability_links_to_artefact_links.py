@@ -4,18 +4,14 @@ Revision ID: 0069
 Revises: 0068
 Create Date: 2026-10-11
 
-Moves every `compliance_requirement_traceability_links` row (a core requirement
--> a Compliance standard's clause) into core `artefact_links`
-as `source_type='requirement'` -> `target_type='compliance_requirement'`, keeping
-the row id, link type, creator and timestamps, then drops the table. Links were
-polymorphic and any-to-any by the time this ran (any-to-any, registry-validated types), so the module-private table no longer had a reason to
-exist; with it gone the Links panel, the link graph, link-type rules, hiding and
+Moves every `compliance_requirement_traceability_links` row (a core requirement to a Compliance standard's clause) into
+core `artefact_links` as `source_type='requirement'` -> `target_type='compliance_requirement'`, keeping the row id, link
+type, creator and timestamps, then drops the table. Links are any-to-any between registry-validated types, so a
+module-private table has no purpose; in `artefact_links` the Links panel, link graph, link-type rules, hiding,
 delete-in-use, change requests and project bundles all see these links.
 
-A traceability link joins records of one organisation (the clause's standard
-belongs to the requirement's project's organisation), is same-project from the
-requirement's side, and has no cross-level project columns, so
-`source_project_id` / `target_project_id` stay NULL.
+A traceability link joins records of one organisation and is same-project from the requirement's side, with no
+cross-level project columns, so `source_project_id` and `target_project_id` stay NULL.
 
 The downgrade recreates the table and copies the rows back (ids preserved).
 """

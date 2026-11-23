@@ -1,57 +1,21 @@
 /**
  * Module: modules/compliance/OrgComplianceOutstandingPanel
  *
- * The Outstanding tab of the Standards page (`StandardsTabs.tsx`; `ComplianceStatusPage.tsx` hosts it): the org-wide
- * counterpart to `OutstandingPanel.tsx` (the per-project "what remains outstanding" summary) — §22's own explicit
- * list of things a Compliance Manager must be able to identify across
- * every project at once: Non-Compliant requirements, outstanding Required
- * Actions, expired/expiring evidence, overdue compliance reviews, and
- * assessments awaiting approval. Each row is tagged with the project it
- * belongs to (every org-wide schema carries `project_id`/
- * `project_name` — see `types.ts`'s org-wide section) and links back
- * to that project's Compliance page for further drill-down, the same
- * reuse-the-existing-page approach `OrgComplianceStandardsPanel` uses.
- *
- * Read-only by design, mirroring `OutstandingPanel`'s own posture — acting
- * on a row happens on the linked project's own Compliance page.
- *
- * A "Category"/"Evidence status" filter pair is kept in
- * `?category=`/`?validity=` (as is every other filter) so `OrgComplianceWidgets.tsx`'s
- * top-grid tiles ("Projects with outstanding actions," "...expired
- * evidence," "...evidence approaching expiry," "...overdue compliance
- * reviews," "Assessments awaiting approval") can link straight to the one
- * relevant section here, rather than to an unfiltered page showing all five
- * at once — the tile counts one specific condition, so its destination
- * should show only that condition, not require the user to find it among
- * everything else. `category` picks which of the five sections below
- * renders at all; `validity` further narrows the Evidence section alone,
- * since that's the one section covering two distinct tile conditions
- * (expired vs. expiring soon) sharing one underlying list.
- *
- * Real filtering sits on top of the category picker: Project,
- * Standard, Standard version, and (once a single standard is picked)
- * Sub-section — following `OrgComplianceStandardsPanel.tsx`'s own
- * client-side-derived-options pattern — in the side filter panel of `ListPageLayout`, the
- * placement a stack of card sections takes (`FilterPanel.tsx`'s own placement rule). Standard/Standard version/Sub-section only affect the four
- * requirement-adjacent sections (Non-compliant, Pending approval,
- * Outstanding actions, Reviews) — `Evidence` isn't scoped to a standard at
- * all in the data model (an evidence row can be linked to requirements
- * across more than one standard), so it stays governed by Project +
- * Evidence status alone, unaffected by the new filters (Decided by:
- * Agent). Sub-section further only applies to the three
- * per-requirement sections (Reviews aren't tied to one specific
- * requirement, only to a standard/version as a whole) — see
- * `api.ts::findTopLevelAncestor`'s own docstring for why "section" means
- * "top-level ancestor requirement" here.
- *
- * An "Export" trigger (`ReportExportButton`) is scoped to this
- * panel's current Project/Standard/Standard version/Sub-section filters —
- * `complianceApi.downloadOrgComplianceReport` passes them through as query
- * params, matching `_matches_requirement_filter`'s server-side "sub-section
- * means top-level ancestor" definition on the backend
- * (`app.modules.compliance.reports`). `category`/`evidenceValidity` have no
- * report-side equivalent (the report always covers every category) and
- * aren't passed through.
+ * The Outstanding tab of the Standards page (`StandardsTabs.tsx`, hosted by `ComplianceStatusPage.tsx`): the org-wide
+ * counterpart of `OutstandingPanel.tsx`, listing what a Compliance Manager must identify across every project (§22):
+ * Non-Compliant requirements, outstanding Required Actions, expired or expiring evidence, overdue reviews and assessments
+ * awaiting approval. Each row names its project (`project_id`/`project_name`) and links to that project's Compliance page.
+ * Read-only: acting on a row happens there.
+ * - `?category=` picks which of the five sections renders and `?validity=` narrows the Evidence section (expired versus expiring
+ *   soon), so `OrgComplianceWidgets.tsx`'s tiles link to the one section they count.
+ * - The side filter panel of `ListPageLayout` filters by Project, Standard, Standard version and, once one standard is picked,
+ *   Sub-section (client-derived options, as in `OrgComplianceStandardsPanel.tsx`). Standard, version and sub-section affect only
+ *   the four requirement-adjacent sections; Evidence is not scoped to a standard (one row can link requirements of several), so
+ *   Project and Evidence status govern it. Sub-section applies only to the three per-requirement sections ("section" is the
+ *   top-level ancestor requirement, see `api.ts::findTopLevelAncestor`).
+ * - Export (`ReportExportButton`) passes Project, Standard, Standard version and Sub-section to
+ *   `complianceApi.downloadOrgComplianceReport`, matching the server's `_matches_requirement_filter`; `category` and
+ *   `evidenceValidity` have no report equivalent and are not passed.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -143,11 +107,8 @@ export function OrgComplianceOutstandingPanel({ frame }: { frame: ComplianceStat
       });
   }, [orgs, showToast]);
 
-  // Sub-section options come from every version of the selected standard's
-  // own requirement tree — fetched fresh whenever the standard filter
-  // changes, not derived from the (possibly already version-narrowed) rows
-  // already on screen, so switching the version filter afterward doesn't
-  // require a second fetch.
+  // Sub-section options come from every version of the selected standard's requirement tree, fetched when the standard filter
+  // changes rather than derived from the on-screen rows, so changing the version filter needs no second fetch.
   useResetOnChange([standardFilter], () => setRequirementsById(new Map()));
 
   const standards = useMemo(() => {
@@ -236,11 +197,8 @@ export function OrgComplianceOutstandingPanel({ frame }: { frame: ComplianceStat
 
   async function downloadReport(kind: complianceApi.ComplianceReportKind) {
     try {
-      // Scoped to this panel's own current filters — matches
-      // `OrgComplianceStandardsPanel.tsx`'s identical convention.
-      // `category`/`evidenceValidity` have no report-side equivalent (the
-      // exported report always covers every category) and aren't passed
-      // through.
+      // Scoped to the panel's current filters, as in `OrgComplianceStandardsPanel.tsx`; `category` and `evidenceValidity`
+      // have no report equivalent (the report covers every category) and are not passed.
       if (!exportOrgId) return;
       const blob = await complianceApi.downloadOrgComplianceReport(exportOrgId, kind, {
         projectId: projectFilter || undefined,

@@ -1,37 +1,23 @@
 """
 Module: services.report_docx
 
-Renders a neutral `ReportDocument` (`services.report_model`) to an editable
-Word (DOCX) file with python-docx. It is the DOCX counterpart of `report_pdf`:
-the same blocks, so the two formats show the same content.
+Renders a neutral `ReportDocument` (`services.report_model`) to an editable Word (DOCX) file with python-docx, the
+counterpart of `report_pdf` with the same blocks.
 
-Editable by design: headings use Word's real Heading styles (so a table of
-contents can be inserted), tables are real tables with a repeating, accent
-shaded header row, and the footer carries a live page-number field. Nothing is
-rendered as an image of text or of a table.
+Editable by design: real Heading styles, real tables with a repeating shaded header row, a live `PAGE` footer field,
+and no image of text or of a table.
 
 Security decisions:
-- Every user string passes through `clean_text` first. python-docx (lxml)
-  raises on characters that are invalid in XML 1.0 (control characters), which
-  would otherwise let any author's text turn a download into a 500.
-- Text is only ever set as run or cell text, never as markup, so a `<script>`
-  or `<w:...>` string is stored as literal text.
-- A hyperlink is written only for a link `report_model.finalize_links` has checked (an absolute http, https or
-  mailto address, or a heading of the same document): the address is a relationship target (external) or a
-  bookmark name derived by hash (internal), never markup. No field-code or macro path takes user text. The only
-  field is the fixed `PAGE` number in the footer.
-- The accent colour reaches an XML attribute, so it is checked against a hex
-  pattern and falls back to the default.
-- Equations are Word's own (editable) equation objects when `report_math.omml` has a tested translation, built
-  from the converter's markup after its element allow-list; otherwise a PNG of the same drawing, and if even that
-  fails the TeX as the author wrote it. No equation text reaches the XML except as `m:t` text the converter escaped.
-- Images are the pre-resolved, tenant-checked bytes in the model; an image
-  python-docx cannot decode is skipped.
-- Core properties carry the title, a fixed author and the creation time only,
-  never a person's name or email.
+- Every user string passes through `clean_text` (XML 1.0 control characters would make lxml raise and turn a
+  download into a 500); text is set only as run or cell text, never markup.
+- A hyperlink is written only for a link `report_model.finalize_links` checked (absolute http, https, mailto or a
+  heading of the document); no field-code or macro path takes user text. The accent colour is checked against a hex pattern.
+- Equations are Word equation objects when `report_math.omml` has a tested translation (from the converter's
+  allow-listed markup), else a PNG, else the author's TeX; no equation text reaches the XML except escaped `m:t` text.
+- Images are the pre-resolved, tenant-checked bytes in the model; an undecodable image is skipped.
+- Core properties carry the title, a fixed author and the creation time, never a person's name or email.
 
-Dependencies: python-docx, `services.report_model`, `services.report_document`
-(branding type), `services.branding` (default accent), `services.report_math` (equations).
+Dependencies: python-docx, `report_model`, `report_document`, `branding`, `report_math`.
 """
 
 from __future__ import annotations

@@ -137,8 +137,7 @@ const EVERYTHING = {
 };
 
 /**
- * Asserts, by measured geometry, that no line of the footer begins or ends on a separator: a group draws one only when
- * the group before it is on the same line, and the last group of a line is never followed by one.
+ * Asserts by measured geometry that no footer line begins or ends on a separator.
  */
 async function expectNoDanglingSeparators(footer: HTMLElement) {
   await waitFor(() => {

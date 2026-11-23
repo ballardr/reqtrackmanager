@@ -8,26 +8,15 @@ installCleanupHook();
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: an org admin can require 2FA org-wide (blocking every
- * member, including admins, from org/project access until they enrol —
- * the "28-item batch" round in docs/decisions.md), lock a user's display
- * name, filter the member directory (stale / no-2FA / no-project-access),
- * and control whether external, not-yet-member accounts can be added to
- * projects.
+ * Job to be done: an org admin can require 2FA organisation-wide (blocking every member, including admins, from
+ * organisation and project access until they enrol; see docs/decisions.md), lock a user's display name, filter the
+ * member directory (stale / no-2FA / no-project-access), and control whether external, not-yet-member accounts can
+ * be added to projects.
  *
- * Uses a brand-new, disposable organisation + admin + project created via
- * the API (mirroring org-admin-project-statuses-and-link-types.spec.ts),
- * not the shared "E2E Gamma Labs" org/PERSONAS.orgAdminGamma this spec
- * previously ran against. That sharing was originally chosen specifically
- * *because* Gamma was otherwise untouched by the other 2FA-agnostic Alpha/
- * Beta specs in this suite's old single-worker, serial-only run — but it
- * still meant this spec's org-wide 2FA toggle (which blocks every member
- * of the org, including its own admin, from project access until 2FA is
- * enabled) could collide with any *other* spec reading/writing Gamma
- * concurrently once the suite runs with more than one worker — org-admin-modules.spec.ts is a
- * real example, since it also flips a Gamma-wide toggle. A disposable org
- * removes the collision entirely, the same way the statuses/link-types
- * spec's own disposable org removed an analogous risk for Beta.
+ * Uses a disposable organisation, admin and project created through the API (as
+ * org-admin-project-statuses-and-link-types.spec.ts does), not the shared "E2E Gamma Labs" org: the organisation-wide
+ * 2FA toggle blocks every member including its admin, so it would collide with any other spec using Gamma
+ * concurrently (org-admin-modules.spec.ts also flips a Gamma-wide toggle).
  */
 test.describe("org security controls: 2FA requirement, display-name lock, member filters", () => {
   test("org-wide 2FA requirement blocks access until enabled; display-name lock; member filters", async ({ page }) => {
@@ -71,13 +60,9 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // the section is reachable at all.
       await selectOrgAdminGroup(page, "Users");
       await ensureExpanded(page, "Organisation users");
-      // Migrated from three ad-hoc toggle `<button>`s to `FilterCheckbox`es
-      // inside the shared `FilterPanel` — now genuinely independent (checking one no longer
-      // implicitly clears another), so each is unchecked explicitly rather
-      // than via a single "Clear filters" button, which no longer exists.
-      // Each toggle waits for its own reload (`/users?` with or without the
-      // filter's param), so the next step never opens a row menu that a late
-      // reload then re-renders shut, which once timed this test out.
+      // The filters are independent `FilterCheckbox`es in the shared `FilterPanel` (no "Clear filters" button), so each is
+      // unchecked explicitly. Each toggle waits for its own reload (`/users?` with or without the filter's param) so a
+      // late reload cannot re-render a row menu shut.
       const toggle = async (name: string, param: string, on: boolean) => {
         await Promise.all([
           page.waitForResponse((r) => r.url().includes("/users?") && r.url().includes(param) === on),
@@ -96,14 +81,9 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     });
 
     await test.step("lock then unlock a display name", async () => {
-      // the members/groups directory rework (docs/decisions.md)
-      // consolidated the Users table's previously-bare "Lock/Unlock display
-      // name" button into the row's `ActionMenu` — reachable via its kebab
-      // trigger (`${display name}'s actions`), then the `menuitem` inside
-      // the `Popover` it opens, same pattern org-merge-import.spec.ts/
-      // org-rename-and-test-email.spec.ts already use for other
-      // `ActionMenu` call sites (waiting for the menu itself before
-      // clicking an item, since the popover repositions after mount).
+      // "Lock/Unlock display name" is a row `ActionMenu` item: open it through the kebab trigger (`${display name}'s
+      // actions`), then click the `menuitem` in the `Popover`, after waiting for the menu itself (the popover repositions
+      // after mount), as org-merge-import.spec.ts does.
       const row = page.locator("tr", { hasText: adminEmail });
       // The menu trigger's accessible name (`usersActionsFor`, strings.ts)
       // is keyed off the user's display name, not their email.
@@ -150,26 +130,16 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // project-*specific* endpoints enforce a single org's requirement.
       projectId = (await projectsResp.json()).find((p: { name: string }) => p.name === projectName).id;
 
-      // Wait for the project-detail fetch this click triggers (which
-      // resolves 403, driving the "2FA required" UI) before asserting on
-      // its result — a bare click() plus an immediate expect() relies
-      // purely on the assertion's own timeout to outlast the navigation +
-      // network round trip, the same race already found and fixed twice
-      // elsewhere in this pass (project-history.spec.ts,
-      // requirements-and-cr-filters.spec.ts).
+      // Wait for the project-detail fetch this click triggers (it resolves 403, driving the "2FA required" UI) before
+      // asserting: a bare click() plus an immediate expect() relies on the assertion timeout to outlast the navigation and
+      // network round trip.
       await Promise.all([
         page.waitForResponse((r) => r.url().includes(`/api/v1/projects/${projectId}`) && r.request().method() === "GET"),
         page.getByText(projectName).click(),
       ]);
-      // This step (via toggleDisplayNameLock's own reload()) is exactly
-      // what surfaced a real OrgAdminPage.tsx race, not a test-timing
-      // issue — see docs/decisions.md: a slow, unawaited reload() from
-      // the *previous* test.step could still be in flight here and
-      // clobber this toggle's local state back to its last-saved value
-      // right before Save is clicked, so the PUT below silently sent
-      // require_2fa: false. Fixed at the source (advancedDirtyRef); this
-      // assertion needs no special timeout now that the underlying race
-      // is closed.
+      // `toggleDisplayNameLock`'s `reload()` can still be in flight from the previous test.step and reset this toggle's
+      // local state to its last-saved value right before Save, so the PUT would send `require_2fa: false`; OrgAdminPage.tsx
+      // guards against that with `advancedDirtyRef`, so this assertion needs no special timeout.
       await expect(page.getByText(/2FA|two-factor/i).first()).toBeVisible();
     });
 
@@ -210,10 +180,8 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
         page.getByRole("button", { name: "Save security settings" }).click(),
       ]);
 
-      // Also disable this admin's own personal 2FA again, since it was
-      // only enrolled to demonstrate/exercise the self-service recovery
-      // path above — leaving it on would break this persona's plain
-      // loginAs() in any spec that runs after this one.
+      // Also disable this admin's personal 2FA again: it was enrolled only to exercise the self-service recovery path
+      // above, and leaving it on would break this persona's plain loginAs() in later specs.
       await page.goto("/preferences");
       await selectPreferencesGroup(page, "Security");
       await ensureTwoFactorSectionExpanded(page);
@@ -242,15 +210,11 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await page.goto("/projects");
       await page.getByText(projectName).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      // No group is auto-created on project creation any more (2026-08-31) — invite via the Members section's
-      // own add control instead, which grants the by-email invite a
-      // *direct* role the exact same way a project group's own member
-      // picker used to.
+      // A project has no auto-created group: invite through the Members section's add control, which grants the by-email
+      // invite a direct role as a project group's member picker does.
       await selectProjectAdminGroup(page, "Members");
-      // The add control now opens in
-      // a Modal behind an "Add member" button, per docs/ux-style-guide.md
-      // Principle 3 ("create is a layer, not a page reflow"), instead of
-      // sitting permanently above the table.
+      // The add control opens in a Modal behind an "Add member" button (docs/ux-style-guide.md Principle 3, "create is a
+      // layer, not a page reflow").
       await page.getByRole("button", { name: "Add member" }).click();
       const addMemberModal = page.getByRole("dialog", { name: "Add member" });
       const outsideEmail = `e2e-external-${Date.now()}@example.com`;

@@ -1,14 +1,12 @@
 /**
  * Module: modules/stakeholders/ResearchFindingsPanel
  *
- * Research extras: what an engagement taught the team. A finding has a project-scoped
- * code (FND-001), a title and a description, and links to other records through the one
- * shared `ArtefactLinksPanel` (so it can raise or answer Pain Points, Needs and Open
- * Questions, and take any other link a project allows) in its compact form, leaving out the
- * engagement it already sits in; a link to a finding lands on its card (`#finding-<id>`). A
- * finding is created and edited in a `Modal` (principle 3) and deleted behind a
- * tier-1 confirm; it has no comments or files of its own and is deleted with its
- * engagement, because it can quote participants.
+ * Research extras: what an engagement taught the team. A finding has a project-scoped code (FND-001), a title and a
+ * description, and links to other records through the shared `ArtefactLinksPanel` (so it can raise or answer Pain
+ * Points, Needs and Open Questions, and take any other link a project allows) in its compact form, leaving out the
+ * engagement it sits in; a link to a finding lands on its card (`#finding-<id>`). A finding is created and edited in a
+ * `Modal` (principle 3) and deleted behind a tier-1 confirm; it has no comments or files of its own and is deleted with
+ * its engagement, because it can quote participants.
  */
 import { RecordCode } from "../../components/RecordCode";
 import { Pencil, Plus, Trash2 } from "lucide-react";

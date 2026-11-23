@@ -5,29 +5,26 @@ The *kind* of an activity event ("how it changed"): the small fixed vocabulary t
 filters and labels by, over the open-ended `AuditEvent.action` strings.
 
 Responsibilities:
-- Name the kinds (`KIND_LABELS`) and map every core action to one (`CORE_ACTION_KINDS`).
-- Merge in the actions a module declares through `ModuleDefinition.activity_action_kinds`
-  (`action_kinds`), so a module never edits this file.
-- Turn a set of wanted kinds into the actions to match (`actions_for_kinds`), and an action into its kind
-  (`kind_of`).
-- Group the entity types of the events (`classify_entity`, `entity_groups`): a registered record type under its
-  owning module (or Core), anything else under one metadata group (links and files, tags and places, access,
-  structure and settings, other), so the Type filter is a short two-level list.
+- Name the kinds (`KIND_LABELS`), map every core action to one (`CORE_ACTION_KINDS`), merge the actions a
+  module declares (`ModuleDefinition.activity_action_kinds`, via `action_kinds`), and convert between kinds
+  and actions (`actions_for_kinds`, `kind_of`).
+- Group entity types (`classify_entity`, `entity_groups`): a registered record type under its module (or
+  Core), anything else under one metadata group (links and files, tags and places, access, structure and
+  settings, other), so the Type filter is a short two-level list.
 
 Design decisions:
-- An action in no map is kind `other`, so a filter by kind can never hide an event nobody classified, and a
-  module that registers nothing still appears under Other.
-- A kind filter is resolved to actions in Python and sent to the database as `action IN (...)` (with
-  `NOT IN (all known)` for Other), so it narrows each source query instead of filtering after the merge.
-- The version-derived entries (`created` for version 1, `updated` after) go through the same functions.
-- A kind is decided by the entity type first: every event of a link, tag, role or group entity is *Links and
-  files*, *Tags and places* or *Access* whatever its action (`created` of a link is a link event, never *Created*),
-  and the action decides only for a record's own events and for the structure and settings groups.
-- Metadata entity types are a registry: the core map here, the `_link` and `_definition` naming conventions, and
-  `ModuleDefinition.activity_metadata_types` for a module's own, so a module never edits this file. A type in none
-  of them is the metadata group Other, so it stays reachable.
+- An action in no map is kind `other`, so a kind filter never hides an unclassified event.
+- A kind filter is resolved to actions in Python and sent as `action IN (...)` (`NOT IN (all known)` for
+  Other), so it narrows each source query instead of filtering after the merge; version-derived entries use
+  the same functions.
+- The entity type decides first: every event of a link, tag, role or group entity is *Links and files*,
+  *Tags and places* or *Access* whatever its action; the action decides only for a record's own events and the
+  structure and settings groups.
+- Metadata entity types are a registry: the core map, the `_link` and `_definition` naming conventions, and
+  `ModuleDefinition.activity_metadata_types`, so a module never edits this file. A type in none of them is the
+  group Other and stays reachable.
 
-External dependencies: `modules.registry` (module contributions).
+Dependencies: `modules.registry`.
 """
 
 from __future__ import annotations

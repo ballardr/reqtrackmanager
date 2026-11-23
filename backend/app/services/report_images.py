@@ -1,31 +1,24 @@
 """
 Module: services.report_images
 
-The pictures a report layout may embed: the library at each tier, the visibility rule, and the safe way to turn a
-stored file into the bytes a renderer draws.
+The pictures a report layout may embed: the library at each tier, the visibility rule and the safe conversion of a
+stored file to drawable bytes.
 
 Responsibilities:
-- Accept an upload only when its *content* is a raster image (PNG, JPEG, GIF, WebP), a sanitisable SVG or an EPS or PDF (converted
-  once, at upload, to an SVG by the separate converter service: `services.report_converter`), never its declared type or file name.
-- List the library a layout may use, upload to it and delete from it, naming the layouts that use an image.
-- Decide whether a layout may use a file (`usable_by_layout`) and report the layouts that break that rule at save
-  (`image_problems`), so the check is made again at run time by `load_image` and a hand-typed id cannot cross it.
-- Turn a stored raster into drawable bytes with the metadata removed (`normalise_raster`), within byte and pixel caps.
+- Accept an upload only by its content (PNG, JPEG, GIF, WebP, a sanitisable SVG, or EPS/PDF converted once at upload by
+  `services.report_converter`), never its declared type or name; list, upload and delete, naming using layouts.
+- `usable_by_layout` and `image_problems` (checked at save and again at run time by `load_image`);
+  `normalise_raster` (metadata removed, byte and pixel caps).
 
 Design decisions:
-- **Visibility.** An organisation layout may use organisation images only (it runs for, and is inherited by, every
-  project, so a project's picture in it would reach members who cannot open that project). A project layout may use
-  its own project's images and any organisation image. A project's library is `FileAsset.project_id`; the
-  organisation's is the shared resources (`is_org_resource`), so one library serves attachments in Markdown and
-  the Image block. There is no ancestor fallback: a child reaches the organisation library for anything shared.
-- **A layout stores a file id, never bytes** (tree size, version diffs, bundles); a deleted image is skipped with a
-  run warning.
-- **Metadata is stripped on every embed.** A photograph's GPS position and camera owner are personal data a report
-  must not pass on, so a raster is re-encoded (after applying its EXIF orientation); an animated GIF keeps its first
-  frame. The pixel count is read from the header before the image is decoded (decompression bombs).
-- **No remote URLs, ever.** Only files in the store are read.
+- An organisation layout may use organisation images only (members could not open a project's picture); a project
+  layout may use its project's and any organisation image. One library (`FileAsset.project_id`, or the shared
+  resources) serves Markdown attachments and the Image block; there is no ancestor fallback.
+- A layout stores a file id, never bytes; a deleted image is skipped with a run warning.
+- Metadata (GPS, camera owner) is stripped by re-encoding after applying EXIF orientation; a GIF keeps its first frame;
+  the pixel count is read before decoding (decompression bombs). No remote URLs.
 
-Dependencies: Pillow, `services.files`, `services.report_svg`, `services.report_converter`, `services.report_layout_tree` (the tree vocabulary).
+Dependencies: Pillow, `services.files`, `report_svg`, `report_converter`, `report_layout_tree`.
 """
 
 from __future__ import annotations

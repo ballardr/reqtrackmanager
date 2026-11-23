@@ -17,28 +17,21 @@ import {
 } from "./helpers";
 
 /**
- * Job to be done: — the new
- * "Organisation Overview" nav-rail page, reachable regardless of whether
- * compliance applies to the org (unlike the "Compliance Standards"
- * tab). Covers reaching the page via `/org-overview`'s single-org/multi-org
- * auto-redirect, and the core scoping rule from `docs/decisions.md`'s
- * "Compliance module, human review follow-ups" entry: an org admin sees
- * the organisation's real totals, while a plain member with only partial
- * project access sees counts scoped to what they can actually see.
+ * Job to be done: the "Organisation Overview" nav-rail page, reachable whether or not compliance applies to the
+ * organisation. Covers reaching it via `/org-overview`'s single-org/multi-org redirect, and the scoping rule from
+ * `docs/decisions.md`'s "Compliance module, human review follow-ups" entry: an org admin sees the organisation's
+ * real totals, while a plain member with partial project access sees counts scoped to what they can see.
  *
- * Personas: a disposable Alpha member created per run with a `stakeholder`
- * role on Alpha-1 alone (removed afterwards) vs `orgAdminAlphaBeta`
- * (`org_admin` of Alpha, sees every Alpha project). The counts cover
- * active (non-archived) projects only.
+ * Personas: a disposable Alpha member created per run with a `stakeholder` role on Alpha-1 alone (removed
+ * afterwards) vs `orgAdminAlphaBeta` (`org_admin` of Alpha, sees every Alpha project). Counts cover active
+ * (non-archived) projects only.
  */
 test.describe("Organisation Overview page", () => {
   installCleanupHook();
 
   test("a single-org member with partial project access sees scoped totals; the org admin sees the real totals", async ({ page, request }) => {
-    // A disposable Alpha member with a role on Alpha-1 only (2026-10-04),
-    // not the shared stakeholderAlpha persona: other specs running in
-    // parallel temporarily grant that persona roles on their own projects,
-    // which made this exact count race them.
+    // A disposable Alpha member with a role on Alpha-1 only, not the shared stakeholderAlpha persona: parallel specs
+    // temporarily grant that persona roles on their own projects, which would race this count.
     const memberEmail = `e2e-overview-member-${Date.now()}@example.com`;
     const adminHeaders = await apiHeaders(request, PERSONAS.orgAdminAlphaBeta.email);
     const api = "http://localhost:8000/api/v1";
@@ -109,10 +102,9 @@ test.describe("Organisation Overview page", () => {
 
   /**
    * The Overview is dashboards only, so its menu chrome stays hidden while there is one dashboard. Compliance
-   * contributes no Org Resources section (its status views are tabs of the Standards page). The seeded orgs differ in which modules they
-   * have on (Gamma has Stakeholders & Personas, for example), so this runs in a disposable org whose only module is
-   * Compliance (default on) and toggles that off itself, rather than mutating a shared seed org — a failure between
-   * the toggle and the restore used to leave Compliance off for every later spec in the org.
+   * contributes no Org Resources section (its status views are tabs of the Standards page). The seeded orgs differ in
+   * which modules are on, so this runs in a disposable org whose only module is Compliance (default on) and toggles it
+   * off itself, so a failure between the toggle and the restore cannot leave Compliance off in a shared org.
    */
   test("Org Resources has no Compliance section", async ({ page, request }) => {
     const suffix = Date.now();

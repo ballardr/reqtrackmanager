@@ -13,9 +13,8 @@ const ADDRESSES = buildOption({
 const RELATED = buildOption({ other_types: [{ type: "pain_point", label: "Pain Point", can_create: true }, { type: "decision", label: "Decision", can_create: false }] });
 
 /**
- * The panel's "Add link" menu, "Create a new record": a first step chooses the record type and relationship, then the
- * records another module can create (here the Pain Point dialog the Pain Point module registers) are created and
- * linked in one step. The Links API is injected; the dialog's own calls go through `api`.
+ * The panel's "Add link" menu, "Create a new record": step 1 chooses the record type and relationship, then the
+ * owning module's dialog (here the Pain Point dialog) creates and links the record. The Links API is injected.
  */
 const meta: Meta<typeof ArtefactLinksPanel> = {
   title: "Components/ArtefactLinksPanel/Create new",

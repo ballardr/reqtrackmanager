@@ -4,27 +4,27 @@ Module: modules.architecture.diagram_line_anchors
 Where every line of a diagram meets its boxes, so that no two lines draw over each other.
 
 Responsibilities:
-- Choose, for each line between two boxes, the attach point at each end (`diagram_points` gives the points and the rule for
-  one line on its own) while looking at every other line of the diagram.
-- Spread lines that still share both ends sideways in parallel lanes.
-- Give each loop (a line from a box back to itself) a slot, so several loops on one box take different corners.
+- Choose each line's attach point at both ends (`diagram_points` gives the points and the single-line rule)
+  while considering every other line of the diagram.
+- Spread lines that still share both ends sideways in parallel lanes, and give each loop (a line from a box
+  back to itself) a slot so several loops on one box take different corners.
 
 Design decisions:
-- **One rule, two implementations.** The browser draws with a TypeScript port (`components/graphLineAnchors.ts`); this file
-  is the server's copy, used for the SVG and PNG, and the shared cases in
-  `frontend/src/components/graphLineAnchorCases.json` (written by `tests/test_architecture_line_anchors.py`) keep the two
-  equal. A change to the rule is made in both. Only +, -, *, / and square roots are used so both agree to the last bit.
-- **A person's choice is never moved.** An end a person fixed keeps its point, and a line with vertices is the person's own
-  drawing: its ends follow the vertices (`diagram_points.route_points`) and it is never spread. Both still count as using
-  their points, so an automatic line keeps clear of them whatever the order of the lines.
-- **Automatic lines are placed in the order given**, each choosing the pair of free points nearest each other (the facing
-  sides first, as for a single line). A point that is already the end of another line is used only when no free pair is
-  left, and then the least used pair is taken. Callers pass the lines in the order they were created, so adding a line moves
-  no earlier line (except to keep clear of an end a person fixed).
-- **Lanes are the last resort.** Two lines that end on the same two points (a pair with every point used, or both ends
-  fixed to the same points) are shifted sideways in parallel, 16 units apart, along the normal of the direction from the
-  lower-ordered end to the other, so a line in each direction is shifted to its own side. A line with vertices is never
-  shifted.
+- One rule, two implementations: the browser uses a TypeScript port (`components/graphLineAnchors.ts`); this
+  is the server's copy for SVG and PNG. The shared cases in
+  `frontend/src/components/graphLineAnchorCases.json` (written by `tests/test_architecture_line_anchors.py`)
+  keep them equal, so a rule change is made in both. Only +, -, *, / and square roots are used so both agree
+  to the last bit.
+- A person's choice is never moved: a fixed end keeps its point, and a line with vertices is the person's
+  drawing, its ends following the vertices (`diagram_points.route_points`) and never spread. Both still count
+  as using their points, so an automatic line keeps clear of them in any order.
+- Automatic lines are placed in the order given (callers pass creation order, so adding a line moves no
+  earlier line except to keep clear of a fixed end), each choosing the nearest pair of free points (facing
+  sides first). A point already used by another line is taken only when no free pair is left, and then the
+  least used pair.
+- Lanes are the last resort: two lines ending on the same two points are shifted sideways in parallel, 16 units
+  apart, along the normal of the direction from the lower-ordered end, so opposite directions take opposite
+  sides. A line with vertices is never shifted.
 - A line whose box is missing from `boxes` is left out of the result.
 
 Dependencies: `diagram_points` (the points), `enums` (the point names).

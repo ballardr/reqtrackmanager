@@ -1,20 +1,18 @@
 /**
  * Module: components/TagAdminPanel
  *
- * The tag administration surface, one component for a project (Project Admin) and for the
- * organisation (Org Admin, for organisation-owned records): who may add a new tag, the vocabulary
- * (add, rename, colour, merge, reclassify, delete) and, per tag, its usage by kind of record.
+ * The tag administration surface, one component for a project (Project Admin) and for the organisation (Org Admin, for
+ * organisation-owned records): who may add a new tag, the vocabulary (add, rename, colour, merge, reclassify, delete)
+ * and, per tag, its usage by kind of record.
  *
  * Responsibilities:
  * - Show and set the mode: free, restricted, and for a project "follow the parent project".
- * - Maintain the vocabulary through `TagAdminApi`; a vocabulary inherited from a parent project
- *   is read-only here (adding a tag gives the project a list of its own). A new tag is made in a dialog
- *   (`TagCreateModal`) opened by the "New tag" button, never in fields drawn above the table.
- * - Show where a tag is used in a dialog (`TagUsageModal`) opened from the record count in the Used on
- *   column, and launch "reclassify" for a tag, optionally limited to one kind of record.
- * - Follow the style guide's confirmation tiers: delete is Tier 2 (type the tag's name) and names
- *   how many records lose it; merge and reclassify confirm with a count and, for reclassify, a
- *   preview before anything is written. Every change ends in a toast.
+ * - Maintain the vocabulary through `TagAdminApi`; a vocabulary inherited from a parent project is read-only (adding a
+ *   tag gives the project its own list). A new tag is made in `TagCreateModal` from the "New tag" button.
+ * - Show where a tag is used (`TagUsageModal`, from the record count in the Used on column) and launch "reclassify",
+ *   optionally limited to one kind of record.
+ * - Confirmation tiers: delete is Tier 2 (type the name) and names how many records lose the tag; merge and reclassify
+ *   confirm with a count and, for reclassify, a preview before anything is written. Every change ends in a toast.
  *
  * `api` is injectable for stories; the factories in `api/tags` bind it to a project or the organisation.
  */

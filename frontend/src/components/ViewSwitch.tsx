@@ -2,16 +2,14 @@
  * Module: components/ViewSwitch
  *
  * A compact switch between the views of one field (the Markdown editor's Visual, Write and Preview): a small group of
- * toolbar-size icon buttons, the chosen one pressed, each with a tooltip and an accessible name of the same text.
+ * toolbar-size icon buttons (`ToolbarButton`, so it reads as part of the field), the chosen one pressed, each with a
+ * tooltip and an accessible name of the same text.
  *
- * Responsibilities:
- * - Draw the group with the same buttons as an editor toolbar (`ToolbarButton`), so it reads as part of the field.
- * - Report the chosen view. The pressed button keeps the focus (it is not a toolbar action on the editor), so a view
- *   that replaces the focused editor does not end the use of the field (`ActiveFieldFrame` follows focus).
+ * Responsibilities: report the chosen view. The pressed button keeps the focus (it is not a toolbar action on the
+ * editor), so a view that replaces the focused editor does not end the use of the field (`ActiveFieldFrame` follows focus).
  *
- * Design decisions:
- * - Buttons with `aria-pressed`, not tabs: the views are alternative renderings of one value inside a form field,
- *   not panels of a page, and a tab strip is larger than the field's caption it sits beside.
+ * Design decision: buttons with `aria-pressed`, not tabs: the views are alternative renderings of one value inside a
+ * form field, not panels of a page, and a tab strip is larger than the caption it sits beside.
  *
  * Dependencies: `ToolbarButton`, lucide icons.
  */

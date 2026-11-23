@@ -1,17 +1,14 @@
 /**
  * Module: components/LayoutSettingGroup
  *
- * One group of a layout's settings (Page, Margins, Header, Footer, Look, …), drawn the same way in the Blocks view's
- * layout panel and in the text view's page setup dialog.
+ * One group of a layout's settings (Page, Margins, Header, Footer, Look ...), drawn the same way in the Blocks
+ * view's layout panel and the text view's page setup dialog. Arrangement only: the fields are the callers', and the
+ * group table and counts live in `utils/reportLayoutSettingGroups`.
  *
- * Responsibilities: every group is a closed-by-default `CollapsibleSection` (state remembered per person under
- * `layoutSettings:<group>`; Page and Margins start open on a layout not yet published beyond its first version) whose
- * bar says what it holds: an "N changed" pill, or the group's own `summary` where it always has a value (the page
- * size), with an accent edge when a setting is not at its default, and a danger "N problems" pill that also holds the
- * group open when the server reported a problem inside it.
- *
- * Design decisions: arrangement only. The fields inside are the callers' own, so the same group is the same set in both
- * places; the group table and the counts live in `utils/reportLayoutSettingGroups`.
+ * Each group is a closed-by-default `CollapsibleSection` (state remembered per person under
+ * `layoutSettings:<group>`; Page and Margins start open on a layout not yet published beyond its first version).
+ * Its bar shows an "N changed" pill or the group's own `summary`, an accent edge when a setting is not at its
+ * default, and a danger "N problems" pill that holds the group open when the server reported a problem inside it.
  */
 import type { ReactNode } from "react";
 

@@ -6,14 +6,14 @@
  *
  * Responsibilities:
  * - List the own place and every alias with its code, through `RecordCode`.
- * - Add further places (a category picker) and remove one, which retires its code: it is never reused and still finds
- *   the requirement. Adding and removing are placement, so they follow an approved requirement's lock no more than a tag.
- * - Make a place the requirement's own (swapping the two places and their codes) and make an alias independent: a new
- *   requirement that takes the alias code. Both confirm first; making independent cannot be undone, so it asks for the
- *   code to be typed, names what is copied and reports afterwards what could not be.
- * - Say nothing for a requirement with no aliases when the viewer cannot add one or the project's setting disallows it.
+ * - Add further places (a category picker) and remove one, which retires its code: never reused, and it still finds the
+ *   requirement. Placement follows an approved requirement's lock no more than a tag does.
+ * - Make a place the requirement's own (swapping the two places and codes) and make an alias independent (a new
+ *   requirement takes the alias code). Both confirm; making independent is irreversible, so the code is typed, what is
+ *   copied is named and what could not be copied is reported.
+ * - Render nothing for a requirement with no aliases when the viewer cannot add one or the setting disallows it.
  *
- * `api` is injectable for stories. `onChanged` lets the page reload what the change affects.
+ * `api` is injectable for stories; `onChanged` lets the page reload what the change affects.
  */
 import { ArrowUpRight, Repeat, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";

@@ -18,10 +18,7 @@ type Story = StoryObj<typeof FavouritesPage>;
 
 export const FavouritedProjects: Story = {
   beforeEach: () => {
-    // The server now does the favourite/search filtering (`favorite_only`
-    // on `GET /projects`) rather than the page fetching every project and
-    // filtering client-side — the mock only ever needs to return what's
-    // already favourited.
+    // The server filters (`favorite_only` on `GET /projects`), so the mock returns only favourited projects.
     spyOn(api, "getPage").mockResolvedValue({
       items: [buildProjectListItem({ id: "p1", name: "Atlas Platform", is_favorite: true })],
       total: 1,
@@ -50,10 +47,7 @@ export const Unfavorite: Story = {
   },
 };
 
-/** A failed unfavorite call now surfaces an error toast (sixth-pass audit —
- * this used to be an unhandled rejection with no feedback at all, since the
- * card disappearing from the grid is the only success signal and isn't
- * available to fall back on when the request itself fails). */
+/** A failed unfavourite call shows an error toast; the card leaving the grid is the only success signal. */
 export const UnfavoriteErrorShowsToast: Story = {
   beforeEach: () => {
     spyOn(api, "getPage").mockResolvedValue({
@@ -112,10 +106,7 @@ export const Empty: Story = {
   },
 };
 
-/** `Pattern: view toggle` — `FavouritesPage`
- * wired onto the same `useViewMode`/`ViewToggle` `ProjectListPage.tsx`/
- * `RequirementsPage.tsx` already use, replacing its previous fixed
- * CSS-grid-only layout. */
+/** `Pattern: view toggle`: the page uses the shared `useViewMode`/`ViewToggle`. */
 export const ListView: Story = {
   beforeEach: () => {
     spyOn(api, "getPage").mockResolvedValue({
@@ -131,8 +122,7 @@ export const ListView: Story = {
   },
 };
 
-// Hierarchical projects (docs/decisions.md) — same visibility-boundary-
-// filtered fields as ProjectListPage, easy to forget on this page too.
+// Hierarchical projects (docs/decisions.md): the same visibility-boundary-filtered fields as ProjectListPage.
 export const HierarchyLabelsShown: Story = {
   beforeEach: () => {
     spyOn(api, "getPage").mockResolvedValue({

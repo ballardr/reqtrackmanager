@@ -909,7 +909,7 @@ def import_project(world: World, bundle: bytes, name: str) -> dict:
 
 
 def with_json_edit(bundle: bytes, member: str, edit) -> bytes:
-    """A copy of `bundle` whose `member` JSON document has been changed by `edit(parsed)`."""
+    """A copy of `bundle` whose `member` JSON document is modified by `edit(parsed)`."""
     import json
     import zipfile
 

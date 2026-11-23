@@ -7,7 +7,7 @@ import { API_BASE_URL, setUpOrg } from "../modules/stakeholders/helpers";
 installCleanupHook();
 
 /**
- * Job to be done: the display fixes of the fourth review show up on real pages. A versioned record shows
+ * Job to be done: record pages and lists display correctly on real data. A versioned record shows
  * a labelled "Version 1" and no bare "v1"; the aside is one card whose "Links" appears once, wide and
  * stacked; the Pain Points list opens on open items and a link naming a status shows that slice; the
  * Score column carries its settings behind a gear that never sorts; a checkbox's text sits beside its box;

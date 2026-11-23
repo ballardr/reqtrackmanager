@@ -115,12 +115,8 @@ export const AddEvidence: Story = {
   },
 };
 
-/** Attaching file(s) at evidence
- * creation time itself, rather than saving first and attaching afterwards
- * from the newly-created record's own Files section. One staged file is
- * removed before save (proving the local staging list, not just the upload
- * call), and the remaining file is uploaded immediately after the evidence
- * record is created — one user action, not two. */
+/** Files are attached at evidence creation, not after saving. One staged file is removed before save (proving the local
+ * staging list, not only the upload call) and the remaining file uploads as soon as the evidence record is created. */
 export const AddEvidenceWithFileAttachment: Story = {
   beforeEach: () => mockApis([]),
   play: async ({ canvasElement }) => {

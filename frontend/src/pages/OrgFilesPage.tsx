@@ -1,22 +1,12 @@
 /**
  * Module: pages/OrgFilesPage
  *
- * The organisation's Files page: the files of every project the person can open, in one filterable list.
- *
- * Responsibilities:
- * - List the files of the person's projects in the organisation (`POST /orgs/{id}/files/search`), each row naming
- *   its project, with the same filters as the project page (`useFileFilters`, `FileFilterFields`) plus a project
- *   filter and a switch for archived projects. Every filter lives in the URL.
- * - Say when the server cut the list at its project limit.
- * - A second tab lists the organisation's shared resources (`useOrgResources`): every member sees them, and the
- *   upload and delete controls appear only where the server says the person may manage them.
- *
- * Design decisions:
- * - Shows only what the server returns for the person: it covers the projects they hold a role in, never every
- *   project of the organisation, so an administrator without a project role sees no files from that project.
- * - Project files are read/browse only, like the project page; the table is the shared `FilesTable` with a Project column.
- * - Shared resources are uploaded here rather than in organisation administration, beside the list people look in;
- *   the open tab is in the URL (`tab`), and nothing of it is read until it is open.
+ * The organisation's Files page: the files of every project the person can open, in one filterable list. It lists them
+ * (`POST /orgs/{id}/files/search`) with their project, the project page's filters (`useFileFilters`, `FileFilterFields`) plus a project
+ * filter and an archived switch (all in the URL), and says when the server cut the list at its project limit. A second tab lists the
+ * organisation's shared resources (`useOrgResources`); upload and delete appear only where the server allows. Only projects the person
+ * holds a role in are covered, so an administrator without a project role sees none of its files. Project files are browse-only in the shared
+ * `FilesTable`; the open tab is in the URL (`tab`) and read only once open.
  */
 import { Upload } from "lucide-react";
 import { useRef, useState } from "react";

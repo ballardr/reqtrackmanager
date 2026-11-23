@@ -1,39 +1,32 @@
 """
 Module: services.project_files
 
-The rows of a project's Files page (`GET/POST /projects/{id}/files`) and of the organisation's Files page
+The rows of a project's Files page (`GET/POST /projects/{id}/files`) and the organisation's Files page
 (`POST /orgs/{id}/files/search`), and the filters that narrow them.
 
-Responsibilities:
-- Gather the files a project owns from each place they hang: requirement attachments, action attachments, comment
-  attachments on a requirement, and the project's report image library.
-- Apply the page's filters (file name, source, file type, uploader, upload window) in SQL, so a narrowed list never
-  loads the rest of the project's files.
-- Classify a file by its content type into the page's coarse file types (`image`, `document`, `other`).
-- Resolve the projects an organisation-wide list may read for a caller (`organization_file_projects`) and read
-  their files in one pass (`organization_file_rows`), labelling each row with its project.
+Responsibilities: gather the files a project owns from each place they hang (requirement attachments, action
+attachments, requirement comment attachments, the report image library); apply the filters (name, source,
+file type, uploader, upload window) in SQL, so a narrowed list never loads the rest; classify by content type
+(`image`, `document`, `other`); resolve the projects an organisation-wide list may read
+(`organization_file_projects`) and read their files in one pass (`organization_file_rows`), labelled by project.
 
 Design decisions:
-- **Only the projects asked for.** `file_rows` reads the joins of exactly the project ids it is given, each filtering
-  on those ids, so a file of any other project can never appear. A project's own page passes one id (widening to
-  related projects is `ProjectScope.collect`'s job); the organisation page passes the ids the caller may open, so the
-  number of statements does not grow with the number of projects.
-- **The organisation list is never a blanket organisation read.** It covers only projects the caller holds a genuine
-  role in (`accessible_project_ids`) and the credential may reach (`session_may_reach_project`): exactly the test a
-  project's own Files page and a file download apply (`require_project_view`, `routers.files`), so the list is the union
-  of the pages the caller can already open. No per-project permission lookup is made, which keeps the statement count
-  flat. Archived projects are left out unless asked for. Organisation shared resources have their own list and are not
-  repeated.
-- **Library pictures belong to the project through `FileAsset.project_id`**, are listed once each, and carry no
-  record. The confidential mark does not hide them from the project's members: it only stops a report printing
-  them (`models.file`), the same rule the library itself applies.
-- **The file name typed in the search is customer text.** It reaches this module as a parameter of a POST body and is
-  used only as a bound `ILIKE` pattern (wildcards escaped); it is never logged, audited or put in an exception.
-- **The upload window is a pair of UTC instants** (`uploaded_from` inclusive, `uploaded_before` exclusive) that the
-  browser derives from the person's local days, because the server cannot know the person's timezone from the
-  calendar day alone.
+- `file_rows` reads the joins of exactly the project ids it is given, each filtering on those ids, so another
+  project's file never appears. A project page passes one id (widening is `ProjectScope.collect`'s job); the
+  organisation page passes the ids the caller may open, so statements do not grow with the project count.
+- The organisation list is never a blanket organisation read: only projects where the caller holds a genuine
+  role (`accessible_project_ids`) and the credential may reach (`session_may_reach_project`), the test a
+  project's Files page and a download apply, so the list is the union of pages the caller can open. No
+  per-project permission lookup keeps the statement count flat. Archived projects are omitted unless asked for;
+  organisation shared resources have their own list.
+- Library pictures belong to the project through `FileAsset.project_id`, are listed once and carry no record.
+  The confidential mark only stops a report printing them (`models.file`); it does not hide them from members.
+- The file name typed in the search is customer text: it arrives in a POST body, is used only as a bound
+  `ILIKE` pattern (wildcards escaped), and is never logged, audited or put in an exception.
+- The upload window is a pair of UTC instants (`uploaded_from` inclusive, `uploaded_before` exclusive) derived
+  by the browser from the person's local days, since the server cannot know their timezone.
 
-Dependencies: SQLAlchemy models for the attachment link tables and `schemas.file` for the row shape.
+Dependencies: SQLAlchemy models for the attachment link tables, `schemas.file`.
 """
 
 from __future__ import annotations

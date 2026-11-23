@@ -1,65 +1,19 @@
 /**
  * Module: modules/compliance/OrgComplianceStandardsPanel
  *
- * The By standard tab of the Standards page (`StandardsTabs.tsx`; `ComplianceStatusPage.tsx` hosts it).
- *
- * §22's "Organisation Compliance View" table — the org-wide "Standard |
- * Projects | Compliant | Non-Compliant | In Progress" summary, grouped
- * client-side (mirroring `api.ts::buildRequirementTree`'s
- * precedent for client-side aggregation over a flat backend listing) from
- * `GET .../project-compliance` (`listOrgProjectComplianceStatus`) —
- * `ProjectComplianceStatusOut` already carries everything one row needs
- * (§20's per-assignment overall state/percentage/counts), so no new
- * backend shape was needed for the grouping itself, only the filters.
- *
- * Supports every filter §22 names explicitly (standard, standard version,
- * project, compliance state) and drills down past the aggregate row to
- * the individual projects behind it, then further to that project's own
- * Compliance page — which already drills down to individual requirements
- * (§21's own drill-down chain) — rather than rebuilding a
- * parallel requirement-level drill-down at org scope.
- *
- * A "Group by" pivot (standard, the default shape, or project) works over
- * the exact same `statusRows` — the "way to view all projects for a
- * compliance manager", extending this tab rather than adding a fourth
- * widget shape elsewhere. `groupBy`/`stateFilter` also read an
- * initial value off the URL (`?groupBy=`/`?state=`) so `OrgComplianceWidgets.tsx`'s
- * top-grid tiles can link straight into a pre-filtered, pre-pivoted view
- * rather than landing on the unfiltered default and asking the user to
- * re-apply the same filter the tile already counted.
- *
- * The expanded row: the expand/
- * collapse control does not render as a separately bordered `.btn` chip
- * — it's `.disclosure-toggle` (`theme.css`), a borderless row-filling
- * button, the third instance of this fix after `StandardNavSection.tsx`
- * and `EntitySwitcher.tsx`; its `▾`/`▸` text
- * glyphs are also replaced with fixed-size `ChevronDown`/`ChevronRight`
- * icons, matching `StandardNavSection.tsx`'s icon choice. The expanded child
- * list is indented under its parent row using `RequirementTree.tsx`'s own
- * nested-list convention (`marginLeft`/`borderLeft`/`paddingLeft`) so it
- * reads as a tree rather than a flush-left list. The default
- * (group-by-standard) view's expanded row groups its projects by
- * `standard_version_id` first, rendering one sub-heading per version with
- * that version's projects nested a level deeper underneath — so a user no
- * longer has to read every row's own version suffix to see which versions
- * of a standard are actually in use. This is additive to the "Group by"
- * pivot, not a third option — group-by-project's expanded row is
- * unaffected (it lists one row per standard already, which has no further
- * version dimension to add: a project's own assignment of a standard has
- * exactly one, unambiguous version). Each version sub-group is itself
- * collapsible when a standard has more than one — but when it has only
- * one, that sub-group renders pre-expanded with no toggle at all, since a
- * lone version behind an already-explicit "expand this standard" click has
- * nothing left to disambiguate (Decided by: User, live follow-up).
- *
- * An "Export" trigger (`ReportExportButton`, the same shape
- * `OrgComplianceWidgets.tsx`'s own report download uses) above the table,
- * scoped to this panel's current Standard/Standard version/Project filters
- * — `complianceApi.downloadOrgComplianceReport` passes them through as
- * query params so the downloaded PDF/CSV matches what's on screen, not an
- * unfiltered organisation-wide dump. `groupBy`/`stateFilter` have no
- * report-side equivalent and aren't passed through — see this panel's own
- * `downloadReport` for why.
+ * The By standard tab of the Standards page (`StandardsTabs.tsx`, hosted by `ComplianceStatusPage.tsx`): §22's "Organisation
+ * Compliance View" (Standard | Projects | Compliant | Non-Compliant | In Progress), grouped client-side from
+ * `GET .../project-compliance` (`listOrgProjectComplianceStatus`), whose `ProjectComplianceStatusOut` carries each row's
+ * figures (§20). It supports every §22 filter (standard, version, project, state) and drills down to the projects behind an
+ * aggregate row and then to that project's Compliance page (§21), not a parallel requirement-level drill-down.
+ * - A "Group by" pivot (standard by default, or project) works over the same `statusRows`; `groupBy` and `stateFilter` read
+ *   `?groupBy=` and `?state=` so `OrgComplianceWidgets.tsx`'s tiles can link into a pre-filtered, pre-pivoted view.
+ * - The expand control is `.disclosure-toggle` (`theme.css`), a borderless row-filling button with fixed-size
+ *   `ChevronDown`/`ChevronRight` icons; the expanded list is indented as in `RequirementTree.tsx`. In the group-by-standard
+ *   view a row groups its projects by `standard_version_id`, one sub-heading per version; a lone version renders pre-expanded
+ *   with no toggle. Group-by-project rows list one row per standard (a project assigns exactly one version).
+ * - Export (`ReportExportButton`) passes the Standard, Standard version and Project filters to
+ *   `complianceApi.downloadOrgComplianceReport` so the file matches the screen; `groupBy` and `stateFilter` are not passed.
  */
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
@@ -96,10 +50,8 @@ interface Group {
   /** Full row label, e.g. "ISO-27001 — ISO 27001" for a standard group, or
    * just the project name for a project group. */
   displayLabel: string;
-  /** Shorter form used in the expand/collapse control's accessible name —
-   * kept distinct from `displayLabel` so the default (group-by-standard)
-   * shape's aria-label text is unchanged from before this pivot existed
-   * (existing Playwright coverage asserts on it verbatim). */
+  /** Shorter form used in the expand/collapse control's accessible name, distinct from `displayLabel` so the group-by-standard
+   * shape keeps the aria-label text that existing Playwright coverage asserts on verbatim. */
   ariaLabel: string;
   rows: StatusRow[];
 }
@@ -131,11 +83,8 @@ interface VersionGroup {
   rows: StatusRow[];
 }
 
-/** 39d: the second nesting level inside a group-by-standard row's expanded
- * project list — one sub-group per `standard_version_id`, so a standard
- * with projects on more than one version reads as Standard -> Version ->
- * Project rather than a flat list of projects each carrying their own
- * version suffix. */
+/** The second nesting level inside a group-by-standard row's expanded project list: one sub-group per `standard_version_id`,
+ * so a standard with projects on several versions reads Standard -> Version -> Project. */
 function groupByVersion(rows: StatusRow[]): VersionGroup[] {
   const byVersion = new Map<string, VersionGroup>();
   for (const row of rows) {
@@ -243,11 +192,8 @@ export function OrgComplianceStandardsPanel({ frame }: { frame: ComplianceStatus
   async function downloadReport(kind: complianceApi.ComplianceReportKind) {
     if (!exportOrgId) return;
     try {
-      // Scoped to this panel's own current filters — "Export"
-      // means "export what I'm looking at," not the whole organisation.
-      // `groupBy`/`stateFilter` have no report-side equivalent (the
-      // backend's assignment-row filter set mirrors this panel's
-      // filters only) and are deliberately not passed through.
+      // Scoped to the panel's current filters: Export means what is on screen. `groupBy` and `stateFilter` have no report
+      // equivalent (the server's assignment-row filters mirror this panel's filters only) and are not passed.
       const blob = await complianceApi.downloadOrgComplianceReport(exportOrgId, kind, {
         standardId: standardFilter || undefined,
         standardVersionId: versionFilter || undefined,
@@ -268,10 +214,8 @@ export function OrgComplianceStandardsPanel({ frame }: { frame: ComplianceStatus
           value={groupBy}
           onChange={(v) => {
               setGroupBy(v === "standard" ? "" : v);
-              // Different group keys (project ids vs standard ids) can
-              // coincidentally overlap in value; simplest to just start
-              // collapsed again rather than risk a stale expand carrying
-              // over onto an unrelated group under the new pivot.
+              // Group keys (project ids versus standard ids) can coincide in value, so the new pivot starts collapsed rather than
+              // carrying a stale expansion onto an unrelated group.
               setExpandedGroupKeys(new Set());
             }}
           options={[{ value: "standard", label: "Standard" }, { value: "project", label: "Project" }]}
@@ -372,10 +316,8 @@ export function OrgComplianceStandardsPanel({ frame }: { frame: ComplianceStatus
                             {groupBy === "standard" ? (
                               (() => {
                                 const versionGroups = groupByVersion(group.rows);
-                                // A lone version behind an already-explicit "expand this
-                                // standard" click has nothing left to disambiguate — render it
-                                // pre-expanded with no toggle of its own, rather than making the
-                                // user click twice to see the one project list that exists.
+                                // A lone version behind an explicit "expand this standard" click has nothing to disambiguate,
+                                // so it renders pre-expanded with no toggle.
                                 const singleVersion = versionGroups.length === 1;
                                 return (
                                   <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>

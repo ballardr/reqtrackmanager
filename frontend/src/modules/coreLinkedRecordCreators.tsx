@@ -1,10 +1,9 @@
 /**
  * Module: modules/coreLinkedRecordCreators
  *
- * The "Create new" dialogs of the core record types (requirement, action, change request) for the Links panel. A
- * module declares its own types' dialogs on `TierAModuleDefinition.linkedRecordCreators`; core owns these three, so they
- * are listed here, which `modules/linkedRecordCreators` merges with the modules'. Each dialog is loaded on first use, so
- * the shared Links panel does not pull the three large forms into every page that shows it.
+ * The "Create new" dialogs of the core record types (requirement, action, change request) for the Links panel.
+ * `modules/linkedRecordCreators` merges them with the modules' own (`TierAModuleDefinition.linkedRecordCreators`).
+ * Each dialog loads on first use, so the shared Links panel does not pull three large forms into every page.
  */
 import { createElement, lazy, Suspense } from "react";
 

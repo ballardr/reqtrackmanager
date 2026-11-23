@@ -1,19 +1,10 @@
 """
 Module: modules.risk_management.report_starters
 
-The parts of the platform's starter report layouts (Business Requirements Document, Engineering Specification,
-Review Package) that draw on Risks.
-
-Responsibilities:
-- Declare this module's `ReportStarterSection`s, which `ModuleDefinition.report_starter_sections` registers so the core
-  starters (`services.report_starters`) name no module.
-
-Design decisions:
-- Each part is plain layout blocks over the report field registry and the widget catalogue. The core wraps a
-  part in an `if` on this module, so a project where the module is off leaves it out.
-- A part opens with its own heading; the core starters hold only the parts about core records.
-
-Dependencies: `modules.registry` (`ReportStarterSection`), `services.report_starter_blocks`.
+The parts of the starter report layouts (Business Requirements Document,
+Engineering Specification, Review Package) that draw on Risks, registered through
+`ModuleDefinition.report_starter_sections` so core names no module. Each part is
+plain layout blocks opening with its own heading; the core wraps it in an `if`.
 """
 
 from __future__ import annotations

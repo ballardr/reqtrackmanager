@@ -1,22 +1,12 @@
 """
 Module: modules.stakeholders.engagement_export
 
-The Engagement part of this module's project bundle export/import;
-`module.py` composes it with the Persona, Stakeholder, Need and relationship
-halves, and runs it last because an engagement links to all of them. An
-Engagement is project-scoped, so there is no org-level half.
-
-Design decisions:
-- Same carry-over rules as the other halves: current content only, no comments;
-  cross-references use portable keys, never database ids: a Stakeholder or
-  Persona is its name and scope, an audience group is its name path, a user is an
-  email, and a Pain Point / Need / Open Question is the label its owning module's
-  summary provider gives it. A reference the target lacks, or that is ambiguous,
-  is skipped with a warning rather than guessed at.
-- The research extras (prompts, anonymous participants, findings with their
-  outcomes) travel whenever rows exist, whatever the sub-component state, so a
-  bundle stays a full backup.
-- Notes and quotes make the bundle Confidential, like the Stakeholder half.
+The Engagement part of this module's project bundle export/import, composed by
+`module.py` and run last because an engagement links to the other records.
+Current content only, no comments; cross-references use portable keys (name and
+scope, group name path, email, summary label) and an absent or ambiguous one is
+skipped with a warning. Research extras travel whenever rows exist; notes and
+quotes make the bundle Confidential.
 """
 
 from __future__ import annotations

@@ -1,32 +1,25 @@
 """
 Module: services.report_snippets
 
-Report snippets: list the ones a scope can use and apply one to a draft layout tree.
+Report snippets: list those a scope can use and apply one to a draft layout tree.
 
 Responsibilities:
-- `visible_snippets`: the snippets whose module is on for the scope, each with the choices its parameters offer there, then the
-  author-saved ones the scope reaches (`services.report_snippet_store`; they have no parameters and insert like any other).
-- `apply_snippet`: build the tree a snippet produces when inserted into a draft, and say what changed. Nothing is stored.
+- `visible_snippets`: snippets whose module is on for the scope, with the choices their parameters offer there, then the
+  saved ones the scope reaches (`report_snippet_store`). `apply_snippet`: build the tree an insertion produces and say what
+  changed; nothing is stored.
 
 Design decisions:
-- **A snippet is copied in, never linked.** The result is an ordinary tree; a later change to a snippet never alters a
-  layout, and the designer decides whether to keep the result.
-- **Nothing is stored or logged.** The designer holds the draft; the server only builds the tree and validates it, the
-  posture of the validate endpoint. Parameter values and text are never logged.
-- **Parameters fill named paths, not text tokens**: the fragment is a valid tree from the start, and a value cannot land
-  in a field it was not declared for. A picture is checked against the layout owner's library (an organisation layout
-  cannot take a project's picture, whoever authored the snippet) and a record type against what the scope can report.
-- **The layout's other problems are not the snippet's.** A draft is often mid-edit; only problems inside what the
-  snippet added, or that it caused (the page-style or block cap), refuse the insertion. The count of the layout's own
-  problems is returned so the designer can say so.
-- **Root additions reuse, rename or refuse, never overwrite.** A page style identical to one the layout has is reused;
-  a different one with the same name is renamed (`Cover 2`) and the inserted sections follow; a clashing variable is
-  refused, because the text that reads it cannot be rewritten safely.
-- **The blocks go where the designer's Add block puts them**: a list of blocks (`nodes`, or a container's `children` /
-  `else_children`) and an index in it.
+- A snippet is copied in, never linked; a later change never alters a layout. Nothing is stored or logged (the designer
+  holds the draft); parameter values and text are never logged.
+- Parameters fill named paths, not text tokens, so a value cannot land in an undeclared field. A picture is checked
+  against the layout owner's library and a record type against what the scope can report.
+- Only problems inside what the snippet added, or that it caused (page-style or block cap), refuse an insertion; the
+  count of the layout's own problems is returned, since a draft is often mid-edit.
+- Root additions reuse, rename or refuse, never overwrite: an identical page style is reused, a different one renamed
+  (`Cover 2`), a clashing variable refused (its readers cannot be rewritten safely).
+- Blocks go where the designer's Add block puts them: a list (`nodes`, `children` or `else_children`) and an index.
 
-Dependencies: `modules.registry` (snippets, modules), `services.report_layout_tree` (validation),
-`services.report_layout_designer` (record types a scope can report), `services.report_images` (library rule).
+Dependencies: `modules.registry`, `report_layout_tree`, `report_layout_designer`, `report_images`.
 """
 
 from __future__ import annotations

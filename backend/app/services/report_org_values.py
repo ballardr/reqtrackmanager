@@ -4,21 +4,17 @@ Module: services.report_org_values
 The organisation's report look, as a custom layout may read it.
 
 Responsibilities:
-- `ORG_VALUES`: the closed set of values a layout reads as `{{org.<key>}}` (text) or `org.<key>` in an `if` (a condition),
-  with each one's kind, so the tree validator, the text format and the evaluator agree on the names.
-- `report_org_values`: the values for one organisation, as the run's plain Python values.
-- `report_accent_hex`: the accent colour reports use for one organisation.
-- `ORG_LOGO_FILE`: the reserved image `file` that stands for the organisation's logo.
+- `ORG_VALUES`: the closed set a layout reads as `{{org.<key>}}` or `org.<key>` in an `if`, with each kind, so the tree
+  validator, text format and evaluator agree; `report_org_values` (one organisation's values); `report_accent_hex`;
+  `ORG_LOGO_FILE` (the reserved image `file` for the logo).
 
 Design decisions:
-- These are organisation report settings, owned by core, not module data, so the keys are a fixed documented set and not
-  a registry. A layout that names any other key is a checked problem at save time.
-- A custom layout is never forced to print any of this: it reads a value only where it asks (`{{org.footer_text}}`,
-  `if org.include_cover_page`, the logo image). Built-in reports apply the same values automatically
-  (`services.report_document.resolve_branding`).
-- A value is text or a boolean only. It never becomes markup (the placeholder rule in `report_layout_eval`).
+- These are core organisation settings, so the keys are a fixed set, not a registry; any other key is a save-time problem.
+- A layout is never forced to print any of this; built-in reports apply the values automatically
+  (`report_document.resolve_branding`).
+- A value is text or a boolean and never becomes markup (the placeholder rule in `report_layout_eval`).
 
-Dependencies: `services.branding` (the platform accent), `models.organization`.
+Dependencies: `services.branding`, `models.organization`.
 """
 
 from __future__ import annotations

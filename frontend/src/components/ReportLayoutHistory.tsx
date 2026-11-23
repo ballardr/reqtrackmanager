@@ -3,17 +3,16 @@
  *
  * The designer's History tab: every saved version of a layout and a line-by-line comparison of any two.
  *
- * Responsibilities:
- * - List versions newest first with their note and time.
- * - Compare two versions through their text views (`ReportLayoutApi.formatTree`, so the comparison reads the way
+ * - Lists versions newest first with their note and time.
+ * - Compares two versions through their text views (`ReportLayoutApi.formatTree`, so the comparison reads the way
  *   the author writes), marking added and removed lines with a sign as well as a colour.
- * - For an editable layout, put an old version's text in the editor (`onUseVersion`); nothing is published until the
- *   author saves a new version, so history is never rewritten.
- * - While the layout has a shared draft, show it as a Draft row above the published versions (`LayoutDraftNotice`), so unpublished
- *   work is never mistaken for a version.
+ * - For an editable layout, puts an old version's text in the editor (`onUseVersion`); nothing is published until
+ *   the author saves a new version, so history is never rewritten.
+ * - While the layout has a shared draft, shows it as a Draft row above the published versions
+ *   (`LayoutDraftNotice`), so unpublished work is never mistaken for a version.
  *
- * Design decisions: the diff is computed in the browser (`utils/reportLayoutText.diffLines`) from two ordinary
- * reads, so no comparison endpoint is needed; versions are immutable, so a loaded text is cached by number.
+ * The diff is computed in the browser (`utils/reportLayoutText.diffLines`) from two ordinary reads, so no comparison
+ * endpoint is needed; versions are immutable, so a loaded text is cached by number.
  */
 import { useCallback, useRef, useState } from "react";
 

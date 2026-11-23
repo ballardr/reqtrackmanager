@@ -90,21 +90,16 @@ function SliceTooltip({
 }
 
 /**
- * Themed donut/pie chart for dashboard summaries (e.g. requirements by
- * status, change requests by outcome), built on Recharts rather than a
- * bespoke CSS conic-gradient — chosen (UX review) so future custom-dashboard
- * widgets have a real charting library's composable API to build on instead
- * of a one-off. Colours come from the same theme custom properties the
- * previous hand-rolled `DonutChart` used, so it still matches light/dark.
+ * Themed donut/pie chart for dashboard summaries (e.g. requirements by status, change requests by outcome), built on
+ * Recharts. Colours come from the theme custom properties, so it matches light and dark.
  *
- * By default the legend has one row per segment. A chart that folds several
- * items into one segment (the overview's "Other" slice of record types) passes
- * `legend` instead: one row per item, each pointing at the segment it is part of
- * (`segment`), so the exact numbers stay readable and colour is never the only cue.
+ * By default the legend has one row per segment. A chart that folds several items into one segment (the overview's
+ * "Other" slice of record types) passes `legend` instead: one row per item, each pointing at its segment (`segment`),
+ * so the exact numbers stay readable and colour is never the only cue.
  *
- * Hovering a slice shows what it is, its value and its share of the total in a small box that sits beside the
- * pointer and follows it without animating; a slice that stands for several legend rows (the folded "Other")
- * lists them. The legend rows carry the same facts for keyboard and touch.
+ * Hovering a slice shows what it is, its value and its share of the total in a box beside the pointer that follows it
+ * without animating; a slice standing for several legend rows (the folded "Other") lists them. The legend rows carry the
+ * same facts for keyboard and touch.
  *
  * Props:
  * - `segments`: `[label, value]` per slice.
@@ -112,8 +107,7 @@ function SliceTooltip({
  * - `onSegmentClick`: fired for a slice or a default legend row.
  * - `colors`: per-slice colours replacing the default palette.
  * - `legend`: custom legend rows; `onClick` makes a row a button.
- * - `legendLimit`: rows shown under the ring before the rest open from a "+N more" popover (default 5), so a
- *   chart with many items keeps the card's height.
+ * - `legendLimit`: rows shown under the ring before the rest open from a "+N more" popover (default 5).
  */
 export function StatusPieChart({
   segments, title, onSegmentClick, colors = PALETTE, legend, legendLimit = DEFAULT_LEGEND_LIMIT,

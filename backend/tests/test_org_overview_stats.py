@@ -148,8 +148,8 @@ def test_plain_member_file_size_scoped_to_org_resources_and_accessible_attachmen
 
 def test_archived_projects_and_requirements_are_not_counted(client, admin_token, org_id):
     """Project/requirement counts cover active items only, matching the
-    lists they summarise (2026-10-04): a member's "Projects" figure used to
-    include archived projects their own project list hides."""
+    lists they summarise: a member's "Projects" figure excludes archived projects
+    their own project list hides."""
     active = create_project(client, admin_token, org_id, name="Overview Active Project")
     archived = create_project(client, admin_token, org_id, name="Overview Archived Project")
     first_requirement = _create_requirement(client, admin_token, active["id"])

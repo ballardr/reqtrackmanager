@@ -1,15 +1,12 @@
 """
 Module: services.type_vocabulary_routes
 
-The shared bodies of the three project-side endpoints every typed vocabulary
-(Pain Point, Persona, Stakeholder, Risk types) offers for organisation defaults:
-"delete" a type (hides an organisation default, deletes a project-local type),
-list the hidden defaults, and restore them. A module's router keeps its own
-paths, permission dependency and audit entity name, and calls these for the body,
-so the hide-and-restore behaviour cannot drift between vocabularies.
+The shared bodies of the three project-side endpoints every typed vocabulary offers for organisation defaults: "delete" a
+type (hides an organisation default, deletes a project-local type), list hidden defaults, restore them. A module's router
+keeps its own paths, permission dependency and audit entity name, so hide and restore cannot drift between vocabularies.
 
-Takes any `vocabulary` with `remove_type`, `list_hidden` and `restore_hidden`
-(`TypeVocabulary`, or the Pain Point adapter in `modules.context_strategy.service`).
+Takes any `vocabulary` with `remove_type`, `list_hidden` and `restore_hidden` (`TypeVocabulary`, or the Pain Point adapter
+in `modules.context_strategy.service`).
 """
 
 from __future__ import annotations

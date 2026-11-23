@@ -11,8 +11,7 @@
 # Exit status: 0 success, 1 failed (see status.json in the `reqtrack_backup_status` volume), 75 another
 # backup is already running. `db` and `storage` are started on demand; nothing else needs to be up.
 #
-# Sets written here are restic snapshots. Until the matching restore tool lands, scripts/restore.sh restores
-# only the legacy files scripts/backup.sh writes; keep using scripts/backup.sh for those.
+# Sets written here are restic snapshots; scripts/restore.sh restores only the files scripts/backup.sh writes.
 set -euo pipefail
 
 # The Compose project lives in deployments/full, with its .env beside it.

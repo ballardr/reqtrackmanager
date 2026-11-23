@@ -155,10 +155,8 @@ def test_child_project_falls_back_to_parent_action_types_when_empty(client, admi
     child = create_project(
         client, admin_token, org_id, "Fallback Child", parent_project_id=parent["id"],
     )
-    # A project created with a parent starts with zero of its own, so the
-    # *effective* list (what list_action_types always returns) falls back
-    # to the parent's — Review/Test, the same defaults every root project
-    # is seeded with.
+    # A child with no action types of its own lists its parent's (the root
+    # defaults, Review/Test).
     assert [t["name"] for t in _action_types(client, admin_token, child["id"])] == ["Review", "Test"]
 
 

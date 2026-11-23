@@ -1,14 +1,10 @@
 """
 Tests for the agent skill (`skill/reqtrack-mcp/`) and its build/drift tooling.
 
-These guard that the skill cannot silently rot: every core tool the server
-registers must be named in the hand-written SKILL.md, and the generated
-`references/core-tools.md` must match the live tool list. Module tools are
-checked on the backend side (`backend/tests/test_mcp_skill_reference.py`),
-because only the backend can build the module manifest. If a test here
-fails, regenerate with `python scripts/generate_skill_reference.py` and update
-SKILL.md's workflow guidance for the new/changed tool (root CLAUDE.md:
-a new or changed MCP tool updates `mcp-server/skill/` in the same change).
+These guard that the skill cannot silently rot: every core tool the server registers must be named in SKILL.md, and
+the generated `references/core-tools.md` must match the live tool list. Module tools are checked on the backend side
+(`backend/tests/test_mcp_skill_reference.py`), because only the backend can build the module manifest. On failure,
+regenerate with `python scripts/generate_skill_reference.py` and update SKILL.md for the new or changed tool.
 
 No running backend is needed.
 """

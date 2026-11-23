@@ -4,32 +4,18 @@ Revision ID: 0027
 Revises: 0026
 Create Date: 2026-09-05
 
-Adds the three tables backing the Compliance Module's project-specific
-assessment layer (§7-§11, §16, §20,
-§25, §26) — built on top of the
-organisation-level standard definitions, never modifying them:
+Adds the three tables of the project assessment layer (§7-§11, §16, §20, §25, §26), built on the organisation-level
+standard definitions without modifying them:
 
-- `project_compliances` (`app.modules.compliance.models.ProjectCompliance`)
-  — a project's assignment to one specific, always-published
+- `project_compliances` (`ProjectCompliance`): a project's assignment to one published
   `compliance_standard_versions` row (§7).
-- `project_compliance_requirements` (`ProjectComplianceRequirement`) — one
-  project's per-requirement assessment (applicability, compliance status,
-  justification, notes, assessment/applicability actor+timestamp pairs,
-  and an `approval_state` column used by the approval workflow) (§8-§10, §16, §20).
-- `compliance_required_action_assessments`
-  (`ComplianceRequiredActionAssessment`) — one project's per-required-action
-  assessment (assignee, due date, completion overlay) (§6, §25).
+- `project_compliance_requirements` (`ProjectComplianceRequirement`): one project's per-requirement assessment
+  (applicability, status, justification, notes, actor and timestamp pairs, `approval_state`) (§8-§10, §16, §20).
+- `compliance_required_action_assessments` (`ComplianceRequiredActionAssessment`): one project's per-required-action
+  assessment (assignee, due date, completion) (§6, §25).
 
-All three tables start empty: rows are only ever created by the API when a
-`ProjectCompliance` is assigned (which materialises every requirement's and
-required action's assessment row for that assignment in the same
-transaction), never by this migration. Table order below follows the FK
-dependency chain: `project_compliances` first (references `projects` and
-`compliance_standard_versions`, both already existing), then
-`project_compliance_requirements` (references `project_compliances` and
-`compliance_requirements`), then `compliance_required_action_assessments`
-(references `project_compliance_requirements` and
-`compliance_required_actions`).
+The tables start empty: the API creates rows when a `ProjectCompliance` is assigned, materialising every requirement's
+and required action's assessment row in the same transaction. Creation order follows the foreign keys.
 """
 
 from collections.abc import Sequence

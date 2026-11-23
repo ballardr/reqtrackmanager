@@ -1,19 +1,15 @@
 /**
  * Module: utils/returnTo
  *
- * Remembers the page a person was on when the application sent them to sign in, so that signing in returns them there.
+ * Remembers the page a person was on when the application sent them to sign in, so signing in returns them there.
  *
- * Responsibilities:
- * - validate a candidate path (`normaliseReturnTo`): same-origin and relative only, never an authentication page;
- * - keep one path for the duration of the sign-in (`rememberReturnTo`, `peekReturnTo`, `takeReturnTo`,
- *   `clearReturnTo`), across a reload, the single sign-on redirect and the two-factor step.
+ * Responsibilities: validate a candidate path (`normaliseReturnTo`: same-origin, relative, never an authentication
+ * page) and keep one path across a reload, the single sign-on redirect and the two-factor step.
  *
  * Design decisions:
- * - Stored in `sessionStorage` (per tab, gone when the tab closes). When storage is blocked the path is held in memory
- *   instead, which still covers the sign-in that follows without a reload.
- * - The stored value is never trusted: it is validated again on every read, because anything running in the tab can
- *   write to `sessionStorage` and the value is later used as a navigation target (open redirect).
- * - Used once: `takeReturnTo` removes it.
+ * - Stored in `sessionStorage`, with an in-memory fallback when storage is blocked.
+ * - The stored value is validated again on every read, because anything in the tab can write `sessionStorage` and the
+ *   value becomes a navigation target (open redirect). `takeReturnTo` removes it, so it is used once.
  *
  * External dependencies: none (browser `URL` and `sessionStorage`).
  */

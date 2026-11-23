@@ -1,39 +1,12 @@
 """
 Module: modules.risk_management.alerts
 
-Notifications for Risk Management (overview §11.6): a review coming due or overdue, and a treatment whose
-verdict may no longer hold because the artefact behind it changed.
-
-Responsibilities:
-- Declare the module's notification types (`NOTIFICATION_TYPES`), registered on
-  `ModuleDefinition.notification_types` so core's closed enum is untouched.
-- `send_review_notifications`: the daily sweep for reviews due soon or overdue.
-- `on_artefact_changed`: the module's `ModuleDefinition.on_artefact_changed`
-  hook; moves effective treatment verdicts that rest on a changed artefact to
-  `NEEDS_REASSESSMENT` and tells the risk's owner.
-
-Design decisions:
-- Detection and notification only. A change never rewrites a risk: the verdict
-  moves to `NEEDS_REASSESSMENT` (which already fails the `Mitigated` guard) and a
-  human decides, using the lifecycle the risk already has. This is the platform
-  "invalidation" convention for a mutable-status artefact. Decided by: Agent.
-- Only `EFFECTIVE` verdicts are moved. A `proposed` link makes no claim to
-  invalidate; an `INEFFECTIVE` one is not made wrong by a change. Because a
-  second edit finds the verdict already moved, a burst of edits notifies once.
-- The review sweep notifies once per `review_date` (the date is stored on the
-  risk as `review_*_notified_for`), so re-running it is harmless and a
-  rescheduled review re-arms itself with no reset step.
-- Recipients: the risk's owner (every active member of an owner group, via
-  `services.principals.principal_recipients`); with no owner, or a group with no
-  one to notify, the project's Risk Managers and project managers, so an
-  unowned risk still reaches someone accountable. This
-  is addressing, not authorisation. The actor is never notified of their own
-  edit (`notify`'s `actor_id`). A notification about a change in *another*
-  project does not name the changed artefact, because the recipient may not be
-  allowed to see it.
-
-Dependencies: `services.notifications`, `services.artefact_changes`' payload
-(`registry.ArtefactChange`), this module's models.
+Notifications for Risk Management: a review due or overdue, and a treatment
+verdict that may no longer hold because its artefact changed.
+`NOTIFICATION_TYPES`; `send_review_notifications` (daily sweep, once per
+`review_date`); `on_artefact_changed` (moves `EFFECTIVE` verdicts resting on a
+changed artefact to `NEEDS_REASSESSMENT`). Recipients: the owner (group members
+included), else Risk Managers and project managers; never the actor.
 """
 
 from __future__ import annotations

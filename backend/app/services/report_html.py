@@ -1,32 +1,22 @@
 """
 Module: services.report_html
 
-Renders a neutral `ReportDocument` (`services.report_model`) to one standalone HTML page: the document
-family's HTML download and the designer's live preview.
+Renders a neutral `ReportDocument` (`services.report_model`) to one standalone HTML page: the HTML download and the
+designer's live preview.
 
 Design decisions:
-- **Nothing in the page can run or fetch.** Every string is escaped with `html.escape`; the page carries no
-  script and a `Content-Security-Policy` meta tag (`default-src 'none'; img-src data:; style-src
-  'unsafe-inline'`), so even a defect in escaping could not load anything. Raster images are inlined as
-  `data:` URIs of a sniffed type (never the type a record claims), and an SVG figure is inlined only after
-  `report_svg.sanitize_svg`.
-- Equations are the server-made SVG from `report_math` (the same drawing the PDF embeds), sized in `em` so they
-  follow the text size; one that cannot be drawn is shown as its source in a `<code>` element. The TeX is the
-  accessible name (`aria-label`).
-- A tone is looked up in `TONE_FILL`, never taken from the model as a colour, as in the PDF and Word renderers.
-- Branding applies as in the other renderers: the accent colour (validated as six hex digits), the logo and
-  the footer text; the cover page is a PDF and Word device, so the HTML shows a plain title.
-- One stylesheet, inline and small, with a print rule so printing the page from a browser paginates at
-  `PageBreak`.
-- A header or footer shows as a band at the start and end of each page style's stretch, with `n` and `N` standing for the page
-  numbers; printing hides the bands and uses CSS margin boxes (`@top-left` …), which the browser fills with the real page
-  numbers where it supports them (the logo is not printed this way).
-- Page styles: HTML has no pages, so a `PageStyleChange` opens a `<section>` that is as wide as that page would be and
-  carries a small label naming its paper and margins (hidden when printed). Printing uses CSS named pages
-  (`@page psN { size; margin }`, with `:left` / `:right` for mirrored margins) that the section selects with `page:`,
-  so a browser's print dialog gives each section its own paper. The CSS is built from numbers only, never from text.
+- Nothing in the page can run or fetch: every string goes through `html.escape`, there is no script, and a
+  `Content-Security-Policy` meta (`default-src 'none'; img-src data:; style-src 'unsafe-inline'`) backs it up. Rasters
+  are inlined as `data:` URIs of a sniffed type; an SVG only after `report_svg.sanitize_svg`.
+- Equations are the `report_math` SVG sized in `em`, falling back to the source in `<code>`; the TeX is the `aria-label`.
+- A tone comes from `TONE_FILL`, never a model colour. Branding is the validated accent, logo and footer text; the
+  cover is a PDF and Word device, so HTML shows a plain title.
+- One small inline stylesheet with a print rule that paginates at `PageBreak`.
+- Headers and footers show as bands (`n`/`N` for page numbers); printing hides them for CSS margin boxes.
+- A `PageStyleChange` opens a `<section>` sized to that page with a label (hidden when printed); printing uses CSS
+  named pages (`@page psN`, `:left`/`:right`), built from numbers only.
 
-Dependencies: `services.report_model`, `services.report_svg`, `services.report_math`, `services.report_document` (branding type).
+Dependencies: `report_model`, `report_svg`, `report_math`, `report_document`.
 """
 
 from __future__ import annotations

@@ -1,27 +1,27 @@
 """
 Module: services.list_sort
 
-The one sort every record list offers: a **Sort by** key and an **Order**, the same four keys for every
-registered artefact type (`code`, `title`, `created`, `modified`) plus the type's own columns, ascending or
-descending, with the default order **Code ascending** when nothing is chosen.
+The one sort every record list offers: a Sort by key and an Order, with four keys for every registered
+artefact type (`code`, `title`, `created`, `modified`) plus the type's own columns, ascending or descending,
+defaulting to Code ascending.
 
 Responsibilities:
-- Read the `sort` and `order` query parameters leniently (`ListSort`): a key the list cannot honour is
-  ignored and the default applies, never an error, so a bookmarked address from an earlier release still opens.
-- Order text and codes the way a person reads them (`natural_key`): case-insensitive and digit runs by value,
-  so `REQ-2` precedes `REQ-10`.
-- Order a list of records by a key with a stable tie-break on the record id (`order_records`), so a list or a
-  file that is read twice, or in pages, never repeats or skips a row.
-- Give the database the same order for a paged list (`code_order_columns`, `text_order_column`).
+- Read the `sort` and `order` query parameters leniently (`ListSort`): a key the list cannot honour is ignored
+  and the default applies, never an error, so a bookmarked address still opens.
+- Order text and codes as a person reads them (`natural_key`: case-insensitive, digit runs by value, so
+  `REQ-2` precedes `REQ-10`).
+- Order records by a key with a stable tie-break on the record id (`order_records`), so a paged or repeated
+  read never repeats or skips a row, and give the database the same order (`code_order_columns`,
+  `text_order_column`).
 
 Design decisions:
-- A record that has no value for the chosen key (no due date) sorts last ascending and first descending, the
-  order the browser's own list sort uses, so the screen and a downloaded file agree.
-- The canonical keys have aliases (`unique_code`, `created_at`, `updated_at`) because the two paged lists
-  (requirements, change requests) shipped with those names; both spellings reach the same order.
+- A record with no value for the key (no due date) sorts last ascending and first descending, as the browser's
+  list sort does, so the screen and a downloaded file agree.
+- The canonical keys have aliases (`unique_code`, `created_at`, `updated_at`), the names the two paged lists
+  (requirements, change requests) use; both spellings give one order.
 - "Modified" is the record row's own `updated_at`, which moves with every change including a new version.
 
-Dependencies: SQLAlchemy (the database order expressions) and FastAPI (the query parameters).
+Dependencies: SQLAlchemy (order expressions), FastAPI (query parameters).
 """
 
 from __future__ import annotations

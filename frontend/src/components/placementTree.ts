@@ -3,7 +3,7 @@
  *
  * The project's component and category tree as `TreeSelect` nodes, and the mapping between a ticked node and a place.
  * Shared by the record picker (`PlacementPicker`), the list filter (`ComponentFilterField`) and any dialog that narrows
- * records by component, so every control shows the same collapsible tree: each component with its categories beneath it.
+ * records by component, so every control shows the same collapsible tree.
  *
  * A component and one of its categories are different places (a component alone, or the component narrowed to a
  * category), so each is its own node and ticking one never ticks the other.
@@ -29,8 +29,8 @@ export function categoryNodeId(categoryId: string): string {
  *
  * @param tree The project's components and categories.
  * @param categoryOnly Leaves a component unchosen (a heading to open) so only a category can be ticked, for a place that
- *   needs one (a requirement's primary and further places). The heading has no tooltip: the categories beneath it and the
- *   field's own help say what to choose, and a tooltip over every heading covered the list.
+ *   needs one (a requirement's primary and further places). The heading has no tooltip: a tooltip over every heading
+ *   would cover the list.
  * @returns Root nodes (the components); a category's `pathLabel` is `Component / Category`.
  */
 export function placementNodes(tree: PlacementTree, categoryOnly = false): TreeSelectNode[] {

@@ -22,10 +22,8 @@ class ReportRequest(BaseModel):
         format: Which output format to generate — `"pdf"` (R-F-01), `"docx"`
             (an editable Word file with the same content and branding as the
             PDF), `"odt"` and `"html"` (the same document), or the flat table as `"csv"`, `"xlsx"` or `"ods"` (R-F-02).
-            `routers.reports.generate_report` dispatches on this instead of there being two separate endpoints (2026-09-22
-            merge, see docs/decisions.md — one endpoint per resource, with
-            the specific format as a parameter, so a future report-type/
-            template parameter has one place to land rather than two).
+            `routers.reports.generate_report` dispatches on this: one endpoint
+            per resource, with the format as a parameter.
         include_archived: Whether archived requirements are included.
         component_id / category_id / status / keyword: Optional filters on
             which requirements are included (R-G-03).

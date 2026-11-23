@@ -12,11 +12,8 @@ import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 30;
 
-/** Requirements assigned to the current user as reviewer, due/overdue,
- * across every project (C-R-09, filtered per C-R-10) — unlike its
- * project-scoped sibling `ProjectReviewsDuePage`, this spans every project
- * the reviewer has a role on, so each row shows which project it belongs
- * to. */
+/** Due or overdue requirements assigned to the current user as reviewer, across every project they
+ * have a role on (C-R-09, filtered per C-R-10); each row shows its project. */
 export function MyReviewsDuePage() {
   const strings = useStrings();
   const [items, setItems] = useState<RequirementDueForReview[] | null>(null);

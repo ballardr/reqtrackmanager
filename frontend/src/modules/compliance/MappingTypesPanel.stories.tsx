@@ -9,17 +9,10 @@ import type { ComplianceMappingRelationshipType } from "./types";
 const ORG_ID = "org-1";
 
 /**
- * Unlike `ActionTypesPanel`, `MappingTypesPanel` owns its own fetch/reload
- * state entirely (only `orgId` is a prop) — see its own docstring. So,
- * unlike that panel's story, no harness is needed here: mocking `api.*`
- * directly is enough for a real round trip. `DefinitionList`'s own generic
- * rename/reorder/delete mechanics are already covered by
- * `DefinitionList.stories.tsx`; these stories exercise what's specific to
- * this panel — wiring to the compliance mapping-relationship-type
- * endpoints, and its `renderExtra` `implies_equivalence` toggle (a plain
- * boolean `DefinitionList` fields can't express on its own, see
- * `DefinitionList.stories.tsx`'s own `WithRenderExtra` story for the
- * generic slot mechanics).
+ * `MappingTypesPanel` owns its fetch and reload state (only `orgId` is a prop), so no harness is needed: mocking `api.*` gives
+ * a real round trip. `DefinitionList`'s rename, reorder and delete mechanics are covered by `DefinitionList.stories.tsx`;
+ * these stories exercise the wiring to the compliance mapping-relationship-type endpoints and the `renderExtra`
+ * `implies_equivalence` toggle (a boolean that `DefinitionList` fields cannot express).
  */
 function mockMappingTypeApis(initial: ComplianceMappingRelationshipType[]) {
   let items = initial;
@@ -107,10 +100,7 @@ export const ToggleImpliesEquivalenceKeepsNameUnchanged: Story = {
 
     await userEvent.click(toggle);
 
-    // Toggling sends both fields together (a single PATCH endpoint) — the
-    // name must round-trip unchanged, per this component's own docstring
-    // ("each handler always sends the other field's current, unchanged
-    // value alongside the one it's actually changing").
+    // Toggling sends both fields together (one PATCH endpoint), so the name must round-trip unchanged.
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/compliance/mapping-relationship-types/mt-1`,
       { name: "Equivalent", implies_equivalence: true }

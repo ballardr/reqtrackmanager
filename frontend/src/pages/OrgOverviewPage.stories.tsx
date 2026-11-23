@@ -80,25 +80,17 @@ function mockOrgOverviewApis(
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/overview-stats")) return overrides.stats ?? fullTotalStats;
     if (path.includes("/modules")) return overrides.modules ?? [];
-    // `EntitySwitcher`'s own sibling-org fetch — a single-org
-    // default means every other story here renders no switcher chevron.
+    // `EntitySwitcher`'s sibling-organisation fetch: a single-organisation default renders no switcher chevron.
     if (path === "/api/v1/orgs?mine=true") return overrides.myOrgs ?? [org];
     throw new Error(`unmocked path: ${path}`);
   });
 }
 
 /**
- * A fixture module registered directly into the real `installedModules`
- * (mirroring `OrgAdminPage.stories.tsx`'s own `FIXTURE_ORG_MODULE_KEY`
- * convention) — proves the generic `orgOverviewWidgets` merge-and-render
- * mechanism `OrgOverviewPage.tsx` uses works for a module other than
- * Compliance, without this story file depending on Compliance's own
- * behaviour. Nothing renders it unless a story's own
- * `mockOrgOverviewApis({ modules: [...] })` explicitly reports this key as
- * enabled, so its permanent presence here causes no cross-story
- * interference (same reasoning `OrgAdminPage.stories.tsx` already
- * documents for its own permanently-pushed fixture). It also declares an
- * Org Resources section, to show the Overview never lists one.
+ * A fixture module registered into the real `installedModules` (as in `OrgAdminPage.stories.tsx`) proves the
+ * generic `orgOverviewWidgets` merge-and-render works for a module other than Compliance. Nothing renders it
+ * unless a story's `mockOrgOverviewApis({ modules: [...] })` reports this key as enabled, so its permanent
+ * presence does not affect other stories. It also declares an Org Resources section, which the Overview never lists.
  */
 const FIXTURE_ORG_MODULE_KEY = "fake_org_overview_fixture_module";
 const FIXTURE_ORG_RESOURCE_SECTION_KEY = "fixture-overview-section";

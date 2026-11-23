@@ -1,23 +1,16 @@
 /**
  * Module: components/StatBar
  *
- * A compact, single bordered row of labelled numbers: a CSS grid of
- * equal-width columns (`repeat(auto-fit, minmax(10rem, 1fr))`) with dividers
- * drawn by the grid, never per item, so wrapping at any width yields tidy
- * columns and no stray dividers. For a page's top-level stats header
- * (`OrgOverviewPage.tsx`) or a report's handful of headline figures.
- * Budget: at most 8 entries, labels of about 28 characters or fewer; anything
- * bigger or wordier is a `StatGroups` (`components/StatGroups.tsx`).
+ * A compact, single bordered row of labelled numbers: a CSS grid of equal-width columns
+ * (`repeat(auto-fit, minmax(10rem, 1fr))`) with dividers drawn by the grid, never per item, so wrapping at any width
+ * yields tidy columns. For a page's top-level stats header (`OrgOverviewPage.tsx`) or a report's headline figures.
+ * Budget: at most 8 entries, labels of about 28 characters or fewer; anything bigger is a `StatGroups`.
  *
- * A figure flagged `gap` is a problem to fix when non-zero: it is marked with
- * a "Needs attention" pill (never colour alone). A figure with `to` is a link
- * (the whole cell, via a stretched link on its label) to the page it counts.
- * Design decisions: no media
- * queries (the grid sizes to its container, so it also works in a narrow
- * pane); labels wrap rather than truncate, because a clipped label loses
- * information. See docs/ux-style-guide.md ("Stat blocks") and
- * `testing/statBlockGeometry.ts`, the shared assertion every stat block's
- * stories and e2e checks run.
+ * A figure flagged `gap` is a problem to fix when non-zero: it is marked with a "Needs attention" pill (never colour
+ * alone). A figure with `to` is a link (the whole cell, via a stretched link on its label) to the page it counts.
+ * Design decisions: no media queries (the grid sizes to its container, so it works in a narrow pane); labels wrap
+ * rather than truncate, because a clipped label loses information. See docs/ux-style-guide.md ("Stat blocks") and
+ * `testing/statBlockGeometry.ts`, the shared assertion of every stat block's stories and e2e checks.
  */
 import type { ReactNode } from "react";
 
@@ -56,11 +49,8 @@ export function StatBar({ items, children }: { items?: StatBarItem[]; children?:
   );
 }
 
-/** One label/value pair within a `StatBar` — exported so a module
- * contributing its own headline tile (e.g.
- * a module's own tiles) can render entries
- * that match the row's own styling exactly, rather than a module inventing
- * a second implementation of the same pair. */
+/** One label/value pair within a `StatBar`, exported so a module contributing its own headline tile can render entries
+ * that match the row's styling exactly. */
 export function StatBarEntry({
   label, value, gap, to, onActivate, hint,
 }: { label: string; value: string | number; gap?: boolean } & StatFigureAction) {

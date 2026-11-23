@@ -1,28 +1,18 @@
 """
 Module: routers.orgs
 
-Aggregates the `orgs` package's per-concern routers — `core` (creation,
-import/export/merge, disable/enable/delete, listing, overview stats),
-`membership` (users, pending invites, access summaries, org-role and
-module-role grants, leave/remove/deactivate/archive), `groups`,
-`resources` (shared file resources), `files` (the organisation Files list), `records` (lookup by qualified code), `branding` (logo/login-background,
-accent/wordmark/email-footer, default template, public login-info),
-`settings` (advanced settings, module enablement, SSO/OIDC, SCIM),
-`org_pats`
-(org-admin PAT incident-response actions), `service_users` (service users and the tokens an administrator
-issues them), `taxonomies` (project
-statuses, requirement link types), `custom_roles` (Fine-Grained Access
-Control's permission vocabulary, `CustomRoleDefinition` CRUD, and its
-user/group grant endpoints —), `scoring` (generic scoring-matrix levels, default
-model and bands) and `record_policy` (the personal-data policy override for record export and
-import) — into the single `/api/v1/orgs`
-router `main.py` mounts.
+Aggregates the `orgs` package's per-concern routers into the single `/api/v1/orgs` router `main.py` mounts:
+`core` (creation, import/export/merge, disable/enable/delete, listing, overview stats), `membership` (users,
+pending invites, access summaries, org-role and module-role grants, leave/remove/deactivate/archive),
+`groups`, `resources` (shared file resources), `files` (the organisation Files list), `records` (lookup by
+qualified code), `branding`, `settings` (advanced settings, module enablement, SSO/OIDC, SCIM), `org_pats`
+(org-admin PAT incident response), `service_users`, `taxonomies` (project statuses, requirement link
+types), `custom_roles` (Fine-Grained Access Control vocabulary, `CustomRoleDefinition` CRUD and grants),
+`scoring` (scoring-matrix levels, default model and bands) and `record_policy` (the personal-data policy
+override for record export and import).
 
-Split out from one ~3,200-line module (previously `routers/orgs.py`) so
-each concern can be read and changed independently; see
-`docs/decisions.md` for the decision record. `core.py` also holds the
-shared `_now()` helper the other bucket files import from it rather than
-duplicating.
+Each concern is its own module so it can be read and changed independently. `core.py` also holds the shared
+`_now()` helper the other bucket files import.
 """
 
 from __future__ import annotations
@@ -50,11 +40,9 @@ from app.routers.orgs import (
 
 _PREFIX = "/api/v1/orgs"
 
-# The prefix is passed to each `include_router()` call, not set on `router`
-# itself: `core.router` has a bare `POST ""` route (create) and a bare
-# `GET ""` route (list), and FastAPI's `include_router` rejects a route
-# whose *own* path is empty unless the call's `prefix` argument (not the
-# target router's already-configured prefix) is non-empty.
+# The prefix is passed to each `include_router()` call, not set on `router`: `core.router` has bare
+# `POST ""` and `GET ""` routes, and FastAPI's `include_router` rejects a route whose own path is empty
+# unless the call's `prefix` argument is non-empty.
 router = APIRouter()
 router.include_router(core.router, prefix=_PREFIX)
 router.include_router(membership.router, prefix=_PREFIX)

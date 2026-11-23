@@ -2,10 +2,9 @@
  * Module: hooks/useUnhandledRequestFailures
  *
  * Says so when a request failed and nothing on the page handled it. A page that loads with `.then(setRows)` and no
- * catch leaves its spinner up for ever when the request is refused, times out or never reaches the server; this shows the
- * reason once, with a Reload action, instead of leaving the person to wait. A failure a page does handle (it catches it
- * and shows its own message) never reaches this, and a refusal that ended the session is not shown, because the
- * person is already being taken to the sign-in page.
+ * catch would leave its spinner up when the request is refused, times out or never reaches the server; this shows the
+ * reason once, with a Reload action. A failure a page handles never reaches this, and a refusal that ended the
+ * session is not shown, because the person is already being taken to the sign-in page.
  *
  * Mounted once, by `App`, inside the toast provider.
  */

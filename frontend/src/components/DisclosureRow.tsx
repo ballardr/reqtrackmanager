@@ -1,17 +1,12 @@
 /**
  * Module: components/DisclosureRow
  *
- * One collapsible row of a stacked per-item list (a workflow, a stage's schedule): a toggle that names the item and
- * summarises it while closed, the item's own actions beside the toggle, and its detail beneath when open.
+ * One collapsible row of a stacked per-item list (a workflow, a stage's schedule): a toggle that names the item
+ * and summarises it while closed, the item's own actions beside it, and its detail beneath when open.
  *
- * Responsibilities:
- * - Render the header (chevron, title, optional summary) as one real button, with `actions` as a sibling so a control
- *   is never nested inside the toggle.
- * - Stay presentational: the open state is owned by the host, normally through `useDisclosureState`, so a list keeps
- *   its collapse choices in one stored value rather than one per row.
- *
- * Design decisions: it is the row-shaped counterpart of `CollapsibleSection` (a titled card for a page's top-level
- * sections) and uses the borderless `.disclosure-toggle` surface, so a row of a list never reads as a bordered chip.
+ * The header (chevron, title, summary) is one real button with `actions` as a sibling, so no control nests in the
+ * toggle. The open state is the host's (normally `useDisclosureState`, one stored value per list). It is the
+ * row-shaped counterpart of `CollapsibleSection`, with the borderless `.disclosure-toggle` surface.
  */
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useId, type ReactNode } from "react";

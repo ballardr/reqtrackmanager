@@ -1,8 +1,8 @@
 """
 Module: schemas.org
 
-Request/response models for organisations, organisation users, and
-organisation groups (C-U-01, C-U-04, C-U-05, C-U-08).
+Request/response models for organisations, organisation users and organisation groups (C-U-01, C-U-04,
+C-U-05, C-U-08).
 """
 
 from __future__ import annotations
@@ -21,23 +21,17 @@ from app.services.report_colours import palette_problems
 
 class OrganizationCreate(BaseModel):
     name: str = Field(min_length=1)
-    # `None` (the default) means
-    # "caller didn't specify," resolved to every module's `default_selected`
-    # org-creation choice by `app.modules.registry.run_on_org_created_hooks`;
-    # an explicit list (including `[]`) is used exactly as given. See
-    # `GET /orgs/creation-choices` for the available options.
+    # `None` means the caller did not specify and resolves to every module's `default_selected` org-creation
+    # choice (`app.modules.registry.run_on_org_created_hooks`); an explicit list (including `[]`) is used
+    # as given. See `GET /orgs/creation-choices` for the options.
     module_choice_keys: list[str] | None = None
 
     @field_validator("name")
     @classmethod
     def _name_not_blank(cls, value: str) -> str:
-        """Rejects a whitespace-only name (`min_length` alone only blocks a
-        literal empty string). A blank organisation name isn't just a
-        display nit: `DELETE /orgs/{id}`'s "type the exact name to confirm"
-        safety gate (`OrganizationDeleteConfirm`) degenerates to comparing
-        two empty strings for such an org — the "must not be a stray click"
-        guarantee that gate exists for would otherwise hold for every other
-        organisation but this one (a hardening-review finding)."""
+        """Rejects a whitespace-only name (`min_length` alone blocks only an empty string). A blank name would
+        reduce `DELETE /orgs/{id}`'s "type the exact name to confirm" gate (`OrganizationDeleteConfirm`) to
+        comparing two empty strings, removing the guard against a stray click."""
         stripped = value.strip()
         if not stripped:
             raise ValueError("Organisation name cannot be blank.")
@@ -169,18 +163,13 @@ class OrganizationOut(BaseModel):
     email_footer_company_name: str | None = None
     email_footer_website: str | None = None
     email_footer_address: str | None = None
-    # Readable by any org member (unlike
-    # most other org policy toggles, which live behind
-    # `OrgAdvancedSettingsOut`/`ORG_ADMIN`) since a project manager who isn't
-    # an org admin still needs this to render their own project's settings
-    # correctly. See `Organization.force_require_change_request_for_approved_links`'s
-    # model docstring.
+    # Readable by any org member (other org policy toggles are `ORG_ADMIN`-only in `OrgAdvancedSettingsOut`)
+    # because a project manager who is not an org admin needs it to render their project's settings. See
+    # `Organization.force_require_change_request_for_approved_links`.
     force_require_change_request_for_approved_links: bool = False
-    # Readable by any org member for the same reason as the field above: a
-    # project manager configuring their own project's `allow_ai_approvals`
-    # (Project model) needs to know whether the org side of the gate is even
-    # on, otherwise their own toggle would silently be a no-op. See
-    # `Organization.allow_ai_approvals`'s model docstring.
+    # Readable by any org member for the same reason: a project manager configuring a project's
+    # `allow_ai_approvals` needs to know whether the org side of the gate is on, or the toggle would be a
+    # no-op. See `Organization.allow_ai_approvals`.
     allow_ai_approvals: bool = False
     #: Whether the organisation may store new files (the operator's switch for this tenant; the deployment-wide switch
     #: is `GET /system/branding`). Readable by every member so upload controls can explain themselves.
@@ -258,24 +247,14 @@ class OrgMergePreviewResult(BaseModel):
 
 
 class OrgMergeResult(BaseModel):
-    """Outcome of `POST /orgs/{id}/import/merge` — human-readable warnings
-    (same shape as `OrgImportResult`'s) plus counts of what happened to
-    each conflicting/non-conflicting project and report template.
+    """Outcome of `POST /orgs/{id}/import/merge`: human-readable warnings (as `OrgImportResult`) plus counts of
+    what happened to each conflicting and non-conflicting project and report template.
 
-    `extra="allow"` is required, not cosmetic: `services.org_export.
-    merge_org_bundle`'s own docstring documents its returned `summary` dict
-    as carrying "whatever each registered module's own `ModuleOrgBundleHooks.
-    summarize_merge` contributes" (e.g. Compliance's `compliance_standards_
-    imported`/`compliance_standards_skipped`), and the router endpoint
-    constructs this model via `OrgMergeResult(warnings=warnings, **summary)`
-    — without `extra="allow"`, Pydantic silently drops any key not declared
-    as a field below, so a module's own merge counts would validate fine
-    (no 500) but never actually reach the API response, contradicting that
-    docstring. Found via `test_compliance_export_import.py`'s own merge
-    tests, which is exactly why this module system's "core code shouldn't
-    need much modification per module" goal (`ModuleOrgBundleHooks`'s own
-    docstring) failed here — a module's summary silently needs a change to
-    this core schema too, unlike `summary`'s own dict, which needed none."""
+    `extra="allow"` is required: the `summary` dict from `services.org_export.merge_org_bundle` carries
+    "whatever each registered module's own `ModuleOrgBundleHooks.summarize_merge` contributes" (e.g.
+    Compliance's `compliance_standards_imported`/`compliance_standards_skipped`), and the router builds this
+    model via `OrgMergeResult(warnings=warnings, **summary)`. Without it Pydantic silently drops any key not
+    declared below, so a module's merge counts would never reach the API response."""
 
     model_config = ConfigDict(extra="allow")
 
@@ -438,23 +417,17 @@ class ModuleFrontendManifestOut(BaseModel):
 
 
 class OrgModuleOut(BaseModel):
-    """A single module's state as seen by an org admin — combines the registry's static description with this
-    organisation's own effective entitlement/enablement, computed by
-    `app.modules.registry.is_module_entitled`/`is_module_enabled`.
+    """A single module's state as seen by an org admin: the registry's static description combined with this
+    organisation's effective entitlement/enablement (`app.modules.registry.is_module_entitled`/
+    `is_module_enabled`).
 
-    Non-entitled modules are included in this response, not filtered out:
-    the org admin's Modules UI shows them greyed out with an
-    explanatory note rather than hiding them entirely — the frontend does
-    the graying, not this schema/endpoint.
+    Non-entitled modules are included, not filtered out: the org admin's Modules UI shows them unavailable
+    with an explanatory note (the frontend does this, not this schema or endpoint).
 
-    `enabled` is the hard floor (corrected 2026-09-29):
-    `False` means no project of this organisation may use this module at
-    all. `default_project_enabled` is a separate, independent tier, only
-    meaningful when `enabled` is `True` — whether a project gets this
-    module on or off *by default*, absent an override of its own; a
-    project's own `ProjectModuleEnablement` may still diverge from this in
-    either direction. See `app.models.module.OrganizationModuleEnablement`'s
-    own docstring for the full reasoning.
+    `enabled` is the hard floor: `False` means no project of this organisation may use the module.
+    `default_project_enabled` is a separate tier, meaningful only when `enabled` is `True`: whether a project
+    gets the module on or off by default absent its own override; a project's `ProjectModuleEnablement` may
+    diverge in either direction. See `app.models.module.OrganizationModuleEnablement`.
     """
 
     module_key: str
@@ -508,54 +481,35 @@ class ModuleFrameTokenOut(BaseModel):
 
 
 class OrgModuleEnablementUpdate(BaseModel):
-    """Sets an organisation's own explicit choices for one module — the
-    hard floor (`enabled`) and, independently, the default a project of
-    this organisation gets absent its own override (`default_project_
-    enabled`). Rejected (403) by the endpoint if the organisation isn't
-    entitled to the module at all — see `routers.orgs.
-    update_org_module_enablement`.
+    """Sets an organisation's own explicit choices for one module: the hard floor (`enabled`) and,
+    independently, the default a project of this organisation gets absent its own override
+    (`default_project_enabled`). Rejected (403) by the endpoint if the organisation is not entitled to the
+    module (see `routers.orgs.update_org_module_enablement`).
 
-    `default_project_enabled` is optional (`None` leaves it untouched on an
-    existing row, or defaults it to match `enabled` on a freshly-created
-    one — **Decided by: Agent**, one combined endpoint for both of this
-    module's own org-tier settings rather than a second endpoint mirroring
-    the sub-component-default endpoint's own separate-resource shape one
-    tier up, since both settings belong to the same "this org's own
-    settings for this module" row and a UI plausibly wants to set both from
-    one form)."""
+    `default_project_enabled` is optional: `None` leaves it untouched on an existing row, or defaults it to
+    `enabled` on a new one. One combined endpoint serves both of the module's org-tier settings because they
+    belong to the same "this org's settings for this module" row and a UI plausibly sets both from one form."""
 
     enabled: bool
     default_project_enabled: bool | None = None
 
 
 class ProjectModuleEnablementOut(BaseModel):
-    """One module's state as seen by one project (Platform
-    Foundations) — `GET`/`PUT /projects/{id}/modules/{module_key}`,
-    the project-tier sibling of `OrgModuleOut`'s org-tier whole-module view,
-    one level below it in the same `registry default -> org default ->
-    project override` stack `ProjectModuleSubComponentOut` already uses for
-    sub-components.
+    """One module's state as seen by one project: `GET`/`PUT /projects/{id}/modules/{module_key}`, the
+    project-tier sibling of `OrgModuleOut`, in the same `registry default -> org default -> project override`
+    stack `ProjectModuleSubComponentOut` uses for sub-components.
 
-    Returns the effective state alongside the organisation's own default
-    and whether this project has its own override, rather than a flat
-    boolean, so the frontend can render "using org default: X" vs.
-    "overridden to: Y" distinctly (`docs/ux-style-guide.md`'s
-    "platform-default override visibility" principle), the same reasoning
-    `ProjectModuleSubComponentOut` already documents.
+    Returns the effective state alongside the organisation's default and whether this project has its own
+    override, not a flat boolean, so the frontend can render "using org default: X" vs "overridden to: Y"
+    (`docs/ux-style-guide.md`'s "platform-default override visibility" principle).
 
-    `org_default_enabled` (corrected 2026-09-29) is
-    specifically `OrganizationModuleEnablement.default_project_enabled` —
-    "what would this project get absent its own override" — not the hard
-    `enabled` floor. `org_hard_enabled` (added the same correction) *is*
-    that floor (`app.modules.registry.is_module_enabled`, entitlement AND
-    the organisation's own `enabled`) — surfaced separately so the
-    frontend can tell "off because the organisation merely defaults it off
-    for new projects, a project may still opt in" apart from "off because
-    the organisation has hard-disabled it, no project override can help"
-    and disable the "turn on" direction of its own toggle only in the
-    latter case, with an explanatory hint (mirroring the org admin
-    Modules page's own `moduleNotEntitledHint`/`moduleNotImplementedHint`
-    convention one tier up).
+    `org_default_enabled` is `OrganizationModuleEnablement.default_project_enabled` ("what would this project
+    get absent its own override"), not the hard `enabled` floor. `org_hard_enabled` is that floor
+    (`app.modules.registry.is_module_enabled`: entitlement AND the organisation's `enabled`), surfaced
+    separately so the frontend can tell "off because the organisation defaults it off, a project may still opt
+    in" from "off because the organisation hard-disabled it, no override helps", and disable the "turn on"
+    direction of its toggle only in the latter case, with an explanatory hint (as the org admin Modules page's
+    `moduleNotEntitledHint`/`moduleNotImplementedHint`).
     """
 
     module_key: str
@@ -580,15 +534,13 @@ class ProjectModuleEnablementUpdate(BaseModel):
 
 
 class ModuleSubComponentOut(BaseModel):
-    """One sub-component `module_key` declares, with this organisation's
-    own state for it — `GET`/`PUT /orgs/{id}/modules/{module_key}/
-    subcomponents[/{subcomponent_key}]`, mirroring `OrgModuleOut`'s two
-    levers one level down.
+    """One sub-component `module_key` declares, with this organisation's state for it:
+    `GET`/`PUT /orgs/{id}/modules/{module_key}/subcomponents[/{subcomponent_key}]`, mirroring `OrgModuleOut`'s
+    two levers one level down.
 
-    `default_enabled` is the registry's own default; `enabled` is the
-    org's hard floor (and the effective state for org-scoped artefacts);
-    `default_project_enabled` is the value copied into new projects.
-    `has_org_override` is whether the org has its own row at all.
+    `default_enabled` is the registry's default; `enabled` is the org's hard floor (and the effective state for
+    org-scoped artefacts); `default_project_enabled` is the value copied into new projects. `has_org_override`
+    is whether the org has its own row at all.
     """
 
     module_key: str
@@ -641,20 +593,12 @@ class ProjectModuleSubComponentEnablementUpdate(BaseModel):
 
 
 class ModuleRoleDefinitionOut(BaseModel):
-    """One available module-contributed role (`GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
-    only roles of a *currently effectively-enabled* module are ever
-    returned (`app.modules.registry.list_enabled_module_roles`), so a role
-    belonging to a disabled/non-entitled module simply doesn't appear
-    here, mirroring `OrgModuleOut`'s neighbouring "the frontend just
-    renders what's returned" shape rather than the modules list's own
-    "included but greyed out" one — there is no partial/disabled state to
-    represent for a role option, only present-or-absent.
+    """One available module-contributed role (`GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`).
+    Only roles of an effectively enabled module are returned (`app.modules.registry.list_enabled_module_roles`),
+    so a disabled or non-entitled module's role is absent, as the frontend renders what is returned; unlike the
+    modules list there is no disabled state for a role option, only present or absent.
 
-    Defined once here rather than duplicated in `schemas/project.py`,
-    following the existing precedent of `orgs.py` importing a schema
-    defined in `schemas/project.py` (`MoveDirection`) for a shape needed
-    by more than one router — `routers/projects.py` imports this one from
-    here instead.
+    Defined once here, not in `schemas/project.py`, because more than one router needs it (as `MoveDirection`).
     """
 
     module_key: str
@@ -664,16 +608,10 @@ class ModuleRoleDefinitionOut(BaseModel):
 
 
 class ModuleRoleGrantOut(BaseModel):
-    """One `UserModuleRole` grant, as surfaced on `OrgUserOut.module_roles`/
-    `EffectiveMemberOut.module_roles` — deliberately
-    minimal (just enough for the frontend to match it against a
-    `ModuleRoleDefinitionOut` option's `module_key`/`role_key`), unlike
-    `ModuleRoleDefinitionOut` which also carries the display `name`/
-    `description` a *list of available roles* needs to render but a
-    *held-grant marker* on a user row does not (the frontend already has
-    the matching `ModuleRoleDefinitionOut` loaded to render from). See
-    `ModuleRoleDefinitionOut`'s own docstring for why this lives here
-    rather than in `schemas/project.py`.
+    """One `UserModuleRole` grant, as surfaced on `OrgUserOut.module_roles`/`EffectiveMemberOut.module_roles`:
+    minimal (enough to match a `ModuleRoleDefinitionOut` option's `module_key`/`role_key`), unlike
+    `ModuleRoleDefinitionOut`, whose display `name`/`description` a held-grant marker does not need because the
+    frontend already has the matching definition loaded. See `ModuleRoleDefinitionOut` for why this lives here.
     """
 
     module_key: str
@@ -740,15 +678,13 @@ class EntityScopeOut(BaseModel):
 
 
 class CustomRoleDefinitionOut(BaseModel):
-    """One organisation-defined `CustomRoleDefinition` with its full permission-atom set — `GET /orgs/{id}/
-    custom-roles` / `GET /orgs/{id}/custom-roles/{role_id}`.
+    """One organisation-defined `CustomRoleDefinition` with its full permission-atom set (`GET /orgs/{id}/
+    custom-roles` / `GET /orgs/{id}/custom-roles/{role_id}`).
 
     `permissions` is the encoded `CustomRolePermission.permission` keys
-    (`app.services.permissions.encode_permission`'s output, or a bare
-    administrative key), not the richer `PermissionOut` shape — a role's
-    own held set is compared/edited against the vocabulary `GET .../
-    permissions` already returns, so there's no need to repeat each atom's
-    label/artefact_type/level/subtype breakdown here too.
+    (`app.services.permissions.encode_permission`'s output, or a bare administrative key), not the richer
+    `PermissionOut` shape: a role's held set is compared and edited against the vocabulary `GET .../permissions`
+    returns, so each atom's label/artefact_type/level/subtype breakdown need not repeat here.
     """
 
     model_config = {"from_attributes": True}
@@ -798,22 +734,14 @@ class CustomRoleDefinitionUpdate(BaseModel):
 
 
 class CustomRoleGrantOut(BaseModel):
-    """One held, org-scoped `UserCustomRoleGrant`, as surfaced on
-    `OrgUserOut.custom_roles` (for the frontend Role Management UI) — mirrors `ModuleRoleGrantOut`'s identical
-    "deliberately minimal" shape one tier down (a custom role instead of a
-    module-contributed one): just enough for the Users table's role
-    dropdown to render a checked/unchecked state and a human label without
-    a second round-trip, since the caller already has the matching
-    `CustomRoleDefinitionOut` loaded (`GET .../custom-roles`) to cross-
-    reference by `custom_role_id`.
+    """One held, org-scoped `UserCustomRoleGrant`, as surfaced on `OrgUserOut.custom_roles` (the Role
+    Management UI): minimal as `ModuleRoleGrantOut`, for a custom role instead of a module-contributed one,
+    just enough for the Users table's role dropdown to render a checked state and a label without a second
+    round trip (the caller has the matching `CustomRoleDefinitionOut` from `GET .../custom-roles`).
 
-    Deliberately limited to *org-scoped* (`project_id IS NULL`) grants —
-    the same scope `OrgUserOut.module_roles` itself is limited to (project-
-    scoped module roles are surfaced on `EffectiveMemberOut` instead, in a
-    project context). A project-scoped `CustomRoleDefinition`'s grants have
-    no natural single-row home on the org-wide Users table (which project?)
-    and are managed from the Role Management page's own grant/revoke
-    action instead, not shown as a per-row checkbox here.
+    Limited to org-scoped (`project_id IS NULL`) grants, as `OrgUserOut.module_roles` (project-scoped module
+    roles are on `EffectiveMemberOut`). A project-scoped `CustomRoleDefinition`'s grants have no single-row
+    home on the org-wide Users table (which project?) and are managed from the Role Management page.
     """
 
     custom_role_id: UUID
@@ -821,25 +749,16 @@ class CustomRoleGrantOut(BaseModel):
 
 
 class CustomRoleGrantTarget(BaseModel):
-    """Body for granting a `CustomRoleDefinition` to a user or org group
-    (`POST /orgs/{id}/custom-roles/{role_id}/users/{user_id}` and its
-    `/groups/{org_group_id}` sibling). The affected user/group is always
-    the URL path parameter, never a body field — mirroring `assign_org_
-    role`'s own "URL, not body, is authoritative for who is affected"
-    convention (see that endpoint's docstring for why: the caller is
-    authorized against, and the audit trail records, exactly the URL
-    target, never a value a mismatched body could smuggle in instead).
+    """Body for granting a `CustomRoleDefinition` to a user or org group (`POST /orgs/{id}/custom-roles/{role_id}/
+    users/{user_id}` and its `/groups/{org_group_id}` sibling). The affected user or group is always the URL
+    path parameter, never a body field, as `assign_org_role`: the caller is authorised against, and the audit
+    trail records, the URL target, never a value a mismatched body could smuggle in.
 
-    `project_id` is required if and only if the target role's own `scope
-    == "project"` — validated server-side against the actual role being
-    granted (not just by this schema's typing), mirroring `UserCustomRoleGrant`/
-    `GroupCustomRoleGrant`'s own model docstrings: a `scope="org"` role must
-    never accept a `project_id`, and a `scope="project"` role must always
-    require one. `scope_entity_id` is the entity-scope analogue, required if and
-    only if the target role's own `scope` is a registered module-owned
-    entity scope (e.g. `"standard"`) — the two are mutually exclusive,
-    exactly as `project_id`/`scope_entity_id` already are on `UserModuleRole`/
-    `GroupModuleRole` one tier up.
+    `project_id` is required if and only if the target role's `scope == "project"`, validated server-side
+    against the actual role (not only by this schema's typing): a `scope="org"` role never accepts a
+    `project_id` and a `scope="project"` role always requires one. `scope_entity_id` is the entity-scope
+    analogue, required if and only if the role's `scope` is a registered module-owned entity scope (e.g.
+    `"standard"`); the two are mutually exclusive, as on `UserModuleRole`/`GroupModuleRole`.
     """
 
     project_id: UUID | None = None
@@ -872,16 +791,12 @@ class OrgUserOut(BaseModel):
     #: What the access review flags on a service user (`services.service_users.access_flags`); organisation
     #: administrators only, empty for everyone else and for a person.
     service_flags: list[Literal["no_responsible", "administrator"]] = []
-    # This user's org-scoped module-contributed role
-    # grants, filtered to currently-enabled modules only (see
-    # `ModuleRoleGrantOut`'s docstring and `routers.orgs.list_org_users`'s
-    # population of this field) — a grant for a since-disabled module is
-    # simply omitted here, not deleted from `user_module_roles`.
+    # This user's org-scoped module-contributed role grants, filtered to currently enabled modules (see
+    # `ModuleRoleGrantOut` and `routers.orgs.list_org_users`); a grant for a disabled module is omitted, not
+    # deleted from `user_module_roles`.
     module_roles: list[ModuleRoleGrantOut] = []
-    # For the frontend Role Management UI:
-    # this user's org-scoped (`project_id IS NULL`) `CustomRoleDefinition`
-    # grants — see `CustomRoleGrantOut`'s own docstring for why this is
-    # org-scoped only, mirroring `module_roles`' identical scope limit.
+    # For the Role Management UI: this user's org-scoped (`project_id IS NULL`) `CustomRoleDefinition`
+    # grants (see `CustomRoleGrantOut` for why only org-scoped), as `module_roles`.
     custom_roles: list[CustomRoleGrantOut] = []
 
 
@@ -894,17 +809,13 @@ class OrgPendingInviteCreate(BaseModel):
 
 
 class OrgPendingInviteOut(BaseModel):
-    """An organisation's outstanding (not-yet-accepted) org-only
-    `PendingInvite` — the org-level counterpart to `schemas.project.
-    PendingInviteOut`, listed separately since `GET .../pending-invites`
-    here only ever returns `project_id IS NULL` rows (project-scoped
-    invites stay owned by the project-level endpoint).
+    """An organisation's outstanding (not-yet-accepted) org-only `PendingInvite`, the org-level counterpart to
+    `schemas.project.PendingInviteOut`; `GET .../pending-invites` here returns only `project_id IS NULL` rows
+    (project-scoped invites stay with the project-level endpoint).
 
-    Unlike the project-level shape, this carries `invited_by_display_name`
-    (who sent it) — surfaced in Org Admin's merged Users table alongside
-    email/sent-date/status, as asked. `status` is computed at
-    read time (`expires_at` vs. now), not stored, matching the project-level
-    endpoint's own behaviour.
+    Unlike the project-level shape it carries `invited_by_display_name` (who sent it), shown in Org Admin's
+    merged Users table beside email, sent date and status. `status` is computed at read time (`expires_at` vs
+    now), not stored, as the project-level endpoint.
     """
 
     id: UUID
@@ -1015,25 +926,20 @@ class OrgProjectSummaryOut(BaseModel):
 
 
 class OrgOverviewStatsOut(BaseModel):
-    """The "Organisation Overview" page's stats header — project/requirement/member counts and total
-    uploaded file size.
+    """The "Organisation Overview" page's stats header: project/requirement/member counts and total uploaded
+    file size.
 
-    `is_full_org_total` tells the frontend which of the two meanings the
-    numbers above have: an org admin or server admin gets the organisation's
-    real, unfiltered totals; anyone else gets counts scoped to what they can
-    actually see (`_accessible_project_ids`, the same visibility computation
-    `GET /projects` already uses), per the product decision recorded in
-    `docs/decisions.md`'s "Compliance module, human review follow-ups"
-    entry — "a user can't see the number of all projects if they themselves
-    can't see them all." Member count is never scoped (see that same entry):
-    any caller who can reach this endpoint at all already has permission to
-    browse the full member directory (`GET /{organization_id}/users`).
+    `is_full_org_total` tells the frontend which meaning the numbers have: an org admin or server admin gets
+    the organisation's real unfiltered totals; anyone else gets counts scoped to what they can see
+    (`_accessible_project_ids`, the visibility `GET /projects` uses; docs/decisions.md's "Compliance module,
+    human review follow-ups" entry: "a user can't see the number of all projects if they themselves can't see
+    them all"). Member count is never scoped: any caller who reaches this endpoint can browse the full member
+    directory (`GET /{organization_id}/users`).
 
-    Known gap (see `get_org_overview_stats`'s own docstring for the full
-    reasoning): a scoped (non-admin) caller's `total_file_size_bytes`
-    excludes discussion-comment attachments (`CommentFile`) — a strict
-    undercount, never an over-exposure. For the full total the figure is `services.storage_usage.used_bytes` (stored
-    files plus stored report-run outputs), the one measure a storage limit applies to.
+    Known gap (see `get_org_overview_stats`): a scoped (non-admin) caller's `total_file_size_bytes` excludes
+    discussion-comment attachments (`CommentFile`), an undercount, never an over-exposure. For the full total
+    the figure is `services.storage_usage.used_bytes` (stored files plus stored report-run outputs), the one
+    measure a storage limit applies to.
     """
 
     project_count: int
@@ -1064,11 +970,9 @@ class OrgRoleAssign(BaseModel):
 class OrgGroupCreate(BaseModel):
     name: str
     idp_synced_group_name: str | None = None
-    # Only meaningful alongside `idp_synced_group_name` — see `OrgGroup.
-    # granted_org_role`'s model docstring. Validated together at the router
-    # layer, not here: a create payload can legitimately set `idp_synced_
-    # group_name` without `granted_org_role` (sync membership only, no
-    # role), but not the other way around.
+    # Meaningful only alongside `idp_synced_group_name` (see `OrgGroup.granted_org_role`). Validated together
+    # at the router layer: a create payload may set `idp_synced_group_name` without `granted_org_role` (sync
+    # membership only), not the reverse.
     granted_org_role: OrgRole | None = None
 
 
@@ -1119,16 +1023,13 @@ class UserAccessProject(BaseModel):
 
 
 class UserAccessOut(BaseModel):
-    """One user's access within a single organisation — every project in the
-    org where the user holds at least one effective role (direct
-    assignment, direct/nested project-group membership, or org-wide
-    project visibility — see `rbac.get_effective_project_roles`), each
-    with that role set and which of the project's own groups the user is a
-    *direct* member of, plus the org groups the user directly belongs to.
+    """One user's access within a single organisation: every project in the org where the user holds an
+    effective role (direct assignment, direct/nested project-group membership or org-wide project visibility,
+    see `rbac.get_effective_project_roles`), each with that role set and which of the project's own groups the
+    user is a direct member of, plus the org groups the user directly belongs to.
 
-    Deliberately omits projects where the user has no access at all
-    (rather than listing every org project with an empty role set) — this
-    is "what can they reach," not a roster of every project that exists."""
+    Projects where the user has no access are omitted: this is "what can they reach", not a roster of every
+    project that exists."""
 
     org_groups: list[UserAccessGroupRef]
     projects: list[UserAccessProject]

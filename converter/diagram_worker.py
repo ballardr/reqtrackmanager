@@ -9,13 +9,12 @@ Responsibilities:
   reply (`{"svg": ...}` or `{"error": ...}`) to standard output.
 
 Design decisions:
-- **One diagram, one process.** The embedded engine is an interpreter that cannot be interrupted from inside (its
-  time limit cannot be combined with the callbacks that measure text), so a runaway layout is stopped only by killing
-  the process. The parent sets the memory, CPU and wall-clock limits and kills the process group; nothing survives from
-  one diagram to the next.
-- The configuration is the screen's (`diagram_config.json`): strict security level, SVG text labels instead of HTML
-  labels, the shared font family and the same limits, so the drawing matches the one the application shows.
-- The reply carries the SVG only; the backend sanitises it before it goes into a document, as for any SVG.
+- **One diagram, one process.** The embedded engine cannot be interrupted from inside (its time limit cannot be
+  combined with the callbacks that measure text), so a runaway layout is stopped only by killing the process. The
+  parent sets the memory, CPU and wall-clock limits and kills the process group; nothing carries over between diagrams.
+- The configuration is the screen's (`diagram_config.json`): strict security level, SVG text labels, the shared font
+  family and the same limits, so the drawing matches the application's.
+- The reply carries the SVG only; the backend sanitises it before it goes into a document.
 
 Dependencies: `mermaidx` (MIT; bundles Mermaid, its layout engines and DejaVu Sans), Python 3.12 standard library.
 """

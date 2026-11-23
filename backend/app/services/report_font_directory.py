@@ -1,26 +1,22 @@
 """
 Module: services.report_font_directory
 
-Reads the directory of extra `.ttf` fonts the server administrator mounts and groups the files into families.
+Reads the directory of extra `.ttf` fonts the administrator mounts and groups the files into families.
 
 Responsibilities:
-- `scan_directory`: list the files, reject the unusable ones with a reason, and group the rest by the font's own
-  family name into `FontFamily` objects keyed `x-<slug>`.
-- `directory_signature`: a cheap fingerprint of the directory, so a worker notices a changed mount.
+- `scan_directory`: list files, reject unusable ones with a reason, group the rest by the font's family name into
+  `FontFamily` objects keyed `x-<slug>`; `directory_signature`: a cheap fingerprint to detect a changed mount.
 
 Design decisions:
-- The directory is administrator-trusted (set by `REPORT_FONTS_DIR`, mounted read-only, never user-supplied), but each file
-  is still parsed defensively: a bad file is skipped with a reason, never a startup failure, and nothing outside the
-  directory is followed (symbolic links are refused, subdirectories are not entered).
-- TrueType (`.ttf`) only: the PDF library cannot draw CFF (`.otf`) outlines, and a collection (`.ttc`) holds several fonts.
-- A face whose `OS/2 fsType` forbids embedding (restricted licence) or subsetting is refused outright: the PDF library
-  embeds a subset of every face it draws, and the same licence bits govern copying the file into a Word or OpenDocument
-  file. So an unusable face is never drawn or embedded anywhere; the administrator sees why.
-- A family needs a regular face. A missing bold, italic or bold italic face reuses the nearest one (`faces_found` says
-  which are real), so a PDF never fakes a slant.
-- Logs and reasons carry file names and counts only, never file contents.
+- The directory is administrator-trusted but each file is parsed defensively: a bad file is skipped with a reason,
+  symbolic links are refused and subdirectories are not entered.
+- TrueType only: the PDF library cannot draw CFF outlines and a `.ttc` holds several fonts.
+- A face whose `OS/2 fsType` forbids embedding or subsetting is refused, since the PDF library embeds a subset and the
+  same licence governs Word and OpenDocument embedding.
+- A family needs a regular face; a missing style reuses the nearest (`faces_found`), so a PDF never fakes a slant.
+- Logs and reasons carry file names and counts only.
 
-Dependencies: ReportLab's TrueType reader (it also validates the file), `report_fonts`.
+Dependencies: ReportLab's TrueType reader, `report_fonts`.
 """
 
 from __future__ import annotations

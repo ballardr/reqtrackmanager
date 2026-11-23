@@ -2,37 +2,29 @@
 Module: routers.custom_reports
 
 Runs a custom report layout (`services.custom_report_run`):
-
-- `GET /api/v1/projects/{project_id}/custom-reports/{layout_id}/run?format=json|pdf|docx|odt|html|csv|xlsx|ods`: a layout the
-  project can reach (its own, an ancestor's or the organisation's, unless the project hid it), for this
+- `GET /api/v1/projects/{project_id}/custom-reports/{layout_id}/run?format=json|pdf|docx|odt|html|csv|xlsx|ods`:
+  a layout the project can reach (its own, an ancestor's or the organisation's, unless hidden), for this
   project and, with `include_children`, its readable child projects.
 - `GET /api/v1/orgs/{organization_id}/custom-reports/{layout_id}/run?format=...&project_ids=a,b`: an
-  organisation layout run once per project the caller can read (or the selected ones) and merged.
+  organisation layout run once per readable (or selected) project and merged.
 
-Access: running needs only what reading the data needs (D13): membership of the project or organisation;
-each record is then shown only if the caller's own project permissions allow it. Neither route needs the
-manage-layouts permission. Every run writes a provenance row (`GeneratedReport`); a synchronous run stores no output.
+Access: running needs only what reading the data needs (D13): project or organisation membership; each
+record is shown only if the caller's own project permissions allow it. Every run writes a provenance row
+(`GeneratedReport`); a synchronous run stores no output.
 
-A file run that passes the synchronous limits answers 409 with `detail.code == "async_required"`; the client then
-queues it in the background:
+A file run that passes the synchronous limits answers 409 with `detail.code == "async_required"`; the client
+then queues it: `POST .../custom-reports/{layout_id}/runs` (202 + the run), `POST /api/v1/report-runs/{id}/again`
+(a fresh run of an expired or failed run's request) and `GET`/`DELETE /api/v1/report-runs...` (the caller's own
+runs; the file is downloadable only by the requester until it expires, `services.report_run_jobs`).
 
-- `POST .../custom-reports/{layout_id}/runs` (project and organisation): queues the same run (202 + the run).
-- `POST /api/v1/report-runs/{id}/again`: queues a fresh run of an expired or failed run's stored request.
-- `GET /api/v1/report-runs`, `GET /api/v1/report-runs/{id}`, `GET /api/v1/report-runs/{id}/download`,
-  `DELETE /api/v1/report-runs/{id}`: the caller's own background runs; the file is downloadable only by the
-  requester, until it expires (`services.report_run_jobs`).
+Run-time variables: `variables` is a JSON object `{name: value}` (query parameter on GET, field on POST; an
+omitted one takes its default). A missing, undeclared or unacceptable value answers 422 with
+`detail.code == "variable_values"` and `detail.problems`; `GET .../{layout_id}/variables` returns the run form.
+Values are stored with the run (provenance) and never logged; the front proxy logs the path only.
 
-Run-time variables: `variables` is a JSON object `{name: value}` (a query parameter on GET, a field on POST; a
-variable left out takes its default). A missing, undeclared or unacceptable value answers 422 with
-`detail.code == "variable_values"` and `detail.problems`. `GET .../{layout_id}/variables` returns the run form: each
-variable with its default and current options. Values are stored with the run (provenance) and never logged; the
-front proxy logs the path only.
-
-`format` is limited by the layout's family (`services.custom_report_run.available_formats`, which reads the
-renderer registry, `services.report_render`): 400 otherwise. A table layout's `csv` is a zip when it has
-several sheets.
-A run over its work, output or time limit answers 413 (408 for time) for the on-screen form and 409 (see above)
-for a file, and writes nothing.
+`format` is limited by the layout's family (`services.custom_report_run.available_formats`): 400 otherwise. A
+table layout's `csv` is a zip when it has several sheets. A run over its work, output or time limit answers 413
+(408 for time) for the on-screen form and 409 for a file, and writes nothing.
 """
 
 from __future__ import annotations

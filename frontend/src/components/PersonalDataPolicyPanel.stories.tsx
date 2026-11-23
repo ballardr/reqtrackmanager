@@ -1,6 +1,6 @@
 /**
- * Stories for `PersonalDataPolicyPanel` — the personal-data policy for record export and import at the
- * server tier and the organisation tier.
+ * Stories for `PersonalDataPolicyPanel`: the personal-data policy for record export and import at the server tier
+ * and the organisation tier.
  */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";

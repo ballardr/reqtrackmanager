@@ -1,44 +1,19 @@
 """
 Module: modules.compliance.enums
 
-Compliance-module-owned vocabulary ().
-Kept in this package rather than
-`app.models.enums` since these are domain concepts the Compliance module
-itself owns, not core ReqTrackManager concepts — consistent with the
-models living under `app.modules.compliance.models` rather than
-`app.models`.
+Compliance-owned vocabulary, kept here rather than in `app.models.enums` because the Compliance module owns these
+concepts.
 
-`ComplianceStandardVersionStatus` is stored as `ComplianceStandardVersion.status`.
-`ComplianceStatus` and `ComplianceApplicability` are stored as
-`ProjectComplianceRequirement.compliance_status`/`.explicit_applicability`.
-`ComplianceApprovalState` is stored as `ProjectComplianceRequirement.approval_state`
-(defaulting `NOT_ASSESSED`); §20's overall-status calculation folds approval
-state in (see `service.py::summarize_project_compliance`).
-`ComplianceApplicabilitySource` is computed (never stored) by
-`service.py::resolve_applicability`.
+Stored: `ComplianceStandardVersionStatus` (`ComplianceStandardVersion.status`); `ComplianceStatus` and
+`ComplianceApplicability` (`ProjectComplianceRequirement.compliance_status` / `.explicit_applicability`);
+`ComplianceApprovalState` (`.approval_state`, default `NOT_ASSESSED`; folded into the overall status by
+`service.summarize_project_compliance`); `ComplianceReviewStatus` (`ComplianceReview.status`: a review's lifecycle is
+event history, not derivable from a date); `ComplianceStandardApplicabilityDefault`
+(`ComplianceStandard.applicability_default`).
 
-`ComplianceEvidenceValidityState` is also (§14)
-computed rather than stored — see `service.py::compute_evidence_validity_
-state` — for the same "queryable derived state, not a stored one that can
-drift" reason `ComplianceApplicabilitySource` already established.
-
-`ComplianceReviewStatus`/`ComplianceReviewOutcome` cover scheduled
-reviews (§17). Unlike `ComplianceApplicabilitySource`/
-`ComplianceEvidenceValidityState`, `ComplianceReviewStatus` *is* a stored
-column (`ComplianceReview.status`) — a review's own lifecycle (scheduled ->
-completed) is a real event history, not something derivable from a date
-comparison the way evidence validity is. Whether a still-`SCHEDULED` review
-is upcoming/due/overdue *is* computed, never stored, for the same
-"can't drift" reason as the other two — see `service.py::compute_review_
-schedule_state`.
-
-`ComplianceStandardApplicabilityDefault` is a stored
-column (`ComplianceStandard.applicability_default`) recording whether a
-standard's default project-assignment mode is the ordinary, fully-manual
-per-project opt-in (every existing standard's unchanged behaviour) or an
-org-wide "applies to all projects by default, except..." mandate. See
-`models.py`'s design-decisions section for the reconciliation
-mechanism this drives.
+Computed, never stored, so a queryable derived value cannot drift: `ComplianceApplicabilitySource`
+(`service.resolve_applicability`), `ComplianceEvidenceValidityState` (`service.compute_evidence_validity_state`, §14) and
+whether a `SCHEDULED` review is upcoming, due or overdue (`service.compute_review_schedule_state`, §17).
 """
 
 from __future__ import annotations
@@ -118,19 +93,12 @@ class ComplianceApprovalState(str, enum.Enum):
 
 
 class ComplianceApplicabilitySource(str, enum.Enum):
-    """How a `ProjectComplianceRequirement`'s *effective* applicability was
-    determined (§9's "Hierarchical Applicability" — "The UI must clearly
-    distinguish: Explicitly set applicability. Applicability inherited from
-    a parent. An overridden inherited value."). Computed at read time by
-    `app.modules.compliance.service.resolve_applicability`; not itself a
-    stored column — see that function's docstring for the full resolution
-    rule.
+    """How a `ProjectComplianceRequirement`'s effective applicability was determined (§9 "Hierarchical Applicability":
+    the UI distinguishes explicit, inherited and overridden values). Computed at read time by
+    `service.resolve_applicability`, not stored.
 
-    EXPLICIT covers both "a user actively set this row's own applicability"
-    and "nothing has been decided on this row and no ancestor says
-    Not Applicable either" (the ordinary, undecorated Applicable default) —
-    both render identically in the UI (no special badge), unlike INHERITED/
-    OVERRIDDEN, which the UI must call out per §9.
+    EXPLICIT covers a user-set value and the undecorated Applicable default (no decision, no Not Applicable ancestor);
+    both render without a badge, unlike INHERITED and OVERRIDDEN.
     """
 
     EXPLICIT = "explicit"
@@ -139,24 +107,12 @@ class ComplianceApplicabilitySource(str, enum.Enum):
 
 
 class ComplianceEvidenceValidityState(str, enum.Enum):
-    """A `ComplianceEvidence` row's *current* validity, derived from its
-    `expiry_date` at read time (§14 — "The system must be able to
-    identify: Valid evidence. Evidence approaching expiry. Expired
-    evidence."). Computed by `service.py::compute_evidence_validity_state`,
-    never stored — see that function's own docstring for the exact rule
-    and the warning-window constant it uses. Independent of `ComplianceEvidence.
-    is_archived`: archived evidence is still assigned a validity state (it
-    simply isn't surfaced by the "expiring/expired" listings, which exclude
-    archived rows) — "no longer applicable" (§13) and "no longer valid"
-    (§14) are deliberately different questions.
+    """A `ComplianceEvidence` row's current validity, derived from `expiry_date` at read time (§14) by
+    `service.compute_evidence_validity_state` (rule and warning window there) and never stored. It is independent of
+    `is_archived`: archived evidence still has a state, though the expiring and expired listings exclude it.
 
-    `NO_EXPIRY` is a distinct value from `VALID`, not folded into it: §14's
-    own field list treats "has no expiry date at all" and "has an expiry
-    date that hasn't been reached yet" as different facts about a piece of
-    evidence, and a caller (e.g. a reminder sweep) should
-    be able to tell "nothing to ever warn about" apart from "currently
-    fine, but will eventually need attention" without inspecting
-    `expiry_date` itself.
+    `NO_EXPIRY` is distinct from `VALID` (§14 treats "no expiry date" and "expiry not yet reached" as different
+    facts), so a reminder sweep can tell nothing to ever warn about from currently fine.
     """
 
     NO_EXPIRY = "no_expiry"
@@ -168,17 +124,10 @@ class ComplianceEvidenceValidityState(str, enum.Enum):
 class ComplianceReviewStatus(str, enum.Enum):
     """Lifecycle state of a `ComplianceReview` row (§17).
 
-    A review starts `SCHEDULED`. `COMPLETED` is a terminal, retained state
-    (§17's "Completed reviews must be retained as part of the compliance
-    history") — recording an outcome creates a new `SCHEDULED` row for the
-    next cycle when the review recurs (`ComplianceReview.recurrence_days`
-    is set) rather than reopening/reusing the completed row, mirroring
-    `RequirementReview`'s own "outcome recorded on a fresh row, the
-    schedule field it satisfied is untouched" shape one level up. There is
-    deliberately no `CANCELLED`/`OVERDUE` member: whether a `SCHEDULED`
-    review is upcoming/due/overdue is a computed, point-in-time comparison
-    against `next_due_date` (`service.py::compute_review_schedule_state`),
-    not a state transition to persist — see this module's own docstring.
+    A review starts `SCHEDULED`. `COMPLETED` is terminal and retained (§17: completed reviews are compliance history);
+    recording an outcome creates a new `SCHEDULED` row for the next cycle when `recurrence_days` is set, rather than
+    reopening the completed row. There is no `CANCELLED` or `OVERDUE` member: whether a `SCHEDULED` review is upcoming,
+    due or overdue is computed against `next_due_date` (`service.compute_review_schedule_state`).
     """
 
     SCHEDULED = "scheduled"
@@ -186,16 +135,10 @@ class ComplianceReviewStatus(str, enum.Enum):
 
 
 class ComplianceReviewOutcome(str, enum.Enum):
-    """Outcome recorded when a `ComplianceReview` is completed (§17's
-    "Review outcome"). `None` (nullable on the model) until completion.
+    """Outcome recorded when a `ComplianceReview` is completed (§17); `None` until completion.
 
-    Three values, not `RequirementReviewOutcome`'s simpler met/failed pair:
-    a compliance review is a broader audit-style event (§17's own examples
-    include "Annual security compliance review," "Review after a
-    significant standard change") that commonly identifies follow-up work
-    without being an outright failure — `ACTION_REQUIRED` captures that
-    middle outcome so it isn't forced into `SATISFACTORY` or
-    `UNSATISFACTORY`.
+    There are three values, not the met/failed pair of `RequirementReviewOutcome`: a compliance review is an audit-style
+    event that commonly finds follow-up work without failing, which `ACTION_REQUIRED` captures.
     """
 
     SATISFACTORY = "satisfactory"
@@ -206,20 +149,12 @@ class ComplianceReviewOutcome(str, enum.Enum):
 class ComplianceStandardApplicabilityDefault(str, enum.Enum):
     """A `ComplianceStandard`'s default project-assignment mode.
 
-    `OPT_IN` (the default for every standard, including every one that
-    existed before applicability defaults) is today's fully-manual behaviour: a
-    project acquires this standard only via an explicit assignment
-    (Project-Manager self-service or a Compliance Manager acting on a
-    project's behalf), one project at a time. `APPLIES_TO_ALL_PROJECTS` is
-    the org-wide, centrally-mandated case — switching a standard to this
-    mode reconciles a real `ProjectCompliance` row into existence for
-    every current non-archived, non-excluded project in the standard's
-    organisation (`service.py::reconcile_standard_applicability`), and a
-    project created afterward gets the same treatment at creation time
-    (`ModuleDefinition.on_project_created`). Only a Compliance Manager (or
-    org admin/server admin) may switch a standard into this mode — a
-    Project Manager may act on their own project's own assignment row but
-    never on this standard-level setting (§3).
+    `OPT_IN` (the default) means a project acquires the standard only by explicit assignment (Project Manager
+    self-service or a Compliance Manager acting for the project), one project at a time. `APPLIES_TO_ALL_PROJECTS` is the
+    centrally mandated case: switching a standard to it creates a `ProjectCompliance` row for every current non-archived,
+    non-excluded project of the organisation (`service.reconcile_standard_applicability`), and a project created later
+    gets the same at creation (`ModuleDefinition.on_project_created`). Only a Compliance Manager (or organisation or
+    server admin) may set it; a Project Manager acts only on their own project's assignment row (§3).
     """
 
     OPT_IN = "opt_in"

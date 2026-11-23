@@ -1,16 +1,9 @@
 """
 Module: modules.decisions.project_router.relationships
 
-Relationship endpoints: list a Decision's
-relationships, and create a supersession, a Decision<->Requirement link,
-or a Decision<->Decision link. See the package's own `__init__.py`
-docstring for the full router-split account.
-
-Each create endpoint logs a `decision_link`/`created` audit event
-(2026-09-23 hardening pass — previously missing here despite every other
-mutating endpoint in this module logging one, and despite the sibling
-core endpoint this mirrors, `routers.requirements.links.create_link`,
-already doing so).
+Relationship endpoints: list a Decision's relationships, and create a
+supersession, a Decision<->Requirement link or a Decision<->Decision link. Each
+create endpoint logs a `decision_link`/`created` audit event.
 """
 
 from __future__ import annotations

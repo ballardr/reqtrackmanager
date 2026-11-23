@@ -13,14 +13,11 @@ import { TextField } from "../components/FormFields";
 const strings = t();
 
 /**
- * Public self-registration form (`ServerSettings.signup_mode`). Fetches
- * the public, unauthenticated signup-config on mount to decide what to
- * render: nothing usable if signup is `disabled` (unless an invite token
- * is present in the URL, which bypasses the mode entirely — an explicit
- * admin invite is authorization enough, see `routers/auth.py::signup`), a
- * plain form for `always_on`, and the same plain form plus a hint for
- * `org_specified` (the email-domain match happens server-side on submit,
- * no client-side org picker needed).
+ * Public self-registration form (`ServerSettings.signup_mode`). Reads the public
+ * signup-config on mount: nothing usable when `disabled` (an invite token in the
+ * URL bypasses the mode, see `routers/auth.py::signup`), a plain form for
+ * `always_on`, and the same form plus a hint for `org_specified` (the domain
+ * match happens server-side on submit).
  */
 export function SignupPage() {
   const { signup } = useAuth();

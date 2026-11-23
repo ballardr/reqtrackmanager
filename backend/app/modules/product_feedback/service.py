@@ -1,24 +1,11 @@
 """
 Module: modules.product_feedback.service
 
-Business logic for Product Feedback: creating a request, editing it as a new version, the
-lifecycle, archiving, list queries and the project submission policy.
-
-Responsibilities:
-- `create_request` / `apply_new_version`: a request and its version 1, and later versions that
-  carry unchanged content forward.
-- `transition_request` and `ALLOWED_TRANSITIONS`: the legal status moves and what each demands.
-- `RecordOwner`: whether a record sits in a project or in the organisation's inbox.
-- `validate_levels` / `version_levels`: a version's scoring levels (one per scheme axis, stored as
-  `EnhancementRequestVersionScore` rows) belong to the organisation's scheme; read for many versions in one statement.
-- `get_submission_policy` / `set_submission_policy`: who may submit in a project.
-
-Design decisions:
-- Nothing here commits or checks who may do it; the caller owns the transaction and the gate.
-- A move to `DUPLICATE` is not a direct transition: only a merge sets it. Declining needs a reason.
-- Content is never locked: a request stays editable at every status (each edit is a version).
-
-Dependencies: `services.sequences` (codes), `services.audit` is used by the callers.
+Business logic for Product Feedback: `create_request`/`apply_new_version`,
+`transition_request` with `ALLOWED_TRANSITIONS`, `RecordOwner`, scoring-level
+validation, list queries and the submission policy. Nothing commits or checks
+the role; the caller owns both. `DUPLICATE` is set only by a merge; declining
+needs a reason; content is never locked (each edit is a version).
 """
 
 from __future__ import annotations

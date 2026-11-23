@@ -1,20 +1,16 @@
 /**
  * Module: components/PolicyBodyEditor
  *
- * The visual editor for a policy body: a toolbar over an editable document (TipTap), limited to the vocabulary the
- * server accepts (headings 1 to 3, paragraphs, bulleted and numbered lists, quotations, horizontal rule, bold,
- * italic and links). It reports the document as JSON through `onChange`; the server validates it again.
+ * The visual editor for a policy body: a toolbar (shown only while focus is inside the field,
+ * `ActiveFieldFrame`) over an editable document (TipTap), limited to the vocabulary the server accepts (headings 1
+ * to 3, paragraphs, bulleted and numbered lists, quotations, horizontal rule, bold, italic and links). It reports
+ * the document as JSON through `onChange`; the server validates it again.
  *
- * The toolbar is shown only while focus is inside the field (`ActiveFieldFrame`).
- *
- * Design decisions:
- * - The extension set is the server's vocabulary and nothing wider (code, strike-through, underline and code
- *   blocks are off), so what is typed or pasted can always be saved. Pasted content outside it is reduced by the
- *   editor's schema to the nearest allowed node.
- * - A link takes only https, http or mailto addresses (`isAllowedUri`), matching the server's rule; the toolbar
- *   (`RichTextToolbar`, shared with the visual Markdown editor) edits it in a field rather than a browser prompt.
- * - The initial `value` seeds the editor; later `value` changes from the parent are not pushed back in (the editor
- *   owns the text while open), so a dialog mounts one editor per policy.
+ * The extension set is the server's vocabulary and nothing wider, so what is typed or pasted can always be saved;
+ * pasted content outside it is reduced by the schema to the nearest allowed node. A link takes only https, http or
+ * mailto addresses (`isAllowedUri`) and is edited in a field by `RichTextToolbar` (shared with the visual Markdown
+ * editor). The initial `value` seeds the editor; later changes from the parent are not pushed in (the editor owns
+ * the text while open), so a dialog mounts one editor per policy.
  */
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";

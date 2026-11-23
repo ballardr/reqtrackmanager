@@ -4,33 +4,27 @@ Module: services.overview_widgets
 The project overview's widget layout: an ordered list of widget instances a project manager arranges, with an
 organisation default and a built-in list.
 
-Responsibilities:
-- Define the core widget types and merge those a module contributes (`ModuleDefinition.overview_widgets`).
-- Validate a layout (its scope, then each widget's type, size, scope override, per-type configuration, metric
-  references and the 24-widget cap) and return it cleaned, so only a known shape is ever stored.
-- Resolve the layout a project shows: its own, else the nearest ancestor's, else the organisation's, else the
-  built-in list, and say which one applied.
-- Set or clear the project's or the organisation's own layout (audited with counts and types, never titles), and
-  carry the layout in the project and organisation bundles and the template clone.
+Responsibilities: define the core widget types and merge those modules contribute
+(`ModuleDefinition.overview_widgets`); validate a layout (scope, then each widget's type, size, scope override,
+configuration, metric references and the 24-widget cap) and return it cleaned; resolve the layout a project
+shows (its own, else the nearest ancestor's, else the organisation's, else the built-in list) and say which
+applied; set or clear a layout (audited with counts and types, never titles) and carry it in the bundles and
+template clone.
 
 Design decisions:
-- A layout is a JSON object `{scope, widgets}` on the project and on the organisation (`NULL` inherits), not a table:
-  it is always read and written whole, and an instance has no identity outside its list. This is the shape
-  `nav_label_overrides` uses. `scope` is the overview's project scope (this project, with parents, with children or
-  both); a widget may override it. A stored bare list (an earlier shape) is read as a layout with scope `this`.
-- A widget has a width in columns of a 12-column grid and a height in rows (a minimum: a row grows with its
-  content). The grid is a flow, not absolute positions, so it collapses for a narrow screen without a second layout.
-- The nested-project rule is the `resolve_effective_action_types` one: own rows if any, else the nearest
-  ancestor's, else the organisation's, else the built-in list. A layout is state, so an empty list is a layout
-  (an overview with every widget removed) and does not fall through.
-- Widget configuration names metrics by catalogue key and components by prefix (`services.overview_metrics`), so a
-  layout needs no id remapping in a bundle, a template clone or a child project that inherits it.
-- A module widget's configuration is opaque to the core (a bounded JSON object); only its type key is checked.
-- A text widget holds markdown the viewers see; it is plain text here and rendered without raw HTML or images.
-- No module is named here: module widget types come from the registry.
+- A layout is a JSON object `{scope, widgets}` on the project and organisation (`NULL` inherits), not a table:
+  it is read and written whole and an instance has no identity outside its list (as `nav_label_overrides`).
+  `scope` is the overview's project scope; a widget may override it. A stored bare list reads as scope `this`.
+- A widget has a width in a 12-column grid and a minimum height in rows. The grid is a flow, so it collapses on
+  a narrow screen without a second layout.
+- Inheritance follows `resolve_effective_action_types`, but an empty list is a layout (every widget removed)
+  and does not fall through.
+- Configuration names metrics by catalogue key and components by prefix (`services.overview_metrics`), so a
+  layout needs no id remapping in a bundle, template clone or inheriting child.
+- A module widget's configuration is an opaque bounded JSON object; only its type key is checked. A text widget
+  is plain text here, rendered without raw HTML or images. No module is named here.
 
-External dependencies: `modules.registry`, `services.overview_metrics`, `services.project_hierarchy`,
-`services.audit`.
+Dependencies: `modules.registry`, `services.overview_metrics`, `services.project_hierarchy`, `services.audit`.
 """
 
 from __future__ import annotations

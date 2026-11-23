@@ -1,29 +1,18 @@
 """
 Module: migrations
 
-Applies pending Alembic migrations programmatically at application startup
-(I-M-02: the database must be easily initialised on first install; I-M-03:
-the database must have a way of determining schema version). This means a
-fresh deployment, or a deployment picking up a newer image with schema
-changes, self-migrates to the current schema on boot instead of failing with
-raw "column/table does not exist" errors and requiring an operator to run
-`alembic upgrade head` by hand first.
+Applies pending Alembic migrations at application startup (I-M-02: the database is initialised on first
+install; I-M-03: the schema version is determinable), so a fresh deployment, or one picking up an image with
+schema changes, self-migrates instead of failing with "column/table does not exist".
 
-Also applies any currently-discovered *external* module's own schema
-changes (`app.modules.registry.apply_external_module_migrations`,
- module system follow-up) right after the core
-schema is current — gated behind `Settings.allow_external_modules`, a
-no-op for the default deployment. See that function's own docstring for the
-full gating/isolation rationale; this module only sequences it after the
-core upgrade.
+Also applies any discovered external module's own schema changes
+(`app.modules.registry.apply_external_module_migrations`) after the core schema is current; it is gated by
+`Settings.allow_external_modules` and a no-op by default.
 
-`configure_alembic_version_locations` (`app.modules.registry`, a further
-extension) points the single Alembic chain `alembic upgrade head`
-walks at every registered first-party module's own `migrations_dir`, in
-addition to the core `alembic/versions` directory — so a module's revision
-file living alongside the rest of its own code (e.g. `app.modules.
-compliance.migrations`) is picked up here exactly as if it were still in
-the flat core directory, with no per-module edit to this file needed.
+`configure_alembic_version_locations` (`app.modules.registry`) points the single Alembic chain at every
+registered first-party module's `migrations_dir` as well as the core `alembic/versions` directory, so a
+module's revision files live beside its code (for example `app.modules.compliance.migrations`) with no
+per-module edit here.
 """
 
 from __future__ import annotations

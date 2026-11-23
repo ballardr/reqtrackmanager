@@ -1,13 +1,9 @@
 """
 Module: tests.test_server
 
-Integration tests for the MCP server — run against a real, already-running
-backend (the same convention as backend/tests/, but this server has no
-database of its own to reset, so there's no schema-fixture equivalent
-here). Covers the one thing that actually matters for this module: that
-authentication is genuinely pass-through — no auth header fails cleanly, a
-bad token fails cleanly with the backend's own rejection surfaced, and a
-valid token succeeds and returns real data.
+Integration tests for the MCP server, run against a running backend. They pin that authentication is pass-through:
+no auth header fails cleanly, a bad token fails with the backend's own rejection surfaced, and a valid token succeeds
+and returns real data.
 
 Run via (from tests/container):
     docker compose exec mcp-server python -m pytest -q
@@ -34,11 +30,8 @@ REQTRACK_API_URL = os.environ.get("REQTRACK_API_URL", "http://backend:8000")
 ADMIN_EMAIL = os.environ.get("REQTRACK_ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.environ.get("REQTRACK_ADMIN_PASSWORD", "ChangeMe123!")
 
-# Mirrors server.py's own MCP_WRITES_ENABLED parsing — this test process is
-# a separate Python interpreter from the running mcp-server container, so it
-# reads the same env var itself rather than importing server.py's constant,
-# to decide which tool set (and which extra tests) to expect from whatever
-# server is actually running at MCP_SERVER_URL.
+# Mirrors server.py's MCP_WRITES_ENABLED parsing: this process is separate from the mcp-server container, so it reads
+# the env var itself to decide which tool set to expect from the server running at MCP_SERVER_URL.
 MCP_WRITES_ENABLED = os.environ.get("MCP_WRITES_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 READ_ONLY_TOOLS = {

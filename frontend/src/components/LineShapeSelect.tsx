@@ -1,16 +1,11 @@
 /**
  * Module: components/LineShapeSelect
  *
- * The one choice of a line's shape (Straight, Curved or Spline), shared by a canvas editor's settings (the diagram's default
- * shape) and a Selection card (one line's own shape, which may follow the default).
- *
- * Responsibilities:
- * - List the three shapes by their label map, and for one line a leading "Diagram default (X)" entry naming what the line follows.
- * - Say what each option means in the caption's help, one line per option.
- *
- * Design decisions:
- * - Nothing is stored here: the editor page owns the value and the save.
- * - The label map is keyed by the shape type, so a fourth shape cannot be added without its label.
+ * The one choice of a line's shape (Straight, Curved or Spline), shared by a canvas editor's settings (the
+ * diagram's default shape) and a Selection card (one line's own shape, which may follow the default). It lists the
+ * shapes by their label map (keyed by the shape type, so a new shape needs its label), adds for one line a leading
+ * "Diagram default (X)" entry, and says what each option means in the caption's help, one line per option.
+ * Nothing is stored here: the editor page owns the value and the save.
  */
 import { useStrings } from "../context/TerminologyContext";
 import { labelOptions } from "../utils/labelOptions";

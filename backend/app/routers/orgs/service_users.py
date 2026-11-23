@@ -4,17 +4,18 @@ Module: routers.orgs.service_users
 An organisation administrator's management of service users and the personal access tokens issued to them.
 
 Responsibilities:
-- Create, list, read, change and reactivate service users (deactivate and archive reuse the ordinary organisation user
-  endpoints, which apply to a service user unchanged).
+- Create, list, read, change and reactivate service users (deactivate and archive reuse the ordinary
+  organisation user endpoints).
 - Issue, list and revoke a service user's tokens on its behalf; the secret is returned once and never stored or logged.
 
 Design decisions:
-- Every endpoint needs the organisation administrator role in the service user's own organisation, and answers 404 for
-  an account that is not one of its service users, so another organisation's administrator learns nothing.
-- Creating, changing, reactivating and issuing refuse a Personal Access Token (`refuse_personal_access_token`): a token
-  that could mint or widen another credential would make its own scope and expiry only a suggestion.
-- Token creation goes through `services.pats.create_token`, so the hash-only storage, scope rules, expiry ceiling and
-  organisation lifetime cap are the same as for a person's own tokens; the issuer is recorded beside the owner.
+- Every endpoint needs the organisation administrator role in the service user's own organisation and
+  answers 404 for an account that is not one of its service users, so another organisation's administrator
+  learns nothing.
+- Creating, changing, reactivating and issuing refuse a Personal Access Token (`refuse_personal_access_token`):
+  a token that could mint or widen another credential would make its own scope and expiry only a suggestion.
+- Token creation goes through `services.pats.create_token`, so hash-only storage, scope rules, expiry ceiling
+  and organisation lifetime cap match a person's own tokens; the issuer is recorded beside the owner.
 
 Dependencies: `services.service_users`, `services.pats`, `services.principals`, `services.audit`, `services.rbac`.
 """

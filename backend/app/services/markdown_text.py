@@ -1,31 +1,27 @@
 """
 Module: services.markdown_text
 
-The server's view of Markdown text: the limits a stored value must meet, the plain text a list, search result or
-notification shows in its place, and the Mermaid diagrams a document contains.
+The server's view of Markdown text: the limits a stored value must meet, the plain text a list, search result
+or notification shows in its place, and the Mermaid diagrams a document contains.
 
-Responsibilities:
-- Parse Markdown with the same reading the interface uses (CommonMark with tables, raw HTML read as text).
-- `validate_markdown` / `markdown_limit`: refuse a value over its size, nested too deeply, with too many or too large
-  diagrams, or holding a control character, so a write path rejects it with a 422 instead of storing it.
-- `plain_text`: the readable text of a document (no marks, no diagram source unless asked) for list cells, search
-  snippets and notifications, which never show raw Markdown.
-- `mermaid_sources`: the diagram sources of a document, in order, for the report renderer.
-- `image_references` / `check_images`: the pictures of a document (`![alt](attachment:<file id>)`, an attachment of the
-  record) and the limits on them. A picture's alternative text is what `plain_text` shows in its place.
+Responsibilities: parse with the interface's reading (CommonMark with tables, raw HTML read as text);
+`validate_markdown` / `markdown_limit` refuse a value over its size, nested too deeply, with too many or too
+large diagrams, or holding a control character (a 422, not stored); `plain_text` gives readable text (no marks,
+no diagram source unless asked); `mermaid_sources` gives diagram sources for the report renderer;
+`image_references` / `check_images` read and limit pictures (`![alt](attachment:<file id>)`), whose alternative
+text is what `plain_text` shows.
 
 Design decisions:
-- Limits, not sanitising: the stored value is the author's Markdown source and is never rewritten. Output safety is
-  the reader's job (HTML is never produced from it; the browser builds elements, a report walks tokens).
-- The depth limit (50) sits below the reader's own cut-off (100 levels, past which markdown-it silently drops the
-  rest of the document), so no accepted text can lose content to the reader.
-- The diagram limits are the values in `frontend/src/utils/mermaidRenderConfig.json`; `tests/test_markdown_text.py`
-  fails when the two differ, so the screen and the server refuse the same diagrams.
-- A picture is only ever an attachment: the address is `attachment:` and a file id, never an outside address, so
-  reading a record makes no request to another site. Whether the file belongs to the record is the write hook's check
-  (`services.markdown_fields`); this module only reads and counts.
-- The report engine's own inline reader (`report_model`) is a separate, narrower configuration for report cell text
-  and is unchanged here.
+- Limits, not sanitising: the stored value is the author's source and is never rewritten. Output safety is the
+  reader's job (HTML is never produced from it).
+- The depth limit (50) sits below the reader's cut-off (100 levels, past which markdown-it drops the rest), so
+  no accepted text loses content.
+- The diagram limits equal `frontend/src/utils/mermaidRenderConfig.json`; `tests/test_markdown_text.py` fails
+  when they differ, so the screen and the server refuse the same diagrams.
+- A picture is only an attachment (`attachment:` and a file id, never an outside address), so reading a record
+  makes no request to another site. Whether the file belongs to the record is the write hook's check
+  (`services.markdown_fields`).
+- The report engine's inline reader (`report_model`) is a separate, narrower configuration for cell text.
 
 Dependencies: `markdown-it-py`, `pydantic` (the `markdown_limit` validator).
 """

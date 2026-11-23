@@ -50,13 +50,10 @@ export interface DeleteInUseKeepOption {
 }
 
 /**
- * The one dialog for deleting a definition (status, action type, link type,
- * pain point type, ...) that is still in use — replacing the inline
- * "reassign to" row each list used to open. It says what depends on the item,
- * then offers: move everything to another item (candidates that cannot take it
- * are disabled with the reason), and, where the vocabulary opts in, delete what
- * uses it too behind a Tier-2 type-the-name confirmation (style guide,
- * "confirmation, in two tiers"). Errors from either action stay in the dialog.
+ * The one dialog for deleting a definition (status, action type, link type, pain point type ...) still in use. It
+ * says what depends on the item, then offers: move everything to another item (candidates that cannot take it are
+ * disabled with the reason) and, where the vocabulary opts in, delete what uses it too behind a Tier-2
+ * type-the-name confirmation (style guide, "confirmation, in two tiers"). Errors stay in the dialog.
  */
 export function DeleteInUseDialog({
   title,

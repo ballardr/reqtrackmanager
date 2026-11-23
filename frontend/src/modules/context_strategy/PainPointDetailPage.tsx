@@ -1,55 +1,26 @@
 /**
  * Module: modules/context_strategy/PainPointDetailPage
  *
- * A single Pain Point's full detail — mirrors `StrategyDetailPage.tsx`'s overall
- * shape (full field display, lifecycle actions, attachments, comments,
- * relationships), with three structural differences driven directly by Pain
- * Point's own backend design:
+ * A single Pain Point's full detail: fields, lifecycle actions, attachments, comments and relationships. It mirrors
+ * `StrategyDetailPage.tsx` with three differences:
  *
- * 1. **Project-scoped only** — no `organizationId` route param, no
- *    scope-dispatch between two API objects; always `projectPainPointApi`.
- * 2. **Branching lifecycle UI, not a single "next" button.** From `TRIAGED`,
- *    this page offers three distinct actions — Accept / Reject / Mark
- *    Duplicate — matching `PainPointStatus`'s own three-way branch
- *    (`service._PP_ALLOWED_TRANSITIONS[TRIAGED]`). Confirmation tiers follow
- *    `docs/ux-style-guide.md`'s confirmation-tier principle the same way
- * Strategy's does: `triage` is a plain click (low-risk,
- *    single early-lifecycle step, mirrors Strategy's `propose`/`submit-for-
- *    review`); `reject`/`mark-duplicate` require a `ConfirmDialog` with a
- *    **mandatory** comment (matching backend enforcement —
- *    `project_router.reject_project_pain_point`/`mark_project_pain_point_
- *    duplicate` both 400 without one); `accept`/`address`/`close` get a
- *    `ConfirmDialog` with an optional comment (positive/neutral progression,
- *    same tier as Strategy's `approve`/`activate`/`retire`).
- * 3. **Evidence upload is open to any project member; only removal is
- *    manager-gated (Decided by: Agent).** Checked `upload_project_pain_
- *    point_file`'s own docstring first: unlike Strategy/Future State's
- * owner-gated file upload, §6.5 explicitly lists "Add
- *    evidence" among the broad-creation-model capabilities every project
- *    member gets. In practice this needs **no different frontend wiring**
- *    from Strategy's own `FileAttachmentList` usage — this codebase's
- *    established convention (`StrategyDetailPage.tsx`'s own docstring) is
- *    that every mutating control always renders regardless of the caller's
- *    actual role, gated only by content-lock state, with the backend's own
- *    RBAC surfacing as a toast on a 403; `is_locked` here already excludes
- *    only the three true terminal states (`REJECTED`/`DUPLICATE`/`CLOSED`,
- *    not `ACCEPTED`/`ADDRESSED` too — `service.PAIN_POINT_LOCKED_STATUSES`),
- *    so the upload control is already exactly as open as the backend allows
- *    without any manager-only conditional added around it. Only the
- *    difference in *who the backend accepts* (any member for upload, manager
- *    only for removal) is real — nothing on this page needs to encode it.
+ * 1. Project-scoped only: no `organizationId` route parameter and always `projectPainPointApi`.
+ * 2. A branching lifecycle: from `TRIAGED` the page offers Accept, Reject and Mark Duplicate
+ *    (`service._PP_ALLOWED_TRANSITIONS[TRIAGED]`). Confirmation tiers follow `docs/ux-style-guide.md`: `triage` is a
+ *    plain click; `reject` and `mark-duplicate` use a `ConfirmDialog` with a mandatory comment, matching the backend
+ *    (both `project_router` endpoints return 400 without one); `accept`, `address` and `close` use one with an
+ *    optional comment.
+ * 3. Evidence upload is open to any project member and only removal is manager-gated, as the backend allows. Every
+ *    mutating control renders whatever the caller's role (see `StrategyDetailPage.tsx`) and a 403 surfaces as a toast;
+ *    `is_locked` covers only the terminal states `REJECTED`, `DUPLICATE` and `CLOSED`
+ *    (`service.PAIN_POINT_LOCKED_STATUSES`), so no manager-only conditional is needed.
  *
- * The page also hosts `PainPointScoringPanel` (per-persona Severity/Frequency/
- * Confidence scoring and the chosen-when-viewing roll-up) and an
- * "Intentional" badge for deliberate limitations.
+ * The page hosts `PainPointScoringPanel` (per-persona Severity/Frequency/Confidence scoring and the chosen-when-viewing
+ * roll-up) and an "Intentional" badge for deliberate limitations.
  *
- * **Owner assignment via a dedicated `RecordPrincipalField`, not a
- * `PainPointFormModal` field (Decided by: Agent)** — see `types.ts`'s own
- * docstring on `PainPointFieldValues` for why. The owner is a user, an
- * organisation group or a project group. This page loads this
- * project's organisation's user list once (for the picker's own
- * search/display needs) and calls `projectPainPointApi.update` directly with
- * the current content fields plus the newly chosen `owner`.
+ * `owner` (a user, an organisation group or a project group) is assigned through `RecordPrincipalField`, not a
+ * `PainPointFormModal` field (see `types.ts` `PainPointFieldValues`). The page loads the project's organisation user
+ * list once and calls `projectPainPointApi.update` with the current content fields plus the chosen `owner`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

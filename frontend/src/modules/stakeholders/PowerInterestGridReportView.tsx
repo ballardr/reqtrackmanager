@@ -1,16 +1,12 @@
 /**
  * Module: modules/stakeholders/PowerInterestGridReportView
  *
- * The on-screen view of report S1 (Power/interest grid), registered as
- * `TierAModuleDefinition.reportViews.s1`. The point of S1 is
- * *where* each Stakeholder sits, which four stacked tables hide, so this draws
- * the classic 2×2 grid (Influence up, Interest across) with each Stakeholder
- * linking to its page in the quadrant it falls in, then the Stakeholders with no
- * position as the generic gap table. Quadrant names go through
- * `GRID_QUADRANT_LABEL`. The view owns `group_id` and `group_by`, which narrow
- * the run and add a Branch column to the generic tables. A quadrant can hold any number of
- * Stakeholders, so each shows the first ten and puts the rest behind "Show all N", a scrolling
- * modal (`CappedList`), keeping the grid one screen tall.
+ * The on-screen view of report S1 (Power/interest grid), registered as `TierAModuleDefinition.reportViews.s1`. S1 is
+ * about where each Stakeholder sits, so this draws the 2x2 grid (Influence up, Interest across) with each Stakeholder
+ * linking to its page in its quadrant, then the Stakeholders with no position as the generic gap table. Quadrant names
+ * go through `GRID_QUADRANT_LABEL`. The view owns `group_id` and `group_by`, which narrow the run and add a Branch
+ * column to the generic tables. Each quadrant shows its first ten Stakeholders and puts the rest behind "Show all N", a
+ * scrolling modal (`CappedList`), keeping the grid one screen tall.
  */
 import { Link } from "react-router-dom";
 

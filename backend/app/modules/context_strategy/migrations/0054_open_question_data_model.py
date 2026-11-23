@@ -4,20 +4,15 @@ Revision ID: 0054
 Revises: 0053
 Create Date: 2026-09-28
 
-Adds the four tables backing Context & Strategy's Open Question data model,
-back to migration 0052's Pain Point shape (no identity+version
-split — see `models.py`'s own docstring for the full reasoning), not
-migration 0053's Guiding Principle shape:
+Adds the four tables of the Open Question data model, with migration 0052's Pain Point shape (no identity and version
+split; see `models.py`):
 
-- `open_questions` (the artefact itself — project-scoped only, no version
-  table, no `type` field; `question`/`context`/`evidence` are `Text`).
-- `open_question_comments` / `open_question_comment_files` /
-  `open_question_files` — this module's own module-local comment-thread and
-  attachment tables, mirroring `pain_point_comments`/`pain_point_comment_
-  files`/`pain_point_files`.
+- `open_questions`: the artefact (project-scoped, no version table, no `type`; `question`, `context` and `evidence` are
+  `Text`).
+- `open_question_comments`, `open_question_comment_files` and `open_question_files`: the module-local comment and
+  attachment tables, as `pain_point_comments` and its siblings.
 
-No backfill needed — this is a brand-new artefact type with no pre-existing
-rows anywhere.
+A new artefact type, so no backfill.
 """
 
 from collections.abc import Sequence

@@ -1,9 +1,9 @@
 /**
  * Module: components/LineHopsSetting
  *
- * The Line hops row of a canvas editor's settings: a switch and its captioned help. The setting belongs to the diagram (every
- * viewer and every export draws the same arcs), so each editor stores it on its own record; this is the one control, so every
- * editor words it the same way.
+ * The Line hops row of a canvas editor's settings: a switch and its help. The setting belongs to the diagram
+ * (every viewer and export draws the same arcs), so each editor stores it on its own record; this is the one
+ * control, so every editor words it the same way.
  */
 import { useStrings } from "../context/TerminologyContext";
 import { FieldCaption } from "./FieldHelp";

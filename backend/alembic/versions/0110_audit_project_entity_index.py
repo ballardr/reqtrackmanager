@@ -5,8 +5,8 @@ Revises: 0109
 Create Date: 2026-10-28
 
 A record's change history reads a project's audit events by record id alone, because the events about one record can
-carry different entity types. With only `(project_id, entity_type, created_at)` to use, the database read every event of
-the project and filtered on the id (15 ms and growing with the trail, per activity request, in the capacity profile).
+carry different entity types. `(project_id, entity_type, created_at)` cannot serve that, so the database reads every event of
+the project and filters on the id (15 ms per activity request in the capacity profile).
 Guarded: a database built from the current models already has it.
 """
 

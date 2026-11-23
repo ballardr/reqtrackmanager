@@ -2,11 +2,10 @@
  * Module: modules/risk_management/api
  *
  * Thin wrappers over `api` (frontend/src/api/client.ts) for the endpoints of
- * `backend/app/modules/risk_management/{project_router,router}.py`: risk CRUD,
- * lifecycle transition, versions, archive, treatment verdicts, reviews, comments
- * and files, plus the two-tier Risk type vocabulary. Relationships are made with
- * the generic artefact-link endpoints (`ArtefactLinksPanel`), not here. `projectId`
- * / `organizationId` parameters match the endpoint's scope.
+ * `backend/app/modules/risk_management/{project_router,router}.py`: risk CRUD, lifecycle transition, versions,
+ * archive, treatment verdicts, reviews, comments and files, plus the two-tier Risk type vocabulary. Relationships use
+ * the generic artefact-link endpoints (`ArtefactLinksPanel`), not this file. `projectId` / `organizationId` match the
+ * endpoint's scope.
  */
 import { api } from "../../api/client";
 import { appendTagParams, type TagListFilters } from "../../api/tags";

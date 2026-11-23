@@ -1,36 +1,29 @@
 /**
  * Module: components/TreeSelect
  *
- * A closed-by-default multi-select over a *tree* of options — the hierarchical
- * sibling of `MultiSelectDropdown` (docs/ux-style-guide.md "Pattern:
- * multi-select dropdown"): it looks like one dropdown, summarises the checked
- * options' labels, and opens a `Popover` holding the tree with a checkbox per
- * node. Used where a record can be in several places of a taxonomy at once
- * (a Stakeholder's groups). The tree shell is the shared `TreeView`; checking a
- * node never checks its ancestors or descendants, since each id is independent.
- * The chevron stays beside the label, indented by depth, and the checkboxes sit in
- * one column at the right edge so they line up at every depth; the whole row is the
- * click target and highlights on hover and focus.
+ * A closed-by-default multi-select over a *tree* of options, the hierarchical sibling of `MultiSelectDropdown`
+ * (docs/ux-style-guide.md "Pattern: multi-select dropdown"): one dropdown summarising the checked labels, opening a
+ * `Popover` with the tree and a checkbox per node. Used where a record can be in several places of a taxonomy (a
+ * Stakeholder's groups). The tree shell is the shared `TreeView`; checking a node never checks its ancestors or
+ * descendants, since each id is independent. The chevron stays beside the label, indented by depth, and the checkboxes
+ * sit in one column at the right edge; the whole row is the click target.
  *
- * Presentational: the caller owns `selectedIds` and applies `onChange`. A
- * node may be `disabled` (with a `title` explaining why) to show a position in
- * the tree that cannot be chosen, e.g. an organisation group inside a project
- * picker.
+ * Presentational: the caller owns `selectedIds` and applies `onChange`. A node may be `disabled` (with a `title`
+ * explaining why) to show a position that cannot be chosen, e.g. an organisation group inside a project picker.
  *
- * `single` turns it into a one-choice picker (each node is a selectable row, the chosen one marked with a tick and read
- * as a radio by assistive technology; choosing closes the list, and `clearLabel` adds a row that clears the choice), and `searchable` adds a search box that keeps the nodes whose label matches and the
- * ancestors leading to them, with every branch open while a search is active. The search box and the clear row are a fixed
- * header; only the list below them scrolls (`ScrollRegion`), flush with the panel's edges, so a scrolled list never moves
- * the search away and the last row is not cut at the border. A one-choice row shows the node's own name under its parent
- * and keeps the whole path (`pathLabel`) as its accessible name and in the trigger. A node may appear under several
- * parents (the same id twice): each place shows the same state.
+ * `single` makes it a one-choice picker (the chosen row has a tick and is a radio to assistive technology; choosing
+ * closes the list; `clearLabel` adds a row that clears it). `searchable` adds a search box keeping matching nodes and
+ * their ancestors, with every branch open while searching. The search box and clear row are a fixed header and only the
+ * list below scrolls (`ScrollRegion`), so a scrolled list never moves the search away. A one-choice row shows the
+ * node's own name under its parent and keeps the whole path (`pathLabel`) as its accessible name and in the trigger. A
+ * node may appear under several parents (the same id twice); each place shows the same state.
  *
  * The panel opens under the field with its left edge on the field's (`Popover matchAnchor`), as wide as the field up to
- * 28rem, and below it whenever there is usable room; a full-width field therefore never opens it at the far end.
+ * 28rem, and below it whenever there is usable room.
  *
- * Tooltips: the closed trigger shows its full summary in the shared `Tooltip`, only while the summary is clipped and
- * never while the list is open; a chevron has none (the list is transient and its row names are beside them); a row
- * has one only to say why a `disabled` node cannot be chosen. No native `title` anywhere (`scripts/check_native_title.py`).
+ * Tooltips: the closed trigger shows its full summary in the shared `Tooltip` only while the summary is clipped and never
+ * while the list is open; a chevron has none; a row has one only to say why a `disabled` node cannot be chosen. No native
+ * `title` (`scripts/check_native_title.py`).
  */
 import { Check, ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";

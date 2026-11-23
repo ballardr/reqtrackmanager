@@ -3,14 +3,11 @@ import { expect, type Page, test } from "@playwright/test";
 import { installCleanupHook, loginAs, onCleanup, openProject, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Logs in as the Alpha/Beta org admin, opens Beta-2's Project Admin, and
- * self-heals shared Beta-2 state an earlier timed-out run may have leaked.
- * Each test below calls this, so every test runs standalone and in any
- * order (CLAUDE.md test-independence rule).
+ * Logs in as the Alpha/Beta org admin, opens Beta-2's Project Admin, and resets shared Beta-2 state that an earlier
+ * timed-out run may have leaked. Each test calls this, so every test runs standalone and in any order.
  *
- * Returns the project id and the session token, captured up front because
- * an API cleanup can't call `page.evaluate` once a timeout has closed
- * the page.
+ * Returns the project id and the session token, captured up front because an API cleanup cannot call
+ * `page.evaluate` once a timeout has closed the page.
  */
 async function openBeta2Admin(page: Page): Promise<{ projectId: string; sessionToken: string | null }> {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
@@ -20,12 +17,9 @@ async function openBeta2Admin(page: Page): Promise<{ projectId: string; sessionT
   const sessionToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
   const sessionHeaders = { Authorization: `Bearer ${sessionToken}` };
 
-  // Self-heal shared Beta-2 state an earlier *timed-out* run may have
-  // leaked before cleanup moved to afterEach (a timeout closed the page before an in-body `finally` could revert via the
-  // API — found 2026-10-04 when a run under heavy load left
-  // `{"requirement": "Spec"}` behind, failing every later run at the
-  // first "Requirements" nav click): reset terminology, and drop any
-  // required "Priority <timestamp>" field from an earlier run.
+  // Reset shared Beta-2 state a timed-out run may have leaked (a timeout closes the page before an in-body `finally`
+  // can revert through the API): reset terminology, and drop any required "Priority <timestamp>" field from an
+  // earlier run.
   await page.request.put(`http://localhost:8000/api/v1/projects/${projectId}/terminology`, {
     headers: sessionHeaders, data: { terminology: {} },
   });
@@ -42,25 +36,17 @@ async function openBeta2Admin(page: Page): Promise<{ projectId: string; sessionT
 }
 
 /**
- * Job to be done: per-project custom fields of all four types (C-C-01,
- * C-C-02), project group membership management (C-U-11), and per-project
- * terminology overrides (C-C-03).
+ * Job to be done: per-project custom fields of all four types (C-C-01, C-C-02), project group membership management
+ * (C-U-11), and per-project terminology overrides (C-C-03).
  *
- * Uses Beta-2. The terminology change is reverted at the end of its test
- * since it's a shared, persistent project setting other specs' nav-label
- * assertions could otherwise be surprised by. The four custom fields are
- * each given a per-run timestamp suffix rather than a fixed name — Custom
- * Fields has no server-side uniqueness constraint on name, so a fixed name
- * re-run against an already-mutated Beta-2 (no reseed in between) doesn't
- * fail outright but does leave every earlier run's own same-named fields
- * behind, which upstream steps and other specs sharing this project can
- * then trip over. A unique name per run avoids that regardless of how many
- * times, or in what order, this spec has run against the current database.
+ * Uses Beta-2. The terminology change is reverted at the end of its test, since it is a shared, persistent project
+ * setting that other specs' nav-label assertions would see. The four custom fields get a per-run timestamp suffix:
+ * Custom Fields has no server-side name uniqueness, so a fixed name would leave every earlier run's same-named
+ * fields behind for other specs sharing the project.
  *
- * Split into three independent tests (2026-10-04) — as one test its steps
- * alone took ~28s of the 30s default budget, so it timed out under load;
- * each test now sets up and self-heals via `openBeta2Admin`. The
- * `global-state-mutators` project runs them one at a time (`workers: 1`).
+ * Split into three independent tests, each setting up and resetting state through `openBeta2Admin`, so a test stays
+ * within the default 30s budget under load. The `global-state-mutators` project runs them one at a time
+ * (`workers: 1`).
  */
 test.describe("project admin: custom fields, groups, and terminology", () => {
   installCleanupHook();
@@ -75,20 +61,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
     // Runs in afterEach (also on failure/timeout) — see installCleanupHook.
     onCleanup(async (request) => {
-      // Defensive backstop, same reasoning as the terminology and
-      // group-roles onCleanup blocks below — a direct API call, not the UI
-      // steps above, so cleanup still runs even if an assertion throws
-      // mid-way through creating/deleting these fields. This one matters
-      // more than most: `priorityField` is a *required* field, and this
-      // exact gap (an earlier interrupted run leaving 1-3 required
-      // "Priority ..." fields stuck on Beta-2, each with no default value)
-      // was found live while verifying an unrelated dependency bump —
-      // every other spec that creates a plain requirement on Beta-2 got a
-      // permanently-disabled "Create" button until the stuck fields were
-      // found and deleted by hand. `safetyCriticalField` isn't required
-      // and can't block anything, but it's cheap to sweep up alongside
-      // `priorityField` here rather than leave it as one more never-used
-      // row on an already heavily-accumulated shared project.
+      // Defensive backstop: a direct API call, so cleanup runs even if an assertion throws part-way through creating or
+      // deleting these fields. `priorityField` is required, so a stuck "Priority ..." field with no default value leaves
+      // the "Create" button permanently disabled for every spec that creates a requirement on Beta-2.
+      // `safetyCriticalField` is not required but is swept here with it.
       const token = sessionToken;
       if (token && projectId) {
         const authHeaders = { Authorization: `Bearer ${token}` };
@@ -110,8 +86,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       }
     });
     await test.step("create a custom field of each type", async () => {
-      // Custom fields now lives inside the merged "Fields & actions" tab
-      //.
+      // Custom fields sit in the merged "Fields & actions" tab.
       await selectProjectAdminGroup(page, "Fields & actions");
 
       // The section draws no empty fields: "New field" opens the dialog the field is made in.
@@ -170,17 +145,13 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
   test("project groups: member add/remove, nesting, new group, and org-group role grants", async ({ page }) => {
     const { projectId, sessionToken } = await openBeta2Admin(page);
 
-    // No group is auto-created on project creation any more (2026-08-31) — this spec creates its own throwaway
-    // group up front (via the API, same as the `token`/`projectId` resolved
-    // above) rather than reaching for a default "Members" group that no
-    // longer exists.
+    // A project has no auto-created group, so this spec creates its own throwaway group up front through the API (as
+    // with the `token`/`projectId` resolved above).
     const memberGroupName = await test.step("create a project group to exercise member add/remove and org-group nesting against", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const groupName = `E2E Beta-2 Group ${Date.now()}`;
-      // the members/groups directory rework: `ProjectGroupCreate`
-      // no longer accepts a role at all — this group is created bare, which
-      // is fine here since none of the steps below (member add/remove,
-      // the `?openGroup=` deep link, org-group nesting) exercise its role.
+      // `ProjectGroupCreate` takes no role: the group is created bare, which suits the steps below (member add/remove,
+      // the `?openGroup=` deep link, org-group nesting) since none exercise its role.
       await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/groups`, {
         headers: { Authorization: `Bearer ${token}` }, data: { name: groupName },
       });
@@ -193,20 +164,12 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
     await test.step("add and remove a project group member", async () => {
       await selectProjectAdminGroup(page, "Project groups");
-      // Beta-2 is a shared, persistent project (see this file's own
-      // docstring) that accumulates a group per run of this spec with no
-      // reseed in between — the Groups tab paginates (`GROUPS_PAGE_SIZE`,
-      // `ProjectAdminPage.tsx`), so without narrowing to this run's own
-      // group by name first, enough prior runs push the just-created row
-      // off the first page and `openProjectGroupPanel` below times out
-      // finding no row at all, not a wrong one — the same reasoning the
-      // "create a new project group" step further down already applies to
-      // its own row lookup.
+      // Beta-2 is a shared, persistent project (see this file's docstring) that accumulates a group per run with no reseed
+      // in between. The Groups tab paginates (`GROUPS_PAGE_SIZE`, `ProjectAdminPage.tsx`), so without narrowing to this
+      // run's group by name, enough prior runs push the new row off the first page and `openProjectGroupPanel` finds no row.
       await page.getByPlaceholder("Search by name").fill(memberGroupName);
       await page.waitForLoadState("networkidle");
-      // Each group row now opens a `SidePanel` (docs/decisions.md)
-      // instead of an always-expanded `CollapsibleSection` accordion — the
-      // panel's own accessible name ("<group> details") scopes every
+      // Each group row opens a `SidePanel` (docs/decisions.md); its accessible name ("<group> details") scopes every
       // interaction below to it.
       const panel = await openProjectGroupPanel(page, memberGroupName);
       await panel.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.memberAlphaBeta.name);
@@ -255,9 +218,8 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     });
 
     await test.step("nest an org group into a project group directly from Project Admin", async () => {
-      // The backend has always supported org_group_id here (add_project_group_member);
-      // this closes the UX gap where no frontend surface sent it — only
-      // OrgAdminPage's own "expanded project" panel could, previously.
+      // The backend accepts `org_group_id` here (add_project_group_member); this step nests an org group from Project
+      // Admin, the other surface being OrgAdminPage's "expanded project" panel.
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const project = await (
         await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}`, {
@@ -296,13 +258,9 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.waitForLoadState("networkidle");
     });
 
-    // Style guide "Pattern: create panels, popovers, and one door for
-    // bulk" — closes the "Groups tab manages membership
-    // only, no create form at all" gap. Mirrors Org Admin's own "New
-    // group" popover coverage, against the project-scoped endpoint. the members/groups directory rework (docs/decisions.md) dropped
-    // the role picker this modal used to have — a group is created bare
-    // (zero roles) and a role is a separate grant made afterward via the
-    // new row's own `MultiSelectDropdown`, not at creation time.
+    // Style guide "Pattern: create panels, popovers, and one door for bulk": the Groups tab has a create form,
+    // mirroring Org Admin's "New group" popover against the project-scoped endpoint. A group is created bare (zero
+    // roles) (docs/decisions.md); a role is a separate grant made afterwards through the new row's `MultiSelectDropdown`.
     await test.step("create a new project group via the New group popover, then grant it a role", async () => {
       await selectProjectAdminGroup(page, "Project groups");
       const newGroupName = `E2E New Project Group ${Date.now()}`;
@@ -310,7 +268,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.getByRole("button", { name: "New group" }).click();
       const dialog = page.getByRole("dialog", { name: "New group" });
       await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
-      // No role picker any more — just the name field.
+      // The new-group dialog has only the name field (no role picker).
       await expect(dialog.getByLabel("Role")).toHaveCount(0);
       await dialog.getByPlaceholder("e.g. Reviewers").fill(newGroupName);
       await dialog.getByRole("button", { name: "Create" }).click();
@@ -318,27 +276,15 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // Principle 7 — every mutation ends with feedback.
       await expect(page.getByText("Group created")).toBeVisible();
       await expect(dialog).not.toBeVisible();
-      // Beta-2 is a shared, persistent project (see this file's own
-      // docstring) that accumulates a group per run of this spec with no
-      // reseed in between, the same way it accumulates custom fields —
-      // the Groups tab paginates (`GROUPS_PAGE_SIZE`, `ProjectAdminPage
-      // .tsx`), so without narrowing to this run's own group by name
-      // first, enough prior runs push the just-created row off the
-      // DirectoryTable's first page and this assertion times out finding
-      // no row at all, not a wrong one.
+      // Beta-2 is a shared, persistent project (see this file's docstring) that accumulates a group per run with no
+      // reseed, as it does custom fields. The Groups tab paginates (`GROUPS_PAGE_SIZE`, `ProjectAdminPage.tsx`), so
+      // without narrowing to this run's group by name, enough prior runs push the new row off the DirectoryTable's first
+      // page and this assertion finds no row.
       //
-      // `createProjectGroup` triggers this page's shared `reload()` (every
-      // mutation handler on this page does), which itself re-fetches the
-      // Groups tab's own unfiltered list as one step in a long sequential
-      // chain of unrelated awaited requests (project/stages/components/
-      // categories/custom fields/...). This used to race a search typed
-      // into the box before that chain settled — `reload()`'s own slower,
-      // stale-search fetch could resolve after a fresh, filtered one and
-      // silently overwrite it with the unfiltered list. `loadGroups` now
-      // guards against that with a request-id ref (docs/decisions.md), so this is no longer a live race —
-      // waiting for the network to settle first here is just the ordinary
-      // "let the create mutation's own refresh finish before searching"
-      // sequencing, not a workaround for a bug still open.
+      // `createProjectGroup` triggers the page's shared `reload()`, which re-fetches the Groups tab's unfiltered list at
+      // the end of a long chain of awaited requests. `loadGroups` guards against a slower stale fetch overwriting a
+      // later filtered one with a request-id ref (docs/decisions.md); waiting for the network to settle first is the
+      // ordinary "let the create mutation's refresh finish before searching" sequencing.
       await page.waitForLoadState("networkidle");
       await page.getByPlaceholder("Search by name").fill(newGroupName);
       // The group's Name cell is a real `<button>` (`DirectoryTable`'s
@@ -346,23 +292,15 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // `<td>`, so this checks the whole `<tr>`, not just the button itself.
       const row = page.getByRole("button", { name: new RegExp(`^${newGroupName}`) }).locator("xpath=ancestor::tr[1]");
       await expect(row).toContainText("No roles assigned");
-      // the members/groups directory rework: the Groups tab's
-      // `DirectoryTable` now type-badges every row — a real `ProjectGroup`
-      // reads "Project group", distinguishing it from a `ProjectMemberSource`
-      // row's "Project" badge (see the dedicated member-source coverage
-      // below, and `project-hierarchy.spec.ts`'s own member-source steps).
+      // The Groups tab's `DirectoryTable` type-badges every row: a `ProjectGroup` reads "Project group", distinguishing it
+      // from a `ProjectMemberSource` row's "Project" badge (see the member-source coverage below and
+      // `project-hierarchy.spec.ts`).
       await expect(row).toContainText("Project group");
 
-      // Grant a role via the new per-row MultiSelectDropdown —
-      // mirrors `ProjectMembersTable`'s own Role column interaction. Uses
-      // `.click()`, not `.check()`: the checkbox's own accessible name
-      // flips from "Grant X to Y" to "Revoke X from Y" the moment the
-      // toggle succeeds (`ProjectMembersTable`'s pre-existing pattern,
-      // reused here), so `.check()`'s built-in re-verification against
-      // that same original locator can never resolve — the working
-      // pattern elsewhere in this suite (project-admin-members.spec.ts)
-      // always clicks, then asserts the outcome via a separate, freshly
-      // resolved locator, exactly like the `row` assertion below.
+      // Grant a role via the row's MultiSelectDropdown, as `ProjectMembersTable`'s Role column does. Uses `.click()`, not
+      // `.check()`: the checkbox's accessible name flips from "Grant X to Y" to "Revoke X from Y" once the toggle succeeds,
+      // so `.check()`'s re-verification against the original locator can never resolve. The outcome is asserted through a
+      // freshly resolved locator, like the `row` assertion below (and project-admin-members.spec.ts).
       await row.getByRole("button", { name: `${newGroupName}'s roles` }).click();
       const roleGroup = page.getByRole("group", { name: `${newGroupName}'s roles` });
       await roleGroup.getByRole("checkbox", { name: `Grant Stakeholder to ${newGroupName}` }).click();
@@ -370,14 +308,9 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await expect(row).not.toContainText("No roles assigned");
     });
 
-    // the members/groups directory rework: the same "Add
-    // member" autocomplete (button + `Modal`) that already grants a
-    // direct role to a user also matches org groups by name — selecting
-    // one grants it a role *directly* via the new mechanism
-    // (`OrgGroupProjectRole`, `POST .../group-roles`), with no
-    // `ProjectGroup` wrapper created and no nesting involved. Distinct from
-    // the "nest an org group into a project group" step above, which is
-    // the older, still-supported composition mechanism.
+    // The same "Add member" autocomplete (button + `Modal`) that grants a direct role to a user also matches org groups
+    // by name: selecting one grants it a role directly (`OrgGroupProjectRole`, `POST .../group-roles`), with no
+    // `ProjectGroup` wrapper and no nesting. Distinct from the "nest an org group into a project group" step above.
     await test.step("grant an org group a project role directly, from the Members tab's combined Add member autocomplete", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const authHeaders = { Authorization: `Bearer ${token}` };
@@ -404,16 +337,11 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
       // Runs in afterEach (also on failure/timeout) — see installCleanupHook.
       onCleanup(async (request) => {
-        // Defensive backstop, not the primary cleanup any more — the step
-        // above already removes both roles it grants (stakeholder, then
-        // member) through the real "Remove group" UI. Revoking an
-        // already-revoked (group, project, role) grant is a documented
-        // no-op 204 (test_revoke_of_a_nonexistent_grant_is_a_no_op_204,
-        // backend/tests/test_org_group_project_roles.py), so deleting both
-        // unconditionally stays safe even when the step above already
-        // removed them — this only matters if that step fails partway
-        // through, which would otherwise leak a real stakeholder/member
-        // grant on memberAlphaBeta into other specs sharing Beta-2.
+        // Defensive backstop: the step above removes both roles it grants (stakeholder, then member) through the "Remove
+        // group" UI. Revoking an already-revoked (group, project, role) grant is a documented no-op 204
+        // (test_revoke_of_a_nonexistent_grant_is_a_no_op_204, backend/tests/test_org_group_project_roles.py), so deleting both
+        // unconditionally is safe; it matters only if that step fails part-way and would leak a stakeholder/member grant on
+        // memberAlphaBeta into other specs sharing Beta-2.
         await Promise.all(
           ["stakeholder", "member"].map((role) =>
             request.delete(
@@ -441,15 +369,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await dialog.getByRole("button", { name: "Add 1 member" }).click();
       await expect(dialog).not.toBeVisible();
 
-      // Visible on the group's member's own row, naming the granting
-      // group directly (the per-group provenance) and distinguishing
-      // this direct grant from the nesting mechanism's own wording. The
-      // Source column now shows a plain-language summary per row
-      // (platform review 2026-09 follow-up) rather than this line being
-      // always-visible in the cell — memberAlphaBeta holds no other role
-      // on Beta-2 at this point, so the summary reads "Group" (not
-      // "Direct and group"), and the actual named-group line lives
-      // behind that summary's own click-to-open popover.
+      // Visible on the group's member's row, naming the granting group (the per-group provenance) and distinguishing this
+      // direct grant from the nesting mechanism. The Source column shows a plain-language summary per row; memberAlphaBeta
+      // holds no other role on Beta-2 here, so it reads "Group" (not "Direct and group"), and the named-group line is
+      // behind the summary's click-to-open popover.
       const memberRow = page.locator("tr", { hasText: PERSONAS.memberAlphaBeta.name });
       await memberRow.getByRole("button", { name: "Group" }).click();
       await expect(
@@ -459,24 +382,14 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       ).toBeVisible();
       await page.keyboard.press("Escape");
 
-      // The grant just
-      // made above is now also visible and manageable as the group's own
-      // row — previously there was no way to see, edit, or remove it
-      // except by reaching into a member's Source line above, or calling
-      // the DELETE endpoint by hand (as this test's own onCleanup
-      // below used to be the only way to do).
+      // The grant made above is also visible and manageable as the group's own row.
       await test.step("the granting group gets its own row, editable and removable", async () => {
         const groupRow = page.getByRole("button", { name: `${directGroupName}'s roles` }).locator("xpath=ancestor::tr[1]");
         await expect(groupRow.getByText("Group", { exact: true })).toBeVisible();
-        // A group row's Source cell just states "Direct" plainly, no
-        // popover (platform review 2026-09 follow-up) — there's nothing
-        // upstream of the group's own grant to disclose, and the Role
-        // column (checked below via the trigger's own summary) already
-        // names which roles it holds. `exact: true` matters here
-        // specifically: this fixture's own group name contains the
-        // literal word "Direct" ("E2E Direct Grant Group ..."), which a
-        // substring match against the Name cell's combined "Group" badge
-        // + name text would also satisfy.
+        // A group row's Source cell states "Direct" with no popover: nothing is upstream of the group's own grant to
+        // disclose, and the Role column (checked below through the trigger's summary) names the roles it holds.
+        // `exact: true` matters: this fixture's group name contains the word "Direct" ("E2E Direct Grant Group ..."), which
+        // a substring match against the Name cell's "Group" badge plus name text would also satisfy.
         await expect(groupRow.getByText("Direct", { exact: true })).toBeVisible();
         const rolesButton = groupRow.getByRole("button", { name: `${directGroupName}'s roles` });
         await expect(rolesButton).toHaveText("Stakeholder (only role)");
@@ -511,22 +424,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     const { projectId, sessionToken } = await openBeta2Admin(page);
 
     await test.step("override and then revert a terminology term", async () => {
-      // The revert at the end is backed by an onCleanup (afterEach), with a direct API
-      // call as the actual backstop (not just the UI steps below) — same
-      // reasoning as the group-roles onCleanup above. Beta-2 is shared and
-      // persistent (this file's own docstring), so if any assertion in
-      // this step throws before the UI-driven revert runs, this override
-      // would otherwise stick around and break every *other* spec's
-      // default-terminology nav-label assertions until someone notices and
-      // resets it by hand — which is exactly what happened here once
-      // already (found while verifying an unrelated dependency bump: this
-      // step had thrown mid-run in an earlier session, leaving Beta-2's
-      // `terminology` at `{"requirement": "Spec"}` and causing every
-      // subsequent run — including a plain `getByRole("link", { name:
-      // "Requirements" })` in this same file's own first test.step — to
-      // fail immediately, with a symptom that looked unrelated to
-      // terminology at all).
-      // Runs in afterEach (also on failure/timeout) — see installCleanupHook.
+      // The revert at the end is backed by an onCleanup (afterEach, which also runs on failure or timeout; see
+      // installCleanupHook) with a direct API call as the backstop, as in the group-roles onCleanup above. Beta-2 is shared
+      // and persistent, so if an assertion throws before the UI-driven revert, the override would stay and break every
+      // other spec's default-terminology nav-label assertions (e.g. `getByRole("link", { name: "Requirements" })`).
       onCleanup(async (request) => {
         const token = sessionToken;
         if (token) {
@@ -538,13 +439,9 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
             .catch(() => {});
         }
       });
-      // Terminology now lives inside Overview ("Project settings") rather
-      // than its own tab — still needs a tab click since we're currently on
-      // "Project groups" from the step above (Overview is only the
-      // *default* tab on a fresh mount, not the currently-active one
-      // here). Its own Save button is labelled "Save terminology",
-      // distinct from Overview's own "Save settings" button now that both
-      // sit on the same screen.
+      // Terminology sits in Overview ("Project settings"), so a tab click is still needed here: Overview is the default
+      // tab on a fresh mount, not the active one after "Project groups". Its Save button is "Save terminology", distinct
+      // from Overview's "Save settings" button on the same screen.
       await selectProjectAdminGroup(page, "Project settings");
       await page.getByRole("textbox", { name: "Requirement", exact: true }).fill("Spec");
       // Wait for the save itself before reloading — reloading straight

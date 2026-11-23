@@ -1,17 +1,10 @@
 /**
  * Module: modules/compliance/ComplianceGlobalNavLink
  *
- * The "Compliance Standards" top-level nav-rail link — registered via `module.ts`'s `globalNavItems`
- * (`modules/types.ts`), never imported by `Layout.tsx` directly. Owns its
- * own visibility entirely: renders nothing at all unless
- * `useComplianceNavVisibility()` says so, since this tab is niche (unlike
- * Projects, which `Layout.tsx` always shows unconditionally).
- *
- * The link also stays active on the Standards page's By standard and Outstanding tabs, which are addresses of their own.
- *
- * Uses `NavRailLink`, exported from `components/Layout.tsx` for exactly
- * this kind of module-owned reuse, so this link renders indistinguishably
- * from every core rail entry.
+ * The "Compliance Standards" top-level nav-rail link, registered through `module.ts`'s `globalNavItems` (`modules/types.ts`)
+ * and never imported by `Layout.tsx`. It owns its visibility: it renders nothing unless `useComplianceNavVisibility()` says so,
+ * because the entry is niche. It stays active on the Standards page's By standard and Outstanding tabs, which have their own
+ * addresses. It uses `NavRailLink` (exported from `components/Layout.tsx` for module reuse) so it matches core rail entries.
  */
 import { ListChecks } from "lucide-react";
 

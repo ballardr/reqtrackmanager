@@ -22,14 +22,10 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      // Context modules intentionally colocate a Provider component with its
-      // paired hook (and, for LoginPage, one small pure helper) — the
-      // idiomatic React pattern this codebase uses throughout. Splitting
-      // each into its own file would only serve fast-refresh's dev-time HMR
-      // granularity, at the cost of scattering tightly-coupled code across
-      // more files; `allowExportNames` is the plugin's own documented
-      // escape hatch for exactly this case, so list the specific known
-      // non-component exports rather than silencing the rule broadly.
+      // Context modules colocate a Provider component with its paired hook (and, for LoginPage,
+      // one small pure helper); splitting them would only serve fast-refresh granularity and
+      // scatter coupled code. `allowExportNames` is the plugin's documented escape hatch, so
+      // the known non-component exports are listed instead of silencing the rule.
       "react-refresh/only-export-components": [
         "warn",
         {
@@ -57,24 +53,13 @@ export default tseslint.config(
         },
       ],
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-      // Downgraded to warn (not disabled): this React-Compiler-derived rule
-      // flags React's own documented canonical fetch-in-effect pattern
-      // (async function does `setX(null); await fetch(...); setY(data)`,
-      // called from a useEffect keyed on filter/id deps — used throughout
-      // this codebase's data-fetching pages) as an error, with no clean fix.
-      // `useEffectEvent` does not silence it — it only removes stale-closure
-      // deps, and the rule explicitly propagates its "contains setState"
-      // flag through useEffectEvent wrappers. The only patterns that satisfy
-      // the rule's static analysis (moving the setState into a nested
-      // `.then()` callback, `setTimeout`, `startTransition`) are, by the
-      // React community's and reporters' own description, "tricking the
-      // lint rule" rather than a real fix. This is an open, unresolved,
-      // Status:Unconfirmed upstream bug in React's compiler-derived lint
-      // rules — see facebook/react#34905, #34743, #34858 (all report this
-      // exact false positive against React's own docs' example) and the
-      // in-flight, unmerged fix at facebook/react#36734. Revisit once that
-      // lands upstream. (Decided by: User, 2026-09-15 — see
-      //)
+      // A warning (not disabled): this React-Compiler-derived rule flags React's documented
+      // fetch-in-effect pattern (an async function doing `setX(null); await fetch(...); setY(data)`,
+      // called from a useEffect keyed on filter/id deps) with no clean fix. `useEffectEvent`
+      // does not silence it, because the rule propagates its "contains setState" flag through
+      // it, and the patterns that satisfy the analysis (a nested `.then()`, `setTimeout`,
+      // `startTransition`) only evade it. This is an unresolved upstream false positive
+      // (facebook/react#34905, #34743, #34858; fix proposed in #36734).
       "react-hooks/set-state-in-effect": "warn",
     },
   }

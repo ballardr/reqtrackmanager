@@ -1,14 +1,13 @@
 /**
  * Module: components/ScrollRegion
  *
- * The one scrolling list: a capped box that scrolls by itself with the product's thin themed scrollbar, an edge
- * indicator on a side only while content continues beyond it, no scroll chaining to the page behind it
- * (`overscroll-behavior: contain`) and a focus ring that is drawn inside, never clipped at its edge. The look is the
- * `.scroll-region` rule in `styles/theme.css` (no scroll listener); this component only sets the cap.
+ * The one scrolling list: a capped box with the product's thin themed scrollbar, an edge indicator on a side only while
+ * content continues beyond it, no scroll chaining to the page behind (`overscroll-behavior: contain`) and a focus ring
+ * drawn inside, never clipped. The look is the `.scroll-region` rule in `styles/theme.css` (no scroll listener); this
+ * component only sets the cap.
  *
- * Presentational. A caller that needs a header that stays put (a search box) renders it outside the region, and puts
- * the padding on the region (its `style`), so the scrollbar and the clipped edge meet the container's border.
- * A region shorter than its cap has no scrollbar and no indicator.
+ * Presentational. A header that stays put (a search box) is rendered outside the region; padding goes on the region
+ * (its `style`) so the scrollbar and clipped edge meet the container's border.
  */
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 

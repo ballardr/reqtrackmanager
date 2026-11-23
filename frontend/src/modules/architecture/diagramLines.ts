@@ -1,23 +1,13 @@
 /**
  * Module: modules/architecture/diagramLines
  *
- * Turns a diagram's model data and the state of the editor (the boxes placed, the view switches that are off, connection
- * detail) into the lines the canvas draws, with the same fields the server's resolved view gives, so the editor shows
- * the effect of an edit before it is saved.
- *
- * Responsibilities:
- * - Combine the model's plain ids (parents, connections, what each view switch hides) with the editor's state and run
- *   `resolveLines` over them.
- * - Shape each resolved line like the server's `ViewEdge`: its connections, label, type attributes and the hidden
- *   elements it passes through, drawn only for what the viewer can read.
- *
- * Design decisions:
- * - Display only. Nothing here is stored or sent: a diagram saves its boxes and notes, and the server validates them, so a
- *   wrong line can never change stored data and the next load shows the server's own view.
- * - The line shaping mirrors `diagram_view._edges`; the label is `diagram_edge_label.edge_label`'s port; the rule behind the
- *   lines is `diagramResolver`.
- *
- * Dependencies: `diagramResolver`, `types`.
+ * Turns a diagram's model data and the editor's state (boxes placed, view switches off, connection detail) into the lines the
+ * canvas draws, with the fields the server's resolved view gives, so the editor shows the effect of an edit before it is saved.
+ * It combines the model's plain ids (parents, connections, what each view switch hides) with the editor's state, runs
+ * `resolveLines`, and shapes each line like the server's `ViewEdge` (mirroring `diagram_view._edges`; the label is
+ * `diagram_edge_label.edge_label`'s port), drawn only for what the viewer can read.
+ * Display only: nothing here is stored or sent, so a wrong line can never change stored data and the next load shows the
+ * server's own view. The rule behind the lines is `diagramResolver`. Dependencies: `diagramResolver`, `types`.
  */
 import { outerSide, resolveLines, type ResolvedLine, type ResolverBoundary } from "./diagramResolver";
 import type { ArchitectureConnection, DiagramModel, DiagramViewEdge, DiagramViewHop, ModelConnectionType } from "./types";

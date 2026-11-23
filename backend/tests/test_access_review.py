@@ -139,10 +139,9 @@ def test_orphaned_user_status_rejects_missing_or_invalid_action(client, admin_to
 
 
 def test_deactivate_and_reactivate_orphaned_user(client, admin_token, org_id):
-    """Hardening-review finding: an orphaned account could not be acted on
-    by anyone at all — org-scoped `deactivate_org_user` requires the target
-    to already belong to that org, which an orphaned user by definition
-    doesn't. These new system-level endpoints close that gap."""
+    """An orphaned account can be deactivated and reactivated by the system-level
+    endpoints: org-scoped `deactivate_org_user` requires the target to belong
+    to that org, which an orphaned user by definition does not."""
     orphaned_id = _make_orphaned_user(client, admin_token, org_id, "orphaned_to_deactivate@example.com")
 
     resp = client.post(f"/api/v1/system/users/{orphaned_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token))
@@ -225,13 +224,9 @@ def test_unban_does_not_reactivate_so_role_grants_wait_for_reactivation(client, 
 
 
 def test_reactivate_refuses_a_still_banned_account(client, admin_token, org_id):
-    """Deeper hardening-review finding: `reactivate` and `ban` share the same
-    underlying `is_active` flag but `reactivate_orphaned_user` never checked
-    `is_banned` before flipping it back on — letting a banned account back
-    in without ever going through `unban` first, contradicting `is_banned`'s
-    own documented invariant that a ban "survives even if something else
-    were to flip is_active back on" (models/user.py). The correct sequence
-    is unban, then reactivate."""
+    """`reactivate` and `ban` share the `is_active` flag, so reactivating checks
+    `is_banned`: a ban survives a reactivation (models/user.py). The correct
+    sequence is unban, then reactivate."""
     banned_id = _make_orphaned_user(client, admin_token, org_id, "reactivate_bypass@example.com")
     resp = client.post(f"/api/v1/system/users/{banned_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token))
     assert resp.status_code == 204
@@ -364,10 +359,8 @@ def test_system_users_sort_by_email_and_created_at(client, admin_token, org_id):
 
 
 def test_cannot_revoke_the_deployment_last_active_server_admin(client, admin_token, org_id):
-    """Hardening-review finding: revoking the sole remaining active server
-    admin would be an unrecoverable lockout — nobody left with the
-    authority to grant the role back to anyone, short of direct database
-    access."""
+    """Revoking the sole remaining active server admin is refused: no one would
+    be left able to grant the role back."""
     self_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
     resp = client.put(
         f"/api/v1/system/users/{self_id}/server-admin", json={"is_server_admin": False},

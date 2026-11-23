@@ -1,19 +1,11 @@
 """
 Module: modules.context_strategy.report_fields
 
-The `ReportFieldProvider`s for Context & Strategy's five artefact types, so custom report layouts can
-print and group Strategies, Future States, Pain Points, Guiding Principles and Open Questions.
-
-Responsibilities:
-- Declare, per type, the text fields (from the search declaration) and the typed fields: priority,
-  time horizon, owner, dates and flags.
-
-Design decisions:
-- An owner is a principal (a user or a group), shown by name.
-- A Pain Point's per-persona scores are not fields here: they are one value per persona and belong to
-  the Pain Point reports, not to a flat field.
-
-Dependencies: this module's models and enums; `services.report_fields` (builders).
+The `ReportFieldProvider`s for the five artefact types, so custom report
+layouts can print and group them: text fields from the search declaration
+plus typed fields (priority, time horizon, owner, dates, flags). An owner is
+a principal shown by name; per-persona Pain Point scores are not flat fields.
+Dependencies: this module's models; `services.report_fields`.
 """
 
 from __future__ import annotations

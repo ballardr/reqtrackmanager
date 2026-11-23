@@ -2,12 +2,11 @@
  * Module: components/RequirementAliasField
  *
  * The "Additional components" field of the requirement create form: choose the further components and categories the
- * new requirement also sits in. Each gets a code of its own once the requirement is saved; nothing is written here,
- * the choice is returned through `onChange` for the form to send with the requirement.
+ * new requirement also sits in. Each gets its own code on save; the choice is returned through `onChange` and nothing is
+ * written here.
  *
- * It renders nothing when the project's setting disallows new aliases, the project has no category besides the
- * requirement's own, or the read fails: a form never offers a field that would be refused. The record page's own
- * control for an existing requirement is `RequirementPlaces`.
+ * It renders nothing when the project disallows new aliases, has no category besides the requirement's own, or the read
+ * fails, so a form never offers a field that would be refused. An existing requirement uses `RequirementPlaces`.
  */
 import { useId } from "react";
 

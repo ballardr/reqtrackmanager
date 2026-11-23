@@ -1,23 +1,17 @@
 /**
  * Module: modules/architecture/useDiagramEditor
  *
- * The diagram editor's state for one diagram: the record, the view read from the server, the model data its lines are
- * resolved from, the layout being edited with its undo/redo history, and the calls that store it. The pure parts are in
+ * The diagram editor's state for one diagram: the record, the view read from the server, the model data its lines are resolved
+ * from, the layout being edited with its undo/redo history, and the calls that store it. The pure parts are in
  * `diagramEditorModel` and `diagramLines`; this hook adds loading, saving and conflict handling.
- *
- * Responsibilities:
- * - Load the diagram, its view (boxes, notes, view switches) and its model, and read them again after a stored change,
- *   merging the result into the unsaved layout (nothing is lost). Flipping a view switch needs no read: the page works
- *   out the lines from the model.
- * - Save the layout, the toggles and the connection-detail switch, each quoting the diagram's `version`; a 409 sets
- *   `conflict` so the page can offer to reload instead of overwriting a newer save.
- *
- * Design decisions:
- * - Layout edits are local until Save (one undo step per move, resize, add, removal or note edit). Toggles and the
- *   connection-detail switch are stored when changed, since they are settings of the diagram, not drawing edits; they
- *   advance the same version, which this hook keeps current so a later layout save is not stale by its own doing.
- * - A save clears the undo history: the stored layout becomes the new baseline, and notes take their stored ids. An edit
- *   made while the saved layout is being read back is kept (and stays unsaved) instead of being replaced.
+ * - Loads the diagram, view and model and reads them again after a stored change, merging into the unsaved layout. Flipping a
+ *   view switch needs no read: the page resolves the lines from the model.
+ * - Saves the layout, toggles and connection-detail switch, each quoting the diagram's `version`; a 409 sets `conflict` so
+ *   the page offers a reload instead of overwriting a newer save.
+ * - Layout edits are local until Save (one undo step each). Toggles and the connection-detail switch are diagram settings,
+ *   stored when changed; the hook keeps the version current so a later layout save is not stale by its own doing.
+ * - A save clears the undo history (the stored layout is the new baseline, notes take their stored ids); an edit made while
+ *   the saved layout is read back is kept and stays unsaved.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 

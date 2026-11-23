@@ -1,14 +1,12 @@
 /**
  * Module: modules/architecture/useFolderActions
  *
- * The folder actions of a System Architecture list, as rows of the page's one actions menu (`ListPageLayout`'s
- * `menuItems`) and the dialogs they open: "New folder" (under the chosen folder), and, once a folder is chosen,
- * "Edit folder" (rename and move, one dialog) and "Delete folder" (a confirmation that its records and sub-folders move
- * up; nothing else is deleted). A page never shows a row of folder buttons (docs/ux-style-guide.md, "Pattern: page actions
- * menu"); with no folder chosen there is no Edit or Delete row, never a disabled one.
- *
+ * The folder actions of a System Architecture list, as rows of the page's one actions menu (`ListPageLayout`'s `menuItems`)
+ * and the dialogs they open: "New folder" (under the chosen folder) and, once a folder is chosen, "Edit folder" (rename and
+ * move) and "Delete folder" (its records and sub-folders move up; nothing else is deleted). With no folder chosen there is no
+ * Edit or Delete row, never a disabled one (docs/ux-style-guide.md, "Pattern: page actions menu").
  * It knows no record: the caller supplies the folders, the calls and the choice. Every change reads the folders again
- * through `onChanged`, and where the person may not change folders (`calls` is null) the hook offers nothing.
+ * through `onChanged`; where the person may not change folders (`calls` is null) the hook offers nothing.
  */
 import { useMemo, useState, type ReactNode } from "react";
 

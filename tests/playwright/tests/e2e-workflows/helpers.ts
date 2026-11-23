@@ -5,10 +5,8 @@ import { type APIRequestContext, type Locator, type Page, expect, test } from "@
 import { statBlockViolations } from "../../../../frontend/src/testing/statBlockGeometry";
 
 /**
- * Personas seeded by backend/scripts/seed_e2e_dataset.py (see
- * docs/e2e-workflows.md for the full persona/workflow catalogue). Run the
- * seed script once against a fresh tests/container stack before running
- * this directory's specs.
+ * Personas seeded by backend/scripts/seed_e2e_dataset.py (docs/e2e-workflows.md has the catalogue). Run the seed
+ * script once against a fresh tests/container stack before this directory's specs.
  */
 export const PASSWORD = "E2ePass123!";
 
@@ -38,26 +36,17 @@ export const PROJECT_NAMES = {
   beta2: "Beta-2 Customer Portal",
   gamma1: "Gamma-1 Lab Instrument Suite",
   gamma2: "Gamma-2 Data Pipeline",
-  /** Dedicated to the terminology-override spec (terminology-override.spec.ts)
-   * — see TERMINOLOGY_PROJECT_NAME/TERMINOLOGY_OVERRIDE in
-   * backend/scripts/seed_e2e_dataset.py. No other spec may depend on this
-   * project's terminology staying at, or moving away from, that override. */
+  /** Dedicated to terminology-override.spec.ts (TERMINOLOGY_PROJECT_NAME/TERMINOLOGY_OVERRIDE in
+   * backend/scripts/seed_e2e_dataset.py). No other spec may depend on this project's terminology. */
   delta1: "Delta-1 Terminology Demo",
-  /** Fixed hierarchy fixture (see backend/scripts/seed_e2e_dataset.py):
-   * gamma4 mirror-all-inherits from gamma3, and gamma3 also consumes
-   * members from gamma4 (member-source, reverse). Dedicated solely to
-   * project-hierarchy.spec.ts — no other spec may depend on this pair's
-   * configuration. */
+  /** Fixed hierarchy fixture (backend/scripts/seed_e2e_dataset.py): gamma4 mirror-all-inherits from gamma3, and
+   * gamma3 also consumes members from gamma4 (member-source, reverse). Dedicated to project-hierarchy.spec.ts. */
   gamma3: "Gamma-3 Hierarchy Parent",
   gamma4: "Gamma-4 Hierarchy Child",
-  /** Dedicated to link-and-action-
-   * change-request-locking.spec.ts (see LINK_LOCK_PROJECT_NAME in
-   * backend/scripts/seed_e2e_dataset.py): `require_change_request_for_
-   * approved_links` is on; otherwise given components/categories only —
-   * that spec creates, links, and approves its own throwaway requirements
-   * each run rather than consuming a fixed seeded fixture (which
-   * unlink/remove/approve would make non-idempotent). No other spec may
-   * depend on this project's setting. */
+  /** Dedicated to link-and-action-change-request-locking.spec.ts (LINK_LOCK_PROJECT_NAME in
+   * backend/scripts/seed_e2e_dataset.py): `require_change_request_for_approved_links` is on and it has only
+   * components and categories, because that spec creates, links and approves its own requirements each run. No other
+   * spec may depend on this project's setting. */
   epsilon1: "Epsilon-1 Link Lock Demo",
   /** Holds one submitted change request proposing three links, the last
    * unmergeable (see PROPOSED_LINKS_PROJECT_NAME in backend/scripts/seed_e2e_dataset.py). Read-only: no spec may
@@ -68,8 +57,7 @@ export const PROJECT_NAMES = {
   eta1: "Eta-1 Flight System Architecture",
 } as const;
 
-/** Mirrors TERMINOLOGY_OVERRIDE in backend/scripts/seed_e2e_dataset.py — the
- * fixed override PROJECT_NAMES.delta1 is seeded with. */
+/** Mirrors TERMINOLOGY_OVERRIDE in backend/scripts/seed_e2e_dataset.py, the override PROJECT_NAMES.delta1 is seeded with. */
 export const TERMINOLOGY_OVERRIDE = { stage: "Phase", requirement: "Spec", changeRequest: "ECR" } as const;
 
 const LOGIN_ATTEMPTS = 6;
@@ -104,13 +92,6 @@ export async function apiLogin(
   throw new Error(`API login as ${email} failed with status ${status}`);
 }
 
-/** Logs in through the real UI form as the given persona.
- *
- * Waits on the login response itself rather than only on "Sign out"
- * appearing: login is deliberately slow (bcrypt; the app's API client gives
- * it a 45s allowance), so under load it could outlast the 5s assertion and
- * read as a missing button. A rejected login (e.g. another spec deactivated
- * a shared persona) now fails naming the account and status instead. */
 /**
  * Makes every Links panel in this page's session show the relationship labels ("Has participant",
  * "Supersedes"), which are off by default (the viewer's remembered "Show relationships" choice).
@@ -126,6 +107,11 @@ export async function showLinkRelationships(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Logs in through the real UI form as the given persona. Waits on the login response itself, not only on "Sign out":
+ * login is deliberately slow (bcrypt; the API client allows 45s), so it can outlast the 5s assertion. A rejected login
+ * (for example a deactivated shared persona) fails naming the account and status.
+ */
 export async function loginAs(page: Page, email: string, password: string = PASSWORD): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
@@ -148,10 +134,9 @@ export async function loginAs(page: Page, email: string, password: string = PASS
 }
 
 /**
- * A list remembers the sort a person last chose for it (`ui_preferences` key `list_sort_<list>`), and a persona is shared
- * by many specs and runs, so a sort chosen by one spec would start the next one in another order. Signing in therefore
- * removes every remembered sort; the page is reloaded only when one was removed. Best effort: a failure leaves the
- * remembered sorts as they were and the spec proceeds.
+ * A list remembers the sort a person last chose (`ui_preferences` key `list_sort_<list>`), and a persona is shared by
+ * many specs, so signing in removes every remembered sort (reloading only when one was removed). Best effort: a failure
+ * leaves them as they were.
  */
 async function forgetRememberedSorts(page: Page): Promise<void> {
   try {
@@ -179,11 +164,8 @@ export async function logout(page: Page): Promise<void> {
   await page.waitForURL(/\/login$/);
 }
 
-/** CollapsibleSection's expand/collapse choice persists server-side per
- * user (`ui_preferences`) across runs/specs sharing a persona — an
- * unconditional click can toggle an already-expanded section shut on a
- * re-run or from an earlier spec's leftover state, so only click when
- * actually collapsed. */
+/** CollapsibleSection's choice persists per user (`ui_preferences`) across runs and specs sharing a persona, so an
+ * unconditional click could close an open section; click only when collapsed. */
 export async function ensureExpanded(page: Page, sectionTitle: string): Promise<void> {
   const toggle = page.getByRole("button", { name: `${sectionTitle} section` });
   // A section that is the only one on its page has no toggle (`collapsible={false}`): it is always open.
@@ -208,17 +190,10 @@ export async function ensureRowExpanded(page: Page, rowTitle: string): Promise<v
 }
 
 /**
- * Opens one org group's `SidePanel` on Org Admin's Groups section
- * (`DirectoryTable`, 2026-08-31 — replaces the
- * earlier always-expanded `CollapsibleSection` accordion this helper
- * used to open a card in instead). A `SidePanel` has no expand/collapse
- * state to race, so this isn't guarded the idempotent way `ensureExpanded`
- * is — clicking the row again while its own panel is already open is a
- * harmless no-op re-render, not a toggle-shut.
+ * Opens one org group's `SidePanel` on Org Admin's Groups section (a `DirectoryTable` row). A panel has no
+ * expand/collapse state, so clicking the row of an open panel is a harmless re-render.
  *
- * Returns the panel's own `dialog` locator (its accessible name is
- * `"<group name> details"`), so callers scope every subsequent interaction
- * to it rather than the whole page.
+ * @returns The panel's `dialog` locator (accessible name `"<group name> details"`), to scope later interactions.
  */
 export async function openOrgGroupPanel(page: Page, groupName: string) {
   await page.getByRole("button", { name: new RegExp(`^${groupName}`) }).click();
@@ -226,42 +201,15 @@ export async function openOrgGroupPanel(page: Page, groupName: string) {
 }
 
 /**
- * Opens one project group's `SidePanel` on `ProjectAdminPage`'s Groups
- * section — a `DirectoryTable` row (docs/decisions.md). Uses `DirectoryTable`'s `onRowClick` (a real `<button>`),
- * not `rowHref` — found during verification, not assumed: at the
- * time, every standard project auto-seeded a default group literally named
- * "Members" (`DEFAULT_GROUPS`, `routers/projects.py` — since removed,
- * 2026-08-31, but the finding that motivated `onRowClick` stands
- * regardless), the exact same accessible name as this page's own
- * `ResourceMenu` "Members" nav link, so a `rowHref` `<Link>` row would
- * collide with it (two `role="link"` elements sharing one accessible name
- * on the same page — a real ambiguity, not just a Playwright artifact, and
- * one any project could still hit today with a manually-named custom
- * group). The existing `?openGroup=` deep link is unaffected
- * either way — it's handled by `ProjectAdminPage.tsx`'s own
- * `useSearchParams` effect, which `onRowClick`'s `setOpenGroupId` call
- * feeds into identically. A `SidePanel` has no expand/collapse state to
- * race the way a `CollapsibleSection` does, so this isn't guarded the same
- * idempotent way `ensureExpanded` is — clicking the row again while its own
- * panel is already open is a harmless no-op re-render, not a toggle-shut.
+ * Opens one project group's `SidePanel` on `ProjectAdminPage`'s Groups section (a `DirectoryTable` row, through
+ * `onRowClick`, a real `<button>`). It is not a `rowHref` link: a link named like the group would share its accessible
+ * name with the page's own `ResourceMenu` "Members" link when a group is named "Members". The `?openGroup=` deep
+ * link reaches the same state. Clicking the row of an open panel is a harmless re-render.
  *
- * Returns the panel's own `dialog` locator (its accessible name is
- * `"<group name> details"`), so callers scope every subsequent interaction
- * to it rather than the whole page — necessary once more than one group in
- * this run could plausibly match a page-wide selector for the same
- * add-member input/role text.
+ * The match is exact, not a `^groupName` prefix: the row also holds a role dropdown whose trigger is named
+ * `"<group name>'s roles"`, which a prefix match would also select (a strict-mode violation).
  *
- * Uses an exact-name match, not a `^groupName` prefix regex: the
- * members/groups directory rework (docs/decisions.md) added a per-row role
- * `MultiSelectDropdown` to the Groups tab's own row (`ProjectAdminPage.tsx`),
- * whose trigger button's accessible name is `"<group name>'s roles"` — a
- * prefix match against the row-trigger button's exact `<group name>` text
- * also matched that second button, a genuine two-element strict-mode
- * violation found running the full suite together (not present when a
- * group had no role-picker rendered, e.g. an isolated spec run seeded
- * without this PR's own fixtures). The row-trigger button's own accessible
- * name is exactly `groupName` with no trailing text, so `exact: true`
- * disambiguates correctly without narrowing any real match.
+ * @returns The panel's `dialog` locator (accessible name `"<group name> details"`), to scope later interactions.
  */
 export async function openProjectGroupPanel(page: Page, groupName: string) {
   await page.getByRole("button", { name: groupName, exact: true }).click();
@@ -269,17 +217,10 @@ export async function openProjectGroupPanel(page: Page, groupName: string) {
 }
 
 /**
- * Selects a group in any page built on the shared `ResourceMenu`
- *. Each group is a real route segment (e.g.
- * `/orgs/:orgId/admin/:group?`), not client-only state — the link's own
- * `aria-current="page"` says whether it's already selected, so this is
- * idempotent the same way `ensureExpanded` is: clicking an already-active
- * group would be a harmless no-op navigation, but the guard keeps this a
- * true no-op instead of an extra history entry. A section within the
- * selected group is otherwise unreachable — unlike `CollapsibleSection`'s
- * own per-user collapse preference, group selection isn't persisted, so
- * this must run before every interaction with a section that isn't in the
- * page's default group. `parentLabel` names the expandable group a sub-page sits under (its header is opened first).
+ * Selects a group in any page built on the shared `ResourceMenu`. A group is a route segment (for example
+ * `/orgs/:orgId/admin/:group?`), and the link's `aria-current="page"` shows whether it is selected, so the call adds no
+ * history entry when it already is. The selection is not persisted, so call it before every interaction with a section
+ * outside the page's default group. `parentLabel` names the expandable group a sub-page sits under (opened first).
  */
 export async function selectResourceMenuGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
   // A sub-page sits under an expandable group header: open that group first when the menu shows it closed. Below the
@@ -292,20 +233,11 @@ export async function selectResourceMenuGroup(page: Page, groupLabel: string, pa
   }
   // Scoped to the resource menu: the application navigation rail also has links named like a group (Projects).
   const link = page.locator("nav.resource-menu-nav").getByRole("link", { name: groupLabel, exact: true });
-  // Below ResourceMenu's own mobile breakpoint (theme.css/useNarrowViewport,
-  // 860px) the link list is replaced with a single <select> — same group
-  // switch, a different control (platform-review-2026-09, "resource menus
-  // wasting space on narrow windows"). Scoped to the specific <select> that
-  // actually carries this group as an option, not just "any combobox on the
-  // page" — the currently-selected group's own content pane can contain
-  // unrelated <select>s.
+  // Below ResourceMenu's mobile breakpoint (theme.css/useNarrowViewport, 860px) the link list is a single <select>.
+  // Scoped to the <select> that carries this group as an option, since the content pane can hold unrelated <select>s.
   const dropdown = page.locator("select").filter({ has: page.getByRole("option", { name: groupLabel, exact: true }) });
-  // Race for whichever of the two actually renders rather than a bare
-  // `.count()` on the link alone — `.count()` doesn't auto-wait, so right
-  // after a navigation (before React has mounted the menu) it can read 0
-  // for the link even on a wide viewport where the link list is what's
-  // about to render, wrongly falling through to the dropdown branch and
-  // then hanging forever waiting for a <select> that was never coming.
+  // Wait for whichever renders: `.count()` does not auto-wait, so right after a navigation it can read 0 for the link on
+  // a wide viewport and wrongly take the dropdown branch.
   await expect(link.or(dropdown).first()).toBeAttached();
   if ((await link.count()) === 0) {
     await dropdown.selectOption({ label: groupLabel });
@@ -314,32 +246,20 @@ export async function selectResourceMenuGroup(page: Page, groupLabel: string, pa
   }
   if ((await link.getAttribute("aria-current")) !== "page") {
     await link.click();
-    // The group switch itself is a synchronous route-param change, but the
-    // newly-selected group's own content typically fetches its data on
-    // mount — a caller that immediately checks for group-specific content
-    // right after this call (e.g. `.count()` on a conditional button,
-    // which doesn't wait/retry the way `expect(...)` does) can otherwise
-    // race the fetch and silently read "not present yet" as "not present
-    // at all". Found via workflow-bypass-attempts.spec.ts: without this,
-    // its "Start review"/"Approve stage" `.count()` checks right after
-    // selecting the Structure group both intermittently read 0 before the
-    // stages list had loaded, silently skipping the whole approval and
-    // leaving the stage stuck in scoping.
+    // The new group's content fetches its data on mount; without waiting, a caller's immediate `.count()` on a
+    // conditional button (which does not retry like `expect(...)`) can read "not present yet" as "not present".
     await page.waitForLoadState("networkidle");
   }
 }
 
-/** `selectResourceMenuGroup` for `OrgAdminPage` — kept as its own name
- * since most call sites predate the generic helper above. */
+/** `selectResourceMenuGroup` for `OrgAdminPage`. */
 export async function selectOrgAdminGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
   await selectResourceMenuGroup(page, groupLabel, parentLabel);
 }
 
-/** Sets a module's (or, with `moduleName`, a sub-component's) org-level
- * availability on Org Admin's Modules group, which must already be open,
- * via its labelled `<select>` ("<name> availability"), and waits for the
- * confirming toast. Expands the module's collapsed sub-component list
- * first when setting a sub-component. */
+/** Sets a module's (or, with `moduleName`, a sub-component's) org-level availability through its labelled `<select>`
+ * ("<name> availability") on Org Admin's Modules group, which must already be open, and expects the new value to show.
+ * Expands the module's sub-component list first for a sub-component. */
 export async function setOrgModuleAvailability(
   page: Page,
   name: string,
@@ -358,15 +278,12 @@ export async function setOrgModuleAvailability(
   await expect(select).toHaveValue(availability);
 }
 
-/** `selectResourceMenuGroup` for `ServerManagementPage`
- * (`/server/management/:group?`, converted from `Tabs` — see
- * `docs/decisions.md`). */
+/** `selectResourceMenuGroup` for `ServerManagementPage` (`/server/management/:group?`). */
 export async function selectServerManagementGroup(page: Page, groupLabel: string): Promise<void> {
   await selectResourceMenuGroup(page, groupLabel);
 }
 
-/** `selectResourceMenuGroup` for `PreferencesPage` (`/preferences/:group?`,
- * converted from `Tabs` — see `docs/decisions.md`). */
+/** `selectResourceMenuGroup` for `PreferencesPage` (`/preferences/:group?`). */
 export async function selectPreferencesGroup(page: Page, groupLabel: string): Promise<void> {
   await selectResourceMenuGroup(page, groupLabel);
 }
@@ -378,9 +295,7 @@ export async function selectOrgResourcesGroup(page: Page, groupLabel: string): P
   await selectResourceMenuGroup(page, groupLabel);
 }
 
-/** `selectResourceMenuGroup` for `ProjectAdminPage`
- * (`/projects/:projectId/admin/:group?`, converted from `Tabs` — see
- * `docs/decisions.md`). */
+/** `selectResourceMenuGroup` for `ProjectAdminPage` (`/projects/:projectId/admin/:group?`). */
 export async function selectProjectAdminGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
   await selectResourceMenuGroup(page, groupLabel, parentLabel);
 }
@@ -413,73 +328,37 @@ export function recordCodeText(code: string): RegExp {
 }
 
 /**
- * Opens a requirement's detail page by its stable `unique_code` (e.g.
- * "HW-FN-001") rather than its `name` — a requirement's name can be
- * changed by an approved change request (see
- * change-request-approval-separation.spec.ts, which does exactly this to
- * Alpha-1's HW-FN-001), so specs that need "the locked seed requirement"
- * specifically must not hard-code its original name. Matches either the
- * tile (`.card`) or list (`tr`) row layout, whichever RequirementsPage's
- * persisted per-user view-mode preference currently renders.
+ * Opens a requirement's detail page by its stable `unique_code` (for example "HW-FN-001"), not its `name`, which an
+ * approved change request can change. Matches the tile (`.card`) or list (`tr`) layout, whichever the persisted
+ * view-mode preference renders.
  *
- * Finds the code's own text node first, then walks up to its *nearest*
- * `tr`/`.card` ancestor, rather than a flat `page.locator(".card, tr", {
- * hasText: code })` — that shape has a real bug, not just a tile-view
- * quirk: list view's whole `<table>` is itself wrapped in one outer
- * `<div class="card">` (`RequirementsPage.tsx`'s `overflowX: "auto"`
- * wrapper), which also "has text" matching any code found in any row and
- * sits before every `<tr>` in document order — so `.first()` silently
- * resolved to that outer wrapper, not the specific row, the moment a
- * project had more than one requirement whose text happened to satisfy
- * the match (invisible with few requirements, since the outer wrapper's
- * lone matching link and the correct row's link were then the same
- * element; a real strict-mode violation once a project accumulates
- * enough requirements across a full suite run for the outer wrapper to
- * contain more than one link).
+ * Finds the code's text node, then its nearest `tr`/`.card` ancestor, not a flat `locator(".card, tr", { hasText })`:
+ * list view wraps the whole table in an outer `div.card` that also matches and precedes every row, so `.first()`
+ * would resolve to the wrapper and break strict mode once a project holds several matching requirements.
  */
 export async function openRequirementByCode(page: Page, code: string): Promise<void> {
-  // Search first: the list is paginated (30 per page) and the shared e2e
-  // projects grow every run, so a row isn't guaranteed to be on page one —
-  // same fix role-display-collapsing.spec.ts got for the groups table.
+  // Search first: the list is paginated (30 per page) and the shared e2e projects grow every run.
   await page.getByPlaceholder("Search by name or ID").fill(code);
   await page
     .getByText(recordCodeText(code))
     .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
     .getByRole("link")
     .click();
-  // Waits for the detail page's own content to actually render before
-  // returning, not just for the URL to change. `waitForURL` alone was
-  // tried first and wasn't enough: the route's lazy chunk (or its own
-  // requirement fetch, RequirementDetailPage.tsx's `if (!requirement)
-  // return <Spinner />`) can still be in flight after the URL/history
-  // update lands, and under full-suite CI load that window is wide enough
-  // for a caller's very next assertion (e.g. the detail page's own "Locked
-  // (approved)" badge) to catch the requirements *list* page's own
-  // identically-worded row badge still mounted — a genuine two-element
-  // strict-mode violation `expect().toBeVisible()` can't retry past, since
-  // ambiguity isn't a "not ready yet" condition. The detail page's `<h1>`
-  // is in a `.record-header` (RecordHeader), which the requirements list page
-  // never renders, so waiting for it is a reliable, terminology-independent
-  // signal that the swap has actually happened.
+  // Wait for the detail content, not only the URL: the lazy route chunk or the requirement fetch can still be in
+  // flight, and a caller's next assertion (for example the "Locked (approved)" badge) could match the still-mounted
+  // list row badge, a strict-mode violation that `toBeVisible()` cannot retry past. The `.record-header` h1 is never
+  // rendered by the list page, so it is a terminology-independent signal that the page has swapped.
   await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
   await expect(page.locator(".record-header h1")).toBeVisible();
 }
 
-/** Same idea as `ensureExpanded`, for PreferencesPage's "Two-factor
- * authentication" section specifically — its `title` is a JSX node (embeds
- * the "Enable 2FA" toggle itself), not a plain string, so
- * `CollapsibleSection` can't give its header a fixed aria-label the way
- * every other section gets one, and `ensureExpanded` can't target it by
- * name. Clicks the "Two-factor authentication" text (part of the same
- * clickable header, but not the toggle switch itself) rather than the
- * switch, so this never also fires the switch's own onChange. */
+/** `ensureExpanded` for PreferencesPage's "Two-factor authentication" section, whose `title` is a JSX node (it embeds
+ * the "Enable 2FA" toggle), so its header has no fixed aria-label. Clicks the header text, not the switch, so the
+ * switch's onChange never fires. */
 export async function ensureTwoFactorSectionExpanded(page: Page): Promise<void> {
-  // "Two-factor authentication" is a bare text node next to the toggle
-  // switch and a badge (no wrapping element of its own), so exact text
-  // matching can't resolve it — substring match instead, which Playwright
-  // resolves to the smallest containing element. The section's own
-  // clickable wrapper is a real `<button>` when expanded but a `<div
-  // role="button">` when collapsed, so match either.
+  // The label is a bare text node beside the switch and a badge, so exact matching cannot resolve it; a substring match
+  // resolves to the smallest containing element. The clickable wrapper is a `<button>` when expanded and a
+  // `<div role="button">` when collapsed, so match either.
   const label = page.getByText("Two-factor authentication").first();
   const wrapper = label.locator("xpath=ancestor::*[self::button or @role='button'][1]");
   if ((await wrapper.getAttribute("aria-expanded")) !== "true") {
@@ -504,10 +383,8 @@ function base32Decode(base32: string): Buffer {
 }
 
 /**
- * Generates a standard RFC 6238 TOTP code (SHA1, 6 digits, 30s step) for a
- * base32 secret — matching this backend's `services/totp.py` (`pyotp`
- * defaults). Used to drive real 2FA enrollment/login through the UI
- * without a browser-side authenticator app.
+ * Generates an RFC 6238 TOTP code (SHA1, 6 digits, 30s step) for a base32 secret, matching the backend's
+ * `services/totp.py` (`pyotp` defaults), to drive 2FA enrolment and login without an authenticator app.
  */
 export function generateTotpCode(base32Secret: string, forTimeMs: number = Date.now()): string {
   const counter = Math.floor(forTimeMs / 1000 / 30);
@@ -544,10 +421,8 @@ export async function nextTotpCode(base32Secret: string): Promise<string> {
 }
 
 /**
- * Clicks a save control and waits for the mutating request it triggers to
- * finish, so a following `page.reload()` can't cancel it mid-flight (the
- * cause of intermittent "value didn't persist" failures). Matches the first
- * non-GET response whose URL contains `urlPart`.
+ * Clicks a save control and waits for the mutating request it triggers (the first non-GET response whose URL contains
+ * `urlPart`), so a following `page.reload()` cannot cancel it mid-flight.
  */
 export async function clickAndAwaitSave(page: Page, control: Locator, urlPart: string): Promise<void> {
   await Promise.all([
@@ -607,13 +482,9 @@ export function structureRow(page: Page, name: string): Locator {
 }
 
 /**
- * Opens a requirement from the project's requirements list by its name,
- * searching first: the list is paginated (30 per page), and shared e2e
- * projects accumulate throwaway requirements across runs, so a freshly
- * created row is not guaranteed to land on the first page (found
- * 2026-10-04 when Alpha-1 passed 30 active requirements and ~10 specs
- * started timing out). Must be called from the requirements list page.
- * Waits for the detail page's record header before returning.
+ * Opens a requirement from the requirements list (the page must be open) by its name, searching first: the list is
+ * paginated (30 per page) and shared e2e projects accumulate requirements across runs, so a row may not be on the
+ * first page. Waits for the detail page's record header.
  */
 export async function openRequirementByName(page: Page, name: string): Promise<void> {
   await page.getByPlaceholder("Search by name or ID").fill(name);
@@ -623,10 +494,8 @@ export async function openRequirementByName(page: Page, name: string): Promise<v
 }
 
 /**
- * Types `text` into the project list's search box and waits for that exact
- * search's response, so a following assertion (including an absence check)
- * reads the searched result set, not the previous one. The list pages at 30,
- * so checks for a named project should search rather than read page one.
+ * Types `text` into the project list's search box and waits for that search's response, so a following assertion
+ * (including an absence check) reads the searched result set. The list pages at 30, so search for a named project.
  */
 export async function searchProjects(page: Page, text: string): Promise<void> {
   const box = page.getByPlaceholder("Search projects");
@@ -641,11 +510,8 @@ export async function searchProjects(page: Page, text: string): Promise<void> {
 }
 
 /**
- * Opens a project from the project list, searching first: the list is
- * paginated (30 per page) and disposable projects accumulate in the shared
- * e2e orgs across runs, so a seeded project isn't guaranteed to be on the
- * first page (found 2026-10-04 when Alpha passed 30 projects). Navigates to
- * `/projects` first if not already there. Takes the first matching link,
+ * Opens a project from the project list, searching first: the list is paginated (30 per page) and disposable projects
+ * accumulate in the shared e2e orgs. Navigates to `/projects` when not there, and takes the first matching link,
  * since a hierarchy parent's row can render its name more than once.
  */
 export async function openProject(page: Page, name: string): Promise<void> {
@@ -657,12 +523,9 @@ export async function openProject(page: Page, name: string): Promise<void> {
 }
 
 /**
- * Logs in through the API (not the page) and returns auth headers — for
- * `test.afterEach` cleanup, which Playwright still runs after a test times
- * out (with its own budget and live fixtures), unlike a `finally` inside the
- * test body, whose page is already closed by then. Cleanup that must not
- * leak shared state belongs in `afterEach` using the standalone `request`
- * fixture and these headers.
+ * Logs in through the API (not the page) and returns auth headers, for `test.afterEach` cleanup: Playwright still runs
+ * it after a timeout, unlike a `finally` in the test body, whose page is already closed. Cleanup of shared state
+ * belongs in `afterEach` with the standalone `request` fixture and these headers.
  */
 export async function apiHeaders(
   request: APIRequestContext, email: string, password: string = PASSWORD,
@@ -696,20 +559,16 @@ type Cleanup = (request: APIRequestContext) => Promise<void>;
 const pendingCleanups: Cleanup[] = [];
 
 /**
- * Registers API-only cleanup for shared state the current test is about to
- * change; runs (most recent first) in the `afterEach` that
- * `installCleanupHook()` adds — which, unlike a `finally` in the test body,
- * still runs when the test times out. Register *before* making the change,
- * and make the cleanup idempotent (it may run when the change never
- * happened). Use `request` + `apiHeaders`, never `page`.
+ * Registers API-only cleanup for shared state the test is about to change; it runs (most recent first) in the
+ * `afterEach` that `installCleanupHook()` adds, even after a timeout. Register before making the change and make the
+ * cleanup idempotent (it may run when the change never happened). Use `request` + `apiHeaders`, never `page`.
  */
 export function onCleanup(cleanup: Cleanup): void {
   pendingCleanups.push(cleanup);
 }
 
-/** Adds the `afterEach` that drains `onCleanup` registrations; call once at
- * the top of a `test.describe` that uses `onCleanup`. A failing cleanup is
- * logged, not thrown, so it can't mask the test's own failure. */
+/** Adds the `afterEach` that drains `onCleanup` registrations; call once at the top of a `test.describe` that uses
+ * `onCleanup`. A failing cleanup is logged, not thrown, so it cannot mask the test's own failure. */
 export function installCleanupHook(): void {
   test.afterEach(async ({ request }) => {
     while (pendingCleanups.length) {
@@ -727,17 +586,13 @@ export function installCleanupHook(): void {
 export const SERVER_ADMIN_LOGIN = { email: "admin@example.com", password: "ChangeMe123!" } as const;
 
 /**
- * Deletes a disposable organisation after the test (via `onCleanup`, so the
- * describe must call `installCleanupHook`; runs even on timeout). Specs that
- * create their own org call this right after creating it, so throwaway orgs
- * don't pile up across runs (281 had, by 2026-10-05).
+ * Deletes a disposable organisation after the test (via `onCleanup`, so the describe must call `installCleanupHook`;
+ * runs even on timeout). Specs that create their own org call this right after creating it, so throwaway orgs do not
+ * accumulate across runs.
  *
- * The org is resolved at cleanup time, as the server admin: by `id`, or by
- * a `nameContains` fragment unique to this run (e.g. the `Date.now()`
- * suffix) for orgs created through the UI, signup or an import, whose id
- * the test never sees. Its current name is read then, since deletion must
- * confirm it and a test may have renamed the org. A fragment matches every
- * org containing it, so it must be unique to the test.
+ * The org is resolved at cleanup time as the server admin: by `id`, or by a `nameContains` fragment unique to this run
+ * (for example the `Date.now()` suffix) for orgs whose id the test never sees. Its current name is read then, since
+ * deletion must confirm it and a test may have renamed the org. A fragment matches every org containing it.
  *
  * Args:
  *   target: `{ id }` or `{ nameContains }`.
@@ -762,8 +617,7 @@ export function deleteOrgOnCleanup(target: { id: string } | { nameContains: stri
   });
 }
 
-/** A disposable project created via the API, with the seeded projects'
- * starting structure. */
+/** A disposable project created via the API, with the seeded projects' starting structure. */
 export interface DisposableProject {
   projectId: string;
   organizationId: string;
@@ -776,12 +630,9 @@ export interface DisposableProject {
 }
 
 /**
- * Creates a uniquely-named project in `orgName` (default: `email`'s first
- * organisation), with the
- * Hardware/Software + Functional/Performance shape
- * `seed_e2e_dataset.py::seed_project_content` gives every seeded project,
- * and archives it via `onCleanup` (so the describe must call
- * `installCleanupHook`). For specs whose writes would otherwise accumulate
+ * Creates a uniquely-named project in `orgName` (default: `email`'s first organisation) with the Hardware/Software +
+ * Functional/Performance shape `seed_e2e_dataset.py::seed_project_content` gives every seeded project, and archives it
+ * via `onCleanup` (so the describe must call `installCleanupHook`). For specs whose writes would otherwise accumulate
  * in, or reshape, a shared seeded project.
  *
  * Args:
@@ -819,11 +670,9 @@ export async function createDisposableProject(
 }
 
 /**
- * Searches the change-requests list (server-side, matching proposed name,
- * reason, and the target requirement's name/ID) so a change request is
- * found on any page of the paginated list. Must be on that list page.
- * Matched by the placeholder's fixed prefix — its tail uses the project's
- * terminology for "requirement".
+ * Searches the change-requests list (server-side, matching proposed name, reason and the target requirement's
+ * name/ID) so a change request is found on any page. The list page must be open. The placeholder is matched by its
+ * fixed prefix, since its tail uses the project's terminology for "requirement".
  */
 export async function searchChangeRequests(page: Page, text: string): Promise<void> {
   await page.getByPlaceholder(/^Search by name, reason or /).fill(text);
@@ -834,14 +683,10 @@ export async function searchChangeRequests(page: Page, text: string): Promise<vo
 export const STAT_BLOCK_WIDTHS = [375, 720, 1024, 1440] as const;
 
 /**
- * Asserts every stat block on the page (flat/grouped `StatBar`, `.grid-metrics`
- * grids of `StatCard`/`MetricTile`) is tidy at phone, tablet, laptop and
- * desktop widths: no horizontal overflow, aligned equal-height columns, no
- * label swamping its number. It runs the same `statBlockViolations` the
- * Storybook stories run (`frontend/src/testing/statBlockGeometry.ts`), against
- * the real page and real data. Every spec that shows a stats block should call
- * it, so a stat layout cannot regress to ragged rows unnoticed.
- *
+ * Asserts every stat block on the page (flat/grouped `StatBar`, `.grid-metrics` grids of `StatCard`/`MetricTile`) is
+ * tidy at phone, tablet, laptop and desktop widths: no horizontal overflow, aligned equal-height columns, no label
+ * swamping its number. It runs the `statBlockViolations` of the Storybook stories
+ * (`frontend/src/testing/statBlockGeometry.ts`) against the real page. Every spec that shows a stats block calls it.
  * Restores the original viewport afterwards.
  */
 export async function expectTidyStatBlocks(page: Page): Promise<void> {

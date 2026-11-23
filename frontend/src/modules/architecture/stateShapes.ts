@@ -1,25 +1,17 @@
 /**
  * Module: modules/architecture/stateShapes
  *
- * The standard geometry of a state machine diagram's items (UML state machine notation): the three marker shapes, drawn as
- * SVG the canvas shows as a marker node, and the sizes of a state and of the frame of a composite state. Pure data and
- * functions, no React.
- *
- * Responsibilities:
- * - Give the markers: the filled dot of an initial state, the ringed dot of a final state and the diamond of a choice, each
- *   with its size and its SVG markup, and the drawing each takes at any larger size while it carries a label (`labelledSvg`).
- * - `markerFrame`: the frame a marker is drawn in, which a label inside it grows around the stored box's centre
- *   (`symbolLabelLayout`); a label outside the symbol leaves the symbol at its stored box.
- * - `markerAttachPoints`: the points an open line end may choose on a marker, without the side its label is on.
- * - Give the sizes a state, a composite state's header and padding and the corner radius use.
- *
- * Design decisions:
- * - The shapes are fixed standard geometry, not the symbol library. The server draws the same shapes with a Python copy
- *   (`state_shapes.py`); `stateShapeCases.json` holds the table both are tested against, so a change is made in both.
- * - A label grows the drawn symbol, not the stored box (`markerFrame`; whole words, never split), so setting or clearing one never rewrites the layout and a
- *   diagram with no labels is drawn as before; the server's `marker_frame` is the same rule.
- * - The markup uses one neutral slate that keeps at least 3:1 contrast on the light and the dark canvas, because an image
- *   drawn from a data URI cannot read the page's colour tokens.
+ * The standard geometry of a state machine diagram's items (UML notation): the filled dot of an initial state, the ringed dot
+ * of a final state and the diamond of a choice, each with its size and SVG markup (and the drawing at any larger size while it
+ * carries a label: `labelledSvg`), plus the sizes of a state and of a composite state's header, padding and corner radius.
+ * Pure data and functions, no React.
+ * - `markerFrame`: the frame a marker is drawn in; a label inside grows it around the stored box's centre (`symbolLabelLayout`,
+ *   whole words) and a label outside leaves the symbol at its stored box, so setting a label never rewrites the layout.
+ *   `markerAttachPoints`: the points an open line end may choose, without the side the label is on.
+ * - Fixed standard geometry, not the symbol library. The server draws the same shapes with `state_shapes.py`;
+ *   `stateShapeCases.json` holds the table both are tested against, so a change is made in both.
+ * - The markup uses one neutral slate with at least 3:1 contrast on the light and dark canvas, because an image drawn from a
+ *   data URI cannot read the page's colour tokens.
  */
 
 import { SIDE_POINTS, type AttachPoint } from "../../components/graphAttachPoints";

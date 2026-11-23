@@ -2,14 +2,11 @@
  * Module: components/ReportRunDialog
  *
  * The dialog a "report ready" notification opens (and the page `/report-runs/:id` shows): one background report
- * of the person's own, with what its state allows. A ready one offers Download; one still waiting or being prepared
- * says so and refreshes itself; an expired or failed one says why and offers **Generate again**, which queues a fresh
- * run of the same request as the person is now (`POST /report-runs/{id}/again`) and does not revive the old file.
+ * of the person's own, with what its state allows. A ready one offers Download; one waiting or being prepared
+ * refreshes itself; an expired or failed one says why and offers **Generate again**, which queues a fresh run of the
+ * same request (`POST /report-runs/{id}/again`) and does not revive the old file.
  *
- * Design decisions: Download is a click, not an automatic download on open, because browsers block a download
- * that no click started and the dialog is needed for the other states anyway. Generating again says it is a fresh run
- * and, once queued, whether the layout was edited since. Nothing here names a report or a module.
- *
+ * Design decision: Download is a click, because browsers block a download that no click started. Names no report or module.
  * Dependencies: `reportRunsApi`, `Modal`, `Badge`, `useToast`.
  */
 import { useEffect, useState } from "react";

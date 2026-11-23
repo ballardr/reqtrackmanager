@@ -1,14 +1,9 @@
 """
 Module: routers.orgs.settings
 
-Organisation-level settings: advanced settings (SMTP override, security/
-self-signup flags), module enablement, frame-token
-minting, the SMTP-override test-send action, SSO/OIDC configuration, and
-SCIM token lifecycle.
-
-Split out of the former flat `routers/orgs.py` as a pure code-organization
-refactor — see `routers/orgs/__init__.py`'s module docstring for the
-package layout.
+Organisation-level settings: advanced settings (SMTP override, security/self-signup flags), module
+enablement, frame-token minting, the SMTP-override test-send action, SSO/OIDC configuration and SCIM
+token lifecycle.
 """
 
 from __future__ import annotations
@@ -124,12 +119,10 @@ def update_advanced_settings(
     # resets another group's values (email, security and report configuration are saved separately).
     sent = payload.model_fields_set
     if payload.allow_self_signup and "allow_self_signup" in sent and org.sso_only:
-        # Self-signup is anonymous and un-gated by an admin, unlike every
-        # other native-account-creation path (create_org_user, an admin-
-        # sent invite) — letting it hand out a native password credential
-        # to an sso_only org would create an account that can never log in
-        # (NativeAuthBackend rejects native login when every one of a
-        # user's orgs is sso_only). See docs/decisions.md.
+        # Self-signup is anonymous and not admin-gated, unlike other native-account creation (create_org_user,
+        # an admin-sent invite): handing a native password credential to an sso_only org would create an
+        # account that can never log in (NativeAuthBackend rejects native login when every one of a user's
+        # orgs is sso_only). See docs/decisions.md.
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Self-signup cannot be enabled for an SSO-only organisation."
         )
@@ -174,25 +167,19 @@ def update_advanced_settings(
         org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
     if "external_user_policy" in sent:
         org.external_user_policy = payload.external_user_policy
-    # Hierarchical projects (decision 13 in docs/decisions.md): lets an org
-    # admin opt back into the stricter "all project creation needs
-    # ORG_ADMIN/PROJECT_CREATOR" behaviour, including for children, turning
-    # off routers.projects.create_project's relaxed parent-manage-only path.
+    # Hierarchical projects (decision 13 in docs/decisions.md): lets an org admin opt back into requiring
+    # ORG_ADMIN/PROJECT_CREATOR for all project creation, including children, which turns off
+    # routers.projects.create_project's relaxed parent-manage-only path.
     if "allow_relaxed_child_project_creation" in sent:
         org.allow_relaxed_child_project_creation = payload.allow_relaxed_child_project_creation
-    # Org-wide force of the traceability-
-    # link change-request requirement — see `services.requirements.
-    # requires_change_request_for_links` and `Organization.
-    # force_require_change_request_for_approved_links`'s docstring.
+    # Org-wide force of the traceability-link change-request requirement; see
+    # `services.requirements.requires_change_request_for_links` and
+    # `Organization.force_require_change_request_for_approved_links`.
     if "force_require_change_request_for_approved_links" in sent:
         org.force_require_change_request_for_approved_links = payload.force_require_change_request_for_approved_links
-    # AI approval via MCP (docs/decisions.md): org half of the two-level
-    # opt-in gate. The frontend requires an explicit acknowledgment dialog
-    # before ever sending `allow_ai_approvals=true` here — this endpoint
-    # trusts that already happened (same "form-level guardrail, not
-    # server-enforced" pattern as every other advanced-settings checkbox on
-    # this endpoint), since the decision is a human's, not something to
-    # validate server-side.
+    # AI approval via MCP (docs/decisions.md): org half of the two-level opt-in gate. The frontend requires
+    # an explicit acknowledgement dialog before sending `allow_ai_approvals=true`; this endpoint trusts that
+    # (a form-level guardrail, as for the other advanced-settings checkboxes), since the decision is a human's.
     if "allow_ai_approvals" in sent:
         org.allow_ai_approvals = payload.allow_ai_approvals
     if "allow_imported_approval_state" in sent:
@@ -342,29 +329,19 @@ def update_org_module_enablement(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Sets this organisation's own explicit choices for one module
-    (`default_project_enabled` added by the 2026-09-29 correction) — the hard floor (`enabled`, the org-tier
-    "day-to-day switch" among modules the organisation is entitled to) and,
-    independently, the default a project of this organisation gets absent
-    its own override (`default_project_enabled`).
+    """Sets this organisation's own explicit choices for one module: the hard floor (`enabled`, the org-tier
+    switch among modules the organisation is entitled to) and, independently, the default a project of this
+    organisation gets absent its own override (`default_project_enabled`).
 
-    404s on an unregistered `module_key`, matching how every other
-    org-scoped resource lookup in this router responds to a bogus id.
-    403s with a clear message if the organisation isn't entitled to the
-    module at all: an org admin cannot self-enable a non-entitled module
-    by toggling this endpoint — entitlement is a server-tier lever
-    (`PUT /system/orgs/{organization_id}/module-entitlements/{module_key}`),
-    strictly above what this endpoint can touch.
+    404 on an unregistered `module_key`. 403 if the organisation is not entitled to the module: an org admin
+    cannot self-enable a non-entitled module, because entitlement is a server-tier lever
+    (`PUT /system/orgs/{organization_id}/module-entitlements/{module_key}`) above this endpoint.
 
-    Changing `default_project_enabled` never alters an existing project:
-    projects without their own row are frozen at the current value first
-    (`freeze_projects_module_default`).
+    Changing `default_project_enabled` never alters an existing project: projects without their own row are
+    frozen at the current value first (`freeze_projects_module_default`).
 
-    `payload.default_project_enabled` of `None` (the default) leaves an
-    existing row's own value untouched, or, on a freshly-created row,
-    initialises it to match `payload.enabled` — a sensible starting point
-    (a module just turned on for the org starts on-by-default for its
-    projects too, until an org admin explicitly narrows that).
+    `payload.default_project_enabled` of `None` leaves an existing row's value untouched or, on a new row,
+    initialises it to `payload.enabled` (a module just turned on starts on-by-default for its projects).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -381,9 +358,8 @@ def update_org_module_enablement(
             OrganizationModuleEnablement.module_key == module_key,
         )
     )
-    # Copy-before-change (Decided by: User, 2026-10-04): an org default only
-    # affects projects created afterwards, so existing projects still
-    # reading it live get today's value written in first.
+    # Copy-before-change: an org default affects only projects created afterwards, so existing projects
+    # still reading it live get today's value written in first.
     new_default = (
         payload.default_project_enabled if payload.default_project_enabled is not None
         else payload.enabled if row is None else row.default_project_enabled
@@ -423,16 +399,11 @@ def list_org_module_subcomponents(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Lists every sub-component `module_key` declares (Platform Foundations), with this organisation's own
-    effective default state for each — the org-tier bookkeeping view an
-    org admin uses to set per-sub-component defaults, one level below
-    `list_org_modules`'s whole-module view.
+    """Lists every sub-component `module_key` declares, with this organisation's effective default state for
+    each: the org-tier view an org admin uses to set per-sub-component defaults, one level below
+    `list_org_modules`.
 
-    404s on an unregistered `module_key`, matching `update_org_module_
-    enablement`'s own handling of a bogus key. A module with no declared
-    `sub_components` at all (every module before Context & Strategy's own
-    `"strategy"` entry) simply returns an empty list — not an error, since
-    "this module has no sub-components" is a legitimate, common state.
+    404 on an unregistered `module_key`; a module with no declared `sub_components` returns an empty list.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -477,16 +448,12 @@ def update_org_module_subcomponent_default(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Sets this organisation's own levers for one sub-component of
-    `module_key` — the same two as whole modules: `enabled` (hard floor,
-    reaches every project; the effective value for org-scoped artefacts)
-    and `default_project_enabled` (copied into projects created afterwards;
-    existing projects are frozen at their current value first via
-    `freeze_projects_subcomponent_default`).
+    """Sets this organisation's own levers for one sub-component of `module_key`, the same two as whole
+    modules: `enabled` (hard floor, reaches every project; the effective value for org-scoped artefacts) and
+    `default_project_enabled` (copied into projects created afterwards; existing projects are frozen at their
+    current value via `freeze_projects_subcomponent_default`).
 
-    404s on an unregistered `module_key` or a `subcomponent_key` that
-    module doesn't declare, matching `update_org_module_enablement`'s own
-    handling of a bogus module key.
+    404 on an unregistered `module_key` or a `subcomponent_key` the module does not declare.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -522,13 +489,8 @@ def update_org_module_subcomponent_default(
     row.updated_by = current_user.id
     log_event(
         db, entity_type="organization_module_subcomponent",
-        # `f"{module_key}:{subcomponent_key}"`, not prefixed with
-        # `organization_id` (already its own dedicated `AuditEvent`
-        # column, passed below) — `AuditEvent.entity_id` is `String(64)`,
-        # and a UUID (36 chars) plus two colon-joined keys risks
-        # overflowing it for a real module/sub-component key pair (found
-        # via this endpoint's own test using a deliberately long fixture
-        # module key, which reproduced the overflow directly).
+        # `f"{module_key}:{subcomponent_key}"`, without `organization_id` (its own `AuditEvent` column):
+        # `AuditEvent.entity_id` is `String(64)` and a UUID (36 chars) plus two keys can overflow it.
         entity_id=f"{module_key}:{subcomponent_key}",
         action="module.subcomponent_default_updated", actor_id=current_user.id, organization_id=organization_id,
         detail={
@@ -551,18 +513,13 @@ def create_org_module_frame_token(
     module_key: str,
     current_user: User = Depends(require_org_module_enabled_dynamic),
 ) -> ModuleFrameTokenOut:
-    """Mints a short-lived Tier B `<ModuleFrame>` token scoped to
-    `(module_key, organization_id, current_user)`.
+    """Mints a short-lived Tier B `<ModuleFrame>` token scoped to `(module_key, organization_id, current_user)`.
 
-    Requires `module_key` to be a real, currently-*enabled* module for this
-    organisation (`require_org_module_enabled_dynamic` — 404 otherwise,
-    matching every other module-gated endpoint's "disabled/non-entitled is
-    indistinguishable from not existing" behaviour) and a real session/PAT
-    (never another module-frame token — see that dependency's docstring).
-    The returned token is what the frontend's Host UI Bridge hands to the
-    module's own sandboxed iframe via the `init` message, in place of the
-    caller's real session token — see `app.security.create_module_frame_
-    token`'s docstring for exactly what it can and cannot be used for.
+    Requires `module_key` to be a currently enabled module for this organisation
+    (`require_org_module_enabled_dynamic`; 404 otherwise, as a disabled module is indistinguishable from a
+    missing one) and a real session or PAT (never another module-frame token). The frontend's Host UI Bridge
+    hands the token to the module's sandboxed iframe in place of the caller's session token; see
+    `app.security.create_module_frame_token` for what it can and cannot be used for.
     """
     token = create_module_frame_token(
         module_key=module_key, organization_id=str(organization_id), user_id=str(current_user.id)
@@ -576,21 +533,15 @@ def send_org_test_email(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Sends a test email through this organisation's own configured SMTP
-    relay (`Organization.smtp_*`, set via `update_advanced_settings` above)
-    rather than the deployment-wide one, so an org admin can confirm their
-    override actually works before relying on it — this is currently the
-    only thing that reads `Organization.smtp_*` at all; see
-    `services/email.py`'s module docstring and docs/decisions.md's "SMTP/SSO
-    organisation settings are a storage-only seam" entry for why ordinary
-    notification email still doesn't.
+    """Sends a test email through this organisation's own SMTP relay (`Organization.smtp_*`, set via
+    `update_advanced_settings`) rather than the deployment-wide one, so an org admin can confirm the override
+    works. It is the only reader of `Organization.smtp_*`; ordinary notification email does not use it (see
+    `services/email.py` and docs/decisions.md's "SMTP/SSO organisation settings are a storage-only seam").
 
     Raises:
-        HTTPException: 404 if the organisation doesn't exist; 400 if it has
-            no SMTP host configured yet; 502 if the send itself fails (bad
-            credentials, unreachable host, ...) — surfaced with the
-            underlying error so the admin knows what to fix, since
-            confirming deliverability is the entire point of this action.
+        HTTPException: 404 if the organisation doesn't exist; 400 if it has no SMTP host configured; 502 if
+            the send fails (surfaced with the underlying error, since confirming deliverability is the
+            purpose of this action).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -667,10 +618,8 @@ def update_sso_config(
     if payload.sso_enabled and not org.slug:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Set a slug before enabling SSO (needed for the login page URL).")
     if payload.sso_only and not payload.sso_enabled:
-        # sso_only now has real backend teeth (NativeAuthBackend blocks
-        # native login for a user whose every org is sso_only) — allowing it
-        # to be set without sso_enabled would be a self-inflicted lockout
-        # with no way to sign in at all.
+        # sso_only blocks native login for a user whose every org is sso_only (NativeAuthBackend), so setting
+        # it without sso_enabled would lock everyone out.
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enable SSO before making it the only sign-in method.")
     if payload.sso_only and org.allow_self_signup:
         # Same mutual-exclusion as update_advanced_settings, enforced from

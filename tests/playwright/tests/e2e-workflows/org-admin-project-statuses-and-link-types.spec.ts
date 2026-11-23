@@ -6,32 +6,17 @@ import { addDefinition, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, 
 installCleanupHook();
 
 /**
- * Job to be done: an organisation's project statuses and requirement link
- * types are both org-wide definition lists sharing the same
- * add/rename/reorder/delete-with-reassignment contract (§4.0 of the
- * traceability plan). Covers, for project statuses: deleting a status
- * currently assigned to real projects 409s and opens the in-use dialog,
- * reassigning moves those projects, an unused status deletes
- * immediately with no prompt, and once a single status remains its delete
- * control is disabled outright. Link types get lighter add/rename/direction/delete-
- * unused coverage — the identical shared reassignment/last-row-disabled
- * code path is already exercised end-to-end above (statuses) and unit-
- * tested directly against link types in OrgAdminPage.stories.tsx.
+ * Job to be done: an organisation's project statuses and requirement link types are both organisation-wide
+ * definition lists with the same add/rename/reorder/delete-with-reassignment contract. For project statuses:
+ * deleting a status assigned to projects returns 409 and opens the in-use dialog, reassigning moves those
+ * projects, an unused status deletes immediately with no prompt, and once a single status remains its delete
+ * control is disabled. Link types get lighter add/rename/direction/delete-unused coverage: the shared
+ * reassignment and last-row-disabled path is exercised for statuses and unit-tested against link types in
+ * OrgAdminPage.stories.tsx.
  *
- * Uses a brand-new, disposable organisation + two throwaway projects
- * created via the API, not the shared "E2E Beta Software" org this spec
- * previously ran against. Found and fixed along the way: the
- * previous version deleted 3 of Beta org's 4 seeded default statuses down
- * to a single renamed one, permanently — `seed_e2e_dataset.py` only seeds
- * once ("already seeded, exiting" on a re-run), so this spec could only
- * ever pass the *first* time it ran against a given database, not
- * standalone-repeated or after an earlier full-suite run had already done
- * it once. A dedicated org (which gets the same `DEFAULT_PROJECT_STATUSES`
- * — Proposed/Active/Abandoned/Completed — automatically on creation, same
- * as every org) plus dedicated projects (which default to the org's
- * lowest-sort-order status, i.e. "Proposed", same as Beta-1/Beta-2 did)
- * reproduces the exact same scenario while never touching shared fixture
- * data, so the spec is now idempotent standalone or repeated.
+ * Uses a disposable organisation (which receives `DEFAULT_PROJECT_STATUSES`: Proposed/Active/Abandoned/Completed)
+ * and two throwaway projects created through the API, because `seed_e2e_dataset.py` seeds once and a spec that
+ * deletes shared seeded statuses can pass only on its first run.
  */
 
 const apiBaseUrl = "http://localhost:8000";
@@ -114,11 +99,8 @@ test.describe("org admin: project statuses and link types", () => {
     });
 
     await test.step("rename Active, then delete Proposed (in use by both throwaway projects) with reassignment to it", async () => {
-      // Not chained off `activeInput`: once filled, its own selector
-      // (matched by the *old* value) no longer resolves to anything — only
-      // one row is ever "dirty" at a time, so the plain, page-wide Rename
-      // button is unambiguous here (same pattern as
-      // project-admin-structural.spec.ts).
+      // Not chained off `activeInput`: once filled, its selector (matched by the old value) no longer resolves, and only
+      // one row is dirty at a time, so the page-wide Rename button is unambiguous (as in project-admin-structural.spec.ts).
       await inputWithValue(page, "Active").fill("Active (E2E)");
       await page.getByRole("button", { name: "Rename" }).click();
       await expect(inputWithValue(page, "Active (E2E)")).toBeVisible();
@@ -135,19 +117,10 @@ test.describe("org admin: project statuses and link types", () => {
     await test.step("the first project's own settings tab now shows the reassigned status", async () => {
       await page.goto(`/projects/${project1.id}`);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      // Not getByLabel("Status"): hierarchical projects added a "Parent
-      // project" <select> to this same tab, wrapped by an implicit
-      // <label> the same way the Status field is — a wrapping <label>'s
-      // computed accessible name flattens in all descendant text,
-      // including every <option>'s text, not just the label's own words.
-      // Project B (this test's own reassignment-target fixture, named
-      // `E2E Status Project B ...`) is a same-org sibling and so appears
-      // as one of "Parent project"'s <option>s, making its accessible
-      // name legitimately contain the substring "Status" too — a real,
-      // reproducible ambiguity (not stale test debris this time), found
-      // and fixed here rather than deferred. Located structurally instead:
-      // the Status <select> is the one whose own <option> list contains
-      // "Active (E2E)" (a status name, never a project name).
+      // Not getByLabel("Status"): the "Parent project" <select> on this tab sits in an implicit <label> whose accessible
+      // name includes every <option> text, and Project B (`E2E Status Project B ...`, a same-organisation sibling) is one
+      // of those options, so the name also contains "Status". The Status <select> is located as the one whose options
+      // include "Active (E2E)" (a status name, never a project name).
       const statusSelect = page.locator("select").filter({ hasText: "Active (E2E)" });
       await expect(statusSelect.locator("option:checked")).toHaveText("Active (E2E)");
     });

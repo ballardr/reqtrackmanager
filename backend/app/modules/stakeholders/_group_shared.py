@@ -1,22 +1,12 @@
 """
 Module: modules.stakeholders._group_shared
 
-Handler bodies shared by the org-scoped (`group_router.py`) and project-scoped
-(`group_project_router.py`) Stakeholder Group routers, so the two declare only
-their routes (the `_stakeholder_shared.py` pattern).
-
-Responsibilities:
-- `GroupContext`: which tier a router acts on (organisation or project) and the
-  stakeholders it may touch, hiding the org/project difference from the bodies.
-- Group CRUD/move, direct membership, a stakeholder's group set, and the
-  "create from organisation / group text" action, each audit-logged with ids
-  only and translating `groups.GroupRuleError` to its HTTP status.
-- `filter_and_sort_stakeholders`: the list endpoints' `group_id` /
-  `direct_only` / `group_by` handling.
-
-RBAC: callers have already passed `require_group_manage` for writes (groups
-share the Stakeholder manage gate, plus their own `(stakeholder_group, manage)` grant). A project
-context never reads or lists a stakeholder hidden from that project.
+Handler bodies shared by the org-scoped and project-scoped Stakeholder Group
+routers. `GroupContext` hides which tier a router acts on; group CRUD/move,
+membership and "create from text" are audit-logged with ids only and translate
+`groups.GroupRuleError`; `filter_and_sort_stakeholders` serves the list endpoints.
+Callers have passed `require_group_manage`; a project context never reads a
+stakeholder hidden from the project.
 """
 
 from __future__ import annotations

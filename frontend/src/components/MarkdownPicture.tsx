@@ -3,20 +3,15 @@
  *
  * A picture inside a record's Markdown text, drawn from the attachment it names.
  *
- * Responsibilities:
- * - Draw `![alt](attachment:<file id> "caption")` as an image fetched from the authenticated file endpoint (`fileUrl`), lazily, never wider than its text and never taller than `MAX_HEIGHT`; a captioned picture on a line of its own is a
- *   figure with its caption below.
- * - Show the alternative text (or a stated "unavailable" label) in its place when the file cannot be loaded: it was
- *   removed, the viewer has no access, or the file is not a picture.
+ * Draws `![alt](attachment:<file id> "caption")` as an image from the authenticated file endpoint (`fileUrl`),
+ * lazily, never wider than its text and never taller than `MAX_HEIGHT`; a captioned picture on a line of its own is
+ * a figure. When the file cannot be loaded (removed, no access, not a picture) the alternative text, or a stated
+ * "unavailable" label, shows in a muted frame.
  *
- * Design decisions:
- * - The address is built from the file id only, so a stored text can never make the page request another site; the
- *   file endpoint applies the record's access rules.
- * - An `<img>` never runs script, so an uploaded vector drawing is safe to show this way; the file endpoint serves it
- *   with its own content type and `nosniff`.
- * - A plain `<img>`, not `PictureImage`: that component reads the signed-in person's backdrop preference, and Markdown is
- *   shown in places with no signed-in context. A picture is shown as it is.
- * - The failure state is the alternative text in a muted frame, so a screen reader and a sighted person both get words.
+ * The address is built from the file id only, so stored text can never make the page request another site; the file
+ * endpoint applies the record's access rules and serves vector drawings with their own content type and `nosniff`
+ * (an `<img>` never runs script). A plain `<img>`, not `PictureImage`, because Markdown is shown in places with no
+ * signed-in context for the backdrop preference.
  */
 import { useState } from "react";
 

@@ -6,11 +6,10 @@ Two guards:
   ones it cannot (`ModuleDefinition.not_creatable_from_links`); the frontend test requires a creator for each of the
   first, so the two halves cannot drift.
 - For every creatable type and each kind of person (a plain member, a project manager, a stakeholder, and a holder of
-  each module role), the `can_create` flag equals whether the type's real create endpoint accepts the request. A gate
-  added to an endpoint without its record-table check, or a looser check than the endpoint, fails here. The create
-  request is the one the type's scaling probe sends, replayed as the person.
+  each module role), the `can_create` flag equals whether the type's real create endpoint accepts the request (the
+  one its scaling probe sends, replayed as the person); a gate and its record-table check cannot drift.
 
-Each test builds its own organisation, so none depends on state left by another test or run.
+Each test builds its own organisation.
 """
 
 from __future__ import annotations

@@ -4,10 +4,9 @@ Revision ID: 0086
 Revises: 0085
 Create Date: 2026-10-13
 
-Adds `stakeholder_groups`, a tree of org- or project-scoped groups that
-classify stakeholders, and `stakeholder_group_members`, the many-to-many direct
-memberships. Nothing is backfilled: the "create groups from Organisation /
-group text" action proposes groups on request instead.
+Adds `stakeholder_groups` (a tree of org- or project-scoped classification
+groups) and `stakeholder_group_members` (direct memberships). Nothing is
+backfilled.
 """
 
 from collections.abc import Sequence

@@ -1,29 +1,12 @@
 """
 Module: modules.product_feedback.loop
 
-Closing the loop: telling the people who asked what became of their request.
-
-Responsibilities:
-- `set_informed`: records (or withdraws) that requesters were told the outcome of a delivered or declined request.
-- `informed_by_request`: the informed rows of many requests in one statement.
-- `open_loop_requests`: the delivered or declined requests of a project that still have a requester not told.
-- `delivery_state`: whether the requirements realising a request are all complete, the cue to mark it delivered.
-
-Design decisions:
-- Only requesters are tracked, never free-text names, and nothing is sent: a triager tells the person by whatever
-  means they use and ticks them off here (**Decided by: User**; no e-mail goes to people outside the organisation).
-- A requester is anyone `demand.compute_demand` reports for the request, those reached through a merged
-  duplicate included, so the list a triager works through is the same union demand is counted over.
-- The informed row is keyed by the party and matched to the current requesters on every read, so removing a
-  link or ending a merge hides the row and restoring it brings the record back; nothing is deleted behind the user.
-- Telling someone is only recordable once there is an outcome to tell (delivered or declined); withdrawing a
-  record is always allowed (a mistaken tick, or a request reopened).
-- "Delivered" stays a hand-set status (**Decided by: User**). `delivery_state` only supplies the prompt: the linked
-  Requirements' completion overlay, never an automatic transition, which would couple this module to core
-  requirement semantics.
-- Nothing here commits or checks who may do it; the caller owns the transaction, the gate and the audit event.
-
-Dependencies: this module's models, `demand`, `relationships` and `service`; core `Requirement`.
+Closing the loop: recording that requesters were told what became of a request.
+`set_informed`, `informed_by_request`, `open_loop_requests` and
+`delivery_state` (whether linked Requirements are complete: a prompt, never an
+automatic transition). Only requesters are tracked and nothing is sent; the row
+is keyed by party and matched to current requesters on every read. Telling needs
+an outcome (delivered or declined). Nothing here commits or checks the role.
 """
 
 from __future__ import annotations

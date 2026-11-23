@@ -2,14 +2,11 @@
  * Module: components/ChoiceButtons
  *
  * An exclusive choice of a few short values drawn as a row of buttons: a radio group with one tab stop, arrow keys
- * moving the choice, and the chosen button marked by `aria-checked` and an accent edge (never colour alone).
+ * moving the choice, and the chosen button marked by `aria-checked` and an accent edge (never colour alone). A
+ * caption with optional field help sits above; each option is a `role="radio"` button; the group wraps.
  *
- * Responsibilities: caption with optional field help above the group; each option is a `role="radio"` button named
- * by its label; the group wraps rather than overflowing a narrow panel.
- *
- * Design decisions: it stores nothing and judges nothing: `onChange` gets the clicked option's value. A value that
- * matches no option leaves every button unchecked and the first one reachable, so a stored value the buttons do not
- * know (set through the text view) is not changed until a button is pressed.
+ * It stores nothing: `onChange` gets the clicked value. A value matching no option leaves every button unchecked
+ * and the first reachable, so a stored value the buttons do not know is unchanged until a button is pressed.
  */
 import { useRef } from "react";
 

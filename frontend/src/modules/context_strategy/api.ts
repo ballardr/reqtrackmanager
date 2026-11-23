@@ -1,34 +1,15 @@
 /**
  * Module: modules/context_strategy/api
  *
- * Thin wrapper functions over `api` (frontend/src/api/client.ts) for every
- * Strategy, Future State, Pain Point,
- * Guiding Principle, and Open Question endpoint
- * `backend/app/modules/context_strategy/{router,project_router}.py` exposes
- * — mirrors `modules/decisions/api.ts`'s own dedicated-per-module-file
- * precedent. See `buildFutureStateApi`'s own docstring below for why Future
- * State gets a sibling factory rather than reusing `buildStrategyApi`,
- * `buildGuidingPrincipleApi`'s own docstring for why Guiding Principle goes
- * back to the factory shape after Pain Point's own project-scoped-only
- * exception, and `projectOpenQuestionApi`'s own docstring for why Open
- * Question stays with Pain Point's flat-object shape rather than reverting
- * to a factory a third time.
+ * Thin wrapper functions over `api` (frontend/src/api/client.ts) for every Strategy, Future State, Pain Point, Guiding
+ * Principle and Open Question endpoint of `backend/app/modules/context_strategy/{router,project_router}.py`, as
+ * `modules/decisions/api.ts` does for its module. See `buildFutureStateApi`, `buildGuidingPrincipleApi` and
+ * `projectOpenQuestionApi` for why each is a factory or a flat object.
  *
- * **Design choice, Decided by: Agent:** unlike `modules/decisions/api.ts`
- * (which only needed a project/org split for two small definition-table
- * resources — Decision Types/Templates — while the Decision artefact
- * itself is project-scoped only), Strategy's own backend gives every single
- * endpoint an *identical* org-scoped and project-scoped twin (the
- * scope discriminator — `router.py`/`project_router.py` mirror each other
- * exactly, same schemas, same suffixes, same behaviour, differing only in
- * which id the URL is built from). Rather than hand-writing ~25 functions
- * twice, `buildStrategyApi` is a small factory parameterised by the base-
- * URL builder; `projectStrategyApi`/`orgStrategyApi` are its two
- * instantiations. If a *future* Strategy endpoint's behaviour ever
- * genuinely diverges between scopes, that one function can be pulled out of
- * the factory and hand-written per scope at that point — nothing here
- * forces the two to stay identical forever, it just avoids duplicating them
- * while they are.
+ * Strategy's backend gives every endpoint an identical organisation- and project-scoped twin (same schemas, suffixes
+ * and behaviour, differing only in which id builds the URL), so `buildStrategyApi` is one factory parameterised by the
+ * base-URL builder and `projectStrategyApi` / `orgStrategyApi` are its two instantiations. An endpoint whose behaviour
+ * diverges between scopes can be pulled out of the factory.
  */
 import { api } from "../../api/client";
 import { appendTagParams, type TagListFilters } from "../../api/tags";
@@ -198,32 +179,14 @@ export interface FutureStateListFilters extends TagListFilters, ScopeListFilters
 }
 
 /**
- * **A sibling factory, not a reuse of `buildStrategyApi` (Decided by:
- * Agent).** Future State's backend endpoint *shapes* are identical to
- * Strategy's (org/project twin routers, same CRUD/lifecycle/comments/files/
- * relationships surface — an exact structural mirror), which is the same condition that justified `buildStrategyApi`
- * as one factory instantiated twice rather than ~25 hand-written functions
- * per scope. But Future State's own *field list* genuinely diverges from
- * Strategy's (no `priority`/`time_horizon`; adds `target_date`), so forcing
- * both artefact types through one generic-over-field-shape factory would
- * need real TypeScript generics threaded through every method's payload
- * type for a one-time saving of a ~130-line function — not worth the added
- * indirection for a function this size. `buildFutureStateApi` is a
- * structural copy of `buildStrategyApi`, parameterised the same way
- * (`base: (id: string) => string`), pointed at `/future-states` instead of
- * `/strategies`. If a *sixth* artefact type ever needs this identical shape
- * again, that would be the point to reconsider a shared generic factory.
+ * A sibling factory to `buildStrategyApi`, not a reuse: the endpoint shapes are identical, but the field list differs
+ * (no `priority` or `time_horizon`; adds `target_date`), and one factory generic over both field shapes would need
+ * TypeScript generics through every payload type to save one ~130-line function. It is parameterised the same way
+ * (`base: (id: string) => string`) and points at `/future-states`.
  *
- * `target_date` needs no client-side "explicitly set" flag distinct from
- * "leave unchanged" the way the backend's `apply_future_state_new_version`
- * does internally — the `PUT` endpoint's own `FutureStateUpdate` schema is a
- * full-replace payload (every field always present), and the router always
- * passes `target_date_explicitly_set=True` for a `PUT` (see
- * `project_router.py`'s `update_project_future_state`), so `update()` below
- * just sends whatever the form holds: a date string to set it, `null` to
- * clear it. The "explicitly set" distinction only exists to let *creation*
- * (which has no such flag) and *update* share one internal `apply_*_new_
- * version` function — it never reaches the wire.
+ * `target_date` needs no "explicitly set" flag on the client: `FutureStateUpdate` is a full-replace payload and the
+ * router always passes `target_date_explicitly_set=True` for a `PUT` (`project_router.py`
+ * `update_project_future_state`), so `update()` sends a date string to set it and `null` to clear it.
  */
 function buildFutureStateApi(base: (id: string) => string) {
   return {
@@ -328,16 +291,10 @@ export const orgFutureStateApi = buildFutureStateApi(orgBase);
 
 // --- Pain Point --------------------------------------------------
 //
-// **No `buildPainPointApi` factory, unlike Strategy/Future State (Decided by:
-// Agent).** The factory shape exists specifically for an artefact with an
-// *identical* org-scoped and project-scoped twin endpoint set (the
-// scope discriminator) — Pain Point has no organisation scope at all (source
-// overview §6), so there is nothing to instantiate twice. `orgPainPointTypeApi`
-// (the org-scoped `PainPointTypeDefinition` CRUD tier) and
-// `projectPainPointApi` (everything else — the project-scoped type-override
-// tier plus the Pain Point artefact itself) are two plain, hand-written
-// objects instead, mirroring `modules/decisions/api.ts`'s own flat-function
-// shape for a project-scoped-only artefact.
+// No `buildPainPointApi` factory: the factory shape serves an artefact with identical organisation- and
+// project-scoped endpoint sets, and Pain Point is project-scoped only. `orgPainPointTypeApi` (organisation-scoped
+// `PainPointTypeDefinition` CRUD) and `projectPainPointApi` (the project type-override tier and the Pain Point
+// itself) are plain objects, as in `modules/decisions/api.ts`.
 
 /** Builds the `?model_key=&rollup=` query string for the scoring endpoints. */
 function scoringQuery(params: { model_key?: string; rollup?: string; include_archived?: boolean }): string {
@@ -527,22 +484,11 @@ export const projectPainPointApi = {
 
 // --- Guiding Principle -------------------------------------------
 //
-// Back to a `buildStrategyApi`-shaped factory (Decided by: Agent) — Guiding
-// Principle's backend gives every endpoint an identical org-scoped/
-// project-scoped twin, the same condition that justified Strategy's/Future
-// State's own factory shape and does not apply to Pain Point (project-scoped
-// only). `update()` below deliberately takes `values: GuidingPrincipleFieldValues
-// & { owner: PrincipalRef | null }`, not just `GuidingPrincipleFieldValues`
-// (unlike `buildStrategyApi.update`/`buildFutureStateApi.update`, whose own
-// field-value types already include every field the backend's full-replace
-// `PUT` expects) — `owner` is deliberately excluded from
-// `GuidingPrincipleFieldValues` itself (`types.ts`'s own docstring), but the
-// backend's `GuidingPrincipleUpdate` schema still requires it on every `PUT`
-// (defaulting to `None` if omitted, which would silently clear an existing
-// owner on every plain content edit) — every call site must pass the
-// Guiding Principle's own current `owner` through explicitly, the same
-// discipline `projectPainPointApi.update`'s identical `& { owner: PrincipalRef
-// | null }` extension already establishes for Pain Point.
+// A `buildStrategyApi`-shaped factory: every endpoint has an identical organisation- and project-scoped twin.
+// `update()` takes `values: GuidingPrincipleFieldValues & { owner: PrincipalRef | null }` because `owner` is not in
+// `GuidingPrincipleFieldValues` (`types.ts`) yet the backend's `GuidingPrincipleUpdate` requires it on every `PUT` and
+// an omitted `owner` would clear the existing one. Every call site passes the current `owner` through, as
+// `projectPainPointApi.update` does.
 
 export interface GuidingPrincipleListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;
@@ -649,12 +595,8 @@ export const orgGuidingPrincipleApi = buildGuidingPrincipleApi(orgBase);
 
 // --- Open Question ------------------------------------------------
 //
-// No `buildOpenQuestionApi` factory (Decided by: Agent) — the same
-// "nothing to instantiate twice" reasoning `projectPainPointApi`'s own
-// docstring gives. Open Question has no organisation scope at all (source
-// overview §9), so a single flat, hand-written object is used instead, the
-// same shape Pain Point's own project-scoped-only exception already
-// established. `id` parameters below are a `project_id`.
+// No `buildOpenQuestionApi` factory: Open Question has no organisation scope, so a single flat object is used, as for
+// Pain Point. `id` parameters below are a `project_id`.
 
 export interface OpenQuestionListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;

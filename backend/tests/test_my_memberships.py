@@ -68,19 +68,12 @@ def test_my_memberships_only_includes_orgs_the_caller_belongs_to(client, admin_t
 
 
 def test_my_memberships_ancestor_closure_never_leaks_a_cross_org_group_name(client, admin_token, org_id):
-    """Hardening-review finding (defense in depth): `add_org_group_member`
-    already rejects nesting an org group from a different organisation at
-    write time, so this should be unreachable through the real API — but
-    `services.rbac._ancestor_org_group_ids` itself walks `OrgGroupMember`
-    with no organisation filter, and `get_user_org_group_ids` (backing this
-    endpoint) had no downstream re-check either, unlike the equivalent
-    project-role resolution in `get_effective_project_roles`, which does
-    re-join on `OrgGroup.organization_id` even though the same write-time
-    check already applies there. Simulates the invariant being violated by
-    inserting a cross-org nesting edge directly (bypassing the API, the
-    only way to construct this state at all) and confirms the foreign
-    organisation's group is never attributed to this org's membership
-    entry."""
+    """Defence in depth: `add_org_group_member` rejects nesting a group from another
+    organisation at write time, but `services.rbac._ancestor_org_group_ids` walks
+    `OrgGroupMember` with no organisation filter, so `get_user_org_group_ids` (behind
+    this endpoint) re-checks `OrgGroup.organization_id`, as `get_effective_project_roles`
+    does. Inserts a cross-org nesting edge directly (the API cannot) and confirms the
+    foreign group is never attributed to this org's membership entry."""
     other_org, other_admin_token = create_org_admin_in(client, admin_token, "Cross-Org Leak Org")
     user_id = create_org_user(client, admin_token, org_id, "leak_check_member@example.com", role="member")
     my_group = client.post(

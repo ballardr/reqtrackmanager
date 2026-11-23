@@ -3,15 +3,11 @@ import { expect, test } from "@playwright/test";
 import { addStructureCategory, addStructureComponent, structureRow, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 /**
- * UX review: files could previously only be attached to a requirement
- * after closing the create form and opening the detail page (links are
- * chosen in the create form's "Link to" field).
- * The create modal's "Create" button behaves exactly as before (closes
- * immediately); a separate "Create & attach files" action
- * advances the same modal to a second step against the just-created
- * requirement's real id before closing — opt-in, since most creates don't
- * need it and every other workflow (the golden path included) depends on
- * a plain "Create" staying a single, modal-closing action.
+ * The create modal's "Create" button closes the modal at once; a separate "Create & attach files" action
+ * advances the same modal to a second step against the just-created requirement's id before closing. Links are
+ * chosen in the create form's "Link to" field. The action is opt-in because most creates do not need it and
+ * every other workflow (the golden path included) depends on a plain "Create" staying a single, modal-closing
+ * action.
  */
 test("Create & attach files advances to an attach-files step, then finishes", async ({ page }) => {
   const ADMIN_EMAIL = "admin@example.com";

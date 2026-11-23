@@ -1,16 +1,12 @@
 """
 Module: routers.orgs.resources
 
-Organisation shared resources (C-M-03): upload/list/delete a file asset
-that belongs to the organisation rather than to any one project.
+Organisation shared resources (C-M-03): upload/list/delete a file asset that belongs to the organisation
+rather than to any one project.
 
 Access: every member lists; upload and delete need the `manage_org_resources` permission, which organisation
-administrators hold and a custom role can give to a user or an organisation group. `GET .../access` tells the page
-whether to show the controls, so it never infers that from a role name.
-
-Split out of the former flat `routers/orgs.py` as a pure code-organization
-refactor — see `routers/orgs/__init__.py`'s module docstring for the
-package layout.
+administrators hold and a custom role can give to a user or an organisation group. `GET .../access` tells the
+page whether to show the controls, so it never infers that from a role name.
 """
 
 from __future__ import annotations

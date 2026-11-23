@@ -7,8 +7,7 @@ counts and parameterised statement text but no bound value, and probes are not c
 merges worker files, classifies processes and only ever signals a verified worker; and the profilers stay out of
 the production image and compose file.
 
-Process-table reads use a fake `/proc` tree, so the tests run on any platform. The real tools are exercised by a
-`perf/run_profile.sh --profiling` run.
+Process-table reads use a fake `/proc` tree, so the tests run on any platform.
 """
 
 from __future__ import annotations

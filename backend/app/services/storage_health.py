@@ -1,37 +1,22 @@
 """
 Module: services.storage_health
 
-Detects file storage that has stopped accepting writes (a full disk, a bad
-credential, an unreachable bucket) and tells people, instead of leaving it to
-surface as a confusing 500 on the next upload.
+Detects file storage that has stopped accepting writes (full disk, bad credential, unreachable bucket) and alerts people.
 
 Responsibilities:
-- `probe_storage`: writes, reads back and deletes a tiny object through the
-  configured backend. It works for any backend, including S3-compatible
-  services whose capacity this process cannot read (`services.disk_monitor`
-  only covers local disk percentage).
-- `check_storage_health_once`: one probe plus the alerting rules. A failing
-  probe is logged at ERROR on every check (so log shipping can alert), the
-  `storage_write_healthy` gauge is set for Prometheus, and server admins are
-  notified once when an outage is confirmed and once when it recovers.
-- `run_storage_health_loop`: the periodic check, started as a leader-only
-  singleton (`main.py`). It can be switched off (`STORAGE_HEALTH_CHECK_ENABLED`)
-  or slowed (`STORAGE_HEALTH_CHECK_INTERVAL_SECONDS`) so a metered S3 bucket is
-  not charged for the probe requests.
+- `probe_storage`: write, read back and delete a tiny object through the configured backend (works for S3-compatible
+  services whose capacity cannot be read; `services.disk_monitor` covers local disk percentage).
+- `check_storage_health_once`: a probe plus alerting (ERROR log on every failure, the `storage_write_healthy` gauge, one
+  server-admin notification per confirmed outage and per recovery).
+- `run_storage_health_loop`: the leader-only singleton loop (`main.py`), switchable (`STORAGE_HEALTH_CHECK_ENABLED`) and
+  slowable (`STORAGE_HEALTH_CHECK_INTERVAL_SECONDS`) for metered buckets.
 
 Design decisions:
-- State is held by the caller (`StorageHealthState`), so one alert is sent per
-  outage, not one per check. An outage is confirmed only after
-  `STORAGE_HEALTH_FAILURES_BEFORE_ALERT` consecutive failed probes, so one slow
-  or dropped write does not alert.
-- The state survives a restart or a leader hand-over: the first check of a new
-  process reads whether the latest alert sent was an outage or a recovery, so a
-  restart during an outage neither repeats the alert nor misses the recovery.
-- The probe key lives under `_health/`, never a key `services.files` generates.
-- A monitor failure must never take the app down, so the loop swallows and logs.
+- State is held by the caller (`StorageHealthState`); an outage is confirmed after `STORAGE_HEALTH_FAILURES_BEFORE_ALERT`
+  consecutive failures. A new process reads the latest alert kind, so a restart neither repeats nor misses an alert.
+- The probe key lives under `_health/`, never a key `services.files` generates; the loop swallows and logs failures.
 
-Dependencies: `services.notifications` (server-admin alert), `services.email`,
-`app.metrics`, the storage backend from `services.files`.
+Dependencies: `services.notifications`, `services.email`, `app.metrics`, the storage backend from `services.files`.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@
  * is a stored list of reports rather than a catalogue report, so it is offered beside the catalogue's, selectable
  * and linkable through the same `report` search parameter (`pack-<id>`).
  *
- * A failed load is no packs: the Reports surface degrades to what it showed before packs existed.
+ * A failed load is no packs: the Reports surface shows the catalogue alone.
  */
 import { useEffect, useMemo, useState } from "react";
 

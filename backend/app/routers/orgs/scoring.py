@@ -1,15 +1,13 @@
 """
 Module: routers.orgs.scoring
 
-Organisation-level endpoints of the generic scoring-matrix mechanism
-: read a scheme's effective configuration, edit its
-axis levels, and set the org default model, rating bands and per-cell rating overrides. Scheme keys
-come from the module registry; every route 404s unless the caller is an
-org member and the scheme's owning module is enabled for the org.
+Organisation-level endpoints of the generic scoring-matrix mechanism: read a scheme's effective
+configuration, edit its axis levels, and set the org default model, rating bands and per-cell rating
+overrides. Scheme keys come from the module registry; every route 404s unless the caller is an org member
+and the scheme's owning module is enabled for the org.
 
-Reads are open to any org member (scorers need the levels). Writes need
-org admin, or the scheme's own `admin_role_key` module role if it declares
-one (`user_satisfies_module_role` composes org admin in automatically).
+Reads are open to any org member (scorers need the levels). Writes need org admin, or the scheme's own
+`admin_role_key` module role if it declares one (`user_satisfies_module_role` composes org admin in).
 Every write is audit-logged by `services.scoring`.
 """
 

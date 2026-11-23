@@ -1,18 +1,11 @@
 """
 Module: routers.orgs.org_pats
 
-Organisation-admin-side Personal Access Token incident-response actions:
-list every non-revoked token touching this org, revoke or descope one
-specific token, or revoke every token touching this org in one action.
-Self-service creation/listing/revocation lives in `routers/pats.py` under
-`/api/v1/me/pats` — see docs/decisions.md's "Personal Access Tokens"
-section for the full design, in particular why the per-token view only
-ever reveals *how many* other orgs a multi-org token also reaches, never
-which ones.
-
-Split out of the former flat `routers/orgs.py` as a pure code-organization
-refactor — see `routers/orgs/__init__.py`'s module docstring for the
-package layout.
+Organisation-admin-side Personal Access Token incident-response actions: list every non-revoked token
+touching this org, revoke or descope one token, or revoke every token touching this org in one action.
+Self-service creation/listing/revocation lives in `routers/pats.py` under `/api/v1/me/pats`; see
+docs/decisions.md's "Personal Access Tokens" section, in particular why the per-token view reveals only
+how many other orgs a multi-org token reaches, never which.
 """
 
 from __future__ import annotations
@@ -37,17 +30,10 @@ router = APIRouter(tags=["organizations-pats"])
 
 
 def _get_org_pat_or_404(db: Session, organization_id: UUID, pat_id: UUID) -> PersonalAccessToken:
-    # Row-locked (not a plain db.get): descope_org_pat below does a
-    # read-modify-write on allowed_organization_ids (read the current list,
-    # remove one org, write it back) — without a lock, two concurrent
-    # descope calls on the same multi-org token (e.g. org A's admin and org
-    # B's admin both reacting to the same incident at once, exactly the
-    # scenario this feature exists for) would each read the same
-    # pre-removal list and whichever commits last would silently overwrite
-    # the other's removal, leaving that org's admin believing their
-    # descope succeeded (204, a real audit-log row) when the token in fact
-    # remained scoped to their org. The lock makes the second call block
-    # until the first commits, then read the already-updated list.
+    # Row-locked: `descope_org_pat` reads `allowed_organization_ids`, removes one org and writes it back, so
+    # two concurrent descopes of the same multi-org token (two orgs' admins reacting to one incident) would
+    # each read the same list and the later commit would overwrite the other's removal while its admin saw
+    # success. The lock makes the second call wait and read the updated list.
     pat = db.scalar(select(PersonalAccessToken).where(PersonalAccessToken.id == pat_id).with_for_update())
     if pat is None or str(organization_id) not in pat.allowed_organization_ids:
         # 404, not 403: this org's admin must not be able to distinguish

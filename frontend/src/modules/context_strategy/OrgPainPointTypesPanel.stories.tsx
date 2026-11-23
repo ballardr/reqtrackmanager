@@ -8,11 +8,7 @@ import type { PainPointTypeDefinition } from "./types";
 
 const ORG_ID = "org-1";
 
-/**
- * Mirrors `modules/compliance/MappingTypesPanel.stories.tsx`'s own harness
- * shape (a stateful in-memory list behind mocked `api.*` calls) — this
- * panel, like that one, owns its own fetch/reload state entirely.
- */
+/** A stateful in-memory list behind mocked `api.*` calls, as in `modules/compliance/MappingTypesPanel.stories.tsx`: the panel owns its fetch and reload state. */
 function mockOrgTypeApis(initial: PainPointTypeDefinition[]) {
   let items = initial;
   spyOn(api, "get").mockImplementation(async () => items);

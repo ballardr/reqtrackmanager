@@ -9,12 +9,12 @@ Responsibilities:
 - On a Raspberry Pi, record whether `vcgencmd get_throttled` ever reported throttling (a flag word, no identity).
 
 Design decisions:
-- Its own sampler so results never depend on cAdvisor, Prometheus or Grafana: the Pi cannot afford the
-  observability profile, and the bundle must be self-contained.
-- Rows carry seconds since the scenario started, never wall-clock time, and the service name, never a container id
-  or name (which embed the project and an index).
-- `docker stats` reports a cgroup's usage minus page cache where the kernel exposes it, which is the working set
-  an out-of-memory killer acts on; Docker Desktop numbers describe its Linux VM.
+- Its own sampler, so results never depend on cAdvisor, Prometheus or Grafana: the Pi cannot afford the
+  observability profile and the bundle must be self-contained.
+- Rows carry seconds since the scenario started (never wall-clock time) and the service name (never a container id
+  or name, which embed the project and an index).
+- `docker stats` reports a cgroup's usage minus page cache, the working set an out-of-memory killer acts on; Docker
+  Desktop numbers describe its Linux VM.
 
 Dependencies: Docker (through `perf.lib.compose.PerfDocker`).
 """

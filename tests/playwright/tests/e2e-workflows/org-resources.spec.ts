@@ -8,7 +8,7 @@ import { setUpOrg } from "../modules/stakeholders/helpers";
  * its projects. It is reached from the navigation rail (a person in several organisations picks one first), names the
  * organisation, offers the organisation switcher and a link to Organisation settings, and lists the sections of the
  * organisation's enabled modules, followed by Reports and Tags. Module gating is covered with the module toggle in
- * `org-overview.spec.ts`; Settings no longer lists Reports, Tags or a module's organisation record list.
+  * `org-overview.spec.ts`; Settings does not list Reports, Tags or a module's organisation record list.
  *
  * Persona: `orgAdminAlphaBeta` (`org_admin` of Alpha and Beta, see backend/scripts/seed_e2e_dataset.py), a genuine
  * multi-org account. The spec only reads, so it needs no clean-up and can be repeated against the same database.

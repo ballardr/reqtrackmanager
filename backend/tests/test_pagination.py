@@ -202,13 +202,10 @@ def test_project_changes_paginates_and_reports_total(client, admin_token, org_id
         f"/api/v1/projects/{project['id']}/changes?limit=2&offset=2", headers=auth_headers(admin_token)
     )
     assert len(page2.json()) == 2
-    # No cross-page disjointness assertion here (unlike the requirements-list
-    # test above) — entries sort by `timestamp`, and requirements created in
-    # a tight loop can land in the same microsecond, so two independent
-    # requests aren't guaranteed to agree on tied entries' relative order the
-    # way the requirements list's deterministic component/category sort key
-    # is. Length and total-count correctness per page is the actual
-    # pagination contract under test.
+    # No cross-page disjointness assertion (unlike the requirements-list test
+    # above): entries sort by `timestamp`, and requirements created in a tight
+    # loop can share a microsecond, so tied entries have no stable relative
+    # order across requests. Per-page length and total count are the contract.
 
 
 def test_projects_list_favorite_only_filters_to_favourited_projects(client, admin_token, org_id):
@@ -335,10 +332,9 @@ def test_org_groups_search_and_paginate(client, admin_token, org_id):
     by_search = client.get(f"/api/v1/orgs/{org_id}/groups?search=finance", headers=auth_headers(admin_token))
     assert [g["name"] for g in by_search.json()] == ["Finance Reviewers"]
 
-    # `order` — `DirectoryTable`'s
-    # Name column sort refetches with this rather than sorting only the
-    # currently-loaded page, since this list already pages via limit/offset
-    # (style guide "Pattern: sortable column header").
+    # `order`: `DirectoryTable`'s Name column sort refetches with it instead of
+    # sorting only the loaded page, since the list pages via limit/offset (style
+    # guide "Pattern: sortable column header").
     ascending = client.get(f"/api/v1/orgs/{org_id}/groups?order=asc", headers=auth_headers(admin_token)).json()
     descending = client.get(f"/api/v1/orgs/{org_id}/groups?order=desc", headers=auth_headers(admin_token)).json()
     assert [g["name"] for g in ascending] == sorted(g["name"] for g in ascending)
@@ -361,8 +357,8 @@ def test_project_groups_search_and_paginate(client, admin_token, org_id):
 
     unpaginated = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token))
     total = len(unpaginated.json())
-    # No groups are auto-created on project creation any more (2026-08-31 removed the four default groups) — only the
-    # 5 created just above by this test exist.
+    # No groups are auto-created on project creation, so only the 5 created
+    # above exist.
     assert total >= 5
     assert int(unpaginated.headers["x-total-count"]) == total
 

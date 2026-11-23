@@ -1,23 +1,16 @@
-"""Tests for the members/groups directory rework (docs/
-decisions.md): a `ProjectGroup`'s role is no longer a single, required field
-fixed at creation — it now holds zero, one, or several independently-
-revocable roles, each its own `ProjectGroupRole` row, granted/revoked via
-`POST`/`DELETE /projects/{id}/groups/{group_id}/roles[/{role}]`. This is the
-group-level counterpart to `test_org_group_project_roles.py`'s
-`OrgGroupProjectRole` coverage, mirroring its shape closely, plus the
-migration backfill that converted every pre-existing group's old scalar
-`role` into exactly one grant row.
+"""Tests for project group roles (docs/decisions.md): a `ProjectGroup` holds zero,
+one or several independently revocable roles, each its own `ProjectGroupRole` row,
+granted/revoked via `POST`/`DELETE /projects/{id}/groups/{group_id}/roles[/{role}]`.
+This is the group-level counterpart to `test_org_group_project_roles.py`'s
+`OrgGroupProjectRole` coverage and mirrors its shape.
 
-This file used to cover `PATCH /projects/{id}/groups/{group_id}` (making a
-project group's role editable after creation) — that endpoint no
-longer exists (there is no longer a single mutable `role` field to PATCH);
-its coverage is replaced by the grant/revoke tests below. The delete/
-member-removal C-U-08 guard tests and the engagement-cleanup regression
-tests carry over, adapted to the new group-creation shape (bare, then a
-role granted separately) and to `_get_group_roles`'s new reads.
+There is no single mutable `role` field, so no `PATCH /projects/{id}/groups/{group_id}`
+role edit; the grant/revoke tests cover role changes. The delete/member-removal C-U-08
+guard tests and the engagement-cleanup tests create a bare group and grant a role
+separately, and read through `_get_group_roles`.
 
-Both group-scoped mutating endpoints (create/grant/revoke/delete/member add-
-remove) share `require_project_manage`'s gate tier, same as before.
+The group-scoped mutating endpoints (create/grant/revoke/delete/member add-remove) share
+`require_project_manage`'s gate tier.
 """
 
 from sqlalchemy import select
@@ -29,10 +22,8 @@ from tests.conftest import auth_headers, create_org_user, create_project, login
 
 
 def _create_group(client, token, project_id, name: str, role: str | None = None) -> dict:
-    """Creates a bare project group (`ProjectGroupCreate` no longer
-    accepts a role at all), then optionally grants it one role via the new
-    `POST .../groups/{group_id}/roles` endpoint — the two-call replacement
-    for the old single `POST .../groups` with `role` in the payload."""
+    """Creates a bare project group (`ProjectGroupCreate` takes no role), then optionally
+    grants it one role via `POST .../groups/{group_id}/roles`."""
     group = client.post(
         f"/api/v1/projects/{project_id}/groups", json={"name": name}, headers=auth_headers(token)
     ).json()
@@ -75,14 +66,11 @@ def _make_group_the_sole_manager(client, admin_token, org_id, project_id) -> dic
     member, then revokes the project creator's own direct manager grant
     (C-U-10) — leaving the new group as the project's only manager source.
 
-    `revoke_project_role`'s own C-U-08 guard only blocks removing a
-    direct grant when the grantee would become the project's *sole*
-    effective manager afterward (and isn't also an inherited manager) — so
-    this only works cleanly because the new group's member is someone
-    other than the creator: with two independent manager sources (the
-    creator's direct grant, the new group), revoking the creator's direct
-    grant leaves exactly one (the group), and the revoke itself is never
-    blocked by the very guard this helper exists to set up a test for.
+    `revoke_project_role`'s C-U-08 guard blocks removing a direct grant only when
+    the grantee would become the project's sole effective manager (and is not an
+    inherited manager). The group's member is therefore someone other than the
+    creator: with two manager sources, revoking the creator's grant leaves the group
+    and is not blocked by the guard under test.
     """
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
     other_id = create_org_user(client, admin_token, org_id, "sole-manager-source@example.com", role="member")
@@ -103,9 +91,8 @@ def _make_group_the_sole_manager(client, admin_token, org_id, project_id) -> dic
 
 
 def test_create_group_has_no_role_and_starts_with_empty_roles_list(client, admin_token, org_id):
-    """`POST .../groups` no longer accepts (or requires) a role — a
-    freshly created group starts with zero roles, symmetric with how a
-    freshly created org group already has none."""
+    """`POST .../groups` takes no role: a new group starts with zero roles, as a
+    new org group does."""
     project = create_project(client, admin_token, org_id)
     resp = client.post(
         f"/api/v1/projects/{project['id']}/groups", json={"name": "Bare Group"}, headers=auth_headers(admin_token)
@@ -284,12 +271,10 @@ def test_idempotent_grant_no_op_does_not_create_a_second_audit_event(client, adm
 
 
 def test_group_holding_two_roles_produces_two_provenance_entries_for_its_members(client, admin_token, org_id):
-    """The core behaviour: a group is no longer limited to one role.
-    Both grants must show up as two separate `direct_group` Source entries
-    for the same member, not collapsed into one — the same "one line per
-    source" principle established for two *different* groups granting
-    the same role, applied here the other way round (one group granting two
-    different roles)."""
+    """A group may hold several roles. Both grants show as two separate `direct_group`
+    Source entries for the same member, not collapsed into one: the "one line per
+    source" principle applied to one group granting two roles (as two groups granting
+    the same role do)."""
     project = create_project(client, admin_token, org_id, "Two Roles One Group Project")
     user_id = create_org_user(client, admin_token, org_id, "two-roles-one-group@example.com", role="member")
     group = _create_group(client, admin_token, project["id"], "Dual Role Group")

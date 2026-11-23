@@ -3,16 +3,12 @@
  *
  * The project's Files page: every file the project holds in one filterable list, with a preview of each picture.
  *
- * Responsibilities:
- * - List the files of a project's requirements, actions and requirement comments and the pictures in its report
- *   image library (`POST /projects/{id}/files/search`), each with the origin it came from.
- * - Narrow the list with the shared filters (`useFileFilters`, `FileFilterFields`) plus the nested-project scope.
- *   Every filter lives in the URL, so the list comes back as it was left after opening a record.
+ * Responsibilities: list the files of the project's requirements, actions and requirement comments and the pictures in its
+ * report image library (`POST /projects/{id}/files/search`) with their origin; narrow the list with the shared filters
+ * (`useFileFilters`, `FileFilterFields`) plus the nested-project scope, all in the URL.
  *
- * Design decisions:
- * - Read/browse only: uploads happen from the record a file is attached to (`FileAttachmentList`) or from the report
- *   image library in the layout designer, not here.
- * - A response that arrives after a newer search has been sent is dropped, so typing quickly cannot show stale rows.
+ * Design decisions: browse-only (uploads happen from the attaching record, `FileAttachmentList`, or the report image
+ * library); a response arriving after a newer search was sent is dropped so fast typing shows no stale rows.
  */
 import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";

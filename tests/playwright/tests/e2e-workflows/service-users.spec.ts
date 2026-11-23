@@ -4,11 +4,11 @@ import { loginAs, PERSONAS } from "./helpers";
 
 /**
  * Job to be done: an organisation administrator gives an integration its own identity, created from the Add user
- * menu and listed with every other account. The service user has no password and no sign-in; the administrator issues a personal access token for it, which authenticates as the
- * service user until it is revoked. The deep rules (closed sign-in paths, scope, expiry, audit) are covered by the
- * backend tests; this spec proves what only a browser and the API together can: the secret the dialog shows once is
- * a working credential, revoking it through the dialog kills it, the badge marks the account, and the account cannot
- * sign in with a password.
+ * menu and listed with every other account. The service user has no password and no sign-in; the administrator
+ * issues a personal access token for it, which authenticates as the service user until it is revoked. The deep rules
+ * (closed sign-in paths, scope, expiry, audit) are covered by the backend tests; this spec proves what only a browser
+ * and the API together can: the secret the dialog shows once is a working credential, revoking it through the dialog
+ * kills it, the badge marks the account, and the account cannot sign in with a password.
  *
  * Persona: `orgAdminGamma` (`org_admin` of Gamma only). The service user has a name unique to the run and is
  * deactivated and archived at the end, so the test can be repeated against the same database.

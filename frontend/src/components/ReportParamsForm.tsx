@@ -1,24 +1,22 @@
 /**
  * Module: components/ReportParamsForm
  *
- * The parameter form of the core report framework's Reports UI: one labelled control per parameter a report declares (a select
- * for `choices`, a bounded number, a switch, a date, or text for string/uuid),
- * plus the framework-level options: the "include child projects" switch for
- * project reports and, for organisation-wide reports, a "Project" picker that
- * narrows the run to one project (`project_id`, "All projects" when blank), or, for an organisation-wide
- * custom report that runs once per project, a "Projects" selector choosing which are included
- * (`project_ids`, comma-separated; none chosen means all) or, when the report runs for one project (and optionally its
- * child projects), a single-choice "Project" that must be answered (`project_ids` holds the one id). Generated entirely from the catalogue entry, so a new module report
- * needs no UI code for its parameters.
+ * The parameter form of the core report framework's Reports UI: one labelled control per parameter a report declares
+ * (a select for `choices`, a bounded number, a switch, a date, or text for string/uuid), plus the framework-level
+ * options:
+ * - the "include child projects" switch for project reports;
+ * - for organisation-wide reports, a "Project" picker that narrows the run to one project (`project_id`, "All
+ *   projects" when blank);
+ * - for an organisation-wide custom report that runs once per project, a "Projects" selector (`project_ids`,
+ *   comma-separated; none chosen means all);
+ * - for a report that runs for one project (and optionally its child projects), a required single-choice "Project"
+ *   (`project_ids` holds the one id).
+ * Generated entirely from the catalogue entry, so a new module report needs no UI code for its parameters.
  *
- * Controlled and stateless: values live in the caller (`ReportRunner`); an
- * empty value means "use the server default". Parameters a custom report view
- * draws its own control for are passed in `hidden` so none has two controls.
- * Control and choice labels use the report's declared `label`/`choice_labels`
- * and otherwise fall back to humanising the identifier ("weighted_average" ->
- * "Weighted average"), because core has no label map for a module's own
- * vocabulary; a module that needs exact wording either declares the labels or
- * owns the parameter in its view.
+ * Controlled and stateless: values live in the caller (`ReportRunner`); an empty value means "use the server
+ * default". Parameters a custom report view draws its own control for are passed in `hidden`, so none has two
+ * controls. Labels use the report's declared `label`/`choice_labels` and otherwise humanise the identifier
+ * ("weighted_average" becomes "Weighted average"), because core has no label map for a module's vocabulary.
  */
 import { useId } from "react";
 

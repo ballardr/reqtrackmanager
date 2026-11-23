@@ -1,19 +1,13 @@
-"""Tests for the module system's two-tier gating and backend
-plugin-loading infrastructure: effective
-entitlement/enablement resolution (`app.modules.registry.
-is_module_entitled`/`is_module_enabled`), the `require_org_module_enabled`/
-`require_project_module_enabled` RBAC dependencies' 404-not-403 behaviour,
-`build_registry`'s three-source merge logic and its `ALLOW_EXTERNAL_MODULES`
-gating, and the org-tier (`/orgs/{id}/modules`) and server-tier
-(`/system/modules`, `/system/orgs/{id}/module-entitlements`) admin
-endpoints.
+"""Tests for the module system's two-tier gating and backend plugin loading:
+effective entitlement/enablement resolution (`app.modules.registry.is_module_entitled`/
+`is_module_enabled`), the 404-not-403 behaviour of the `require_org_module_enabled`/
+`require_project_module_enabled` dependencies, `build_registry`'s three-source merge
+and its `ALLOW_EXTERNAL_MODULES` gating, and the org-tier (`/orgs/{id}/modules`) and
+server-tier (`/system/modules`, `/system/orgs/{id}/module-entitlements`) admin endpoints.
 
-Every test that registers a fixture module into the process-global
-`INSTALLED_MODULES` list uses the `fake_module` fixture below, which always
-tears down by removing it and rebuilding the registry cache
-(`build_registry(force=True)`) — this repo's standing rule that tests must
-not depend on execution order applies just as much to this module-level
-mutable list as it does to database rows."""
+A test that registers a fixture module in the process-global `INSTALLED_MODULES` uses
+the `fake_module` fixture, which always removes it and rebuilds the registry cache
+(`build_registry(force=True)`), so the mutable list does not leak state between tests."""
 
 import uuid as uuid_lib
 from types import SimpleNamespace
@@ -337,21 +331,16 @@ def test_allow_external_modules_false_never_calls_discovery_functions(monkeypatc
 
 # --- import_all_module_models (Base.metadata auto-registration) -------------
 #
-# These monkeypatch `module_registry.importlib.import_module` itself, rather
-# than actually importing a real fake models module: a real dynamic import
-# would permanently register a fake table on the process-wide `Base.metadata`
-# for the rest of this test session (SQLAlchemy has no "unregister a mapped
-# class" operation, unlike this file's own `INSTALLED_MODULES` list, which
-# every other test here can freely append to and remove from) — the very
-# next test in this suite that runs `test_schema_migrations_match_models.py`
-# would then see a table in `Base.metadata` with nothing in the real migrated
-# schema to match it against, and fail. Asserting on *what got called*, not
-# on a real import's side effect, avoids that entirely.
+# These monkeypatch `module_registry.importlib.import_module` instead of
+# importing a fake models module: a real dynamic import would register a fake
+# table on the process-wide `Base.metadata` for the whole session (SQLAlchemy
+# cannot unregister a mapped class), and `test_schema_migrations_match_models.py`
+# would then fail on a table absent from the migrated schema. The tests assert
+# on what was called.
 #
-# Assertions check membership/subset, not exact equality: Compliance is a
-# real, permanent `INSTALLED_MODULES` entry with its own `models_import_path`
-# (`"app.modules.compliance.models"`), so every call here also imports that
-# alongside whatever fixture modules the test itself registers.
+# Assertions check membership/subset, not equality: Compliance is a permanent
+# `INSTALLED_MODULES` entry with its own `models_import_path`
+# (`"app.modules.compliance.models"`), so every call also imports it.
 
 
 def test_import_all_module_models_imports_every_declared_path(monkeypatch):
@@ -415,13 +404,11 @@ def test_import_all_module_models_one_failure_does_not_block_the_others(monkeypa
 
 # --- apply_external_module_migrations ----------------------------------------
 #
-# Each test uses a real, throwaway in-memory SQLite engine (`create_engine
-# ("sqlite://")`) rather than the shared Postgres test database — this
-# exercises the real `engine.begin()`/`connection.execute(text(...))`
-# mechanics `run_migrations(connection)` actually uses, without touching
-# anything the rest of this suite depends on. `importlib.import_module` is
-# still monkeypatched (as in the `import_all_module_models` tests above) so
-# no fake module needs to exist on disk.
+# Each test uses a throwaway in-memory SQLite engine (`create_engine("sqlite://")`)
+# instead of the shared Postgres test database, exercising the
+# `engine.begin()`/`connection.execute(text(...))` mechanics `run_migrations(connection)`
+# uses without touching shared state. `importlib.import_module` is monkeypatched
+# (as above) so no fake module needs to exist on disk.
 
 
 def test_apply_external_module_migrations_noop_when_disallowed(monkeypatch):
@@ -684,16 +671,16 @@ def test_system_org_module_entitlements_reflects_override_state(client, admin_to
     assert by_key[fake_module]["has_override"] is True
 
 
-# --- `on_org_created` generic hook dispatch (module boundary cleanup, 2026-09-08) --------------
+# --- `on_org_created` generic hook dispatch --------------
 
 
 def test_run_on_org_created_hooks_calls_every_registered_hook(org_id):
     """`run_on_org_created_hooks` (`app.modules.registry`) is what
     `routers.orgs.create_organization`/`services.bootstrap.run_bootstrap`
-    call instead of importing a specific module (e.g. Compliance) to seed
-    its own org-scoped defaults — pins that the generic dispatch actually
-    reaches a module's declared `on_org_created` hook, with the right
-    arguments, and leaves a module with none (the default `None`) alone."""
+    call, instead of importing a specific module (e.g. Compliance), to seed
+    org-scoped defaults. Pins that the dispatch reaches a module's
+    `on_org_created` hook with the right arguments and leaves a module with
+    none (the default `None`) alone."""
     calls: list[tuple] = []
     module_registry.INSTALLED_MODULES.append(
         _fake_module(on_org_created=lambda db, organization_id: calls.append((db, organization_id)))
@@ -791,12 +778,10 @@ def test_run_on_org_created_hooks_falls_back_to_defaults_when_no_keys_given(org_
             run_on_org_created_hooks(db, uuid_lib.UUID(org_id))
         finally:
             db.close()
-        # The resolved set is every module's own default-selected options
-        # merged together (real registered modules, e.g. Decision
-        # Management's own seeded ADR packs, participate in the same
-        # fallback resolution) — a module is expected to filter to its own
-        # keys itself, so this only asserts the fake module's key made it
-        # into what it received, not that it received *only* its own key.
+        # The resolved set merges every module's default-selected options
+        # (registered modules, e.g. Decision Management's ADR packs, take part
+        # too) and a module filters to its own keys, so this asserts only that
+        # the fake module's key is in what it received.
         assert len(calls) == 1
         assert "fake_test_module:opt_a" in calls[0]
     finally:

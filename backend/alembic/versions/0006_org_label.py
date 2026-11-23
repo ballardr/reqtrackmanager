@@ -4,16 +4,10 @@ Revision ID: 0006
 Revises: 0005
 Create Date: 2026-08-16
 
-- `server_settings.org_label_singular` / `org_label_plural`: nullable
-  deployment-wide override of the word "organisation"/"Organisations" shown
-  throughout the UI. `NULL` for either falls back to the built-in English
-  word.
+- `server_settings.org_label_singular` / `org_label_plural`: nullable deployment-wide override of the
+  word "organisation"/"Organisations" shown in the UI; `NULL` selects the built-in English word.
 
-`IF NOT EXISTS`, same reason 0002-0005 use it: a brand-new database's
-`create_all()` already creates these columns against the current model
-class, so a plain `ADD COLUMN` would fail there with "already exists"; an
-already-migrated database from before this revision is genuinely missing
-them.
+`IF NOT EXISTS`, as in 0002.
 """
 
 from collections.abc import Sequence

@@ -1,18 +1,11 @@
 """
 Module: modules.context_strategy.record_attachments
 
-The files attached to this module's records, for a custom report's record-images block
-(`ModuleDefinition.record_attachments`).
-
-Responsibilities:
-- Name the file-link table and record column of each of this module's five record types.
-
-Design decisions:
-- Only a record's own attachments are listed, never a comment thread's files.
-- A type whose attachments may show or concern identifiable people is not offered, and says so in
-  `NO_RECORD_ATTACHMENTS`.
-
-Dependencies: this module's file-link models, `modules.registry` (the provider type).
+Names the file-link table and record column of this module's five record
+types for a custom report's record-images block
+(`ModuleDefinition.record_attachments`). Only a record's own attachments are
+listed, never a comment thread's files; a type whose attachments may show
+identifiable people is declared in `NO_RECORD_ATTACHMENTS`.
 """
 
 from __future__ import annotations

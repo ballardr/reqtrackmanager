@@ -1,15 +1,10 @@
 /**
  * Module: components/ColumnChooser
  *
- * The one control for choosing which optional columns a list shows: an icon button that opens a popover with a
- * checkbox per column, the always-on Name column shown ticked and locked, and a reset to the list's defaults.
- *
- * Responsibilities:
- * - Name the columns and report each tick; the list owns the choice (`useColumnChoice` remembers it per person).
- * - Say when the choice is not the default (accent border on the button, like `SettingsPopoverButton`).
- *
- * Design decisions: changes apply as they are ticked, so there is no Save. The always-on column is listed so a
- * person sees why it cannot be unticked, instead of wondering where it went.
+ * The one control for choosing which optional columns a list shows: an icon button opening a popover with a
+ * checkbox per column, the always-on Name column ticked and locked (so a person sees why it cannot be unticked),
+ * and a reset to the defaults. Changes apply as ticked, with no Save. The list owns the choice (`useColumnChoice`
+ * remembers it per person); a non-default choice gets an accent border on the button, as `SettingsPopoverButton`.
  *
  * Dependencies: `Popover`, `Tooltip`, `CheckboxField`, `lucide-react`.
  */

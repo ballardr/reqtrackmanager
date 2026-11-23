@@ -1,15 +1,11 @@
 /**
  * Module: testing/popoverFit
  *
- * The shared "does a popover's content fit its bubble, and the bubble its window?" assertion. A popover whose content has a
- * minimum width of its own (a fixed `min-width` on a panel placed in a bubble as wide as a narrow form field) runs out of
- * the bubble, the card and the window, which cuts off a field and a column of tiles. This reads the rendered boxes and
- * returns what is wrong, so Storybook play functions fail instead of someone spotting it in a screenshot.
- *
- * Rules:
- * - the bubble lies inside the window;
- * - nothing in the bubble sticks out of it sideways (`sidewaysOverflow`);
- * - when a trigger is given, the bubble does not cover it.
+ * The shared "does a popover's content fit its bubble, and the bubble its
+ * window?" assertion: reads the rendered boxes and returns what is wrong, for
+ * Storybook play functions. Rules: the bubble lies inside the window; nothing
+ * in it sticks out sideways (`sidewaysOverflow`); when a trigger is given, the
+ * bubble does not cover it.
  */
 import { expect } from "storybook/test";
 

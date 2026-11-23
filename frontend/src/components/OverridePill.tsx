@@ -4,26 +4,21 @@ import { Badge } from "./Badge";
 const strings = t();
 
 /**
- * Style guide "Pattern: platform default vs. override" (docs/ux-style-guide.md):
- * one control, applied uniformly to every setting that falls back to a
- * platform-wide default when unset. States the current source in words —
- * `custom` reflects the last-*saved* value, not an in-progress edit, so it
- * stays honest about what a reload would actually show — and offers an
- * explicit way back rather than expecting the field to be blanked by hand.
+ * Style guide "Pattern: platform default vs. override" (docs/ux-style-guide.md): one control for every setting that
+ * falls back to a platform-wide default when unset. It states the current source in words (`custom` reflects the
+ * last saved value, not an in-progress edit, so it matches what a reload shows) and offers an explicit way back
+ * instead of expecting the field to be emptied.
  *
- * `onReset` clears the field locally; it's the caller's own save action
- * (not this component) that persists the revert, matching how every other
- * field in these forms already batches edits behind one Save button rather
- * than saving per-field.
+ * `onReset` clears the field locally; the caller's own save action persists the revert, as every field in these
+ * forms batches edits behind one Save button.
  *
- * `platformFallback` is for a setting on an organisation page whose fallback is the platform or module default:
- * organisations do not manage that default, so no pill says "Custom" or "Platform default"; only the way back stays,
- * a reset button shown while the value differs (a value that cannot be emptied, such as a band set, has no other
- * way back). A pill that names an inherited tier (organisation, parent project) is not this case and stays.
+ * `platformFallback` is for an organisation-page setting whose fallback is the platform or module default:
+ * organisations do not manage that default, so no pill says "Custom" or "Platform default"; only a reset button
+ * stays, shown while the value differs (a value that cannot be emptied, such as a band set, has no other way back).
+ * A pill naming an inherited tier (organisation, parent project) is not this case and stays.
  *
- * `defaultLabel`/`resetLabel` replace "Platform default"/"Reset to platform
- * default" where the fallback isn't the platform — e.g. a project setting
- * inherited from its parent project or organisation ("Inherited from
+ * `defaultLabel`/`resetLabel` replace "Platform default"/"Reset to platform default" where the fallback is not the
+ * platform, e.g. a project setting inherited from its parent project or organisation ("Inherited from
  * organisation" / "Use inherited value").
  */
 export function OverridePill({

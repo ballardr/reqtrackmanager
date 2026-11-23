@@ -4,14 +4,9 @@ Revision ID: 0074
 Revises: 0073
 Create Date: 2026-10-12
 
-Adds `risk_treatment_assessments`: the per-link verdict on whether a mitigating/treating artefact
-actually reduces a risk, keyed to `artefact_links` with a cascading FK so
-deleting a link drops its verdict.
-
-Also lets a Decision address a Risk: an organisation that already has the
-"Addresses" link type (created by Decision Management, restricted to Pain Point
-targets) is widened to accept `risk`. Seeds only create missing link types, so
-without this an existing organisation could not link a Decision to a Risk.
+Adds `risk_treatment_assessments` (the per-link verdict, cascading with its
+`artefact_links` row) and widens an existing "Addresses" link type to accept
+`risk`, since seeds only create missing link types.
 """
 
 from collections.abc import Sequence

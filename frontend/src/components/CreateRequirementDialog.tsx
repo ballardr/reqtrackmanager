@@ -2,7 +2,7 @@
  * Module: components/CreateRequirementDialog
  *
  * A self-contained "New requirement" dialog for another record's Links panel (a core type's entry in
- * `modules/coreLinkedRecordCreators`): the same `RequirementCreateModal` the Requirements page uses, without the
+ * `modules/coreLinkedRecordCreators`): the `RequirementCreateModal` the Requirements page uses, without the
  * follow-up file step (the panel links the new requirement and closes the dialog).
  */
 import { useAuth } from "../context/AuthContext";

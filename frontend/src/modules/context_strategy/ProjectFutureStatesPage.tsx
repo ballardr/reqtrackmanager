@@ -1,20 +1,14 @@
 /**
  * Module: modules/context_strategy/ProjectFutureStatesPage
  *
- * The Context & Strategy module's project-scoped Future State list route,
- * mounted at
- * `/projects/:projectId/modules/context_strategy/future-states`
- * (`module.ts`, reached via this module's second nav-rail entry).
- * Mirrors `ProjectStrategiesPage.tsx`'s
- * `DirectoryTable` + `FilterPanel` + "New X" `Modal` shape exactly, minus a
- * priority filter (Future State has no `priority` field — see `types.ts`'s
- * own docstring) and minus the target-date column here (shown in the full
- * detail page, not worth a list column of its own for a nullable field).
+ * The project-scoped Future State list route, mounted at `/projects/:projectId/modules/context_strategy/future-states`
+ * (`module.ts`, the module's second nav-rail entry). It has `ProjectStrategiesPage.tsx`'s `DirectoryTable`,
+ * `FilterPanel` and "New X" `Modal` shape, without a priority filter (no `priority` field) or a target-date column
+ * (shown on the detail page).
  *
- * Filters can be pre-set from the URL (a report figure links here, e.g.
- * `?roadmap=1&target_passed=1`): `status`, `roadmap=1` (still expected to
- * arrive), `target_passed=1` (target date passed while not Active) and
- * `no_measures=1`. They only seed the state; each is a visible filter control.
+ * Filters can be pre-set from the URL (a report figure links here, e.g. `?roadmap=1&target_passed=1`): `status`,
+ * `roadmap=1` (still expected to arrive), `target_passed=1` (target date passed while not Active) and `no_measures=1`.
+ * They only seed the state; each is a visible filter control.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

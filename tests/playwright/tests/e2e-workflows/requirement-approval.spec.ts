@@ -3,21 +3,14 @@ import { expect, test } from "@playwright/test";
 import { approveRequirementFromDetail, recordActionNames, loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Before this feature, a requirement only ever reached "approved" as a side
- * effect of a change request being approved — there was no standalone
- * approve action anywhere. This
- * proves the new direct path: a project manager sees and can use "Approve"
- * on a draft requirement; a stakeholder (who can otherwise edit the same
- * requirement directly) does not see it, matching C-U-03's clarification
- * that approval is a project-manager-specific privilege; and "Make change
- * request" only appears once the requirement is actually locked, since a
- * change request against a still-draft requirement is now rejected
- * server-side.
+ * Proves the standalone approve action: a project manager sees and can use "Approve" on a draft requirement; a
+ * stakeholder (who can otherwise edit the same requirement directly) does not see it, matching C-U-03's clarification
+ * that approval is a project-manager-specific privilege; and "Make change request" appears only once the requirement
+ * is locked, since a change request against a still-draft requirement is rejected server-side.
  *
- * Creates its own throwaway requirement rather than approving seeded data —
- * approving isn't reversible from the UI (no "unapprove" action exists,
- * unlike completion), so mutating a shared seeded requirement would corrupt
- * it for every other spec and for a repeat run of this one.
+ * Creates its own throwaway requirement rather than approving seeded data: approving is not reversible from the UI
+ * (no "unapprove" action exists, unlike completion), so mutating a shared seeded requirement would corrupt it for
+ * every other spec and for a repeat run of this one.
  */
 test.describe("requirement approval", () => {
   test("a project manager approves a draft requirement directly; a stakeholder cannot", async ({ page }) => {

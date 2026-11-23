@@ -4,21 +4,14 @@ Revision ID: 0040
 Revises: 0039
 Create Date: 2026-09-16
 
-Adds the two-level opt-in gate that lets an AI assistant acting through the
-MCP server (mcp-server/) perform an approval-type action (approve a
-requirement, decide a change request, complete a requirement) — previously
-structurally impossible in every case, in either MCP mode. Both the
-organisation's and the project's own flag must be true for the gate to pass;
-neither one alone is sufficient. See Organization.allow_ai_approvals and
-Project.allow_ai_approvals docstrings for the full mechanism, and
-docs/decisions.md's "AI approval via MCP" entry for why this reopens a
-previously non-negotiable exclusion.
+Adds the two-level opt-in gate that lets an AI assistant acting through the MCP server (mcp-server/)
+perform an approval-type action (approve a requirement, decide a change request, complete a
+requirement). Both the organisation's and the project's flag must be true; neither alone is sufficient
+(see the `Organization.allow_ai_approvals` and `Project.allow_ai_approvals` docstrings and the decisions
+entry).
 
-One new boolean column on `organizations` and one on `projects`, both
-`NOT NULL DEFAULT false` — additive-only, so every existing org/project
-starts with AI approval disabled, matching the permissive-default-off
-convention 0039's own link-lock columns already established. No backfill
-needed.
+One boolean column on `organizations` and one on `projects`, `NOT NULL DEFAULT false`, so existing
+organisations and projects have AI approval disabled, as with 0039's link-lock columns. No backfill.
 """
 
 from collections.abc import Sequence

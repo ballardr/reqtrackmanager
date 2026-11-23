@@ -1,25 +1,19 @@
 """
 Module: services.report_fields_core
 
-The `ReportFieldProvider`s for the three core artefact types (requirements, actions, change
-requests): what a custom report layout may print or group by for each.
+The `ReportFieldProvider`s for the core artefact types (requirements, actions, change requests).
 
 Responsibilities:
-- Declare, per core type, the typed fields on top of the search's text fields (component, category,
-  level, stage and owner of a requirement; type, assignee and due date of an action; kind and times of
-  a change request).
+- Declare each core type's typed fields on top of the search's text fields (a requirement's component, category,
+  level, stage and owner; an action's type, assignee and due date; a change request's kind and times).
 
 Design decisions:
-- Core types register through the same mechanism as module types, in core code because core owns
-  them (a module's types are registered by the module, never listed here).
-- A requirement is read through its current version (`valid_to IS NULL`), the joins coming from the
-  search declaration so they are written once.
-- A requirement's component and category are their names, looked up by correlated subquery, so a
-  layout can group by the words a person sees.
-- Review notes, comments and file contents are not fields; free text is limited to what the search
-  already treats as a vetted, opt-in column.
+- Core owns these types, so they register here; a module's types are registered by the module.
+- A requirement is read through its current version (`valid_to IS NULL`), joins shared with the search declaration;
+  component and category are names via correlated subquery so a layout groups by the words a person sees.
+- Review notes, comments and file contents are not fields; free text is limited to vetted search columns.
 
-Dependencies: the core models and `services.search_core` (the joins), `services.report_fields` (builders).
+Dependencies: core models, `services.search_core`, `services.report_fields`.
 """
 
 from __future__ import annotations

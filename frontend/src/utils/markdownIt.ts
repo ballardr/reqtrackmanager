@@ -1,23 +1,17 @@
 /**
  * Module: utils/markdownIt
  *
- * The one Markdown reader the interface uses (markdown-it), configured for text that is never trusted.
- *
- * Responsibilities:
- * - Parse Markdown source into tokens for `MarkdownView`, which turns them into React elements.
- * - Decide what may be a link and which fenced block is a Mermaid diagram.
- * - Optionally read equations (`utils/markdownMath`), for the fields that hold mathematics.
- *
- * Design decisions:
- * - Raw HTML is off (it is read as text), and nothing here produces HTML: the reader's tokens are the only output,
- *   so a stored value can never run as markup.
- * - A link must be https, http or mailto; any other address (a script, a relative path) is left as the text typed. The one
- *   other address the reader accepts is a picture of the record's own attachment (`attachment:<file id>`,
- *   `utils/markdownPicture`), which only `MarkdownView` draws, and only as an image: as a link it is shown as its text.
- * - A single line break is kept (`breaks`), because existing plain text relied on it, and nesting is capped at the
- *   reader's own limit of 100 levels (deeper content is not read, which the server's validation refuses), so a
- *   hostile document cannot exhaust the stack.
- *
+ * The one Markdown reader the interface uses (markdown-it), configured for
+ * untrusted text: parses source into tokens for `MarkdownView` (which makes React
+ * elements), decides what may be a link and which fenced block is a Mermaid
+ * diagram, and optionally reads equations (`utils/markdownMath`).
+ * Design: raw HTML is off (read as text) and nothing here produces HTML, so a
+ * stored value cannot run as markup. A link must be https, http or mailto; any
+ * other address is left as typed, except a picture of the record's own
+ * attachment (`attachment:<file id>`, `utils/markdownPicture`), which only
+ * `MarkdownView` draws, as an image. A single line break is kept (`breaks`), and
+ * nesting is capped at the reader's limit of 100 levels (the server's validation
+ * refuses deeper), so a hostile document cannot exhaust the stack.
  * Dependencies: `markdown-it` (MIT).
  */
 import MarkdownItReader, { type MarkdownIt, type Token } from "markdown-it";

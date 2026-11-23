@@ -4,21 +4,14 @@ Revision ID: 0044
 Revises: 0043
 Create Date: 2026-09-21
 
-Widens `project_sequence_
-counters.artefact_type` from VARCHAR(20) to VARCHAR(40) — matching
-`artefact_links.source_type`/`target_type`'s own column width — as part of
-changing this column from a fixed `models.enums.ArtefactType` enum member
-to a plain, module-registrable string validated against
-`app.modules.registry.get_all_registered_artefact_types()`. See
-`app.models.sequence.ProjectSequenceCounter`'s own docstring for the full
-reasoning and `docs/decisions.md`'s "Decision Management
-— ProjectSequenceCounter made module-registrable" entry.
+Widens `project_sequence_counters.artefact_type` from VARCHAR(20) to VARCHAR(40), matching
+`artefact_links.source_type`/`target_type`, because the column is a plain string validated against
+`app.modules.registry.get_all_registered_artefact_types()` instead of a fixed `models.enums.ArtefactType`
+member (see `app.models.sequence.ProjectSequenceCounter` and docs/decisions.md's "Decision Management
+- ProjectSequenceCounter made module-registrable" entry).
 
-Widening only — the two existing values this column could ever have held
-(`"requirement"`, `"requirement_action"`, both unused so far per migration 0042,
-which backfills no rows) already fit in 40
-characters, so no data rewrite is needed, only the column's declared
-maximum length.
+Only the declared length changes: the existing values (`"requirement"`, `"requirement_action"`; no rows
+exist per 0042) fit in 40 characters.
 """
 
 from collections.abc import Sequence

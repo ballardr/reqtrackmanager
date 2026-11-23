@@ -45,10 +45,8 @@ export const ChildOfVisibleParent: Story = {
   },
 };
 
-/** Server-side visibility redaction: a project can structurally have a
- * parent while the caller can't view it — parent_project_name/id are both
- * null in that case, and no "Child of:" line renders at all (no hint that
- * a hidden parent exists). */
+/** Server-side visibility redaction: a project can have a parent the caller cannot view. `parent_project_name`
+ * and the id are then both null and no "Child of:" line renders, so nothing hints that a hidden parent exists. */
 export const HiddenParentRendersNothing: Story = {
   args: { project: project({ parent_project_id: null, parent_project_name: null }) },
   play: async ({ canvasElement }) => {

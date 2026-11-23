@@ -1,14 +1,10 @@
 /**
  * Module: modules/context_strategy/ProjectGuidingPrinciplesPage
  *
- * The Context & Strategy module's project-scoped Guiding Principle list
- * route,
- * mounted at `/projects/:projectId/modules/context_strategy/guiding-principles`
- * (`module.ts`, reached via the "Guiding Principle" nav-rail
- * entry — one of the five top-level entries).
- * Mirrors `ProjectStrategiesPage.tsx`'s exact `DirectoryTable` + `FilterPanel`
- * + "New X" `Modal` shape, minus the quick-view `SidePanel` tier, for the
- * same reasons that page's own docstring gives.
+ * The project-scoped Guiding Principle list route, mounted at
+ * `/projects/:projectId/modules/context_strategy/guiding-principles` (`module.ts`, a top-level nav-rail entry). It has
+ * `ProjectStrategiesPage.tsx`'s `DirectoryTable`, `FilterPanel` and "New X" `Modal` shape, without the quick-view
+ * `SidePanel` tier, for the reasons given there.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

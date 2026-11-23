@@ -49,11 +49,8 @@ const SERVER_ADMIN_ACCESS: ServerAccess = {
   can_manage_entitlements: true, can_administer_server: true,
 };
 
-/** Routes every `api.get` call Layout's provider tree can make (branding,
- * terminology, favourites probe, notifications) to fixture data by path
- * prefix — Layout composes several providers each with their own fetch, so
- * a single path-matching mock is far more maintainable than one spy per
- * story. */
+/** Routes every `api.get` call Layout's provider tree can make (branding, terminology, favourites probe,
+ * notifications) to fixture data by path prefix; one path-matching mock replaces a spy per story. */
 function mockLayoutApis(
   clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = [], stagesInUse = true, reviewsDue = 0,
   serverAccess: ServerAccess = NO_SERVER_ACCESS, publishedPolicies: PublicPolicy[] = [],
@@ -75,22 +72,14 @@ function mockLayoutApis(
     if (path === "/api/v1/policies/mine") return [];
     if (path === "/api/v1/system/client-config") return clientConfig;
     if (path === "/api/v1/system/access") return serverAccess;
-    // `useProjectEnabledModules` — Layout's nav
-    // rail calls this whenever a project route is active, independently of
-    // whether any module is actually registered; found as a real,
-    // pre-existing gap (an unhandled promise rejection during the full
-    // Storybook suite) while verifying changes here — fixed
-    // in passing rather than left, per this repo's "fix, don't defer" rule.
+    // `useProjectEnabledModules`: the nav rail calls it on every project route, whether or not a module is
+    // registered, so the mock answers it (an unmocked call is an unhandled rejection).
     if (path.endsWith("/enabled-modules")) return enabledModules;
     // `useProjectHasStages`: the Delivery status entry is in the rail only when the project uses its stages.
     if (path === `/api/v1/projects/${PROJECT.id}/stage-usage`) return { in_use: stagesInUse };
-    // Compliance's own `globalNavItems` contribution (`ComplianceGlobalNavLink.tsx`) fetches this
-    // unconditionally whenever a user is logged in, via `Layout.tsx`'s
-    // generic module-nav-item mechanism — not something Layout.tsx itself
-    // knows or cares about, but this mock intercepts every `api.get` call
-    // during the story regardless of which module made it. `false` keeps
-    // every existing story's nav-rail assertions unaffected; visibility
-    // itself is covered by `ComplianceGlobalNavLink.stories.tsx` instead.
+    // Compliance's `globalNavItems` contribution (`ComplianceGlobalNavLink.tsx`) fetches this for every signed-in
+    // user through `Layout.tsx`'s generic module-nav mechanism, and the mock intercepts every `api.get`. `false`
+    // leaves the nav-rail assertions unaffected; visibility is covered by `ComplianceGlobalNavLink.stories.tsx`.
     if (path === "/api/v1/compliance/nav-visibility") return { visible: false, status_organization_ids: [] };
     throw new Error(`unmocked path in Layout story: ${path}`);
   });
@@ -261,10 +250,9 @@ export const SubscriptionRemovalAuthority: Story = {
   },
 };
 
-/** The page footer's build identity — the frontend's own build constants (unset in a Storybook build, so
- * `version.ts`'s documented "dev"/"unknown" fallback applies) plus the backend's, fetched from
- * `GET /api/v1/system/version` and rendered once it resolves. It is the page's footer, so it does not depend on
- * the navigation rail's state. */
+/** The page footer's build identity: the frontend's build constants (unset in a Storybook build, so `version.ts`'s
+ * "dev"/"unknown" fallback applies) plus the backend's from `GET /api/v1/system/version`, rendered once it
+ * resolves. The footer does not depend on the navigation rail's state. */
 export const ShowsVersionFooter: Story = {
   decorators: [withAuth(buildUser({ display_name: "Alex Morgan", is_server_admin: false })), withRouter("/projects")],
   beforeEach: () => {
@@ -320,15 +308,10 @@ export const HelpLinkHiddenWhenDisabled: Story = {
   },
 };
 
-/** Regression pin for a real bug: the collapse/expand toggle is
- * `position: fixed`, placed independently of its parent's flow position via
- * a `left` CSS var that changes with collapse state — so `Tooltip`'s
- * default in-flow wrapping span (sized to fit an out-of-flow child, i.e.
- * collapsing to zero size) landed nowhere near the button, and the bubble
- * showed up near the *collapsed* rail position even while expanded. Fixed
- * by giving the wrapper the same fixed placement as the button (`Tooltip`'s
- * `className`/`style` props). This asserts the bubble is actually centred
- * on the button's real on-screen box, not a hardcoded pixel value. */
+/** Pins the collapse/expand toggle's tooltip position: the toggle is `position: fixed` with a `left` CSS var that
+ * changes with collapse state, so `Tooltip`'s in-flow wrapper would size to zero and land away from the button.
+ * The wrapper gets the button's fixed placement (`Tooltip`'s `className`/`style`); this asserts the bubble is
+ * centred on the button's real on-screen box, not a hard-coded pixel value. */
 export const ToggleTooltipTracksButtonPosition: Story = {
   decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
   beforeEach: () => {
@@ -353,13 +336,9 @@ export const ToggleTooltipTracksButtonPosition: Story = {
   },
 };
 
-/** Regression pin for a second real bug found alongside the one above:
- * below theme.css's 860px nav-rail breakpoint, CSS force-collapses the rail
- * to icon-only regardless of the user's own (default-expanded)
- * `nav_rail_collapsed` preference — but `NavRailLink` only wrapped its link
- * in a `Tooltip` when that JS preference was `true`, so a narrow window
- * hid every link's text with no tooltip to replace it. Fixed via
- * `Layout.tsx`'s `railIconOnly` (preference OR `useNarrowViewport`). */
+/** Pins that below theme.css's 860px nav-rail breakpoint, where CSS force-collapses the rail to icons regardless
+ * of the `nav_rail_collapsed` preference, every link still has a tooltip (`Layout.tsx`'s `railIconOnly`:
+ * preference OR `useNarrowViewport`). */
 export const NarrowViewportShowsLinkTooltips: Story = {
   decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
   beforeEach: () => {
@@ -368,10 +347,8 @@ export const NarrowViewportShowsLinkTooltips: Story = {
   play: async ({ canvasElement }) => {
     await page.viewport(700, 800);
     const canvas = within(canvasElement);
-    // The `matchMedia` "change" listener that flips `useNarrowViewport`'s
-    // state fires asynchronously relative to `page.viewport()` resolving
-    // (see FilterPanel.stories.tsx's `MobileCollapsedByDefault` for the
-    // same caveat) — wait for the rail to actually reflect icon-only mode.
+    // The `matchMedia` "change" listener behind `useNarrowViewport` fires asynchronously relative to
+    // `page.viewport()` (see FilterPanel.stories.tsx): wait for the rail to reflect icon-only mode.
     await waitFor(() => expect(canvas.getByRole("navigation")).toHaveClass("nav-rail-icons"));
     const link = canvas.getByRole("link", { name: "Requirements" });
     await userEvent.hover(link);

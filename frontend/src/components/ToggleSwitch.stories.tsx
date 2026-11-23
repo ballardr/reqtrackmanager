@@ -41,11 +41,9 @@ export const Disabled: Story = {
 };
 
 /**
- * PreferencesPage.tsx's 2FA toggle renders this inside a CollapsibleSection
- * title, which wraps its whole header in an onClick that collapses the
- * section — this pins the `stopPropagation` behaviour documented in
- * ToggleSwitch.tsx: clicking the switch must never also fire the header's
- * click handler.
+ * PreferencesPage.tsx's 2FA toggle renders this inside a CollapsibleSection title, whose header collapses the section on
+ * click; this pins the `stopPropagation` behaviour documented in ToggleSwitch.tsx: clicking the switch never also fires
+ * the header's click handler.
  */
 function NestedInClickableHeader() {
   const [collapsed, setCollapsed] = useState(false);

@@ -1,21 +1,14 @@
 """
 Module: modules.compliance.project_router.evidence
 
-A project's own supporting evidence: CRUD, archive/
-unarchive, revalidate (with the approvals-it-supported-invalidated
-side effect, `_invalidate_approvals_supported_by_evidence`, local to
-this file only), links to a requirement or a required-action
-assessment, and file attachment (upload or link an existing org
-resource).
+A project's supporting evidence: CRUD, archive and unarchive, revalidate (with the invalidation of approvals it
+supported, `_invalidate_approvals_supported_by_evidence`, local to this file), links to a requirement or required-action
+assessment, and file attachment (upload or link an existing organisation resource).
 
-`create_evidence`/`update_evidence` are the Fine-Grained Access Control
-org/project-axis migration — `_require_evidence_manage` (below) tries the existing
-`_require_officer` (`compliance_officer`) gate first, falling back to
-`require_permission`'s `(compliance_evidence, manage)` atom only on a 403
-(never a 404 — module-disabled must propagate immediately), the same
-try/except composition `router/_shared.py::_require_standard_manage_or_
-contribute` already established one package up. Every other endpoint in
-this file stays on the plain `_require_officer` gate, unchanged.
+`create_evidence` and `update_evidence` use the Fine-Grained Access Control organisation and project axis:
+`_require_evidence_manage` tries `_require_officer` (`compliance_officer`) first and falls back to `require_permission`'s
+`(compliance_evidence, manage)` atom only on a 403 (a 404 propagates, so a disabled module is reported at once), as
+`router/_shared._require_standard_manage_or_contribute` does. Every other endpoint uses `_require_officer`.
 """
 
 from datetime import UTC, datetime
@@ -106,23 +99,14 @@ def _require_evidence_manage(
 def _invalidate_approvals_supported_by_evidence(
     db: Session, project_id: UUID, evidence: ComplianceEvidence, actor_id: UUID, *, reason: str
 ) -> None:
-    """Applies §12/§16/§27's evidence-side auto-invalidation: for every
-    `ProjectComplianceRequirement` this evidence supports (directly or via
-    a required-action assessment — `service.py::find_pcrs_linked_to_evidence`),
-    downgrades an in-flight or decided approval to `REQUIRES_REASSESSMENT`
-    (`service.py::invalidate_approval_if_in_flight`) and logs the
-    transition against that requirement's own history, exactly like every
-    other approval-state change on this router. Called by `archive_evidence`
-    (evidence marked no longer applicable) and `revalidate_evidence`
-    (evidence's expiry information changed) — see each of those endpoints'
-    own docstrings; a no-op for a piece of evidence that supports nothing,
-    or whose linked rows aren't currently `PENDING_APPROVAL`/`APPROVED`.
-    `actor_id` is the user who performed the evidence mutation that
-    triggered this — a real human action, unlike a passive-expiry sweep,
-    which logs with `actor_id=None` instead.
+    """Applies §12, §16 and §27's evidence-side invalidation: for every `ProjectComplianceRequirement` this evidence
+    supports (directly or through a required-action assessment, `service.find_pcrs_linked_to_evidence`), downgrades an
+    in-flight or decided approval to `REQUIRES_REASSESSMENT` (`service.invalidate_approval_if_in_flight`) and logs the
+    transition on that requirement's history. Called by `archive_evidence` and `revalidate_evidence`; a no-op when the
+    evidence supports nothing or the linked rows are not `PENDING_APPROVAL` or `APPROVED`. `actor_id` is the user whose
+    evidence change triggered it (a passive-expiry sweep logs `actor_id=None`).
 
-    Does not commit — callers commit as part of their own single
-    transaction, same convention as every other mutation on this router.
+    Does not commit; the caller commits in its own transaction.
     """
     for pcr in find_pcrs_linked_to_evidence(db, evidence_id=evidence.id):
         previous_approval_state = invalidate_approval_if_in_flight(pcr)

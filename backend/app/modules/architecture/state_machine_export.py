@@ -1,31 +1,24 @@
 """
 Module: modules.architecture.state_machine_export
 
-The state machine diagrams' share of the project bundle (`export.py` calls these functions): each diagram with its
-states, transitions, notes, tags, places and comments, and the ids and codes the bundle's links and comments need.
+The state machine diagrams' share of the project bundle (`export.py` calls these): each diagram with its states,
+transitions, notes, tags, places and comments, and the ids and codes the bundle's links and comments need.
 
-Responsibilities:
-- `export_state_machines`: the diagrams as bundle rows, and the rows exported (for the link section).
-- `import_state_machines`: recreates the diagrams, numbered afresh, with their states and transitions, and returns the
-  new ids by bundled code so links and comments find them.
-- `reset_for_template`: returns the section to fresh drafts for a template project.
+Responsibilities: `export_state_machines` (bundle rows and the rows exported, for the link section);
+`import_state_machines` (recreates diagrams numbered afresh and returns new ids by bundled code); `reset_for_template`
+(fresh drafts for a template project).
 
 Design decisions:
-- **Portable keys.** A diagram names the element it describes by code (or, for one another owner shares, the owner
-  reference `export.py` already uses for a connection's end). A state names its parent and a transition names its two
-  states by the state's **name**, which is unique within a diagram; a pin's box is a state name and its line the
-  transition's position in the diagram's list; a note's leader names a state by name and a transition by position, the same
-  keys. A bundled code (`SMD-001`, `STE-004`) is information only: an import
-  numbers afresh, and the codes key the links within the bundle.
-- **Status is restored as exported.** The checks gate guards the move to `active` through the API; a bundle is a backup,
-  and an active diagram may already carry errors (an edit is never refused for introducing one), so the import writes
-  the status it was given. No approval is skipped, since this module has none.
-- **A diagram whose element is not available is dropped with a warning**, with its states, as a connection whose end is
-  missing is.
-- **Notes are the block diagram's.** A note and its leaders are written and read by `note_bundle`, shared with the block
-  diagram's bundle; only a leader's target is resolved here. A leader whose state or transition is not in the bundle is
-  dropped with a warning and its note kept. A bundle written before notes existed has no `notes` key and reads as none.
-- A state and a diagram take their tags and places through one helper each way, so a type that cannot be placed (a state)
+- Portable keys: a diagram names its element by code (or the owner reference `export.py` uses for a shared connection
+  end); a state names its parent, and a transition its two states, by state **name** (unique within a diagram); a pin's
+  box is a state name and its line a transition's position; a note leader uses the same keys. A bundled code is
+  information only: an import numbers afresh and codes key the links within the bundle.
+- Status is restored as exported: the checks gate guards the move to `active` through the API, a bundle is a backup, and
+  this module has no approval gate to skip.
+- A diagram whose element is not available is dropped with its states and a warning.
+- Notes and leaders are written and read by `note_bundle` (shared with block diagrams); only a leader's target is
+  resolved here, and a leader whose state or transition is not in the bundle is dropped with a warning, its note kept.
+- A state and a diagram take tags and places through one helper each way, so a type that cannot be placed (a state)
   carries an empty list rather than a different code path.
 
 Dependencies: this module's models and rules, `services.bundle_comments`, `services.placements`, `services.tags`.

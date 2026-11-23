@@ -1,22 +1,11 @@
-"""Tests for Context & Strategy's Future State backend API
-— the real HTTP endpoints (`router.py`/`project_router.py`),
-through the `client` fixture, mirroring `test_context_strategy_api.py`'s
-own "go through the real API" convention for Strategy. Kept as its own
-sibling file rather than folded into that one (Decided by: Agent) — this
-module now covers two artefact types, and Future State's own test suite is
-already the same size Strategy's was on its own, so one file per artefact
-type reads more cleanly than a single ever-growing combined file, while
-both files share the same `tests/` package and API-helper conventions.
+"""
+Tests for the Future State API (organisation and project scope) through the
+real HTTP endpoints (`router.py`/`project_router.py`).
 
-Covers, for both the org-scoped and project-scoped routers: Future State
-CRUD, the content lock once past `UNDER_REVIEW` (409), the full lifecycle
-(propose/submit-for-review/send-back/approve/activate/supersede/retire,
-including the mandatory-comment-on-send-back rule and an illegal-
-transition 409), version history, the RBAC composition (`..._owner`/
-`..._approver`/creator-or-role for propose, disabled-module-is-404-not-403,
-and a Fine-Grained Access Control custom-role permission grant satisfying
-the approve gate), comments/comment-files, direct file attachments, and
-cross-tenant 404s.
+Covers CRUD, the content lock past `UNDER_REVIEW` (409), the full lifecycle
+(including mandatory send-back comment and illegal-transition 409), version
+history, RBAC (owner/approver roles, permission grants, disabled module 404),
+comments, file attachments and cross-tenant 404s.
 """
 
 from __future__ import annotations

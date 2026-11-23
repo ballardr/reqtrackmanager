@@ -6,14 +6,12 @@ import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, recordCodeTe
 installCleanupHook();
 
 /**
- * Job to be done: every record a person can create or refer to has a short, human-readable code, so
- * it can be named in conversation. Pain points (PP), open questions (OQ), stakeholder needs (NEED),
- * change requests (CR) show theirs in their list and in their record
- * header, and the next record continues the numbering.
+ * Job to be done: every record a person can create or refer to has a short, human-readable code, so it can be named
+ * in conversation. Pain points (PP), open questions (OQ), stakeholder needs (NEED) and change requests (CR) show
+ * theirs in their list and in their record header, and the next record continues the numbering.
  *
- * Covers: the code column of each type's list, the muted code in each detail header (change
- * request, pain point, open question, need), and that a record created
- * through the UI takes the next number.
+ * Covers: the code column of each type's list, the muted code in each detail header (change request, pain point,
+ * open question, need), and that a record created through the UI takes the next number.
  *
  * Each test builds its own organisation, so none depends on state left by another test.
  */

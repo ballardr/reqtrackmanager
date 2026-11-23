@@ -1,17 +1,13 @@
-"""Tests for the module system's module-contributed MCP tools:
-`app.modules.registry.
-build_mcp_tool_manifest`'s mechanical verification of a module's own
-`McpToolDefinition` declarations (module-key name prefixing, path-prefix
-enforcement against the declaring module's own router, `mutates` derivation
-from HTTP method, approval-action exclusion sourced from the resolved
-route's own `openapi_extra` metadata rather than the module's declaration),
-and `GET /api/v1/system/modules/mcp-tools`'s plain-authentication gating.
+"""Tests for module-contributed MCP tools: `app.modules.registry.build_mcp_tool_manifest`'s
+verification of a module's `McpToolDefinition` declarations (module-key name prefixing,
+path-prefix enforcement against the declaring module's router, `mutates` derived from the
+HTTP method, approval-action exclusion taken from the resolved route's `openapi_extra`
+rather than the module's declaration), and `GET /api/v1/system/modules/mcp-tools`'s
+plain-authentication gating.
 
-Every test that registers a fixture module into the process-global
-`INSTALLED_MODULES` list follows `test_module_registry.py`'s own `fake_
-module` fixture convention: always tears down by removing it and rebuilding
-the registry cache, so this module-level mutable list never leaks state
-into another test regardless of execution order."""
+A test that registers a fixture module in the process-global `INSTALLED_MODULES` follows
+`test_module_registry.py`'s `fake_module` convention: it always removes the module and
+rebuilds the registry cache, so no state leaks between tests."""
 
 import uuid as uuid_lib
 
@@ -212,46 +208,29 @@ def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id
     assert resp.status_code == 200
 
 
-# --- Against the REAL registry -------------------------
+# --- Against the real registry -------------------------
 #
-# Every test above proves `build_mcp_tool_manifest`'s mechanics against a
-# fixture module — this section proves the real thing: Compliance is now a
-# real, permanent `INSTALLED_MODULES` entry with a real router and
-# three declared MCP tools, so this is the "prove itself against
-# something real once a real module exists" integration coverage that a fixture-only
-# suite can't give on its own. Deliberately does NOT use the `fake_module`
-# fixture — no `INSTALLED_MODULES` mutation needed, since Compliance is
-# already there.
+# The tests above exercise `build_mcp_tool_manifest` against a fixture module;
+# this section uses Compliance, a permanent `INSTALLED_MODULES` entry with real
+# routers and MCP tools, so it needs no `fake_module` fixture.
 
 
 def test_compliance_mcp_tools_resolve_against_the_real_registry():
-    """All ten of Compliance's original read-only tools resolve, are read-only
-    (`mutates=False`, all GET), and carry exactly the path
-    parameters their router endpoints require — the concrete proof that
-    `module.py`'s declared `path_template`s actually match real routes on
-    `compliance.router.router`/`compliance.project_router.router`, not just
-    that the strings look right. The project-router tools are the first real proof
-    that `build_mcp_tool_manifest` validates a tool against *either* of a
-    module's two router prefixes (`app.modules.registry.ModuleDefinition.
-    get_project_router`), not just `get_router`'s.
+    """Compliance's ten read-only tools resolve, are read-only (`mutates=False`, all
+    GET), and carry exactly the path parameters their router endpoints require:
+    `module.py`'s `path_template`s match real routes on
+    `compliance.router.router`/`compliance.project_router.router`, so
+    `build_mcp_tool_manifest` validates a tool against either of a module's two
+    router prefixes (`ModuleDefinition.get_project_router`), not just `get_router`'s.
 
-    2026-09-22 reversal: this module's MCP surface is no longer
-    deliberately read-only (see `docs/decisions.md`'s "Compliance MCP
-    write tools + generalized AI approval gate" entry) — the second half of
-    this test proves the 68 new write tools resolve too, that `approve`/
-    `reject`/`submit_requirement_for_approval` now resolve (no longer
-    excluded by `APPROVAL_ACTION_ROUTE_EXTRA`, which was removed from all
-    three routes), and that the RBAC-role-grant and file-upload endpoints
-    still resolve to no tool at all, since no `McpToolDefinition` was ever
-    declared for any of them.
-
-    2026-09-23 hardening pass: two of those 68 (`complete_project_review`/
-    `complete_standard_review`) were found declared with no gate at all
-    despite recording a review outcome being categorically MCP-excluded in
-    every configuration (mirroring core's `record_review_outcome`, which
-    has no MCP tool declared anywhere) — both routes were marked
-    `APPROVAL_ACTION_ROUTE_EXTRA` and their declarations removed, landing
-    at 66. See that entry in `docs/decisions.md`."""
+    The write tools (see `docs/decisions.md`'s "Compliance MCP write tools +
+    generalized AI approval gate" entry) also resolve: `approve`/`reject`/
+    `submit_requirement_for_approval` carry no `APPROVAL_ACTION_ROUTE_EXTRA` exclusion,
+    while the RBAC-role-grant and file-upload endpoints have no `McpToolDefinition`
+    and so resolve to no tool. Recording a review outcome
+    (`complete_project_review`/`complete_standard_review`) is categorically excluded
+    from MCP, as core's `record_review_outcome` is, so those routes carry
+    `APPROVAL_ACTION_ROUTE_EXTRA` and no declaration."""
     tools = build_mcp_tool_manifest()
     by_name = {t.name: t for t in tools}
 
@@ -339,12 +318,12 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
         "organization_id", "standard_id", "version_id", "other_version_id",
     }
 
-    # --- 2026-09-22 reversal: write tools now exist ---------------------
+    # --- write tools ---------------------
 
     mutating_compliance_tools = {name for name, t in by_name.items() if name.startswith("compliance_") and t.mutates}
-    # 68 write tools declared in module.py, minus 2 removed in the 2026-09-23
-    # hardening pass (complete_project_review/complete_standard_review) and the two traceability-link tools
-    # replaced by the generic artefact-link tools = 64.
+    # 68 write tools declared in module.py, minus complete_project_review and
+    # complete_standard_review (excluded from MCP) and the two traceability-link
+    # tools covered by the generic artefact-link tools = 64.
     assert len(mutating_compliance_tools) == 64
 
     # Ordinary CRUD/lifecycle write tools resolve normally, mutates=True.
@@ -360,17 +339,15 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
         assert name in by_name, name
         assert by_name[name].mutates is True
 
-    # submit-for-approval is no longer marked APPROVAL_ACTION_ROUTE_EXTRA at
-    # all (it only queues a decision, it doesn't decide anything) — it
-    # resolves as a normal write tool.
+    # submit-for-approval carries no APPROVAL_ACTION_ROUTE_EXTRA (it only queues
+    # a decision) and resolves as a normal write tool.
     submit = by_name["compliance_submit_requirement_for_approval"]
     assert submit.mutates is True
     assert submit.method == "POST"
 
-    # approve/reject also resolve now (the marker was removed from both
-    # routes) — the manifest itself has no knowledge of the runtime
-    # `require_ai_approvals_enabled` gate those two routes now apply; that
-    # gate is proven separately in test_ai_approvals_via_mcp.py.
+    # approve/reject resolve too; the manifest has no knowledge of the runtime
+    # `require_ai_approvals_enabled` gate on those routes (covered in
+    # test_ai_approvals_via_mcp.py).
     approve = by_name["compliance_approve_requirement"]
     assert approve.mutates is True
     reject = by_name["compliance_reject_requirement"]
@@ -378,8 +355,7 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
 
     # Standard member/group role assignment (RBAC-in-nature) and the two
     # file-upload endpoints (import_standard, evidence file upload) still
-    # have no MCP tool at all — no McpToolDefinition was ever declared for
-    # any of them, before or after the reversal.
+    # have no MCP tool at all: no McpToolDefinition is declared for any of them.
     assert not any(
         name in {
             "compliance_assign_standard_member_role", "compliance_revoke_standard_member_role",
@@ -389,7 +365,7 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
         for name in by_name
     )
 
-    # 2026-09-23 hardening pass: recording a review outcome is categorically
-    # MCP-excluded, not gated — neither tool resolves at all.
+    # Recording a review outcome is categorically MCP-excluded, not gated:
+    # neither tool resolves.
     assert "compliance_complete_project_review" not in by_name
     assert "compliance_complete_standard_review" not in by_name

@@ -2,10 +2,8 @@
  * Module: components/ActivityLinkEnds
  *
  * The Record column of a link event on the project History table: the two records the link joins, source above
- * target, each a link. An end the viewer cannot open is shown by its type only; another project's record opens in
- * its own project and is followed by that project's name. The Event column carries the verb and the relationship
- * (`describeLinkEventAction`); the aside and the overview widget, which have no Record column, use the one-line
- * form `describeActivityAction`.
+ * target, each a link. An end the viewer cannot open shows its type only; another project's record opens in its
+ * own project and is followed by that project's name. Surfaces without a Record column use `describeActivityAction`.
  */
 import { Link } from "react-router-dom";
 

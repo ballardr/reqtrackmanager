@@ -1,16 +1,14 @@
 /**
  * Module: utils/canvasFocus
  *
- * Returns the keyboard focus from a text field in an editor's Selection card to the selected item on the graph canvas.
- *
- * Responsibilities:
- * - On Escape in a text field, focus the selected node or line (React Flow draws each with its id in `data-id`), so the
- *   person who has typed a name can press Delete (or move the item with the arrow keys) without reaching for the pointer.
- *
- * Design decisions:
- * - Escape is used because it is the key that already means "leave this field" elsewhere, and a field inside a dialog or an
- *   open menu keeps it for closing that (`overlayIsOpen`), as does any handler that has already acted on it.
- * - Leaving the field is what stores a name in the editors, so this changes nothing about when a value is saved.
+ * Returns keyboard focus from a text field in an editor's Selection card to the
+ * selected item on the graph canvas: on Escape, it focuses the selected node or
+ * line (React Flow draws each with its id in `data-id`), so Delete or the arrow
+ * keys work without the pointer.
+ * Design: Escape already means "leave this field"; a field inside a dialog or an
+ * open menu keeps it for closing that (`overlayIsOpen`), as does any handler that
+ * already acted on it. Leaving the field is what stores a name in the editors,
+ * so when a value is saved is unchanged.
  */
 import type { KeyboardEvent } from "react";
 

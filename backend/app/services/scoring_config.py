@@ -1,23 +1,19 @@
 """
 Module: services.scoring_config
 
-Carries a project's own scoring configuration in the project bundle and into a project created from a template.
-
-Covers, for every registered scoring scheme, the rows a project overrides: its default model, the models it offers,
-its rating bands, its thresholds for a derived axis's levels and its explicit cell ratings. The organisation's
-levels are one shared vocabulary and are not carried; a project's custom axes, custom models and hidden criteria are
-carried by each module's own bundle hooks (`services.scoring_custom.export_definitions`), which import first.
+Carries a project's own scoring configuration in the project bundle and into a project created from a template: for
+every registered scheme, its default model, offered models, rating bands, derived-axis level thresholds and explicit cell
+ratings. Organisation levels are shared vocabulary and not carried; custom axes, models and hidden criteria travel in each
+module's bundle hooks (`services.scoring_custom.export_definitions`), which import first.
 
 Design decisions:
-- A level is named by scheme, axis key and level name (unique per organisation), never by id, so a bundle moves
-  between organisations: a level the target organisation does not have is skipped with a warning, so a score is
-  never re-rated against a different level.
-- A custom model or axis is created afresh with a new key when it is imported (the key follows its label), so the
-  bundle also carries the label of a custom (`m_`/`c_` prefixed) key and the import finds the project's own
-  criterion by that label.
-- Nothing here names a module: the schemes come from the registry (`get_all_registered_scoring_schemes`).
+- A level is named by scheme, axis key and level name, never id; a level the target organisation lacks is skipped with a
+  warning, so a score is never re-rated against a different level.
+- A custom model or axis is created afresh with a new key on import, so the bundle carries the label of a custom
+  (`m_`/`c_` prefixed) key and the import finds the project's criterion by that label.
+- No module is named: schemes come from `get_all_registered_scoring_schemes`.
 
-External dependencies: the scoring models and the module registry.
+Dependencies: the scoring models and the module registry.
 """
 
 from __future__ import annotations

@@ -62,7 +62,7 @@ test("Connection Types keeps its grid when rows hold long text", async ({ page }
 /**
  * The audit of the product's own views: a project with long-named requirements, actions and a long-named component
  * and category, and the pages that list them, each measured with `gridLayout` (rules 1 to 3). Set `GRID_REPORT=1` to
- * print every grid's measurement per page. A page that fails names the grid and the rule, so the fix is made on
+ * print every grid's measurement per page. A page that fails names the grid and the rule, so the defect is fixed on
  * the shared component, not on the page.
  */
 const api = "http://localhost:8000/api/v1";

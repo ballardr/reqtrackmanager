@@ -1,12 +1,9 @@
 /**
  * Module: components/CommaListField
  *
- * A single-line field for a short list of values typed separated by commas (link type names, the values of an
- * "is any of" test).
- *
- * Responsibilities: hand the parent the parsed list on every keystroke, and keep what is typed (a trailing comma,
- * a space) on screen. The box takes the parent's list only when it no longer means what the text says, so typing
- * "a, " is not swallowed and a list replaced from outside is shown.
+ * A single-line field for a short list of comma-separated values (link type names, an "is any of" test). It hands
+ * the parent the parsed list on every keystroke and keeps what is typed (a trailing comma, a space) on screen; the
+ * box takes the parent's list only when it no longer means what the text says, so typing "a, " is not swallowed.
  */
 import { useState } from "react";
 

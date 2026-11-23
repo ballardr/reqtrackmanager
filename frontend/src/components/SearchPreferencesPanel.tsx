@@ -1,15 +1,13 @@
 /**
  * Module: components/SearchPreferencesPanel
  *
- * The Search section of Preferences: which fields the header search and a new search look in. Stored as
- * the viewer's `search_default_fields` preference; ID and Title are always included, and any one search
- * can still pick other fields from the search page (that choice does not change this default). Comments
- * are heavier to search, so they are offered per search only and never listed here. It also holds the
- * choice of whether a project search covers organisation records (on by default).
+ * The Search section of Preferences: which fields the header search and a new search look in, stored as the viewer's
+ * `search_default_fields` preference. ID and Title are always included; one search can still pick other fields from the
+ * search page without changing this default. Comments are heavier to search, so they are offered per search only. It also
+ * holds whether a project search covers organisation records (on by default).
  *
- * The saved list is validated by the server against the fields the viewer can currently choose; a key
- * that has since stopped being offered (a module switched off) is shown as "no longer available" so it
- * can be removed rather than silently ignored.
+ * The server validates the saved list against the fields the viewer can choose; a key that is not offered (a module
+ * switched off) is shown as unavailable so it can be removed rather than silently ignored.
  */
 import { useEffect, useId, useState } from "react";
 

@@ -1,15 +1,13 @@
 /**
  * Module: components/SupersedeAction
  *
- * The "Supersede another <thing>" control some artefact types offer beside the
- * Links panel's "Add link" (Strategy, Future State, Guiding Principle, Decision).
- * Supersession is a dedicated action, not a general link: it also marks the other
- * record Superseded, so the generic add dialog never offers it and each page
- * supplies this control through `ArtefactLinksPanel`'s `actions` slot.
+ * The "Supersede another <thing>" control some artefact types offer beside the Links panel's "Add link" (Strategy,
+ * Future State, Guiding Principle, Decision). Supersession is a dedicated action, not a general link: it also marks the
+ * other record Superseded, so the generic add dialog never offers it and each page supplies this control through
+ * `ArtefactLinksPanel`'s `actions` slot.
  *
- * The page owns what "supersede" means (which API, which records are candidates);
- * this component owns only the picker dialog, so the four pages share one
- * implementation instead of four copies.
+ * The page owns what "supersede" means (which API, which candidates); this component owns only the picker dialog, so
+ * the pages share one implementation.
  */
 import { useState } from "react";
 

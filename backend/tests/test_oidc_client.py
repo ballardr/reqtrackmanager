@@ -18,10 +18,9 @@ from app.services import oidc_client
 
 @pytest.fixture(autouse=True)
 def _reset_settings_cache(monkeypatch):
-    # The real dev/test stack sets OIDC_INTERNAL_BASE_URL_OVERRIDE (see
-    # tests/container/docker-compose.yml) so it can reach its own Keycloak
-    # container — clear it here so "by default" below actually means the
-    # guard's true default, not this environment's override.
+    # The test stack sets OIDC_INTERNAL_BASE_URL_OVERRIDE (see
+    # tests/container/docker-compose.yml) to reach its Keycloak container;
+    # clearing it makes "by default" below the guard's own default.
     monkeypatch.delenv("OIDC_INTERNAL_BASE_URL_OVERRIDE", raising=False)
     monkeypatch.delenv("OIDC_ALLOW_PRIVATE_NETWORK_TARGETS", raising=False)
     get_settings.cache_clear()
@@ -61,12 +60,9 @@ def test_oidc_internal_base_url_override_also_disables_the_guard(monkeypatch):
 
 # --- ID token verification: signature and claims -------------------------------
 #
-# These pin the joserfc-based rewrite (migrated off the now-deprecated
-# `authlib.jose`, see services/oidc_client.py's import comment) against
-# regression, and were added because the pre-existing test suite only ever
-# exercised this function via `monkeypatch.setattr("app.services.oidc_client
-# .verify_id_token", ...)` in the OIDC provisioning tests — meaning its
-# actual cryptographic logic had zero direct coverage before this file.
+# These cover `verify_id_token`'s joserfc-based cryptographic logic directly
+# (see services/oidc_client.py's import comment); the OIDC provisioning tests
+# only stub it with `monkeypatch.setattr("app.services.oidc_client.verify_id_token", ...)`.
 
 _ISSUER = "https://idp.example.com"
 _JWKS_URI = "https://idp.example.com/jwks"
@@ -97,11 +93,9 @@ def _default_claims(**overrides):
 
 
 def _mock_jwks(monkeypatch, rsa_key):
-    # Only `verify_id_token`'s signature/claims logic is under test in this
-    # section, not the SSRF guard (covered above) — `_JWKS_URI` is never
-    # actually resolved (the request is replaced below), so the guard's
-    # real-DNS resolution step would otherwise fail every test here for an
-    # unrelated reason.
+    # Only `verify_id_token`'s signature/claims logic is under test here, not the
+    # SSRF guard (covered above). `_JWKS_URI` is never resolved (the request is
+    # replaced below), so the guard's DNS resolution would otherwise fail.
     monkeypatch.setenv("OIDC_ALLOW_PRIVATE_NETWORK_TARGETS", "true")
     get_settings.cache_clear()
     jwks = {"keys": [rsa_key.as_dict(private=False)]}

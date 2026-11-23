@@ -3,12 +3,9 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS } from "./helpers";
 
 /**
- * /orgs (the only path to org administration) previously had no nav-rail
- * entry point for anyone but a server admin — an ordinary org admin had no
- * way there beyond a bookmark or a stale link they'd clicked once. Fixed with a plain
- * "Organisation settings" nav-rail link. This persona belongs to two orgs
- * (Alpha, Beta), so /orgs shows the directory list rather than
- * auto-redirecting straight to a single org's admin page.
+ * /orgs (the only path to organisation administration) has an "Organisation settings" nav-rail link for every
+ * organisation admin. This persona belongs to two organisations (Alpha, Beta), so /orgs shows the directory list
+ * rather than redirecting to a single organisation's admin page.
  */
 test("the nav rail links to /orgs, showing every org the user belongs to", async ({ page }) => {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
@@ -19,17 +16,10 @@ test("the nav rail links to /orgs, showing every org the user belongs to", async
 });
 
 /**
- * "Organisation settings" is a *personal* membership list, not the server-admin
- * platform-wide directory `GET /server/organisations` already covers
- * separately — a real bug found during a first-pass UX review: this page
- * called the bare `GET /orgs`, which deliberately returns every org on the
- * deployment for a server admin (I-M-05's platform-wide console view), so
- * a server admin saw the entire server's org list here regardless of their
- * own membership. Fixed by switching to `GET /orgs?mine=true`, the same
- * membership-scoped opt-out `ProjectListPage`'s own org filter already
- * uses. `e2e-serveradmin@example.com` is seeded specifically as a server
- * admin with zero real org memberships (`seed_e2e_dataset.py`), so the
- * correct behaviour here is the empty state, not the full org list.
+ * "Organisation settings" is a personal membership list, not the server-admin platform-wide directory
+ * (`GET /server/organisations`). The page calls `GET /orgs?mine=true`, because the bare `GET /orgs` returns every
+ * organisation for a server admin. `e2e-serveradmin@example.com` is seeded as a server admin with no organisation
+ * memberships (`seed_e2e_dataset.py`), so the expected result is the empty state.
  */
 test("a server admin with no org memberships sees an empty 'Organisation settings', not every org on the server", async ({
   page,

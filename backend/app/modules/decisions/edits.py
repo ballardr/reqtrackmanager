@@ -1,28 +1,12 @@
 """
 Module: modules.decisions.edits
 
-The list query and the create / edit paths of a Decision, shared by the HTTP endpoints (`project_router.core`)
-and the record-table export and import (`record_tables`) so a filter or rule added here reaches both.
-
-Responsibilities:
-- Select a project's Decisions the way the list endpoint does (its filters, the search box, archived only when asked, oldest first).
-- Create a Decision (`DRAFT`, owner defaulting to the creator) with its type and principal validation, and record
-  the `created` audit event.
-- Edit one in place with the checks the edit endpoint makes (the content lock once approved or superseded, the
-  type and principal checks), and record the `updated` audit event.
-
-Design decisions:
-- Nothing here commits and nothing here checks who may do it: the caller owns the transaction and the role gate
-  (`_require_edit_role` for the endpoint, `can_update` for the import).
-- Every text field except the title is Markdown (`MARKDOWN_LIMITS`, checked by `check_markdown_limits`: 422 for a value
-  over its size, nesting or diagram limits); the stored value is the author's source, never rewritten.
-- A refusal is an `HTTPException` (409 for a locked Decision, 400 for an unusable type or person), the shape the
-  endpoints already answered with and the import turns into that row's error.
-- An edit takes the fields to change and keeps every other as it is, because the edit endpoint's body is a full
-  replace but a file names only the cells it changes.
-
-Dependencies: `modules.decisions.service` (effective types, unique codes), `services.principals`, `services.audit`,
-`services.markdown_text` (the limits).
+The list query and the create/edit paths of a Decision, shared by the HTTP
+endpoints and the record-table export and import so a rule added here reaches both.
+- Nothing commits or checks the role: the caller owns both.
+- Text fields except the title are Markdown (`MARKDOWN_LIMITS`).
+- A refusal is an `HTTPException` (409 locked, 400 unusable type or person).
+- An edit changes only the fields supplied.
 """
 
 from __future__ import annotations

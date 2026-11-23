@@ -1,19 +1,18 @@
 /**
  * Module: components/detailCardOrder
  *
- * The one place the default card order of a record detail page is written down and applied
- * (docs/ux-style-guide.md, "Pattern: detail page card order"). Every card belongs to a rank; `DetailLayout` sorts
- * its children by rank, keeping the authored order inside a rank, so a card added later lands in its place
- * whichever line the page writes it on.
+ * The one place the default card order of a record detail page is written down and applied (docs/ux-style-guide.md,
+ * "Pattern: detail page card order"). Every card belongs to a rank; `DetailLayout` sorts its children by rank, keeping the
+ * authored order inside a rank, so a card added later lands in its place whichever line the page writes it on.
  *
- * Ranks, first to last: `header` (the record header), `body` (the record's own details, then the cards most
- * relevant to the record's purpose), `organising` (components and codes, tags, external references),
- * `supporting` (versions, attachments, history) and `discussion` (comments, last, because a thread grows long).
+ * Ranks, first to last: `header`, `body` (the record's details, then the cards most relevant to its purpose), `organising`
+ * (components and codes, tags, external references), `supporting` (versions, attachments, history) and `discussion`
+ * (comments, last because a thread grows long).
  *
- * Design decisions: the rank is read from an element's own `rank` prop (`DetailCard`) or from a static `detailRank`
- * on its component (`withDetailRank`), so a shared card carries its rank everywhere it is used. Only direct children
- * (and the children of fragments) are ordered, which is why a page puts its cards straight into `DetailLayout`.
- * An element with no rank (a dialog, a custom block) is `body`. The sort is by rank only, never by tree depth.
+ * Design decisions: the rank is read from an element's `rank` prop (`DetailCard`) or a static `detailRank` on its
+ * component (`withDetailRank`), so a shared card carries its rank everywhere. Only direct children (and fragment children)
+ * are ordered, so a page puts its cards straight into `DetailLayout`. An element with no rank is `body`. The sort is by
+ * rank only, never by tree depth.
  */
 import { Children, Fragment, cloneElement, isValidElement, type ComponentType, type ReactNode } from "react";
 

@@ -1,17 +1,12 @@
 /**
  * Module: modules/decisions/DecisionQuickViewPanel
  *
- * A minimal, read-only `SidePanel` peek at a Decision, opened on row click
- * from `ProjectDecisionsPage.tsx`'s list — the
- * "quick view + full page" pattern (docs/ux-style-guide.md's "Pattern:
- * entity detail panel"): a Decision's full detail (lifecycle actions,
- * relationships, comments, attachments) is too much for a side panel alone,
- * so that content now lives on `DecisionDetailPage.tsx` instead. This panel
- * only shows enough to identify the row and decide whether to open it —
- * code, status, title, type, the decision statement, and who owns it and
- * makes the call (a user or a group) — with no
- * edit/lifecycle controls of its own (this pattern's own "open it
- * read-only" rule), and a single "View full details" link into the page.
+ * A minimal, read-only `SidePanel` peek at a Decision, opened on row click from `ProjectDecisionsPage.tsx`: the "quick
+ * view + full page" pattern (`docs/ux-style-guide.md` "Pattern: entity detail panel"). A Decision's lifecycle actions,
+ * relationships, comments and attachments are too much for a side panel, so they are on `DecisionDetailPage.tsx`. This
+ * panel shows only enough to identify the row and decide whether to open it (code, status, title, type, the decision
+ * statement, and the owner and decision maker, each a user or a group), has no edit or lifecycle controls, and has
+ * one "View full details" link into the page.
  */
 import { Link } from "react-router-dom";
 

@@ -1,22 +1,13 @@
 /**
  * Module: utils/entitySwitcherLoaders
  *
- * Shared `EntitySwitcher` loaders
- * for the two core entity types a page can switch between — organisations
- * and projects. Each loader hits the same `?mine=true`/`?archived=false`
- * list endpoint every list page for that entity type already calls
- * (`OrgListPage.tsx`, `ProjectListPage.tsx`'s unfiltered project fetch),
- * and points every result at a specific target page for that entity (its
- * Overview vs. its Admin page) — kept here once rather than duplicated
- * per call site, since `OrgOverviewPage.tsx`, `OrgAdminPage.tsx`,
- * `ProjectOverviewPage.tsx` and `ProjectAdminPage.tsx` all need the
- * identical fetch/filter with only the target path differing.
- *
- * The compliance module's own standard-switcher loader is *not* here —
- * it lives in `modules/compliance/api.ts` alongside the rest of that
- * module's requests, since a core file (this one) must never import from
- * a module's own directory (`CLAUDE.md`'s "Modular Feature System
- * Boundary").
+ * Shared `EntitySwitcher` loaders for the two core entity types a page switches
+ * between, organisations and projects. Each hits the same `?mine=true` /
+ * `?archived=false` list endpoint as the list pages and points every result at a
+ * target page (Overview or Admin), so the four pages that need the fetch share it.
+ * The compliance standard-switcher loader lives in `modules/compliance/api.ts`:
+ * a core file never imports from a module's directory (`CLAUDE.md`, "Modular
+ * Feature System Boundary").
  */
 import { api } from "../api/client";
 import type { Organization, ProjectListItem } from "../api/types";

@@ -4,8 +4,8 @@
  * One connection as a routed page (`/projects/:projectId/modules/architecture/connections/:connectionId`, also the
  * target other records' links follow): its type, protocol, both ends with their ports (each end links to its element), and
  * description, and (when it has any) the connections it realises and the connections that realise it. The Links panel and the
- * activity timeline sit in the aside and tags in the header. An end the viewer can no
- * longer read shows only its code. Edits send only the changed fields with the version they were based on (a stale
+ * activity timeline sit in the aside and tags in the header. An end the viewer cannot
+ * read shows only its code. Edits send only the changed fields with the version they were based on (a stale
  * version, 409, is shown in the dialog); the server enforces the Architect role and a refusal appears as a message.
  */
 import { useCallback, useEffect, useState } from "react";

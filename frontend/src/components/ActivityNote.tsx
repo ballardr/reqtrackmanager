@@ -1,12 +1,9 @@
 /**
  * Module: components/ActivityNote
  *
- * The comment or note typed with a change, shown as a quoted block under an activity sentence ("X marked
- * it addressed" then the reason). Long text is collapsed to three lines with a "Show more" toggle so one
- * comment cannot turn the timeline into a wall of text.
- *
- * The text is user input: it is rendered as text (React escapes it) and line breaks are kept with
- * `white-space: pre-wrap`, never interpreted as HTML.
+ * The comment typed with a change, shown as a quoted block under an activity sentence. Long text collapses to
+ * three lines with a "Show more" toggle. The text is user input: rendered as text (React escapes it), line breaks
+ * kept with `white-space: pre-wrap`, never interpreted as HTML.
  */
 import { useLayoutEffect, useRef, useState } from "react";
 

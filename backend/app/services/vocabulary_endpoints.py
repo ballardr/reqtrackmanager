@@ -2,20 +2,16 @@
 Module: services.vocabulary_endpoints
 
 Registers the endpoints of one two-tier typed list (`services.type_vocabulary.TypeVocabulary`) on an organisation and a
-project router, so every list that is administered through an API (external systems, Product Feedback's request
-channels) behaves the same and cannot drift apart:
+project router, so every administered list (external systems, Product Feedback's request channels) behaves the same.
 
-- Organisation tier (`register_org_vocabulary`): list, create, reorder, rename / deactivate, delete. Reading needs
-  the caller's `view_dependency`; changing calls the caller's `require_admin`.
-- Project tier (`register_project_vocabulary`): the effective list (any member, so a picker can be filled; a project
-  with no configuration of its own shows its ancestor's, and its first change copies that into it), create a
-  project-local entry, override an organisation entry, delete / hide, list hidden, restore. Changing calls the
-  caller's `require_manage`. Hiding and restoring use the shared bodies in `services.type_vocabulary_routes`.
-- `VocabularySchemas`: the request and response schemas, so a list with extra columns (an external system's
-  `url_template`) swaps in schemas carrying them; the generic ones are the default.
+Responsibilities:
+- `register_org_vocabulary`: list, create, reorder, rename / deactivate, delete (read needs `view_dependency`, changes call
+  `require_admin`). `register_project_vocabulary`: effective list (any member; a project with no configuration shows its
+  ancestor's and copies it on first change), create, override, delete / hide, list hidden, restore (`require_manage`;
+  hide and restore use `services.type_vocabulary_routes`).
+- `VocabularySchemas`: request and response schemas, swappable for lists with extra columns.
 
-Neither registrar commits anywhere but its own endpoint bodies. The gates are the caller's, so a module's role (or the
-organisation's administrator) decides who may change a list without this file knowing either.
+Neither registrar commits outside its own endpoint bodies; the gates are the caller's, so this file names no module role.
 """
 
 from collections.abc import Callable

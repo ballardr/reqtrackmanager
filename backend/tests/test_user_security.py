@@ -226,10 +226,8 @@ def test_2fa_disable_invalidates_the_old_token(client, admin_token):
 
 
 def test_password_change_and_2fa_actions_are_audit_logged(client, admin_token):
-    """Hardening-review regression: password changes and 2FA enable/disable
-    are security-critical account events that previously left no audit
-    trail at all — every other sensitive mutation in this codebase calls
-    log_event; these four didn't."""
+    """Password changes and 2FA enable/disable are security-critical account events
+    and call log_event, like every other sensitive mutation."""
     user_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
 
     resp = client.post(

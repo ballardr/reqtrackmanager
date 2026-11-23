@@ -5,13 +5,13 @@ A minimal in-process publish/subscribe hub backing the optional WebSocket
 interface (I-A-04). Broadcasts requirement/change-request state transitions
 to connected clients of the relevant project.
 
-Cross-process (2026-10-04): the backend now runs several worker processes
+Cross-process: the backend runs several worker processes
 (`BACKEND_WORKERS`), and a WebSocket is held by whichever worker accepted
 it, so a publish must reach every worker. When `start_listener()` has run
 (the app lifespan does this when WebSockets are enabled), `notify()`
 publishes through PostgreSQL `NOTIFY` and each worker's listener thread
 re-broadcasts to its own sockets — no extra broker needed. Without a
-listener (unit tests, no lifespan) it broadcasts in-process as before.
+listener (unit tests, no lifespan) it broadcasts in-process.
 
 FastAPI route handlers may be plain (sync) functions that FastAPI runs in a
 worker thread, so `notify` schedules the broadcast onto the event loop

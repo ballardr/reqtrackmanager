@@ -1,31 +1,28 @@
 """
 Module: services.project_actions_bundle
 
-Requirement actions in a project bundle: the project's own action types, every action with its comments,
+Requirement actions in a project bundle: the project's action types, every action with its comments,
 attachments, tags and component placements, and the links between actions and requirements.
 
-Responsibilities:
-- `export_project_actions`: the `action_types`, `actions` and `action_links` sections of `project.json`, collecting
-  the attachments' `FileAsset`s so the bundle embeds their bytes.
-- `import_project_actions`: recreates them in a new project, after its requirements exist.
-- `import_project_action_types`: the action types a new project starts with (the bundle's own, else the defaults).
+Responsibilities: `export_project_actions` writes the `action_types`, `actions` and `action_links` sections and
+collects attachment `FileAsset`s so the bundle embeds their bytes; `import_project_actions` recreates them
+after the requirements exist; `import_project_action_types` gives a new project the bundle's types, else the
+defaults.
 
 Design decisions (Decided by: Agent):
-- An action keeps its `unique_code` (`ACT-003`), as a requirement does, so a link by code and a person's reference
-  still mean the same record; the project's action counter is moved past the imported codes. A code that is missing,
-  malformed or repeated is numbered afresh with a warning.
-- Action types are exported by name, and an action refers to its type by name. A type the action uses but the bundle
-  does not list as the project's own (a child project's action may use its parent's type) is created in the new
-  project, which has no parent, so the action keeps a valid type.
-- A bundle written before actions were carried has no `actions` section: it imports as before, with the default
-  action types and no actions.
-- Links reuse `services.bundle_links`: an end is an action (by code) or a requirement (by code). A link to a record
-  of another module is carried by that module's own bundle, which does not know actions, so it is left out, as every
-  cross-module link already is.
+- An action keeps its `unique_code` (`ACT-003`) as a requirement does, so links by code and references still
+  mean the same record, and the project's action counter moves past the imported codes. A missing, malformed
+  or repeated code is numbered afresh with a warning.
+- Action types are exported by name and an action refers to its type by name. A type an action uses that the
+  bundle does not list as the project's own (a child's action may use its parent's type) is created in the new
+  project, which has no parent.
+- A bundle with no `actions` section imports with the default action types and no actions.
+- Links reuse `services.bundle_links`: an end is an action or a requirement, by code. A link to another
+  module's record is carried by that module's bundle, which does not know actions, so it is left out like every
+  cross-module link.
 - Comments carry author, text and attachments; reactions are not carried (as for requirement comments).
 
-External dependencies: `services.bundle_common` (users, files), `services.bundle_links`, `services.tags`,
-`services.placements`, `services.actions` (code numbering), `services.definitions` (default types).
+Dependencies: `services.bundle_common`, `bundle_links`, `tags`, `placements`, `actions`, `definitions`.
 """
 
 from __future__ import annotations

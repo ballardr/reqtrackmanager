@@ -1,30 +1,12 @@
 /**
  * Module: modules/compliance/ApplicabilityTree
  *
- * The requirement-hierarchy assessment workspace for one project's
- * standard assignment (§8-§10, §16) — a client-side-assembled tree (same
- * `buildRequirementTree` algorithm `RequirementTree.tsx` already
- * proved out) over the standard version's requirement definitions, each
- * node decorated with this project's own `ProjectComplianceRequirement`
- * assessment row.
- *
- * §9's own explicit, non-optional UI requirement — "The UI must clearly
- * distinguish: Explicitly set applicability, Applicability inherited from
- * a parent, An overridden inherited value" — is carried by
- * `ApplicabilityBadge` below: EXPLICIT renders as a plain, undecorated
- * badge (this is the ordinary case — a user decision, or nothing decided
- * and no ancestor says otherwise, both of which render identically per
- * `ComplianceApplicabilitySource`'s own docstring), INHERITED renders
- * greyed/italic with an explanatory `title`, and OVERRIDDEN renders in the
- * warning colour with its own explanatory `title` — three genuinely
- * distinct visual treatments, not just three label strings, so the
- * distinction survives a quick scan of the tree, not just a hover.
- *
- * Selecting a row opens `RequirementAssessmentPanel` (a `SidePanel` — style
- * guide "Pattern: entity detail panel," viewing an existing entity's detail
- * without leaving the tree behind it) for the actual applicability/
- * assessment/required-actions/evidence/approval workflow; this component
- * owns only the tree's read/navigation concern.
+ * The requirement-hierarchy assessment workspace for one project's standard assignment: a client-side-assembled tree (the
+ * `buildRequirementTree` algorithm of `RequirementTree.tsx`) over the standard version's requirement definitions, each node
+ * decorated with the project's `ProjectComplianceRequirement` assessment row. `ApplicabilityBadge` distinguishes explicit,
+ * inherited and overridden applicability. Selecting a row opens `RequirementAssessmentPanel` in a `SidePanel` (style guide,
+ * "Pattern: entity detail panel") for the applicability, assessment, required-action, evidence and approval workflow; this
+ * component owns only the tree's read and navigation concern.
  */
 import { useState } from "react";
 
@@ -51,13 +33,8 @@ interface Props {
   versionId: string;
   projectComplianceId: string;
   orgUsers: OrgUser[];
-  /** Called after any requirement change (applicability, assessment,
-   * approval decision) settles — `ProjectComplianceDetail` uses this to
-   * refresh its own §20 overall-status summary card, which otherwise stays
-   * on the snapshot fetched when the assignment list first loaded (found
-   * while verifying end to end: assessing/approving a
-   * requirement left the "Overall compliance status" card showing stale
-   * counts until the assignment was closed and reopened). */
+  /** Called after any requirement change (applicability, assessment, approval decision) settles, so
+   * `ProjectComplianceDetail` can refresh its overall-status summary card, which otherwise keeps the snapshot from first load. */
   onAssessmentChanged?: () => void;
 }
 
@@ -90,11 +67,8 @@ export function ApplicabilityTree({
   useLoadOnChange(reload, [orgId, standardId, versionId, projectComplianceId]);
 
   async function reloadOne(pcrId: string) {
-    // Re-fetches every pcr rather than just one, since a change (e.g.
-    // applicability) can cascade to descendants' *effective* applicability —
-    // resolved server-side across the whole assignment, not just the edited
-    // row (`service.py::resolve_applicability`). The list is small enough
-    // per assignment that this is cheap.
+    // Re-fetches every pcr: a change can cascade to descendants' effective applicability, which is resolved server-side across
+    // the whole assignment (`service.py::resolve_applicability`); the list is small enough per assignment that this is cheap.
     try {
       const pcrs = await complianceApi.listProjectComplianceRequirements(projectId, projectComplianceId);
       setPcrByRequirementId(Object.fromEntries(pcrs.map((pcr) => [pcr.requirement_id, pcr])));

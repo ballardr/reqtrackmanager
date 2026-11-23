@@ -2,29 +2,19 @@
  * Module: components/ListActions
  *
  * The Export and Import controls of a record list (docs/ux-style-guide.md, "Pattern: list actions (export and
- * import)"), rendered by `ListPageLayout` beside the page's own actions so no list hand-builds them. They live
- * in one kebab menu ("List actions") next to the page's New button, not as separate buttons:
+ * import)"), rendered by `ListPageLayout` in one kebab menu ("List actions") beside the New button:
  *
- * - **Download shown items** opens a second list of formats: the CSV that re-imports, then the record-list report
- *   as PDF, Word, ODT or ODS, each narrowed by the page's own filters (never the full set; the word "shown" says
- *   so). The import template sits beside it. A note under the items says when the personal-data policy left
- *   columns out.
- * - **Download report** opens a dialog (`ReportDownloadDialog`) listing the reports that use the list's record
- *   type, in the Reports page's folders, and runs the chosen one in place.
- * - **Import from CSV** opens a file picker, then `CsvImportWizard`; it is offered only to a person who may
- *   create or update the type's records, and not at all for a type that gives a reason it cannot be imported.
+ * - **Download shown items**: the CSV that re-imports, then the record-list report as PDF, Word, ODT or ODS,
+ *   narrowed by the page's filters. The import template sits beside it; a note says when the personal-data
+ *   policy left columns out.
+ * - **Download report**: `ReportDownloadDialog`, listing the reports that use the list's record type.
+ * - **Import from CSV**: file picker then `CsvImportWizard`; offered only to a person who may create or update
+ *   the type's records and not for a type with a stated reason it cannot be imported.
  *
- * It serves a project's list and an organisation's own (the organisation panels) alike, through the owner it
- * is given. It reads the type's columns once (`GET .../records/{type}/columns`) and shows no menu when the type
- * has no table or the caller cannot see it. It knows no record type or module.
- *
- * A list that shows several record kinds at once (the People list) renders one `ListActions` per kind inside one
- * `ListActionsMenu`: each kind registers its items under a heading (its `kindLabel`, "Personas") and acts on its
- * own kind, while the person sees a single kebab. A `ListActions` rendered alone wraps itself in its own menu.
- *
- * Every other action of the page joins the same kebab through `ListMenuItems` (or `ListPageLayout`'s `menuItems`):
- * folder actions, an interchange export, a link to a related page. A page has at most one primary button and this
- * one menu (docs/ux-style-guide.md, "Pattern: page actions menu").
+ * Serves a project's list and an organisation's own alike, reads the type's columns once and knows no record
+ * type or module. A list showing several kinds (the People list) renders one `ListActions` per kind inside one
+ * `ListActionsMenu`, each under its `kindLabel` heading. Other page actions join the same kebab through
+ * `ListMenuItems` (or `ListPageLayout`'s `menuItems`): a page has one primary button and this one menu.
  */
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 

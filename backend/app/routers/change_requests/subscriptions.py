@@ -1,17 +1,10 @@
 """
 Module: routers.change_requests.subscriptions
 
-Subscribing/unsubscribing to a change request (C-N-01), so a follower is
-notified of its comments and decision, plus the groups watching a change
-request (every member who can view the project follows it).
-
-Split out of the former flat `routers/change_requests.py` as a pure
-code-organization refactor — see `routers/change_requests/__init__.py`'s
-module docstring for the package layout. Kept as its own small bucket
-rather than folded into `comments.py`, matching how the `requirements/`
-package's own split gave subscriptions their own dedicated bucket.
-`_get_cr_in_project` is imported from `_shared.py` (used by four sibling
-buckets).
+Subscribing/unsubscribing to a change request (C-N-01), so a follower is notified of its comments and
+decision, plus the groups watching it (every member who can view the project follows it). A separate
+bucket from `comments.py`, as the `requirements/` package keeps subscriptions apart.
+`_get_cr_in_project` comes from `_shared.py`.
 """
 
 from __future__ import annotations

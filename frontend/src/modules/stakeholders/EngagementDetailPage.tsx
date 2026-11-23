@@ -1,20 +1,16 @@
 /**
  * Module: modules/stakeholders/EngagementDetailPage
  *
- * A single Engagement (`/projects/:projectId/modules/stakeholders/engagements/
- * :engagementId`): what happened (channel, date, purpose, summary, notes), who
- * was involved (facilitators, Stakeholder participants, groups it was aimed at,
- * Personas covered), what it produced (Pain Points, Needs and Open Questions it
- * raised or answered) and, when the project has the research extras on, its
- * session prompts, anonymous participants and findings. Attachments and comments
- * are the shared `RecordDiscussion`.
+ * A single Engagement (`/projects/:projectId/modules/stakeholders/engagements/:engagementId`): what happened (channel,
+ * date, purpose, summary, notes), who was involved (facilitators, Stakeholder participants, groups it was aimed at,
+ * Personas covered), what it produced (Pain Points, Needs and Open Questions it raised or answered) and, when the
+ * project has the research extras on, its session prompts, anonymous participants and findings. Attachments and
+ * comments are the shared `RecordDiscussion`.
  *
- * An engagement is project-scoped, edited in place and has no lifecycle or
- * version history; the one irreversible action is "Delete permanently", a tier-2 `ConfirmDialog` that requires typing the exact title
- * and says what goes with it. Every mutating control always renders regardless of
- * role; the backend enforces `engagement_owner` and a 403 surfaces as a toast.
- * The retain-until date only flags the engagement as due for review; nothing is
- * deleted automatically.
+ * An engagement is project-scoped, edited in place, with no lifecycle or version history; the one irreversible action
+ * is "Delete permanently", a tier-2 `ConfirmDialog` that requires typing the exact title and says what goes with it.
+ * Mutating controls always render whatever the role; the backend enforces `engagement_owner` and a 403 surfaces as a
+ * toast. The retain-until date only flags the engagement as due for review; nothing is deleted automatically.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

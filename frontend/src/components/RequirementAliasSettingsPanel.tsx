@@ -1,17 +1,15 @@
 /**
  * Module: components/RequirementAliasSettingsPanel
  *
- * The "Requirement aliases" setting for one tier: Organisation Administration (the default every project starts
- * from) and Project Administration (the project's own value, with where an inherited value comes from and a way back
- * to it). Allowed lets a requirement be placed in further components and categories, each with a code of its own;
- * Disabled stops new ones. Existing aliases keep working either way.
+ * The "Requirement aliases" setting for one tier: Organisation Administration (the default every project starts from)
+ * and Project Administration (the project's own value, with the source of an inherited value and a way back to it).
+ * Allowed lets a requirement sit in further components and categories, each with its own code; Disabled stops new ones.
+ * Existing aliases keep working either way.
  *
  * Responsibilities:
  * - Read and write the setting (`RequirementAliasesApi`), naming the tier an inherited value came from (`OverridePill`).
- * - For a project, count its aliases and offer to make them all independent so the project can move to one code per
- *   requirement on purpose; that confirms first (it cannot be undone) and reports how many were made and refused.
- *
- * `api` is injectable for stories.
+ * - For a project, count its aliases and offer to make them all independent (confirmed first; irreversible) and report
+ *   how many were made and refused. `api` is injectable for stories.
  */
 import { useCallback, useState } from "react";
 

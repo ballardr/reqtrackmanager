@@ -4,18 +4,12 @@ Revision ID: 0021
 Revises: 0020
 Create Date: 2026-09-01
 
-Adds the `org_group_project_roles` table: lets an organisation group hold a
-project role directly, as its own independently-revocable record, parallel
-to how `user_project_roles` already works for a single user
-(`app.models.project.OrgGroupProjectRole`). This is additive alongside the
-existing nesting mechanism (`ProjectGroupMember.org_group_id`, C-U-12) —
-nesting stays the way to bundle several groups/users under one named role;
-this is a separate, genuinely new grant path for a single org group to hold
-a role on a project directly. See docs/decisions.md's identify/verify/
-remediate entry for this change for the full security review.
+Adds the `org_group_project_roles` table: an organisation group holds a project role directly, as its
+own independently revocable record, parallel to `user_project_roles` (`app.models.project.OrgGroupProjectRole`).
+It is additive to nesting (`ProjectGroupMember.org_group_id`, C-U-12), which bundles several groups and
+users under one named role (docs/decisions.md's identify/verify/remediate entry for this change).
 
-The new table starts empty — a pure additive change, no backfill needed for
-any existing data.
+The table starts empty; no backfill.
 """
 
 from collections.abc import Sequence

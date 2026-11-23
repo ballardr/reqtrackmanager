@@ -1,15 +1,9 @@
 /**
  * Module: modules/context_strategy/StrategyFormModal
  *
- * Create/edit dialog for a Strategy's content fields — mirrors `modules/decisions/
- * DecisionFormModal.tsx`'s "shared by create and edit, distinguished by
- * whether `initial` is passed" convention, and `docs/ux-style-guide.md`'s
- * "create-as-a-layer" principle: creation happens in a `Modal` layered over
- * the list, never a full navigation away from it.
- *
- * `change_note` only renders in edit mode (mirrors Decision's identical
- * create/edit field-set asymmetry) — a new Strategy has no prior version to
- * explain a change from.
+ * Create/edit dialog for a Strategy's content fields. Shared by create and edit (edit when `initial` is passed), as
+ * `modules/decisions/DecisionFormModal.tsx` is, and layered over the list as a `Modal` (create-as-a-layer,
+ * `docs/ux-style-guide.md`). `change_note` renders in edit mode only: a new Strategy has no prior version.
  */
 import { useState } from "react";
 

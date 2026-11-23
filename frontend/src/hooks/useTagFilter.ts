@@ -1,12 +1,11 @@
 /**
  * Module: hooks/useTagFilter
  *
- * The state behind a list's tag and component filters: the chosen tag names, whether a record needs any or
- * all of them, the components and categories it must sit in (any of them), and the external systems (any of them) and key
+ * The state behind a list's tag and component filters: the chosen tag names, whether a record needs any or all of
+ * them, the components and categories it must sit in (any of them), and the external systems (any of them) and key
  * text it must be referenced by. A list page keeps this beside its other filters, renders `TagFilterField` with it
- * and adds `query` to its list read, so the server (not the browser) narrows the list. The choice lives in
- * the URL (`tag`, `tag_mode`, `in_component`, `in_category`, `ref_system`, `ref_key`) with the list's other filters, so the list comes back filtered after a visit
- * to a record (see `useUrlFilter`). Needs a router.
+ * and adds `query` to its list read, so the server narrows the list. The choice lives in the URL (`tag`,
+ * `tag_mode`, `in_component`, `in_category`, `ref_system`, `ref_key`; see `useUrlFilter`). Needs a router.
  */
 import { useMemo } from "react";
 

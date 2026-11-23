@@ -5,18 +5,12 @@ import type { ProjectTreeNode } from "../api/types";
 import { TreeView } from "./TreeView";
 
 /**
- * Presentational project hierarchy tree (`GET /projects/tree`) — expand/
- * collapse per node, each name linking to that project's page, with an
- * optional per-node "+" affordance to create a child directly from that
- * node (decision 8 in docs/decisions.md's "Hierarchical projects" entry —
- * the "Add sub-project" workflow shouldn't require navigating away first).
+ * Presentational project hierarchy tree (`GET /projects/tree`): expand/collapse per node, each name linking to that
+ * project's page, with an optional per-node "+" to create a child directly from that node ("Hierarchical
+ * projects" in docs/decisions.md).
  *
- * The chevron/indent/expand shell is the shared `TreeView`; this only
- * supplies each project's link and "+" button.
- *
- * No fetch logic of its own — the page owns fetching from `GET /projects/
- * tree` and passes the result down, matching this app's existing page/
- * component split (see `ViewToggle`).
+ * The chevron, indent and expand shell is the shared `TreeView`; this supplies each project's link and "+" button.
+ * It has no fetch logic: the page fetches `GET /projects/tree` and passes the result down (see `ViewToggle`).
  */
 export function ProjectTree({
   nodes,

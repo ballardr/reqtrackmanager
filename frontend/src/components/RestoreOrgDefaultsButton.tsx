@@ -1,19 +1,13 @@
 /**
  * Module: components/RestoreOrgDefaultsButton
  *
- * The "Add organisation defaults" control for any project-scoped definition list
- * that inherits organisation defaults a project can hide (style guide: "Pattern:
- * organisation defaults in a project"). Renders nothing while nothing is hidden;
- * otherwise a button that opens a dialog listing the hidden defaults, all ticked,
- * so the admin restores everything or a chosen subset.
+ * The "Add organisation defaults" control for any project-scoped definition list that inherits organisation defaults a
+ * project can hide (style guide: "Pattern: organisation defaults in a project"). Renders nothing while nothing is
+ * hidden; otherwise a button opens a dialog listing the hidden defaults, all ticked, so the admin restores all or a subset.
  *
- * The caller owns the data: it passes the hidden rows and `onRestore`, which
- * receives the ticked ids and performs the call, toast and reload. Used by
- * `ProjectTypeVocabularyPanel`; a future definition table passes its own rows.
- *
- * `RestoreOrgDefaultsDialog` is the same dialog without the button, for a list page whose actions menu
- * (`ListPageLayout`'s `menuItems`) opens it (docs/ux-style-guide.md, "Pattern: page actions menu"); the
- * button wraps it.
+ * The caller owns the data: it passes the hidden rows and `onRestore`, which receives the ticked ids and performs the
+ * call, toast and reload. `RestoreOrgDefaultsDialog` is the same dialog without the button, for a list page whose
+ * actions menu (`ListPageLayout`'s `menuItems`) opens it (docs/ux-style-guide.md, "Pattern: page actions menu").
  */
 import { Plus } from "lucide-react";
 import { useState } from "react";

@@ -1,37 +1,22 @@
 /**
  * Module: components/MarkdownEditor
  *
- * The editing control for a Markdown field: a Visual view (formatted editing, `VisualMarkdownEditor`), a Write view
- * (the source, with a formatting toolbar) and a Preview view (the same rendering readers see, including diagrams).
- * It owns no value; the caller holds the text.
+ * The editing control for a Markdown field: a Visual view (`VisualMarkdownEditor`), a Write view (the source,
+ * with a formatting toolbar) and a Preview view (the rendering readers see, including diagrams). It owns no
+ * value; the caller holds the text, which is always the Markdown source.
  *
- * Responsibilities:
- * - Show the formatting toolbar and the view switch only while the field is in use (`ActiveFieldFrame`): the toolbar is
- *   a row of its own that is absent while the field rests; the view switch is a group of three icon buttons at the end
- *   of the field's caption line (`renderCaption`), hidden but keeping its place, so no view moves the field.
- * - Apply a toolbar action to the textarea's selection through `utils/markdownEdit` and restore the selection.
- * - Draw the three views in one box (`.md-box`), so an empty field is the same height in every view, `rows` lines
- *   (default 2) at the smallest, and each view grows with its text from there (`AutoGrowTextarea` for Write).
- * - Switch between the views with the shared `ViewSwitch`; Preview shows `MarkdownView` in a focusable box, so pressing
- *   or tabbing into it brings the switch back.
- * - Without a caption of its own (a comment box) the view switch ends the toolbar row, which holds just the switch in Preview.
- * - Open in the person's remembered view (Visual unless they chose Write) and keep it until this field's own view is
- *   chosen (a choice never changes another field already drawn), and fall back to Write with a stated
- *   reason when the text cannot be edited visually without changing it.
- * - `simple` offers Write and Preview only (a comment box, which does not need a document editor).
- * - A Picture button (`PictureToolbarButton`) appears in both toolbars wherever the field sits inside a record page that
- *   supplies pictures (`MarkdownImageSourceProvider`) and is not `simple`: the picture is an attachment of the record,
- *   chosen or uploaded in the picture panel and written as `![alt](attachment:<file id>)`.
- * - `math` is a field that holds equations: Visual draws each as an equation (an indivisible node), Preview draws them
- *   and the toolbars offer Inline equation and Equation block, each with a live preview of the TeX.
- *
- * Design decisions:
- * - The stored value is always the Markdown source, so what the author sees in Write is what is saved.
- * - The visual editor is loaded on first use (`lazy`), so a form that never shows it does not download TipTap.
- * - Only a view the person chooses is remembered, as the starting view of fields drawn later; a fallback to Write, and
- *   Preview, are not.
- * - The textarea keeps the field's accessible name and id, so the shared field label, help and form tests treat it
- *   as the plain text field it replaces.
+ * - The toolbar and the view switch (`ViewSwitch`, three icon buttons at the end of the caption line,
+ *   `renderCaption`) show only while the field is in use (`ActiveFieldFrame`) but keep their place, so no view
+ *   moves the field. Without a caption (a comment box) the switch ends the toolbar row.
+ * - All views share one box (`.md-box`): an empty field is `rows` lines (default 2) in every view and grows with
+ *   its text (`AutoGrowTextarea` for Write). The textarea keeps the field's accessible name and id.
+ * - A new field opens in the person's remembered view (Visual unless they chose Write); only a view the person
+ *   chooses is remembered. It falls back to Write, with a stated reason, when the text cannot be edited visually
+ *   without changing it. The visual editor is lazy-loaded so a form that never shows it does not download TipTap.
+ * - `simple` offers Write and Preview only. `math` draws equations (`\( x \)`, `$$ x $$`) in Visual and Preview and
+ *   adds Inline equation and Equation block buttons with a live TeX preview.
+ * - A Picture button (`PictureToolbarButton`) appears wherever the field sits inside a record page that supplies
+ *   pictures (`MarkdownImageSourceProvider`) and is not `simple`; it writes `![alt](attachment:<file id>)`.
  */
 import { Bold, Code, Eye, FileCode, Heading2, Italic, Link2, List, ListOrdered, Quote, Table, Type, Workflow } from "lucide-react";
 import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type TextareaHTMLAttributes } from "react";
@@ -59,8 +44,8 @@ function boxStyle(rows: number): CSSProperties {
 }
 
 /**
- * The Write view's formatting buttons. Memoised: a form with many Markdown fields re-renders every one of them on each
- * keystroke in any field, and ten buttons with tooltips per field made typing visibly slower.
+ * The Write view's formatting buttons. Memoised: a form with many Markdown fields re-renders every one on each
+ * keystroke, and ten buttons with tooltips per field made typing visibly slower.
  */
 const WriteToolbar = memo(function WriteToolbar({ onFormat, onMath, onPicture, readSelection, disabled }: {
   onFormat: (format: MarkdownFormat) => void;

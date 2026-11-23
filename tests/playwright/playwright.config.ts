@@ -1,33 +1,18 @@
 import { defineConfig } from "@playwright/test";
 
-// Runs against the already-up dev/test stack (tests/container/docker-compose.yml
-// — frontend on :3000, backend on :8000) rather than starting its own
-// webServer, so it exercises a real containerized deployment end to end.
+// Runs against the already-up dev/test stack (tests/container/docker-compose.yml: frontend on :3000, backend on
+// :8000) rather than starting its own webServer, so it exercises a real containerized deployment end to end.
 // Never point this at the production stack (deployments/full/docker-compose.yml).
 //
-// Two projects, not one, because a handful of specs mutate genuinely
-// deployment-wide state (ServerSettings.org_label_singular/plural,
-// ServerSettings.signup_mode) or a shared org/project's own settings
-// (Beta-2's requirement terminology, Alpha's branding) rather than their
-// own disposable fixtures — safe under the old `workers: 1` serial-only
-// run, but not under real concurrency (Playwright-parallelism audit). `global-state-mutators` runs
-// those specs to completion first (each still reverts its own mutation via
-// `afterAll`/an explicit last step, so none of the four collide with each
-// other on *data*); `default`'s `dependencies` entry means Playwright won't
-// start any of the fully-parallel majority of the suite until that project
-// has finished. Every other spec in this suite already creates and cleans
-// up its own dynamically-named org/project/user fixtures, which is what
-// makes turning on `fullyParallel`/multiple `workers` for `default` safe.
+// Two projects: a handful of specs mutate deployment-wide state (ServerSettings.org_label_singular/plural,
+// ServerSettings.signup_mode) or a shared org/project's own settings (Beta-2's requirement terminology, Alpha's
+// branding), which is unsafe under concurrency. `global-state-mutators` runs those specs first, each reverting its own
+// mutation, and `default` depends on it, so the fully-parallel majority starts only after it finishes. Every other
+// spec creates and cleans up its own dynamically-named fixtures, which makes `fullyParallel` safe for `default`.
 //
-// `global-state-mutators` itself still gets its own `workers: 1`
-// (Playwright honours a per-project override of the top-level `workers`
-// limit) even though its files don't touch each other's data — running
-// two of them at once measurably increased how often an unrelated
-// upload/dialog wait or a raw `page.request.*` call timed out in
-// whichever file drew the second worker. Reducing to one worker here
-// lowers that rate; it isn't a complete fix for the underlying flake
-// (`retries` below is), since the same class of stall was also reproduced
-// running a single file alone against this stack — see docs/decisions.md.
+// `global-state-mutators` has its own `workers: 1` (a per-project override): two of its files at once raised the rate
+// of unrelated upload/dialog and raw `page.request.*` timeouts. That lowers the rate of the underlying stall; `retries`
+// below is the mitigation (see docs/decisions.md).
 const GLOBAL_STATE_SPECS = [
   "e2e-workflows/org-label.spec.ts",
   "e2e-workflows/self-signup.spec.ts",
@@ -39,30 +24,15 @@ const GLOBAL_STATE_SPECS = [
   "e2e-workflows/footer-position.spec.ts",
   // Marks the seeded Gamma-2 project as a template, which hides it from the Projects list that other specs search.
   "e2e-workflows/project-admin-templates-and-reports.spec.ts",
-  // Added after a CI failure: this file's "an org admin
-  // can disable the relaxed child-creation path" test flips Gamma's own
-  // org-wide "Allow ... managers to create sub-projects" security toggle
-  // mid-test — exactly the shared-org-setting class the other four files
-  // above are already carved out for. Missed when this
-  // list was first written, so under `fullyParallel` it raced the toggle against this same
-  // file's other tests (which assume relaxed creation is on), passing or
-  // failing depending on interleaving. See docs/decisions.md.
+  // Flips Gamma's org-wide "Allow ... managers to create sub-projects" security toggle mid-test, the shared-org-setting
+  // class of the other files here; under `fullyParallel` it races this file's other tests, which assume the relaxed
+  // path is on. See docs/decisions.md.
   "e2e-workflows/project-hierarchy.spec.ts",
-  // Added after a further CI failure on PR #20 (run 34824179236): every
-  // test in this file reads/mutates "Default Organization"'s own SSO
-  // config (sso-config PUT, `oidc_required_group`, the "reqtrack-org-
-  // admins" group mapping) rather than a disposable fixture, and two of
-  // its tests ("a required-group gate blocks..."/"a user IN the required
-  // group...") explicitly rely on declaration order — "Playwright runs a
-  // file's tests in declaration order by default" — to have already
-  // enabled the required-group gate before "a user in a Keycloak group
-  // with no configured mapping..." runs expecting that gate to still be
-  // *off*. That ordering assumption only holds when the file itself runs
-  // serially; under `fullyParallel` a later test's `requireOrgAdminsGroup()`
-  // call can race ahead of/alongside the earlier one, so the "no configured
-  // mapping" test intermittently hits `not_provisioned` instead of a bare
-  // account with zero orgs. Same shared-org-setting class as the other
-  // entries in this list. See docs/decisions.md.
+  // Reads and mutates "Default Organization"'s own SSO config (`oidc_required_group`, the "reqtrack-org-admins" group
+  // mapping), and its tests rely on declaration order (the required-group gate is enabled before the test that expects
+  // it off). That holds only when the file runs serially; under `fullyParallel` a later test's
+  // `requireOrgAdminsGroup()` can race the earlier one. Same shared-org-setting class as the others. See
+  // docs/decisions.md.
   "e2e-workflows/sso.spec.ts",
   // Switches the deployment-wide file upload switch off while it runs: any spec uploading a file in parallel
   // would be refused. Each test restores the switch in its cleanup hook.
@@ -75,19 +45,10 @@ export default defineConfig({
   testDir: "./tests",
   timeout: 30_000,
   workers: 2,
-  // A raw `page.request.*` call (a real browser-context HTTP client, not
-  // mocked) occasionally never resolves even though the backend's own
-  // access log shows it received and fully answered the request — observed
-  // against both a real GitHub Actions Linux runner (the CI failure this
-  // retry setting was added to address, docs/decisions.md)
-  // and a local Docker Desktop run, on different specs each time, so this
-  // is a transient client-side connection stall in the test harness, not a
-  // deterministic app bug — a full retry (a fresh page/browser context, so
-  // a fresh connection) is the correct mitigation, not a longer timeout
-  // (verified locally: doubling the timeout on the exact call that hangs
-  // still exhausts it, since the request never resolves at all). Off
-  // locally (only CI opts in) so a genuine local failure isn't masked by 2
-  // silent retries before someone notices.
+  // A raw `page.request.*` call occasionally never resolves although the backend's access log shows it was answered
+  // (seen on a GitHub Actions runner and on Docker Desktop, on different specs): a transient client-side connection
+  // stall. A full retry (a fresh browser context and connection) is the mitigation, not a longer timeout, because the
+  // request never resolves at all. Off locally (only CI opts in) so a genuine failure is not masked by silent retries.
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"]],
   use: {

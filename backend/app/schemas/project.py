@@ -23,10 +23,8 @@ from app.models.enums import (
 )
 from app.models.project import MAX_REPORT_NAME_LENGTH
 
-# The module-role grant-marker shape is defined in `schemas.org`
-# (see `ModuleRoleGrantOut`'s own docstring for why), imported here rather
-# than duplicated — the reverse direction of the existing `orgs.py`
-# importing `MoveDirection` from this very module.
+# The module-role grant-marker shape is defined in `schemas.org` (see `ModuleRoleGrantOut`) and imported
+# here, as `orgs.py` imports `MoveDirection` from this module.
 from app.schemas.org import ModuleRoleGrantOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services.taxonomy import clean_name, clean_prefix
@@ -35,10 +33,8 @@ from app.services.taxonomy import clean_name, clean_prefix
 # freeform key-value store — terminology only covers these nouns.
 TERMINOLOGY_KEYS = {"project", "stage", "component", "category", "requirement", "change_request"}
 
-# MIRROR_ROLE's companion role_inheritance_filter_role must be one of these —
-# MEMBER is deliberately excluded, since "any parent role -> MEMBER" is
-# already covered, more broadly, by MEMBER_ONLY mode (see
-# ProjectRoleInheritanceMode's docstring).
+# MIRROR_ROLE's companion role_inheritance_filter_role must be one of these; MEMBER is excluded because
+# "any parent role -> MEMBER" is covered, more broadly, by MEMBER_ONLY mode (see ProjectRoleInheritanceMode).
 _MIRROR_ROLE_ALLOWED_FILTERS = {ProjectRole.STAKEHOLDER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.PROJECT_MANAGER}
 
 
@@ -98,10 +94,8 @@ class ProjectCreate(BaseModel):
     code: str | None = None
     terminology: dict[str, str] = {}
     is_template: bool = False
-    # Always explicit, never inherited from a cloned template (see
-    # routers/projects.py::create_project) — a template happening to be
-    # org-wide-visible shouldn't silently make every project cloned from it
-    # org-wide too.
+    # Always explicit, never inherited from a cloned template (see routers/projects.py::create_project): a
+    # template that is org-wide visible must not make every project cloned from it org-wide too.
     visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
     # Hierarchical projects: see Project.parent_project_id/role_inheritance_mode's
     # docstrings and routers/projects.py::create_project for the two
@@ -109,11 +103,9 @@ class ProjectCreate(BaseModel):
     parent_project_id: UUID | None = None
     role_inheritance_mode: ProjectRoleInheritanceMode = ProjectRoleInheritanceMode.NONE
     role_inheritance_filter_role: ProjectRole | None = None
-    # Whether *this new* project should itself be eligible to be selected as
-    # a parent later — see Project.can_be_parent's docstring. Not surfaced
-    # in the standard "New project" form (a settings-tab decision, not a
-    # creation-time one); exists on this schema for API/scripted use, e.g.
-    # seeding a project that's immediately meant to gain children.
+    # Whether this new project is itself eligible to be selected as a parent later (see
+    # Project.can_be_parent). Not in the standard "New project" form (a settings-tab decision); present for
+    # API/scripted use, e.g. seeding a project meant to gain children.
     can_be_parent: bool = False
 
     @field_validator("report_name")
@@ -163,20 +155,16 @@ class ProjectOut(BaseModel):
     visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
     terminology: dict[str, str] = {}
     status_id: UUID
-    # Both None unless the caller has effective view access to the parent —
-    # same visibility-boundary rule as ProjectListItemOut's own
-    # parent_project_id/parent_project_name (see routers/projects.py's
-    # _redact_parent helper) — this endpoint is require_project_view-gated,
-    # not manage-gated, so an ordinary viewer must not learn a hidden
-    # parent's identity just by fetching this project directly.
+    # Both None unless the caller has effective view access to the parent: the visibility-boundary rule of
+    # ProjectListItemOut's parent_project_id/parent_project_name (see routers/projects.py's _redact_parent).
+    # This endpoint is require_project_view-gated, not manage-gated, so a viewer must not learn a hidden
+    # parent's identity by fetching this project directly.
     parent_project_id: UUID | None = None
     parent_project_name: str | None = None
     role_inheritance_mode: ProjectRoleInheritanceMode = ProjectRoleInheritanceMode.NONE
     role_inheritance_filter_role: ProjectRole | None = None
-    # Whether *this* project may be selected as a parent for other projects
-    # — see Project.can_be_parent's docstring. Unlike parent_project_id/
-    # parent_project_name above, never redacted: it says nothing about any
-    # other project's identity, just this one's own setting.
+    # Whether this project may be selected as a parent for other projects (see Project.can_be_parent). Never
+    # redacted, unlike parent_project_id/parent_project_name: it says nothing about another project's identity.
     can_be_parent: bool = False
     # True when the organisation has locked project codes and the caller is not an organisation administrator, so the
     # code is shown read-only. Computed for the caller; the server enforces the lock regardless (`services.codes`).
@@ -217,22 +205,16 @@ class ProjectImportResult(BaseModel):
 class ProjectUpdate(BaseModel):
     """Project settings update (name/summary, C-U-13 toggle, C-E-05 template flag).
 
-    `parent_project_id` uses FastAPI/Pydantic's `model_fields_set` to
-    distinguish "not sent, leave unchanged" from "explicitly sent" — unlike
-    every other field on this schema, `parent_project_id: None` is a
-    meaningful, legal value (detach from parent), not just Pydantic's
-    optional-field marker, so the router checks
-    `"parent_project_id" in payload.model_fields_set` rather than
-    `payload.parent_project_id is not None`. `role_inheritance_filter_role`
-    doesn't need the same treatment: the router forces it to `None`
-    whenever the resulting `role_inheritance_mode` isn't `MIRROR_ROLE`,
-    regardless of what was sent, so an explicit clear is never required
-    from the client.
+    `parent_project_id` uses Pydantic's `model_fields_set` to distinguish "not sent, leave unchanged" from
+    "explicitly sent": `parent_project_id: None` is a legal value (detach from parent), so the router checks
+    `"parent_project_id" in payload.model_fields_set` rather than `payload.parent_project_id is not None`.
+    `role_inheritance_filter_role` needs no such handling: the router forces it to `None` whenever the
+    resulting `role_inheritance_mode` is not `MIRROR_ROLE`, so a client never needs to clear it explicitly.
     """
 
     name: str | None = None
-    # Changing the code is only allowed under manual assignment; references pasted elsewhere
-    # with the old code stop matching (`services.codes.change_project_code`).
+    # Changing the code is allowed only under manual assignment; references pasted elsewhere stop matching
+    # once the code changes (`services.codes.change_project_code`).
     code: str | None = None
     summary: str | None = None
     #: Sent (even as null or blank) to set or clear the Project report name; absent leaves it unchanged
@@ -306,11 +288,9 @@ class ProjectMemberSourceAdd(BaseModel):
 
     @model_validator(mode="after")
     def _validate_mirror_filter(self) -> ProjectMemberSourceAdd:
-        # Unlike Project.role_inheritance_mode (where NONE means "don't
-        # inherit," a meaningful choice for an ordinary project), NONE
-        # makes no sense here — a member-source *row's own existence*
-        # already means "grant something from this source"; a no-op grant
-        # is just "don't create the row."
+        # Unlike Project.role_inheritance_mode (where NONE is a meaningful choice for an ordinary project),
+        # NONE makes no sense here: a member-source row's existence already means "grant something from this
+        # source", and a no-op grant is just "don't create the row".
         if self.mirror_mode == ProjectRoleInheritanceMode.NONE:
             raise ValueError("mirror_mode must not be 'none' — remove the member source entirely instead.")
         _validate_role_inheritance_filter(self.mirror_mode, self.mirror_filter_role)
@@ -362,10 +342,8 @@ class EffectiveMemberOut(BaseModel):
     effective_role: ProjectRole
     is_service_account: bool = False
     sources: list[MemberSourceProvenanceOut]
-    # This user's project-scoped module-contributed
-    # role grants, filtered to currently-enabled modules only — same
-    # "filter, don't delete a since-disabled module's grant" rule
-    # `OrgUserOut.module_roles` documents; see that field's docstring.
+    # This user's project-scoped module-contributed role grants, filtered to currently enabled modules (a
+    # disabled module's grant is filtered, not deleted), as `OrgUserOut.module_roles`.
     module_roles: list[ModuleRoleGrantOut] = []
 
 
@@ -578,22 +556,18 @@ class ProjectGroupCreate(BaseModel):
 class ProjectGroupMemberAdd(BaseModel):
     user_id: UUID | None = None
     org_group_id: UUID | None = None
-    # "This group's members = that project's own direct members" — see
-    # `models.project.ProjectGroupMember.source_project_id`'s docstring.
-    # Exactly one of the three fields must be set; enforced by the DB check
-    # constraint and re-validated at the router (matching how the existing
-    # user_id/org_group_id pair is already validated there).
+    # "This group's members = that project's own direct members" (see
+    # `models.project.ProjectGroupMember.source_project_id`). Exactly one of the three fields must be set,
+    # enforced by the DB check constraint and re-validated at the router, as the user_id/org_group_id pair.
     source_project_id: UUID | None = None
 
 
 class ProjectGroupOut(BaseModel):
     id: UUID
     name: str
-    # `roles` replaces the old single required `role` field — computed
-    # from `ProjectGroupRole`, may be empty (a freshly created group with no
-    # grant yet), and is not ordered/ranked; the frontend renders it as a
-    # `MultiSelectDropdown`, same pattern `ProjectMembersTable`'s own Role
-    # column already uses for a user's roles.
+    # `roles` is computed from `ProjectGroupRole`, may be empty (a group with no grant yet) and is not
+    # ordered or ranked; the frontend renders it as a `MultiSelectDropdown`, as `ProjectMembersTable`'s Role
+    # column does for a user's roles.
     roles: list[ProjectRole]
     member_user_ids: list[UUID]
     member_org_group_ids: list[UUID]
@@ -670,16 +644,12 @@ class AssignByEmailOut(BaseModel):
 
 
 class PendingInviteOut(BaseModel):
-    """A project's outstanding (not-yet-accepted) `PendingInvite` — the
-    "resend a stalled invite" feature's list shape (docs/decisions.md). Standard (non-SSO) `PendingInvite` flow only; an
-    `sso_only` org's invitees are provisioned immediately by
-    `services.invites.provision_sso_invite` and never get a row here (see
-    that scope decision in docs/decisions.md).
+    """A project's outstanding (not-yet-accepted) `PendingInvite`: the list shape of the "resend a stalled
+    invite" feature (docs/decisions.md). Standard (non-SSO) `PendingInvite` flow only; an `sso_only` org's
+    invitees are provisioned immediately by `services.invites.provision_sso_invite` and get no row here.
 
-    `status` is computed at read time (`expires_at` vs. now), not stored —
-    an expired invite is still listed (and still resendable) rather than
-    disappearing, since resending an expired one is the whole point of
-    this endpoint.
+    `status` is computed at read time (`expires_at` vs now), not stored: an expired invite is still listed
+    and resendable, since resending an expired one is the purpose of the endpoint.
     """
 
     id: UUID
@@ -713,17 +683,13 @@ class RecordTypeCountOut(BaseModel):
 class ProjectMetricsOut(BaseModel):
     """Project overview dashboard metrics (U-P-05).
 
-    `requirements_by_status`/`stage_progress` back the dashboard's chart
-    views; they group by the project's actual status/stage model rather
-    than a separate "release version" concept, since ReqTrackManager tracks
-    requirement lifecycle status and project stages, not independent
-    parallel release versions (see docs/decisions.md).
+    `requirements_by_status`/`stage_progress` back the dashboard's chart views; they group by the project's
+    status/stage model rather than a "release version" concept, since ReqTrackManager tracks requirement
+    lifecycle status and project stages, not parallel release versions (see docs/decisions.md).
 
-    `file_count` is the requirement's explicitly-listed metric ("number of
-    files in project, if files are implemented") — counts distinct
-    `FileAsset` rows attached to a requirement in this project, i.e.
-    requirement attachments, not organisation-wide shared resources (which
-    aren't scoped to a single project).
+    `file_count` is the requirement's listed metric ("number of files in project, if files are implemented"):
+    distinct `FileAsset` rows attached to a requirement in this project, not organisation-wide shared
+    resources (which are not scoped to a single project).
     """
 
     requirement_count: int

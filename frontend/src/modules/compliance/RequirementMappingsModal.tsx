@@ -1,13 +1,10 @@
 /**
  * Module: modules/compliance/RequirementMappingsModal
  *
- * §19's cross-standard/cross-version requirement mapping UI, opened from one
- * requirement's own row in `RequirementTree.tsx` — lists that requirement's
- * existing mapping links (visible "from both requirements," per §19; this
- * view is one side of that) and lets a Compliance Manager add a new one by
- * picking a target requirement through three cascading selects (standard ->
- * version -> requirement), since there is no cross-org requirement search
- * endpoint to type-ahead against.
+ * §19's cross-standard and cross-version requirement mapping UI, opened from a requirement's row in `RequirementTree.tsx`. It
+ * lists the requirement's existing mapping links (§19 makes a mapping visible from both requirements; this is one side) and
+ * lets a Compliance Manager add one by picking a target through three cascading selects (standard -> version -> requirement),
+ * because no cross-organisation requirement search endpoint exists to type ahead against.
  */
 import { useEffect, useState } from "react";
 import { Spinner } from "../../components/Spinner";

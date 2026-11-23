@@ -9,28 +9,16 @@ const TEMPLATE_SORT_VALUES: Record<string, (template: DecisionTemplate) => SortV
 /**
  * Module: modules/decisions/DecisionTemplatesPanel
  *
- * The org-scoped Decision Template library
- * — registered as this module's `orgResourceSections` contribution
- * (`module.ts`): authored content that projects start new decisions from,
- * so it sits on Org Resources, not Organisation Settings. It is the org-level
- * counterpart to the opt-in template-pack picker
- * `pages/ServerOrganisationsPage.tsx` already surfaces at
- * organisation-creation time (`GET /orgs/creation-choices`). This panel is
- * where an org admin manages the template library *after* creation —
- * editing a seeded pack, adding a custom one, or removing one nobody wants.
+ * The organisation-scoped Decision Template library, registered as `orgResourceSections` (`module.ts`): authored
+ * content projects start new decisions from, so it sits on Org Resources, not Organisation Settings. An organisation
+ * administrator manages it after creation (editing a seeded pack, adding or removing a template); the opt-in
+ * template-pack picker at creation is in `pages/ServerOrganisationsPage.tsx` (`GET /orgs/creation-choices`).
  *
- * `DirectoryTable` + `Modal` create/edit (`DecisionTemplateFormModal`) +
- * `ConfirmDialog` delete — the same shape `EvidencePanel.tsx` uses for its
- * own CRUD list, minus a detail `SidePanel` (a template has no sub-resources
- * of its own worth drilling into; edit reopens the same form). Row actions
- * (Edit, Delete) are a per-row `ActionMenu` in an Actions column — never a
- * block of delete buttons collected below the table, and never an action
- * reachable only via row-click with no corresponding menu entry (style
- * guide's "Pattern: action menu" table addendum and "Pattern: directory
- * table" callout, both 2026-09-22 — this panel was the finding that
- * prompted both). The row itself stays clickable to open the edit form as a
- * shortcut; "Edit" is still listed in the menu too, since a shortcut is
- * never a substitute for a menu entry.
+ * `DirectoryTable` + `Modal` create/edit (`DecisionTemplateFormModal`) + `ConfirmDialog` delete, as `EvidencePanel.tsx`,
+ * without a detail `SidePanel` (a template has no sub-resources; edit reopens the form). Row actions (Edit, Delete) are
+ * a per-row `ActionMenu` in an Actions column (style guide "Pattern: action menu" and "Pattern: directory table"): no
+ * action is reachable only through a row click. The row stays clickable as a shortcut to the edit form, and "Edit" is
+ * still in the menu.
  */
 import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";

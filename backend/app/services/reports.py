@@ -1,22 +1,19 @@
 """
 Module: services.reports
 
-Generates requirement reports as PDF (R-F-01), DOCX and CSV (R-F-02), with the
-organisation's shared resource files appended as Markdown sections (R-G-04).
-This module holds only what is specific to requirement reports:
-`ReportRequirementRow`, grouping into component chapters and category
-sections, the five-column table and the terminology-aware CSV. An introduction,
-chapters or appendices are written in a report layout (the "Requirements Report"
-starter), not here. Everything document-level (branding,
-cover page, footer, the Markdown renderer, image resolution, markup escaping)
-lives in `services.report_document`, shared with every module's reports. The
-report is built once as a neutral `ReportDocument` (`services.report_model`) and
-rendered by `report_pdf` or `report_docx`, so the two formats cannot drift.
+Generates requirement reports as PDF (R-F-01), DOCX and CSV (R-F-02), with the organisation's shared resource files
+appended as Markdown sections (R-G-04).
 
-Image support (`![alt](attachment:<file id>)` in a resource file) is deliberately resolved from a
-pre-fetched `images: dict[str, bytes]` mapping passed in by the caller —
-see `report_document.resolve_report_images` for the tenant-isolation check
-that runs before any image reaches the PDF.
+Responsibilities:
+- Requirement-specific parts only: `ReportRequirementRow`, grouping into component chapters and category sections, the
+  five-column table and the terminology-aware CSV. Document-level parts (branding, cover, footer, Markdown, image
+  resolution, escaping) are in `services.report_document`.
+
+Design decisions:
+- The report is built once as a neutral `ReportDocument` (`services.report_model`) and rendered by `report_pdf` or
+  `report_docx`, so the formats cannot drift.
+- Resource images (`![alt](attachment:<file id>)`) come from a pre-fetched `images: dict[str, bytes]` the caller passes;
+  `report_document.resolve_report_images` does the tenant check first.
 """
 
 from __future__ import annotations
@@ -79,23 +76,12 @@ class ReportRequirementRow:
 def _group_rows_by_component_and_category(
     rows: list[ReportRequirementRow],
 ) -> list[tuple[str, list[tuple[str, list[ReportRequirementRow]]]]]:
-    """Groups requirement rows into chapter-per-component, sub-section-per-
-    category order for the PDF report (R-G's "chapters" concept, one level
-    down from the intro/appendix chapters a project/org author writes by
-    hand). Pulled out as its own pure function, separate from
-    `generate_pdf_report`'s ReportLab flowable-building, so the actual
-    grouping/ordering logic can be tested directly without parsing PDF
-    bytes back out (no PDF-text-extraction dependency exists in this
-    project's test suite, deliberately — see test_report_images.py).
+    """Groups requirement rows into a chapter per component and a sub-section per category, in order, for the PDF report.
 
-    Ordered by `component_sort_order`/`category_sort_order` (matching the
-    component/category tree UI's own ordering), not alphabetically or by
-    `unique_code`; requirements within a category are ordered by
-    `unique_code`. Grouped on `(sort_order, name)` rather than name alone:
-    two components could in principle share a display name (uniqueness is
-    only enforced on `(project_id, prefix)`), and colliding on sort_order
-    too as well would be a genuine data anomaly, not a realistic case to
-    guard further against.
+    A pure function, separate from the ReportLab flowable building, so the grouping can be tested without parsing PDF bytes.
+    Ordering is by `component_sort_order` and `category_sort_order` (the tree UI's order), then `unique_code` within a
+    category. Grouping is on `(sort_order, name)` because two components may share a display name (uniqueness is only on
+    `(project_id, prefix)`).
 
     Returns:
         `[(component_name, [(category_name, [row, ...]), ...]), ...]`.
@@ -124,47 +110,29 @@ def build_requirement_document(
     images: dict[str, bytes] | None = None,
     chapters_per_component: bool = True,
 ) -> ReportDocument:
-    """Builds the neutral document for a project's requirements report, which
-    the PDF and DOCX renderers both consume.
+    """Builds the neutral document for a project's requirements report, consumed by the PDF and DOCX renderers.
 
     Args:
         project_name: The project's display name, used as the report title.
         rows: The requirement rows to tabulate.
-        post_markdown: Markdown rendered after the requirement table (the
-            selected resource files, R-G-04).
-        branding: Optional organisation report look (R-G-05) — an
-            accent colour applied to the table header, an optional cover
-            page (with the org logo if provided), and an optional footer.
-        images: Pre-resolved `attachment:<id>` -> image bytes mapping for
-            any images referenced in `post_markdown` — see
-            `report_model.markdown_to_blocks`'s docstring. A Mermaid block in `post_markdown` is drawn when the converter
-            service is configured, else printed as its source.
-        chapters_per_component: When `True` (the default), each component
-            gets its own chapter heading and starts on a fresh page, with a
-            sub-section per category underneath. When `False`, the
-            per-category headings and tables are unchanged but there's no
-            component-level heading or forced page break — categories just
-            flow continuously in component/category tree order. The
-            caller (`routers/reports.py::generate_report`) resolves which of
-            the two applies before calling this (the request's choice, else
-            the organisation's setting).
+        post_markdown: Markdown rendered after the requirement table (the selected resource files, R-G-04).
+        branding: Optional organisation report look (R-G-05): table header accent, cover page and footer.
+        images: Pre-resolved `attachment:<id>` to image bytes for images in `post_markdown`
+            (see `report_model.markdown_to_blocks`). A Mermaid block is drawn when the converter service is
+            configured, else printed as its source.
+        chapters_per_component: When `True`, each component is a chapter starting on a new page with a sub-section per
+            category. When `False`, categories flow continuously in tree order with no component heading or page break.
+            The caller resolves the request's choice, else the organisation's setting.
 
     Returns:
         The portrait requirements document.
     """
     blocks: list[Block] = []
-    # Same total width (17.5cm) the single combined table used to sum to —
-    # Component/Category don't need their own columns (the chapter-per-component /
-    # section-per-category structure below already conveys them), so their
-    # width goes to Name/Reasoning.
+    # Total width 17.5 cm; the chapter and section headings convey component and category, so no columns for them.
     widths = [3, 4.5, 6, 2, 2]
     header = ["ID", "Name", "Reasoning", "Status", "Tags"]
 
-    # Chapter per component (each starting on its own page) with a sub-section
-    # per category underneath when chapters_per_component, otherwise just the
-    # category headings/tables flowing continuously — see
-    # _group_rows_by_component_and_category's docstring for the ordering rules,
-    # which apply identically either way.
+    # A chapter per component when chapters_per_component, else categories flow continuously; same ordering either way.
     for component_name, sections in _group_rows_by_component_and_category(rows):
         if chapters_per_component:
             blocks += [PageBreak(), Heading(component_name, 1), Gap(0.3)]

@@ -1,23 +1,11 @@
-"""Tests for Context & Strategy's Open Question backend API
-— the real HTTP endpoints (`project_router.py`'s project-scoped
-Open Question surface; there is no org-scoped Open Question resource, and
-no org-scoped `router.py` change to test),
-through the `client` fixture, mirroring `test_context_strategy_pain_point_
-api.py`'s own "go through the real API" convention. A new sibling file
-rather than appending to an existing one (Decided by: Agent), matching
-the other artefact test files' precedent.
+"""
+Tests for the Open Question API (project-scoped only) through the real HTTP
+endpoints (`project_router.py`).
 
-Covers: Open Question create/get (project-scoped only), the broad-creation
-permission model (any project member, §9.4), the branching lifecycle
-(`Open -> Investigating -> {Withdrawn | Ready for Decision -> {Resolved |
-Withdrawn}}`, both terminal outcomes reachable, an illegal transition 409,
-mandatory comment on withdraw), the two-role split (`open_question_owner`
-for "change status"-tier actions vs. `open_question_resolver` for `resolve`
-alone — §9.4's distinct "Question Owner / Project Manager" vs. "Decision
-Maker" tiers), a Fine-Grained Access Control custom-role permission grant
-satisfying the resolve gate, disabled-module/sub-component 404s,
-cross-project isolation, and comments/direct file attachments (including
-the deliberately-broad "any member may add evidence" file-upload gate).
+Covers create/get, broad creation (any member), the branching lifecycle (both
+terminal outcomes, illegal transition 409, mandatory withdraw comment), the
+owner versus resolver role split, a permission grant for resolve, disabled
+module/sub-component 404s, cross-project isolation, comments and attachments.
 """
 
 from __future__ import annotations

@@ -1,18 +1,13 @@
 """
 Module: version
 
-Exposes the running backend's own build identity: semantic version, commit
-SHA, and build timestamp. These are baked into the container image at build
-time via Docker build ARGs (see `backend/Dockerfile` and the `docker-build`
-job in `.github/workflows/ci.yml`, which already computes a GitVersion
-SemVer and tags images with it but previously had no way to surface that
-same information from inside a running instance). Read once at import time
-from the environment `ENV`-set by that Dockerfile.
+Exposes the running backend's build identity: semantic version, commit SHA and build timestamp.
 
-Falls back to placeholder values for a local, non-Docker run (`uvicorn
-app.main:app` directly, or the dev/test Compose stack, neither of which
-sets these) rather than raising — this is display-only metadata, not a
-required setting.
+Design decisions:
+- The values are baked into the image at build time through Docker build ARGs (`backend/Dockerfile`, the `docker-build`
+  job in `.github/workflows/ci.yml`) and read once at import time from the environment.
+- A local run (`uvicorn app.main:app`, the dev/test Compose stack) sets none of them, so placeholders are used instead of
+  raising: this is display-only metadata, not a required setting.
 """
 
 from __future__ import annotations

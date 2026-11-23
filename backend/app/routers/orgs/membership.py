@@ -1,15 +1,10 @@
 """
 Module: routers.orgs.membership
 
-Organisation membership: creating/listing organisation users (I-M-05,
-server-admin-only bootstrap carve-out for the first case), org-only pending
-invites, per-user access summaries and directory search, org-role and
-org-scoped module-role grant/revoke, self-service leave, admin-initiated
-removal, and deactivation/archival (C-U-04, C-U-05).
-
-Split out of the former flat `routers/orgs.py` as a pure code-organization
-refactor — see `routers/orgs/__init__.py`'s module docstring for the
-package layout.
+Organisation membership: creating/listing organisation users (I-M-05; the server-admin carve-out covers only
+the first user), org-only pending invites, per-user access summaries and directory search, org-role and
+org-scoped module-role grant/revoke, self-service leave, admin-initiated removal, and deactivation/archival
+(C-U-04, C-U-05).
 """
 
 from __future__ import annotations
@@ -136,34 +131,21 @@ def list_org_users(
 ):
     """Lists users belonging to an organisation with their org roles.
 
-    Archived users are excluded (C-U-05: an archived user "no longer
-    show[s] as users", though their past contributions stay attributed to
-    them elsewhere via the unaffected `creator_id`/`actor_id` foreign keys)
-    unless an org admin passes `include_archived`, which lists them too (an archived service user stays findable).
+    Archived users are excluded (C-U-05; their past contributions stay attributed via `creator_id`/`actor_id`)
+    unless an org admin passes `include_archived` (an archived service user stays findable).
 
-    The access-review filters (C-A-13) — `stale_since_days`,
-    `never_logged_in`, `has_2fa`, `org_role`, `has_project_access`,
-    `is_active`, `is_service_account`, `include_archived` — are org-admin only; a plain member/project-creator can
-    still call this endpoint unfiltered for the general member directory
-    (existing behavior), but supplying any filter requires org-admin,
-    scoped to *this* organisation via `organization_id` (not "an org admin
-    somewhere else" — same pattern as every other org-scoped admin check).
+    The access-review filters (C-A-13: `stale_since_days`, `never_logged_in`, `has_2fa`, `org_role`,
+    `has_project_access`, `is_active`, `is_service_account`, `include_archived`) are org-admin only, scoped to
+    this organisation via `organization_id`; a plain member/project-creator can call the endpoint unfiltered
+    for the general directory.
 
-    `search` (name/email substring, case-insensitive) and `limit`/`offset`
- are open to any
-    caller who can already reach this endpoint at all — they narrow the
-    same directory a plain member can browse, not an access-review signal,
-    so they don't require org-admin the way the filters above do. As with
-    `list_requirements`, omitting `limit` returns every match unpaginated
-    (unchanged from before pagination existed); when given, the total
-    match count before slicing is returned via `X-Total-Count`.
+    `search` (case-insensitive name/email substring) and `limit`/`offset` narrow the directory a plain member
+    can already browse, so they do not need org-admin. As `list_requirements`, omitting `limit` returns every
+    match unpaginated; when given, the total before slicing is returned via `X-Total-Count`.
 
-    `sort` optionally overrides the default `display_name` sort with
-    `email` or `last_login_at`; `order` picks `asc` (default) or `desc`.
-    `last_login_at` is nullable (a user who's never logged in) — those
-    rows sort last regardless of `order`, so "sort by last login,
-    descending" surfaces the most-recently-active users first without
-    "never logged in" accounts jumping to the top.
+    `sort` overrides the default `display_name` sort with `email` or `last_login_at`; `order` is `asc`
+    (default) or `desc`. `last_login_at` is nullable: never-logged-in rows sort last regardless of `order`, so
+    descending surfaces the most recently active users first.
     """
     filters_requested = any(
         v is not None
@@ -190,10 +172,8 @@ def list_org_users(
                 is_archived=user.is_archived,
                 roles=[],
                 display_name_locked=user.display_name_locked,
-                # C-A-13 access-review data: real values only for org admins
-                # (matching the filter gate above) — a plain member calling
-                # this same endpoint for the general directory must not
-                # receive other members' account-security posture.
+                # C-A-13 access-review data: real values only for org admins (matching the filter gate
+                # above); a plain member using the general directory must not see others' security posture.
                 last_login_at=user.last_login_at if is_admin else None,
                 is_2fa_enabled=user.is_2fa_enabled if is_admin else False,
                 is_service_account=user.is_service_account,
@@ -208,13 +188,10 @@ def list_org_users(
             out = by_user[profile.user_id]
             out.service_flags = service_users.access_flags(profile, set(out.roles))
 
-    # Attach each returned user's org-scoped
-    # module-contributed role grants, filtered to currently-*enabled*
-    # modules only (`list_enabled_module_roles`) — a grant for a
-    # since-disabled module is simply omitted here, never deleted from
-    # `user_module_roles` (see `ModuleRoleGrantOut`'s own docstring for the
-    # full "filter, don't delete" rationale). Computed once per request,
-    # not once per user, since it only depends on `organization_id`.
+    # Attach each returned user's org-scoped module-contributed role grants, filtered to currently-enabled
+    # modules (`list_enabled_module_roles`): a grant for a disabled module is omitted, never deleted from
+    # `user_module_roles` (see `ModuleRoleGrantOut`). Computed once per request since it depends only on
+    # `organization_id`.
     enabled_org_role_keys = {
         (module_key, role.role_key) for module_key, role in list_enabled_module_roles(db, organization_id, "org")
     }
@@ -230,14 +207,9 @@ def list_org_users(
             if (module_key, role_key) in enabled_org_role_keys:
                 by_user[user_id].module_roles.append(ModuleRoleGrantOut(module_key=module_key, role_key=role_key))
 
-    # For the frontend Role Management UI:
-    # same "attach each returned user's own grants" treatment as
-    # module_roles above, for org-scoped (`project_id IS NULL`)
-    # `CustomRoleDefinition` grants — see `CustomRoleGrantOut`'s docstring
-    # for why project-scoped grants are deliberately excluded here.
-    # `scope_entity_id.is_(None)` is the same exclusion for an
-    # entity-scoped grant, which also has `project_id IS NULL` and would
-    # otherwise be misreported here as an org-scoped grant.
+    # For the Role Management UI: attach each user's org-scoped (`project_id IS NULL`) `CustomRoleDefinition`
+    # grants (see `CustomRoleGrantOut` for why project-scoped grants are excluded). `scope_entity_id.is_(None)`
+    # excludes entity-scoped grants, which also have `project_id IS NULL`.
     if by_user:
         custom_role_rows = db.execute(
             select(UserCustomRoleGrant.user_id, CustomRoleDefinition.id, CustomRoleDefinition.name)
@@ -330,24 +302,15 @@ def list_org_pending_invites(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Lists this organisation's outstanding (unaccepted) org-only
-    `PendingInvite`s, most recent first — `project_id IS NULL` only.
-    Project-scoped invites (created via a project's by-email add-user flow)
-    stay owned by `routers/projects.py::list_pending_project_invites` and
-    are never double-listed here (docs/decisions.md).
+    """Lists this organisation's outstanding (unaccepted) org-only `PendingInvite`s, most recent first
+    (`project_id IS NULL` only). Project-scoped invites stay owned by
+    `routers/projects.py::list_pending_project_invites` and are never double-listed here.
 
-    `require_org_role(ORG_ADMIN)` — deliberately **no** server-admin
-    bypass. This previously reused `require_org_admin_or_server_admin`
-    (`create_org_user`'s dependency), which is documented in that
-    dependency's own docstring and in I-M-05's hardening-pass entry
-    (docs/decisions.md) as a single, narrow carve-out for bootstrapping the
-    *first* user of a brand-new org. Listing/creating/resending invites has
-    no such bootstrap need — the org already has an admin by the time
-    these are reachable — so letting an org-uninvolved server admin read
-    invitee PII and seed new members into an arbitrary organisation was a
-    real regression against I-M-05's "does not give access to data within
-    organisations" invariant, not a legitimate extension of it. Fixed as
-    part of a hardening pass (see decisions.md's I-M-05 entry).
+    `require_org_role(ORG_ADMIN)` with no server-admin bypass. `require_org_admin_or_server_admin` is a narrow
+    carve-out for bootstrapping the first user of a new org (I-M-05, docs/decisions.md); invite
+    listing/creating/resending has no bootstrap need, and an org-uninvolved server admin must not read
+    invitee PII or seed members into an arbitrary organisation ("does not give access to data within
+    organisations").
     """
     invites_list = db.scalars(
         select(PendingInvite)
@@ -370,31 +333,18 @@ def create_org_pending_invite(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Invites a new user into the organisation by email — the org-level
-    "Invite user" action , distinct from
-    `create_org_user`'s "New user" (an immediate password-based account).
-    The invitee sets their own display name/password at signup via the
-    emailed link and is granted `OrgRole.MEMBER` on redemption
-    (`services.invites.consume_pending_invites`); an admin can promote them
-    afterward via the existing role-grant control, same as any other user.
+    """Invites a new user into the organisation by email: the org-level "Invite user" action, distinct from
+    `create_org_user`'s "New user" (an immediate password-based account). The invitee sets their own display
+    name and password at signup via the emailed link and is granted `OrgRole.MEMBER` on redemption
+    (`services.invites.consume_pending_invites`); an admin can promote them afterwards.
 
-    Thin wrapper over `services.invites.create_pending_invite` with
-    `project=None`/`project_role=None` (an org-only invite).
+    Thin wrapper over `services.invites.create_pending_invite` with `project=None`/`project_role=None`.
 
-    `org.sso_only` is rejected with 400, mirroring `create_org_user`'s own
-    guard for the same reason: there is no working native-signup path to
-    redeem a token against for an `sso_only` org (native login is blocked
-    outright once every one of a user's orgs requires SSO). Unlike
-    `assign_project_role_by_email`'s sso_only branch — which provisions a
-    project role immediately via `provision_sso_invite` because it already
-    knows which project/role to grant — a bare org-only "invite" has no
-    such target to provision ahead of a real SSO login, so a straight
-    reject (matching `create_org_user`'s existing message shape) is the
-    correct scope here rather than introducing a second, invite-shaped
-    response type for an immediate-provision outcome. An org admin who
-    needs to pre-add a specific person to an `sso_only` org can still do so
-    once that person's IdP group/role claim is configured to match on
-    first SSO login.
+    `org.sso_only` is rejected with 400, as `create_org_user` does: no native-signup path exists to redeem a
+    token for an `sso_only` org. `assign_project_role_by_email` can provision immediately
+    (`provision_sso_invite`) because it knows the project and role; a bare org-only invite has no such target,
+    so it is rejected. An admin who needs to pre-add someone can configure the IdP group/role claim to match
+    on first SSO login.
     """
     invite = invite_user(db, email=payload.email, organization_id=organization_id, actor_id=current_user.id)
     db.commit()
@@ -434,17 +384,13 @@ def get_user_access(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """One user's access within this organisation — every project in the org
-    where the user holds at least one effective role, that role set, which
-    of the project's own groups they're a direct member of, and which org
+    """One user's access within this organisation: every project in the org where the user holds an
+    effective role, that role set, which of the project's own groups they directly belong to, and which org
     groups they directly belong to.
 
-    Computed server-side via the existing `get_effective_project_roles`
-    (direct assignment, direct/nested project-group membership, or
-    org-wide project visibility — the same resolution every permission
-    check in the app already relies on) rather than re-derived per project
-    on the frontend, both for correctness (one algorithm, not two) and to
-    avoid an N-project fan-out of round trips from the client.
+    Computed server-side via `get_effective_project_roles` (direct assignment, direct/nested project-group
+    membership or org-wide project visibility, the resolution every permission check uses) so there is one
+    algorithm and no per-project fan-out of client requests.
     """
     if db.get(User, user_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
@@ -461,9 +407,8 @@ def get_user_access(
         select(Project).where(Project.organization_id == organization_id).order_by(Project.name)
     ).all()
     project_ids = [p.id for p in org_projects]
-    # Batched (2026-10-05): resolving roles and group memberships one project
-    # at a time made this ~10 queries per project, outlasting the UI's wait
-    # for an org with ~70 projects. Same resolution, inputs preloaded.
+    # Batched: resolving roles and group memberships per project costs ~10 queries per project and outlasted
+    # the UI's wait for an org with ~70 projects. Same resolution, inputs preloaded.
     groups_by_project: dict[UUID, list[UserAccessGroupRef]] = {}
     for project_id, group_id, group_name in db.execute(
         select(ProjectGroup.project_id, ProjectGroup.id, ProjectGroup.name)
@@ -490,18 +435,13 @@ def get_user_access(
 
 
 def _looks_like_email(value: str) -> bool:
-    """Cheap "looks like an email" heuristic for the external-user-match
-    check below — not full RFC 5322 validation (see `email-validator`,
-    used for real signup/invite validation elsewhere).
+    """Cheap "looks like an email" heuristic for the external-user-match check below; not full RFC 5322
+    validation (`email-validator` does that for signup/invite).
 
-    Deliberately plain string operations rather than a single
-    `^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$`-style regex: that shape is
-    polynomial-time on crafted input (many `.`s after the `@`), and `value`
-    here is `q` — an unauthenticated-adjacent, attacker-controlled search
-    query (CodeQL py/polynomial-redos). This reproduces the same
-    match/no-match semantics — nonempty local part, exactly one `@`, no
-    whitespace, and a domain `.` with at least one character on each
-    side — in linear time.
+    Plain string operations, not a single `^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$`-style regex: that shape is
+    polynomial-time on crafted input (many `.`s after the `@`) and `value` is the attacker-controlled search
+    query `q` (CodeQL py/polynomial-redos). Same match semantics (nonempty local part, exactly one `@`, no
+    whitespace, a domain `.` with a character on each side) in linear time.
     """
     if not value or len(value) > 320 or any(ch.isspace() for ch in value):
         return False
@@ -519,25 +459,18 @@ def search_org_users(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
     db: Session = Depends(get_db),
 ):
-    """Server-backed search for the project user picker: org members
-    matching `q` by name/email, plus — only when `q` is a full email
-    address not already among the org's members and
-    `Organization.external_user_policy` allows it — a synthetic "external"
-    result the caller can then add via
+    """Server-backed search for the project user picker: org members matching `q` by name/email, plus, only
+    when `q` is a full email address not already among the org's members and
+    `Organization.external_user_policy` allows it, a synthetic "external" result the caller can add via
     `routers/projects.py::assign_project_role_by_email`.
 
-    Whether `q` matches an *existing* account elsewhere in the system is
-    itself a cross-tenant fact (a one-bit "this exact email has an account
-    somewhere" signal) — unlike "no account, would need an invite," which
-    reveals nothing about any real account and is always safe to return.
-    This endpoint is open to any org member (matching `list_org_users`'
-    existing directory precedent), but that's a materially lower bar than
-    `assign_project_role_by_email`'s own `require_project_manage` gate, so
-    the `exists=True` case is withheld from a caller who couldn't actually
-    act on it: an org admin, or a member who passes `project_id` for a
-    project in this org they have manage rights on. Below that bar, a
-    match that would resolve to `exists=True` is omitted entirely rather
-    than downgraded to a misleading `exists=False`.
+    Whether `q` matches an existing account elsewhere is itself a cross-tenant fact (a one-bit "this exact
+    email has an account somewhere" signal), unlike "no account, would need an invite", which reveals nothing.
+    The endpoint is open to any org member (as `list_org_users`), a lower bar than
+    `assign_project_role_by_email`'s `require_project_manage`, so the `exists=True` case is withheld from a
+    caller who could not act on it: only an org admin, or a member passing a `project_id` in this org they
+    manage, receives it. Below that bar a match resolving to `exists=True` is omitted rather than downgraded
+    to a misleading `exists=False`.
     """
     needle = q.strip().lower()
     rows = db.execute(
@@ -677,19 +610,13 @@ def assign_org_role(
 ):
     """Grants an organisation role to a user (C-U-01).
 
-    The affected user is always the `{user_id}` path parameter, not
-    `payload.user_id` — the request body's `role` field is the only part of
-    the payload actually used; a mismatched body `user_id` is ignored rather
-    than trusted, so the URL a caller is authorized against (and what ends
-    up in the audit trail) can never diverge from who is actually affected.
+    The affected user is always the `{user_id}` path parameter; only `payload.role` is used and a mismatched
+    body `user_id` is ignored, so the URL a caller is authorised against (and the audit trail) cannot diverge
+    from who is affected.
 
-    Gated by `require_org_admin_or_grant_roles` — an `ORG_ADMIN`, server admin, or a
-    `grant_roles` holder may reach this endpoint. **Granting `OrgRole.
-    ORG_ADMIN` itself stays carved out**, per an explicit instruction: a
-    `grant_roles`-only holder (neither a real `ORG_ADMIN` nor a server
-    admin) is rejected with 403 specifically when `payload.role ==
-    OrgRole.ORG_ADMIN`, checked here rather than in the dependency itself
-    since it depends on the specific role value being granted.
+    Gated by `require_org_admin_or_grant_roles`: an `ORG_ADMIN`, server admin or `grant_roles` holder may
+    reach it, but granting `OrgRole.ORG_ADMIN` itself is carved out: a `grant_roles`-only holder gets 403 when
+    `payload.role == OrgRole.ORG_ADMIN`, checked here because it depends on the role value.
     """
     if payload.role == OrgRole.ORG_ADMIN and not (
         current_user.is_server_admin
@@ -749,28 +676,17 @@ def revoke_org_role(
     current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
-    """Revokes an organisation role from a user — `assign_org_role`'s
-    counterpart, which had none until now (hierarchical projects surfaced
-    this as a real, pre-existing gap: see docs/decisions.md's "Hierarchical
-    projects" entry). No-op if the user doesn't currently hold `role`.
+    """Revokes an organisation role from a user (`assign_org_role`'s counterpart). No-op if the user does not
+    hold `role`.
 
-    Blocks the caller from targeting their own account, the same guard
-    `deactivate_org_user` already uses for the same reason: since this
-    endpoint requires the caller to already hold `ORG_ADMIN` (never derived
-    indirectly, unlike project roles) and self-targeting is blocked, the
-    calling admin's own admin-ness is untouched by any revoke they perform
-    on someone else — so an organisation can never reach zero admins
-    through this endpoint, by construction, with no separate "last admin"
-    count check needed.
+    The caller may not target their own account (as `deactivate_org_user`). The caller must hold `ORG_ADMIN`
+    (never derived indirectly, unlike project roles) and self-targeting is blocked, so the acting admin's role
+    survives any revoke of someone else and an organisation cannot reach zero admins through this endpoint,
+    with no "last admin" count check.
 
-    Gated by `require_org_admin_or_grant_roles`, with
-    the same `OrgRole.ORG_ADMIN`-value carve-out `assign_org_role` applies:
-    a `grant_roles`-only holder is rejected with 403 when `role ==
-    OrgRole.ORG_ADMIN` — the "self-targeting is blocked" reasoning above
-    only holds for a caller who is genuinely an `ORG_ADMIN` themselves, so
-    a `grant_roles`-only holder revoking someone else's `ORG_ADMIN` role
-    could otherwise leave the organisation with zero admins without ever
-    being one themselves.
+    Gated by `require_org_admin_or_grant_roles` with the `OrgRole.ORG_ADMIN` carve-out of `assign_org_role`: a
+    `grant_roles`-only holder gets 403 when `role == OrgRole.ORG_ADMIN`, because the self-targeting argument
+    holds only for a genuine `ORG_ADMIN`; otherwise such a holder could leave the organisation with no admins.
     """
     if user_id == current_user.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot revoke your own organisation role.")
@@ -828,20 +744,14 @@ def assign_org_module_role(
     current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
-    """Grants an org-scoped module-contributed role to a user — the module-role counterpart to `assign_org_role`,
-    same gate (an org admin already implicitly holds every org-scoped
-    module role via `require_module_role`'s own override, so it's
-    consistent that org admin is also who explicitly grants/revokes the
-    row) plus a `grant_roles` holder — no `OrgRole.
-    ORG_ADMIN`-equivalent carve-out is needed here, since a module role
-    carries no admin-tier significance of its own.
+    """Grants an org-scoped module-contributed role to a user: the module-role counterpart to
+    `assign_org_role`, same gate plus a `grant_roles` holder (an org admin already implicitly holds every
+    org-scoped module role via `require_module_role`). No `OrgRole.ORG_ADMIN`-style carve-out is needed: a
+    module role carries no admin-tier significance.
 
-    400s if `(payload.module_key, payload.role_key)` doesn't name a real
-    `scope="org"` role of a *currently-enabled* module for this
-    organisation — this is what naturally makes a disabled module's roles
-    ungrantable, and also catches a typo'd role key, using the same
-    `list_enabled_module_roles` lookup `list_org_module_roles` above
-    exposes as the frontend's own option list.
+    400 if `(payload.module_key, payload.role_key)` is not a `scope="org"` role of a currently-enabled module
+    for this organisation, which makes a disabled module's roles ungrantable and catches a mistyped key; it
+    uses the `list_enabled_module_roles` lookup behind the frontend's option list.
     """
     target = db.get(User, user_id)
     if target is not None and target.is_banned:
@@ -934,36 +844,21 @@ def leave_organization(
 ):
     """Self-service: the caller removes their own membership in an organisation.
 
-    Previously there was no way for a user to leave an org at all — see
-    docs/e2e-workflows.md's "product gaps found" section, which this closes.
+    Refuses (409) rather than reassigning anyone else's roles if leaving would strip the organisation of its
+    last org_admin or leave a project with zero managers. `deactivate_org_user`'s C-U-09 fallback reassigns the
+    acting admin as manager, but here the caller is the one leaving, so there is no natural recipient and the
+    caller must reassign those roles first.
 
-    Refuses (409) rather than silently reassigning anyone else's roles if
-    leaving would strip the organisation of its last org_admin, or leave any
-    of its projects with zero managers. Unlike `deactivate_org_user`'s C-U-09
-    fallback (which reassigns the *acting admin* as a project's new manager
-    when removing someone else), there is no natural recipient for that
-    reassignment here — the caller is the one leaving — so this endpoint
-    asks the caller to reassign those roles first instead of guessing who
-    should inherit them.
+    Also removes the caller's `OrgGroupMember` rows for this organisation's groups, not just direct project
+    roles/memberships: project access can come from an org group nested into a project group (C-U-12), and
+    `get_effective_project_managers` (used for the sole-manager guard) resolves only direct managers. Both
+    direct and nested-group-derived manager status are checked, so a user cannot leave while retaining project
+    access through a still-active session.
 
-    Also removes the caller's `OrgGroupMember` rows for this organisation's
-    groups, not just their direct project roles/memberships — project access
-    can be granted through an org group nested into a project group (C-U-12),
-    and `get_effective_project_managers` (used for the sole-manager guard below)
-    deliberately only resolves *direct* managers, not nested-group-derived
-    ones (see its own docstring). Leaving that cleanup out would let a user
-    "leave" an org while silently retaining full project access through a
-    still-active session — this endpoint checks both direct and
-    nested-group-derived manager status precisely because of that gap.
-
-    Locks the organisation row for the duration of this transaction
-    (`lock_organization_for_update`) before doing anything else, and each
-    project row in turn before checking its manager count
-    (`lock_project_for_update`) — without this, two concurrent leavers (e.g.
-    an org's last two admins, or a project's last two managers, each leaving
-    at once) could each see the other as still-present backup and both
-    proceed, since neither transaction's check would see the other's
-    not-yet-committed removal.
+    Locks the organisation row (`lock_organization_for_update`) first and each project row
+    (`lock_project_for_update`) before checking its manager count: otherwise two concurrent leavers (an org's
+    last two admins, or a project's last two managers) could each see the other as remaining backup and both
+    proceed.
     """
     from app.services.rbac import lock_organization_for_update, lock_project_for_update
 
@@ -996,13 +891,9 @@ def leave_organization(
     for p in projects:
         lock_project_for_update(db, p.id)
         concrete_managers = get_effective_project_managers(db, p.id)
-        # Fold in nested-org-group-derived PM status too: get_effective_project_managers
-        # only resolves direct assignments/direct group membership, so a
-        # manager role held solely via a nested org group would otherwise be
-        # invisible here, letting this guard miss a soon-to-be-orphaned
-        # project (its only "manager" isn't a *concrete* manager per
-        # get_effective_project_managers' own definition, but removing this user's
-        # nested-group access below would still leave nobody with the role).
+        # Include nested-org-group-derived manager status: `get_effective_project_managers` resolves only direct
+        # assignments and direct group membership, so a role held solely via a nested org group would be
+        # invisible, and removing this user's nested-group access below would leave the project with nobody.
         i_am_manager = current_user.id in concrete_managers or ProjectRole.PROJECT_MANAGER in get_effective_project_roles(
             db, current_user.id, p.id
         )
@@ -1058,62 +949,28 @@ def remove_org_user(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Admin-initiated counterpart to `leave_organization` above (docs/decisions.md — `OrgAdminPage
-    .tsx`'s Users table Actions column, "Remove from {org}"): an org admin
-    removes *another* user's membership in `organization_id`, rather than
-    the user removing their own. No prior admin-initiated removal endpoint
-    existed (`deactivate_org_user` below sets `is_active=False` on the
-    whole account, a cross-org lockout, not a per-org membership removal;
-    `archive_org_user` only hides an already-deactivated user from lists) —
-    this fills that specific gap: removing this org's `UserOrgRole` row(s)
-    without touching the account's standing in any other organisation.
+    """Admin-initiated counterpart to `leave_organization`: an org admin removes another user's membership in
+    `organization_id`. `deactivate_org_user` sets `is_active=False` on the whole account (a cross-org lockout)
+    and `archive_org_user` only hides a deactivated user, so neither removes one organisation's `UserOrgRole`
+    rows without touching the account's standing elsewhere.
 
-    Treated as access-mutating (identify -> verify -> remediate review,
-    docs/decisions.md), so it is deliberately built as a close mirror of
-    `leave_organization`'s own already-reviewed cleanup and guards, not a
-    bare `UserOrgRole` delete:
+    Access-mutating (identify -> verify -> remediate review, docs/decisions.md), so it mirrors
+    `leave_organization`'s cleanup and guards rather than being a bare `UserOrgRole` delete:
 
-    - **Self-targeting is blocked** (400) — same reasoning as
-      `deactivate_org_user`/`revoke_org_role`: an admin removing *their
-      own* org membership has its own, already-correct path
-      (`leave_organization`, which additionally lets a departing admin
-      reassign responsibilities before leaving) — this endpoint isn't a
-      second, less-guarded way to reach that same end state.
-    - **No separate last-admin count check** — same "by construction"
-      reasoning `revoke_org_role` already documents for itself, not
-      `leave_organization`'s reachable one: this endpoint requires the
-      *caller* to already hold `ORG_ADMIN` on `organization_id`
-      (`require_org_role` below), and self-targeting is blocked above, so
-      the caller is necessarily a *second*, distinct `ORG_ADMIN` still
-      present after `user_id`'s membership is removed — an organisation
-      can never reach zero admins through this endpoint, for any `user_id`
-      it's ever legal to call it with. (`leave_organization`'s own count
-      check is reachable precisely because there caller and target are the
-      *same* person — the case blocked here.)
-    - **Sole-project-manager guard**: refuses (409) if `user_id` is the
-      sole real manager of any project in this org — same check
-      `leave_organization` already applies to the leaving user, applied
-      here to the user being removed, so an admin can't accidentally
-      orphan a project of managers by removing someone through this
-      endpoint that `leave_organization` would have refused to let them
-      remove themselves as.
-    - **Cleanup**: every direct `UserProjectRole` and `ProjectGroupMember`
-      row for `user_id` across this org's projects, every `OrgGroupMember`
-      row for this org's groups, and subscriptions/favorites for this org's
-      projects — same shape `leave_organization` already performs for the
-      caller, applied here to `user_id`. This org's own `UserOrgRole` rows
-      are deleted last, after every dependent cleanup succeeds.
-    - Row-locks the organisation before the last-admin guard, and each
-      project in turn before that project's own sole-manager check
-      (`lock_organization_for_update`/`lock_project_for_update`) — same
-      ordering, and the same concurrent-removal race, `leave_organization`'s
-      own docstring describes.
+    - Self-targeting is blocked (400), as `deactivate_org_user`/`revoke_org_role`; an admin removing their own
+      membership uses `leave_organization`, which lets a departing admin reassign responsibilities first.
+    - No last-admin count check, by construction as `revoke_org_role`: the caller must hold `ORG_ADMIN` on
+      `organization_id` (`require_org_role`) and self-targeting is blocked, so a second, distinct `ORG_ADMIN`
+      always remains.
+    - Sole-project-manager guard: refuses (409) if `user_id` is the sole real manager of any project in this
+      org, as `leave_organization` does for the leaving user.
+    - Cleanup: every direct `UserProjectRole` and `ProjectGroupMember` row for `user_id` across this org's
+      projects, every `OrgGroupMember` row for this org's groups, and subscriptions/favorites for this org's
+      projects; this org's `UserOrgRole` rows are deleted last, after every dependent cleanup succeeds.
+    - Row-locks the organisation before the last-admin guard and each project before its sole-manager check
+      (`lock_organization_for_update`/`lock_project_for_update`), as `leave_organization` documents.
 
-    A no-op (still 204) if `user_id` is not currently a member of
-    `organization_id` at all — removing a non-member has nothing to do,
-    matching `leave_organization`'s own "not a member" 404 being the only
-    case that actually errors instead (kept as a 404 here too, for the same
-    "you can't remove someone who isn't there" reason).
+    A user who is not a member of `organization_id` is a 404 (as `leave_organization`).
     """
     if user_id == current_user.id:
         raise HTTPException(
@@ -1154,41 +1011,23 @@ def deactivate_org_user(
 ):
     """Deactivates a user (C-U-04). For an account that belongs to this organisation alone this ends the
     account; for a server administrator or someone another organisation also holds it is scoped to this
-    organisation — their roles, project access and group membership here are removed, the account stays
-    active everywhere else (see `services.org_membership.remove_member_from_organization`, which can refuse
-    with 409 while the person is the sole manager of a project).
+    organisation: their roles, project access and group membership here are removed and the account stays
+    active elsewhere (see `services.org_membership.remove_member_from_organization`, which can refuse with 409
+    while the person is the sole manager of a project).
 
-    Applies the C-U-09 fallback: for any project where this removal leaves
-    no remaining project manager, the acting admin is assigned as manager so
-    the project is never left without one (C-U-08). Each project is row-
-    locked (`lock_project_for_update`) before its manager count is checked,
-    so this can't race a concurrent removal (another deactivation, a role
-    revocation, or someone leaving the org) on the same project — see
-    `lock_project_for_update`'s docstring for the exact race this closes.
+    Applies the C-U-09 fallback: for any project left with no manager by this removal, the acting admin is
+    assigned as manager so it is never left without one (C-U-08). Each project is row-locked
+    (`lock_project_for_update`) before its manager count is checked, so this cannot race a concurrent removal
+    on the same project.
 
-    The target user must actually be a member of `organization_id` — an org
-    admin's authority to deactivate accounts is scoped to their own
-    organisation's members, same as every other org-scoped action, not to
-    every account in the deployment (SOC 2 access-control hardening pass).
+    The target must be a member of `organization_id`: an org admin's authority is scoped to their own
+    organisation's members, not every account in the deployment.
 
-    Guard added by a later hardening review: refuses to let a caller
-    target their own account. This endpoint had no protection at all
-    against ending an organisation's last active admin, unlike the
-    conceptually similar `leave_organization` — but the actual fix is
-    simpler than mirroring that endpoint's own "are there other admins"
-    check would suggest: since this endpoint requires the *caller* to
-    already hold `org_admin` on this exact organisation (`require_org_role`
-    above) and org_admin is never derived indirectly (unlike project
-    roles, which can come from a group), the calling admin's own role
-    necessarily survives any deactivation they perform on someone *else* —
-    so once self-targeting is blocked, an organisation can never reach zero
-    active admins through this endpoint at all, by construction, with
-    nothing further to check. Unlike `leave_organization` (which only ends
-    *this org's* membership), deactivation here sets `is_active=False` on
-    the whole account, locking the caller out of every organisation, not
-    just this one — an org-scoped admin action is not the place for that
-    scale of self-inflicted, cross-org lockout to happen with no
-    confirmation step, which is the concrete harm this guard closes.
+    A caller may not target their own account. The caller must hold `org_admin` on this organisation
+    (`require_org_role`), and org_admin is never derived indirectly, so once self-targeting is blocked an
+    organisation cannot reach zero active admins through this endpoint, with nothing further to check.
+    Deactivation sets `is_active=False` on the whole account, locking the caller out of every organisation;
+    an org-scoped admin action must not do that to oneself without a confirmation step.
     """
     from app.services.rbac import lock_project_for_update
 
@@ -1198,10 +1037,9 @@ def deactivate_org_user(
     user = db.get(User, user_id)
     if user is None or not get_effective_org_roles(db, user_id, organization_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
-    # Deactivation ends the whole account, in every organisation, and an organisation administrator's
-    # authority stops at their own organisation. For a platform administrator or someone another organisation
-    # also holds, "deactivate" therefore means deactivate *here*: the membership (roles, project access, group
-    # membership) is removed and the account stays active everywhere else.
+    # Deactivation ends the whole account in every organisation, and an organisation administrator's authority
+    # stops at their own organisation. For a platform administrator or someone another organisation also
+    # holds, "deactivate" means deactivate here: the membership is removed and the account stays active elsewhere.
     if user.is_server_admin or belongs_elsewhere(db, user_id, organization_id):
         remove_member_from_organization(db, organization_id, user_id, actor_id=current_user.id, action="deactivated_in_organization")
         return
@@ -1214,16 +1052,11 @@ def deactivate_org_user(
     for project in projects:
         lock_project_for_update(db, project.id)
 
-    # Hierarchical projects (docs/decisions.md): a project's effective
-    # manager set can now be pulled from a *different* project (forward
-    # inheritance) in this same org, so this loop's own per-project deletes
-    # can no longer be interleaved with its own C-U-08 checks — a project
-    # whose only manager was actually inherited from a not-yet-processed
-    # sibling in this same loop would look fine at check time and only lose
-    # its manager once THAT project's turn came, with the fallback never
-    # triggered for it. Every one of this user's direct/group roles across
-    # every project in this org is deleted first, in one upfront pass, so
-    # every later fallback check runs against fully up-to-date state.
+    # A project's effective manager set can be inherited from a different project in this org (hierarchical
+    # projects, docs/decisions.md), so per-project deletes cannot be interleaved with this loop's C-U-08
+    # checks: a project whose only manager was inherited from a not-yet-processed sibling would pass its check
+    # and lose its manager later without the fallback triggering. All of this user's direct and group roles
+    # across the org's projects are therefore deleted first, in one pass, so every fallback check sees final state.
     managers_before_by_project = {
         project.id: user_id in get_effective_project_managers(db, project.id) for project in projects
     }

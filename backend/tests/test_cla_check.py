@@ -7,8 +7,7 @@ Pins the contributor licence agreement check (scripts/check_cla.py) and the prod
 - The licence the repository states agrees everywhere it is stated: LICENSE, each package.json, the Licences page
   constant and the commercial-licence summary.
 
-Skipped when the repository root is not visible (the backend container mounts only backend/); CI's `cla` job and
-the pre-commit hook run the script directly.
+Skipped when the repository root is not visible (the backend container mounts only backend/).
 """
 
 import copy

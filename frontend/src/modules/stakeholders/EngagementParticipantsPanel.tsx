@@ -1,17 +1,15 @@
 /**
  * Module: modules/stakeholders/EngagementParticipantsPanel
  *
- * The "Participants" list of an Engagement's detail page: the Stakeholders who took part and, with the
- * Research extras on, the anonymous participants (a label, optionally the Persona they represent), as
- * one row of removable chips under one heading with one (+). The (+) opens a filterable list of the
- * Stakeholders not yet recorded; choosing one adds it at once. While the extras are on, text typed that
- * matches no Stakeholder is offered as an anonymous participant. An anonymous participant's Persona is
- * chosen in the create and edit forms, so every chip here reads alike. Removal of either kind sits behind a
- * tier-1 confirm.
+ * The "Participants" list of an Engagement's detail page: the Stakeholders who took part and, with the Research extras
+ * on, the anonymous participants (a label, optionally the Persona they represent), as one row of removable chips under
+ * one heading with one (+). The (+) opens a filterable list of the Stakeholders not yet recorded; choosing one adds it
+ * at once. While the extras are on, typed text that matches no Stakeholder is offered as an anonymous participant. An
+ * anonymous participant's Persona is chosen in the create and edit forms, so every chip here reads alike. Removal of
+ * either kind sits behind a tier-1 confirm.
  *
- * Stakeholders and anonymous participants are separate records behind separate endpoints; this panel
- * only presents them together. It renders nothing when the Stakeholder participants cannot be read
- * (their sub-component is off), like the other link panels.
+ * Stakeholders and anonymous participants are separate records behind separate endpoints; this panel only presents
+ * them together. It renders nothing when the Stakeholder participants cannot be read (their sub-component is off).
  */
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";

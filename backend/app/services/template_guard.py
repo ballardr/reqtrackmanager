@@ -1,25 +1,21 @@
 """
 Module: services.template_guard
 
-Makes a template project read-only for everyone below project administrator.
+Makes a template project read-only for everyone below project manager.
 
-A project marked `is_template` is the starting point other projects are created from, and an organisation-wide
-visibility setting gives every organisation member the baseline Member role on it. Without a guard an org-wide
-template would be editable by anyone who can see it, and a module's "any member may submit" setting (Pain
-Points, Product Feedback and the like) would still let members add records. So while a project is a template,
-only a project manager, a project administrator or an organisation administrator may change it, whatever the
-project's own configuration and whatever module or fine-grained role the caller holds.
+An organisation-wide visibility setting gives every member the baseline Member role on a template (`is_template`), and a
+module's "any member may submit" setting would let members add records. While a project is a template only a project
+manager, project administrator or organisation administrator may change it, whatever other role the caller holds.
 
 Design decisions:
-- One application-wide dependency decides, from the request's method and its `project_id` path parameter, so a
-  new module or endpoint is covered without declaring anything; it fails closed. A POST that only reads
-  (search, previews, report runs) is listed in `READ_ONLY_ROUTES`; every other mutating route is refused.
-- A person's own preferences (favouriting the project, watching a record) are not changes to the project and
-  stay available.
-- The caller is resolved the way the route resolves them (session, personal access token or module frame token);
-  a credential that does not resolve is left for the route's own authentication to refuse.
+- One application-wide dependency decides from the request method and `project_id` path parameter, so new endpoints are
+  covered without declaring anything; it fails closed. A POST that only reads (search, previews, report runs) is listed in
+  `READ_ONLY_ROUTES`; every other mutating route is refused.
+- A person's own preferences (favouriting, watching) are not changes to the project and stay available.
+- The caller is resolved as the route resolves them (session, personal access token or module frame token); an unresolved
+  credential is left for the route's authentication to refuse.
 
-External dependencies: `services.rbac` (manager resolution), `deps` (credential resolution).
+Dependencies: `services.rbac` (manager resolution), `deps` (credential resolution).
 """
 
 from __future__ import annotations

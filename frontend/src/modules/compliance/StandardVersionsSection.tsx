@@ -1,25 +1,11 @@
 /**
  * Module: modules/compliance/StandardVersionsSection
  *
- * The "Versions" section of a standard's workspace — extracted out of `StandardsPanel.tsx`'s old
- * `SidePanel` content (the version list + "New version" dialog) plus its
- * full-width drill-in to `VersionWorkspace` when one is opened. Used as the
- * content of `StandardWorkspacePage.tsx`'s "Versions" nav-rail section.
- *
- * Owns its own `versions` state and reloads the version list after a
- * create/publish/retire, exactly as `StandardsPanel.tsx` did — this is a
- * pure extraction, not a behavioural change, so the version-management flow
- * (create, optionally cloned from an existing version; publish/retire) is
- * unchanged.
- *
- * "Which version is open" lives in the
- * URL (`/standards/:id/versions/:versionId`, `StandardWorkspacePage.tsx`'s
- * trailing route param, passed down here as `initialVersionId`) — the
- * same "a real route, not client-only state" convention this module's own
- * section switching already established — so `StandardNavSection.tsx`'s
- * expandable Versions group can deep-link straight to one version, and
- * opening/leaving a version here updates the address bar to match rather
- * than leaving it on the plain `/versions` URL the whole time.
+ * The "Versions" section of a standard's workspace: the version list, the "New version" dialog (optionally cloned from an
+ * existing version), publish and retire, and a full-width drill-in to `VersionWorkspace`. It is the content of
+ * `StandardWorkspacePage.tsx`'s "Versions" nav-rail section, owns its `versions` state and reloads it after a create, publish
+ * or retire. Which version is open is in the URL (`/standards/:id/versions/:versionId`, passed as `initialVersionId`), so
+ * `StandardNavSection.tsx`'s Versions group can deep-link to one version and opening or leaving a version updates the address.
  */
 import { useState } from "react";
 import { Spinner } from "../../components/Spinner";

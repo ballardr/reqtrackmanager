@@ -4,10 +4,9 @@ Revision ID: 0091
 Revises: 0090
 Create Date: 2026-10-13
 
-Adds `engagements.unique_code` (unique per project): the `PREFIX-nnn` code every item type carries.
-Existing engagements are numbered per project in the order they were logged, and the project's
-`engagement` sequence counter is set past the highest, so a code is never reused. Guarded throughout:
-a database built from the current models already has the column.
+Adds `engagements.unique_code` (unique per project), numbering existing
+engagements per project in logging order and setting the `engagement` counter
+past the highest. Guarded: a database built from the current models has it.
 """
 
 from collections.abc import Sequence

@@ -40,7 +40,7 @@ class PrincipalOut(BaseModel):
 class WatcherCreate(BaseModel):
     """Adds a user or group as a watcher of a requirement or change request (a group's members all follow it).
 
-    `group` is accepted as the earlier name of `principal`, for callers written when only a group could watch.
+    `group` is accepted as an alias of `principal`.
     """
 
     principal: PrincipalRef = Field(validation_alias=AliasChoices("principal", "group"))

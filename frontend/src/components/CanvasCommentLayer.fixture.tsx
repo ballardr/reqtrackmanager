@@ -1,9 +1,9 @@
 /**
  * Module: components/CanvasCommentLayer.fixture
  *
- * A host for the comment layer's stories: a small canvas for a record of a made-up type (not an architecture diagram), with
- * the comment-mode, Show comments and Show resolved switches a real page offers, and anchors keyed `key:<node id>`. It sits in
- * its own router (a link names a thread with `?pin=`) and prints the address's search so a story can see it change.
+ * A host for the comment layer's stories: a small canvas for a record of a made-up type, with the comment-mode,
+ * Show comments and Show resolved switches a real page offers and anchors keyed `key:<node id>`. It sits in its own
+ * router (a link names a thread with `?pin=`) and prints the address's search so a story can see it change.
  */
 import { MemoryRouter, useLocation } from "react-router-dom";
 

@@ -1,104 +1,11 @@
 """
 Module: modules.context_strategy.module
 
-Registers the Context & Strategy module into the modular feature system's
-registry via `MODULE_DEFINITION`, mirroring `app.modules.decisions.module`'s
-own registration shape.
-
-Roles (module-contributed, not additions to `OrgRole`/`ProjectRole`):
-- Strategy, Future State and Guiding Principle are scoped at *either* level,
-  so each has both an org- and a project-scoped owner/approver pair:
-  `strategy_owner`/`strategy_approver` and `org_strategy_owner`/
-  `org_strategy_approver`, `future_state_owner`/`future_state_approver` and
-  `org_future_state_owner`/`org_future_state_approver`,
-  `guiding_principle_owner`/`guiding_principle_approver` and
-  `org_guiding_principle_owner`/`org_guiding_principle_approver`. Strategy
-  is the first module whose own artefact is scoped at either level, so it is
-  also the first to need both flavours of the same conceptual role pair,
-  rather than one or the other. Future State's roles mirror Strategy's in
-  full.
-- Pain Point has no org scope (§6), so there is a single
-  project-scoped `pain_point_manager` (gating every decide-tier action) and
-  an org-scoped `pain_point_type_admin` gating `PainPointTypeDefinition`
-  CRUD only (mirroring `modules.compliance`'s `compliance_manager`
-  module-role-for-org-admin-config pattern; `PainPointTypeDefinition` is
-  module-owned, so its admin gate is a module role too, composing with
-  `OrgRole.ORG_ADMIN` automatically via `user_satisfies_module_role`). It also
-  covers the org-level scoring configuration.
-- Open Question is project-scoped only and has **two** roles —
-  `open_question_owner` (assign/prioritise/change-status/close, §9.4's
-  "Question Owner / Project Manager" tier) and `open_question_resolver` (the
-  `resolve` transition only, §9.4's separate "Decision Maker" tier) —
-  because §9.4 names three distinct permission tiers
-  (project members; "Question Owner / Project Manager"; "Decision Maker"),
-  unlike Pain Point's §6.5 two-tier split. **Decided by: Agent**; see
-  `docs/decisions.md` for the full reasoning.
-- `org_reports_viewer` (org-scoped) gates the organisation-wide reports; org
-  admins hold it by default.
-
-`get_router()` returns the org-scoped `router.py` (CRUD for
-organisation-scoped Strategies, Future States and Guiding Principles, plus
-the Pain Point type vocabulary); `get_project_router()` returns
-`project_router.py` (the project-scoped equivalents and Pain Points and Open
-Questions). `resolve_file_owner_project_id` tries each artefact type's
-resolver in sequence (Strategy, Future State, Pain Point, Guiding Principle,
-Open Question) and returns whichever resolves non-`None` first. See
-`service.resolve_strategy_file_project_id` and its siblings for why the
-org-scoped half of an artefact doesn't need it (`is_org_resource=True`
-uploads instead).
-
-All five artefact types are registered in `artefact_types` so the generic
-relationship layer needs no core-file edit, following Decision Management's
-own precedent (`DECISION_ARTEFACT_TYPE`). Five sub-components (`"strategy"`,
-`"future_state"`, `"pain_point"`, `"guiding_principle"`, `"open_question"`)
-are individually toggleable.
-
-`on_org_created=_seed_org_defaults` seeds each new organisation's default
-Market/User/Operator Pain Point types (§6.2); it mirrors `modules.compliance`'s
-own `_seed_org_defaults`/`on_org_created` hook exactly, not a direct import of
-`service.seed_default_pain_point_types` from the core org-creation router.
-
-`implemented=True`; `default_enabled` stays `False`: an organisation must opt
-in explicitly.
-
-`mcp_tools` (per the 2026-09-22 write-enabled-MCP decision —
-`docs/decisions.md`'s "Compliance MCP write tools + generalized AI approval
-gate" entry, extended to this module the same way): the whole-module list/get
-read tools, create/update tools for all five artefact types,
-create-relationship/list-relationship tools, the three supersession-creation
-tools, every non-decisive lifecycle-transition tool
-(propose/submit-for-review/send-back/supersede/retire/activate, Pain Point's
-triage/reject/mark-duplicate/accept/address/close, Open Question's
-investigate/mark-ready-for-decision/withdraw), and five approve/decide-tier
-tools (`approve_strategy`/`approve_future_state`/`activate_guiding_principle`/
-`retire_guiding_principle`/`resolve_open_question`) gated by
-`app.services.rbac.require_ai_approvals_enabled` when reached through MCP —
-see `service.py`'s docstring section "MCP tools and the
-`require_ai_approvals_enabled` gate" for the full reasoning, especially why
-Guiding Principle's own gated pair is `activate`/`retire` rather than
-`approve`. File-upload and comment endpoints are not declared —
-comments/attachments are collaboration actions this module's MCP scope has
-never asked to expand (mirroring Decision Management's own `mcp_tools`
-posture toward its comment/file endpoints), and file upload specifically
-cannot be declared through this mechanism at all (`multipart/form-data`, the
-same mechanical constraint `modules.compliance.module`'s docstring documents
-for `upload_evidence_attachment`). Org-scoped Strategy/Future State/Guiding
-Principle endpoints (`router.py`) are also not declared — `get_router()`'s
-own prefix uses `{organization_id}`, not `{project_id}`, and
-`require_ai_approvals_enabled` needs a `Project` to check, so an org-scoped
-approve/activate/retire action has no MCP-safe way to satisfy that gate;
-rather than special-case an org-only variant of the gate, the MCP surface is
-project-scoped only, matching Decision Management's own project-only MCP tool
-set (Decision itself has no org scope either).
-
-`scoring_schemes` registers the `pain_point` scheme (`scoring.py`) into core's
-generic scoring-matrix mechanism. The module-neutral half of reporting lives
-in core: `reports.REPORT_DEFINITIONS` is declared on `ModuleDefinition.reports`
-(plus nine read-only `get_<slug>_report` MCP tools), the routes and MCP tools
-are generated by `services.report_framework`, and the report routers are
-mounted on the existing org and project routers, so `get_router()`/
-`get_project_router()` are unchanged. Organisation-wide report endpoints are
-not MCP tools, for the same reason as the other org-scoped endpoints above.
+Registers Context & Strategy (Strategy, Future State, Pain Point, Guiding
+Principle, Open Question) through `MODULE_DEFINITION`: one sub-component and
+artefact type each, module roles, routers, org-creation seeding, the
+`pain_point` scoring scheme, reports and project-scoped MCP tools (approvals
+gated by `require_ai_approvals_enabled`). `default_enabled` is `False`.
 """
 
 from __future__ import annotations
@@ -226,19 +133,10 @@ def get_project_router() -> APIRouter | None:
 
 
 def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
-    """This module's `ModuleDefinition.resolve_file_owner_project_id` hook.
-    Tries Strategy's own project-scoped resolution first, then Future
-    State's, then Pain Point's, then Guiding Principle's, then Open
-    Question's, returning whichever resolves non-`None` first — this module
-    now has five project-scoped artefact types whose files need owning-
-    project resolution through this one hook (see `service.resolve_
-    strategy_file_project_id`/`resolve_future_state_file_project_id`/
-    `resolve_pain_point_file_project_id`/`resolve_guiding_principle_file_
-    project_id`/`resolve_open_question_file_project_id`'s own docstrings for
-    why the org-scoped half of Strategy/Future State/Guiding Principle is
-    never resolved here — Pain Point and Open Question have no org-scoped
-    half at all). Imported lazily for the same import-cycle reason as
-    `get_router()`."""
+    """This module's `ModuleDefinition.resolve_file_owner_project_id` hook:
+    returns the owning project of a file from whichever artefact type's
+    project-scoped resolver matches first, else `None`. Org-scoped records
+    are not resolved here. Imported lazily to avoid an import cycle."""
     from app.modules.context_strategy.service import (
         resolve_future_state_file_project_id,
         resolve_guiding_principle_file_project_id,
@@ -263,21 +161,16 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
 
 
 def _seed_org_defaults(db: Session, organization_id: UUID) -> None:
-    """This module's `ModuleDefinition.on_org_created` hook (module
-    boundary cleanup, 2026-09-08) — seeds this organisation's default
-    Market/User/Operator Pain Point types (§6.2), mirroring
-    `modules.compliance._seed_org_defaults`'s identical hook exactly (see
-    that function's own docstring). Imported lazily for the same
-    import-cycle reason as `get_router()`."""
+    """This module's `ModuleDefinition.on_org_created` hook: seeds the
+    organisation's default Market/User/Operator Pain Point types (§6.2).
+    Imported lazily to avoid an import cycle with `get_router()`."""
     from app.modules.context_strategy.service import seed_default_pain_point_types
 
     seed_default_pain_point_types(db, organization_id)
 
 
-# Maps a `_id_param`-style artefact name to its actual URL plural segment —
-# not a mechanical `f"{artefact_name}s"` (that would produce "strategys",
-# "future_states", "pain_points", "guiding_principles", "open_questions",
-# none of which match this module's real hyphenated route segments).
+# Artefact name to its hyphenated URL segment; a mechanical `f"{name}s"` would
+# give "strategys" and "future_states".
 _URL_SEGMENT: dict[str, str] = {
     "strategy": "strategies",
     "future_state": "future-states",
@@ -828,17 +721,9 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     models_import_path="app.modules.context_strategy.models",
     migrations_dir="app/modules/context_strategy/migrations",
-    # Five separate top-level nav-rail entries, one per artefact type, not one
-    # grouped entry with tabs — `ModuleFrontendManifest.additional_nav_
-    # entries` (the generic multi-entry extension point, see
-    # docs/decisions.md) carries every entry after the first. `nav_path` uses each artefact's own sub-route naming
-    # (matching `router.py`/`project_router.py`), not the bare module mount
-    # point, since each entry needs its own distinct sub-path alongside the
-    # others. Pain Point's own type-vocabulary admin surfaces
-    # are not nav-rail entries at all — they render on Org/Project Admin via
-    # `orgAdminSections`/`projectAdminSections` (`frontend/src/modules/
-    # context_strategy/module.ts`), which this manifest mechanism doesn't
-    # cover.
+    # One nav-rail entry per artefact type (`additional_nav_entries` carries all
+    # after the first). Pain Point type administration renders on Org/Project
+    # Admin through `orgAdminSections`/`projectAdminSections`.
     frontend_manifest=ModuleFrontendManifest(
         tier="installed",
         nav_label="Strategy",

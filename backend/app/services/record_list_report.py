@@ -1,31 +1,21 @@
 """
 Module: services.record_list_report
 
-The **Record list** report: the table of any record type that has a `RecordTableProvider`, as an on-screen
-report, PDF, Word or CSV, so a person can produce "all Pain Points" from the Reports page without hunting for a
-list page, and a list page's Export menu can offer the same PDF and Word with its own filters.
+The **Record list** report: the table of any record type with a `RecordTableProvider`, as an on-screen report, PDF,
+Word or CSV, also offered by a list page's Export menu with its filters.
 
 Responsibilities:
-- Turn a `RecordTable` (`services.record_tables.build_table`) into a `ReportResult`: the provider's visible
-  column labels, the filtered rows, a note naming the scope, the filters applied and any columns the
-  personal-data policy left out, and per-cell tones for the columns that colour their cells on screen.
-- List the record types a caller can run it for (`available_types`) and describe the report to the catalogue
-  (`catalogue_entry`), since it is not a module's report and so is not in `ModuleDefinition.reports`.
+- Turn a `RecordTable` (`services.record_tables.build_table`) into a `ReportResult`: visible columns, filtered rows,
+  a scope note and per-cell tones. List the types a caller can run it for and describe it to the catalogue.
 
 Design decisions:
-- One report with a `record_type` parameter, not one per type: the catalogue and the MCP tool stay one entry each
-  while every type that gains a provider gains the report with no further code.
-- A Markdown column's cell shows its plain text here (`RecordColumn.markdown`); the CSV format keeps the source.
-- The rows, the columns and the access rule are the export's, produced by the same functions
-  (`build_table`, `resolve_export_columns`, `require_view`), so the report can never show a column or a record
-  the CSV export would not; the CSV format of the report is the export's import file, byte for byte.
-- A file (PDF, Word, CSV) is an export and audited as one (`records_exported`, counts and keys only); the
-  on-screen run is a view of what the list shows and is not.
-- Large documents are refused rather than laid out (`MAX_DOCUMENT_ROWS`): a PDF or Word of many thousands of rows
-  holds a worker for a long time and cannot be read; the CSV has no such limit.
+- One report with a `record_type` parameter, so every type with a provider gains it without further code.
+- Rows, columns and access come from the export's own functions, so the report never shows more than the CSV export;
+  a Markdown cell shows plain text here and its source in the CSV.
+- A file is an export and audited as one (counts and keys only); documents over `MAX_DOCUMENT_ROWS` are refused
+  because a PDF or Word of many thousands of rows holds a worker; the CSV has no limit.
 
-Dependencies: `services.record_tables` (the table), `services.report_framework` (result shapes and renderers),
-`modules.registry` (the providers).
+Dependencies: `services.record_tables`, `services.report_framework`, `modules.registry`.
 """
 
 from __future__ import annotations

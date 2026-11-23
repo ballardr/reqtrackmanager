@@ -1,16 +1,11 @@
 /**
  * Module: components/FontChoiceField
  *
- * The font select shared by every report setting that names a font: the layout's body and heading fonts and a text or
- * heading block's own font.
- *
- * Responsibilities:
- * - List the fonts the server gives authors (the four standard ones, then those the server administrator provides, marked
- *   as such) behind a leading empty option that says what an empty value inherits.
- * - Keep a stored font the server no longer offers selectable and labelled, so it is shown rather than silently dropped.
- *
- * Design decisions: a thin wrapper over `LabeledSelect`, so every font control is one component with one list order and
- * one wording for a font that has gone. The server is the judge of what is valid and available.
+ * The font select shared by every report setting that names a font (the layout's body and heading fonts, a text
+ * or heading block's own font): a thin wrapper over `LabeledSelect` listing the fonts the server gives authors
+ * (the four standard ones, then those the server administrator provides, marked) behind a leading empty option
+ * saying what an empty value inherits. A stored font the server does not offer stays selectable and labelled, so
+ * it is shown rather than dropped. The server decides what is valid.
  */
 import type { FieldHelpProps } from "./FieldHelp";
 import { useStrings } from "../context/TerminologyContext";

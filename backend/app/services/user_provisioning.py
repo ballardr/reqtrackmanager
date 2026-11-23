@@ -4,21 +4,16 @@ Module: services.user_provisioning
 The one place an administrator creates a person's account or invites one.
 
 Responsibilities:
-- `create_native_user`: an account with an admin-set password, optionally with an organisation role
-  (Org Admin's "New user", Server Management's "Add user").
-- `invite_user`: an emailed sign-up link that grants `member` in the organisation, if any, on redemption (Org Admin's
-  "Invite user", Server Management's "Add user" by invite).
-- Keep email uniqueness, lower-casing, the `sso_only` guard, the shared password rule and the audit row
-  in one place so the two entry points cannot drift.
+- `create_native_user` (an admin-set password, optionally with an organisation role) and `invite_user` (an emailed sign-up
+  link granting `member` in the organisation, if any, on redemption).
+- Keep email uniqueness, lower-casing, the `sso_only` guard, the password rule and the audit row in one place.
 
 Design decisions:
-- Callers authorise; this module does not. It raises `HTTPException` with the same messages the
-  endpoints always returned, so moving a check here changes no response.
+- Callers authorise; this module raises `HTTPException` with the endpoints' messages.
 - The typed password is hashed immediately and never returned, logged or audited.
-- An invite may name no organisation: the person then signs up to an account with no membership, the
-  same shape as an always-on self-signup.
+- An invite may name no organisation: the person signs up with no membership, as for always-on self-signup.
 
-Dependencies: `security` (hashing, password rule), `services.invites`, `services.audit`.
+Dependencies: `security`, `services.invites`, `services.audit`.
 """
 
 from __future__ import annotations

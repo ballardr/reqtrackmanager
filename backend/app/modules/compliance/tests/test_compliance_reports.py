@@ -1,12 +1,6 @@
-"""Tests for PDF/CSV compliance report generation
-(§29): `GET /projects/{id}/modules/compliance/reports` and
-`GET /orgs/{id}/modules/compliance/reports`, both taking a required
-`format=pdf|csv` query param (merged from separate `/reports/pdf`/
-`/reports/csv` GETs, 2026-09-22 — see docs/decisions.md), mirroring
-`tests/test_reports.py`'s own established assertions (valid PDF magic
-bytes, CSV formula-injection neutralization) for the core requirement-
-report generator this module's own report generator
-(`app.modules.compliance.reports`) follows the same pattern as.
+"""Tests for compliance report generation (§29): `GET /projects/{id}/modules/compliance/reports` and
+`GET /orgs/{id}/modules/compliance/reports`, both taking a required `format=pdf|csv` query parameter. Assertions follow
+`tests/test_reports.py` (PDF magic bytes, CSV formula-injection neutralisation).
 """
 
 from __future__ import annotations
@@ -68,11 +62,8 @@ def _project_with_assessment(client, admin_token, org_id, *, project_name="Compl
     assert na_resp.status_code == 200, na_resp.text
 
     child_pcr = _find_pcr(client, admin_token, project["id"], assignment["id"], child["id"])
-    # §9: the parent's Not Applicable would otherwise be inherited by the
-    # child — explicitly override the child back to Applicable so its own
-    # compliance assessment below is a *reported* status, not blanked out
-    # by inherited Not Applicable (also exercises the "Overridden"
-    # applicability source in the report).
+    # §9: the parent's Not Applicable would be inherited by the child, so override the child to Applicable: its
+    # assessment below is then a reported status (and the "Overridden" applicability source is exercised).
     override_resp = client.patch(
         f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/requirements/{child_pcr['id']}/applicability",
         json={"applicability": "applicable"}, headers=auth_headers(admin_token),
@@ -109,10 +100,7 @@ def test_project_compliance_csv_report_includes_assessment_and_neutralizes_injec
     data_rows = rows[1:]
     assert len(data_rows) == 2  # parent + child requirement
 
-    # The "Requirement name" column was relabelled "Requirement
-    # title" for clarity, since "Requirement path"/"Requirement reference"/
-    # "Requirement title" otherwise leaves a reader guessing which column is
-    # the human-readable one.
+    # The column is labelled "Requirement title" so it is distinct from "Requirement path" and "Requirement reference".
     assert "Requirement title" in header
     assert "Requirement name" not in header
 
@@ -128,12 +116,8 @@ def test_project_compliance_csv_report_includes_assessment_and_neutralizes_injec
     assert non_compliant_row[justification_col] == "Awaiting retest"
 
     not_applicable_row = next(r for r in data_rows if r[applicability_col] == "Not applicable")
-    # CSV formula/DDE injection guard (OWASP CSV injection, `services.
-    # csv_safety.csv_safe`) — a justification starting with `=` must be
-    # neutralized with a leading `'`, the same as core `tests/test_reports.
-    # py::test_csv_report_neutralizes_formula_injection` already asserts
-    # for the core requirement-report exporter this module's own generator
-    # follows the same escaping discipline as.
+    # CSV formula injection guard (`services.csv_safety.csv_safe`): a justification starting with `=` is neutralised
+    # with a leading `'`, as in core `tests/test_reports.py::test_csv_report_neutralizes_formula_injection`.
     assert not_applicable_row[justification_col].startswith("'=HYPERLINK(")
 
 
@@ -235,16 +219,10 @@ def test_compliance_spreadsheet_matches_the_csv_columns_and_guards_formulas(clie
 
 
 def test_narrative_requirement_paragraph_always_shows_title_and_folds_in_free_text_fields(client, admin_token, org_id):
-    """A requirement with a `reference` set must still
-    show its own `name` (title) in the PDF's requirement cell — the PDF's
-    "Requirement" column used to be built from `_requirement_path`'s
-    breadcrumb, which drops a leaf requirement's `name` whenever it also
-    has a `reference` (a `reference` won at every level, leaf included).
-    Also pins the narrative-cell format itself: title first, then each of
-    reasoning/description/clarification/justification/notes present, in
-    that order, bold-prefixed on its own line — the `docs/requirements.md`-
-    style single-cell layout that replaces one-column-per-field.
-    """
+    """A requirement with a `reference` still shows its `name` (title) in the PDF's requirement cell: the column is not
+    built from `_requirement_path`, which drops a leaf's `name` when a `reference` is set. Also pins the narrative cell
+    format: title first, then each present field of reasoning, description, clarification, justification and notes in
+    that order, bold-prefixed on its own line."""
     _create_action_type(client, admin_token, org_id, name="Verification")
     standard = _create_standard(client, admin_token, org_id, reference="NAR-1", name="Narrative Cell Standard")
     version = _create_version(client, admin_token, org_id, standard["id"], version_label="2.0")
@@ -360,10 +338,8 @@ def test_project_compliance_report_filters_by_standard_version_and_sub_section(c
         by_version = collect_project_compliance_report(db, proj, standard_version_id=uuid.UUID(other_version["id"]))
         assert {r.standard_reference for r in by_version.requirement_rows} == {other_standard["reference"]}
 
-        # Sub-section: filtering to the parent ("4") includes the child
-        # ("4.1") too, since the child's top-level ancestor is the parent —
-        # the same "sub-section means top-level ancestor" definition
-        # `api.ts::findTopLevelAncestor` uses client-side.
+        # Sub-section: filtering to the parent ("4") includes the child ("4.1"), because the child's top-level ancestor is
+        # the parent (`api.ts::findTopLevelAncestor`).
         by_sub_section = collect_project_compliance_report(db, proj, requirement_id=uuid.UUID(parent["id"]))
         assert {r.requirement_reference for r in by_sub_section.requirement_rows} == {"4", "4.1"}
 

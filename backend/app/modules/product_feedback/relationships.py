@@ -1,30 +1,12 @@
 """
 Module: modules.product_feedback.relationships
 
-The links that tie a request to the problem it answers and the work that delivers it.
-
-Responsibilities:
-- `ADDRESSES_SEED` (request -> Pain Point) and `REALISED_BY_SEED` (request -> Requirement): link types authored with
-  the generic link endpoints, like "Requested by" (`demand.py`); there is no endpoint of their own.
-- `compute_links`: for many requests at once, the Pain Points they address and the Requirements that realise them.
-
-Design decisions:
-- A request is a solution and a Pain Point is the problem it answers; a request with no Pain Point is flagged
-  (never blocked), so ranking by demand cannot quietly reward the loudest asker (**Decided by: User**).
-- An Engagement that evidenced the request is the existing "Requested by" link to an Engagement (`demand.py`); a
-  second "Evidence" link type would say the same thing twice (**Decided by: Agent**).
-- A merged duplicate's links count for the canonical request, as its requesters do: the duplicate is the same ask,
-  so its problem and its delivering work are the canonical request's too. Nothing is copied, so unmerging removes
-  them again.
-- "Addresses" shares its name with Decision Management's link type (decision -> pain point) and merges with it, the
-  same phrases and direction. Both link types let the request sit in a parent project and the problem or work in
-  a child where the type's direction allows it (**Decided by: Agent**); the readers here therefore accept a link
-  recorded for this request's project as well as a plain same-project one.
-- Pain Point and Requirement are named by their artefact-type string, never imported: a request is linked to
-  whichever of those modules is enabled, and a link to a disabled module's record simply is not offered.
-- One statement per link type however many requests are asked about, so a list stays flat.
-
-Dependencies: `modules.registry` (`LinkTypeSeed`), `models.relationship`, `models.requirement_link_type`.
+Links tying a request to the problem it answers and the work that delivers it:
+`ADDRESSES_SEED` (request -> Pain Point) and `REALISED_BY_SEED` (request ->
+Requirement), authored through the generic link endpoints, and `compute_links`
+(one statement per link type). A request with no Pain Point is flagged, never
+blocked; a merged duplicate's links count for the canonical request; the other
+modules' types are named by string, and links recorded for a parent project count.
 """
 
 from __future__ import annotations

@@ -2,33 +2,17 @@
  * Module: components/FolderTreeList
  *
  * The one folder-and-items list, drawn like a file manager's list view: a header row with a sortable Name column
- * (and any further columns to its right), one row per folder or item, a disclosure chevron and folder icon on each
- * folder, a type icon on each item, children indented under their folder and banded rows.
+ * (and further columns), a chevron and folder icon on each folder, a type icon on each item, indented children and
+ * banded rows. Generic over the item type; shows the tree `utils/reportFolders` builds.
  *
- * Responsibilities:
- * - Show the tree `utils/reportFolders` builds, generic over the item type, so the report chooser and the
- *   report setup list share one implementation of the shape.
- * - Sort each level by the Name column or a column that declares a `sortValue`: folders always come first, then
- *   items; a node marked `pinned` (Favourites) stays on top. With `order="given"` the nodes keep the order the caller
- *   passes (a list with its own manual order, such as the project's components) and no header sorts.
- * - Keyboard (an ARIA tree grid): Up/Down/Home/End move between visible rows, Right opens a folder (or moves to its
- *   first child), Left closes it (or moves to its parent), Enter opens an item or toggles a folder.
- * - Draw the icon the consuming list gives its folder rows (`folderIcon`, required): a report folder is a folder, a
- *   stakeholder group or a component is not, so the component never assumes one and keeps no kind-to-icon map.
- * - Name an empty open folder with a muted "Empty folder" row, so an open folder never looks broken.
- *
- * Design decisions: expansion is controlled by the caller (`expanded` / `onToggle`), as `TreeView`'s controlled mode
- * is, because the chooser opens every folder while a search is active and persists the person's own layout; the
- * folder's chevron, icon and name are one button named "Expand X" / "Collapse X" so the whole label is the click
- * target and a folder has one control, and an item's type icon sits outside the item's button so the button's name
- * stays the item's title; a folder's row can carry trailing controls (`renderFolderActions`) as an item's does. Pure presentation: the data, the selection and every action stay with the caller. A column
- * with `hideBelow` is dropped under 640px.
- *
- * Layout: the list is one CSS grid and each row a subgrid of it, so the columns line up whatever the cells hold. Name
- * has a minimum width and wraps; when the columns still do not fit (a phone) the list scrolls sideways inside its own
- * region with the Name column held at the left edge, and the page never scrolls or clips.
- *
- * Dependencies: `utils/reportFolders` (`FolderNode`), `lucide-react`, the shared `TreeChevron`, the `.folder-tree-*` rules in `theme.css`.
+ * - Each level sorts by Name or a column's `sortValue`: folders first, `pinned` nodes on top; `order="given"` keeps
+ *   the caller's order. Keyboard (ARIA tree grid): arrows, Home/End, Right/Left open and close, Enter opens an item
+ *   or toggles a folder.
+ * - The consuming list supplies `folderIcon` (required; no kind-to-icon map here). Expansion is controlled by the
+ *   caller (`expanded`/`onToggle`). A folder's chevron, icon and name are one button; an item's type icon sits
+ *   outside its button so the name stays the title. A column with `hideBelow` is dropped under 640px.
+ * - One CSS grid with a subgrid per row keeps columns aligned; when they do not fit the list scrolls sideways in
+ *   its own region with Name held at the left edge.
  */
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";

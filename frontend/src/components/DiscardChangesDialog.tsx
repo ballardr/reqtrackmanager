@@ -1,9 +1,9 @@
 /**
  * Module: components/DiscardChangesDialog
  *
- * The prompt a dialog shows when it is closed with unsaved changes (`useDialogGuard`): Keep editing
- * (the default focus) or Discard. A two-tier-1 confirm like `ConfirmDialog`, built on `ModalBase` so
- * the prompt itself is never guarded, and a click outside it does nothing.
+ * The prompt a dialog shows when closed with unsaved changes (`useDialogGuard`): Keep editing (default focus) or
+ * Discard. A tier-1 confirm like `ConfirmDialog`, built on `ModalBase` so the prompt itself is never guarded and
+ * a click outside does nothing.
  */
 import { t } from "../i18n/strings";
 import { ModalBase } from "./ModalBase";

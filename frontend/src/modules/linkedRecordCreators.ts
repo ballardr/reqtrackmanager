@@ -3,9 +3,9 @@
  *
  * Resolves the "create a new record" dialog of an artefact type from the module that owns it, so the shared Links
  * panel can offer "Create new" for any record type without importing a module's form. Merged from every installed
- * module's `TierAModuleDefinition.linkedRecordCreators` and the core types' (`coreLinkedRecordCreators`), like
- * `artefactPaths.ts` merges the record pages, with the
- * relationship the page record's owner prefers (`preferredLinkPhrases`).
+ * module's `TierAModuleDefinition.linkedRecordCreators` and the core types' (`coreLinkedRecordCreators`), as
+ * `artefactPaths.ts` merges record pages. It also resolves the relationship phrase the owning module prefers
+ * (`preferredLinkPhrases`).
  */
 import { CORE_LINKED_RECORD_CREATORS } from "./coreLinkedRecordCreators";
 import { installedModules } from "./registry";

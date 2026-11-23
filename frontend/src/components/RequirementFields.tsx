@@ -1,17 +1,13 @@
 /**
  * Module: components/RequirementFields
  *
- * The field group shared by the requirement create dialog (`RequirementsPage`) and the requirement
- * edit form (`RequirementDetailPage`), so a field added to a requirement appears in both. It holds
- * every field that is the same in the two: name, reasoning, clarification, description, target
- * version, level, review date, reminder lead time, reviewer and owner.
+ * The field group shared by the requirement create dialog (`RequirementsPage`) and the edit form
+ * (`RequirementDetailPage`), so a field added to a requirement appears in both: name, reasoning, clarification,
+ * description, target version, level, review date, reminder lead time, reviewer and owner.
  *
- * Fields that differ stay with the page: the create dialog puts component and category (chosen
- * once, at creation) between description and target version through `afterDescription`; custom
- * fields, tags, links and the edit form's change note follow the group.
- *
- * The component is controlled and framework-free: the page owns the values, so the edit form can
- * keep its dirty-tracking around `onChange`.
+ * Fields that differ stay with the page: the create dialog places component and category (chosen once, at creation)
+ * through `afterDescription`; custom fields, tags, links and the change note follow the group.
+ * Controlled: the page owns the values, so the edit form keeps its dirty-tracking around `onChange`.
  */
 import type { ReactNode } from "react";
 

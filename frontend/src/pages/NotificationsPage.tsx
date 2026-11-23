@@ -20,12 +20,7 @@ const strings = t();
 
 const PAGE_SIZE = 30;
 
-/**
- * Full notification history (C-N-02): searchable, lazy-loaded page beyond
- * the header bell's small unbounded dropdown — meant for catching up after
- * being away a while (e.g. an account that doesn't log in often), where
- * loading every notification ever received up front would be wasteful.
- */
+/** Full notification history (C-N-02): searchable and lazy-loaded, beyond the header bell's dropdown. */
 export function NotificationsPage() {
   const run = useMutation();
   const navigate = useNavigate();

@@ -1,17 +1,14 @@
 /**
  * Module: modules/compliance/StandardsTabs
  *
- * The tab strip of the Standards page (`/standards`): Standards (the list), By standard and Outstanding (the
- * organisation-wide status views). The three tabs are addresses of their own (`paths.ts::standardsViewPath`), so a
- * tab can be bookmarked and an old Org Resources address can redirect to it.
- *
- * Responsibilities:
- * - Offer the two status tabs only to a person who may read compliance status in some organisation
+ * The tab strip of the Standards page (`/standards`): Standards (the list), By standard and Outstanding (the organisation-wide
+ * status views). Each tab has its own address (`paths.ts::standardsViewPath`), so a tab can be bookmarked and an Org Resources
+ * address can redirect to it.
+ * - The two status tabs are offered only to a person who may read compliance status in some organisation
  *   (`useComplianceStatusOrganizations`); everyone else sees the list alone, with no strip.
- * - Keep the chosen organisation (`?org=`, none meaning every organisation) when moving between the two status tabs.
- *
- * Design decisions: a hook returning the `tabs` and `contentProps` a `ListPageLayout` takes, so each of the three
- * pages places the strip the same way (under the title and its actions) and wires the tab panel the same way.
+ * - The chosen organisation (`?org=`, none meaning every organisation) is kept when moving between the status tabs.
+ * - A hook returns the `tabs` and `contentProps` a `ListPageLayout` takes, so the three pages place the strip and wire the tab
+ *   panel the same way.
  */
 import type { HTMLAttributes, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";

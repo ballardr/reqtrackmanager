@@ -1,18 +1,16 @@
 /**
  * Module: components/useDialogGuard
  *
- * The unsaved-changes guard shared by `Modal` and `SidePanel`: every way of leaving a form dialog
- * (Escape, the header close button) goes through `requestClose`, which closes at once when nothing
- * is unsaved and otherwise asks first (`DiscardChangesDialog`). A click on the backdrop does not
- * close a dialog that holds a form. A browser tab close or reload while unsaved is warned about too.
+ * The unsaved-changes guard shared by `Modal` and `SidePanel`: every way of leaving a form dialog (Escape, the header
+ * close button) goes through `requestClose`, which closes at once when nothing is unsaved and otherwise asks first
+ * (`DiscardChangesDialog`). A backdrop click does not close a dialog that holds a form. A browser tab close or reload
+ * while unsaved is warned about too.
  *
- * "Unsaved" is the caller's `dirty` value when it passes one (compared by value against what was
- * opened). A dialog that holds a form (it renders `FormActions`) but passes none is measured from the
- * DOM: the values of its inputs, textareas, selects and rich-text fields are recorded at the first
- * interaction and compared at close, so an edit that is undone reads as clean. A dialog that has finished
- * its work (a result view with `ResultActions`) is settled: it holds nothing unsaved whatever the earlier steps
- * edited, so it closes without asking. Dialogs without a form (viewers, pickers, confirms) are never dirty and
- * keep closing on the backdrop.
+ * "Unsaved" is the caller's `dirty` value when given (compared by value against what was opened). A dialog that holds a
+ * form (it renders `FormActions`) but passes none is measured from the DOM: the values of its inputs, textareas, selects
+ * and rich-text fields are recorded at the first interaction and compared at close, so an undone edit reads as clean. A
+ * dialog that has finished its work (a result view with `ResultActions`) is settled and closes without asking. Dialogs
+ * without a form (viewers, pickers, confirms) are never dirty and close on the backdrop.
  *
  * Dependencies: `DiscardChangesDialog`; used by `Modal` and `SidePanel`.
  */

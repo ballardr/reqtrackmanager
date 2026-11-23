@@ -4,11 +4,8 @@ Revision ID: 0076
 Revises: 0075
 Create Date: 2026-10-12
 
-`decisions.owner_id` and `decisions.decision_maker_id` may now name a user, an
-organisation group or a project group.
-Each gets a `<name>_type` column (existing rows backfill to `user`), the foreign
-key to `users` is dropped (the id now points at one of three tables; the
-service validates it), and a check constraint keeps the pair consistent.
+Adds `<name>_type` columns (existing rows backfill to `user`), drops the user
+foreign keys (the service validates the id) and adds a pair check constraint.
 """
 
 from collections.abc import Sequence

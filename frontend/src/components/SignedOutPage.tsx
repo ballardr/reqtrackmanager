@@ -5,9 +5,8 @@
  * narrow centred column for the page's cards and the page footer. One component so these pages keep the same width,
  * spacing and footer placement (docs/ux-style-guide.md, one component per pattern).
  *
- * Responsibilities: place the footer either directly below the cards (`after_content`, the default) or at the bottom
- * edge of the window (`bottom_of_page`). The footer is ordinary page flow in both cases, never fixed, so a short
- * window scrolls with the footer after the cards. The position is the one the caller passes (an organisation's own
+ * Responsibilities: place the footer directly below the cards (`after_content`, the default) or at the bottom edge of the
+ * window (`bottom_of_page`), always in page flow, never fixed. The position is the caller's (an organisation's own
  * sign-in page passes its resolved value), otherwise the platform setting from the public platform branding read.
  */
 import type { CSSProperties, ReactNode } from "react";

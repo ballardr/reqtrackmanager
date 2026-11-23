@@ -213,7 +213,7 @@ def test_the_merge_note_is_kept_shown_in_the_history_and_carried_to_the_duplicat
     h = auth_headers(token)
 
     history = {m["duplicate"]["id"]: m for m in client.get(f"{base}/requests/{a['id']}/merges", headers=h).json()}
-    assert history[b["id"]]["note"] == "Same ask, different words"  # trimmed, and kept (it used to be dropped)
+    assert history[b["id"]]["note"] == "Same ask, different words"  # trimmed, and kept
     assert history[c["id"]]["note"] == ""
     versions = client.get(f"{base}/requests/{b['id']}/versions", headers=h).json()
     assert any(v["change_note"] == f"Merged into {a['unique_code']} as a duplicate. Same ask, different words" for v in versions)

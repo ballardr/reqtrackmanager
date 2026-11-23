@@ -1,21 +1,10 @@
-"""Tests for Decision Management's two seeding hooks:
-
-- `app.modules.decisions.module._seed_new_project` (`on_project_created`)
-  — every new *root* project (no parent) gets the 5 default
-  `DecisionTypeDefinition` rows, not gated on module enablement. A project
-  with a parent is deliberately left unseeded (2026-09-22,
-  see `test_decisions_hierarchy.py`) so its own hierarchical-project
-  fallback (`service.resolve_effective_decision_types`) has something to
-  do — exact mirror of `ActionTypeDefinition`'s own root-only seeding.
-- `app.modules.decisions.module._seed_org_templates` (`on_org_created_
-  with_choices`) — a new organisation gets a `DecisionTemplateDefinition`
-  row per selected ADR template pack, opt-in rather
-  than unconditional, exercised end-to-end through the real `POST /orgs`
-  endpoint's `module_choice_keys` field.
-
-These assert by querying the database directly, the same
-"test through the DB" approach `test_module_
-registry.py` uses for the generic hook-dispatch mechanism itself.
+"""
+Tests for Decision Management's two seeding hooks, asserted through the database.
+- `module._seed_new_project` (`on_project_created`): every new root project gets
+  the five default `DecisionTypeDefinition` rows regardless of module enablement;
+  a project with a parent stays unseeded so it falls back to its ancestor's types.
+- `module._seed_org_templates` (`on_org_created_with_choices`): a new
+  organisation gets one template per selected ADR pack, through `POST /orgs`.
 """
 
 from __future__ import annotations
@@ -47,10 +36,8 @@ def _decision_template_names(organization_id: str) -> set[str]:
 
 
 def test_creating_a_project_seeds_default_decision_types(client, admin_token):
-    # I-M-05 removed the server-admin bypass from `require_org_role` — the
-    # bootstrap server admin can't create a project in an org it merely
-    # created, only a genuine member of that org can (`create_org_admin_in`,
-    # mirroring every other cross-org test in this codebase).
+    # The server admin has no `require_org_role` bypass: only a genuine member
+    # of the org can create a project in it (`create_org_admin_in`).
     org, org_admin_token = create_org_admin_in(client, admin_token, "Decision Types Seeding Test Co")
     project = create_project(client, org_admin_token, org["id"], "Decision Types Seeding Test Project")
 
@@ -58,10 +45,8 @@ def test_creating_a_project_seeds_default_decision_types(client, admin_token):
 
 
 def test_creating_a_child_project_seeds_no_decision_types_of_its_own(client, admin_token):
-    # A child starts empty so it actually falls back
-    # to its parent's decision types (`test_decisions_hierarchy.py` covers
-    # the fallback itself through the API) — mirrors `test_action_types.py`'s
-    # own root-only-seeding assumption.
+    # A child starts empty so it falls back to its parent's decision types
+    # (`test_decisions_hierarchy.py` covers the fallback).
     org, org_admin_token = create_org_admin_in(client, admin_token, "Decision Types Child Seeding Test Co")
     parent = create_project(
         client, org_admin_token, org["id"], "Decision Types Child Seeding Parent", can_be_parent=True

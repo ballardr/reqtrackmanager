@@ -124,17 +124,11 @@ def complete_required_action_assessment(
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Marks a required action assessment completed — mirrors
-    `complete_requirement`'s own shape (`is_completed`/`completed_at`/
-    `completed_by`, 409 if already completed), including that endpoint's
-    MCP gate: when reached through the MCP server (`channel == "mcp"`),
-    additionally requires this project and its organisation to both have
-    explicitly enabled AI approval (`require_ai_approvals_enabled`) — a
-    plain UI/API call is unaffected by that flag either way. Found missing
-    in a 2026-09-23 hardening pass despite this docstring already naming
-    `complete_requirement` as this endpoint's shape template; `uncomplete_
-    required_action_assessment` below is deliberately left ungated, mirroring
-    `uncomplete_requirement`'s own documented complete/uncomplete asymmetry."""
+    """Marks a required action assessment completed, with the shape of `complete_requirement` (`is_completed`,
+    `completed_at`, `completed_by`; 409 if already completed) and its MCP gate: through the MCP server
+    (`channel == "mcp"`) the project and its organisation must both have enabled AI approval
+    (`require_ai_approvals_enabled`). `uncomplete_required_action_assessment` is ungated, as `uncomplete_requirement`
+    is."""
     _pc, _pcr, assessment = _get_required_action_assessment_or_404(
         db, project_id, project_compliance_id, pcr_id, assessment_id
     )

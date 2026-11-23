@@ -1,26 +1,16 @@
 """
 Module: modules.compliance.router
 
-Aggregates the Compliance Module's org-scoped router package's per-concern
-routers — `settings` (org compliance settings), `standards` (standard CRUD/
-lifecycle/export/import/applicability-default/exclusions/project-summary/
-history), `standard_access` (standard member/group role grants — a
-deliberately separate, RBAC-adjacent bucket), `standard_versions` (version
-create/list/get/update/publish/retire), `version_requirements` (a version's
-hierarchical requirements), `version_required_actions` (required actions
-nested under a requirement), `action_types`, `mapping_relationship_types`,
-`requirement_mappings`, `org_dashboard` (project-compliance assignment plus
-the org-wide rollup GETs), and `standard_reviews` — into the single
-`/api/v1/orgs/{organization_id}/modules/compliance` router
-`app.modules.compliance.module.get_router()` returns.
+Aggregates the per-concern routers of the organisation-scoped package: `settings`, `standards` (CRUD, lifecycle,
+export, import, applicability default, exclusions, project summary, history), `standard_access` (standard member and
+group role grants, a separate RBAC-adjacent bucket), `standard_versions`, `version_requirements`,
+`version_required_actions`, `action_types`, `mapping_relationship_types`, `requirement_mappings`, `org_dashboard`
+(project-compliance assignment and the organisation-wide rollup reads) and `standard_reviews`, into the one
+`/api/v1/orgs/{organization_id}/modules/compliance` router returned by `app.modules.compliance.module.get_router()`.
 
-Split out from one ~2,800-line module (previously `modules/compliance/
-router.py`) so each concern can be read and changed independently, and so
-each bucket's endpoints carry their own specific OpenAPI tag
-(`compliance-org-<bucket>`) instead of one flat `"compliance"` tag; see
-`docs/decisions.md` for the decision record. `_shared.py` holds the
-dependency factories, standard-scoped role gates, and cross-org ownership-
-chain lookups used by three or more of these bucket files.
+Each bucket carries its own OpenAPI tag (`compliance-org-<bucket>`) so a concern can be read and changed independently
+(see `docs/decisions.md`). `_shared.py` holds the dependency factories, standard-scoped role gates and cross-organisation
+ownership-chain lookups used by three or more buckets.
 """
 
 from __future__ import annotations

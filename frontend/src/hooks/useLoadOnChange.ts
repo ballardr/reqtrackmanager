@@ -1,17 +1,10 @@
 /**
  * Module: hooks/useLoadOnChange
  *
- * Runs a page's `load` function when it mounts and whenever the listed
- * values change: the "fetch this page's data" effect, written once. `load` is
- * read through `useLatest`, so it may close over any state without being a
- * dependency (and without the stale-closure risk of omitting it), and only
- * `deps` decide when a reload happens. The caller's own `reload()` (called after
- * a mutation) is unaffected. With `intervalMs` it also reloads on a timer (polling).
- *
- * Keeping the effect here, rather than at each call site, is deliberate: a
- * page's `load` sets state once its response arrives, and the shared effect
- * simply starts it, instead of every page re-implementing an effect that
- * synchronises with nothing but its own state setters.
+ * Runs a page's `load` function when it mounts and whenever the listed values change: the "fetch this page's
+ * data" effect, written once. `load` is read through `useLatest`, so it may close over any state without being a
+ * dependency, and only `deps` decide when a reload happens. The caller's own `reload()` is unaffected. With
+ * `intervalMs` it also reloads on a timer (polling).
  */
 import { useEffect } from "react";
 

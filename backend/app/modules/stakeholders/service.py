@@ -1,37 +1,23 @@
 """
 Module: modules.stakeholders.service
 
-Business logic for the Stakeholders & Personas module: Persona and
-Stakeholder (second half of this file):
-
-- Persona CRUD as an identity row plus temporal `PersonaVersion` snapshots
-  (`create_persona`, `apply_persona_new_version`), archive/unarchive, and the
-  `Draft -> Active -> Retired` lifecycle (`transition_persona`).
-- The Persona type vocabulary (`PERSONA_TYPES`, a `TypeVocabulary`) and
-  resolving a persona's type reference by scope.
-- Weight resolution (`resolve_persona_weight`): the project's own override,
-  then the nearest ancestor project's, then the persona's own weight, then
-  `None` (equal weighting).
-- Per-project visibility of org Personas and Stakeholders:
-  `resolve_*_visibility`/`hidden_*_ids` (nearest ancestor override wins) and the
-  set/clear functions, one implementation bound per record kind.
-- `persona_scoring_targets`, this module's `scoring_target_providers` entry
-  for Context & Strategy's per-persona Pain Point scoring.
-- `resolve_persona_file_project_id`, the file-ownership hook.
-- Stakeholder CRUD/lifecycle with the same version-table shape, the
-  Influence × Interest grid read-out (`grid_quadrant`, `suggest_cadence`),
-  the Stakeholder → Persona "represents" links, and `erase_stakeholder`.
-- Stakeholder Need (last section): project-scoped CRUD/lifecycle, the
-  "has need" links from Stakeholders/Personas and the "gives rise to" links to
-  Requirements.
+Business logic for the Stakeholders & Personas module:
+- Persona CRUD as an identity row plus temporal `PersonaVersion` snapshots, archive/unarchive and the
+  `Draft -> Active -> Retired` lifecycle; the Persona type vocabulary (`PERSONA_TYPES`).
+- Weight resolution (`resolve_persona_weight`): project override, then nearest ancestor project's, then
+  the persona's own weight, then `None` (equal weighting).
+- Per-project visibility of org Personas and Stakeholders (nearest ancestor override wins), one
+  implementation bound per record kind.
+- `persona_scoring_targets` (this module's `scoring_target_providers` entry) and
+  `resolve_persona_file_project_id` (the file-ownership hook).
+- Stakeholder CRUD/lifecycle with the same version-table shape, the Influence × Interest grid read-out,
+  the "represents" links and `erase_stakeholder`.
+- Stakeholder Need (last section): project-scoped CRUD/lifecycle and its "has need" and "gives rise to" links.
 
 Design decisions:
-- No content lock: with no approval gate a persona
-  stays editable in every status, and each edit is a new version.
-- Only `ACTIVE` personas are offered as scoring targets, so an unvetted
-  draft cannot skew a weighted roll-up (Decided by: Agent).
-- A persona's own weight lives on its version, not the identity row, so a
-  re-weighting is part of its history.
+- No content lock: with no approval gate a persona stays editable in every status; each edit is a new version.
+- Only `ACTIVE` personas are scoring targets, so an unvetted draft cannot skew a weighted roll-up.
+- A persona's own weight lives on its version, not the identity row, so re-weighting is part of its history.
 """
 
 from __future__ import annotations
@@ -643,9 +629,8 @@ def transition_stakeholder(
 
 
 # --- Per-project visibility ----------------------------------------
-# One implementation for the Persona and Stakeholder override tables
-# (`ProjectPersonaVisibility`, `ProjectStakeholderVisibility`), which differ
-# only in the record column; the public functions below bind each kind.
+# One implementation for the Persona and Stakeholder override tables, which differ only in the
+# record column; the public functions below bind each kind.
 
 
 def _resolve_visibility(
@@ -972,15 +957,13 @@ def delete_represents_link(db: Session, link: Any) -> None:
 
 
 def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> None:
-    """Hard-deletes a stakeholder and everything that holds data about them
-: version rows (contact info included), comments,
-    every file in storage (direct and comment attachments), their group
-    memberships and every `ArtefactLink` touching them. Writes one audit event carrying only the id
-    and the acting user, never the name or any content. The caller commits.
+    """Hard-deletes a stakeholder and everything that holds data about them: version rows (contact
+    info included), comments, every file in storage (direct and comment attachments), group memberships
+    and every `ArtefactLink` touching them. Writes one audit event carrying only the id and the acting
+    user, never the name or any content. The caller commits.
 
-    Audit events logged earlier for this stakeholder never held a name,
-    filename or content (`STAKEHOLDER_ATTACHMENTS.log_filenames` is off and the
-    routers log no names), so none need scrubbing.
+    Earlier audit events never held a name, filename or content (`STAKEHOLDER_ATTACHMENTS.log_filenames`
+    is off and the routers log no names), so none need scrubbing.
     """
     file_ids = set(db.scalars(select(StakeholderFile.file_id).where(StakeholderFile.stakeholder_id == stakeholder.id)))
     comment_ids = select(StakeholderComment.id).where(StakeholderComment.stakeholder_id == stakeholder.id)

@@ -3,20 +3,16 @@
  *
  * Edits an overview layout on the page itself: the widgets are the grid the viewers see, with a handle, a corner and
  * buttons on each, and a sticky bar above it holds what is not a single widget's (add a widget, the overview's project
- * scope, restore the default, cancel, save). One component serves a project's overview, an organisation's dashboard
- * page (live figures, no project scope) and, with labelled blocks in place of data, the organisation's default project
- * layout, so the three cannot drift.
+ * scope, restore the default, cancel, save). One component serves a project's overview, an organisation's dashboard page
+ * (live figures, no project scope) and, with labelled blocks in place of data, the organisation's default project layout.
  *
- * Responsibilities:
- * - Load the layout in force and the server's catalogue, keep a draft, and save the whole layout in one request.
- * - Show the draft with live figures (a project), so the effect of a change is seen as it is made.
- * - Open a widget's settings in a side panel; the draft changes as the settings do, and "Done" closes the panel.
- * - Restore the default (remove the project's or organisation's own layout) after a confirmation, offered only once
- *   the layout is the project's own, and ask before discarding changes.
+ * Responsibilities: load the layout in force and the server's catalogue, keep a draft and save the whole layout in one
+ * request; show the draft with live figures (a project); open a widget's settings in a side panel (the draft changes as the
+ * settings do; "Done" closes it); restore the default (remove the project's or organisation's own layout) after a
+ * confirmation, offered once the layout is the project's own, and ask before discarding changes.
  *
- * Design decisions:
- * - Save and Cancel are always on screen (the bar is sticky), the same reason a form's actions sit in its header.
- * - A widget the person hides stays in the grid, dimmed, so it can be shown again; it requests no data.
+ * Design decisions: Save and Cancel are always on screen (the bar is sticky), as a form's actions sit in its header. A
+ * widget the person hides stays in the grid, dimmed, so it can be shown again; it requests no data.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 

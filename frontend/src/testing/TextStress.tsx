@@ -1,9 +1,9 @@
 /**
  * Module: testing/TextStress
  *
- * The component of the "long text never breaks the layout" harness: it renders a view twice at the same width, once
- * with short text and once with long text, for `expectStressStable` (`testing/stressFixtures.ts`) to compare. See that
- * module for the fixtures and the assertion.
+ * Component of the "long text never breaks the layout" harness: renders a view
+ * twice at the same width, with short and long text, for `expectStressStable`
+ * (`testing/stressFixtures.ts`) to compare.
  */
 import type { ReactNode } from "react";
 

@@ -1,18 +1,15 @@
 /**
  * Module: components/LicencesPanel
  *
- * The three sections of the Licences group on the Policies page: the product's own licence, the third-party
- * components it ships (libraries, programs in the images, base images) and the fonts. Readable without signing in.
+ * The three sections of the Licences group on the Policies page, readable without signing in: the product's own
+ * licence, the third-party components it ships (libraries, programs in the images, base images) and the fonts.
  *
- * Responsibilities:
- * - `LicencesSection`: reads the generated inventory once and shows the chosen section.
- * - The library table: search, sort on a header click and "Show more" over the whole list held in the browser; a row
- *   opens its detail (licence, where it is used, its registry page and its licence texts).
- * - Licence texts are read only when a person opens one (the file is large), through one shared viewer.
- *
- * Design decisions: the data is static and authorless, so it does not go through the versioned policy model (see
- * `docs/decisions.md`, "Licences in the Policies area"). The product licence is a constant here, the one place a
- * licence change edits. Everything is a React element; no licence text or package field is inserted as markup.
+ * - `LicencesSection` reads the generated inventory once and shows the chosen section.
+ * - The library table searches, sorts on a header click and pages ("Show more") over the list held in the browser;
+ *   a row opens its detail (licence, use, registry page, licence texts). Licence texts are large and read only
+ *   when opened, through one shared viewer.
+ * - The data is static and authorless, so it bypasses the versioned policy model (`docs/decisions.md`, "Licences
+ *   in the Policies area"). The product licence is a constant here. No licence text or package field is markup.
  *
  * Dependencies: `hooks/useThirdPartyNotices` (static JSON assets), `DirectoryTable`, `Modal`.
  */

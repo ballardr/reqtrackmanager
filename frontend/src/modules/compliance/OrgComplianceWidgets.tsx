@@ -2,18 +2,13 @@
  * Module: modules/compliance/OrgComplianceWidgets
  *
  * The organisation's compliance posture as two widgets for the organisation overview dashboards
- * (`ModuleDefinition.org_overview_widgets`, registered on `TierAModuleDefinition.orgOverviewWidgets`), which replace the
- * former separate Compliance dashboard page: a summary of the headline tiles, and an attention card of the standards
- * with the most issues, the upcoming reviews and the recently changed assessments.
- *
- * Responsibilities:
- * - Read the module's own organisation endpoints (one shared, briefly cached request set, so two widgets on one
- *   dashboard do not fetch everything twice) and compute the headline figures with `computeOrgComplianceHeadline`.
- * - Link each tile to the pre-filtered By standard or Outstanding tab of the Standards page that it summarises.
- *
- * Design decisions: figures are counted per distinct project, as the Compliance sections count them; each list is
- * bounded to five rows so a widget keeps its height; the Export of the organisation report stays on the Standards page's status
- * sections, where it applies to what the person is looking at.
+ * (`ModuleDefinition.org_overview_widgets`, registered on `TierAModuleDefinition.orgOverviewWidgets`): a summary of the headline
+ * tiles, and an attention card of the standards with the most issues, upcoming reviews and recently changed assessments.
+ * - Reads the module's organisation endpoints (one shared, briefly cached request set, so two widgets on a dashboard do not
+ *   fetch twice) and computes the headline figures with `computeOrgComplianceHeadline`.
+ * - Links each tile to the pre-filtered By standard or Outstanding tab it summarises.
+ * Figures count distinct projects, as the Compliance sections do; each list is bounded to five rows to keep a widget's height;
+ * the organisation report's Export stays on the Standards page's status sections, where it applies to what is on screen.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

@@ -111,9 +111,8 @@ def create_component(
     prefix = payload.prefix or taxonomy.suggest_prefix(db, project.id, payload.name)
     if not prefix:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A prefix is required: the name has no letter or digit to suggest one from.")
-    # Same duplicate-prefix check `rename_component` already makes (and
-    # `create_category` makes per component); without it a repeated prefix
-    # hit the unique constraint and surfaced as a 500 (found 2026-10-04).
+    # Same duplicate-prefix check as `rename_component` (and `create_category` per component); without it a
+    # repeated prefix would hit the unique constraint and surface as a 500.
     if _component_prefix_taken(db, project.id, prefix):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A component with this prefix already exists.")
     count = len(db.scalars(select(ProjectComponent.id).where(ProjectComponent.project_id == project.id)).all())
@@ -352,16 +351,15 @@ def delete_category(
 
     Without `reassign_to` the delete succeeds only while nothing is attached: no requirement and no placed
     record of another type. Otherwise it is refused with 409 naming the counts, so a caller can offer a
-    replacement. The category row is locked before the counts are read, so a requirement or placement being
-    added at the same moment either is counted or waits and then fails its foreign key; nothing is lost. This
-    also lets a project's only category, once empty, be deleted.
+    replacement. The category row is locked before the counts are read, so a requirement or placement added at
+    the same moment either is counted or waits and then fails its foreign key. A project's only category, once
+    empty, can be deleted.
 
-    With `reassign_to`, every requirement that belonged to the category moves to it — which may be a category
-    under a *different* component (unlike moving a category's display position, which stays within one
-    component). Crossing components on reassignment also moves the affected requirements' `component_id` to
-    match, preserving the invariant that a requirement's component always matches its category's component.
-    `reassign_to` must be a different, existing category in the same project. Placements of other record
-    types in the category move to `reassign_to` the same way.
+    With `reassign_to`, every requirement in the category moves to it, which may be under a different component
+    (unlike a display-position move, which stays within one component); the affected requirements'
+    `component_id` moves to match, preserving the invariant that a requirement's component matches its
+    category's component. `reassign_to` must be a different, existing category in the same project. Placements
+    of other record types in the category move to `reassign_to` the same way.
     """
     category = db.scalar(
         select(ProjectCategory).where(ProjectCategory.id == category_id).with_for_update()

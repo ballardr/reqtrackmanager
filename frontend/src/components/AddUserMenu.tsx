@@ -1,16 +1,13 @@
 /**
  * Module: components/AddUserMenu
  *
- * The one "Add user ▾" button both user lists use (Server Management → Users and Org Admin → Users):
- * a menu of the ways to add an account, each opening its own dialog.
+ * The one "Add user" menu button both user lists use (Server Management and Org Admin Users); each row opens its
+ * own dialog, owned by the page, which also owns what each posts.
  *
  * - Invite user: emails a sign-up link, so the person chooses their own name and password.
- * - New user: an account the administrator creates now, with a password they type.
- * - New service user (an organisation's list only): an integration's identity with no password and no sign-in, which
- *   acts through tokens an administrator issues. Absent where there is no single organisation to own it.
- *
- * The pages own the dialogs and what each one posts; this component is only the entry point, so the two
- * pages cannot drift in wording or order (docs/ux-style-guide.md, "Pattern: action menu").
+ * - New user: an account the administrator creates immediately, with a typed password.
+ * - New service user (organisation list only): an integration identity with no password or sign-in, acting through
+ *   administrator-issued tokens. Absent where no single organisation owns it.
  */
 import { Bot, Plus, Send } from "lucide-react";
 

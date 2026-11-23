@@ -4,21 +4,13 @@ Revision ID: 0016
 Revises: 0015
 Create Date: 2026-08-26
 
-Adds `projects.can_be_parent`, a manager-controlled, default-`False` gate on
-whether a project may be selected as a parent for *other* projects
-(`routers.projects.create_project`/`update_project` now 400 if the intended
-parent has this `False`) — see docs/decisions.md's "Hierarchical projects"
-entry for the follow-up decision that added this. Requested directly: the
-"Parent project" picker was showing on every project even when there was
-nothing eligible for the caller to actually pick, and any project the caller
-merely manages could be attached to sight-unseen, with no deliberate opt-in
-from that project's own manager first.
+Adds `projects.can_be_parent`, a manager-controlled gate (default `False`) on whether a project may be
+selected as the parent of other projects; `routers.projects.create_project`/`update_project` return 400
+when the intended parent has it `False` (docs/decisions.md, "Hierarchical projects"). The opt-in keeps
+the "Parent project" picker limited to eligible projects and requires the parent's own manager to agree.
 
-Existing parent/child relationships are grandfathered: any project that
-already has at least one child (i.e. is referenced by another row's
-`parent_project_id`) is backfilled to `can_be_parent = true`, so this
-migration cannot retroactively break an already-established hierarchy —
-only *new* attachments are gated going forward.
+Projects that already have a child are backfilled to `can_be_parent = true`, so existing hierarchies
+are unaffected and only new attachments are gated.
 """
 
 from collections.abc import Sequence

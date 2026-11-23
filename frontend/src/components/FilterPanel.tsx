@@ -13,58 +13,26 @@ import { CheckboxField } from "./FormFields";
 
 const strings = t();
 
-// Matches `.side-grid`'s own mobile collapse breakpoint (theme.css,
-// `@media (max-width: 860px)`) — the filter body's own collapse and the
-// surrounding two-column-to-one-column layout collapse should agree on
-// where "mobile" starts, rather than the two disagreeing at some widths.
+// Matches `.side-grid`'s mobile collapse breakpoint (theme.css `@media (max-width: 860px)`), so the filter body
+// and the two-column layout collapse at the same width.
 const MOBILE_BREAKPOINT_PX = 860;
 
 /**
- * Filter shell (mock's Search/Status/Category/Filters panel), restructured
- * into
- * a header + collapsible body:
+ * Filter shell: a header plus a collapsible body.
  *
- *  - Header (always rendered, never collapses): when the caller passes
- *    `total` (the unfiltered mandatory-scope count), a `ResultCount` —
- *    `matching` (the current filtered/searched count) defaults to `total`
- *    itself when omitted, i.e. plain "N total" with no distinct filtered
- *    figure. Callers with no comparable "total" concept at all (a plain,
- *    unpaginated filter sidebar) omit `total` and get no `ResultCount`,
- *    unchanged from before this header existed. Also, when the caller
- *    passes `onSearchChange`, a free-text search `<input>`.
- *  - Body (`children`, the dropdown/checkbox filter controls): on desktop/
- *    wide viewports renders as if always expanded, with no visible toggle
- *    friction; below `MOBILE_BREAKPOINT_PX` it defaults to collapsed with a
- *    toggle to expand, via the existing `CollapsibleSection` accordion
- *    (style guide Principle 1, "Accordion (CollapsibleSection)") rather
- *    than a new disclosure widget. Callers with no filter fields beyond the
- *    header's own search box (e.g. `OrgListPage.tsx`) pass `children={null}`
- *    — the body (heading, accordion, everything) is then omitted entirely
- *    rather than rendering a `"Filters"` heading over nothing.
+ *  - Header (always rendered): with `total` (the unfiltered mandatory-scope count) a `ResultCount` (`matching`
+ *    defaults to `total`); with `onSearchChange` a free-text search `<input>`.
+ *  - Body (`children`): expanded on wide viewports; below `MOBILE_BREAKPOINT_PX` collapsed by default behind the
+ *    `CollapsibleSection` accordion (style guide Principle 1). `children={null}` omits the body entirely.
  *
- * `layout` picks between the two placements the style guide's "Pattern:
- * filter panel placement — side vs. top" documents:
- *  - `"side"` (default, unchanged from before this prop existed): the
- *    narrow (`minWidth: 220`) sidebar shell composed beside a `.side-grid`
- *    content column, fields stacked vertically. Right for directories with
- *    few enough columns that a 240px sidebar doesn't crowd the table.
- *  - `"top"`: a full-width horizontal bar rendered above the content
- *    instead of beside it — header and fields both flow in a wrapping row
- *    rather than a vertical stack, and the whole panel drops the sidebar's
- *    `minWidth`/`alignSelf` so it can span the page/section width. For wide,
- *    many-column directories (Org Users, Server Admin's Access Review,
- *    `ProjectMembersTable`) where a 240px sidebar would otherwise eat into
- *    the table's available width. No `"Filters"` heading in this mode — the
- *    visible search box and fields already read as a filter bar without one,
- *    and a redundant heading above a single-row toolbar reads oddly.
+ * `layout` is the placement of the style guide's "Pattern: filter panel placement - side vs. top": `"side"`
+ * (default) is a narrow (`minWidth: 220`) sidebar beside a `.side-grid` column with stacked fields; `"top"` is a
+ * full-width horizontal bar above the content with no `minWidth`/`alignSelf` and no "Filters" heading, for wide,
+ * many-column directories.
  *
- * The side layout has a title row ("Filters", like the other cards) holding the collapse toggle when the panel sits in
- * a `ListPageLayout` (`FilterCollapseContext`): the layout then hides the panel and shows a "Filters" button beside the
- * list actions to bring it back. The toggle is the nav rail's style (round, icon only, tooltip).
- *
- * `sectionKey` must be unique per page — it's `CollapsibleSection`'s own
- * per-user, cross-device persisted collapsed/expanded key, so two pages
- * sharing one key would also share the same stored preference.
+ * In a `ListPageLayout` (`FilterCollapseContext`) the side layout's title row holds a collapse toggle (round, icon
+ * only, tooltip); the layout then hides the panel and shows a "Filters" button beside the list actions.
+ * `sectionKey` must be unique per page: it is `CollapsibleSection`'s persisted key.
  */
 export function FilterPanel({
   sectionKey,
@@ -90,11 +58,8 @@ export function FilterPanel({
   const isNarrow = useNarrowViewport(MOBILE_BREAKPOINT_PX);
   const isTop = layout === "top";
   const collapse = useContext(FilterCollapseContext);
-  // Callers with no dedicated filter fields beyond the header's search box
-  // (e.g. `OrgListPage`) pass `{null}` as children — same reasoning as
-  // `layout="top"`'s own "no heading" rule above: a "Filters" heading over
-  // an empty body reads as broken, not as an empty section, so the title
-  // then says "Search".
+  // With no filter fields beyond the search box (`children` is `null`) the title says "Search": a "Filters"
+  // heading over an empty body reads as broken.
   const hasFilterFields = children != null;
   const body = isTop ? (
     <div className="row" style={{ gap: "var(--space-4)", rowGap: "var(--space-3)", flexWrap: "wrap", alignItems: "flex-end" }}>

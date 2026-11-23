@@ -6,12 +6,10 @@ import { deleteOrgOnCleanup, installCleanupHook, loginAs, PERSONAS } from "./hel
 installCleanupHook();
 
 /**
- * Job to be done: as a server administrator, I need to be able to disable
- * an organisation reversibly (e.g. a hosting customer stopped paying) and,
- * separately, permanently delete one once it's genuinely no longer needed
- * — both from the Server Management console, without touching any other
- * organisation. See docs/decisions.md's "Organisation disable and hard
- * delete" section for the full design.
+ * Job to be done: as a server administrator, I can disable an organisation reversibly (e.g. a hosting customer
+ * stopped paying) and, separately, permanently delete one that is not needed, both from the Server Management
+ * console, without touching any other organisation. See docs/decisions.md's "Organisation disable and hard delete"
+ * section for the design.
  *
  * Persona: ServerAdminOnly (zero org memberships).
  */
@@ -24,24 +22,13 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     await loginAs(page, PERSONAS.serverAdmin.email);
     await page.getByRole("link", { name: "Organisations", exact: true }).last().click();
     await expect(page).toHaveURL(/\/server\/organisations$/);
-    // Wait for this page's own heading before touching its Status filter:
-    // `FilterField` nests the `<select>` inside the same `<label>` as its
-    // caption (components/FilterPanel.tsx), so the accessible "label" text
-    // `getByLabel` matches against is the caption *plus every option's own
-    // text* (confirmed directly: this control's is "StatusActiveDisabled
-    // All") — a plain substring match on "Status" isn't safe: any org row's
-    // `ActionMenu` trigger has an accessible name of "<org name> actions",
-    // and an org whose name happens to contain the word "Status"/"Statuses"
-    // (e.g. another spec's "E2E Statuses Org" fixture, still present in the
-    // shared test DB) then collides with it. Scoping by role="combobox"
-    // (the native `<select>`'s accessible role; the `ActionMenu` trigger is
-    // role="button") disambiguates regardless of what other rows/fixtures
-    // exist on the page. React Router 7's default startTransition-wrapped
-    // navigation (the URL updates immediately, but a just-left page's
-    // content can stay mounted for a beat — see the identical fix in
-    // golden-path.spec.ts) can also transiently leave a *different* page's
-    // own "status"-containing filter mounted alongside this one; the heading
-    // wait below already guards against that.
+    // Wait for this page's heading before touching its Status filter: `FilterField` nests the `<select>` inside the same
+    // `<label>` as its caption (components/FilterPanel.tsx), so the accessible "label" text `getByLabel` matches is the
+    // caption plus every option's text ("StatusActiveDisabled All"), and a substring match on "Status" collides with an
+    // org row's `ActionMenu` trigger ("<org name> actions") when an org name contains "Status" (e.g. another spec's
+    // "E2E Statuses Org" fixture). Scoping by role="combobox" (the native `<select>`; the `ActionMenu` trigger is
+    // role="button") disambiguates. React Router 7's startTransition-wrapped navigation can also leave a different
+    // page's "status" filter mounted alongside this one (see golden-path.spec.ts); the heading wait guards against that.
     await expect(page.getByRole("heading", { name: "Organisations", exact: true })).toBeVisible();
     // Disabled orgs are hidden by default (UI/UX pass) — this test watches
     // one org through its whole lifecycle including a disabled state, so
@@ -56,16 +43,11 @@ test.describe("server admin manages an organisation's lifecycle", () => {
       const dialog = page.getByRole("dialog", { name: "New organisation" });
       await dialog.getByLabel("Organisation name").fill(orgName);
 
-      // Decision Management's org-creation-choices
-      // picker (`GET /orgs/creation-choices`) — this page renders it
-      // generically with no hardcoded knowledge of Decision Management,
-      // so exercising it here is real coverage of that mechanism, not
-      // just this specific module's own three packs. All three are
-      // `default_selected: true`, so pre-checked; leave Y-Statement
-      // unchecked to prove an opt-out is actually respected (checked
-      // indirectly — the org still creates successfully with one
-      // deselected — since no Decision Management UI exists yet,
-      // to directly verify which templates a given org ended up with).
+      // Decision Management's org-creation-choices picker (`GET /orgs/creation-choices`): this page renders it generically
+      // with no knowledge of Decision Management, so this exercises the mechanism, not only that module's three packs. All
+      // three are `default_selected: true`; Y-Statement is left unchecked to prove an opt-out is respected, checked
+      // indirectly (the org still creates successfully) since no Decision Management UI verifies which templates an org
+      // received.
       await expect(dialog.getByText("Decision Templates")).toBeVisible();
       const nygard = dialog.getByRole("checkbox", { name: /Nygard/ });
       const madr = dialog.getByRole("checkbox", { name: /MADR/ });

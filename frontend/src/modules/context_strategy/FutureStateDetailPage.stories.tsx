@@ -36,11 +36,7 @@ function mockDetailApis(current: FutureState) {
   });
 }
 
-/**
- * A real routed page — stories go through `withRouter`/`withAuth` rather
- * than passing props directly, mirroring `StrategyDetailPage.stories.tsx`'s
- * own identical convention.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props, as in `StrategyDetailPage.stories.tsx`. */
 const meta: Meta<typeof FutureStateDetailPage> = {
   title: "Modules/ContextStrategy/FutureStateDetailPage",
   component: FutureStateDetailPage,

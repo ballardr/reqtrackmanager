@@ -21,9 +21,7 @@ const CHILD_REQ = buildGraphNode({
 });
 
 /**
- * The Links panel every artefact detail page shows beside its content
- *. All calls go through an
- * injected fake API.
+ * The Links panel every artefact detail page shows beside its content. All calls go through an injected fake API.
  */
 const meta: Meta<typeof ArtefactLinksPanel> = {
   title: "Components/ArtefactLinksPanel",

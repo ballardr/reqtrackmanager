@@ -138,9 +138,8 @@ def _race_codes(project_id, generate) -> list[str]:
 
 def test_concurrent_requirement_and_action_codes_are_distinct(client, admin_token):
     """The two legacy per-project counters (`next_requirement_seq`,
-    `next_action_seq`) lock and re-read like `services.sequences` does
-    (2026-10-05: two parallel requirement creates in one project got the
-    same code and the second 500'd on the unique constraint)."""
+    `next_action_seq`) lock and re-read like `services.sequences` does, so two
+    parallel requirement creates in one project never receive the same code."""
     from app.models.project import ProjectCategory, ProjectComponent
     from app.services import actions as action_service
     from app.services import requirements as requirement_service

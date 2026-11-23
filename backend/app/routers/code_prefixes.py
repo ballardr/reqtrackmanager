@@ -1,21 +1,18 @@
 """
 Module: routers.code_prefixes
 
-The record code prefix an organisation, or one project, uses for each record type
-(`DEC-006` or, where chosen, `ADR-006`), and how each type's effective prefix was decided.
+The record code prefix an organisation, or one project, uses for each record type (`DEC-006` or, where
+chosen, `ADR-006`), and how each type's effective prefix was decided.
 
 Responsibilities:
-- List a scope's types with the effective prefix and the tier that set it, leaving out the
-  types of a module the scope cannot use (an administrator is not offered a switch for a
-  module that is off or not entitled).
-- Set and clear a scope's own prefix. Every rule (shape, uniqueness, nesting) is in
-  `services.code_prefixes`; this module authorises and shapes the responses.
+- List a scope's types with the effective prefix and the tier that set it, omitting the types of a module
+  the scope cannot use; set and clear a scope's own prefix. The rules (shape, uniqueness, nesting) are in
+  `services.code_prefixes`; this module authorises and shapes responses.
 
 Design decisions:
-- Reading is open to every organisation member / project member (the effective prefix is not
-  sensitive); changing needs the organisation administrator, or the project manager
-  (`require_project_manage`, as for components and categories).
-- A change affects records created afterwards only; the response text of the UI says so.
+- Reading is open to every organisation or project member (the prefix is not sensitive); changing needs the
+  organisation administrator or the project manager (`require_project_manage`, as for components and categories).
+- A change affects records created afterwards only.
 
 Dependencies: `services.code_prefixes`, the module registry (type labels and availability).
 """

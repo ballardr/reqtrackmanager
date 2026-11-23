@@ -2,26 +2,19 @@
  * Module: components/ListPageLayout
  *
  * The one layout for a list page with a side filter panel (docs/ux-style-guide.md, "Pattern: filter panel
- * placement"). The page title, its actions and the list share the left column and the filter panel fills the
- * right column from the title's own row down, so the filter's top edge lines up with the title on every list
- * page. Anything a page used to put above the list (a scoring-model switcher, a view tab strip, a banner)
- * is part of `children`, in the list column, so it can never push the filter panel down.
+ * placement"). The title, its actions and the list share the left column and the filter panel fills the right
+ * column from the title's row down. Anything above the list (a scoring-model switcher, a tab strip, a banner) is
+ * part of `children`, so it cannot push the filter panel down.
  *
- * A list of records passes `records` and the layout adds the shared Export and Import menu beside the page's
- * own actions (docs/ux-style-guide.md, "Pattern: list actions (export and import)").
+ * A list of records passes `records` and the layout adds the shared Export and Import menu.
  *
- * The layout also keeps the list's place (docs/ux-style-guide.md, "Pattern: list position"): it saves the scroll
- * offset and the loaded row count when the page unmounts and restores them on return, so a page passes only
- * `ready` and, if paginated, `loadedRows`.
+ * It keeps the list's place ("Pattern: list position"): scroll offset and loaded row count are saved on unmount
+ * and restored on return, so a page passes only `ready` and, if paginated, `loadedRows`.
  *
- * The filter panel collapses with the round toggle in its own header (`FilterPanel` reads it from `FilterCollapseContext`):
- * the panel is hidden, the list has the full width and a "Filters" button with the panel icon appears beside the list
- * actions on the title row to expand it (docs/ux-style-guide.md, "Pattern: filter panel placement"). The choice is the page's
- * own state and survives a change of view (list, grid). Collapsing never clears a filter, so the list is still narrowed by what was set.
- *
- * Narrow viewports collapse to one column in the order title, filter, list (the filter is a collapsed
- * accordion there). Pages whose table is too wide for a side panel keep `FilterPanel layout="top"` and do
- * not use this component.
+ * The filter panel collapses with its round header toggle (`FilterCollapseContext`): the list takes the full
+ * width and a "Filters" button on the title row expands it. The state belongs to the page and survives a view
+ * change; collapsing never clears a filter. Narrow viewports use one column: title, filter, list. Pages whose
+ * table is too wide for a side panel keep `FilterPanel layout="top"` and do not use this component.
  */
 import { PanelTopOpen } from "lucide-react";
 import { useMemo, useState, type HTMLAttributes, type ReactNode } from "react";

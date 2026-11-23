@@ -3,14 +3,14 @@ import { expect, test } from "@playwright/test";
 import { expectReasonTooltip, loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
 
 /**
- * Job to be done: an organisation administrator finds a project they hold no role in on the main project list (the
- * "Include projects I am not a member of" filter, off by default), and its gear opens a "Manage users" dialog wrapping
- * the exact same `ProjectMembersTable` the project's own Members section uses, fed by the same
- * `GET /effective-members`/`GET /pending-invites` endpoints. The row carries identity only and is not a link.
+ * Job to be done: an organisation administrator finds a project they hold no role in on the main project list
+ * (the "Include projects I am not a member of" filter, off by default), and its gear opens a "Manage users" dialog
+ * wrapping the project's own `ProjectMembersTable`, fed by `GET /effective-members` and `GET /pending-invites`.
+ * The row carries identity only and is not a link.
  *
- * Uses a brand-new, dedicated throwaway project (created via the API under the shared single-admin Gamma org, then
- * handed to another manager so the administrator holds no role in it) rather than a shared seeded project: this
- * mutates project role grants, and Gamma-1/Gamma-2/Gamma-3/Gamma-4 are all depended on by other specs.
+ * Uses a dedicated throwaway project (created under the shared single-admin Gamma org, then handed to another
+ * manager so the administrator holds no role in it): the test mutates project role grants, and Gamma-1 to Gamma-4
+ * are used by other specs.
  */
 test.describe("org admin: Manage users from the project list", () => {
   test("lists a project they are not a member of behind a filter, and its gear opens the shared members table", async ({ page }) => {
@@ -88,7 +88,7 @@ test.describe("org admin: Manage users from the project list", () => {
       await page.keyboard.press("Escape");
     });
 
-    await test.step("adding a direct member via the modal's own add control (members/groups directory rework: 'Add member' opens the control in a second, nested Modal instead of it sitting permanently inside this outer 'Manage users' Modal, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
+    await test.step("adding a direct member via the modal's own add control ('Add member' opens the control in a second, nested Modal on the shared `AddMembersModal` staged multi-add)", async () => {
       await modal.getByRole("button", { name: "Add member" }).click();
       const addMemberModal = page.getByRole("dialog", { name: "Add member" });
       await addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.orgAdminGamma.name);

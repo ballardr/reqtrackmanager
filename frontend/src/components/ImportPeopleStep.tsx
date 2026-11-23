@@ -2,14 +2,10 @@
  * Module: components/ImportPeopleStep
  *
  * The People step of a bundle import: each person the bundle names, how the import will record them (a matched
- * member, an imported person, the importer, or a reassigned member), and a choice per person to change that.
- *
- * Responsibilities: draw the table and the "keep original email" switch and report the importer's choices
- * upward. It reads the preview and holds nothing itself; `BundleImportDialog` fetches the preview and passes the
- * choices to the import request.
- *
- * Design: the choices are the request's `people` field (`ImportPeopleChoices`); an absent mapping entry means
- * Automatic. A person shown as an imported person is badged, so the importer sees who will not be a member.
+ * member, an imported person, the importer, or a reassigned member), and a choice per person to change that. It
+ * draws the table and the "keep original email" switch and reports the choices upward; `BundleImportDialog`
+ * fetches the preview and passes the choices (`ImportPeopleChoices`, the request's `people` field; an absent entry
+ * means Automatic). An imported person is badged, so the importer sees who will not be a member.
  */
 import { useMemo } from "react";
 

@@ -1,33 +1,29 @@
 """
 Module: services.org_policies
 
-An organisation's own policies (an access policy, a confidentiality agreement, ...): who may read each, whether
-links are allowed in them, the notification on publication, what a signed-in member sees, and the organisation bundle.
+An organisation's own policies (an access policy, a confidentiality agreement, ...): who may read each,
+whether links are allowed, the notification on publication, what a signed-in member sees, and the bundle.
 
-Responsibilities:
-- Hold the audience of a policy (every member, or named users and organisation groups) and the one visibility rule
-  (`can_view`) used by the reader list and the reader read.
-- List the published policies of every organisation a person belongs to, with their current versions.
-- Decide whether links are allowed (`Organization.allow_policy_links`) and re-check a working copy against it at publication.
-- Notify the audience when a policy is published, only when the publisher chose to.
-- Export and import the organisation's policies and their versions as an `org.json` section.
+Responsibilities: hold a policy's audience (every member, or named users and organisation groups) and the one
+visibility rule (`can_view`); list the published policies of every organisation a person belongs to with their
+current versions; decide whether links are allowed (`Organization.allow_policy_links`) and re-check a working
+copy at publication; notify the audience on publication when the publisher chose to; export and import the
+policies and versions as an `org.json` section.
 
 Design decisions:
-- Writing is `services.policies` with the owner passed in (one implementation); this module adds only what is
-  organisation-specific.
-- A policy the caller may not read is a 404, never a 403, so its existence is not revealed.
-- An organisation administrator always reads every policy of their organisation. A person with no role in the
-  organisation never does, and a policy of a disabled organisation is not listed.
-- An audience member must be a member or an organisation group of this organisation (`principals.validate_principal`
-  with no project, so a project group is refused). The reference is mandatory
-  (`principals.CORE_PRINCIPAL_REFERENCES`): deleting a group that restricts a policy needs a replacement, so removing a
-  group never widens who may read it.
-- Audit events and notifications carry counts and keys, never the policy text.
-- A bundle carries each policy's working copy, audience (by email or group name) and published versions, but always
-  imports as a draft, so an import never publishes text in the new organisation's name unreviewed. An audience member
-  that cannot be matched stands as the importing user, so an import never widens a restricted policy.
+- Writing is `services.policies` with the owner passed in; this module adds only what is organisation-specific.
+- A policy the caller may not read is a 404, never a 403. An organisation administrator reads every policy of
+  their organisation; a person with no role never does; a disabled organisation's policies are not listed.
+- An audience member must be a member or organisation group of this organisation
+  (`principals.validate_principal` with no project). The reference is mandatory
+  (`principals.CORE_PRINCIPAL_REFERENCES`): deleting a restricting group needs a replacement, so it never widens
+  who may read.
+- Audit events and notifications carry counts and keys, never policy text.
+- A bundle carries the working copy, audience (by email or group name) and published versions but always imports
+  as a draft, so an import never publishes text unreviewed; an unmatched audience member becomes the importing
+  user, so a restricted policy is never widened.
 
-External dependencies: `services.policies`, `services.policy_body`, `services.principals`, `services.notifications`.
+Dependencies: `services.policies`, `policy_body`, `principals`, `notifications`.
 """
 
 from __future__ import annotations

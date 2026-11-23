@@ -1,23 +1,18 @@
 """
 Module: routers.artefact_links
 
-Links on any artefact of a project:
-- `GET .../{type}/{id}/link-graph`: the records linked to it out to a few hops,
-  with edge direction resolved against the organisation's link-type settings.
-- `GET .../{type}/{id}/link-types`: the link types usable from it.
-- `GET .../{type}/{id}/link-candidates`: the records a link could point at, found by a
-  bounded search over every linkable type or within one type narrowed by browse levels.
-- `GET .../{type}/{id}/link-browse`: the next browse level of a type (standard -> version
-  -> requirement, component -> category, status, ...) given the choices so far.
-- `GET .../{type}/{id}/activity`: the record's activity timeline (audit events, versions, link events).
-- `POST .../{type}/{id}/links/bulk`: several links in one all-or-nothing call (create forms' quick-link field).
-- `POST .../{type}/{id}/links` and `DELETE .../{type}/{id}/links/{link_id}`:
-  generic link authoring from either end, whatever the artefact types.
+Links on any artefact of a project (all under `.../{type}/{id}/`):
+- `link-graph`: linked records out to a few hops, with edge direction resolved against the organisation's
+  link-type settings; `link-types`: the link types usable from it.
+- `link-candidates`: records a link could point at (bounded search over every linkable type, or within one
+  type narrowed by browse levels); `link-browse`: the next browse level of a type given the choices so far.
+- `activity`: the record's timeline (audit events, versions, link events).
+- `POST links/bulk`: several links in one all-or-nothing call (create forms' quick-link field);
+  `POST links` and `DELETE links/{link_id}`: generic link authoring from either end.
 
-This router is the authorisation point: project membership is checked here, and
-the services then authorise every record (same project or visible org record,
-module enabled, `view` permission; `link` or `manage` on the page artefact's type
-for writes), so a hidden record is counted but never revealed or traversed.
+This router is the authorisation point: project membership is checked here, then the services authorise
+every record (same project or visible org record, module enabled, `view`; `link` or `manage` on the page
+artefact's type for writes), so a hidden record is counted but never revealed or traversed.
 """
 
 from __future__ import annotations

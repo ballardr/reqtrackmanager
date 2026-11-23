@@ -4,20 +4,16 @@
  * The formatting toolbar over a TipTap editor, shared by the policy editor and the visual Markdown editor.
  *
  * Responsibilities:
- * - Offer the marks and blocks every rich text field has (bold, italic, headings 1 to 3, lists, quotation, rule,
- *   link, undo, redo), each shown pressed while it applies at the cursor.
- * - Offer the extras a field opts into through `features`: inline code, code block, table (with row and column
- *   actions while the cursor is in one), diagram, equations (Inline equation and Equation block) and a picture of the
- *   record's own attachment (`PictureToolbarButton`, shown only inside a record page that supplies pictures).
- * - Edit a link in a field under the toolbar rather than a browser prompt, accepting https, http and mailto only.
+ * - Offer the marks and blocks every rich text field has (bold, italic, headings 1 to 3, lists, quotation, rule, link,
+ *   undo, redo), each shown pressed while it applies at the cursor.
+ * - Offer the extras a field opts into through `features`: inline code, code block, table (with row and column actions
+ *   in one), diagram, equations and a picture of the record's own attachment (`PictureToolbarButton`, only inside a
+ *   record page that supplies pictures).
+ * - Edit a link in a field under the toolbar, not a browser prompt; https, http and mailto only.
  *
- * Design decisions:
- * - The buttons are the small size and grouped (text, headings, blocks, insert, history) with a separator between
- *   groups, so the toolbar takes one short row; it wraps rather than hiding any button behind a menu, because a
- *   narrow field is the only case that needs more than one row.
- * - The toolbar only issues commands the editor's extensions define, so a field offers a button only when its
- *   editor was built with the matching extension (`features` must agree with the extension set).
- * - Whitespace in a link address is encoded (`%20`) so the stored Markdown link stays valid.
+ * Design decisions: small buttons grouped with separators take one short row, which wraps rather than hiding buttons in
+ * a menu. The toolbar issues only commands the editor's extensions define, so `features` must agree with the editor's
+ * extension set. Whitespace in a link address is encoded (`%20`) so the stored Markdown link stays valid.
  *
  * Dependencies: TipTap, lucide icons, `ToolbarButton`.
  */

@@ -1,12 +1,9 @@
 /**
  * Module: components/Gauge
  *
- * A half-dial showing one figure between a minimum and a maximum, coloured by its level (within range,
- * warning, critical). Used by the project overview's gauge widget.
- *
- * Design decisions:
- * - The level is also written as text and in the accessible name, never colour alone.
- * - Drawn as one SVG arc with `pathLength` so the filled share is a plain dash length; no charting dependency.
+ * A half-dial showing one figure between a minimum and a maximum, coloured by level (within range, warning,
+ * critical), for the project overview's gauge widget. The level is also text and in the accessible name, never
+ * colour alone. One SVG arc with `pathLength` makes the filled share a plain dash length (no charting dependency).
  */
 import { gaugeFraction, gaugeTone, type GaugeTone } from "../utils/overviewWidgets";
 

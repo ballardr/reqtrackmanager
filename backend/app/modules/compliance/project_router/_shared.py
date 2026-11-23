@@ -1,18 +1,10 @@
 """
 Module: modules.compliance.project_router._shared
 
-Internal helpers shared by several bucket modules of the compliance
-module's project-scoped router package (docs/decisions.md's "Split
-compliance/router.py and project_router.py into packages" entry) —
-the module-role/module-enabled dependency factories
-(`_require_officer`/`_require_view`), the project-membership-or-none
-validator, the project-compliance/requirement/evidence ownership-
-chain lookups, the required-action-assessment resolver, and the
-approval-invalidation notifier. Not a router itself — no `@router`
-routes live here. Every name here is used by two or more sibling
-bucket modules (verified by call-site grep before this split); a
-helper used by only one bucket instead stayed local to that bucket,
-per this package's own split convention.
+Internal helpers shared by two or more bucket modules of the project-scoped router package (a helper used by one bucket
+stays local to it): the module-role and module-enabled dependency factories (`_require_officer`, `_require_view`), the
+project-membership-or-none validator, the project-compliance, requirement and evidence ownership-chain lookups, the
+required-action-assessment resolver and the approval-invalidation notifier. It declares no routes.
 """
 
 from uuid import UUID

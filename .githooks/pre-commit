@@ -42,6 +42,15 @@ if staged_matches '\.(md|py|ts|tsx|css|ya?ml|sh|txt)$|^docs/'; then
   }
 fi
 
+# A source comment must describe the code, not the conversation or its history; see scripts/check_comment_style.py.
+# `--staged` scans only the staged files (the whole repository when the checker itself is staged).
+if staged_matches '\.(py|ts|tsx|js|mjs|css|sh|ya?ml|toml|ini|caddy)$|(^|/)(Dockerfile[^/]*|Caddyfile)$'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check_comment_style.py" --staged || {
+    echo "pre-commit: rewrite the comment(s) above to describe what the code does now, re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
 # Performance results are git-ignored; one force-added to a public repository must carry nothing identifying (perf/scrub_check.py).
 # Only tracked and staged files are checked: the directory also holds local bundles and copied-in archives that no commit publishes.
 if staged_matches '^perf/results/'; then

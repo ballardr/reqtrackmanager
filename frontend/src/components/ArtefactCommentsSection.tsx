@@ -1,27 +1,15 @@
 /**
  * Module: components/ArtefactCommentsSection
  *
- * The shared comment thread for module artefacts whose comments carry no
- * reaction mechanism (Strategy, Future State, Pain Point, Guiding Principle,
- * Open Question, Decision, Persona …) — deliberately not
- * `components/CommentThread.tsx`, whose mandatory `onToggleReaction` prop
- * assumes a heart-reaction these module-local comment tables don't have.
+ * The shared comment thread for module artefacts whose comments have no reaction mechanism (Strategy, Future
+ * State, Pain Point, Decision, Persona ...). Not `CommentThread`, whose mandatory `onToggleReaction` assumes
+ * heart reactions these tables lack.
  *
- * Generic over the comment shape: any row structurally satisfying
- * `ArtefactComment` works, so a module's own `*Comment` type needs no
- * adapter. Extracted from the previously duplicated
- * `modules/context_strategy/ArtefactCommentsSection.tsx` and
- * `modules/decisions/DecisionCommentsSection.tsx` (docs/ux-style-guide.md's
- * one-component-per-pattern rule) so a third module (Stakeholders &
- * Personas) didn't add a third copy.
+ * Generic over the comment shape: any row structurally satisfying `ArtefactComment` works. Attachment upload,
+ * remove and edit are opt-in through callbacks; edit only on the current user's own comments. `renderMeta` adds a
+ * caller line under a comment's header; `onPost` may resolve to nothing when the caller reloads its own list.
  *
- * Attachment upload/remove and edit are each opt-in via their callback; edit
- * is offered only on the current user's own comments. `renderMeta` adds a caller-defined line under a comment's header
- * (a "Pinned" chip and its actions, for comments that also sit on a drawing); `onPost` may resolve to nothing when
- * the caller reloads its own list and the comment takes no attachments.
- *
- * It is one `DetailCard` ("Comments"), so a detail page places it directly; each comment inside is a
- * flat row (`.comment-row`), not a card, because cards never nest.
+ * It is one `DetailCard` ("Comments"); each comment is a flat row (`.comment-row`), because cards never nest.
  */
 import { Paperclip, Pencil } from "lucide-react";
 import { useState, type ReactNode } from "react";

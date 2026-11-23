@@ -9,8 +9,8 @@ import { DetailLayout } from "./DetailLayout";
 import { MarkdownEditor } from "./MarkdownEditor";
 
 /**
- * Artefact detail page frame: content plus a collapsible aside (the Links panel). Collapse
- * is stored per user; below 1280px the aside stacks and has no toggle.
+ * Artefact detail page frame: content plus a collapsible aside (the Links panel). Collapse is stored per user;
+ * below 1280px the aside stacks and has no toggle.
  */
 const meta: Meta<typeof DetailLayout> = {
   title: "Components/DetailLayout",

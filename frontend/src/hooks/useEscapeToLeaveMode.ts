@@ -3,9 +3,9 @@
  *
  * Lets Escape turn off a canvas mode (note mode, comment mode) that stays on until it is switched off.
  *
- * Design decisions: one document listener in the bubble phase, so a dialog, pop-over or field that handles Escape first (and
- * marks it handled) keeps it; it never acts while text is being typed or a dialog, menu or pop-over is open, using the same
- * rule as the history keys (`historyShortcutBlocked`), so Escape in a field or on a menu does only what it did before.
+ * Design decisions: one document listener in the bubble phase, so a dialog, pop-over or field that handles Escape
+ * first (and marks it handled) keeps it; it never acts while text is being typed or a dialog, menu or pop-over is
+ * open (the `historyShortcutBlocked` rule).
  */
 import { useEffect } from "react";
 

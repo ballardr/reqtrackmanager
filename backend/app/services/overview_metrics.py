@@ -3,29 +3,24 @@ Module: services.overview_metrics
 
 The bounded catalogue of figures the project overview's widgets show, and the batched evaluation behind them.
 
-Responsibilities:
-- Define the core metrics (requirement and change request counts, completion, files, breakdowns, stage progress,
-  records by type, and a generic record count with the list filters) and merge those a module contributes
-  (`ModuleDefinition.overview_metrics`).
-- Validate a metric reference (`metric` key and `params`) against the catalogue, for a stored layout and for a
-  request alike, so a configuration can reach only what a metric defines.
-- Evaluate a batch of references for a caller in one pass: identical references once, a cap on the batch, a time
-  budget, and a state per result instead of a failure of the whole batch. Each reference names its own project
-  scope (this project, with parents, with children, or both), so one overview can show a project's own count beside
-  a roll-up of its children.
+Responsibilities: define the core metrics (requirement and change request counts, completion, files,
+breakdowns, stage progress, records by type, a generic record count with the list filters) and merge those a
+module contributes (`ModuleDefinition.overview_metrics`); validate a metric reference (`metric`, `params`)
+for stored layouts and requests alike; evaluate a batch for a caller in one pass (identical references once,
+a batch cap, a time budget, a state per result rather than failing the batch). A reference names its own
+project scope, so one overview can show a project's count beside a roll-up of its children.
 
 Design decisions:
-- A metric is never an arbitrary query. Filters on a record count are limited to the type's declared
-  `filter_params` plus the shared tag and placement filters, the same vocabulary its list accepts.
+- A metric is never an arbitrary query: record-count filters are the type's declared `filter_params` plus the
+  shared tag and placement filters, the vocabulary its list accepts.
 - Components and categories in a filter are named by prefix (`API`, `API/UX`), not id, so a stored layout is
-  portable across a bundle, a template clone and a child project that inherits it; they resolve to ids in the
-  project being read, and a name with no match counts nothing.
-- A figure the caller may not read (a type whose module is off, or without the `view` permission) is reported as
-  `unavailable`, never as zero, because a zero would reveal nothing but a count would reveal that hidden records exist.
+  portable across a bundle, template clone and inheriting child; they resolve in the project read, and an
+  unmatched name counts nothing.
+- A figure the caller may not read (module off, or no `view` permission) is `unavailable`, never zero, since a
+  count would reveal that hidden records exist.
 - No module is named here: module metrics and record types come from the registry.
 
-External dependencies: `modules.registry`, `services.record_counts`, `services.project_counts`,
-`services.project_scope`, `services.tags`.
+Dependencies: `modules.registry`, `services.record_counts`, `project_counts`, `project_scope`, `tags`.
 """
 
 from __future__ import annotations

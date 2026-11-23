@@ -110,9 +110,7 @@ export const HierarchyLabelsOnTileView: Story = {
   beforeEach: () => mockProjectListApisWithTree({ orgs: [org({})], projects: hierarchyProjects }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // "Platform" appears twice — its own tile heading, and inside "Child
-    // of: Platform" on the child's tile — so assert on the unambiguous
-    // "Child of:"/"Parent of:" label text instead of the name itself.
+    // "Platform" appears twice (its tile heading and "Child of: Platform" on the child's tile), so assert on the "Child of:"/"Parent of:" label text.
     await waitFor(() => expect(canvas.getByText("Child of:")).toBeInTheDocument());
     await expect(canvas.getByText("Parent of:")).toBeInTheDocument();
   },
@@ -128,9 +126,7 @@ export const HierarchyLabelsOnListView: Story = {
   },
 };
 
-/** No hierarchy anywhere in the accessible project set: the tree toggle
- * button must not render at all (`showTreeOption`), not just be disabled —
- * a tree mode with nothing to show a hierarchy for doesn't mean anything. */
+/** With no hierarchy in the accessible set the tree toggle button is not rendered (`showTreeOption`), not merely disabled. */
 export const TreeToggleHiddenWithoutHierarchy: Story = {
   beforeEach: () => mockProjectListApisWithTree({ orgs: [org({})], projects: singleOrgProjects }),
   play: async ({ canvasElement }) => {
@@ -161,9 +157,7 @@ export const TreeViewRendersHierarchy: Story = {
   },
 };
 
-/** Favourites-only filter — a new
- * `FilterCheckbox` in the existing `FilterPanel`, sending `favorite_only=true`
- * on the same `GET /projects` param `FavouritesPage.tsx` already used. */
+/** The favourites-only `FilterCheckbox` sends `favorite_only=true` on `GET /projects`, the parameter `FavouritesPage.tsx` uses. */
 export const FavouritesOnlyFilterNarrowsTheList: Story = {
   beforeEach: () => mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects }),
   play: async ({ canvasElement }) => {
@@ -176,11 +170,8 @@ export const FavouritesOnlyFilterNarrowsTheList: Story = {
   },
 };
 
-/** `Pattern: role display` — a user
- * holding both `project_manager` and a lower tier for the same project (a
- * data shape the effective-role resolver can genuinely produce, via
- * different group memberships) shows only "Project manager," not every
- * role held. */
+/** `Pattern: role display`: a user holding `project_manager` and a lower tier on one project (possible through different group
+ * memberships) sees only "Project manager", not every role held. */
 export const RoleBadgesCollapseToTheEffectiveHighest: Story = {
   beforeEach: () =>
     mockProjectListApis({
@@ -214,9 +205,7 @@ export const EmptyState: Story = {
   },
 };
 
-/** Style guide "Pattern: modal dialog for entity create/rename" — "New
- * project" opens a `Modal` instead of a permanently-visible inline block
- * that reflows the list underneath it. */
+/** Style guide "Pattern: modal dialog for entity create/rename": "New project" opens a `Modal`, not an inline block that reflows the list. */
 export const CreateProjectFormOpens: Story = {
   beforeEach: () => {
     mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
@@ -282,9 +271,7 @@ export const CreateProjectHasNoCodeFieldUnderAutomaticAssignment: Story = {
   },
 };
 
-/** Creating shows a success toast in addition to navigating to the new
- * project (Principle 7, sixth-pass audit) — the toast is mounted at the
- * app root, so it persists across the navigation the create triggers. */
+/** Creating shows a success toast and navigates to the new project (Principle 7); the toast is mounted at the app root so it survives the navigation. */
 export const CreateProjectShowsToast: Story = {
   beforeEach: () => {
     mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
@@ -540,9 +527,7 @@ export const NoTemplateChoiceIsSentExplicitly: Story = {
   },
 };
 
-/** can_be_parent (docs/decisions.md) defaults to false — with nothing
- * eligible in the org, the "Parent project" field doesn't render at all
- * rather than showing a picker with only "None" in it. */
+/** can_be_parent (docs/decisions.md) defaults to false: with nothing eligible in the organisation the "Parent project" field is not rendered. */
 export const CreateProjectHidesParentFieldWithNoEligibleCandidates: Story = {
   beforeEach: () => {
     mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
@@ -558,8 +543,7 @@ export const CreateProjectHidesParentFieldWithNoEligibleCandidates: Story = {
   },
 };
 
-/** Once at least one project in the org has opted in (can_be_parent), the
- * field appears and offers it. */
+/** Once a project in the organisation has opted in (can_be_parent), the field appears and offers it. */
 export const CreateProjectOffersEligibleParent: Story = {
   beforeEach: () => {
     mockProjectListApis({

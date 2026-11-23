@@ -1,16 +1,13 @@
 /**
  * Module: components/overview/ManageDashboardsDialog
  *
- * The organisation administrator's list of dashboard pages: add a page, copy one, rename it, limit it to chosen people or groups,
- * put the pages in order and delete one. The built-in Overview page is always first; it can be limited but not renamed,
- * moved or deleted.
+ * The organisation administrator's list of dashboard pages: add, copy, rename, limit to chosen people or groups, order
+ * and delete. The built-in Overview page is always first; it can be limited but not renamed, moved or deleted.
  *
- * Responsibilities:
- * - Show every page with who it is limited to, and the actions on it.
- * - Create and edit through one form (`DashboardFormDialog`), so the two cannot drift.
- * - Report each change through `onChanged` so the overview page reloads its menu.
+ * Responsibilities: show every page with who it is limited to and its actions; create and edit through one form
+ * (`DashboardFormDialog`); report each change through `onChanged` so the overview page reloads its menu.
  *
- * Design decisions: a page limited to nobody is shown to every member, which the form's help says; deleting asks first
+ * Design decisions: a page limited to nobody is shown to every member (the form's help says so); deleting asks first
  * because the layout cannot be recovered (the style guide's destructive-action tier).
  */
 import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Trash2 } from "lucide-react";
@@ -34,8 +31,8 @@ const VIEWER_KINDS = ["user", "org_group"] as const;
 
 /**
  * The create and edit form of one page. A new page is created with its name (who may see it is set once it exists, so the
- * chosen people and groups show their names); an existing page's people and groups are saved as they are chosen, as
- * every list field is, and its name with Save.
+ * chosen people and groups show their names); an existing page's people and groups are saved as chosen, like every list
+ * field, and its name with Save.
  */
 function DashboardFormDialog({
   organizationId, page, onClose, onSaved, onViewersChanged,

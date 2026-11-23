@@ -1,14 +1,11 @@
 """
 Module: routers.pats
 
-Self-service Personal Access Token management: create, list, and revoke
-(single or all at once) the caller's own tokens. The org-admin and
-server-admin incident-response actions (per-token revoke/descope, bulk
-revoke-all) live in routers/orgs.py and routers/system.py respectively,
-alongside those routers' other org-/deployment-scoped admin actions —
-see docs/decisions.md's "Personal Access Tokens" section for why.
+Self-service Personal Access Token management: create, list and revoke (single or all at once) the
+caller's own tokens. The org-admin and server-admin incident-response actions (per-token revoke/descope,
+bulk revoke-all) live with those routers' other admin actions (docs/decisions.md's "Personal Access Tokens").
 
-Every endpoint here needs an interactive session (`deps.get_current_session_user`), never a PAT: a token that
+Every endpoint needs an interactive session (`deps.get_current_session_user`), never a PAT: a token that
 could mint a wider or longer-lived token would make its own scope and expiry meaningless.
 """
 
@@ -59,15 +56,12 @@ def get_max_lifetime(
     current_user: User = Depends(get_current_session_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Returns the longest expiry currently allowed for a token scoped to
-    the given orgs — the same value `compute_expiry_ceiling` would produce
-    for a creation request with no explicit `requested_expires_at`.
+    """Returns the longest expiry currently allowed for a token scoped to the given orgs, the value
+    `compute_expiry_ceiling` produces for a request with no explicit `requested_expires_at`.
 
-    Lets the create-PAT form show (and pre-fill) this value directly rather
-    than making the user guess at a blank-means-"use the max" convention;
-    an org's `pat_max_lifetime_days` itself is only readable by that org's
-    admin (`GET .../advanced-settings`), but the *resulting date* is
-    harmless to show to any member creating their own token.
+    Lets the create-PAT form show and pre-fill it. An org's `pat_max_lifetime_days` is readable only by that
+    org's admin (`GET .../advanced-settings`), but the resulting date is harmless to show to any member
+    creating their own token.
     """
     max_expires_at = compute_expiry_ceiling(db, organization_ids, None)
     return {"max_expires_at": max_expires_at}

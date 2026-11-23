@@ -65,11 +65,8 @@ export const Tier2TypeToConfirm: Story = {
   },
 };
 
-/** A caller with its own extra required
- * input embedded in `message` (e.g. a "reason for change" field feeding a
- * change request instead of a direct action) uses `confirmDisabled` rather
- * than `requireTypedText`, which is reserved for the typed-exact-text Tier
- * 2 pattern above. */
+/** A caller with its own extra required input in `message` (a "reason for change" field) uses `confirmDisabled`
+ * rather than `requireTypedText`, which is for the typed-exact-text Tier 2 pattern above. */
 export const ConfirmDisabledExtraGate: Story = {
   args: {
     title: "Unlink this action via change request?",

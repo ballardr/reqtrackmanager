@@ -1,40 +1,30 @@
 """
 Module: services.link_authoring
 
-Generic link creation and removal for any artefact of a project, the one
-authorisation point for `routers.artefact_links`' write endpoints.
+Generic link creation and removal for any artefact of a project: the one authorisation point for
+`routers.artefact_links`' write endpoints.
 
 Responsibilities:
 - Offer the link types usable from an artefact (`usable_options`).
-- Create a link (`create_link_for_artefact`) after checking: both ends are
-  visible records of the project (module enabled, `view` held), the caller holds
-  `link` or `manage` on the page artefact's type (any state), or is a stakeholder,
-  project administrator or manager linking a core record while no requirement involved
-  is approved, the link type belongs to the project's
-  organisation and is not dedicated, the link type's restriction and both ends'
-  artefact-type rules allow it, and no approved requirement is being linked in a
-  project that requires a change request for that.
-- Remove a link (`delete_link_for_artefact`) under the same gates.
-- Share the authorisation helpers (`require_page_artefact`, `related_project_or_404`,
-  `linkable_types_for_project`) the finder reads in `services.link_browse` use, so the
-  picker never offers what creation would refuse.
-- Link across nesting: with `other_project_id` the other end may be in an ancestor
-  or descendant project the caller can open (`related_project_or_404`). Each end is
-  resolved, permission-checked and change-request-gated in its own project, the
-  link type's nesting scope decides whether and in which direction the pair is
-  allowed (`services.link_nesting`), and the audit event is written in both projects.
+- Create (`create_link_for_artefact`) and remove (`delete_link_for_artefact`) a link after checking: both ends
+  are visible records of the project (module enabled, `view` held); the caller holds `link` or `manage` on the
+  page artefact's type, or is a stakeholder, project administrator or manager linking a core record while no
+  involved requirement is approved; the link type belongs to the organisation, is not dedicated, and its
+  restriction and both ends' type rules allow it; and no approved requirement is linked where a change request
+  is required.
+- Share `require_page_artefact`, `related_project_or_404` and `linkable_types_for_project` with the finder in
+  `services.link_browse`, so the picker never offers what creation would refuse.
+- Link across nesting: with `other_project_id` the other end may be in an ancestor or descendant project the
+  caller can open. Each end is resolved, permission-checked and change-request-gated in its own project, the
+  link type's nesting scope decides the allowed direction (`services.link_nesting`), and the audit event is
+  written in both projects.
 
 Design decisions:
-- Reuses `ArtefactResolver` (the link graph's visibility rule) so authoring and
-  display can never disagree about what a user may see.
-- Both ends of a requirement are gated by the change-request rule, stricter than
-  the legacy requirement endpoint (which only checked its own end), because a
-  link on an approved requirement is the thing that rule protects.
-- A symmetric link type counts a reversed pair as a duplicate.
+- `ArtefactResolver` (the link graph's visibility rule) is reused so authoring and display agree.
+- Both ends of a requirement are change-request-gated, because a link on an approved requirement is what that
+  rule protects. A symmetric link type counts a reversed pair as a duplicate.
 
-Dependencies: `services.link_graph` (visibility), `services.link_types` (rules),
-`services.link_nesting` (related projects), `services.relationships` (storage),
-`services.requirements` (lock state), `services.audit`.
+Dependencies: `services.link_graph`, `link_types`, `link_nesting`, `relationships`, `requirements`, `audit`.
 """
 
 from __future__ import annotations

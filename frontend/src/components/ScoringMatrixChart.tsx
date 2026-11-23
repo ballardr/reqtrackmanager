@@ -1,21 +1,16 @@
 /**
  * Module: components/ScoringMatrixChart
  *
- * A two-axis scoring matrix (generic scoring-matrix core):
- * rows are the Y axis's levels (top level first), columns the X
- * axis's; each cell is coloured by the rating band its normalised score
- * (x weight × y weight ÷ the product of both top weights) falls in. Items
- * can be plotted as dots in their cell, sized by an optional 0–1 value
- * (e.g. Confidence for Pain Points).
+ * A two-axis scoring matrix: rows are the Y axis's levels (top level first), columns the X axis's; each cell is coloured
+ * by the rating band its normalised score (x weight × y weight ÷ the product of both top weights) falls in. Items can be
+ * plotted as dots in their cell, sized by an optional 0–1 value (e.g. Confidence for Pain Points).
  *
- * A cell's band is its explicit rating (`cellRatings`) if it has one, else the
- * threshold band of its score (`bandForCell`). With `onCellRatingChange` the
- * grid is an editor: each cell also carries a `<select>` to pin the cell to a
- * band or return it to the thresholds.
+ * A cell's band is its explicit rating (`cellRatings`) if it has one, else the threshold band of its score
+ * (`bandForCell`). With `onCellRatingChange` the grid is an editor: each cell carries a `<select>` to pin the band or
+ * return it to the thresholds.
  *
- * Rendered as a real `<table>` so the grid is navigable and every cell has
- * a spoken name (axis levels, band and item count). Colours come only from
- * the shared `BadgeTone` palette (`.scoring-cell--<tone>`, theme.css).
+ * Rendered as a real `<table>` so the grid is navigable and every cell has a spoken name (axis levels, band, item
+ * count). Colours come only from the shared `BadgeTone` palette (`.scoring-cell--<tone>`, theme.css).
  */
 import { bandForCell, topWeight, type ScoringAxis, type ScoringBand, type ScoringCellRating } from "../api/scoring";
 import { InlineSelect } from "./LabeledSelect";

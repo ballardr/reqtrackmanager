@@ -1,29 +1,15 @@
 /**
  * Module: components/ActiveFieldFrame
  *
- * The frame of a rich text field (the Markdown editor's Visual and Write views, the policy editor) that shows the
- * field's controls (its formatting toolbar and its view switch) only while the person is working in it.
+ * The frame of a rich text field (Markdown editor views, policy editor) that shows the field's controls (toolbar,
+ * view switch) only while the person is working in it. It tracks whether focus is anywhere inside the field
+ * (editor, toolbar, link entry, view switch, a toolbar panel), tells `ActiveFieldToolbar` through context, and
+ * keeps focus in the editor when a toolbar button is pressed so the selection survives.
  *
- * Responsibilities:
- * - Track whether the field is in use (focus is anywhere inside it: the editor, the toolbar buttons, the link entry,
- *   the view switch, a panel opened from the toolbar) and tell `ActiveFieldToolbar` through context.
- * - Draw a control slot that is absent while the field is not in use (the toolbar row), or that keeps its place and
- *   is hidden (`reserveSpace`, the view switch in the caption line); a hidden control is out of the tab order and the
- *   accessibility tree either way.
- * - Keep focus in the editor when a toolbar button is pressed, so pressing a button does not end the use of the field
- *   (some browsers do not focus a button on click) and the selection survives.
- *
- * Design decisions:
- * - Focus within the frame decides, not the pointer (a touch screen has no hover) and not the editor alone (pressing
- *   a button moves focus to the button). Focus moving between two controls, or into a panel drawn outside the frame's
- *   element but inside it in the component tree, is not leaving: a blur is settled after the focus that follows it.
- * - A field gains its toolbar row when it is first used, which moves the text below it down. When the pointer is
- *   pressed at that moment the row is drawn on release, so the movement never happens between the press and the
- *   release of the click that placed the caret or started a selection.
- * - The caption-line view switch reserves its place, so nothing moves in any view. The toolbar row does not: an
- *   unused field takes no room for controls (decided by the user).
- * - A frame inside another frame tracks nothing, so the field's own frame decides for the editor nested in it.
- * - There is no setting to keep the controls always visible: one rule for every rich text field.
+ * A control slot is absent while unused, or hidden but keeping its place (`reserveSpace`); hidden controls are out
+ * of the tab order. Focus decides, not the pointer (touch has no hover); focus moving between controls or into a
+ * panel drawn outside the frame's element is not leaving (a blur settles after the next focus). While the pointer
+ * is pressed the toolbar row is drawn on release, so the text never moves mid-click. A nested frame tracks nothing.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -106,9 +92,8 @@ export function ActiveFieldFrame({ children, className, style }: { children: Rea
 }
 
 /**
- * The slot a toolbar (or other field control) is drawn in: shown while the field is in use. While it is not, the slot
- * is absent (the field takes no room for it), or, with `reserveSpace`, hidden but keeping its place so nothing around
- * it moves. Outside any frame the content is always shown.
+ * The slot a toolbar or other field control is drawn in: shown while the field is in use; otherwise absent, or
+ * with `reserveSpace` hidden but keeping its place. Outside any frame the content is always shown.
  *
  * @param children The control.
  * @param reserveSpace Keep the slot's place while hidden (a control in a line that exists anyway, such as a caption).

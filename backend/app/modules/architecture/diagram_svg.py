@@ -1,40 +1,40 @@
 """
 Module: modules.architecture.diagram_svg
 
-Renders a resolved diagram (`schemas.DiagramView`) as one SVG document, for the server's SVG endpoint and the report
-part, so a document shows what the screen shows.
+Renders a resolved diagram (`schemas.DiagramView`) as one SVG document, for the server's SVG endpoint and the
+report part, so a document shows what the screen shows.
 
 Responsibilities:
-- Draw each visible node as its symbol or its type's shape, its code and name, and its ports as small tabs, at the size its
-  content needs when the stored size is smaller (`diagram_box_fit`: the symbol at a fixed height, the code line and every line
-  of the name, none cut with an ellipsis), so a line attaches to the frame that is drawn.
-- Draw each line between two attach points of its boxes (the ones a person chose, else the nearest pair; see
-  `diagram_points`), dashed when indirect, with an arrowhead when it has one direction, a count
-  when several connections collapse into it, and (with connection detail on) its type and protocol.
-- Draw each boundary box (the outer connection a scoped diagram stands for) in the shape of its direction, with the
-  connection's code, the element outside and a covered or not covered marker.
-- Draw annotation notes (at the size their content needs when their size is Automatic, `diagram_note_layout`, else at the
-  stored size) as plain text in a block of their tone (no block at all for the tone None, which draws the text alone,
-  and nothing for an empty note of that tone), with each leader line from the note's attach point through its vertices
-  (straight or smooth) to the box, the line's midpoint or the free point it ends at, with an arrowhead or a dot at either
-  end; a leader whose target is not drawn is not drawn.
-- With the diagram's `line_hops` on, draw a small arc where one line crosses another (`diagram_line_hops`; connections and
-  leaders are one set of lines).
+- Draw each visible node as its symbol or its type's shape, with its code, name and ports (small tabs), at the
+  size its content needs when the stored size is smaller (`diagram_box_fit`), so a line attaches to the frame
+  that is drawn.
+- Draw each line between two attach points of its boxes (a person's choice, else the nearest pair;
+  `diagram_points`), dashed when indirect, with an arrowhead when one-way, a count when several connections
+  collapse into it and, with connection detail on, its type and protocol.
+- Draw each boundary box (the outer connection a scoped diagram stands for) in the shape of its direction, with
+  the connection's code, the element outside and a covered or not covered marker.
+- Draw annotation notes (sized by content when Automatic, `diagram_note_layout`, else at the stored size) as
+  plain text in a block of their tone (none for the tone None, which draws the text alone; nothing for an empty
+  note), with each leader from the note's attach point through its vertices (straight or smooth) to the box,
+  the line's midpoint or a free point, with an arrowhead or dot at either end; a leader whose target is not
+  drawn is not drawn.
+- With the diagram's `line_hops` on, draw a small arc where one line crosses another (`diagram_line_hops`;
+  connections and leaders are one set).
 
 Design decisions:
-- **Everything user-supplied is text.** Names, codes, notes and labels are XML-escaped and stripped of control
-  characters before they enter the document; a symbol is the one place markup is embedded, and only the sanitised SVG
-  of `symbols.symbol_svg` is ever used (a symbol that cannot be read falls back to the type's shape).
-- **Light-theme colours.** The server document is for reports and files, so it uses the type's light colour (or a
-  neutral default) on a transparent background; the browser themes its own canvas.
-- **Boundary shapes** are drawn from a flag outline: the tip is on the right for an input (the flow runs into the
-  scope), on the left for an output, at both ends for a two-way connection, and a circle where no direction is disclosed.
-  The coverage marker is a filled or empty dot, with no warning colour.
-- **Deterministic.** Elements are drawn in the order of the view, so equal views give equal bytes.
-- A node a toggle hides, and a line with a hidden end, are not drawn; a locked node is a dashed box with its code.
+- Everything user-supplied is text: names, codes, notes and labels are XML-escaped and stripped of control
+  characters. A symbol is the one place markup is embedded, and only the sanitised SVG of `symbols.symbol_svg`
+  is used (an unreadable symbol falls back to the type's shape).
+- Light-theme colours: the document is for reports and files, so it uses the type's light colour (or a neutral
+  default) on a transparent background; the browser themes its own canvas.
+- Boundary shapes are drawn from a flag outline: the tip on the right for an input (flow runs into the scope),
+  on the left for an output, at both ends for two-way, and a circle where no direction is disclosed. The
+  coverage marker is a filled or empty dot, with no warning colour.
+- Deterministic: elements are drawn in the order of the view, so equal views give equal bytes.
+- A node a toggle hides and a line with a hidden end are not drawn; a locked node is a dashed box with its code.
 
-Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows), `diagram_points` (attach points),
-`diagram_note_layout` (a note's lines and frame), `diagram_box_fit` (a box's frame), `diagram_line_path`, `diagram_line_hops`.
+Dependencies: `schemas` (the view), `symbols` (safe markup), `models` (symbol rows), `diagram_points`,
+`diagram_note_layout`, `diagram_box_fit`, `diagram_line_path`, `diagram_line_hops`.
 """
 
 from __future__ import annotations

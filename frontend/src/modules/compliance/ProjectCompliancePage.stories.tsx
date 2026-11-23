@@ -37,17 +37,10 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
 }
 
 /**
- * `ProjectCompliancePage` is the route component the Tier A mechanism
- * mounts for the Compliance module — see `modules/registry.ts`. These
- * stories exercise the top-level Standards list and the "Assign standard"
- * flow; a drill-in into `ProjectComplianceDetail`'s own applicability
- * tree/reviews behaviour is exercised in that component's own story file,
- * not duplicated here — nested requirement/evidence/review fetches are
- * mocked to resolve empty so a drill-in story here settles cleanly, the
- * same "settle cleanly, don't duplicate coverage" approach
- * `StandardVersionsSection.stories.tsx` (the retired `StandardsPanel.
- * stories.tsx`'s successor)
- * already established for its own `VersionWorkspace` drill-in.
+ * `ProjectCompliancePage` is the route component the Tier A mechanism mounts for the Compliance module (`modules/registry.ts`).
+ * These stories exercise the top-level Standards list and the "Assign standard" flow; the drill-in into
+ * `ProjectComplianceDetail` is covered in its own story file, with nested fetches resolving empty so it settles, as in
+ * `StandardVersionsSection.stories.tsx`.
  */
 function mockApis(overrides: {
   assignments?: ProjectCompliance[];
@@ -155,11 +148,7 @@ export const AssignStandardFlow: Story = {
   },
 };
 
-/** The Standards tab's report download moved onto the shared
- * `ReportExportButton` (a single "Export" trigger opening a PDF/CSV
- * `Popover`) — see that component's own docstring for why this page's
- * previously-separate "Download PDF report"/"Download CSV report" buttons
- * were consolidated. */
+/** The Standards tab's report download is the shared `ReportExportButton`: one "Export" trigger opening a PDF/CSV `Popover`. */
 export const DownloadReport: Story = {
   beforeEach: () => {
     mockApis();

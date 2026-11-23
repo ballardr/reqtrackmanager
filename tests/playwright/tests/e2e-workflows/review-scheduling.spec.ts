@@ -3,15 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: a requirement can be given a scheduled review (C-R-06),
- * the assigned reviewer sees it on both their personal due list (C-R-09,
- * filtered per C-R-10) and the project's due list, and recording an outcome
- * (C-R-07) is gated to that reviewer or a project manager and requires a
- * comment when the outcome is "failed".
+ * Job to be done: a requirement can be given a scheduled review (C-R-06), the assigned reviewer sees it on both their
+ * personal due list (C-R-09, filtered per C-R-10) and the project's due list, and recording an outcome (C-R-07) is
+ * gated to that reviewer or a project manager and requires a comment when the outcome is "failed".
  *
- * A brand-new requirement is created for this test (rather than reusing a
- * seeded one) so it's unaffected by whatever lock state other specs in this
- * suite leave Alpha-1's other requirements in.
+ * A new requirement is created for this test so it is unaffected by the lock state other specs leave Alpha-1's other
+ * requirements in.
  */
 test.describe("requirement review scheduling", () => {
   test("PM schedules a review, the reviewer sees it due and records an outcome", async ({ page }) => {

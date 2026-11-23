@@ -4,14 +4,10 @@ import { api } from "../api/client";
 import type { ProjectRole } from "../api/types";
 
 /**
- * The current user's effective roles on a specific project, so pages can
- * hide actions (approve/reject a change request, archive a requirement)
- * that the viewer holds no permission for — the backend always enforces
- * this regardless, but a control that 403s on click isn't a working
- * workflow. Reads `GET /projects/{id}/my-roles`, which resolves just this
- * project — it previously pulled the whole project list (resolving roles
- * for every accessible project, the hottest backend call in the e2e suite)
- * and returned no roles at all on an archived project.
+ * The current user's effective roles on a specific project, so pages can hide actions (approve or reject a
+ * change request, archive a requirement) the viewer holds no permission for; the backend enforces permissions
+ * regardless. Reads `GET /projects/{id}/my-roles`, which resolves only this project, so no per-project role
+ * resolution runs for every accessible project.
  */
 export function useMyProjectRoles(projectId: string | undefined): ProjectRole[] {
   const [roles, setRoles] = useState<ProjectRole[]>([]);

@@ -4,24 +4,17 @@ Revision ID: 0024
 Revises: 0023
 Create Date: 2026-09-04
 
-Two-tier module gating for the modular feature system,
-sitting on top of the
-`server_roles`/`default_module_entitlement_policy`:
+Two-tier module gating for the modular feature system:
 
-- `organization_module_entitlements` (`app.models.module.
-  OrganizationModuleEntitlement`) — server-tier override of whether an
-  organisation is entitled to a module (the licensing/plan lever, managed
-  by `SERVER_ADMIN`/`MODULE_ADMINISTRATOR`).
-- `organization_modules` (`app.models.module.OrganizationModuleEnablement`)
-  — org-tier override of whether an org admin has enabled a module among
-  those it's entitled to (the day-to-day switch).
+- `organization_module_entitlements` (`app.models.module.OrganizationModuleEntitlement`): server-tier
+  override of whether an organisation is entitled to a module (the licensing lever, managed by
+  `SERVER_ADMIN`/`MODULE_ADMINISTRATOR`).
+- `organization_modules` (`app.models.module.OrganizationModuleEnablement`): org-tier override of
+  whether an org admin has enabled an entitled module.
 
-Both are explicit-override-only tables: absence of a row is meaningful
-(falls back to `ServerSettings.default_module_entitlement_policy` for
-entitlement, or the registry's own `ModuleDefinition.default_enabled` for
-enablement — see `app.modules.registry`'s `is_module_entitled`/
-`is_module_enabled`), so this migration adds no backfill, matching 0023's
-own "additive columns/tables only" precedent.
+Both tables hold explicit overrides only; an absent row falls back to
+`ServerSettings.default_module_entitlement_policy` (entitlement) or `ModuleDefinition.default_enabled`
+(enablement) in `app.modules.registry`'s `is_module_entitled`/`is_module_enabled`. No backfill.
 """
 
 from collections.abc import Sequence

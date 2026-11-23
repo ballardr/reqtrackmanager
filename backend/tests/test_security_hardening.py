@@ -1,6 +1,6 @@
 """
-Regression tests for vulnerabilities found and fixed in the security
-hardening pass (see docs/decisions.md "Security hardening" section):
+Regression tests for the security hardening fixes (see docs/decisions.md
+"Security hardening" section):
 
 - IDOR: requirement links/comments and change-request comments not scoped
   to the project in the URL.
@@ -124,8 +124,8 @@ def test_cannot_join_project_group_belonging_to_another_project(client, admin_to
         headers=auth_headers(attacker_token),
     ).json()
     project_b = create_project(client, admin_token, org_id, "Victim Project")
-    # No group is auto-created on project creation any more (2026-08-31) — create the manager-role group this test
-    # needs explicitly.
+    # No group is auto-created on project creation, so create the manager-role
+    # group this test needs.
     manager_group_b = client.post(
         f"/api/v1/projects/{project_b['id']}/groups", json={"name": "Managers"},
         headers=auth_headers(admin_token),
@@ -153,8 +153,8 @@ def test_cannot_nest_org_group_from_another_organization(client, admin_token, or
     ).json()
 
     project = create_project(client, admin_token, org_id, "My Project")
-    # No group is auto-created on project creation any more (2026-08-31) — create the manager-role group this test
-    # needs explicitly.
+    # No group is auto-created on project creation, so create the manager-role
+    # group this test needs.
     manager_group = client.post(
         f"/api/v1/projects/{project['id']}/groups", json={"name": "Managers"},
         headers=auth_headers(admin_token),

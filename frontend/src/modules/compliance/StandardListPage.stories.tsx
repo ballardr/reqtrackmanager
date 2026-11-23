@@ -30,9 +30,8 @@ function standard(overrides: Partial<ComplianceStandard> = {}): ComplianceStanda
 }
 
 /**
- * `StandardListPage` — the cross-org `/standards` tab, modelled on `ProjectListPage.tsx`. No cross-org
- * backend listing endpoint exists, so the page fans out `listStandards`
- * per org (`GET /orgs?mine=true`) — mocked here per org id below.
+ * `StandardListPage` is the cross-organisation `/standards` tab, modelled on `ProjectListPage.tsx`. No cross-organisation listing
+ * endpoint exists, so the page fans out `listStandards` per organisation (`GET /orgs?mine=true`), mocked per organisation id.
  */
 function mockStandardListApis(
   orgs: Organization[], standardsByOrg: Record<string, ComplianceStandard[]>, statusOrganizationIds: string[] = [],
@@ -150,10 +149,8 @@ export const CreateStandardWithOrgPicker: Story = {
   },
 };
 
-/** `ViewToggle` brings this page into line with
- * `docs/ux-style-guide.md`'s "Pattern: view toggle" — the same tile/list
- * split `ProjectListPage.tsx` already offers. Defaults to tiles; switching
- * to list shows the pre-existing `DirectoryTable`. */
+/** `ViewToggle` ("Pattern: view toggle" in `docs/ux-style-guide.md`) splits tiles and list as `ProjectListPage.tsx` does. It
+ * defaults to tiles; switching to list shows the `DirectoryTable`. */
 export const TogglesBetweenTilesAndListView: Story = {
   beforeEach: () =>
     mockStandardListApis(

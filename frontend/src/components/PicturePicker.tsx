@@ -4,20 +4,15 @@
  * The panel in which a picture is chosen from a record's attachments, uploaded as a new attachment, and given its
  * alternative text and caption, and the toolbar button that opens it.
  *
- * Responsibilities:
- * - `PicturePickerPopover`: step one lists the record's pictures as thumbnails (and offers an upload that attaches the
- *   file to the record and chooses it); step two shows the chosen picture with its alternative text and caption and
- *   hands the choice back on Insert (or Apply, for a picture being changed, which skips step one).
- * - `PictureToolbarButton`: the Picture button of every Markdown editor toolbar; it renders only where the editor sits
- *   inside a record page that supplies a picture source (`MarkdownImageSourceProvider`).
+ * - `PicturePickerPopover`: step one lists the record's pictures as thumbnails (and offers an upload that attaches
+ *   the file to the record and chooses it); step two shows the chosen picture with its alternative text and caption
+ *   and hands the choice back on Insert (or Apply, for a picture being changed, which skips step one).
+ * - `PictureToolbarButton`: the Picture button of every Markdown editor toolbar; it renders only inside a record
+ *   page that supplies a picture source (`MarkdownImageSourceProvider`).
  *
- * Design decisions:
- * - A picture is always an attachment of the record, so there is nothing to type: no address field. An upload made here
- *   is an ordinary attachment (it appears in the Attachments card) and is chosen at once, which is the whole
- *   "upload while inserting" flow, as the symbol picker does for a symbol.
- * - Alternative text and caption are optional; an empty alternative text is allowed (the picture is then described
- *   only by its caption, and the filename is not used as a stand-in).
- * - One panel serves the Write view, the Visual view and a change to a picture already in the Visual view.
+ * A picture is always an attachment of the record, so there is no address field; an upload made here appears in
+ * the Attachments card. An empty alternative text is allowed (the picture is then described by its caption, never
+ * by its file name). One panel serves the Write view, the Visual view and a change to an existing picture.
  *
  * Dependencies: `Popover`, `ToolbarButton`, `TextField`, `FileUploadTrigger`, `MarkdownImageSource`, `api/fileDetails`.
  */

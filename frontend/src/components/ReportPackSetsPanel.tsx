@@ -4,16 +4,15 @@
  * The "Saved sets" tab of the pack editor: named choices for the pack's variables ("Team Alpha: categories A and
  * B") so a repeat download is one click, and, in a project, what that project overrides.
  *
- * Responsibilities:
- * - List the sets the scope sees, each with its variables' values; where a project overrides a shared set, show the
+ * - Lists the sets the scope sees with their variables' values; where a project overrides a shared set it shows the
  *   shared value beside the project's own with a reset (style guide, "Pattern: organisation defaults in a project").
- * - Create, edit and delete the sets the scope owns (`ReportPackSetFormModal`); in a project, add its own set beside
- *   an inherited pack's, and override an inherited pack's set, variable by variable.
- * - Flag a stored value that is no longer one of the variable's options (the server's warning), never hide it.
+ * - Creates, edits and deletes the sets the scope owns (`ReportPackSetFormModal`); in a project it adds its own set
+ *   beside an inherited pack's and overrides an inherited pack's set, variable by variable.
+ * - Flags a stored value that is not one of the variable's options (the server's warning), never hides it.
  * - Every change ends in a toast; delete is Tier 1 (confirm).
  *
- * Design decisions: access is the server's (a refused write shows its message); the panel only offers the actions the
- * server says the scope may take (`editable`, `overridable`).
+ * Access is the server's (a refused write shows its message); the panel offers only the actions the server says the
+ * scope may take (`editable`, `overridable`).
  */
 import { useCallback, useState } from "react";
 

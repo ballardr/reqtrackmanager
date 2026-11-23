@@ -14,12 +14,12 @@ Responsibilities:
   costliest statements under load.
 
 Design decisions:
-- The data stays out of the repository (`perf/results/` is git-ignored; each host keeps its own bundles), so a figure can be
-  rebuilt only where those bundles are; the SVGs are byte-for-byte reproducible from them (fixed hash salt, no creation date,
-  text kept as text). The table of which bundle represents which host is a judgement a person makes and is written down here.
-- Colour follows the host, not its rank: Linux server blue, Dell workstation orange, Raspberry Pi aqua, in both themes;
-  the palette is the validated categorical reference palette (three slots validate against every pair in both modes).
-  Aqua is below 3:1 on the light surface, so every series is labelled and every figure has a table in the page.
+- The data stays out of the repository (`perf/results/` is git-ignored), so a figure is rebuilt only where its bundles
+  are; the SVGs are byte-for-byte reproducible (fixed hash salt, no creation date, text kept as text). The choice of
+  which bundle represents which host is a person's judgement, recorded in `BUNDLES`.
+- Colour follows the host, not its rank (Linux server blue, Dell workstation orange, Raspberry Pi aqua, in both themes),
+  from the validated categorical palette. Aqua is below 3:1 on the light surface, so every series is labelled and
+  every figure has a table in the page.
 - One axis per panel and no dual axes: different measures are different panels.
 
 Usage:

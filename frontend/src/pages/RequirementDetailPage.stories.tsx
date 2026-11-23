@@ -32,15 +32,10 @@ const PROJECT_ID = "project-1";
 const REQUIREMENT_ID = "requirement-1";
 
 /**
- * Routes every `api.get`/list call RequirementDetailPage's several parallel
- * fetches can make. `myRoles` drives `useMyProjectRoles` (via `GET
- * /projects/{id}/my-roles`) — the mechanism the QA
- * inventory flagged as a convenience-only, backend-mirroring permission
- * derivation (see docs/decisions.md); these stories pin the resulting
- * button visibility against `rbac.py`'s role hierarchy so drift here is
- * caught by a broken story, not silently. `links`/`linkedActions` populate
- * the Links/Actions cards; both default empty so existing stories that
- * don't care about them keep seeing the "no links/actions yet" state.
+ * Routes the `api.get`/list calls of RequirementDetailPage's parallel fetches. `myRoles` drives `useMyProjectRoles`
+ * (`GET /projects/{id}/my-roles`), a backend-mirroring permission derivation (docs/decisions.md); these stories pin the
+ * button visibility against `rbac.py`'s role hierarchy so drift fails a story. `links`/`linkedActions` populate the
+ * Links/Actions cards and default to empty.
  */
 function mockRequirementDetailApis(
   myRoles: ProjectRole[],
@@ -62,15 +57,9 @@ function mockRequirementDetailApis(
     orgUserSearchMembers?: OrgUser[];
     // Modules enabled for the project (`GET /enabled-modules`); none by default.
     enabledModules?: ModuleNavEntry[];
-    // The org's own
-    // `force_require_change_request_for_approved_links`, fetched via a
-    // bare `GET /orgs/{id}` (readable by any org member). Defaults false,
-    // matching the org-wide-permissive default.
+    // The organisation's `force_require_change_request_for_approved_links`, read by a bare `GET /orgs/{id}` (any member); default false.
     orgForceLinksLocked?: boolean;
-    // This project's own `require_change_request_for_approved_links`/
-    // `exempt_from_org_link_lock`, folded into the same `GET
-    // /projects/{id}` fetch this page's `organizationId` already comes
-    // from — both default false.
+    // The project's `require_change_request_for_approved_links`/`exempt_from_org_link_lock`, from the `GET /projects/{id}` fetch; default false.
     requireCrForLinks?: boolean;
     exemptFromOrgLinkLock?: boolean;
   } = {}
@@ -144,9 +133,8 @@ export default meta;
 
 type Story = StoryObj<typeof RequirementDetailPage>;
 
-/** A plain member (no stakeholder/manager/admin role) gets the read-only
- * view even though the requirement itself isn't locked — matches
- * `canEdit = canArchive || myRoles.includes("stakeholder")` in the page. */
+/** A plain member (no stakeholder, manager or admin role) gets the read-only view although the requirement is unlocked
+ * (`canEdit = canArchive || myRoles.includes("stakeholder")` in the page). */
 export const MemberSeesReadOnlyView: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["member"]);
@@ -200,8 +188,7 @@ export const UnavailableRequirementShowsNotFound: Story = {
   },
 };
 
-/** A stakeholder can edit the form fields (while still unlocked — draft) but
- * cannot archive or complete — `canArchive` stays false for this role. */
+/** A stakeholder can edit the form fields while the requirement is an unlocked draft but cannot archive or complete (`canArchive` stays false). */
 export const StakeholderCanEditNotArchive: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], { status: "draft" });
@@ -214,12 +201,8 @@ export const StakeholderCanEditNotArchive: Story = {
   },
 };
 
-/**
- * A still-draft requirement — a project manager sees the new "Approve" action
- * (`requires_approval` is true for draft/reviewed status), but not "Make
- * change request", since a change request can only target an already-locked
- * requirement; a stakeholder sees neither, since approval is PM-only.
- */
+/** A draft requirement shows a project manager "Approve" (`requires_approval` is true for draft/reviewed) but not "Make change
+ * request" (a change request targets only a locked requirement); a stakeholder sees neither, since approval is manager-only. */
 export const ManagerCanApproveDraftRequirement: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { status: "draft" });
@@ -287,11 +270,8 @@ export const StakeholderDoesNotSeeApproveOnDraftRequirement: Story = {
   },
 };
 
-/** A project manager can archive and — because status is "approved" — mark
- * the requirement completed. Being locked (status "approved" is locked for
- * every role, per C-G-12 — content is read-only until a change request is
- * approved), "Make change request" is offered instead of an edit form;
- * "Approve" is not, since it's no longer draft/reviewed. */
+/** A project manager can archive and, because status is "approved", mark the requirement completed. Approved is locked for
+ * every role (C-G-12), so "Make change request" is offered instead of an edit form, and "Approve" is not. */
 export const ManagerCanArchiveAndComplete: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { status: "approved" });
@@ -306,9 +286,7 @@ export const ManagerCanArchiveAndComplete: Story = {
   },
 };
 
-/** Archiving opens the shared `ConfirmDialog`,
- * then shows a success toast (Principle 7) before navigating back to the
- * list. */
+/** Archiving opens the shared `ConfirmDialog`, then shows a success toast (Principle 7) before navigating back to the list. */
 export const ArchivingConfirmsAndShowsToast: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { status: "approved" });
@@ -329,8 +307,7 @@ export const ArchivingConfirmsAndShowsToast: Story = {
   },
 };
 
-/** Cancelling the dialog leaves the requirement untouched — no delete
- * call, no toast. */
+/** Cancelling the dialog leaves the requirement untouched: no delete call, no toast. */
 export const ArchivingCanBeCancelled: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { status: "approved" });
@@ -349,11 +326,8 @@ export const ArchivingCanBeCancelled: Story = {
   },
 };
 
-/** An archived requirement shows a "Restore" button instead of "Archive",
- * plus an "Archived" badge — clicking Restore calls the new `/unarchive`
- * endpoint directly with no `ConfirmDialog` (unlike Archive above — mirrors
- * `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
- * immediately) and shows a success toast. */
+/** An archived requirement shows "Restore" instead of "Archive" and an "Archived" badge; Restore calls `/unarchive` directly with
+ * no `ConfirmDialog` (as `ProjectAdminPage.tsx`'s unarchive button) and shows a success toast. */
 export const ArchivedRequirementShowsRestoreButton: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { is_archived: true });
@@ -373,11 +347,8 @@ export const ArchivedRequirementShowsRestoreButton: Story = {
   },
 };
 
-/** Once completed (C-G-11: `is_completed` is an overlay on top of
- * `approved`, not a separate status), a manager sees "Revert completion"
- * instead of "Mark completed", plus a distinct "Completed" badge alongside
- * the (still-"Approved") status badge — mirrors the lifecycle diagram in
- * help/02-requirement-lifecycle.md. */
+/** Once completed (C-G-11: `is_completed` overlays `approved`), a manager sees "Revert completion" instead of "Mark completed" and a
+ * "Completed" badge beside the "Approved" status badge (help/02-requirement-lifecycle.md). */
 export const CompletedRequirementShowsRevert: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_administrator"], {
@@ -393,8 +364,7 @@ export const CompletedRequirementShowsRevert: Story = {
   },
 };
 
-/** A locked requirement is read-only for every role, including a manager —
- * editing only resumes through an approved change request. */
+/** A locked requirement is read-only for every role, including a manager; editing resumes only through an approved change request. */
 export const LockedRequirementIsReadOnlyForManager: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { is_locked: true, status: "approved" });
@@ -555,12 +525,8 @@ export const RemoveLinkConfirms: Story = {
   },
 };
 
-/** Once this project opts into
- * `require_change_request_for_approved_links` (or an org-wide force
- * applies, minus exemption) *and* the requirement is locked, adding a link
- * requires a reason and submits an `ADD_LINK` change request instead of
- * calling the direct endpoint — the same change-request-only-once-locked
- * rule established for actions, extended here to links. */
+/** When the project opts into `require_change_request_for_approved_links` (or an organisation-wide force applies, minus exemption)
+ * and the requirement is locked, adding a link needs a reason and submits an `ADD_LINK` change request instead of the direct endpoint. */
 export const AddLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
@@ -632,8 +598,7 @@ export const RemoveLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
   },
 };
 
-/** Actions card populated with a linked action, showing its outcome badge
- * and a link through to `ActionDetailPage`. */
+/** The Actions card shows a linked action with its outcome badge and a link to `ActionDetailPage`. */
 export const ActionsCardPopulated: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
@@ -647,9 +612,7 @@ export const ActionsCardPopulated: Story = {
   },
 };
 
-/** "Link existing action" now opens a `Popover` (one field — fits the
- * style guide's Popover, not `SidePanel`, side of the decision tree)
- * instead of a permanently-visible inline select+button row. */
+/** "Link existing action" opens a `Popover` (one field, the style guide's Popover case, not `SidePanel`). */
 export const LinkExistingAction: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
@@ -710,9 +673,7 @@ export const LinkExistingActionRoutesThroughChangeRequestOnceLocked: Story = {
   },
 };
 
-/** "Create and link a new action" now opens a `Modal` — a brand-new
- * `Action` has no "what came before it" to be contextual detail about, so
- * per the revised Principle 3 it no longer belongs in `SidePanel`. */
+/** "Create and link a new action" opens a `Modal`: a new `Action` is not contextual detail of the record (Principle 3). */
 export const CreateAndLinkAction: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"]);
@@ -739,11 +700,8 @@ export const CreateAndLinkAction: Story = {
   },
 };
 
-/** Once the requirement is locked
- * (APPROVED/COMPLETED), "Create and link a new action" no longer calls the
- * direct create-and-link endpoint — it requires a reason and submits an
- * `ADD_ACTION` change request instead, the same change-request-only-once-
- * locked rule the requirement's own fields already follow. */
+/** Once the requirement is locked (APPROVED/COMPLETED), "Create and link a new action" requires a reason and submits an
+ * `ADD_ACTION` change request instead of calling the direct create-and-link endpoint, as the requirement's own fields do. */
 export const CreateAndLinkActionRoutesThroughChangeRequestOnceLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { is_locked: true, status: "approved" });
@@ -780,8 +738,7 @@ export const CreateAndLinkActionRoutesThroughChangeRequestOnceLocked: Story = {
   },
 };
 
-/** Unlinking an action now opens the shared `ConfirmDialog` (Tier 1)
- * instead of firing `DELETE` immediately. */
+/** Unlinking an action opens the shared `ConfirmDialog` (Tier 1) instead of firing `DELETE` immediately. */
 export const UnlinkActionConfirms: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
@@ -805,12 +762,8 @@ export const UnlinkActionConfirms: Story = {
   },
 };
 
-/** `unlink_action` previously had no
- * lock check at all, an asymmetry with the already-gated add side (item
- * 514); once the requirement is locked, unlinking requires a reason and
- * submits a `REMOVE_ACTION` change request instead of calling `DELETE`
- * directly. Unconditional across every project, unlike the link stories
- * above which also require the project's own opt-in. */
+/** Once the requirement is locked, unlinking an action requires a reason and submits a `REMOVE_ACTION` change request instead of
+ * calling `DELETE`; this holds across every project, unlike the link stories above, which also need the project's opt-in. */
 export const UnlinkActionRoutesThroughChangeRequestOnceLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
@@ -842,14 +795,8 @@ export const UnlinkActionRoutesThroughChangeRequestOnceLocked: Story = {
 };
 
 /**
- * C-C-03: this page was one of the explicitly named
- * terminology leak sites — "Make change request", the archive confirm
- * dialog, and every other `strings.requirements.*` string on the page used
- * to hardcode the English noun regardless of the project's own Terminology
- * settings, even though `strings.ts`'s `{requirement}`/`{changeRequest}`
- * tokens already existed for the list page and nav. With the page now
- * reading through `useStrings()` instead of a module-scope `t()`, an
- * override actually reaches this page too.
+ * C-C-03: "Make change request", the archive confirm dialog and every other `strings.requirements.*` string read the
+ * project's Terminology (the `{requirement}`/`{changeRequest}` tokens) through `useStrings()`, so an override reaches this page.
  */
 export const TerminologyOverrideAppliesThroughoutPage: Story = {
   decorators: [withTerminology({ requirement: "Spec", change_request: "ECR" })],
@@ -868,13 +815,9 @@ export const TerminologyOverrideAppliesThroughoutPage: Story = {
   },
 };
 
-/** The versions table renders each row's status through
- * `REQUIREMENT_STATUS_LABEL`, matching the status badge above it on the same
- * page — not the raw backend enum string. */
+/** The versions table renders each row's status through `REQUIREMENT_STATUS_LABEL`, as the status badge above it, not the raw enum. */
 export const VersionHistoryShowsLabelledStatus: Story = {
-  // The meta's default `withAuth` has a no-op `setUiPreference`, so
-  // clicking the view toggle below wouldn't actually switch views —
-  // `withStatefulAuth` is needed for the toggle's click to take effect.
+  // The meta's default `withAuth` has a no-op `setUiPreference`; `withStatefulAuth` lets the view toggle take effect.
   decorators: [withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" }))],
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { status: "approved" }, {
@@ -931,11 +874,8 @@ export const VersionsInTheBodyActivityInTheAsideTab: Story = {
   },
 };
 
-/** `Pattern: resource picker dialog` —
- * the Attachments card's new "Link from shared resources" button opens
- * `ResourcePickerModal` over the org's shared resources, and "Attach
- * selected" calls the previously frontend-uncalled `POST .../files/link`
- * endpoint once per selected file. */
+/** `Pattern: resource picker dialog`: "Link from shared resources" on the Attachments card opens `ResourcePickerModal` over the
+ * organisation's shared resources, and "Attach selected" calls `POST .../files/link` once per selected file. */
 export const LinkFromSharedResourcesAttachesFile: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], {}, {
@@ -963,9 +903,7 @@ export const LinkFromSharedResourcesAttachesFile: Story = {
   },
 };
 
-/** The button is hidden once the requirement is locked, matching the
- * direct-upload trigger's own lock gating in `FileAttachmentList` — a
- * locked requirement's attachments can only change via a change request. */
+/** The button is hidden once the requirement is locked, like the direct-upload trigger in `FileAttachmentList`; attachments of a locked requirement change only via a change request. */
 export const LinkFromSharedResourcesHiddenWhenLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { is_locked: true, status: "approved" }, {
@@ -990,10 +928,8 @@ const ORG_USERS_FOR_ASSIGNEE: OrgUser[] = [
   },
 ];
 
-/** "Create and link a new action"'s
- * assignee field is `AssigneePicker` (a searchable `UserAutocomplete`), not
- * a plain unfiltered `<select>` — searching narrows the org's users and
- * picking one is included in the create-and-link payload. */
+/** The assignee field of "Create and link a new action" is `AssigneePicker` (a searchable `UserAutocomplete`): searching narrows
+ * the organisation's users and the pick is sent in the create-and-link payload. */
 export const CreateActionAssigneeSearchAndAssign: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], {}, { orgUsers: ORG_USERS_FOR_ASSIGNEE });
@@ -1016,8 +952,7 @@ export const CreateActionAssigneeSearchAndAssign: Story = {
   },
 };
 
-/** Picking an assignee then unassigning clears the field back to its
- * default, the same way the old `<select>`'s empty "Unassigned" option did. */
+/** Picking an assignee then unassigning clears the field to its default. */
 export const CreateActionAssigneeUnassign: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], {}, { orgUsers: ORG_USERS_FOR_ASSIGNEE });

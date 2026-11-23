@@ -4,28 +4,17 @@ Revision ID: 0047
 Revises: 0046
 Create Date: 2026-09-27
 
-: adds
-`scope_entity_id` to `user_custom_role_grants`/`group_custom_role_grants`
-(`app.models.custom_role.UserCustomRoleGrant`/`GroupCustomRoleGrant`) — the
-generalised sibling of `project_id`, for a `CustomRoleDefinition` whose
-`scope` is a registered module-owned entity scope (the
-`EntityScopeDefinition` registry, e.g. compliance's `"standard"`) rather
-than `"org"`/`"project"`. Mirrors `0034_module_role_scope_entity.py`'s
-identical addition to `user_module_roles` one tier up (a module-contributed
-role instead of a custom one) field-for-field: a bare, un-indexed-by-FK
-`UUID` column (nullable, `NULL` for every existing `"org"`/`"project"`
-grant), since the column records a grant against a scope whose meaning is
-owned by the declaring module, not this core table.
+Adds `scope_entity_id` to `user_custom_role_grants`/`group_custom_role_grants`
+(`app.models.custom_role.UserCustomRoleGrant`/`GroupCustomRoleGrant`), the generalised sibling of
+`project_id` for a `CustomRoleDefinition` whose `scope` is a registered module-owned entity scope (the
+`EntityScopeDefinition` registry, for example compliance's `"standard"`) rather than `"org"`/`"project"`.
+It mirrors 0034's addition to `user_module_roles`: a nullable `UUID` with no foreign key, `NULL` for
+`"org"`/`"project"` grants, because the scope's meaning is owned by the declaring module.
 
-Both tables' existing 3-part unique constraints (`0046`, created with no
-explicit name) are widened to include the new column, matching how
-`0034` widened `user_module_roles`'s own constraint — located by column
-membership rather than a guessed auto-generated name, the same defensive
-precedent `0034` and `0012` already set.
+Both tables' 3-part unique constraints (0046, unnamed) are widened to include the column, located by
+column membership rather than a guessed generated name (as in 0034 and 0012).
 
-No backfill needed: every existing row is `"org"`- or `"project"`-scoped
-and gets `scope_entity_id = NULL`, which is exactly what those scopes'
-resolution path already expects.
+No backfill: existing rows get `scope_entity_id = NULL`.
 """
 
 from collections.abc import Sequence

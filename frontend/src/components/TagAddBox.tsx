@@ -1,20 +1,17 @@
 /**
  * Module: components/TagAddBox
  *
- * The box that adds tags: one text box over a list of matching vocabulary tags. Typing filters the vocabulary and
- * Enter, a click, a comma or a semicolon adds the highlighted (or typed) tag. It is the content of the popover of
- * `TagInput` (a create form) and of the record header's "Add tag" popover (`RecordTags`), so the two cannot drift.
+ * The box that adds tags: one text box over a list of matching vocabulary tags. Typing filters the vocabulary and Enter,
+ * a click, a comma or a semicolon adds the highlighted (or typed) tag. It is the content of the popover of `TagInput` (a
+ * create form) and of the record header's "Add tag" popover (`RecordTags`), so the two cannot drift.
  *
- * Responsibilities:
- * - In a free project, offer "Add tag ..." for a name the vocabulary does not have.
- * - In a restricted project, accept only names the vocabulary offers (picker only) and say who can add a missing one.
- * - Validate a typed name with the same rules as the server (`tagNameProblem`).
- * - Report each change through `onChange`; nothing is saved here.
+ * Responsibilities: in a free project offer "Add tag ..." for a name the vocabulary lacks; in a restricted project
+ * accept only listed names and say who can add a missing one; validate a typed name as the server does
+ * (`tagNameProblem`); report each change through `onChange` (nothing is saved here).
  *
  * Design decisions: the box stays open after each add (cleared and refocused) so several tags go in one visit; Escape
- * closes the suggestion list first and then bubbles to the popover. Names are compared case-insensitively, as the
- * server does, so picking `safety` when `Safety` is listed uses the listed spelling. Enter never submits a
- * surrounding form (the popover is portalled outside it).
+ * closes the suggestion list first, then bubbles to the popover. Names compare case-insensitively as on the server, so
+ * `safety` picks the listed `Safety`. Enter never submits a surrounding form (the popover is portalled outside it).
  */
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 

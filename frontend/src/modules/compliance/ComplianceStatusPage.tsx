@@ -1,19 +1,15 @@
 /**
  * Module: modules/compliance/ComplianceStatusPage
  *
- * The By standard and Outstanding tabs of the Standards page (`/standards/by-standard`, `/standards/outstanding`):
- * the organisation-wide compliance status views, hosted beside the standards list because standards are an entity
- * of their own (a nav entry, a workspace), and these views read across every project assigned one.
- *
- * Responsibilities:
- * - Choose the organisations. The page offers an Organisation filter (first in the filter panel, only when the person
- *   has more than one) listing the organisations where the person may read the status
- *   (`useComplianceStatusOrganizations`); the choice is `?org=` and no choice reads every one of them.
- * - Hand the organisations read and the title-row parts (`ComplianceStatusFrame`) to the view's panel, which draws its
- *   own `ListPageLayout`. A person with no organisation to read sees the tab strip and a message.
- *
- * Design decisions: the panel is keyed by the organisations read so no filter or expanded row carries over from the
- * previous choice; this page decides no access (the endpoints enforce the Compliance Manager role).
+ * The By standard and Outstanding tabs of the Standards page (`/standards/by-standard`, `/standards/outstanding`): the
+ * organisation-wide compliance status views, hosted beside the standards list because they read across every project assigned
+ * a standard.
+ * - Offers an Organisation filter (first in the filter panel, only when the person has more than one) listing the organisations
+ *   where the person may read the status (`useComplianceStatusOrganizations`); the choice is `?org=` and no choice reads all.
+ * - Hands the organisations and the title-row parts (`ComplianceStatusFrame`) to the view's panel, which draws its own
+ *   `ListPageLayout`; a person with no organisation to read sees the tab strip and a message.
+ * - The panel is keyed by the organisations read so no filter or expanded row carries over; this page decides no access (the
+ *   endpoints enforce the Compliance Manager role).
  */
 import { useState } from "react";
 

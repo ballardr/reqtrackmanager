@@ -1,21 +1,15 @@
 """
 Module: services.ui_preferences
 
-Merges a partial update into a user's `ui_preferences` bag
-(`User.ui_preferences`) while keeping the bag bounded.
+Merges a partial update into a user's `ui_preferences` bag (`User.ui_preferences`) while keeping it bounded.
 
 Responsibilities:
-- Shallow-merge a patch by top-level key; a `None` value removes the key, so a
-  client can drop an override instead of storing a tombstone.
-- Reject patches that would exceed the key-count, key-length or serialised-size
-  limits, so an authenticated user cannot grow their own row without bound
-  (the bag is returned on every `/auth/me`, so its size is paid on every login).
+- Shallow-merge a patch by top-level key (`None` removes the key); reject patches that exceed the key-count, key-length or
+  serialised-size limits, since the bag is returned on every `/auth/me`.
 
 Design decisions:
-- Limits are checked on the *merged* result, not just the patch, because many
-  small patches can add up to an oversized bag.
-- Values stay open-ended JSON (the bag's whole point is that a new preference
-  is just a new key); only the overall size is bounded.
+- Limits apply to the merged result, because many small patches add up. Values stay open-ended JSON (a new preference is
+  a new key); only the overall size is bounded.
 
 Dependencies: none (stdlib only).
 """

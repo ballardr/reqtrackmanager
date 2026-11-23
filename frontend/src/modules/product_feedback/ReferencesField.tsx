@@ -1,10 +1,10 @@
 /**
  * Module: modules/product_feedback/ReferencesField
  *
- * The "External references" section of the create form: a list of references to items in outside tools (a Jira epic,
- * a ServiceNow ticket) to attach to the request as it is created, each laid out by the shared `ReferenceFields`.
- * An edit form does not show it: a reference is changed on the request page, on its own and without making a new
- * version of the request. Each row ends in a red icon-only remove button level with its fields. The form owns the list; a row with no system, or neither key nor link, is dropped on save.
+ * The "External references" section of the create form: references to items in outside tools (a Jira epic, a
+ * ServiceNow ticket) to attach as the request is created, each laid out by `ReferenceFields`. An edit form omits it: a
+ * reference is changed on the request page, on its own, without a new version. Each row ends in a red icon-only remove
+ * button level with its fields. The form owns the list; a row with no system, or neither key nor link, is dropped on save.
  */
 import { Plus, X } from "lucide-react";
 

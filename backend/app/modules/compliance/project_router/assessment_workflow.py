@@ -42,22 +42,10 @@ def submit_requirement_for_approval(
     project_id: UUID, project_compliance_id: UUID, pcr_id: UUID,
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
 ):
-    """Requests formal approval/sign-off for this requirement's current
-    assessment (§12) — `ASSESSED` -> `PENDING_APPROVAL`. 409 from any other
-    `approval_state`, enforcing §12's own minimum ordering ("Not Assessed ->
-    Assessed -> Pending Approval -> ...") rather than allowing e.g. a
-    `NOT_ASSESSED` row to be submitted with nothing yet assessed.
-
-    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22, see
-    docs/decisions.md's "Compliance MCP write tools + generalized AI
-    approval gate" entry): this action only queues a decision for a human
-    to make (an officer or PM still must call `approve`/`reject` next), it
-    does not itself approve/decide/complete anything, so it does not need
-    the org+project `allow_ai_approvals` gate those three do — mirroring
-    core's own `submit_change_request`, which was never marked either. It
-    is a normal MCP-writable tool (`compliance_submit_requirement_for_
-    approval`, `module.py`), gated only by the calling account's own
-    `compliance_officer`/`PROJECT_MANAGER` role, same as any UI/API call."""
+    """Requests formal approval for this requirement's current assessment (§12): `ASSESSED` -> `PENDING_APPROVAL`; 409
+    from any other `approval_state`, enforcing §12's ordering. It only queues a decision for a person to make, so it is
+    not `APPROVAL_ACTION_ROUTE_EXTRA` and needs no `allow_ai_approvals` gate, as core's `submit_change_request`; it is a
+    normal MCP write tool gated by the caller's `compliance_officer` or `PROJECT_MANAGER` role."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if pcr.approval_state != ComplianceApprovalState.ASSESSED:
         raise HTTPException(
@@ -99,22 +87,11 @@ def approve_requirement(
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Formally approves/signs off this requirement's assessment (§12) —
-    `PENDING_APPROVAL` -> `APPROVED`. Gated the same as every other
-    mutating endpoint on this router (`compliance_officer` or
-    `PROJECT_MANAGER`) — §11/§26 describe "Approve/sign off compliance
-    where authorised" as one of the same Project Manager/Compliance
-    Officer actions as assessing, with no separate approver role named.
-
-    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22, see
-    docs/decisions.md's "Compliance MCP write tools + generalized AI
-    approval gate" entry): this is now MCP-reachable exactly like core's
-    `requirements.approve_requirement`/`complete_requirement` and
-    `change_requests.decide_change_request` — when reached through the MCP
-    server (`channel == "mcp"`), additionally requires this project and its
-    organisation to both have explicitly enabled AI approval
-    (`require_ai_approvals_enabled`); a plain UI/API call is unaffected by
-    that flag either way."""
+    """Formally approves and signs off this requirement's assessment (§12): `PENDING_APPROVAL` -> `APPROVED`. Gated like
+    every mutating endpoint on this router (`compliance_officer` or `PROJECT_MANAGER`): §11 and §26 name no separate
+    approver role. Reached through the MCP server (`channel == "mcp"`) it also requires the project and its organisation
+    to have enabled AI approval (`require_ai_approvals_enabled`), as core's `requirements.approve_requirement` and
+    `change_requests.decide_change_request` do; a UI or API call is unaffected."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project_or_404(db, project_id))
@@ -154,15 +131,9 @@ def reject_requirement(
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Formally rejects this requirement's assessment (§12) —
-    `PENDING_APPROVAL` -> `REJECTED`. `decision_note` is mandatory (400) —
-    mirrors §16's existing mandatory-rationale rule for Non-Compliant/Not-
-    Applicable decisions, applied to a rejection for the same reason: a
-    rejection must never appear with no indication of why.
-
-    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22) — see
-    `approve_requirement`'s docstring above; gated the same way when
-    reached through the MCP server."""
+    """Formally rejects this requirement's assessment (§12): `PENDING_APPROVAL` -> `REJECTED`. `decision_note` is
+    mandatory (400), as for Non-Compliant and Not Applicable decisions (§16), so a rejection always says why. Gated like
+    `approve_requirement`, including the MCP gate."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project_or_404(db, project_id))

@@ -1,37 +1,31 @@
 /**
  * Module: modules/stakeholders/RecordListView
  *
- * The list shared by every record kind in this module (Persona, Stakeholder, Need, Engagement),
- * on both the project page and the organisation panel: the `DirectoryTable` +
- * `FilterPanel` + "New …" `Modal` shape every module artefact list uses, with
- * status and type filters and the standard archived toggle. What differs per
- * kind is passed in — the noun, the kind-specific columns, the create form —
- * rather than copied into a second list. A kind with no lifecycle (an
- * Engagement) passes no `statusLabel`/`statusTone` and no archived toggle, and
- * a kind whose "type" has another name (an Engagement's channel) passes
- * `typeLabel`.
+ * The list shared by every record kind in this module (Persona, Stakeholder, Need, Engagement), on both the project
+ * page and the organisation panel: the `DirectoryTable` + `FilterPanel` + "New ..." `Modal` shape of every module
+ * artefact list, with status and type filters and the standard archived toggle. What differs per kind is passed in
+ * (the noun, the kind-specific columns, the create form). A kind with no lifecycle (an Engagement) passes no
+ * `statusLabel` / `statusTone` and no archived toggle, and a kind whose "type" has another name (an Engagement's
+ * channel) passes `typeLabel`.
  *
- * Status, type and scope render through their label maps; status and type
- * badges are `FilterBadge`s because the same page filters on both (style
- * guide principle 10). The Name, Type, Scope and Status columns are fixed
- * (Type and Scope are left out for a kind without them, e.g. a project-only
- * Need: pass no `typeName`/`scopeLabels`); `columnsBeforeType` and
- * `columnsAfterScope` slot the kind's own columns around them.
+ * Status, type and scope render through their label maps; status and type badges are `FilterBadge`s because the page
+ * filters on both (style guide principle 10). The Name, Type, Scope and Status columns are fixed (Type and Scope are
+ * left out for a kind without them, e.g. a project-only Need: pass no `typeName` / `scopeLabels`); `columnsBeforeType`
+ * and `columnsAfterScope` slot the kind's own columns around them.
  *
  * Export and Import (`exportRecords`): on a list page the layout offers the shared Export and Import of the kind,
- * narrowed by this list's own filters (status, type, search, archived, hidden, tags, scope) plus the `extraParams` the
- * kind adds (a group filter). A list embedded in another page (an organisation panel) puts the same controls beside
- * its New button, acting on the organisation's own records.
+ * narrowed by this list's filters (status, type, search, archived, hidden, tags, scope) plus the kind's `extraParams`
+ * (a group filter). A list embedded in another page (an organisation panel) puts the same controls beside its New
+ * button, acting on the organisation's own records.
  *
- * A kind can add its own filters (`extraFilters`) and narrow `records` before
- * passing them in. A list whose records are created elsewhere (the People page's "New" menu) omits
- * `onCreate`/`renderCreateModal`: it then shows no New button and no create form.
+ * A kind can add its own filters (`extraFilters`) and narrow `records` before passing them in. A list whose records
+ * are created elsewhere (the People page's "New" menu) omits `onCreate` / `renderCreateModal` and shows no New button
+ * or create form.
  *
- * Per-project visibility: a page that lets the project hide org
- * records passes `onIncludeHiddenChange` for a "Show hidden" filter and
- * `onShowHidden`, which adds a Visibility column to a hidden row stating who
- * hid it and offering "Show". A hidden row is not openable (the project API
- * treats a hidden record as absent), so `onOpen` is skipped for it.
+ * Per-project visibility: a page that lets the project hide organisation records passes `onIncludeHiddenChange` for a
+ * "Show hidden" filter and `onShowHidden`, which adds a Visibility column to a hidden row stating who hid it and
+ * offering "Show". A hidden row is not openable (the project API treats a hidden record as absent), so `onOpen` is
+ * skipped for it.
  */
 import type { CollectedLink } from "../../api/artefactLinks";
 import { useState, type HTMLAttributes, type ReactNode } from "react";

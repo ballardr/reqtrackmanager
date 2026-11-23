@@ -2,7 +2,7 @@
  * Module: modules/architecture/ElementFormModal
  *
  * Create and edit dialog for an element, shared by the Elements list (create), the detail page (edit), the Links
- * panel's "Create new" and the organisation's own elements, and told apart by whether `initial` is passed. Both modes
+ * panel's "Create new" and the organisation's own elements; `initial` tells create from edit. Both modes
  * take the same `ElementFields`; only a new element also takes ports (an existing element's ports are edited on its
  * page, one change at a time), quick links, tags and "Save and activate" (an element has no approval step, so activating
  * needs only the permission to create). An organisation-owned element has no project, so it takes no links or tags.

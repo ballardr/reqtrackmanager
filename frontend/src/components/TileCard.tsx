@@ -1,21 +1,16 @@
 /**
  * Module: components/TileCard
  *
- * The one card of every tile view (`ViewToggle` "tiles"): Projects, Favourites, Compliance Standards,
- * Requirements and Change Requests draw their rows through it, so the same kind of object looks the same
- * everywhere.
+ * The one card of every tile view (`ViewToggle` "tiles"): Projects, Favourites, Compliance Standards, Requirements and
+ * Change Requests draw their rows through it, so the same kind of object looks the same everywhere.
  *
- * Responsibilities:
- * - `TileGrid` lays the cards out in the shared responsive grid.
- * - `TileCard` draws the title row (the title is the link, styled as every link in the product, with
- *   badges after it and an actions slot at the right) and the card body the page passes as children.
+ * Responsibilities: `TileGrid` lays the cards out in the shared responsive grid; `TileCard` draws the title row (the
+ * title is the link, with badges after it and an actions slot at the right) and the body the page passes as children.
  *
- * Design decisions:
- * - The title is the link, never the whole card: a card may hold actions (a star, a menu) and
- *   filter badges, and a link around them would nest interactive controls.
- * - Presentational and module-agnostic: the page supplies the content, an optional `accentColor` (the
- *   entity stripe, from `ENTITY_ACCENT_COLOR` or a module's own `entityAccentColor`) and an optional
- *   `eyebrow` row above the title. Nothing here knows about a record type.
+ * Design decisions: the title is the link, never the whole card, since a card may hold actions (a star, a menu) and
+ * filter badges and a link around them would nest interactive controls. Presentational and module-agnostic: the page
+ * supplies the content, an optional `accentColor` (the entity stripe, from `ENTITY_ACCENT_COLOR` or a module's own
+ * `entityAccentColor`) and an optional `eyebrow` row above the title.
  *
  * Depends on react-router-dom `Link`; styles are `.tile-grid` and `.tile-card*` in `styles/theme.css`.
  */

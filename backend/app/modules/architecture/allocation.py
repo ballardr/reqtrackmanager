@@ -19,9 +19,9 @@ Design decisions (Decided by: Agent unless stated):
 - **Only project-owned elements are suggested.** A component belongs to one project, so an element another owner
   shares is allocated manually and never appears as a suggestion.
 - **A dismissal applies while the element has stayed in the requirement's component since the dismissal**
-  (`dismissal_applies`): the stored row carries only its time, and a placement made later than it voids it. No hook
-  into the placement code is needed, and removing the element from the component and placing it again suggests it
-  afresh, as the plan requires; the stale row is deleted the next time a person dismisses, restores or accepts it.
+  (`dismissal_applies`): the stored row carries only its time, and a later placement voids it. No hook into the
+  placement code is needed, and removing the element from the component and placing it again suggests it afresh;
+  the stale row is deleted the next time a person dismisses, restores or accepts it.
 - **Any existing link between the two records ends a suggestion**, of whatever type, so accepting never creates a
   second link and an allocation made by hand is never suggested again.
 - **Authority** is the authority to change the requirement's links (`link_authoring.require_link_authority`), the same

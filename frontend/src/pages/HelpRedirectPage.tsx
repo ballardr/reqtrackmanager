@@ -1,10 +1,9 @@
 /**
  * Module: HelpRedirectPage
  *
- * The old in-app `/help` route. Help now lives on the documentation site (the
- * operator-set `HELP_URL`), so this page only keeps old bookmarks working: it
- * replaces the current history entry with the configured URL, or, when the
- * operator has turned Help off (`HELP_ENABLED=false`), says it is not configured.
+ * The in-app `/help` route. Help is the documentation site (operator-set `HELP_URL`), so the page replaces
+ * the current history entry with that URL, or, when the operator has turned Help off (`HELP_ENABLED=false`),
+ * says it is not configured.
  */
 import { useEffect } from "react";
 

@@ -1,21 +1,17 @@
 /**
  * Module: components/graphSnap
  *
- * The grid rule of the shared graph canvas: pure functions, no React, so the canvas and its tests use the one rule.
+ * The grid rule of the shared graph canvas: pure functions, no React, so the canvas and its tests share one rule.
  *
- * Responsibilities:
- * - Snap one coordinate, and the edges a resize moved, to a grid of a given size.
- * - Say whether snapping applies to a move: the person's setting, inverted while the invert key is held during a drag or resize.
- * - Read whether the invert key is held from an event's own modifier flags, so a key-up the page never received cannot leave it
- *   counted as held (a screenshot shortcut swallows it, and snapping would then follow the opposite of the setting).
+ * Responsibilities: snap one coordinate, and the edges a resize moved, to a grid; say whether snapping applies to a move
+ * (the person's setting, inverted while the invert key is held during a drag or resize); read whether the invert key is
+ * held from an event's own modifier flags, so a key-up the page never received (swallowed by a screenshot shortcut)
+ * cannot leave it counted as held.
  *
- * Design decisions:
- * - The grid is in absolute canvas coordinates, so a box nested inside a container snaps to the same grid as one at the top
- *   level (the canvas converts to and from its parent-relative positions elsewhere).
- * - A resize snaps by edges: each edge it moved lands on a grid line, so the size changes to fit rather than being rounded on
- *   its own (which would leave an off-grid right edge); an edge it did not move stays where it was.
- * - Halves round up (`Math.round`), so a coordinate exactly between two lines, negative ones included, snaps the same way
- *   on every run.
+ * Design decisions: the grid is in absolute canvas coordinates, so a nested box snaps to the same grid as a top-level
+ * one. A resize snaps by edges: each moved edge lands on a grid line, so the size changes to fit rather than being
+ * rounded alone (which would leave an off-grid right edge); an unmoved edge stays. Halves round up (`Math.round`), so a
+ * coordinate exactly between two lines, negative ones included, snaps the same way on every run.
  */
 
 /** A box in canvas units: top-left corner and size. */

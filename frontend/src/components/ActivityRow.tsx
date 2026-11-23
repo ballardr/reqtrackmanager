@@ -1,11 +1,9 @@
 /**
  * Module: components/ActivityRow
  *
- * One activity entry in its stacked form: the record type badge (unless hidden), the sentence ("Alex approved"),
- * the record it is about when the list spans several, the note typed with the change and the time. It is the form
- * a record's narrow Activity aside uses, and its sentence comes from `describeActivityEntry`, the same text the
- * project History table splits into its Person and Event columns (`describeActivityAction`), so one wording
- * change reaches both.
+ * One activity entry in its stacked form (a record's narrow Activity aside): the type badge (unless hidden), the
+ * sentence, the record it is about when the list spans several, the note typed with the change and the time. The
+ * sentence comes from `describeActivityEntry`, the text the project History table splits into Person and Event.
  */
 import { Link } from "react-router-dom";
 

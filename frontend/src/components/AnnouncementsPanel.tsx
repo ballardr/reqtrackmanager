@@ -1,13 +1,13 @@
 /**
  * Module: components/AnnouncementsPanel
  *
- * Administration of announcements for one scope, shared by Server Management (the platform's messages) and
- * Organisation Admin (that organisation's). Lists each message with its severity, window, login-page flag, whether it
- * can be dismissed and its status, in two views: current (active and scheduled) and previous (ended), with a search
- * over both. An administrator can create, edit, duplicate and delete a message and send it once as a notification.
+ * Administration of announcements for one scope, shared by Server Management (platform messages) and Organisation
+ * Admin (that organisation's). Lists each message with severity, window, login-page flag, dismissibility and
+ * status in current (active and scheduled) and previous (ended) views with a search over both; create, edit,
+ * duplicate, delete, and send once as a notification.
  *
- * The server enforces scope and the text rules; its message is shown in the dialog. The send is a recorded,
- * one-time action, so it asks first and is replaced by a record of who it reached once done.
+ * The server enforces scope and text rules and its message is shown in the dialog. The send is a recorded,
+ * one-time action: it asks first and is replaced by a record of who it reached.
  */
 import { Bell, Copy, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";

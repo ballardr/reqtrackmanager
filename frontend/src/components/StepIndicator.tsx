@@ -1,16 +1,14 @@
 /**
  * Module: components/StepIndicator
  *
- * The numbered steps of an ordered process, with the current one marked: across the top of a short multi-step dialog
- * ("1 Choose a report, 2 Configure"), or down the page as a list of steps with a detail under each (the phases of a
- * stage workflow).
+ * The numbered steps of an ordered process with the current one marked: across the top of a short multi-step dialog
+ * ("1 Choose a report, 2 Configure"), or down the page as a list with a detail under each (the phases of a stage workflow).
  *
- * Responsibilities:
- * - Show every step in order with its number, so the person sees the sequence (and how far through they are).
- * - Mark the current step for assistive technology (`aria-current="step"`); finished steps stay readable.
+ * Responsibilities: show every step in order with its number; mark the current step for assistive technology
+ * (`aria-current="step"`); finished steps stay readable.
  *
- * Design decisions: purely presentational; the host owns the current step and the navigation (a Back button), so
- * the indicator is not clickable. With no `current` step nothing is marked, for a list that only describes an order.
+ * Design decisions: purely presentational; the host owns the current step and navigation, so the indicator is not
+ * clickable. With no `current` step nothing is marked, for a list that only describes an order.
  */
 
 /**

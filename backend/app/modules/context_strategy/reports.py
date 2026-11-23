@@ -1,51 +1,12 @@
 """
 Module: modules.context_strategy.reports
 
-Report data layer for Context & Strategy: the nine reports R1–R9 as one `collect_*`
-function each, returning the core framework's `ReportResult`, plus the
-`REPORT_DEFINITIONS` that declare them to the registry. Everything
-module-neutral — result shapes, scope rule (`readable_projects`), PDF/CSV
-rendering, routes, MCP tools, the catalogue — lives in
-`app.services.report_framework`; every output form (PDF, CSV, on-screen JSON,
-MCP) reads the same `ReportResult`, so a figure is computed exactly once.
-
-Responsibilities:
-- Collectors R1–R9. Pain Point scoring is not recomputed here: R1 and R9 are
-  built on `pain_point_scores.build_pain_point_scoring`.
-- Collectors never widen `ctx.projects` and further narrow it per
-  sub-component (`pain_point`, `strategy`, ...) that is enabled.
-- `REPORT_DEFINITIONS`: key, slug, gating sub-component, organisation role and
-  declared parameters per report.
-
-Design decisions (all Decided by: Agent unless stated; the report list,
-formats, model/roll-up choice and access rules are Decided by:
-User):
-- "Open" Pain Points are Submitted, Triaged and Accepted. Addressed means
-  the problem is fixed and Rejected/Duplicate/Closed are finished, so none
-  of them belong in a fix ranking.
-- Org-wide reports group Pain Points by the scoring model actually applied
-  (the project's resolved default unless a model is requested), never
-  ranking different models together.
-- Cross-artefact checks ("has a Requirement", "has a Strategy") count only
-  artefacts inside the report's readable scope. A link to something the
-  caller cannot read is treated as absent rather than leaked, so a gap list
-  may over-report; it never reveals a hidden record.
-- R2, R5, R6 and R7 are project-level only; R1, R3, R4, R8 and R9 also run
-  organisation-wide, gated by the `org_reports_viewer` role and
-  the framework's default `readable_projects` scope. Organisation-scoped
-  Strategies, Future States and Guiding Principles appear in the project
-  reports they relate to (R2 parents, R6 and R7 rows) because every org
-  member can already read them.
-- Report reads are not audit-logged, following `modules.compliance.reports`:
-  every field here is already returned to the same caller by the module's
-  JSON endpoints, and nothing Restricted (no file content, no secrets) is
-  included.
-- R9 has no tier columns yet: `intentional_in`/`removed_by` stay reserved
-  until Product Tiers exists, so the report says so in a note.
-
-Dependencies: core `services.relationships`/`services.scoring`/
-`services.report_framework`, the `registry` artefact-summary hook (Decisions,
-without importing Decision Management) and this module's own models.
+Report data layer: reports R1-R9 as `collect_*` functions returning
+`ReportResult`, plus the `REPORT_DEFINITIONS` declaring them; rendering,
+routes and MCP tools live in `services.report_framework`.
+- "Open" Pain Points are Submitted, Triaged and Accepted.
+- Links to unreadable records count as absent, never leaked.
+- R2, R5, R6, R7 are project-level; the rest also run organisation-wide.
 """
 
 from __future__ import annotations

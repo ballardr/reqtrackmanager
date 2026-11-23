@@ -3,25 +3,22 @@ Module: services.long_text_core
 
 Which long free-text columns of the core tables hold Markdown, and which stay plain text and why.
 
-Responsibilities:
-- Declare, for every long-text column of a core table (a `Text` column, or a string of 1,000 characters or more), either a
-  `MarkdownField` or a reason it stays plain text. A module declares its own tables' columns on its
-  `ModuleDefinition` (`markdown_fields`, `plain_text_fields`); nothing here names a module's table.
-- Feed the inventory (`scripts/generate_long_text_inventory.py`) and the write-time limits (`services.markdown_fields`).
+Responsibilities: declare for every long-text column of a core table (a `Text` column, or a string of 1,000
+characters or more) either a `MarkdownField` or a reason it stays plain; a module declares its own tables'
+columns on its `ModuleDefinition` (`markdown_fields`, `plain_text_fields`) and nothing here names a module's
+table; feed the inventory (`scripts/generate_long_text_inventory.py`) and the write-time limits
+(`services.markdown_fields`).
 
 Design decisions:
-- A new long-text column is a failing test (`tests/test_long_text_inventory.py`) until it is declared here or on its
-  module, the same way a new record type is for search.
-- Markdown is the default reading. A column stays plain only for a reason of the kind below: text drawn inside a
-  shape or printed in a fixed layout (a footer line), configuration text shown in a picker or tooltip (one line, no
-  block formatting), a version's one-line change note (listed in histories, audit events and notifications), or a
-  system-generated message.
-- A requirement's description, reasoning and clarification, a change request's proposed copies and reason, and the
-  descriptive fields of the other record types (decisions, feedback, open questions, pain points) hold equations, so
-  they are `math=True`. Comments, one-line notes and text entered through a shared comment or checklist control (a
-  decision note, a vote's comment, a decline reason, a task) stay without.
+- A new long-text column fails `tests/test_long_text_inventory.py` until declared here or on its module.
+- Markdown is the default. A column stays plain only for text drawn inside a shape or fixed layout (a footer
+  line), configuration text shown in a picker or tooltip, a version's one-line change note (shown in histories,
+  audit events and notifications), or a system-generated message.
+- A requirement's description, reasoning and clarification, a change request's proposed copies and reason, and
+  the descriptive fields of other record types hold equations, so they are `math=True`. Comments, one-line
+  notes and text from a shared comment or checklist control stay without.
 
-Dependencies: the core models and `modules.registry` (the declaration shapes).
+Dependencies: the core models and `modules.registry`.
 """
 
 from __future__ import annotations

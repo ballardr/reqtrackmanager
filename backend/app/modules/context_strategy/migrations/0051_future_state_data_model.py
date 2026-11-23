@@ -4,24 +4,16 @@ Revision ID: 0051
 Revises: 0050
 Create Date: 2026-09-28
 
-Adds the five tables backing Context & Strategy's Future State data model,
-an exact structural mirror of migration 0048's `strategies`/
-`strategy_versions`/`strategy_comments`/`strategy_comment_files`/
-`strategy_files` set for the standalone Future State artefact (separate from Strategy, not fields on it):
+Adds the five tables of the standalone Future State artefact, structurally mirroring migration 0048's strategy tables:
 
-- `future_states` (identity row: `scope` discriminator, exactly one of
-  `organization_id`/`project_id` set, enforced by a CHECK constraint).
-- `future_state_versions` (temporal content snapshot — §7's
-  field set: `current_state`, `desired_state`, `target_date` (a plain
-  DATE, not a timestamp), `outcomes`, `success_measures`, `constraints`,
-  `assumptions`, plus a `title` for display, the same judgment call
-  `strategy_versions.title` made).
-- `future_state_comments` / `future_state_comment_files` / `future_state_files`
-  — this module's own module-local comment-thread and attachment tables,
-  mirroring `strategy_comments`/`strategy_comment_files`/`strategy_files`.
+- `future_states`: the identity row (`scope` discriminator; a CHECK keeps exactly one of `organization_id` and
+  `project_id`).
+- `future_state_versions`: the temporal content snapshot (§7: `current_state`, `desired_state`, `target_date` as a DATE,
+  `outcomes`, `success_measures`, `constraints`, `assumptions`, and a display `title` as `strategy_versions.title`).
+- `future_state_comments`, `future_state_comment_files` and `future_state_files`: the module-local comment and attachment
+  tables.
 
-No backfill needed — this is a brand-new artefact type with no
-pre-existing rows anywhere.
+A new artefact type, so no backfill.
 """
 
 from collections.abc import Sequence

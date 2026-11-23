@@ -1,10 +1,9 @@
 /**
  * Module: components/CompanyDetailsFields
  *
- * The company details printed in the footer of outgoing email: company name, website and postal address. The
- * platform page (Server details) and an organisation's own page (Organisation details) draw the same fields, so a
- * field added here reaches both. Each tier supplies its own help text and placeholders, and the platform tier adds
- * its prefix and company identifier through `leading` and `trailing`.
+ * The company details printed in the footer of outgoing email (name, website, postal address), drawn identically
+ * by the platform page and an organisation's page so a field reaches both. Each tier supplies its own help text and
+ * placeholders; the platform tier adds its prefix and identifier through `leading` and `trailing`.
  */
 import type { ReactNode } from "react";
 

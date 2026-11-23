@@ -1,40 +1,25 @@
 """
 Module: services.report_widget_run
 
-Runs the report behind a widget (`services.report_widgets`) inside a layout run and turns one component of
-its `ReportResult` into blocks of the layout's document.
+Runs the report behind a widget (`report_widgets`) inside a layout run and turns one component of its `ReportResult`
+into blocks of the layout's document.
 
 Responsibilities:
-- `collect_widget`: build the report's `ReportContext` from the layout run's and call the report's own
-  collector, with the report's cell tones applied.
-- `part_blocks`: the one component a widget names (a table, the headline figures, or the notes) as blocks, with
-  its rows ordered by the widget's `sort` when it has one.
-- `output_digest`: a SHA-256 of what the report produced, so the run's provenance digest covers widget data.
+- `collect_widget` (the report's `ReportContext` from the layout run's, the report's own collector, its cell tones);
+  `part_blocks` (a table, the headline figures or the notes as blocks, rows ordered by the widget's `sort`);
+  `output_digest` (SHA-256 so provenance covers widget data).
 
 Design decisions:
-- **The report's own collector and gates, nothing new.** The context carries the layout run's organisation,
-  in-scope projects and root project, so a widget sees exactly the projects the layout run does and the
-  collector applies the same per-project checks (`ReportContext.eligible`) it applies standalone. The
-  module/sub-component gate is checked by the caller before this runs (`report_widgets.widget_available`).
-- **A component, never prose.** A table widget gives the table and nothing else: the section's heading and
-  its one-line note belong to the layout, which writes them for its own reader. The figures widget is one
-  `Measure | Value` table (three columns with a `Group` column when the report groups them) and the notes
-  widget the report's caveats, one `Note` each. A part with nothing in it gives no blocks, and the layout's
-  `empty` text (if any) says so.
-- **Sorting is by the table's column headings, on what the cell shows.** A report's cells are text, so the
-  sort reads each one the way a person would: a number as a number, an ISO date as a date, anything else as text
-  without regard to case, and an empty cell last in either direction. A rating such as "High" therefore sorts
-  alphabetically, not by severity; a widget cannot know the order of a report's own scale. A heading the table
-  does not have is a warning and is ignored, never an error.
-- **A drawing is a picture.** A section that carries one (`ReportSection.drawing`) gives an `Image` of it, which every
-  renderer allow-lists and draws (vector in PDF and HTML); it takes the full text width, and the layout's own image
-  rules do not apply. A sort on it is ignored with a warning.
-- **Sections the screen hides are included.** `ReportSection.screen` only decides what the Reports page
-  shows; a document has no screen, and the PDF of the report always carries them.
-- Cell text is plain; the renderers escape it, as for every other table.
+- The report's own collector and gates: the context carries the layout run's organisation, projects and root project, so
+  per-project checks (`ReportContext.eligible`) apply as standalone; the caller checks module availability first.
+- A component, never prose: a table widget gives the table only; the figures widget is one `Measure | Value` table (with a
+  `Group` column when grouped) and notes are one `Note` each. An empty part gives no blocks, so the layout's `empty` text applies.
+- Sorting is by column heading on the displayed text: numbers as numbers, ISO dates as dates, other text case-insensitively,
+  empty cells last in both directions, so "High" sorts alphabetically, not by severity. An unknown heading is a warning.
+- A section with a `drawing` gives a full-width `Image` (a sort on it is ignored with a warning). Sections hidden on screen
+  (`ReportSection.screen`) are still included. Cell text is plain and escaped by the renderers.
 
-Dependencies: `services.report_framework` (context, result, tones), `services.report_widgets`,
-`services.report_model` (blocks).
+Dependencies: `report_framework`, `report_widgets`, `report_model`.
 """
 
 from __future__ import annotations

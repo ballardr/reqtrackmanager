@@ -1,17 +1,10 @@
 """
 Module: modules.decisions.search
 
-The `ArtefactSearchProvider` for the `decision` artefact type, so the global search finds
-decisions by code, title, tags and the decision record's text.
-
-Responsibilities:
-- Declare the columns the search reads and the free-text fields it may match.
-
-Design decisions:
-- Opt-in fields: the statement, the decision-record sections (context, options, chosen option, rationale,
-  consequences, assumptions, constraints) and the long-form document only.
-
-Dependencies: this module's models and labels; `modules.registry` (the provider shapes).
+The `ArtefactSearchProvider` for the `decision` type: the columns the search
+reads (code, title, tags) and the opt-in free-text fields (statement, ADR
+sections, long-form document). Dependencies: this module's models and labels;
+`modules.registry`.
 """
 
 from __future__ import annotations

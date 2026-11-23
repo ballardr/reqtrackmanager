@@ -1,54 +1,11 @@
 """
 Module: modules.context_strategy.router
 
-Context & Strategy's org-scoped API — CRUD, lifecycle transitions, comments, and
-file attachments for **organisation-scoped** Strategy records. Mounted at
-`/api/v1/orgs/{organization_id}/modules/context_strategy`.
-
-The same surface exists for **organisation-scoped** Future State
-records, at `/future-states` (this module's own established hyphenated
-multi-word URL-segment convention — see e.g. `modules.compliance`'s
-`/action-types`), gated by `require_org_subcomponent_enabled
-("context_strategy", "future_state")` and `_shared.require_future_state_
-manage_role`/`require_future_state_approve_permission` — exact structural
-mirror of the Strategy surface below, under distinct function names.
-
-The same surface exists for **organisation-scoped** Guiding
-Principle records, at `/guiding-principles`, gated by `require_org_
-subcomponent_enabled("context_strategy", "guiding_principle")` and
-`_shared.require_guiding_principle_manage_role`/`require_guiding_principle_
-approve_permission` — exact structural mirror of the Strategy/Future State
-surfaces, minus the `submit-for-review` endpoint (`enums.
-GuidingPrincipleStatus` has no `UNDER_REVIEW` state to submit into).
-
-RBAC: reads/creation are gated by `require_org_subcomponent_enabled
-("context_strategy", "strategy")` (`_require_view`) — any org member with
-the module *and* this sub-component enabled may browse and propose a
-Strategy ("project members (View + Propose)", applied at org scope by direct
-analogy). On org-scoped gating (see `docs/decisions.md`'s Platform Foundations
-sub-component entry): an org-scoped Strategy has no `project_id` for a project-level
-override to key against at all, so `require_org_subcomponent_enabled`
-resolves purely from the organisation's own default (`app.modules.
-registry.is_org_module_subcomponent_enabled`) rather than reusing
-`require_project_subcomponent_enabled`'s two-tier resolution — it still
-checks whole-module enablement first internally, so this is a strict
-narrowing of the whole-module check this router originally used, not a
-parallel/replacement one. Direct edits/archival require the `org_strategy_owner` module role
-(`_shared.require_manage_role`); approve/activate/supersede/retire require
-`org_strategy_approver` or an equivalent Fine-Grained Access Control
-permission grant (`_shared.require_approve_permission`). See `_shared.py`
-for the full composition rules (server admin / `OrgRole.ORG_ADMIN` /
-direct grant / custom-role grant).
-
-An org-scoped Strategy's file attachments are uploaded as organisation
-shared resources (`FileAsset.is_org_resource=True`), authorized purely by
-org membership through `routers.files.download_file`'s existing
-`is_org_resource` branch — unlike `project_router.py`'s project-scoped
-Strategy files, this module's `resolve_file_owner_project_id` hook is
-never consulted for these.
-
-See `project_router.py`'s own module docstring for the project-scoped
-sibling of this router, and `_shared.py` for the helpers both share.
+Org-scoped API for organisation-scoped Strategies, Future States and Guiding
+Principles (CRUD, lifecycle transitions, comments, files) and the Pain Point
+type vocabulary, mounted at `/api/v1/orgs/{organization_id}/modules/context_strategy`.
+Reads need `require_org_subcomponent_enabled`; edits the `org_*_owner` role,
+approvals the `org_*_approver` role or a permission grant.
 """
 
 from __future__ import annotations
@@ -1053,23 +1010,9 @@ def unlink_org_future_state_file(
     db.commit()
 
 
-# =============================================================================
 # --- Pain Point types ----------------------------------------------
-# =============================================================================
-#
-# Organisation-scoped `PainPointTypeDefinition` CRUD only (the
-# shared base tier) — the Pain Point *artefact* itself is project-scoped
-# only (§6) and lives entirely in `project_router.py`,
-# alongside the project-scoped `ProjectPainPointType` override/local-type
-# endpoints. Reads are gated by `require_org_subcomponent_enabled
-# ("context_strategy", "pain_point")` (any org member with the module and
-# this sub-component enabled may browse); mutations additionally require
-# the `pain_point_type_admin` module role (`_shared.require_pain_point_
-# type_admin_role`) — mirrors `modules.compliance.router.action_types`'
-# `_require_manage`/`_require_view` split, applied inline (per this
-# module's own "Depends for view, inline call for elevated role"
-# convention throughout `router.py`/`project_router.py`) rather than a
-# second `Depends` dependency.
+# Organisation-scoped `PainPointTypeDefinition` CRUD (the artefact is
+# project-scoped); mutations also need the `pain_point_type_admin` role.
 
 _require_pain_point_type_view = require_org_subcomponent_enabled("context_strategy", "pain_point")
 
@@ -1192,9 +1135,8 @@ def delete_pain_point_type(
     organization_id: UUID, pain_point_type_id: UUID,
     current_user: User = Depends(_require_pain_point_type_view), db: Session = Depends(get_db),
 ):
-    """Deletes an organisation-scoped Pain Point type (§6.2 "Remove types
-    where no longer used") — 409s if any project still references it
-    (`service.delete_org_pain_point_type`'s own docstring)."""
+    """Deletes an organisation-scoped Pain Point type (§6.2); 409 while any
+    project still references it (`service.delete_org_pain_point_type`)."""
     require_pain_point_type_admin_role(db, current_user, organization_id=organization_id)
     pain_point_type = db.get(PainPointTypeDefinition, pain_point_type_id)
     if pain_point_type is None or pain_point_type.organization_id != organization_id:
@@ -1665,14 +1607,8 @@ def unlink_org_guiding_principle_file(
 
 
 # --- cross-artefact relationships -----------------------------------
-#
-# Org-scoped list + create relationship endpoints for Strategy/Future State/
-# Guiding Principle (the three artefact types with an org-scoped half — Pain
-# Point has no artefact of its own at org scope, only its type vocabulary,
-# already covered above, and Open Question has no org scope at all) — exact
-# structural mirror of `project_router.py`'s own relationship section, under
-# distinct function names, `organization_id` in place of `project_id`. See
-# `service.py`'s relationships docstring section for the overall design.
+# Org-scoped list and create endpoints for Strategy, Future State and Guiding
+# Principle, mirroring `project_router.py`.
 
 
 @router.get("/strategies/{strategy_id}/relationships", response_model=list[ContextStrategyLinkOut])

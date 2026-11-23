@@ -1,20 +1,16 @@
 /**
  * Module: components/MarkdownView
  *
- * Shows Markdown text (a decision, a note, any long text field that is written in Markdown) as read-only content.
+ * Shows Markdown text (a decision, a note, any Markdown long-text field) as read-only content.
  *
- * Responsibilities:
- * - Turn the reader's tokens (`utils/markdownIt`) into React elements: headings, paragraphs, lists, quotations,
- *   tables, code, rules, emphasis, links, a fenced `mermaid` block as a diagram (`MermaidDiagram`), a picture of the
- *   record's own attachment (`MarkdownPicture`) and, when asked (`math`), an equation (`MathEquation`).
+ * Turns the reader's tokens (`utils/markdownIt`) into React elements: headings, paragraphs, lists, quotations,
+ * tables, code, rules, emphasis, links, a fenced `mermaid` block (`MermaidDiagram`), a picture of the record's own
+ * attachment (`MarkdownPicture`) and, when asked (`math`), an equation (`MathEquation`).
  *
- * Design decisions:
- * - Nothing is inserted as HTML (as `PolicyBodyView`), so stored text can never run as markup; raw HTML in the text
- *   is shown as text, only https, http and mailto addresses are links, and the only image drawn is an attachment of the
- *   record (`attachment:<file id>`); any other image (an outside address) is shown as the text typed.
- * - Headings start at the third level (`#` is an `h3`), because the page that shows the text already owns the first
- *   two; deeper levels stop at the sixth.
- * - A link opens in a new tab with `rel="noopener noreferrer"`.
+ * Nothing is inserted as HTML, so stored text can never run as markup: raw HTML is shown as text, only https, http
+ * and mailto addresses are links (opened in a new tab with `rel="noopener noreferrer"`), and the only image drawn
+ * is a record attachment (`attachment:<file id>`). Headings start at the third level (`#` is an `h3`) because the
+ * page already owns the first two; deeper levels stop at the sixth.
  */
 import { Fragment, lazy, Suspense, useMemo, type ReactNode } from "react";
 

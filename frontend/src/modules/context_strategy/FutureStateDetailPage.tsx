@@ -1,28 +1,18 @@
 /**
  * Module: modules/context_strategy/FutureStateDetailPage
  *
- * A single Future State's full detail — full field display (including `target_date`),
- * current lifecycle status, version history, comments, attachments, and
- * relationships, plus every lifecycle action. Mirrors
- * `StrategyDetailPage.tsx`'s exact structure field-for-field, since Future
- * State's backend is itself "an exact structural mirror" of Strategy's
- * — same seven-state lifecycle, same lock rule
- * (past `UNDER_REVIEW`), same owner/approver RBAC shape, same comments/
- * attachments/relationships sections.
+ * A single Future State's full detail: fields (including `target_date`), lifecycle status, versions, comments,
+ * attachments, relationships and every lifecycle action. Its structure mirrors `StrategyDetailPage.tsx` field for
+ * field, because the backend model mirrors Strategy's (same seven-state lifecycle, lock rule past `UNDER_REVIEW`,
+ * owner/approver RBAC).
  *
- * **Scope-aware, Decided by: Agent**, for the exact same reason
- * `StrategyDetailPage.tsx` is: a Future State is org- **or** project-scoped,
- * so this one component serves both
- * `ProjectFutureStatesPage.tsx`'s row-click navigation and
- * `OrgFutureStatesPanel.tsx`'s own (`module.ts`'s `globalRoutes`, org-scoped,
- * not gated by any one project's own enabled-modules list).
+ * Scope-aware: a Future State is organisation- or project-scoped, so one component serves both
+ * `ProjectFutureStatesPage.tsx` and `OrgFutureStatesPanel.tsx` (`module.ts`'s `globalRoutes`, not gated by a project's
+ * enabled modules).
  *
- * Every mutating control always renders regardless of the caller's actual
- * role (same posture `StrategyDetailPage.tsx` establishes) — the backend
- * enforces `future_state_owner`/`future_state_approver` (or their org-scoped
- * equivalents) and a 403 surfaces as a toast. Edit/archive/file-attach
- * controls specifically for *content* are hidden (not just toast-blocked)
- * once `futureState.is_locked`.
+ * Mutating controls always render whatever the caller's role; the backend enforces `future_state_owner` /
+ * `future_state_approver` (or the organisation equivalents) and a 403 surfaces as a toast. Content edit, archive and
+ * file-attach controls are hidden once `futureState.is_locked`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -54,10 +44,7 @@ import { RecordField } from "../../components/RecordDetailParts";
 import { orgResourcesPath } from "../orgResources";
 import { ORG_FUTURE_STATES_SECTION_KEY } from "./orgResourceKeys";
 
-/** Every lifecycle action this page can offer, keyed by the action itself —
- * used to build the confirm-dialog copy generically instead of repeating it
- * per call site. Exact mirror of `StrategyDetailPage.tsx`'s own
- * `TransitionAction`/`TRANSITION_COPY`. */
+/** Every lifecycle action this page offers; keys the confirm-dialog copy, as `StrategyDetailPage.tsx`'s `TRANSITION_COPY` does. */
 type TransitionAction = "approve" | "activate" | "supersede" | "retire";
 
 const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; confirmLabel: string }> = {

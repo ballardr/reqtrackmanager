@@ -183,12 +183,9 @@ def test_scim_membership_sync_never_touches_nested_group_edges(client, admin_tok
 
 
 def test_scim_delete_group_audit_event_records_the_access_it_cascaded_away(client, admin_token, org_id):
-    """Hardening-review finding: deleting a group via SCIM cascades away
-    whatever project access it granted through nesting (via DB-level
-    ondelete=CASCADE on both OrgGroupMember and ProjectGroupMember) with
-    zero prior audit trail beyond "a group was deleted" — this is the
-    only group-deletion path in the app at all. Fixed by recording the
-    affected ProjectGroup and parent-OrgGroup ids in the event detail
+    """Deleting a group via SCIM cascades away the project access it granted through
+    nesting (DB-level ondelete=CASCADE on OrgGroupMember and ProjectGroupMember), so
+    the audit event detail records the affected ProjectGroup and parent-OrgGroup ids
     before the cascade runs."""
     token = _generate_scim_token(client, admin_token, org_id)
     group = client.post("/scim/v2/Groups", json={"displayName": "SCIM Blast Radius"}, headers=auth_headers(token)).json()
@@ -229,12 +226,9 @@ def test_scim_delete_group_audit_event_records_the_access_it_cascaded_away(clien
 
 
 def test_scim_group_patch_and_create_reject_malformed_member_ids_without_500ing(client, admin_token, org_id):
-    """Hardening-review finding: a malformed `value` in a Groups
-    payload (not a real UUID — a real IdP only ever echoes back an id
-    this app itself issued, but the request body is untyped) previously
-    hit a raw `UUID(...)` call and 500ed instead of being cleanly
-    skipped, matching `_add_group_member`'s existing tolerance for an
-    unrecognised-but-well-formed id."""
+    """A malformed `value` in a Groups payload (not a UUID; the request body is untyped)
+    is skipped, not a 500, as `_add_group_member` tolerates an unrecognised but
+    well-formed id."""
     token = _generate_scim_token(client, admin_token, org_id)
 
     created = client.post(
@@ -278,14 +272,11 @@ def test_scim_banned_user_cannot_be_reprovisioned(client, admin_token, org_id):
 
 # --- _parse_simple_eq_filter: unit coverage for the ReDoS fix ---------------
 #
-# The endpoint-level tests above exercise this indirectly through real
-# filter queries; these pin the specific security property fixed here
-# (CodeQL py/polynomial-redos): correctness on the bracket-filter shape
-# (`emails[type eq "work"].value`, whose own embedded `eq "..."` is exactly
-# what made the original single regex ambiguous/slow) and that adversarial
-# input — arbitrarily long, with no valid filter anywhere in it — is
-# rejected in time genuinely independent of input length, not just fast for
-# the sizes a hand-written test happens to try.
+# The endpoint-level tests above exercise this indirectly; these pin the
+# ReDoS resistance (CodeQL py/polynomial-redos): correctness on the bracket-filter
+# shape (`emails[type eq "work"].value`, whose embedded `eq "..."` makes a single
+# regex ambiguous) and that arbitrarily long input with no valid filter is rejected
+# in time independent of its length.
 
 def test_parse_simple_eq_filter_handles_the_bracket_filter_shape():
     assert scim_module._parse_simple_eq_filter('userName eq "scim.new@example.com"') == (
@@ -333,12 +324,10 @@ def test_parse_simple_eq_filter_requires_whitespace_between_eq_and_the_quote():
 
 
 def test_parse_simple_eq_filter_is_not_vulnerable_to_polynomial_redos():
-    # Neither attack pattern contains a valid filter expression, so both
-    # are expected to raise — the property under test is *how fast* they
-    # raise, not the outcome. Before the fix, a long run of whitespace with
-    # no "eq" at all (no quotes needed) took several seconds at this size;
-    # a correctly linear implementation finishes in a small fraction of a
-    # second regardless.
+    # Neither attack pattern contains a valid filter expression, so both raise;
+    # the property under test is how fast. A long run of whitespace with no "eq"
+    # takes several seconds at this size under a quadratic regex, a fraction of a
+    # second under a linear implementation.
     for attack in [" " * 200_000, ("eq " * 50_000), (" " * 100_000 + '"unterminated')]:
         start = time.monotonic()
         try:

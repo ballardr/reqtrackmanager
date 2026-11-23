@@ -124,10 +124,9 @@ def test_deleting_in_use_link_type_with_reassign_id_converts_links_then_deletes(
 
 
 def test_reassign_to_id_must_be_in_same_org_and_not_self(client, admin_token):
-    # reassign_to_id is only validated once the item being deleted is
-    # actually in use (§4.0: "Not in use -> deletes immediately,
-    # reassign_to_id ignored if passed") — so this test creates a link
-    # using the type first, to exercise the validated path.
+    # reassign_to_id is validated only once the item being deleted is in use
+    # (§4.0: "Not in use -> deletes immediately, reassign_to_id ignored if
+    # passed"), so a link using the type is created first.
     org_a, token_a = create_org_admin_in(client, admin_token, "Link Reassign Org A")
     org_b, token_b = create_org_admin_in(client, admin_token, "Link Reassign Org B")
     link_types_a = {lt["forward_name"]: lt["id"] for lt in _link_types(client, token_a, org_a["id"])}

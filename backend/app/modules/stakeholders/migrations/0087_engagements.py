@@ -4,13 +4,9 @@ Revision ID: 0087
 Revises: 0086
 Create Date: 2026-10-13
 
-Adds the project-scoped Engagement contact log: `engagements` with module-local
-comment/attachment tables, plus the research extras' `engagement_prompts`,
-`engagement_anonymous_participants` and `research_findings`. Participants,
-personas covered, the audience group and the Pain Points / Needs / Open
-Questions an engagement raised or answered are `artefact_links` rows, so need no
-table of their own. Every child table cascades from `engagements`, so deleting
-an engagement removes all of its data. Nothing is backfilled.
+Adds `engagements` with comment and file tables and the research extras
+(`engagement_prompts`, `engagement_anonymous_participants`, `research_findings`);
+child tables cascade from `engagements`. Nothing is backfilled.
 """
 
 from collections.abc import Sequence

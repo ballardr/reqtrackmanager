@@ -1,69 +1,33 @@
 """
 Module: services.report_layout_eval
 
-Evaluates a validated layout tree for one caller and returns the neutral report model: a
-`ReportDocument` (document family) or a list of `Sheet`s (table family).
+Evaluates a validated layout tree for one caller into the neutral report model: a `ReportDocument` (document family)
+or a list of `Sheet`s (table family).
 
 Responsibilities:
-- Walk the tree, reading records through the traversal layer (`services.report_traversal`) and the
-  field registry (`services.report_fields`), and emit `Heading`/`Paragraph`/`Table`/... blocks.
-- Substitute `{{alias.field}}` and the global `{{project_name}}`-style placeholders into the parsed
-  text of headings, text blocks, table cells and empty-state lines.
-- Apply `where`, `sort` and `group` in memory over typed values, and `if` on a condition. A condition is a test
-  of one field (`eq`, `ne`, `contains`, `in`, `not_in`, comparisons, `empty`) or an `all` / `any` / `not` of
-  conditions.
-- Bound the work: iteration, output-row and wall-clock caps raise `LayoutLimitError`; a traversal
-  that hit its record cap adds a warning and a visible note instead of failing.
-- Count what the caller could not see (never name it) and report it as a note.
-- Apply run-time variables: check the supplied values against the layout's declarations, substitute them into a copy
-  of the tree (`services.report_variables`) so everything below sees literals, fill `{{var.name}}` text, and warn when
-  a value is no longer one of its source field's options.
-- Run `widget` blocks: one component (a table, the figures, the notes) of a module report, for the project
-  being evaluated, inserted as blocks (`services.report_widget_run`); the widgets that ran and a digest of
-  what each report produced go into the run's provenance.
+- Walk the tree, reading records through `report_traversal` and `report_fields`; substitute `{{alias.field}}` and global
+  placeholders into parsed text; apply `where`, `sort`, `group` and `if` conditions in memory over typed values.
+- Bound the work (`LayoutLimitError` on iteration, row and time caps; a traversal that hit its record cap adds a
+  warning); count what the caller could not see without naming it.
+- Apply run-time variables (`report_variables`) and run `widget` blocks (`report_widget_run`), recording them in provenance.
 
 Design decisions:
-- **Authorisation is the traversal layer's, nothing here.** Every record this module reads came out of
-  `root_records`/`linked_records`, which pass each through the caller's `ArtefactResolver`; the
-  evaluator adds no visibility rule, so a layout never shows a record the caller's link graph would
-  not. A record that fails is counted per parent and not traversed through.
-- **A value never becomes markup.** Markdown is parsed first, from the author's text alone; record
-  values are substituted into the parsed blocks afterwards, in a single pass that does not rescan
-  the substituted text, so a title containing `# heading` or `{{record.title}}` stays literal text.
-- The tree is revalidated before every run (`assert_valid`): a stored tree can predate a registry
-  change (a module field removed), and the field references the analysis returns decide which
-  columns are loaded.
-- Linked records are fetched in batches. The first time a nested block needs the records linked to
-  one parent it fetches for every record of that type read so far (`_Run.pool`), so the number of
-  link queries follows the number of nested blocks, not the number of records.
-- Group order is by the group field's typed value (so dates and numbers sort as such), the empty
-  group last as `(none)`; a record with no value for a sort key sorts last in both directions. Grouping by tags
-  puts a record in one group per tag (groups by tag name, alphabetical).
-- **Math is switched on where it is written or declared.** `\\( \\)` and `$$ $$` are recognised in the author's own
-  text and in the value of a record field its provider marks math-capable (`ReportField.math`); a delimiter inside
-  any other substituted value stays literal text, so a record's title cannot turn into an equation. Headings,
-  paragraphs, list items and the cells of a document table are scanned (a `$$ $$` where there is no room for a block
-  is drawn inline, in a `MathText`); sheets of the table family show the TeX as written. TeX that
-  fails the allow-list or cannot be drawn is shown as its source with one warning (never the TeX itself), and a run
-  draws at most `MAX_EQUATIONS` equations, so a layout over thousands of records cannot make typesetting unbounded.
-- **Styles belong to the author's words.** Bold, italic and code runs come from the Markdown reader (`MathText` with
-  `Styled` parts). A run's placeholders are filled and its equations found run by run, and a substituted value takes
-  the run's style (a record title inside `**{{req.title}}**` prints bold) but is never read for styles itself.
-  An equation inside a styled run is drawn unstyled.
-- Past instants stay UTC and dates are plain dates (`format_value`); no server-local time or
-  timezone conversion happens here.
+- Authorisation is the traversal layer's: every record came through the caller's `ArtefactResolver`, so a layout never
+  shows a record the caller's link graph would not.
+- A value never becomes markup: Markdown is parsed from the author's text first and record values are substituted into
+  the parsed blocks in one pass that does not rescan, so a title containing `# heading` stays literal.
+- The tree is revalidated before every run (`assert_valid`), since a registry change can outdate a stored tree.
+- Linked records are fetched in batches (`_Run.pool`), so link queries follow nested blocks, not record counts.
+- Groups sort by typed value, the empty group last as `(none)`; a missing sort key sorts last; tag grouping gives one
+  group per tag. Past instants stay UTC and dates stay plain dates.
+- Math (`\\( \\)`, `$$ $$`) is recognised only in the author's text and fields marked `ReportField.math`; TeX that fails
+  is shown as source with one warning, and a run draws at most `MAX_EQUATIONS`.
+- Styles belong to the author's words: a substituted value takes its run's style but is never read for styles.
+- A widget runs once per distinct parameter set, only where its module is enabled for the project; elsewhere, or when the
+  report refuses its parameters (4xx), a note is shown instead of a failure.
 
-- **A widget is one component of the report's own run, gated as the report is.** A report is collected once
-  per distinct parameter set however many of its components a layout embeds. It runs only where the report's module (and
-  sub-component) is enabled for the project; elsewhere the layout says so in a note and carries on, because
-  an organisation layout runs in many projects and a missing module is a fact about one of them. A report
-  that refuses its parameters (4xx) is shown as a note too, never as a failed layout; any other error is a
-  bug and propagates.
-
-Dependencies: `services.report_layout_tree` (validation), `services.report_variables` (run-time variables), `services.report_fields`,
-`services.report_traversal`, `services.report_framework.ReportContext` (record codes),
-`services.link_type_scope` (link type names), `services.report_model` (output blocks),
-`services.report_widgets` and `services.report_widget_run` (widgets), `services.report_math` (equations).
+Dependencies: `report_layout_tree`, `report_variables`, `report_fields`, `report_traversal`, `report_framework`,
+`link_type_scope`, `report_model`, `report_widgets`, `report_widget_run`, `report_math`.
 """
 
 from __future__ import annotations
@@ -733,7 +697,7 @@ class _Run:
     def block_look(self, node: dict[str, Any]) -> tuple[FontFamily | None, float | None]:
         """The font family and size a text or heading block sets for itself (`None` for each it leaves to the document).
 
-        A family this server no longer has prints in the standard one of its kind, with a run note.
+        A family this server does not have prints in the standard one of its kind, with a run note.
         """
         key = node.get("font")
         family = None

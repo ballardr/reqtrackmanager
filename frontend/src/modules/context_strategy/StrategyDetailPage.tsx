@@ -1,34 +1,20 @@
 /**
  * Module: modules/context_strategy/StrategyDetailPage
  *
- * A single Strategy's full detail — full field display, current lifecycle
- * status, version history, comments, attachments, and relationships, plus
- * every lifecycle action. Mirrors `modules/decisions/DecisionDetailPage.tsx`'s
- * exact structure and its `docs/ux-style-guide.md` "Pattern: entity detail
- * panel" reasoning for being a real routed page rather than a `SidePanel`:
- * a comment thread, file attachments, a relationships section, and several
- * lifecycle actions each with their own `ConfirmDialog` are all present
- * here too.
+ * A single Strategy's full detail: fields, lifecycle status, versions, comments, attachments, relationships and every
+ * lifecycle action. It has `modules/decisions/DecisionDetailPage.tsx`'s structure and its reason for being a routed
+ * page rather than a `SidePanel` (`docs/ux-style-guide.md` "Pattern: entity detail panel"): a comment thread, file
+ * attachments, relationships and several lifecycle actions each with a `ConfirmDialog`.
  *
- * **Scope-aware, Decided by: Agent:** unlike Decision (project-scoped
- * only), a Strategy is org- **or** project-scoped, so this one
- * component serves both `ProjectStrategiesPage.tsx`'s row-click navigation
- * (`/projects/:projectId/modules/context_strategy/strategies/:strategyId`,
- * registered via `module.ts`'s `routes`) and `OrgStrategiesPanel.tsx`'s own
- * (`/orgs/:organizationId/modules/context_strategy/strategies/:strategyId`,
- * registered via `module.ts`'s `globalRoutes` — org-scoped, not gated by
- * any one project's own enabled-modules list, the same reasoning Compliance's
- * Standards detail route already established for a cross-cutting entity)
- * — exactly one of `projectId`/`organizationId` route params is present at
- * a time, mirroring the backend's own scope discriminator exactly, rather
- * than building two near-identical page components.
+ * Scope-aware: a Strategy is organisation- or project-scoped, so one component serves `ProjectStrategiesPage.tsx`
+ * (`/projects/:projectId/modules/context_strategy/strategies/:strategyId`, `module.ts` `routes`) and
+ * `OrgStrategiesPanel.tsx` (`/orgs/:organizationId/modules/context_strategy/strategies/:strategyId`, `globalRoutes`,
+ * not gated by a project's enabled modules). Exactly one of the `projectId`/`organizationId` route parameters is
+ * present, mirroring the backend's scope discriminator.
  *
- * Every mutating control always renders regardless of the caller's actual
- * role (same posture `DecisionDetailPage.tsx` establishes) — the backend
- * enforces `strategy_owner`/`strategy_approver` (or their org-scoped
- * equivalents) and a 403 surfaces as a toast. Edit/archive/file-attach
- * controls specifically for *content* are hidden (not just toast-blocked)
- * once `strategy.is_locked`.
+ * Mutating controls always render whatever the caller's role (as `DecisionDetailPage.tsx`); the backend enforces
+ * `strategy_owner` / `strategy_approver` (or the organisation equivalents) and a 403 surfaces as a toast. Content edit,
+ * archive and file-attach controls are hidden once `strategy.is_locked`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

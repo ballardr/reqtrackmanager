@@ -4,24 +4,16 @@ Module: services.record_activity
 The activity timeline of one artefact (any registered type), for the aside's Activity tab.
 
 Responsibilities:
-- Merge the record's own audit events, its version history (requirements and change requests,
-  whose edits are versions rather than plain audit rows) and the link events that touch it.
-- Authorise exactly as the Links panel does: the record must be a visible record of the project
-  (module enabled, the type's `view` permission held, `services.link_graph.ArtefactResolver`),
-  and a link event is shown only when the record at its other end is also visible, so the
-  timeline never reveals a record the viewer could not open.
-- Strip secret-looking keys from event `detail` before it leaves the server.
+- Merge the record's audit events, its version history and the link events that touch it.
+- Authorise as the Links panel does: the record must be visible in the project, and a link event shows only when
+  the record at its other end is visible too. Strip secret-looking keys from event `detail`.
 
 Design decisions:
-- Types follow the audit convention (`entity_type` == the artefact type, `entity_id` == the
-  record id), so a new module type needs no registration here. Link events are matched on the
-  record id appearing in the event's `detail`, which covers the generic `artefact_link` events
-  and the older per-pair link tables with one rule.
-- Discussion comments stay out of requirement and change request timelines (they have their own
-  thread), as in the project history.
+- Types follow the audit convention (`entity_type` is the artefact type, `entity_id` the record id), so a new
+  type needs no registration; link events are matched on the record id in `detail`.
+- Discussion comments stay out of requirement and change request timelines (they have their own thread).
 
-External dependencies: `services.changes` (version-derived entries), `services.link_graph`
-(visibility), `services.audit`'s `AuditEvent` rows.
+Dependencies: `services.changes`, `services.link_graph`, `services.audit`.
 """
 
 from __future__ import annotations

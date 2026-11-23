@@ -1,11 +1,8 @@
 /**
  * Stories for `OrgResourcesPage`: sections arrive only through the module registry. A fixture module registered
- * directly into the real `installedModules` (the `OrgAdminPage.stories.tsx` convention) supplies an ordinary section,
- * a two-section group and a section tied to a sub-component, so the page is exercised without depending on any real
- * module. Nothing renders a fixture unless a story's mock reports its module as enabled.
- *
- * The router decorator mounts the Org Resources route and prints the current address, so a redirect is asserted by
- * where the person ends up.
+ * into the real `installedModules` (as in `OrgAdminPage.stories.tsx`) supplies an ordinary section, a two-section
+ * group and a section tied to a sub-component; it renders only when a story's mock reports its module as enabled.
+ * The router decorator prints the current address, so a redirect is asserted by where the person ends up.
  */
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";

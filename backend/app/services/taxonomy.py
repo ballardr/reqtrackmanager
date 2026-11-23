@@ -1,19 +1,16 @@
 """
 Module: services.taxonomy
 
-The rules of a project's component and category tree that more than one caller needs, so the screen, the API,
-imports and MCP cannot disagree.
+The rules of a project's component and category tree that more than one caller needs, so the screen, API, imports and MCP
+agree.
 
 Responsibilities:
-- Suggest a free identifier prefix from a name (`suggest_prefix`), the one place the rule lives.
-- Move a category under another component (`move_category`), carrying everything that records its component.
-- Count what sits in each component and category (`structure_counts`) for the Structure page and the delete
-  checks.
+- `suggest_prefix` (a free identifier prefix from a name); `move_category` (under another component, carrying everything
+  that records its component); `structure_counts` (for the Structure page and delete checks).
 
-Design decisions: a suggestion only reads the siblings' prefixes and never reserves one, so the existing duplicate
-check at create time stays authoritative (a race returns that check's 400). A requirement's code carries the
-component prefix it was created under and is never rewritten, so a category move changes the codes of requirements
-created afterwards only; the project-wide sequence keeps every code unique across a move.
+Design decisions: a suggestion reads sibling prefixes and reserves nothing, so the create-time duplicate check stays
+authoritative. A requirement's code keeps the prefix it was created under, so a category move changes only the codes of
+requirements created afterwards; the project-wide sequence keeps codes unique.
 
 Dependencies: the project, requirement, alias, placement and change request models.
 """

@@ -1,29 +1,26 @@
 """
 Module: modules.architecture.state_shapes
 
-The standard geometry of a state machine diagram's items (UML state machine notation), as the server's drawing uses it.
-
-Responsibilities:
-- Give the markers: the filled dot of an initial state, the ringed dot of a final state and the diamond of a choice, each
-  with its frame size and SVG markup, and the drawing each takes at any larger size when it carries a label (`labelled_svg`).
-- Give the sizes a state, a composite state's header and padding and the corner radius use.
-- Give the curve of a self loop (a transition from a state to itself) and the point its label sits at.
-- Give the text a state's entry, exit and do lines and a transition's `event [guard] / action` label are written as.
+The standard geometry of a state machine diagram's items (UML state machine notation), as the server's drawing uses it:
+the markers (filled dot of an initial state, ringed dot of a final state, diamond of a choice) with frame size and SVG
+markup and the larger drawing each takes with a label (`labelled_svg`); the sizes of a state, a composite state's header
+and padding, and the corner radius; the self loop curve and its label point; the text of entry, exit and do lines and
+of a transition's `event [guard] / action` label.
 
 Design decisions:
-- **One table, two implementations.** The browser draws the markers and loops with TypeScript copies
-  (`frontend/src/modules/architecture/stateShapes.ts`, `frontend/src/components/graphSelfLoop.ts`); this file is the
-  server's copy for the SVG, and the shared cases in `stateShapeCases.json` and `graphSelfLoopCases.json` (written by
-  `tests/test_architecture_state_shapes.py`) keep them equal; the label rules have their own copy in
-  `stateMachineModel.ts` and cases in `stateLabelCases.json`. A change is made in both.
-- **A label grows the symbol, not the stored box.** A symbol with a label is drawn at least as large as its label needs
-  (`diagram_symbol_label.fit_label`: whole words, never split), centred on the stored box (`marker_frame`), so setting or
-  clearing a label never rewrites the layout and a diagram with no labels is drawn exactly as before. A filled symbol's text is
-  white (`LABEL_ON_FILL_KINDS`), a diamond's the page's text colour.
-- The shapes are fixed standard geometry, not the symbol library. The markup uses one neutral slate that keeps at least 3:1
-  contrast on a light and a dark background, because an image cannot read the page's colour tokens.
+- One table, two implementations: the browser draws markers and loops with TypeScript copies
+  (`frontend/src/modules/architecture/stateShapes.ts`, `frontend/src/components/graphSelfLoop.ts`); the shared cases in
+  `stateShapeCases.json` and `graphSelfLoopCases.json` (written by `tests/test_architecture_state_shapes.py`) keep them
+  equal. The label rules have their own copy in `stateMachineModel.ts` with cases in `stateLabelCases.json`. A change is
+  made in both.
+- A label grows the symbol, not the stored box: a labelled symbol is drawn at least as large as its label needs
+  (`diagram_symbol_label.fit_label`, whole words), centred on the stored box (`marker_frame`), so setting or clearing a
+  label never rewrites the layout. Text on a filled symbol is white (`LABEL_ON_FILL_KINDS`), on a diamond the page's
+  text colour.
+- The shapes are fixed geometry, not the symbol library. The markup uses one neutral slate with at least 3:1 contrast on
+  light and dark backgrounds, because an image cannot read the page's colour tokens.
 
-Dependencies: `enums` (the state kinds), `diagram_symbol_label` (the label's size and lines).
+Dependencies: `enums`, `diagram_symbol_label`.
 """
 
 from __future__ import annotations

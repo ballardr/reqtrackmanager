@@ -1,16 +1,9 @@
 """
 Module: routers.change_requests.votes
 
-Casting (or updating) an advisory stakeholder vote on a change request
-(C-R-03), and the vote tally. Advisory only — see
-`models.change_request.ChangeRequestVote`'s docstring.
-
-Split out of the former flat `routers/change_requests.py` as a pure
-code-organization refactor — see `routers/change_requests/__init__.py`'s
-module docstring for the package layout. `_get_cr_in_project` is imported
-from `_shared.py` (used by four sibling buckets); `OPEN_CR_STATUSES` is
-imported from `core.py` (used by exactly one sibling bucket besides core
-itself).
+Casting (or updating) an advisory stakeholder vote on a change request (C-R-03), and the vote tally.
+Advisory only (see `models.change_request.ChangeRequestVote`). `_get_cr_in_project` comes from
+`_shared.py` and `OPEN_CR_STATUSES` from `core.py`.
 """
 
 from __future__ import annotations

@@ -1,12 +1,10 @@
 /**
  * Module: components/CanvasModeToggle
  *
- * The toolbar switch for one mode of a graph canvas in which a click on the canvas does something other than select (comment
- * mode, note mode). One component draws every such switch, so the pressed look, the height and the tooltip are one thing.
- *
- * Design decisions: the help is the button's own tooltip, one line per state (docs/ux-style-guide.md, "Pattern: help on
- * interactive elements"), never a `(?)` beside it; the button is a small `ToggleButton`, matching its toolbar neighbours'
- * height. Only one mode is on at a time: the editor turns the others off when it turns one on (the switch does not know them).
+ * The toolbar switch for one mode of a graph canvas in which a click does something other than select (comment
+ * mode, note mode): one component so the pressed look, height and tooltip are one thing. The help is the button's
+ * own tooltip, one line per state (docs/ux-style-guide.md, "Pattern: help on interactive elements"). Only one
+ * mode is on at a time: the editor turns the others off when it turns one on.
  */
 import { ToggleButton } from "./ToggleButton";
 

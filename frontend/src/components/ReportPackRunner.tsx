@@ -4,20 +4,18 @@
  * Runs one report pack from the Reports page: the pack's variable form, its saved choices, a live count of what
  * each report in the zip would include, and the download.
  *
- * Responsibilities:
- * - Show the pack's variables (`ReportVariablesForm`, the same control per variable as for a single layout) and a
- *   "Saved choices" select that fills the form from a saved set (the values this project would use, with its own
- *   overrides applied); a value typed afterwards wins.
- * - Hold the pack back (and the download) until every variable with no default has a value, so a pack is never
+ * - Shows the pack's variables (`ReportVariablesForm`, the control per variable a single layout uses) and a "Saved
+ *   choices" select that fills the form from a saved set (the values this project would use, with its overrides
+ *   applied); a value typed afterwards wins.
+ * - Holds the pack and the download back until every variable with no default has a value, so a pack is never
  *   produced for a choice nobody made.
- * - Preview, a moment after the values stop changing, how many records each report would include and which are
- *   not available here and why (nothing is stored or produced), so a wrong choice is visible before anything is sent on.
- * - Download the zip with the same values; a pack too big to produce while the person waits is queued in the
+ * - Previews, shortly after the values stop changing, how many records each report would include (after the
+ *   variables narrow them) and which are not available here and why; nothing is stored or produced. The form states
+ *   that variables narrow and do not limit what the person may read.
+ * - Downloads the zip with the same values; a pack too big to produce while the person waits is queued in the
  *   background and announced with a toast (a notification says when it is ready).
  *
- * Design decisions: the counts are the *included* records, after the variables narrow them, because the point of
- * the preview is to show what a choice does. The form states that variables narrow, they do not limit what the
- * person may read. The component is stateless about the pack itself: everything comes through `ReportPackRunApi`.
+ * Stateless about the pack itself: everything comes through `ReportPackRunApi`.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 

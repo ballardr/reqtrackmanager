@@ -1,18 +1,14 @@
 /**
  * Module: components/TreeView
  *
- * The one expand/collapse tree shell: an indented list where every node with
- * children gets a chevron toggle and the caller renders each node's own
- * content (a link, a checkbox, a row of actions); the chevron is the shared plain `TreeToggle`. Extracted from
- * `ProjectTree` so the project hierarchy, the Stakeholder group manager and
- * `TreeSelect` share one implementation of the chevron, indentation (one step of `--tree-indent` per level, the same
- * token `FolderTreeList` and the link trace use), ARIA
- * (`aria-expanded`, named toggle) and expand state instead of three copies.
+ * The one expand/collapse tree shell: an indented list where every node with children gets the shared plain `TreeToggle`
+ * and the caller renders each node's own content (a link, a checkbox, a row of actions). The project hierarchy, the
+ * Stakeholder group manager and `TreeSelect` share its chevron, indentation (one step of `--tree-indent` per level, as in
+ * `FolderTreeList` and the link trace), ARIA (`aria-expanded`, named toggle) and expand state.
  *
- * Presentational: it owns only which nodes are expanded (or, in controlled mode, none of it: the caller passes
- * `expanded` and `onToggle`, as the report picker does to open every folder while a search is active); a chevron shows its
- * name in a shared `Tooltip` unless `toggleTooltip` is false (a picker's list must not be covered); the data and
- * every mutation stay with the caller (the page/component split `ViewToggle` set).
+ * Presentational: it owns which nodes are expanded unless controlled (the caller passes `expanded` and `onToggle`, as the
+ * report picker does to open every folder while searching); a chevron shows its name in a shared `Tooltip` unless
+ * `toggleTooltip` is false (a picker's list must not be covered); data and mutations stay with the caller.
  */
 import { useState, type ReactNode } from "react";
 

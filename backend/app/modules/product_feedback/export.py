@@ -1,46 +1,12 @@
 """
 Module: modules.product_feedback.export
 
-This module's contribution to the core org/project bundle export/import (`services.org_export` /
-`project_export`), registered through `ModuleOrgBundleHooks` / `ModuleProjectBundleHooks` on `MODULE_DEFINITION`
-rather than those core files importing this module.
-
-- Org level: the organisation's inbox requests and the active merges between them.
-- Project level: the project's submission policy and its requests (current content and status, tags,
-  evidence attachments, their "Requested by" and "Addresses" links, the requesters told the outcome, the active
-  merge of a duplicate) and the links to Requirements and other requests.
-
-Design decisions (all Decided by: Agent):
-- A request's scoring levels (one per axis) travel by *axis and name* and are matched to the target organisation's
-  `enhancement_request` levels; one the target lacks is left unset with a warning, so the request is "not
-  scored" on that axis rather than silently re-scored. The score is derived and never exported; a project's
-  own scoring configuration travels in the core project bundle (`services.scoring_config`); the organisation's levels do not.
-- A request travels as its *current* content and status only. Version history, comments and comment
-  attachments are not carried: a bundle is a migration artefact, and the imported request starts at version 1
-  attributed to the importer where the author cannot be matched.
-- The `ENH-nnn` code is carried as information only; an import numbers its records afresh from the target's
-  counter, so a restored project can never collide with a code it already uses.
-- An owner is `{type, email | name}` (`services.principals`); one the target cannot match is left unset with a
-  warning. Org-level files cannot travel (the org hook receives no bytes).
-- Requesters and merges refer to other records by portable keys, never ids (`import_late_project_data`, run
-  after every module's own import so the Stakeholders, Personas and Engagements exist): a requester is its
-  type and title (`services.codes.label_title`; a code is renumbered on import), a merge names the canonical
-  request by its exported code. Only active merges travel; ended ones are history, like versions. A requester
-  that matches no record, or more than one, is skipped with a warning rather than guessed at. A Pain Point an
-  request addresses travels the same way (type and title), and so does an informed requester (type, title, when,
-  who and the note; the person who recorded it is matched by e-mail, else the importer).
-- External references travel with their request by *system name* (`services.vocabulary_bundle.NameResolver`): a name
-  the target organisation lacks becomes an entry of the target project's own, with a warning, so a reference is never
-  dropped. The external systems themselves are core bundle sections (the organisation's list, and a project's own rows
-  and hidden defaults), imported before this module's records. The organisation's request channel list travels in the
-  organisation bundle and a project's own rows and hidden defaults in the project bundle; a requester's channel is
-  replayed in `import_late_project_data` with the requester, by type, title and channel name.
-- Links to Requirements and to other requests travel through the shared `services.bundle_links` (a Requirement by
-  its code, which the core import keeps); a link to another module's record is carried by type and title above.
-- The org-level merge skips an inbox request whose title and description the organisation already holds, so a
-  re-import is idempotent.
-
-Dependencies: `services.bundle_common`, `services.principals`, `services.tags`, this module's models and service.
+Contributes enhancement requests to the org/project bundle export and import
+(`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`): the organisation's inbox
+requests and merges; the project's submission policy, requests (current
+content, tags, evidence, links, informed requesters, active merges).
+Scoring levels travel by axis and name; codes are information only; requesters,
+merges and references use portable keys, replayed in `import_late_project_data`.
 """
 
 from __future__ import annotations

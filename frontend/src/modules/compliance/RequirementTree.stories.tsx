@@ -34,21 +34,11 @@ function action(overrides: Partial<ComplianceRequiredAction> & { id: string; req
 }
 
 /**
- * `RequirementTree` is fully self-contained — it fetches its own
- * requirements/required-actions and owns every mutation directly against
- * `complianceApi` (unlike `ProjectTree`, whose `nodes` shape this component
- * otherwise follows, see its own docstring). This stateful mock reproduces
- * the backend's flat, DFS-ordered `GET .../requirements` list plus its
- * `required-actions` sub-resource, so a story's `play` function can assert
- * a real create/reorder/delete -> reload -> re-render round trip, matching
- * `StandardVersionsSection.stories.tsx`'s own standard (the retired
- * `ComplianceAdminPanel.stories.tsx`'s successor).
- *
- * Opening "View mappings" mounts `RequirementMappingsModal` as a child —
- * its endpoints are mocked here just enough to resolve emptily so that
- * transition settles cleanly; that modal's own CRUD/cascading-picker
- * behaviour is `RequirementMappingsModal.stories.tsx`'s job, not
- * duplicated here.
+ * `RequirementTree` is self-contained: it fetches its own requirements and required actions and owns every mutation against
+ * `complianceApi` (unlike `ProjectTree`, whose `nodes` shape it follows). This stateful mock reproduces the backend's flat,
+ * depth-first `GET .../requirements` list and its `required-actions` sub-resource, so a `play` function can assert a real
+ * create, reorder or delete -> reload -> re-render round trip, as `StandardVersionsSection.stories.tsx` does. "View mappings"
+ * mounts `RequirementMappingsModal`, whose endpoints resolve empty here; its behaviour is in `RequirementMappingsModal.stories.tsx`.
  */
 function mockRequirementTreeApis(initialRequirements: ComplianceRequirement[], initialActions: Record<string, ComplianceRequiredAction[]> = {}) {
   let requirements = initialRequirements;

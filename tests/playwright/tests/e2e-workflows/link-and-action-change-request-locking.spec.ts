@@ -4,26 +4,14 @@ import { approveRequirementFromDetail, loginAs, openProject, openRequirementByNa
 import { openAddLinkDialog } from "../modules/linksPanel";
 
 /**
- * Job to be done: Once a requirement is
- * approved (locked):
+ * Job to be done: once a requirement is approved (locked):
+ * 1. Unlinking an action always requires a change request, in every project.
+ * 2. Adding or removing a traceability link requires a change request only when the project opts in via
+ *    `require_change_request_for_approved_links` (or an organisation-wide force applies).
  *
- * 1. Unlinking an action always requires a change request instead of the
- *    direct endpoint — unconditional, every project (closes an asymmetry
- * `unlink_action` had with the already-gated add side).
- * 2. Adding/removing a traceability link *also* requires a change request,
- *    but only once a project opts in via `require_change_request_for_
- *    approved_links` (or an org-wide force applies) — links otherwise stay
- *    ungated, unlike actions.
- *
- * Uses "Epsilon-1 Link Lock Demo" (`PROJECT_NAMES.epsilon1`), a project
- * `backend/scripts/seed_e2e_dataset.py` seeds dedicated solely to this
- * coverage (`require_change_request_for_approved_links` is on; no other
- * spec may depend on that) — but, per the same fix `requirement-actions
- * .spec.ts` already applied to its own originally-fixed fixture, every
- * requirement/link/action this spec touches is created fresh by this run
- * rather than a pre-seeded one: approving a requirement and unlinking/
- * removing are one-way, so a fixed seeded fixture would be fully consumed
- * after the first run and break every repeat run against the same database.
+ * Uses "Epsilon-1 Link Lock Demo" (`PROJECT_NAMES.epsilon1`), seeded solely for this coverage. Every requirement,
+ * link and action is created fresh by each run: approving and unlinking are one-way, so a seeded fixture would be
+ * consumed after the first run.
  */
 test.describe("action/link change-request locking", () => {
   test("unlinking an action, and adding/removing a link, all route through a change request once locked", async ({ page }) => {
@@ -36,18 +24,9 @@ test.describe("action/link change-request locking", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await openProject(page, PROJECT_NAMES.epsilon1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    // The "Change requests" list (below) is shared, cumulative state for
-    // this whole project — every change request any run of this spec has
-    // ever created (plus, historically, any left mid-flight by a run that
-    // failed partway) stays in it. Rather than find "the" change request
-    // this step just created by matching status text against that shared
-    // list — `tr:has-text("Draft")`, tried first, strict-mode-violates the
-    // moment a second Draft row exists for any reason, and has also been
-    // observed to land on the wrong row without erroring at all — capture
-    // each created change request's own id straight from its creating
-    // POST response (below) and navigate to it directly by URL. This is
-    // the same fix `openRequirementByCode` in helpers.ts already needed for
-    // an identical shared-list strict-mode violation.
+    // The "Change requests" list is shared, cumulative state for the project, so a `tr:has-text("Draft")` match
+    // breaks strict mode (or lands on the wrong row) once a second Draft row exists. Each created change request's id
+    // is captured from its creating POST response and opened directly by URL, as `openRequirementByCode` does.
     const projectIdMatch = page.url().match(/\/projects\/([0-9a-f-]{36})/);
     if (!projectIdMatch) throw new Error(`Could not extract project id from URL: ${page.url()}`);
     const projectId = projectIdMatch[1];

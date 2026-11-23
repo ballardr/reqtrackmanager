@@ -1,20 +1,16 @@
 /**
  * Module: modules/risk_management/RiskDetailPage
  *
- * A single risk's full detail as a routed page (`/projects/:projectId/modules/
- * risk_management/risks/:riskId`, `module.ts`; the path `module.ts` also
- * declares for `artefactPaths`). A risk carries a lifecycle with
- * a dialog per move, treatment verdicts, a review history, version history,
- * attachments, comments and a Links panel, so it is a page rather than a
+ * A single risk's full detail as a routed page (`/projects/:projectId/modules/risk_management/risks/:riskId`, the path
+ * `module.ts` also declares for `artefactPaths`). A risk carries a lifecycle with a dialog per move, treatment
+ * verdicts, a review history, versions, attachments, comments and a Links panel, so it is a page rather than a
  * `SidePanel` (docs/ux-style-guide.md "Pattern: entity detail panel").
  *
- * The page fetches its own data. Edit is a Modal layer that sends only changed
- * fields (a new version). The matrix shows where the risk sits, inherent and
- * residual, on the project's configured grid. The Links panel makes the
- * relationships (Mitigated by, Treated by, Verified by, ...); `RiskTreatmentsPanel`
- * then records whether each treatment actually works. Every mutating control
- * always renders regardless of role; the backend enforces Risk Manager / Risk
- * Acceptor and a 403 surfaces as a toast or in the dialog.
+ * The page fetches its own data. Edit is a Modal layer that sends only changed fields (a new version). The matrix
+ * shows where the risk sits, inherent and residual, on the project's configured grid. The Links panel makes the
+ * relationships (Mitigated by, Treated by, Verified by, ...); `RiskTreatmentsPanel` records whether each treatment
+ * works. Every mutating control renders whatever the role; the backend enforces Risk Manager / Risk Acceptor and a 403
+ * surfaces as a toast or in the dialog.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

@@ -1,18 +1,10 @@
 """
 Module: modules.risk_management.search
 
-The `ArtefactSearchProvider` for the `risk` artefact type, so the global search finds
-risks by code, title, tags and the risk's descriptive text.
-
-Responsibilities:
-- Declare the columns the search reads (from the risk's current version) and the free-text
-  fields it may match.
-
-Design decisions:
-- Opt-in fields: the statement, cause, event, consequence and acceptance criteria only.
-  Review notes and treatment text are not matched.
-
-Dependencies: this module's models and labels; `services.search_core` (builders).
+The `ArtefactSearchProvider` for `risk`: the columns the search reads (from the
+current version) and the opt-in text fields (statement, cause, event,
+consequence, acceptance criteria; not review notes or treatment text).
+Dependencies: this module's models and labels; `services.search_core`.
 """
 
 from __future__ import annotations

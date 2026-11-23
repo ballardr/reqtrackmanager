@@ -4,10 +4,9 @@ Revision ID: 0134
 Revises: 0133
 Create Date: 2026-11-05
 
-Replaces the four level columns on `enhancement_request_versions` (reach, impact, confidence, effort) with
-`enhancement_request_version_scores (version_id, axis_key, level_id)`, copying every existing level across first,
-so a scheme axis added later (Ease, Demand, an organisation's own) needs no schema change. Deleting a level
-removes the rows that reference it.
+Replaces the four level columns on `enhancement_request_versions` with
+`enhancement_request_version_scores (version_id, axis_key, level_id)`, copying
+existing levels first, so a new scheme axis needs no schema change.
 """
 
 from collections.abc import Sequence

@@ -1,20 +1,12 @@
 /**
  * Module: modules/compliance/StandardProjectsPanel
  *
- * The standard workspace's "Projects" section — the destination for the Overview's "Projects"/
- * "Compliant" `MetricTile`s: a simple, single-standard list of every
- * project this standard is assigned to, each with its own §20 overall
- * status, drilling through to that project's own Compliance page
- * (`/projects/:id/modules/compliance`) rather than rebuilding a
- * requirement-level view here — the exact reuse-the-existing-page
- * reasoning `OrgComplianceStandardsPanel.tsx`'s own docstring already
- * gives for its per-standard row expansion.
- *
- * Deliberately not a second `FilterPanel`/`DirectoryTable` directory: this
- * is a single standard's own project list, typically small, reached from
- * one Overview stat tile — the "Compliant" tile's `?state=compliant` query
- * param (read via `useSearchParams`, not local state, so the filtered view
- * is itself linkable/shareable) is the only filter this scope needs.
+ * The standard workspace's "Projects" section, the destination of the Overview's "Projects" and "Compliant" `MetricTile`s: a
+ * simple list of every project the standard is assigned to with its §20 overall status, each drilling to that project's
+ * Compliance page (`/projects/:id/modules/compliance`) rather than rebuilding a requirement-level view, as
+ * `OrgComplianceStandardsPanel.tsx` does for its row expansion. It is not a second `FilterPanel`/`DirectoryTable` directory:
+ * the list is typically small, and the "Compliant" tile's `?state=compliant` query parameter (read with `useSearchParams` so the
+ * filtered view is linkable) is the only filter needed.
  */
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";

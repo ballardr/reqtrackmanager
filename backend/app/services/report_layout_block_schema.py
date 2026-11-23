@@ -1,31 +1,22 @@
 """
 Module: services.report_layout_block_schema
 
-The editor-facing description of a layout block type: the fields a person fills in, the kind of control each
-needs, the lists of child blocks it holds and the name it brings into scope. The visual designer (block outline,
-rich-text view) renders its forms from this, so a block type registered by a module needs no frontend edit.
+The editor-facing description of a layout block type: its fields and controls, the child lists it holds and the name
+it brings into scope. The visual designer renders its forms from this, so a module's block type needs no frontend edit.
 
 Responsibilities:
-- Define the vocabulary (`BlockField`, `BlockGroup`, `BlockContainer`, `BlockProvides`, `BlockSchema`) and the field
-  `kind`s the designer has a control for (`FIELD_KINDS`).
-- Say how a long form is arranged (`BlockSchema.groups`, `BlockField.group` / `basic` / `control` / `inline`) and check a
-  schema's declaration (`arrangement_problems`).
-- Describe the layout-level fields (`LAYOUT_FIELDS`: orientation, variables).
+- Define the vocabulary (`BlockField`, `BlockGroup`, `BlockContainer`, `BlockProvides`, `BlockSchema`, `FIELD_KINDS`),
+  how a long form is arranged (`groups`, `group`/`basic`/`control`/`inline`; `arrangement_problems`) and the
+  layout-level fields (`LAYOUT_FIELDS`).
 
 Design decisions:
-- **A description, not a validator.** `BlockSpec.validate` stays the only judge of a node; a schema only tells the
-  editor what to offer, so the two cannot disagree about what is saved. A schema that is out of step shows up as
-  the server's own error on the card.
-- **Composite kinds are named, not nested.** A source, a column list, a condition or a widget's settings is one
-  `kind` with its own editor, because each has structure (a source reads the names in scope) that a generic
-  field-by-field form would lose. A module block type builds its form from these kinds; a kind the designer does
-  not know is shown as JSON, checked by the server.
-- **Arrangement is declared, not drawn per type.** A schema names its collapsible groups and each field names its
-  group, so a block type registered by a module is arranged by the same designer code with no core edit. A schema
-  that declares no groups is drawn flat.
-- **Text is English**, like the validator's messages; the designer does not translate server text.
+- A description, not a validator: `BlockSpec.validate` stays the only judge, so the editor and server cannot disagree.
+- Composite kinds (source, column list, condition, widget settings) are named, not nested, because each has structure a
+  field-by-field form would lose; an unknown kind shows as JSON, checked by the server.
+- Arrangement is declared (groups, field groups), so a module's block type is arranged with no core edit.
+- Text is English, like the validator's messages.
 
-Dependencies: none (pure data; `services.report_layout_tree` registers the core schemas).
+Dependencies: none (pure data; `report_layout_tree` registers the core schemas).
 """
 
 from __future__ import annotations

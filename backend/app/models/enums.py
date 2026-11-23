@@ -1,13 +1,9 @@
 """
 Module: models.enums
 
-All fixed vocabularies used by the domain model. Ossa (v1)'s own small,
-fixed `OrgRole`/`ProjectRole` sets below remain in place unconditionally
-(Fine-Grained Access Control is additive, never a
-replacement) — but the customisable permission system anticipated here as a
-Pelion (v2) concern now exists alongside them, reclassified from an
-optional module to a core platform capability 2026-09-23: see
-`PermissionLevel` below, `app.models.custom_role.CustomRoleDefinition`, and.
+All fixed vocabularies used by the domain model. The fixed `OrgRole`/`ProjectRole` sets are unconditional;
+the customisable permission system (a core platform capability) is additive to them: see `PermissionLevel`
+below and `app.models.custom_role.CustomRoleDefinition`.
 """
 
 import enum
@@ -22,23 +18,16 @@ class OrgRole(str, enum.Enum):
 
 
 class ServerRole(str, enum.Enum):
-    """Server-tier (cross-tenant) permission roles, additive to
-    `User.is_server_admin`.
+    """Server-tier (cross-tenant) permission roles, additive to `User.is_server_admin`.
 
-    SERVER_ADMIN mirrors the existing `User.is_server_admin` boolean's
-    power level for composition purposes (e.g. `services.rbac.
-    require_server_role`'s "is_server_admin implies every server role"
-    check) but is never itself written as a `UserServerRole` row —
-    `is_server_admin` remains the sole source of truth for that tier, left
-    completely untouched by this enum's introduction (docs/decisions.md,
-    "Compliance Module + Modular Feature System" entry). Only
-    The other members are granted via `UserServerRole`.
+    SERVER_ADMIN mirrors `User.is_server_admin` for composition (`services.rbac.require_server_role`
+    treats `is_server_admin` as implying every server role) but is never written as a `UserServerRole`
+    row: `is_server_admin` is the sole source of truth for that tier (docs/decisions.md, "Compliance Module
+    + Modular Feature System"). The other members are granted through `UserServerRole`.
 
-    MODULE_ADMINISTRATOR: narrower than SERVER_ADMIN — manages module
-    entitlements/enablement (the module system)
-    without the full cross-tenant power `is_server_admin` implies. Grantable
-    only by an existing SERVER_ADMIN (standard privilege-escalation-safe
-    pattern: a narrower role can never grant itself or others a role).
+    MODULE_ADMINISTRATOR: narrower than SERVER_ADMIN; manages module entitlements and enablement without
+    the full cross-tenant power `is_server_admin` implies. Grantable only by a SERVER_ADMIN, so a narrower
+    role can never grant itself or others a role.
 
     SUBSCRIPTION_MANAGER ("Platform subscription manager"): provisions and
     bounds organisations (create, import, suspend, per-organisation module
@@ -61,16 +50,12 @@ class ServerRole(str, enum.Enum):
 
 
 class ModuleEntitlementPolicy(str, enum.Enum):
-    """Deployment-wide default for whether an organisation is entitled to a
-    module absent an explicit `organization_module_entitlements` override
-    row (`ServerSettings.default_module_entitlement_policy`,
-).
+    """Deployment-wide default for whether an organisation is entitled to a module absent an explicit
+    `organization_module_entitlements` row (`ServerSettings.default_module_entitlement_policy`).
 
-    OPEN: every module is entitled by default — the right default for a
-        self-hosted/open-source deployment with no licensing tiers.
-    CLOSED: no module is entitled by default — a future commercial/SaaS
-        posture of the same codebase can flip this and grant entitlements
-        explicitly per organisation instead.
+    OPEN: every module is entitled by default, for a self-hosted deployment with no licensing tiers.
+    CLOSED: no module is entitled by default; entitlements are granted per organisation (a commercial or
+        SaaS posture).
     """
 
     OPEN = "open"
@@ -90,17 +75,12 @@ class ProjectRoleInheritanceMode(str, enum.Enum):
     """How a project's effective roles are extended from its parent project
     (`Project.parent_project_id`), resolved in `services.rbac`.
 
-    NONE: no cascade (default) — the project's roles are exactly its own
-        direct/group/org-wide resolution, same as any project today.
-    MIRROR_ALL: every role a user holds on the parent (via the parent's own
-        direct resolution) is mirrored onto this project as that same role.
-    MIRROR_ROLE: only users holding the specific role named in
-        `Project.role_inheritance_filter_role` on the parent get that same
-        role mirrored onto this project; everyone else on the parent gets
-        nothing from this mechanism.
-    MEMBER_ONLY: any user holding any role on the parent gets baseline
-        `ProjectRole.MEMBER` on this project, regardless of which role they
-        actually hold on the parent.
+    NONE: no cascade (default); the project's roles are its own direct, group and org-wide resolution.
+    MIRROR_ALL: every role a user holds on the parent (by the parent's direct resolution) is mirrored onto
+        this project as the same role.
+    MIRROR_ROLE: only users holding the role named in `Project.role_inheritance_filter_role` on the parent
+        get that role mirrored onto this project.
+    MEMBER_ONLY: any user holding any role on the parent gets baseline `ProjectRole.MEMBER` here.
 
     MIRROR_ALL/MIRROR_ROLE can convey PROJECT_MANAGER/PROJECT_ADMINISTRATOR
     control and require a tier-2 UI confirmation; MEMBER_ONLY caps at
@@ -116,17 +96,13 @@ class ProjectRoleInheritanceMode(str, enum.Enum):
 class ProjectVisibility(str, enum.Enum):
     """Who can see a project without an explicit user/group assignment.
 
-    ONLY_SPECIFIED: today's only behaviour — access is granted purely via
-        direct `UserProjectRole`/`ProjectGroupMember` assignment
-        (`services.rbac.get_effective_project_roles`). The default for
-        every project, including ones cloned from a template.
-    ORG_WIDE: every member of the project's organisation automatically
-        gets baseline `ProjectRole.MEMBER` (view-only) access, with no
-        assignment needed — never manager/administrator/stakeholder,
-        which still require an explicit grant. Deliberately does not
-        extend to project-broadcast notifications (`get_project_member_user_ids`)
-        or org-admin's project-settings carve-out
-        (`can_manage_project_settings`) — see `services.rbac`'s docstring.
+    ONLY_SPECIFIED: access comes only from direct `UserProjectRole`/`ProjectGroupMember` assignment
+        (`services.rbac.get_effective_project_roles`). The default for every project, including ones
+        cloned from a template.
+    ORG_WIDE: every member of the project's organisation gets baseline `ProjectRole.MEMBER` (view-only)
+        access without assignment; manager, administrator and stakeholder still need an explicit grant.
+        It does not extend to project-broadcast notifications (`get_project_member_user_ids`) or the
+        org-admin project-settings carve-out (`can_manage_project_settings`); see `services.rbac`.
     """
 
     ONLY_SPECIFIED = "only_specified"
@@ -183,12 +159,9 @@ class RequirementLevel(str, enum.Enum):
 class RequirementStatus(str, enum.Enum):
     """Lifecycle states for a requirement (C-G-11).
 
-    `COMPLETED` deliberately does not exist here (removed; see migration
-    0018 and docs/decisions.md) — C-G-11 is explicit that completion is
-    "independently of lifecycle state," an overlay marker rather than a
-    lifecycle status, so it lives on `Requirement.is_completed`/
-    `completed_at`/`completed_by` instead, layered on top of `APPROVED`
-    rather than replacing it.
+    There is no `COMPLETED` member: C-G-11 makes completion independent of lifecycle state, so it is an
+    overlay marker on `Requirement.is_completed`/`completed_at`/`completed_by`, layered on `APPROVED`
+    (docs/decisions.md).
     """
 
     DRAFT = "draft"
@@ -198,18 +171,12 @@ class RequirementStatus(str, enum.Enum):
 
 
 class ChangeRequestKind(str, enum.Enum):
-    """What a change request proposes: a new requirement, a modification to
-    an existing one, adding an action to
-    a requirement once it's locked, or
-    removing an action, or adding/removing a traceability link, once it's
-    locked and the project (or an org-wide force) requires it. All of the
-    action/link kinds mirror the same change-request-only-once-locked rule
-    `MODIFY_REQUIREMENT` already enforces (`services.requirements.
-    LOCKED_STATUSES`) rather than inventing a separate mechanism —
-    `REMOVE_ACTION`'s gate is unconditional (every project), while
-    `ADD_LINK`/`REMOVE_LINK` additionally require
-    `services.requirements.requires_change_request_for_links` to be true for
-    the project (links otherwise stay ungated by design)."""
+    """What a change request proposes: a new requirement, a modification to an existing one, adding or
+    removing an action on a locked requirement, or adding or removing a traceability link on a locked
+    requirement where the project (or an org-wide force) requires it. The action and link kinds follow the
+    change-request-only-once-locked rule of `MODIFY_REQUIREMENT` (`services.requirements.LOCKED_STATUSES`).
+    The `ADD_ACTION`/`REMOVE_ACTION` gate applies to every project; `ADD_LINK`/`REMOVE_LINK` also need
+    `services.requirements.requires_change_request_for_links` to be true for the project."""
 
     NEW_REQUIREMENT = "new_requirement"
     MODIFY_REQUIREMENT = "modify_requirement"
@@ -245,10 +212,8 @@ class ChangeRequestStatus(str, enum.Enum):
 class ReviewTargetType(str, enum.Enum):
     """What a discussion thread comment is attached to (C-R-01).
 
-    ACTION: a `RequirementAction`'s own discussion thread, reusing the same
-    generic `ReviewComment`/`CommentFile` machinery as requirements and
-    change requests rather than a fourth parallel comment model (see
-    `models.requirement_action`'s module docstring).
+    ACTION: a `RequirementAction`'s discussion thread, sharing the `ReviewComment`/`CommentFile`
+    machinery of requirements and change requests (see `models.requirement_action`).
     """
 
     REQUIREMENT = "requirement"
@@ -257,22 +222,13 @@ class ReviewTargetType(str, enum.Enum):
 
 
 class ArtefactType(str, enum.Enum):
-    """The three built-in, app-owned values a polymorphic `ArtefactLink`
-    (`models.relationship`) may hold on either its source or target end
-.
+    """The three built-in values a polymorphic `ArtefactLink` (`models.relationship`) may hold on either end.
 
-    A fixed Python `enum.Enum` can't gain members at runtime, so this is
-    deliberately *not* where every module's own linkable artefact type is
-    declared (having modules extend this enum directly would
-    need a core-file edit per module). `ArtefactLink.source_
-    type`/`target_type` are plain validated strings, not this enum's own
-    type — a module declares its own artefact-type values on its
-    `ModuleDefinition.artefact_types` (`app.modules.registry`) instead;
-    `get_all_registered_artefact_types` (same module) merges every
-    registered module's own values with this enum's built-in ones into
-    the set `services.relationships.create_link` validates against. See
-    `models.relationship.ArtefactLink`'s own docstring for the table this
-    backs.
+    An `enum.Enum` cannot gain members at runtime, so modules do not extend it (that would need a core edit
+    per module). `ArtefactLink.source_type`/`target_type` are plain validated strings; a module declares its
+    values on `ModuleDefinition.artefact_types` (`app.modules.registry`), and
+    `get_all_registered_artefact_types` merges them with these into the set
+    `services.relationships.create_link` validates against.
     """
 
     REQUIREMENT = "requirement"
@@ -323,30 +279,20 @@ class LinkNestingScope(str, enum.Enum):
 
 class PermissionLevel(str, enum.Enum):
     """The permission-level taxonomy crossed with every registered artefact type
-    (`app.modules.registry.get_all_registered_artefact_types`) to derive
-    the Fine-Grained Access Control permission-atom vocabulary
+    (`app.modules.registry.get_all_registered_artefact_types`) to derive the permission-atom vocabulary
     (`app.services.permissions.get_all_permissions`).
 
-    VIEW is its own independent atom, held or not held separately from
-    every write tier — a role can be granted `VIEW` alone, a pure read-only
-    grant, without any of the three below. This is the explicit design
-    choice that satisfies "read and write must be separate" without going
-    fully granular *within* write (a different axis, left as a future
-    refinement).
+    VIEW is an independent atom: a role can hold `VIEW` alone (read-only) without any write tier, so read
+    and write are separate.
 
-    PROPOSE_CREATE: create/propose a new artefact of this type (e.g.
-        drafting a Requirement, submitting a Change Request) without the
-        power to directly edit or approve an existing one.
-    MANAGE: edit/manage an existing artefact of this type, short of
-        approving/baselining it.
-    LINK: set and remove links on an existing artefact of this type
- and
-        nothing else. Link authoring accepts `LINK` or `MANAGE`; `MANAGE` is
-        deliberately not rewritten to imply it, so the vocabulary stays a flat
-        set of independent atoms.
-    APPROVE_BASELINE: approve, baseline, or otherwise finalise an artefact
-        of this type — the tier Decision Management's own per-Decision-Type
-        approval scoping is expressed against.
+    PROPOSE_CREATE: create or propose a new artefact of this type (drafting a Requirement, submitting a
+        Change Request) without directly editing or approving an existing one.
+    MANAGE: edit an existing artefact of this type, short of approving or baselining it.
+    LINK: set and remove links on an existing artefact of this type, and nothing else. Link authoring
+        accepts `LINK` or `MANAGE`; `MANAGE` is not rewritten to imply `LINK`, so the vocabulary stays a
+        flat set of independent atoms.
+    APPROVE_BASELINE: approve, baseline or otherwise finalise an artefact of this type; the tier
+        Decision Management's per-Decision-Type approval scoping is expressed against.
     """
 
     VIEW = "view"
@@ -359,12 +305,9 @@ class PermissionLevel(str, enum.Enum):
 class RequirementActionOutcome(str, enum.Enum):
     """Lifecycle/outcome state of a `RequirementAction`.
 
-    Kept as a small fixed enum rather than a fourth org/project-configurable
-    definition table (unlike `ProjectStatusDefinition`,
-    `RequirementLinkTypeDefinition`, `ActionTypeDefinition`): nothing in the
-    feature request asks this vocabulary to vary per org/project, and every
-    comparable lifecycle vocabulary already in this codebase
-    (`RequirementReviewOutcome`, `ChangeRequestStatus`) is a fixed enum too.
+    A fixed enum, not an org/project-configurable definition table (unlike `ProjectStatusDefinition`,
+    `RequirementLinkTypeDefinition`, `ActionTypeDefinition`): like `RequirementReviewOutcome` and
+    `ChangeRequestStatus`, this lifecycle vocabulary does not vary per organisation or project.
     """
 
     PENDING = "pending"
@@ -396,16 +339,13 @@ class StageReviewResponseChoice(str, enum.Enum):
 class SignupMode(str, enum.Enum):
     """Server-wide public self-signup availability (`ServerSettings.signup_mode`).
 
-    DISABLED: No public signup form; every native account is provisioned by
-        an org/server admin (`create_org_user`) or via SSO.
-    ALWAYS_ON: Anyone can self-register a native account. No organisation
-        membership is granted automatically, regardless of email domain — an
-        admin assigns the new account to an organisation afterward.
-    ORG_SPECIFIED: Self-registration succeeds only when the typed email's
-        domain matches exactly one organisation that has both
-        `allow_self_signup=True` and a configured `auto_accept_email_domain`
-        — that organisation's domain configuration *is* the gate, not a
-        separate open-signup mode. See `routers/auth.py::signup`.
+    DISABLED: No public signup form; an organisation or server admin (`create_org_user`) or SSO provisions
+        every native account.
+    ALWAYS_ON: Anyone can self-register a native account. No organisation membership is granted
+        automatically; an admin assigns the account afterward.
+    ORG_SPECIFIED: Self-registration succeeds only when the email's domain matches exactly one organisation
+        with `allow_self_signup=True` and a configured `auto_accept_email_domain`; that configuration is
+        the gate. See `routers/auth.py::signup`.
     """
 
     DISABLED = "disabled"
@@ -414,19 +354,15 @@ class SignupMode(str, enum.Enum):
 
 
 class ExternalUserPolicy(str, enum.Enum):
-    """Whether/how a project admin may add someone to a project by typing an
-    email address that isn't already an organisation member
-    (`Organization.external_user_policy`).
+    """Whether and how a project admin may add someone to a project by typing an email address that is not
+    already an organisation member (`Organization.external_user_policy`).
 
-    DISABLED: The project user picker only shows existing org members — no
-        email-based add, no invites. Equivalent to "don't allow external
-        users" (the default).
-    ORG_DOMAIN_ONLY: An email matching an *existing* account anywhere in the
-        system can always be added directly (granting org membership as a
-        side effect, C-U-02). A not-yet-registered email can only be
-        invited if its domain matches `Organization.auto_accept_email_domain`.
-    ANYONE: Same as ORG_DOMAIN_ONLY, but a not-yet-registered email of any
-        domain can be invited.
+    DISABLED (default): The project user picker shows only existing org members; no email-based add and no
+        invites.
+    ORG_DOMAIN_ONLY: An email matching an existing account anywhere in the system can be added directly
+        (granting org membership, C-U-02). A not-yet-registered email can be invited only if its domain
+        matches `Organization.auto_accept_email_domain`.
+    ANYONE: As ORG_DOMAIN_ONLY, and a not-yet-registered email of any domain can be invited.
     """
 
     DISABLED = "disabled"
@@ -435,10 +371,9 @@ class ExternalUserPolicy(str, enum.Enum):
 
 
 class PrincipalType(str, enum.Enum):
-    """What a principal reference (`services.principals`) points at: a login
-    or a group. A closed core set — a module never adds a value; it only
-    declares which of its columns hold a principal
-    (`ModuleDefinition.principal_references`).
+    """What a principal reference (`services.principals`) points at: a login or a group. A closed core set;
+    a module declares which of its columns hold a principal (`ModuleDefinition.principal_references`) and
+    never adds a value.
 
     ORG_GROUP is an `OrgGroup`; PROJECT_GROUP is a `ProjectGroup` and is only
     valid for a record inside that group's own project.

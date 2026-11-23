@@ -1,84 +1,12 @@
 """
 Module: modules.decisions.module
 
-Registers the Decision Management module into the modular feature
-system's registry via `MODULE_DEFINITION`, mirroring `app.modules.compliance.
-module`'s own registration shape.
-
-`decision_owner` (project-scoped) and `decision_approver` (project-scoped,
-the "simple placeholder role") are declared here as module-contributed roles,
-not additions to `ProjectRole`.
-
-`on_project_created` seeds this project's default `DecisionTypeDefinition`
-rows for a *root* project (not gated on module enablement, mirroring
-Compliance's own `on_org_created` seeding). A project with a parent is
-deliberately left unseeded (2026-09-22): Decision Types have the same
-hierarchical fallback `ActionTypeDefinition` already has
-(`service.resolve_effective_decision_types`), and a child needs to start
-empty for that fallback to have anything to do — exact mirror of
-`routers.projects.create_project`'s own root-only `seed_action_types` gate.
-`org_creation_choices` / `on_org_created_with_choices` are this module's use
-of the org-creation-choices extension point (`app.modules.registry`) — the
-three seeded ADR template packs, opted into per-organisation rather than
-always seeded.
-
-`get_router()` returns the org-scoped `router.py` (Decision Template CRUD),
-and `get_project_router()` returns `project_router.py` (Decision CRUD,
-lifecycle transitions, relationships, comments, files, Decision Type
-management) — mirroring `app.modules.compliance.module`'s own
-`get_router()`/`get_project_router()` split shape, including the lazy,
-inside-the-function imports (avoids any import-cycle risk with this module's
-own registration, same reasoning as every other module).
-`resolve_file_owner_project_id` is registered for the same reason as
-Compliance's: so the core, module-agnostic `GET /api/v1/files/{id}` download
-endpoint can authorize a `DecisionFile`/`DecisionCommentFile` attachment
-without importing anything from this module directly.
-
-`implemented=True`; `default_enabled` stays `False`: an organisation must opt
-in explicitly (**Decided by: Agent**). `frontend_manifest` (Tier A —
-`frontend/src/modules/decisions/module.ts` registers the matching route/nav
-entry, `ProjectDecisionsPage`) gives the project nav rail a "Decisions" entry
-once an organisation enables this module. `nav_path` mirrors Compliance's own
-`"{project_id}"` placeholder convention, interpolated server-side before being
-sent to the frontend (`routers/projects.py::list_project_enabled_modules`).
-
-MCP tools (**Decided by: User**, 2026-09-21): seven read-only (`GET`) tools —
-`list_decision_types`, `list_decisions`, `get_decision`,
-`list_decision_relationships`, `list_decision_comments`,
-`list_decision_files` (all project-scoped, `_PROJECT_ROUTER_PREFIX`), and
-`list_decision_templates` (org-scoped, `_ROUTER_PREFIX`).
-
-2026-09-22 — approve/reject given the same generalized AI-approval gate as
-Compliance (**Decided by: User** — explicit confirmation, "Yes, apply the
-same treatment," in direct response to being asked, following on from
-docs/decisions.md's "Compliance MCP write tools + generalized AI approval
-gate" entry, which had left this module's `approve_decision`/`reject_decision`
-as the one architecturally-identical case still excluded). Two more tools are
-declared below — `approve_decision`/`reject_decision`: reached through MCP,
-each additionally requires `require_ai_approvals_enabled` (this project's and
-its organisation's `allow_ai_approvals` both true), exactly mirroring
-`modules.compliance.project_router.approve_requirement`/`reject_requirement`.
-See `project_router.py`'s `approve_decision_endpoint`/
-`reject_decision_endpoint` docstrings and docs/decisions.md's "Decision
-Management MCP approval gate" entry for the full account.
-create/propose/submit-for-review/supersede/comment/attach-file remain
-undeclared — the first two don't decide anything (mirroring Compliance's own
-`submit-for-approval` treatment) and the rest are ordinary CRUD/collaboration
-actions, not approval-type actions this gate concerns.
-
-`reports=REPORT_DEFINITIONS` declares four project-level reports
-(`reports.py`); the framework generates their routes (mounted by
-`project_router`), catalogue entries and read-only `get_<slug>_report` MCP
-tools.
-
-`subtype_providers={DECISION_ARTEFACT_TYPE: _decision_subtypes}` is the first
-(and, so far, only) population of that `ModuleDefinition` field — see
-`_decision_subtypes`'s own docstring and
-`service.list_decision_type_names_for_organization` for what it returns. It
-answers the request that motivated Fine-Grained Access Control ("certain
-people only do some types of decisions"): approval is expressed as a
-`require_permission(decision, approve_baseline, subtype=<type>)` check rather
-than a bespoke field on `DecisionTypeDefinition`.
+Registers Decision Management through `MODULE_DEFINITION`: module roles
+(`decision_owner`, `decision_approver`), org and project routers, file-owner
+resolution, the nav entry, four reports and subtype providers (approval per
+Decision type). Default types are seeded for root projects only; the ADR
+packs are an org-creation choice. MCP: read tools plus `approve_decision`/
+`reject_decision`, gated by `require_ai_approvals_enabled`. `default_enabled` is `False`.
 """
 
 from __future__ import annotations
@@ -171,17 +99,10 @@ def _decision_subtypes(db: Session, organization_id: uuid.UUID) -> list[str]:
 
 
 def _seed_new_project(db: Session, project: Project, actor_id: uuid.UUID) -> None:
-    """This module's `ModuleDefinition.on_project_created` hook. Imported
-    lazily for the same import-cycle reason `app.modules.compliance.
-    module`'s own hook functions are.
-
-    Only seeds a *root* project (`parent_project_id is None`)
-    (2026-09-22): now that Decision Types have the same hierarchical
-    fallback `ActionTypeDefinition` already has (`service.resolve_
-    effective_decision_types`), a child project must start with none of
-    its own so the fallback actually has something to do, exact mirror of
-    `routers.projects.create_project`'s own `if payload.parent_project_id
-    is None: seed_action_types(...)` gate."""
+    """This module's `ModuleDefinition.on_project_created` hook, imported lazily
+    to avoid an import cycle. Seeds only a root project
+    (`parent_project_id is None`): a child starts empty so it falls back to its
+    ancestor's types (`service.resolve_effective_decision_types`)."""
     if project.parent_project_id is not None:
         return
     from app.modules.decisions.service import seed_decision_types
@@ -358,11 +279,8 @@ MODULE_DEFINITION = ModuleDefinition(
                 "Governance-module policy mechanism rather than this module building its own."
             ),
             scope="project",
-            # Fine-Grained Access Control: a holder of this flat module role
-            # gets the equivalent unscoped `(decision, approve_baseline)` permission atom via
-            # `get_effective_permissions`, so `project_router.workflow`'s migration to
-            # `require_permission` is a zero-behaviour-change swap for every existing
-            # holder of this role.
+            # A holder of this flat module role gets the unscoped
+            # `(decision, approve_baseline)` permission via `get_effective_permissions`.
             permissions=(DECISION_APPROVE_PERMISSION,),
         ),
     ),
@@ -464,11 +382,8 @@ MODULE_DEFINITION = ModuleDefinition(
                  "description": "The organisation whose Decision Templates to list."},
             ],
         ),
-        # --- 2026-09-22: approve/reject given the same generalized AI-approval
-        # gate as Compliance's `approve_requirement`/`reject_requirement` — see
-        # this module's own docstring's "2026-09-22" section. Reached through
-        # MCP, each resolves to a route gated by `require_ai_approvals_enabled`
-        # (declaring them here does not bypass that gate).
+        # Approve/reject reach routes gated by `require_ai_approvals_enabled`;
+        # declaring them here does not bypass that gate.
         McpToolDefinition(
             name="approve_decision",
             description=(

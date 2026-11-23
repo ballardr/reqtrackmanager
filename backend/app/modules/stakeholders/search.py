@@ -1,22 +1,17 @@
 """
 Module: modules.stakeholders.search
 
-`ArtefactSearchProvider`s for the six Stakeholders & Personas artefact types (persona,
-stakeholder, stakeholder need, stakeholder group, engagement, research finding), so the
-global search finds them by code, title, tags and the fields declared here.
-
-Responsibilities:
-- Declare, per type, the columns the search reads and the free-text fields it may match.
+`ArtefactSearchProvider`s for the six artefact types (persona, stakeholder, stakeholder need,
+stakeholder group, engagement, research finding), so the global search finds them by code, title, tags
+and the fields declared here.
 
 Design decisions:
-- Opt-in fields: a stakeholder's contact details and availability are personal data and
-  are never matched; nothing else is searchable unless listed here.
-- Personas, stakeholders and groups may be organisation-owned; the search finds those only
-  through a project that is allowed to see them (`organization_owned`), so a persona hidden
-  from a project is not found from it.
+- Opt-in fields: a stakeholder's contact details and availability are personal data and never matched.
+- Personas, stakeholders and groups may be organisation-owned; search finds those only through a project
+  allowed to see them (`organization_owned`), so a persona hidden from a project is not found from it.
 - A research finding has no page of its own; a hit opens its engagement.
 
-Dependencies: this module's models and enums; `services.search_core` (builders).
+Dependencies: this module's models and enums; `services.search_core`.
 """
 
 from __future__ import annotations

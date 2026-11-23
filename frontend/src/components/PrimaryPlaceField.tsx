@@ -3,12 +3,12 @@
  *
  * The form field that chooses the one component and category a requirement belongs to, as a single choice from the
  * project's tree (`TreeSelectField` in one-choice mode over `placementNodes`): each component is a heading with its
- * categories beneath it, searchable, and the category chosen is the pair. Shared by the requirement create form and the
- * change request form that proposes a requirement, replacing their two separate selects.
+ * categories beneath it, searchable, and the category chosen is the pair. Shared by the requirement create form and
+ * the change request form that proposes a requirement.
  *
- * Design decisions: a requirement's pair is its identity (it forms the code), so the choice is made as one unit and
- * "a category of the previous component is never valid" cannot arise. The further places a requirement may sit in are
- * chosen with `PlacementPicker`, the same tree in several-choice mode.
+ * A requirement's pair is its identity (it forms the code), so it is chosen as one unit and a category of another
+ * component cannot be selected. The further places a requirement may sit in use `PlacementPicker`, the same tree in
+ * several-choice mode.
  */
 import type { PlacementPair, PlacementTree } from "../api/placements";
 import { useStrings } from "../context/TerminologyContext";

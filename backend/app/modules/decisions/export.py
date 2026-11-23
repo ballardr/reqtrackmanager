@@ -1,38 +1,12 @@
 """
 Module: modules.decisions.export
 
-This module's contribution to the core org/project bundle export/import
-(`app.services.org_export`/`project_export`), registered through
-`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION` rather
-than those core files importing this module.
-
-- Org level: the Decision templates.
-- Project level: the project's own Decision types, its Decisions (with
-  attachments) and the links between Decisions and to Requirements.
-
-Design decisions (all Decided by: Agent):
-- A Decision has no version table, so it travels as it is: content, status,
-  decision maker, owner and decision date. Comments and comment attachments are
-  not carried (a bundle is a migration artefact, as for the other modules).
-- Status is imported as exported, as the core Requirement and Risk sections do:
-  the bundle is a restore and importing a project is itself privileged. A
-  superseded Decision keeps its status and its "Supersedes" link; replaying the
-  link does not run the status transition again.
-- A Decision's type travels by name. Types are project-scoped and a child project
-  may inherit its ancestor's, so a type the bundle's own list lacks is created in
-  the new project with the same name, in a stable order after the exported ones.
-  An imported project is a root, so its own types are exactly those the bundle names.
-- Codes are information only: an import numbers Decisions afresh in their original
-  order, and addresses them inside the bundle by their exported code (`ref`).
-- Owner and decision maker are principals (`{type, email | name}`); one the target
-  cannot match falls back to the importer (owner) or is left unset (decision maker),
-  with a warning.
-- Links travel only between this project's Decisions and Requirements
-  (`services.bundle_links`); a link to another module's record is that module's.
-- Organisation-level files cannot travel; templates have none.
-
-Dependencies: `app.services.bundle_common`, `app.services.bundle_links`,
-`app.services.principals`, `app.services.tags`, this module's models and service.
+Contributes Decisions to the org/project bundle export and import through
+`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`: Decision templates (org),
+and the project's Decision types, Decisions (with attachments) and links.
+- Status is imported as exported (a restore); a superseded Decision keeps its
+  "Supersedes" link without re-running the transition. Comments do not travel.
+- Types travel by name; codes are information only; owners are principals.
 """
 
 from __future__ import annotations

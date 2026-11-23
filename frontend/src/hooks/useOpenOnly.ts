@@ -1,23 +1,18 @@
 /**
  * Module: hooks/useOpenOnly
  *
- * The one rule for a record list that opens on its open items only (Pain
- * Points, Open Questions, Risks, Decisions): the "Open only" filter starts
- * ticked, stays visible, and is switched off by the link instead of by the
- * user hunting for it.
+ * The one rule for a record list that opens on its open items only (Pain Points, Open Questions, Risks,
+ * Decisions): the "Open only" filter starts ticked, stays visible, and a link can switch it off.
  *
  * Responsibilities:
- * - `opensOnOpenOnly`: decide, from the URL the page opened with, whether the
- *   filter starts ticked. A link that says `open=0`, or that names a slice the
- *   default would hide (a valid `status`, a type's own extra slice), starts
+ * - `opensOnOpenOnly`: decide, from the URL the page opened with, whether the filter starts ticked. A link that
+ *   says `open=0`, or names a slice the default would hide (a valid `status`, a type's own extra slice), starts
  *   unticked, so a link never lands on an empty list. `open=1` keeps it on.
- * - `useOpenOnly`: hold that state for the page, in the URL (`open=1|0`, always written) with the list's other
- *   filters, so the list comes back as it was left. The starting value is worked out once from the link the page
- *   opened with; it is not re-derived when the person later picks a status.
+ * - `useOpenOnly`: hold that state in the URL (`open=1|0`, always written) with the list's other filters. The
+ *   starting value is derived once from the opening link, not again when the person later picks a status.
  *
- * What counts as "open" stays with each type (a `*_OPEN_STATUSES` list beside
- * its status labels); this module knows nothing about any one type, so a
- * module's list uses it without a core edit.
+ * What counts as "open" stays with each type (a `*_OPEN_STATUSES` list beside its status labels), so a module's
+ * list uses this without a core edit.
  */
 import { useState } from "react";
 

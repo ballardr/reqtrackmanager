@@ -1,27 +1,15 @@
 /**
  * Module: components/PermissionPicker
  *
- * A grouped, multi-select checkbox grid over an organisation's currently-
- * valid permission-atom vocabulary (Fine-Grained Access Control,
- *)
- * — the picker `CustomRoleDefinition` create/edit uses to build up a
- * role's `permissions` set. Options are grouped by `Permission.artefact_type`
- * (a `null` artefact type — the short, hand-maintained administrative list,
- * e.g. `grant_roles` — groups under its own "Administrative" heading),
- * each rendered as its own `CollapsibleSection` so a large vocabulary
- * (every registered artefact type × 4 levels × however many sub-types)
- * doesn't read as one undifferentiated wall of checkboxes.
+ * A grouped, multi-select checkbox grid over an organisation's valid permission-atom vocabulary, used by
+ * `CustomRoleDefinition` create and edit to build a role's `permissions` set. Options are grouped by
+ * `Permission.artefact_type` (a `null` type, the short administrative list such as `grant_roles`, groups under
+ * "Administrative"), each group a `CollapsibleSection`.
  *
- * Deliberately the one reusable UI shape of its kind (no
- * grouped multi-select checkbox grid existed anywhere else in this
- * codebase — `MultiSelectDropdown` is the closest precedent, but that's a
- * closed, compact *dropdown* over a small flat option list, the wrong
- * shape for a vocabulary this size that benefits from staying visible
- * on-page while ticking many boxes across several groups at once). Every
- * `Permission.label` is already a human-readable, server-supplied string
- * (`GET /orgs/{id}/permissions`) — rendered directly, never re-derived
- * from `artefact_type`/`level`/`subtype` client-side, so this component
- * never hardcodes the permission vocabulary itself.
+ * A grouped checkbox grid rather than `MultiSelectDropdown`, because a vocabulary of every artefact type, level and
+ * sub-type must stay visible while many boxes are ticked across groups. Every `Permission.label` is the
+ * server-supplied string (`GET /orgs/{id}/permissions`) and is rendered directly, so the component never hardcodes
+ * the permission vocabulary.
  */
 import type { ReactNode } from "react";
 
@@ -33,10 +21,8 @@ import { CollapsibleSection } from "./CollapsibleSection";
 const ADMINISTRATIVE_GROUP_LABEL = "Administrative";
 const ALL_TYPES_GROUP_LABEL = "All record types";
 
-/** Groups `permissions` by `artefact_type`, administrative (`artefact_type
- * === null`) permissions last — mirrors `get_all_permissions`'s own
- * server-side ordering (artefact-type atoms first, administrative
- * permissions appended after). */
+/** Groups `permissions` by `artefact_type`, administrative (`artefact_type === null`) permissions last, as
+ * `get_all_permissions` orders them. */
 function groupByArtefactType(permissions: Permission[]): Array<{ key: string; label: string; items: Permission[] }> {
   const groups = new Map<string, Permission[]>();
   for (const permission of permissions) {

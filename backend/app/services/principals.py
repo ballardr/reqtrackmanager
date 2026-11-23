@@ -1,40 +1,31 @@
 """
 Module: services.principals
 
-The one mechanism for a field that names "who": a user, an organisation group
-or a project group. A record
-field becomes a `<name>_type` / `<name>_id` column pair (`models.principal`)
-and everything about it goes through this module, so every module resolves,
-filters, displays, notifies and deletes a group-owned record the same way.
+The one mechanism for a field that names "who": a user, an organisation group or a project group. A record
+field is a `<name>_type` / `<name>_id` column pair (`models.principal`) and everything about it goes through
+this module, so every module resolves, filters, displays, notifies and deletes a group-owned record alike.
 
 Responsibilities:
-- `validate_principal`: the write-time check (exists, same organisation, a
-  project group only for a record in its own project, a user must be an
-  organisation member).
-- Membership: `principal_member_ids`, `is_principal_member` (effective
-  membership, via `services.rbac`), `principal_recipients` (notification
-  fan-out) and `principal_filter_clause` (a list's "mine" filter).
-- Display: `principal_labels` (batch display names and member counts).
-- Deletion: `compute_usage` / `prepare_group_deletion` use every declared
-  `PrincipalReference` (core's `CORE_PRINCIPAL_REFERENCES` plus each module's
-  `ModuleDefinition.principal_references`) to block deleting a group that
-  still owns records, and to reassign or clear them with one audit event per row.
-- Bundles: `principal_to_bundle` / `principal_from_bundle` round-trip a
-  principal by name or email instead of a raw id.
+- `validate_principal`: the write-time check (exists, same organisation, a project group only for a record in
+  its own project, a user must be an organisation member).
+- Membership: `principal_member_ids`, `is_principal_member` (effective membership via `services.rbac`),
+  `principal_recipients` (notification fan-out), `principal_filter_clause` (a list's "mine" filter).
+- Display: `principal_labels` (display names and member counts in batch).
+- Deletion: `compute_usage` / `prepare_group_deletion` use every declared `PrincipalReference` (core's
+  `CORE_PRINCIPAL_REFERENCES` plus modules' `ModuleDefinition.principal_references`) to block deleting a group
+  that still owns records and to reassign or clear them with one audit event per row.
+- Bundles: `principal_to_bundle` / `principal_from_bundle` round-trip a principal by name or email.
 
 Design decisions:
-- A group never confers more than its members hold individually: this module
-  answers "is this user in the group", nothing else. Callers keep their own
-  role or permission checks and use membership only as an additional way to
-  satisfy an "is the owner" test.
-- Project-group membership counts even while the group holds no role
-  (`rbac.effective_project_group_member_ids`): it is a named team.
-- Users in a group who are inactive, archived or banned are excluded from
-  notification fan-out but still count as members.
-- Rows a `PrincipalReference.live_filter` excludes (older versions) are left
-  untouched on group deletion and display as a deleted group.
+- A group never confers more than its members hold individually: this module answers "is this user in the
+  group"; callers keep their own role checks and use membership as one more way to satisfy "is the owner".
+- Project-group membership counts even while the group holds no role (a named team,
+  `rbac.effective_project_group_member_ids`).
+- Inactive, archived or banned members are excluded from notification fan-out but still count as members.
+- Rows a `PrincipalReference.live_filter` excludes (older versions) are untouched on group deletion and display
+  as a deleted group.
 
-Dependencies: `services.rbac` (membership), `services.audit`, `modules.registry`.
+Dependencies: `services.rbac`, `services.audit`, `modules.registry`.
 """
 
 from __future__ import annotations

@@ -1,17 +1,13 @@
 /**
  * Module: components/DialogHeader
  *
- * The header every `Modal` and `SidePanel` shares: the title, the form's actions and the close button
- * in one pinned row, with the save error beneath it (docs/ux-style-guide.md, "Pattern: form header").
+ * The header every `Modal` and `SidePanel` shares: title, the form's actions and the close button in one pinned
+ * row, with the save error beneath (docs/ux-style-guide.md, "Pattern: form header").
  *
- * Responsibilities:
- * - `DialogFrame` lays a dialog out as a fixed header over a scrolling body, so Save stays reachable on
- *   a long form.
- * - It exposes the header's two mount points (actions, error) through `dialogSlots.ts` to
- *   `FormActions`, which portals into them. A form therefore keeps rendering `FormActions` where it
- *   always did, and the buttons appear in the header; React events, context and closures cross a portal
- *   unchanged, so no form needs to know.
- * - A `Popover` provides `null` slots, so an inline form inside a popover keeps its own buttons.
+ * - `DialogFrame` lays a dialog out as a fixed header over a scrolling body, so Save stays reachable on a long form.
+ * - The header's two mount points (actions, error) are exposed through `dialogSlots.ts` to `FormActions`, which
+ *   portals into them; React events, context and closures cross a portal, so a form needs no change.
+ * - A `Popover` provides `null` slots, so an inline form in a popover keeps its own buttons.
  *
  * Dependencies: lucide-react (close icon), i18n strings.
  */

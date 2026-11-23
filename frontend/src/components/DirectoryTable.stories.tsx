@@ -62,11 +62,8 @@ export default meta;
 
 type Story = StoryObj<typeof DirectoryTable<DemoRow>>;
 
-/** A live sort demo: two sortable columns (Name, Email) alongside one
- * non-sortable badge column (Status) — clicking a sortable header cycles
- * `aria-sort` via the shared `SortableHeader`/`cycleSort`, exactly the
- * contract this component hands back to its caller (it never sorts `rows`
- * itself). */
+/** A live sort demo: two sortable columns (Name, Email) and one non-sortable badge column (Status); a header
+ * click cycles `aria-sort` via `SortableHeader`/`cycleSort`, and the table never sorts `rows` itself. */
 function SortDemo() {
   const [sort, setSort] = useState<SortState | null>(null);
   const sorted = sort

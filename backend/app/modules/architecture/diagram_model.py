@@ -1,28 +1,28 @@
 """
 Module: modules.architecture.diagram_model
 
-The model data a diagram's lines are resolved from, handed to the editor so it can redraw lines instantly while a layout
-is being edited (a box added, a view switch flipped) without a round trip.
+The model data a diagram's lines are resolved from, handed to the editor so it can redraw lines instantly while
+a layout is edited (a box added, a view switch flipped) without a round trip.
 
 Responsibilities:
-- Load, in bulk, the elements a diagram could draw (those placed, the project's own, those shared with it, and every
+- Load in bulk the elements a diagram could draw (placed, the project's own, shared with it, and every
   connection end), their parents, the project's live connections and the connection types.
-- Resolve each toggle to the elements and connections it switches off, by the same rule matching `build_view` uses, so
-  the browser only combines plain ids and never evaluates a rule.
-- Apply visibility: an element the viewer cannot read is a locked entry carrying its code only, and a connection to it
-  comes from `records.connection_outs`, which blanks the locked end.
+- Resolve each toggle to the elements and connections it switches off, by the same rule matching `build_view`
+  uses, so the browser only combines plain ids and never evaluates a rule.
+- Apply visibility: an element the viewer cannot read is a locked entry carrying its code only, and a
+  connection to it comes from `records.connection_outs`, which blanks the locked end.
 
 Design decisions:
-- **The server still decides what a person may see; the browser only decides which lines to draw.** Nothing here is
-  stored, and the layout the browser saves is validated by `diagrams.save_layout`, so a wrong line drawn in the browser can
-  never change stored data. `diagram_view.build_view` stays the authority for the first load, the SVG and documents.
-- **Parent ids of an element the viewer cannot read are included.** The resolver rolls a connection up through an
-  ancestor, as the server does, so the chain has to be whole; the ids are the ones the connection the viewer may read
-  already names, and no name or type comes with them.
-- **Realisations are listed whole** (both connections live), so the browser can join a realising connection to its
-  boundary box the way `diagram_resolver.resolve` does; the stored boxes themselves come with the view.
-- **Retired connections are left out and retired or archived elements stay**, as in the view: a diagram is a view of
-  what was placed.
+- The server decides what a person may see; the browser only decides which lines to draw. Nothing here is
+  stored and `diagrams.save_layout` validates the saved layout, so a wrong line drawn in the browser cannot
+  change stored data. `diagram_view.build_view` is the authority for the first load, the SVG and documents.
+- Parent ids of an element the viewer cannot read are included, because the resolver rolls a connection up
+  through an ancestor and the chain must be whole; they are ids a readable connection already names, with no
+  name or type.
+- Realisations are listed whole (both connections live), so the browser can join a realising connection to its
+  boundary box as `diagram_resolver.resolve` does; the stored boxes come with the view.
+- Retired connections are left out and retired or archived elements stay, as in the view: a diagram is a view
+  of what was placed.
 
 Dependencies: `diagram_view`, `diagrams`, `records`, `visibility`, `symbols`; core `services.tags`.
 """

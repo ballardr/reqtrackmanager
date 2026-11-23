@@ -1,24 +1,18 @@
 /**
  * Module: components/FieldHelp
  *
- * The help affordance every non-obvious form field carries (docs/ux-style-guide.md, "Pattern: field
- * help"): a `(?)` button after the field's caption that reveals one or two sentences saying what the
- * field is, what it affects and typical values, as a tooltip. `FieldCaption` is the caption line every shared field
- * component renders, so the label and the help sit the same way everywhere.
+ * The help affordance every non-obvious form field carries (docs/ux-style-guide.md, "Pattern: field help"): a
+ * `(?)` button after the caption revealing one or two sentences as a tooltip. `FieldCaption` is the caption line
+ * every shared field component renders.
  *
- * Design decisions:
- * - The text is a pinnable `Tooltip` (hover or keyboard focus shows it, a click or tap pins it, Escape or
- *   an outside press closes it), not an in-place disclosure and not a `Popover`: it is portalled to
- *   `document.body`, so opening it never moves the fields around the caption, and fields are built inside
- *   dialogs and popovers where a popover opened from a popover is not allowed.
- * - The button is a keyboard-focusable control named "Help: {label}" and described by the tooltip text.
- *   It is named by visually-hidden text, not `aria-label`, so a label lookup for the field ("Name")
- *   finds the field alone and never also its help button.
- * - A field that is self-explanatory (a title, a name) passes `helpNotNeeded` instead of `help`, which
- *   keeps the opt-out greppable; `scripts/check_field_help.py` fails on a field with neither.
- * - A button inside a `<label>` becomes that label's control (the first labelable descendant), so a
- *   field with help never wraps its control in the label: `FieldShell` ties a sibling `<label>` to the
- *   control by `htmlFor` instead, and keeps the plain wrapping `<label>` for a field without help.
+ * - The text is a pinnable `Tooltip` (hover or focus shows it, a click pins it, Escape or an outside press closes
+ *   it), portalled to `document.body`, so opening it never moves the fields around the caption and works inside
+ *   dialogs and popovers, where a popover from a popover is not allowed.
+ * - The button is named "Help: {label}" by visually hidden text, not `aria-label`, so a label lookup for the field
+ *   finds the field alone, and described by the tooltip text.
+ * - A self-explanatory field passes `helpNotNeeded` instead (`scripts/check_field_help.py` fails on neither).
+ * - A button inside a `<label>` becomes its control, so a field with help ties a sibling `<label htmlFor>` to the
+ *   control (`FieldShell`), and keeps the wrapping `<label>` only for a field without help.
  */
 import { CircleHelp } from "lucide-react";
 import { useId } from "react";

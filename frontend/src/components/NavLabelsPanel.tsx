@@ -2,18 +2,15 @@
  * Module: components/NavLabelsPanel
  *
  * Administration of navigation names for one tier, shared by Project Admin (the project's own names, with the
- * name inherited from a parent project or the organisation shown as the placeholder) and Organisation Admin
- * (the default every project of the organisation starts from). Each row is one entry of the project
- * navigation: its built-in name, an input for the name to show instead, and a restore control. A name change
- * covers the navigation entry, the page title and the back link of that entry's records; record nouns keep
- * the terminology setting.
+ * name inherited from a parent project or the organisation as the placeholder) and Organisation Admin (the default
+ * every project of the organisation starts from). Each row is one entry of the project navigation: its built-in
+ * name, an input for the name to show instead and a restore control. A name covers the navigation entry, the page
+ * title and the back link of that entry's records; record nouns keep the terminology setting.
  *
- * Design decisions:
- * - Edits are a draft saved together with one button (one request replaces the whole set), so the panel shows
- *   what a save will do; "Restore" clears a row's draft and takes effect on save.
- * - A core entry's built-in name comes from the string table (so it follows the project's terminology); a
- *   module entry's from the server's catalogue.
- * - After a project save the navigation refreshes at once (`refreshNavLabels`).
+ * Edits are a draft saved together with one button (one request replaces the whole set), so the panel shows what a
+ * save will do; "Restore" clears a row's draft and takes effect on save. A core entry's built-in name comes from
+ * the string table (so it follows the project's terminology), a module entry's from the server's catalogue. After
+ * a project save the navigation refreshes at once (`refreshNavLabels`).
  */
 import { RotateCcw } from "lucide-react";
 import { useCallback, useState } from "react";

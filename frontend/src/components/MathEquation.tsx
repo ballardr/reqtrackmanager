@@ -1,20 +1,15 @@
 /**
  * Module: components/MathEquation
  *
- * One equation drawn with KaTeX, shared by `MathText` (a text with equations in it) and `MarkdownView` (a Markdown
- * document read with equations), so the two draw an equation the same way.
+ * One equation drawn with KaTeX, shared by `MathText` and `MarkdownView` so both draw an equation the same way.
  *
- * Responsibilities:
- * - Draw `tex` as an inline or display equation, or show it as the author typed it (with its delimiters) when it may
- *   not or cannot be drawn: the report engine's allow-list (`utils/mathTex.texProblem`) and KaTeX's own errors.
+ * Draws `tex` as an inline or display equation, or shows it as typed (with its delimiters) when it may not or
+ * cannot be drawn: the report engine's allow-list (`utils/mathTex.texProblem`) and KaTeX's own errors.
  *
- * Design decisions:
- * - Only KaTeX's own output is inserted as markup, and only after `trust: false` rendering and a DOMPurify pass (HTML,
- *   MathML and SVG profiles), so a hostile record cannot inject script or a link through an equation.
- * - KaTeX emits MathML beside the visual layer, so a screen reader reads the equation.
- * - Results are cached per equation, because a list can repeat one.
- * - This file is the only importer of KaTeX; `MarkdownView` loads it on first use, so a page with no equation does not
- *   download the library.
+ * Only KaTeX's output is inserted as markup, after `trust: false` rendering and a DOMPurify pass (HTML, MathML and
+ * SVG profiles), so a hostile record cannot inject script or a link. KaTeX's MathML lets a screen reader read the
+ * equation. Results are cached per equation. This file is the only importer of KaTeX and `MarkdownView` loads it
+ * on first use, so a page with no equation does not download the library.
  *
  * Dependencies: `katex` (MIT), `dompurify`, `utils/mathTex`.
  */

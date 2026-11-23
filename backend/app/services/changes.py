@@ -1,26 +1,24 @@
 """
 Module: services.changes
 
-Builds the unified "project changes over time" timeline (C-A-10) by merging
-four sources: generic audit events (group/role/project-structure changes),
-requirement version history, change-request version history and, on request,
-discussion comments (C-R-01, excluded by default per the requirement's
-clarification — the caller opts in via `include_comments` or the Comments kind).
+Builds the unified "project changes over time" timeline (C-A-10) by merging four sources: generic audit events
+(group, role and project-structure changes), requirement version history, change-request version history and,
+on request, discussion comments (C-R-01; excluded by default, opted in with `include_comments` or the Comments kind).
 
 Responsibilities:
 - `ChangeFilter`: every narrowing the History page offers (time range, type, event kinds, actors).
-- `get_project_changes_page`: one page of the merged timeline and the total, **bounded work per page**:
-  each filter is part of the source query, each source reads only its newest `offset + limit` rows and is
-  counted separately, so the cost follows the page asked for and not the size of the project.
-- `get_project_changes`: the whole filtered timeline, for the record activity panels that need all of it.
-- Labels: the entry's event `kind`, the actor's name and, for a record of any registered type the viewer may
-  see, its code and title (`record_label`), resolved for the returned page only.
+- `get_project_changes_page`: one page of the merged timeline and the total with bounded work per page: each
+  filter is part of the source query and each source reads only its newest `offset + limit` rows and is counted
+  separately, so cost follows the page, not the project.
+- `get_project_changes`: the whole filtered timeline, for record activity panels.
+- Labels: the event `kind`, the actor's name and, for a record of any registered type the viewer may see, its
+  code and title (`record_label`), resolved for the returned page only.
 
 Design decisions:
-- Entries sort by `(timestamp, source, id)` descending so equal timestamps (several events in one request)
-  page deterministically; a "Load more" never repeats or skips a row.
-- A record a viewer may not see keeps its type and gets no label: the timeline reveals what happened, not the
-  title of a record the viewer could not open (`services.link_graph.ArtefactResolver` is the visibility rule).
+- Entries sort by `(timestamp, source, id)` descending, so equal timestamps page deterministically and "Load
+  more" never repeats or skips a row.
+- A record the viewer may not see keeps its type and gets no label: the timeline reveals what happened, not the
+  title of an unopenable record (`services.link_graph.ArtefactResolver` is the visibility rule).
 """
 
 from __future__ import annotations
@@ -584,15 +582,9 @@ def _title_versioned_entries(db: Session, entries: list[ChangeEntryOut]) -> None
         ).all():
             if cr_id not in current_titles or version_number > current_titles[cr_id][1]:
                 current_titles[cr_id] = (proposed_name, version_number)
-        # A MODIFY_REQUIREMENT change request that doesn't propose changing
-        # the name (changed_fields tracking, see docs/decisions.md's
-        # "Change request field-level tracking" entry) has no proposed_name
-        # of its own — fall back to the target requirement's own current
-        # name so the activity feed still shows a real title instead of a
-        # blank one, matching this block's own "always a resolvable
-        # current title" intent. NEW_REQUIREMENT change requests always
-        # have a real proposed_name (validated at creation), so this
-        # fallback never triggers for those.
+        # A MODIFY_REQUIREMENT change request that does not propose a new name has no proposed_name, so
+        # the target requirement's current name is used and the feed always shows a title. NEW_REQUIREMENT
+        # change requests always have one.
         missing_name_cr_ids = {cid for cid, (name, _) in current_titles.items() if name is None}
         fallback_names: dict[UUID, str] = {}
         if missing_name_cr_ids:

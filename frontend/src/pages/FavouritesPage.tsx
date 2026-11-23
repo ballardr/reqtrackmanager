@@ -22,11 +22,8 @@ import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 30;
 
-/** Only shown in the nav when the user has favourited at least one active
- * project (Layout.tsx) — a quick jump list, not a filtered view of
- * ProjectListPage, though it shares that page's server-side
- * pagination/search shape (`favorite_only` on the same `/projects`
- * endpoint) rather than fetching and filtering every project client-side. */
+/** Quick jump list, shown in the nav only when at least one active project is favourited (Layout.tsx).
+ * It shares ProjectListPage's server-side pagination/search shape (`favorite_only` on `/projects`). */
 export function FavouritesPage() {
   const strings = useStrings();
   const { showToast } = useToast();

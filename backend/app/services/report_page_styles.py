@@ -1,30 +1,24 @@
 """
 Module: services.report_page_styles
 
-The page-style part of a document layout: the root's paper, orientation and margins, the named page styles a
-`section` block can switch to, and the checks and conversion between the tree's JSON and `report_model.PageStyle`.
+The page-style part of a document layout: the root's paper, orientation and margins, the named page styles a `section`
+block can switch to, and the conversion between the tree's JSON and `report_model.PageStyle`.
 
 Responsibilities:
-- Define the vocabulary and limits (`PAGE_SIZES`, `ORIENTATIONS`, the margin range, how many styles, how long a name).
-- Check a margins object, a page style and the list of styles (`margins_problems`, `style_problems`,
-  `styles_problems`), returning positioned messages the tree validator records.
-- Resolve a valid tree to the neutral `PageStyle` of the document and of each named style (`resolve_page_styles`).
-- Check a running header or footer (`band_problems`: its cells, logo and first-page choice; the space it needs, `band_height_cm`,
-  against the margin it sits in) and say which one each style prints (`effective_bands`).
+- The vocabulary and limits (`PAGE_SIZES`, `ORIENTATIONS`, margin range, style count, name length); positioned checks
+  (`margins_problems`, `style_problems`, `styles_problems`); `resolve_page_styles`.
+- `band_problems` (a header or footer's cells, logo, first-page choice and the space it needs, `band_height_cm`, against
+  its margin) and `effective_bands` (which band each style prints).
 
 Design decisions:
-- The root's `page_size`, `orientation` and `margins` are the document's own style; a named style leaves out what it
-  shares with it (size, orientation, any margin side) and inherits that, so changing the document's paper changes
-  every style that did not choose its own.
-- Mirrored margins are one setting for the whole layout (`mirror_margins` on the root), not per style: Word keeps the
-  setting for the document, and one rule behaves the same in PDF, Word, OpenDocument text and HTML.
-- A header or footer belongs to the document or to a named style; a style that writes none prints the document's, and the
-  fit check uses the style's own margin, so a style with a small margin cannot take over a header that no longer fits.
-  The placeholders in a band's text are checked by the tree validator, which knows the layout's variables.
-- A margin has a minimum (the room a header or footer needs) and every style must leave at least `MIN_TEXT_CM` of
-  text width and height, so no layout can produce a page that holds nothing.
+- The root's settings are the document's style; a named style leaves out what it shares and inherits it.
+- Mirrored margins are one layout-wide setting (`mirror_margins`), as Word keeps it per document, so every format agrees.
+- A style that writes no header or footer prints the document's, with the fit check against the style's own margin;
+  placeholders in band text are checked by the tree validator, which knows the variables.
+- A margin has a minimum for the header or footer, and every style leaves at least `MIN_TEXT_CM` of text width and
+  height, so no page can hold nothing.
 
-Dependencies: `services.report_model` (the neutral page style).
+Dependencies: `services.report_model`.
 """
 
 from __future__ import annotations

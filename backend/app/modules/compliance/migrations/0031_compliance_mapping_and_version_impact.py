@@ -4,37 +4,21 @@ Revision ID: 0031
 Revises: 0030
 Create Date: 2026-09-06
 
-Adds the schema backing the Compliance Module's cross-standard mapping and version impact
-(§19, §27):
+Adds the schema of cross-standard mapping and version impact (§19, §27):
 
-- `compliance_requirements.cloned_from_requirement_id` — a nullable,
-  self-referential FK recording which requirement (in an earlier version of
-  the same standard) a given requirement was cloned from, if any. Set by
-  `app.modules.compliance.router._clone_requirement_tree` at clone time;
-  consumed by `app.modules.compliance.service.diff_standard_versions` to
-  distinguish an unchanged/modified requirement from a genuinely added one
-  (§27). `ON DELETE SET NULL`, not `CASCADE` — see `models.py`'s cross-standard mapping
-  design decisions for why this differs from `parent_
-  requirement_id`'s own `CASCADE` one column up.
-- `compliance_mapping_relationship_types` (`ComplianceMappingRelationshipType
-  Definition`) — an organisation-scoped, extensible vocabulary of cross-
-  standard-mapping relationship types (§19: "Equivalent," "Satisfies,"
-  "Derived From," "Related To," "Overlaps," "Conflicts With" are named
-  examples, not a fixed set), mirroring `compliance_action_type_definitions`'
-  exact shape plus one extra column, `implies_equivalence` (boolean,
-  default `false`) — whether this type is strong enough that a `replaced`
-  version-diff pair linked by it may have its assessment carried forward
-  during project migration, subject to a separate, explicit per-migration
-  human confirmation (see `models.py`'s cross-standard mapping design decisions). Named without
-  the `..._type_definitions` suffix its own column names would otherwise
-  suggest — see `models.py`'s own docstring for why (a shorter table name
-  avoids a >63-byte auto-generated index name on `organization_id`).
-- `compliance_requirement_mappings` (`ComplianceRequirementMapping`) — a
-  directed relationship between two `ComplianceRequirement` rows (§19's
-  cross-standard mapping; also reused, per `models.py`'s own notes, for
-  §27's "replaced" version-diff category, a same-standard, cross-version
-  link). Soft-deletable (`is_archived`/`archived_at`/`archived_by`),
-  mirroring every other entity in this module.
+- `compliance_requirements.cloned_from_requirement_id`: nullable self-referential FK to the requirement (in an earlier
+  version of the same standard) this one was cloned from. Set by `router._clone_requirement_tree` and read by
+  `service.diff_standard_versions` to tell an unchanged or modified requirement from an added one (§27). `ON DELETE SET
+  NULL`, unlike `parent_requirement_id`'s `CASCADE` (see `models.py`).
+- `compliance_mapping_relationship_types` (`ComplianceMappingRelationshipTypeDefinition`): an organisation-scoped,
+  extensible vocabulary of mapping relationship types (§19: Equivalent, Satisfies, Derived From, Related To, Overlaps,
+  Conflicts With are examples), shaped like `compliance_action_type_definitions` plus `implies_equivalence` (boolean,
+  default `false`): whether a `replaced` version-diff pair linked by it may have its assessment carried forward during
+  project migration, subject to explicit per-migration confirmation. The shorter table name keeps the auto-generated
+  `organization_id` index name under 63 bytes.
+- `compliance_requirement_mappings` (`ComplianceRequirementMapping`): a directed relationship between two
+  `ComplianceRequirement` rows (§19), also used for §27's `replaced` category (a same-standard, cross-version link).
+  Soft-deletable (`is_archived`, `archived_at`, `archived_by`).
 """
 
 from collections.abc import Sequence

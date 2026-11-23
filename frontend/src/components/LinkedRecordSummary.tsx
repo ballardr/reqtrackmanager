@@ -1,20 +1,19 @@
 /**
  * Module: components/LinkedRecordSummary
  *
- * One linked record as the Links panel and the trace tree both show it: the
+ * One linked record as the Links panel and the trace tree show it: the
  * relationship ("Implements"), the record (a link to its page), its status
- * through the owning module's label map, an archived flag, a badge naming
- * another project when the record lives in one, and a warning when the link's
- * type no longer permits the link.
+ * through the owning module's label map, an archived flag, a project badge when
+ * the record lives in another project, and a warning when the link's type no
+ * longer permits the link.
  *
- * Two layouts. `inline` (the trace tree) leads with the relationship as a pill. `list` (the Links
- * panel) groups rows under their relationship, so it shows no pill: the record's title is the
- * link (named in full, code included, for assistive technology), its code is a small muted
- * suffix, and the status, archived flag, the note of a carried-over link ("Copied from REQ-001") and project are plain
+ * Two layouts. `inline` (trace tree) leads with the relationship as a pill.
+ * `list` (Links panel) groups rows under their relationship, so it shows no
+ * pill: the title is the link (named in full for assistive technology), the code
+ * a muted suffix, and status, archived flag, carried-over note and project plain
  * muted text.
  *
- * Responsibilities: presentation only. It renders a fragment, so the caller
- * owns the row container (and any controls beside it, such as Remove).
+ * Presentation only. It renders a fragment; the caller owns the row container.
  */
 import { useRecordCode } from "../hooks/useRecordCode";
 import { Link } from "react-router-dom";

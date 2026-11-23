@@ -5,17 +5,14 @@
  * (`CreateRequirementDialog`), so a field added to a requirement reaches both.
  *
  * Responsibilities:
- * - Load what the form needs (the project, its organisation's members, components, categories, target versions and the
- *   requirement custom fields) and show `RequirementFields`, the component and category pickers, custom fields, the
- *   quick-link field and the tag field.
+ * - Load the project, its organisation's members, components, categories, target versions and requirement custom fields,
+ *   and show `RequirementFields`, the component and category pickers, custom fields, quick-link field and tag field.
  * - Create the requirement (with any further components, `RequirementAliasField`), then apply its quick links and tags.
- * - A project with no component or category yet: let a project manager create the first ones inline, else point to the
- *   project's settings.
- * - Optionally (`offerAttach`) a second step to attach files to the new requirement, which the create endpoints need an
- *   id for; the plain Create closes the dialog.
+ * - A project with no component or category: a project manager creates the first ones inline, else the dialog points to
+ *   the project's settings.
+ * - With `offerAttach`, a second step attaches files (the endpoints need the new id); plain Create closes the dialog.
  *
- * Design decisions:
- * - Cancel and Create sit in the dialog header (`FormActions`); "Create and attach files" is the extra header control.
+ * Design decision: Cancel and Create sit in the dialog header (`FormActions`); "Create and attach files" is the extra control.
  */
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";

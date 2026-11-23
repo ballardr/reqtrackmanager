@@ -1,42 +1,34 @@
 """
 Module: models.scoring
 
-Generic, module-agnostic storage for configurable scoring matrices
-(Context & Strategy). A module registers a scoring
-*scheme* (axes, models, default bands) via `ModuleDefinition.
-scoring_schemes`; these tables hold each organisation's/project's data for
-it, keyed by the scheme's/axis's/model's plain string keys and validated
-against the registry (`app.modules.registry.get_all_registered_scoring_
-schemes`) at the service layer — the `ArtefactLink.source_type` pattern,
-never a closed core enum a module would need a value added to.
+Module-agnostic storage for configurable scoring matrices (Context & Strategy). A module registers a
+scoring scheme (axes, models, default bands) through `ModuleDefinition.scoring_schemes`; these tables hold
+each organisation's and project's data for it, keyed by plain string keys and validated against the
+registry (`app.modules.registry.get_all_registered_scoring_schemes`) at the service layer, as
+`ArtefactLink.source_type` is, never a closed core enum.
 
-- `ScoringLevel` — an org's ordered, weighted levels for one axis. Org-only
-  (no project tier): module rows reference a level by id, so levels must be
-  one shared vocabulary per org. Seeded from registry defaults.
-- `ScoringModelDefault` — the default model for a scheme: one org row
-  (`project_id IS NULL`) and/or per-project override rows.
-- `ScoringCustomAxis` / `ScoringCustomModel` — an axis or a model an organisation (`project_id IS NULL`) or a project
-  defines itself, beside the registered ones, for a scheme that allows it. Keys are unique per organisation and
-  scheme across every tier, so a level, band or score can name one without saying which project owns it. The
-  levels of a custom axis are ordinary `ScoringLevel` rows (carrying the owning project, so a project's go with it).
-- `ScoringHiddenCriterion` — a registered axis or model an organisation hides for itself (a project hides with a
-  `ProjectDefinitionSuppression` tombstone instead).
-- `ScoringEnabledModel` — the models a scheme offers at once (one org set with `project_id IS NULL` and/or
-  per-project override sets, all-or-nothing like bands). No rows means "inherit", ending at every model the
-  scheme registers.
-- `ScoringBand` — rating bands for one (scheme, model): an org set
-  (`project_id IS NULL`) and/or per-project override sets. A set is
-  all-or-nothing; no rows means "inherit".
-- `ScoringLevelThreshold` — a project's own thresholds for one derived axis's levels (e.g. what weighted demand
-  reaches "Many" in this project): a set covers every level of the axis or none, resolved project → nearest ancestor
-  → the organisation's own `ScoringLevel.threshold` values. Names and weights stay the organisation's.
-- `ScoringCellRating` — explicit per-cell band overrides for a two-axis
-  model: an (axis-1 level, axis-2 level) → band label
-  mapping, same org/project all-or-nothing set semantics as bands. A cell
-  with no row falls back to the threshold bands.
+- `ScoringLevel`: an org's ordered, weighted levels for one axis. Org-only (module rows reference a level
+  by id, so levels are one shared vocabulary per org); seeded from registry defaults.
+- `ScoringModelDefault`: the default model for a scheme, as one org row (`project_id IS NULL`) and/or
+  per-project override rows.
+- `ScoringCustomAxis` / `ScoringCustomModel`: an axis or model an organisation (`project_id IS NULL`) or
+  project defines beside the registered ones, for a scheme that allows it. Keys are unique per organisation
+  and scheme across every tier, so a level, band or score can name one without naming its project. A custom
+  axis's levels are ordinary `ScoringLevel` rows carrying the owning project.
+- `ScoringHiddenCriterion`: a registered axis or model an organisation hides (a project hides with a
+  `ProjectDefinitionSuppression` tombstone).
+- `ScoringEnabledModel`: the models a scheme offers, as an org set and/or per-project override sets
+  (all-or-nothing). No rows means inherit, ending at every registered model.
+- `ScoringBand`: rating bands for one (scheme, model), as an org set and/or per-project override sets
+  (all-or-nothing; no rows means inherit).
+- `ScoringLevelThreshold`: a project's thresholds for one derived axis's levels (for example what weighted
+  demand reaches "Many"). A set covers every level or none, resolved project, nearest ancestor, then the
+  organisation's `ScoringLevel.threshold`. Names and weights stay the organisation's.
+- `ScoringCellRating`: per-cell band overrides for a two-axis model, an (axis-1 level, axis-2 level) to
+  band label mapping with the same set semantics as bands; a cell with no row uses the threshold bands.
 
-Resolution (project → nearest ancestor → org → registry default) lives in
-`app.services.scoring`, following `resolve_effective_action_types`.
+Resolution (project, nearest ancestor, org, registry default) is in `app.services.scoring`, following
+`resolve_effective_action_types`.
 """
 
 from __future__ import annotations

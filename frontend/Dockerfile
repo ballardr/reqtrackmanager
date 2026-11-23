@@ -1,14 +1,10 @@
 FROM node:26-alpine AS build
 
-# Build identity, baked into the bundle at build time (Vite substitutes
-# `import.meta.env.VITE_*` when the build runs, unlike VITE_API_BASE_URL
-# below, which is loosely-coupled runtime config injected by
-# docker/env-config-entrypoint.sh at container *startup* instead — version
-# is a property of the image itself, not the deployment target, so it
-# belongs with the other build-time constants, not that runtime mechanism).
-# Supplied via --build-arg by the docker-build CI job (same GitVersion
-# SemVer/commit SHA used to tag this image); defaults keep a plain local
-# `docker build` working with placeholder values instead of failing.
+# Build identity, baked into the bundle at build time (Vite substitutes `import.meta.env.VITE_*` during the
+# build; VITE_API_BASE_URL is runtime config injected by docker/env-config-entrypoint.sh at container startup).
+# The version belongs to the image, not the deployment target. Supplied via --build-arg by the docker-build CI
+# job (the GitVersion SemVer and commit SHA that tag the image); the defaults keep a plain local `docker build`
+# working.
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
@@ -36,15 +32,11 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/env-config-entrypoint.sh /docker/env-config-entrypoint.sh
 COPY docker/security-headers.inc /etc/nginx/security-headers.inc
 
-# Hardening review: ran as root with no reason to. The official nginx
-# alpine image already ships an unprivileged `nginx` user (this listens on
-# 3000, not 80, so there's no need to bind a privileged port as root
-# first) — it just isn't used by default. `env-config-entrypoint.sh`
-# writes env-config.js into the html directory at container *startup*
-# (not build time), so that directory, plus nginx's own runtime
-# dirs (cache/pid), need to be writable by that user, not just readable.
-# The stock nginx.conf sets `user nginx;`, which nginx warns about on every start
-# once the master process is itself unprivileged (USER nginx below), so it is removed.
+# Runs as the unprivileged `nginx` user shipped by the official nginx alpine image (the listener is on 3000, so
+# no privileged port is bound). `env-config-entrypoint.sh` writes env-config.js into the html directory at
+# container startup, so that directory and nginx's runtime dirs (cache/pid) are writable by that user. The stock
+# nginx.conf sets `user nginx;`, which nginx warns about on every start once the master process is unprivileged
+# (USER nginx below), so it is removed.
 RUN chmod +x /docker/env-config-entrypoint.sh \
     && sed -i '/^user /d' /etc/nginx/nginx.conf \
     && chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx \
@@ -53,15 +45,10 @@ RUN chmod +x /docker/env-config-entrypoint.sh \
     && echo 'add_header Content-Security-Policy "frame-ancestors '"'"'none'"'"'" always;' > /var/cache/nginx/content-security-policy.inc \
     && chown nginx:nginx /var/cache/nginx/content-security-policy.inc
 
-# Tier C ("federated" / Module Federation) frontend modules — reserved,
-# normally-empty directory `nginx.conf`'s `/external-modules/` location
-# serves from. Created here (not left for an operator's bind-mount to
-# create implicitly) so the location always resolves even for a deployment
-# that never mounts anything into it — a missing directory would otherwise
-# make every request under this path fail at the filesystem level rather
-# than nginx's own clean, intended 404. An operator bind-mounting their own
-# built remote(s) here (see docs/deployment.md) mounts *over* this empty
-# directory, not instead of creating it.
+# Tier C ("federated" / Module Federation) frontend modules: the normally empty directory that `nginx.conf`'s
+# `/external-modules/` location serves from. It is created here so the location resolves in a deployment that
+# mounts nothing into it (a missing directory would fail requests at the filesystem instead of nginx's clean 404).
+# An operator's bind mount of built remotes (see docs/deployment.md) mounts over this directory.
 RUN mkdir -p /usr/share/nginx/external-modules \
     && chown nginx:nginx /usr/share/nginx/external-modules
 USER nginx

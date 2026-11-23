@@ -4,33 +4,20 @@ Module: services.report_layout_bundle
 Report layouts in the project and organisation export bundles.
 
 Responsibilities:
-- Export a project's own layouts (every version) and the inherited layouts it has hidden; export an
-  organisation's own layouts.
-- Import them: validate every tree again, number versions afresh, re-apply the hides by name.
+- Export a project's own layouts (every version) and the inherited layouts it hides, and an organisation's own layouts.
+- Import: validate every tree again, number versions afresh, re-apply hides by name.
 
 Design decisions:
-- **A bundle is untrusted input.** Each version is validated against this deployment's field registry
-  before it is stored (`report_layouts.create_layout` / `save_version`); a version that fails is dropped
-  with a warning, and a layout with no valid version is skipped. Versions are renumbered 1..n so history
-  stays gap-free.
-- **Authors and times are not restored.** The importer becomes the author and the import time the save
-  time (as for the other imported records); the version comment travels. The export carries the original
-  author's email and save time as information only.
-- **There is no branding template.** An older bundle's `report_template` is ignored with a notice: the organisation has
-  one report look, and a layout reads it where it asks (`{{org.*}}`).
-- **Hides travel by layout name**, resolved against the target project's inherited layouts after the
-  organisation's layouts have been imported (organisation bundle) or against the organisation it joins
-  (project bundle). A name with no inherited layout of that name is reported, not guessed.
-- **Pictures travel with the layouts that use them** (`report_layout_images` section: file reference, name, type, library tier;
-  the bytes in the bundle's `files/`). An import copies each into the target's own library (a project's for a project
-  layout, the organisation's for an organisation layout) and rewrites the image blocks' file ids, so a restored layout
-  keeps its pictures. An organisation picture that already exists in the importing organisation is kept by reference
-  instead of copied. A picture whose bytes are missing leaves its block pointing nowhere, and the version that holds it
-  is dropped with a warning like any invalid version (the save-time image check names it).
-- **Names that already exist** (organisation merge into a live organisation) are never overwritten: the
-  import is added as "<name> (imported)", or skipped with a warning when that is also taken.
+- A bundle is untrusted input: each version is validated (`report_layouts.create_layout` / `save_version`); a failing
+  version is dropped with a warning and a layout with none is skipped. Versions renumber 1..n.
+- Authors and times are not restored (the importer is the author); the author email and save time are information only.
+  A legacy `report_template` key is ignored with a notice (`{{org.*}}` covers the organisation's look).
+- Hides travel by layout name, resolved after the organisation's layouts import; an unknown name is reported.
+- Pictures travel in `report_layout_images` and are copied into the target's own library with block file ids rewritten
+  (an organisation picture already in the importing organisation stays a reference); a missing picture drops the version.
+- An existing name is never overwritten: "<name> (imported)", or skipped with a warning.
 
-Dependencies: `services.report_layouts`, `services.report_layout_scope`, `services.bundle_common`.
+Dependencies: `services.report_layouts`, `report_layout_scope`, `bundle_common`.
 """
 
 from __future__ import annotations

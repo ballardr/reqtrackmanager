@@ -1,41 +1,28 @@
 """
 Module: services.link_type_scope
 
-Which link types, and which artefact-type link rules, a project sees: the
-organisation-wide vocabulary plus the local types of the project and every
-ancestor, minus what the project (or an ancestor) hid, with the org lock
-(`Organization.project_customisation_locks`) able to switch every project-level
-addition off.
+Which link types and artefact-type link rules a project sees: the organisation-wide vocabulary plus the local
+types of the project and every ancestor, minus what the project or an ancestor hid, with the organisation lock
+(`Organization.project_customisation_locks`) able to switch project-level additions off.
 
-Responsibilities:
-- Resolve the full scope of a project (`resolve_link_type_scope`), annotated with
-  where each type comes from, whether it is hidden, and whether another type of
-  the same name shadows it.
-- Resolve the types a user may be *offered* (`resolve_effective_link_types`),
-  optionally narrowed by the artefact types at the two ends.
-- Resolve the artefact-type rules in force for a project (`resolve_artefact_rules`):
-  the nearest rule for an artefact type wins and replaces the farther one.
-- Decide whether a specific type may be *used* for a new link in a project
-  (`assert_link_type_usable`), the single multi-tenant isolation check every
-  link creator goes through.
+Responsibilities: resolve a project's full scope (`resolve_link_type_scope`) annotated with origin, hidden and
+shadowed state; resolve the types a user may be offered (`resolve_effective_link_types`), optionally narrowed
+by the artefact types at both ends; resolve the rules in force (`resolve_artefact_rules`, the nearest rule for a
+type wins); and decide whether a type may be used for a new link (`assert_link_type_usable`), the one
+multi-tenant isolation check every link creator goes through.
 
 Design decisions:
-- Nested projects are additive here (own + ancestors' local types over the
-  always-present org base), unlike Action Types' "own else nearest ancestor's",
-  because a child adding one type must not lose its parent's. Always on,
+- Nested projects are additive (own plus ancestors' local types over the org base), unlike Action Types'
+  "own else nearest ancestor's", because a child adding a type must not lose its parent's. Always on,
   independent of `role_inheritance_mode`.
-- Names are compared case-insensitively and the ancestor wins: precedence runs
-  organisation, then root-most ancestor, down to the project itself. A loser is
-  *shadowed* (not offered) but never deleted, so links already using it keep
-  resolving by id.
-- Reading versus using: *using* a type (create, picker) requires it to be currently
-  usable; *displaying* a link never does. That is what makes the lock, hiding,
-  reparenting and detaching non-destructive.
-- Fixed-semantic actions (the "Supersedes" flow, the legacy typed endpoints) are
-  exempt from hiding and shadowing (`enforce_offered=False`) but never from the
-  tenant check.
+- Names compare case-insensitively and the ancestor wins (organisation, then root-most ancestor, down to the
+  project). A loser is shadowed, not offered, never deleted, so existing links still resolve by id.
+- Using a type (create, picker) requires it to be currently usable; displaying a link never does, which keeps the
+  lock, hiding, reparenting and detaching non-destructive.
+- Fixed-semantic actions (the "Supersedes" flow, the typed requirement endpoints) skip hiding and shadowing
+  (`enforce_offered=False`) but never the tenant check.
 
-Dependencies: `services.project_hierarchy` (ancestor chain), the link-type models.
+Dependencies: `services.project_hierarchy`, the link-type models.
 """
 
 from __future__ import annotations

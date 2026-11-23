@@ -2,22 +2,20 @@
  * Module: components/RecordCodePrefixPanel
  *
  * Administration of the prefix new records are numbered with, for one tier: Organisation Admin (the default every
- * {project} of the organisation starts from) and Project Admin (the {project}'s own prefixes, with the value inherited
- * from a parent {project} or the organisation shown as the placeholder). The record types sit in one foldable section
- * for Core and one for each module; each row is one record type: its name, an input for the prefix, where the
- * inherited value comes from, and the controls that save it or return to the inherited value.
+ * {project} of the organisation starts from) and Project Admin (the {project}'s own prefixes, with the value
+ * inherited from a parent {project} or the organisation as the placeholder). Record types sit in one foldable
+ * section for Core and one for each module; each row has the type's name, a prefix input, where the inherited value
+ * comes from, and the controls that save it or return to the inherited value.
  *
- * Design decisions:
- * - The sections come from the API (`module_key` and `module_name` of each row, from the module registry), never from a
- *   module list in this file, so a module's types appear under its own heading with no edit here.
- * - One compact grid with fixed column widths, a single heading row above all sections, so the rows line up across
- *   sections and nothing stretches to the page width. A folded section shows how many prefixes it holds that this tier
- *   set itself (a pill and an accent border), so an override is visible without opening it.
- * - One request per row (a prefix is checked against the other types' prefixes in the same scope, so rows are not
- *   saved as a batch: a swap of two prefixes is two ordered changes the person makes deliberately).
- * - The server owns every rule (shape, uniqueness, nesting); the input only blocks what can never be valid (not two to
- *   five letters) and shows the server's message on a refusal.
- * - A change affects records created afterwards only; this is stated in the column help, not in the layout.
+ * - Sections come from the API (`module_key` and `module_name`, from the module registry), never a module list in
+ *   this file, so a module's types appear under its own heading with no edit here.
+ * - One compact grid with fixed column widths and a single heading row, so rows line up across sections. A folded
+ *   section shows how many prefixes this tier set itself (a pill and an accent border).
+ * - One request per row: a prefix is checked against the other types' prefixes in the same scope, so a swap of two
+ *   prefixes is two deliberate ordered changes, not a batch.
+ * - The server owns every rule (shape, uniqueness, nesting); the input blocks only what can never be valid (not two
+ *   to five letters) and shows the server's message on a refusal. A change affects records created afterwards only;
+ *   the column help says so.
  *
  * Dependencies: `GET/PUT/DELETE /api/v1/orgs/{id}/code-prefixes` and `/api/v1/projects/{id}/code-prefixes`.
  */

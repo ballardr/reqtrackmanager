@@ -4,17 +4,14 @@
  * The settings form of one overview widget: its title, size and project scope, then what its type needs (a metric, a
  * record type and its filters, a chart kind, a gauge's range and levels, how many activity entries, a note's text).
  *
- * Responsibilities:
- * - Edit a widget as a controlled value (`onChange` gets the whole widget); nothing is saved here.
- * - Offer only what the server's catalogue lists: a metric of the right kind, a record type the caller may
- *   read, the filters that type's list accepts.
+ * Responsibilities: edit a widget as a controlled value (`onChange` gets the whole widget; nothing is saved here); offer
+ * only what the server's catalogue lists (a metric of the right kind, a record type the caller may read, the filters that
+ * type's list accepts).
  *
- * Design decisions:
- * - Components and categories are chosen from the project's tree but stored by prefix (`SW`, `SW/PERF`), so the
- *   setting survives a bundle, a template and a child project; an organisation default has no tree, so it offers
- *   no component, category or tag filter.
- * - Provider-specific filters (a status, say) are free name and value rows limited to the names the type's list
- *   takes; the server refuses any other.
+ * Design decisions: components and categories are chosen from the project's tree but stored by prefix (`SW`, `SW/PERF`),
+ * so the setting survives a bundle, a template and a child project; an organisation default has no tree, so it offers no
+ * component, category or tag filter. Provider-specific filters (a status, say) are free name and value rows limited to the
+ * names the type's list takes; the server refuses any other.
  */
 import { useEffect, useId, useState } from "react";
 

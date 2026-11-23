@@ -20,15 +20,12 @@ interface ProjectModule {
 }
 
 /**
- * Job to be done: the project-admin Modules tab (`/projects/:id/admin/modules`)
- * is always present, lists every registered module, and works for a project
- * administrator who is not an organisation admin (its endpoint uses a
- * different gate from the org page). The list is compared against
- * `GET /projects/{id}/modules` by name, so a newly registered module is
- * covered without editing this spec.
+ * Job to be done: the project-admin Modules tab (`/projects/:id/admin/modules`) is always present, lists every
+ * registered module, and works for a project administrator who is not an organisation admin (its endpoint uses a
+ * different gate from the org page). The list is compared against `GET /projects/{id}/modules` by name, so a newly
+ * registered module is covered without editing this spec.
  *
- * Uses a disposable org, project and users created via the API, per the
- * repo's test-idempotency rule.
+ * Uses a disposable organisation, project and users created through the API.
  */
 async function setup(page: Page) {
   const suffix = Date.now();

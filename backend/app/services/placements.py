@@ -4,37 +4,26 @@ Module: services.placements
 Placing records of any registered artefact type in the project's component/category tree.
 
 Responsibilities:
-- Read a record's placements, singly or for a page of records in one query (`get_record_placements`,
-  `placements_for_records`), and name them for exports and reports (`placement_text`).
-- Replace a record's placements, validating that every component and category belongs to the record's
-  project and that a category sits under its component (`set_record_placements`), and write the audit
-  events the record's Activity tab reads.
-- Answer "which records sit in these components or categories" for list endpoints (`PlacementFilter`).
-- Keep the tree and the placements consistent when the tree changes: a deleted category's placements move to
-  the replacement (`reassign_category`), a category that records still sit in cannot be deleted without one
-  (`category_placement_count`), and a component that records still sit in cannot be deleted
-  (`component_placement_count`).
+- Read placements singly or for a page of records in one query (`get_record_placements`,
+  `placements_for_records`) and name them for exports and reports (`placement_text`).
+- Replace a record's placements, validating that components and categories belong to the record's project and
+  a category sits under its component (`set_record_placements`), with the audit events the Activity tab reads.
+- Filter list endpoints by place (`PlacementFilter`), and keep the tree consistent: a deleted category's
+  placements move to its replacement (`reassign_category`); a category or component records still sit in
+  cannot be deleted without one (`category_placement_count`, `component_placement_count`).
 
 Design decisions:
-- Requirements keep their single `component_id`/`category_id` columns because the component prefix forms the
-  requirement code; they are never stored here (`COLUMN_PLACED_TYPES`), their own endpoints carry the field,
-  and `can_place` is false for them. Their further places are aliases with a code of their own
-  (`services.requirement_aliases`); `pairs_for_records` presents the one resolved view for every type, a
-  requirement's own pair first and then its active aliases, and every reader that counts or filters by place
-  (`placed_ids`, the count helpers, `reassign_category`) treats an alias as a place. A change request has no
-  component of its own (only the `proposed_*` pair for a requirement it would add), so it is placed through the table like any other record.
-- A record may hold any number of placements with no primary one; a filter matches a record if any
-  placement matches.
-- A component belongs to one project, so a record is placed only in its own project's tree. A child project
-  does not fall back to an ancestor's tree: a placement is a reference to a row, not a definition table. A
-  record owned by the organisation has no project and so no tree: it cannot be placed.
-- A module may declare a type `not_placeable` (a record that exists only inside a structure of its own); the
-  API refuses it and no placement column, filter or bundle entry is offered for it.
-- Authority is the authority to tag the type (`services.tags.can_tag`): placement is metadata like a tag, so
-  an approved requirement's lock does not apply, and the same roles that may edit the record may place it.
+- Requirements keep `component_id`/`category_id` columns because the component prefix forms the code
+  (`COLUMN_PLACED_TYPES`, `can_place` is false); their further places are aliases (`services.requirement_aliases`),
+  and `pairs_for_records` presents one view for every type: the own pair first, then active aliases.
+- A record holds any number of placements with no primary one; a filter matches if any placement matches.
+- A component belongs to one project, so a record is placed only in its own project's tree, with no fallback to
+  an ancestor's; an organisation-owned record has no tree and cannot be placed. A module may declare a type
+  `not_placeable`.
+- Authority is `services.tags.can_tag`: placement is metadata like a tag, so an approved requirement's lock does
+  not apply.
 
-External dependencies: `models.placement`, `models.project`, `services.tags` (authority), `services.audit`,
-`modules.registry` (types).
+Dependencies: `models.placement`, `models.project`, `services.tags`, `services.audit`, `modules.registry`.
 """
 
 from __future__ import annotations

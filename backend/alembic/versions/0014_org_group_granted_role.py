@@ -4,26 +4,14 @@ Revision ID: 0014
 Revises: 0013
 Create Date: 2026-08-25
 
-Role-granting via an SSO group claim
-should be a property of the `OrgGroup` being synced into, not a
-disconnected flat list (`Organization.sso_group_mappings`, a JSONB list of
-`{"sso_group": ..., "org_role": ...}` entries with no relationship to
-`OrgGroup` at all). Adds `org_groups.granted_org_role`, backfills it from
-every existing `sso_group_mappings` entry — matched against an existing
-`OrgGroup` with the same `idp_synced_group_name` where one already exists,
-or a newly created one (named after the SSO group string) where it doesn't
-— then retires `organizations.sso_group_mappings` entirely.
+Role-granting through an SSO group claim is a property of the `OrgGroup` being synced into. Adds
+`org_groups.granted_org_role`, backfills it from each `Organization.sso_group_mappings` entry (a JSONB
+list of `{"sso_group": ..., "org_role": ...}`), matched to the `OrgGroup` with the same
+`idp_synced_group_name` or a new one named after the SSO group string, then drops
+`organizations.sso_group_mappings`.
 
-Migration decision, made explicit here: `granted_org_role` is a single nullable
-column, not a list, so an organisation that (unusually — not exercised by
-any existing test or seed data, confirmed by grep before writing this)
-mapped the same `sso_group` string to two different `org_role`s across two
-separate `sso_group_mappings` entries can only carry one forward; the later
-entry in stored array order wins, deterministically, rather than silently
-picking one. This is a real, narrow behaviour change for that one edge
-case, not a bug — the new model doesn't have a way to represent "this one
-IdP group grants two different org roles," which the old flat list
-technically permitted.
+`granted_org_role` is a single nullable column, so when two entries map one `sso_group` to different
+`org_role`s the later entry in stored array order wins, deterministically.
 """
 
 from collections.abc import Sequence

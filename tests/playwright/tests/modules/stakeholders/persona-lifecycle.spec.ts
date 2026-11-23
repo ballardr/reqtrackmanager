@@ -7,21 +7,12 @@ import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./help
 installCleanupHook();
 
 /**
- * Job to be done:
- * Playwright e2e coverage for the Persona UI
- * (`frontend/src/modules/stakeholders/`) against a real backend.
+ * Job to be done: e2e coverage of the Persona UI (`frontend/src/modules/stakeholders/`) against a real backend.
  *
- * Each test builds a disposable org + admin (+ project) through the API, per
- * this repo's "tests must not depend on shared seeded state" rule, and
- * `Date.now()`-suffixes every name. The module is `default_enabled=False`, so
- * each test switches it on from Org Admin's Modules group first.
- *
- * `backend/scripts/seed_e2e_dataset.py` still gains Personas (both seed scripts carry
- * them), but these specs don't depend on them.
- *
- * The org admin is the project's `PROJECT_MANAGER`, which composes with the
- * module's project-scoped `persona_owner` role, so one persona can create,
- * activate and re-weight without any extra grant.
+ * Each test builds a disposable org + admin (+ project) through the API with `Date.now()`-suffixed names and
+ * switches the `default_enabled=False` module on from Org Admin's Modules group. Both seed scripts carry
+ * Personas, but these specs do not depend on them. The org admin is the project's `PROJECT_MANAGER`, which
+ * composes with the module's `persona_owner` role, so one persona can create, activate and re-weight.
  */
 test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
   test("creates a project Persona, activates it, overrides its weight and resets it", async ({ page }) => {

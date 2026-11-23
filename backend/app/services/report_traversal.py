@@ -1,30 +1,22 @@
 """
 Module: services.report_traversal
 
-How a custom report layout reaches records: the root records of a type, and the records linked to
-a set of records ("for each requirement, its linked Pain Points").
+How a custom report layout reaches records: the root records of a type, and the records linked to a set of records.
 
 Responsibilities:
-- `root_records`: the records of one type in the report's projects that the caller may see.
-- `linked_records`: for many parent records at once, the visible records of one type linked to each
-  (optionally only through chosen link types, in one direction), with a per-parent count of linked
-  records the caller cannot see.
+- `root_records`: records of one type in the report's projects that the caller may see.
+- `linked_records`: for many parents at once, the visible records of one type linked to each (optionally through chosen
+  link types, in one direction), with a per-parent count of linked records the caller cannot see.
 
 Design decisions:
-- **One authorisation point.** Every candidate record goes through the link graph's
-  `ArtefactResolver` (project membership, module and sub-component enablement, the type's `view`
-  permission in the record's own project, nesting rules). This module adds no visibility rule of its
-  own, so a layout can never show a record the caller's link graph would not.
-- A record that fails the resolver is **counted, never named**: `hidden` holds a number per parent,
-  and a type no installed module can display is counted apart (`unavailable`), exactly as the graph does.
-  A hidden record is not traversed through, so a path cannot reveal it.
-- One batched link query and one resolver call per level, whatever the number of parents; work is
-  bounded by `MAX_ROOTS` and `MAX_LINKED`, and hitting a cap sets `truncated` instead of failing.
-- A dormant cross-project link (its two projects no longer in one ancestry line) is `unavailable`,
-  not visible, as in the graph.
+- One authorisation point: every candidate goes through the link graph's `ArtefactResolver` (membership, module and
+  sub-component enablement, `view` in the record's own project, nesting rules); no visibility rule is added here.
+- A failing record is counted, never named (`hidden`), a type no installed module can display is counted apart
+  (`unavailable`), and a hidden record is not traversed through.
+- One batched link query and one resolver call per level; `MAX_ROOTS` and `MAX_LINKED` bound the work and set `truncated`.
+- A dormant cross-project link (projects no longer in one ancestry line) is `unavailable`, as in the graph.
 
-Dependencies: `services.link_graph` (resolver), `services.relationships` (link query),
-`services.link_nesting` (liveness), `services.report_fields` (provider lookup).
+Dependencies: `link_graph`, `relationships`, `link_nesting`, `report_fields`.
 """
 
 from __future__ import annotations

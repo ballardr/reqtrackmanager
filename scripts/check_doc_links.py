@@ -2,33 +2,25 @@
 """
 Module: check_doc_links
 
-Fails when a documentation reference no longer resolves, so moving or
-renaming a doc (for example archiving a closed plan under
-docs/plans/completed/) cannot silently leave dangling references.
+Fails when a documentation reference does not resolve, so moving or renaming a document cannot leave dangling
+references.
 
 Checks, over every git-tracked text file:
-- Markdown links and reference definitions with a relative target must point
-  at an existing file (anchors are not validated; Docusaurus does that for the
-  docs website in the `docs` CI job, so docs/website/ is skipped here).
-- Mentions of the form `docs/<path>.md` (Markdown, code comments, docstrings)
-  must name an existing file, resolved from the repository root.
-
-- Source files (everything outside docs/ that is not Markdown) and the SOC 2 package (docs/soc2/) must not
-  name a plan document or cite a plan phase ("Phase 7"): plans are working papers that get archived, so code,
-  its comments and audit evidence state their own rationale instead (CLAUDE.md "Plan Lifecycle").
+- Markdown links and reference definitions with a relative target must point at an existing file (anchors are
+  validated by Docusaurus in the `docs` CI job, so docs/website/ is skipped here).
+- Mentions of the form `docs/<path>.md` (Markdown, code comments, docstrings) must name an existing file, resolved
+  from the repository root.
+- Source files (everything outside docs/ that is not Markdown) and the SOC 2 package (docs/soc2/) must not name a
+  plan document or cite a plan phase: plans are working papers that get archived, so code, comments and
+  audit evidence state their own rationale instead (CLAUDE.md "Plan Lifecycle").
 
 Design notes:
-- Inline code spans and fenced blocks are ignored for Markdown links (a link
-  quoted in backticks is not a link).
-- docs/decisions.md is an append-only history: its `docs/...` path mentions
-  may name files that were since renamed or deleted, so only its real links
-  are checked.
-- A mention containing a placeholder (`<name>`, `*`, `{}`) does not match the
-  path pattern and is ignored on purpose.
-- A path wrapped across two comment lines is not detected; keep such paths on
-  one line.
-- Intentional references to files that do not exist (historical notes about a
-  deleted doc) belong in ALLOWED_MISSING with a reason, not in a loosened rule.
+- Inline code spans and fenced blocks are ignored for Markdown links.
+- docs/decisions.md is an append-only history whose `docs/...` mentions may name files that are renamed or
+  deleted later, so only its real links are checked.
+- A mention containing a placeholder (`<name>`, `*`, `{}`) does not match the path pattern and is ignored.
+- A path wrapped across two comment lines is not detected; keep such paths on one line.
+- Intentional references to files that do not exist belong in ALLOWED_MISSING with a reason, not in a loosened rule.
 
 Usage: python scripts/check_doc_links.py            (exit 1 and a list on failure)
        python scripts/check_doc_links.py --staged   (the pre-commit form: only the staged files, unless the commit
@@ -67,7 +59,7 @@ ALLOWED_MISSING: dict[str, str] = {
 }
 HISTORY_FILES = {"docs/decisions.md"}
 
-# Not plans: the docs/plans/ README.
+# Not plans: the README of the plans directory.
 NOT_A_PLAN = {"README"}
 # Files that must name plan paths to do their job.
 PLAN_MENTION_EXEMPT = {"scripts/check_doc_links.py", "backend/tests/test_doc_links.py"}
@@ -77,7 +69,7 @@ SKIP_PREFIXES = ("docs/website/", "frontend/node_modules/", ".claude/")
 MD_LINK = re.compile(r"(?:\]\(|^\[[^\]]+\]:\s*)<?([^)\s>#]+)", re.M)
 DOCS_MENTION = re.compile(r"(?<![\w./-])docs/[A-Za-z0-9_./-]*[A-Za-z0-9_]\.md\b")
 CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
-# "Phase 7", "Phase 3b", "Phase A" (also wrapped across a comment line break).
+# A phase tag such as a "Phase" word followed by a number or letter A-E (also wrapped across a comment line break).
 PHASE_TAG = re.compile(
     r"\bPhases?(?:[ \t]+|[ \t]*\n[ \t]*(?:(?:#|\*|//)[ \t]*)?)(?:\d|[A-E]\b)"
 )
@@ -104,9 +96,8 @@ def plan_name_pattern() -> re.Pattern[str]:
     Builds the pattern that detects a plan document named in a source file.
 
     Returns:
-        A regex matching `docs/plans/<anything but a non-plan>` or the bare
-        basename of any plan under docs/plans/ (live or completed). Built once per repository root, because
-        every scanned file asks for it.
+        A regex matching a path in the plans directory (other than a non-plan) or the bare basename of any plan
+        (live or completed). Built once per repository root, because every scanned file asks for it.
     """
     return _plan_name_pattern(ROOT)
 

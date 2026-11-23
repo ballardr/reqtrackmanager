@@ -4,31 +4,16 @@ import { loginAs, logout, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from
 import { createStandardWithVersion } from "./helpers";
 
 /**
- * Job to be done: "Standard Applicability Defaults, Exceptions, and Project-Manager
- * Assignment." Two independent scenarios:
+ * Job to be done: "Standard Applicability Defaults, Exceptions, and Project-Manager Assignment." Two scenarios:
  *
- * 1. The *default, primary* assignment path: a plain Project Manager, with
- *    no `compliance_officer` module-role grant at all, can assign a
- *    published standard to their own project directly from `Project
- *    CompliancePage.tsx`'s existing "Assign standard" flow — no Compliance
- *    Manager needs to act on their behalf first.
- * 2. The *secondary*, org-wide-mandate path: a Compliance Manager (here,
- *    via the org-admin override) can switch a standard to "applies to all
- *    projects by default," watch it materialise onto every current project
- *    in the org without any manual per-project assignment, then except one
- *    project back out — which archives (not deletes) the assignment
- *    reconciliation had created for it.
+ * 1. A plain Project Manager with no `compliance_officer` grant assigns a published standard to their own
+ *    project from `ProjectCompliancePage.tsx`'s "Assign standard" flow (persona `e2e-projectmgr-g@example.com`,
+ *    `PROJECT_MANAGER` on Gamma-1 alone).
+ * 2. A Compliance Manager (Gamma's org admin `e2e-orgadmin-g@example.com`, through `require_module_role`'s
+ *    org-admin composition) switches a standard to "applies to all projects by default", sees it materialise
+ *    onto every current project, then excepts one project, which archives (not deletes) its assignment.
  *
- * `e2e-projectmgr-g@example.com` (Gamma, member-only, `PROJECT_MANAGER` on
- * Gamma-1 alone) is the persona proving scenario 1 has no dependency on any
- * compliance-specific role grant. `e2e-orgadmin-g@example.com` (Gamma's own
- * org admin) proves scenario 2 — org admins retain full Compliance Manager
- * access via `require_module_role`'s existing composition, and, per this
- * app's project-view rules, can also open Gamma-1/Gamma-2's own Compliance
- * pages to observe reconciliation without needing a project role there.
- *
- * Every fixture standard this spec creates is dynamically named with a
- * per-run timestamp suffix, per this repo's standing test-idempotency rule.
+ * Every fixture standard carries a per-run timestamp suffix.
  */
 test.describe("Compliance Module: standard applicability defaults", () => {
   test("a plain Project Manager can self-assign a published standard without a compliance_officer grant", async ({ page }) => {
@@ -51,13 +36,9 @@ test.describe("Compliance Module: standard applicability defaults", () => {
     // compliance_officer grant — self-assigns the standard directly.
     await loginAs(page, PERSONAS.projectMgrGamma.email);
     await page.goto("/projects");
-    // `.first()`: Gamma-1 is a hierarchy `can_be_parent` fixture other
-    // specs create/detach real sub-projects under concurrently (see
-    // playwright.config.ts's GLOBAL_STATE_SPECS comment on
-    // project-hierarchy.spec.ts) — its own row can transiently render more
-    // than one element matching this accessible name, all pointing at the
-    // same project, so pinning to the first match keeps this test's own
-    // assertion about *this* project unaffected by that.
+    // `.first()`: Gamma-1 is a hierarchy `can_be_parent` fixture that other specs create and detach sub-projects
+    // under concurrently (see playwright.config.ts's GLOBAL_STATE_SPECS comment on project-hierarchy.spec.ts),
+    // so its row can transiently render more than one element with this accessible name, all for the same project.
     await openProject(page, PROJECT_NAMES.gamma1);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
@@ -89,12 +70,9 @@ test.describe("Compliance Module: standard applicability defaults", () => {
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page.getByText(new RegExp(reference))).not.toBeVisible();
 
-    // --- Switch the standard's applicability default; reconciliation
-    // should materialise a real assignment for every current project in
-    // the org, with no manual per-project action.
-    // A `link`, not a `button`, because `/standards` defaults to its
-    // new tiles view, whose cards are `<Link>`s (`StandardListPage.tsx`'s
-    // pre-35a `DirectoryTable`-only list rendered rows as `<button>`s).
+    // Switch the standard's applicability default; reconciliation materialises an assignment for every current
+    // project in the org with no manual per-project action. The control is a `link`, not a `button`, because
+    // `/standards` defaults to its tiles view, whose cards are `<Link>`s.
     await page.goto("/standards");
     await page.getByRole("link", { name: new RegExp(reference) }).click();
     await expect(page.getByRole("switch", { name: "Applies to all projects by default" })).toHaveAttribute("aria-checked", "false");
@@ -107,10 +85,8 @@ test.describe("Compliance Module: standard applicability defaults", () => {
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page.getByText(new RegExp(reference))).toBeVisible();
 
-    // --- Gamma-1 was reconciled too (not just Gamma-2) — confirmed before
-    // excluding it below, so that exclusion's own effect is provably a
-    // change from an actually-reconciled state, not a no-op against a
-    // project reconciliation never reached.
+    // Gamma-1 was reconciled too (not just Gamma-2), confirmed before excluding it below so the exclusion is
+    // a change from a reconciled state, not a no-op.
     await page.goto("/projects");
     await openProject(page, PROJECT_NAMES.gamma1);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
@@ -133,14 +109,9 @@ test.describe("Compliance Module: standard applicability defaults", () => {
     await page.goto("/projects");
     await openProject(page, PROJECT_NAMES.gamma1);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
-    // An archived assignment's row deliberately renders "—" for its
-    // Standard column (`GET .../status` excludes archived assignments by
-    // design, per `ProjectCompliancePage.tsx`'s notes — there
-    // is no per-project-compliance-row reference/name join on this list
-    // view once archived), so the reference text this standard's active
-    // row displayed a moment ago is gone from the page entirely — the
-    // observable signal that the exclusion took effect, combined with the
-    // exclusion already having been confirmed directly above.
+    // An archived assignment's row renders "—" for its Standard column (`GET .../status` excludes archived
+    // assignments, per `ProjectCompliancePage.tsx`), so the reference text of the active row is absent from
+    // the page: the observable signal that the exclusion took effect, beside the direct confirmation above.
     await expect(page.getByText(new RegExp(reference))).not.toBeVisible();
   });
 });

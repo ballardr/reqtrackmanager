@@ -1,22 +1,12 @@
 """
 Module: modules.product_feedback.vocabularies
 
-The short, organisation-defined list a request's requesters are classified by, a `TypeVocabulary` (organisation base
-list; a project overrides, adds and hides entries):
-
-- `REQUEST_CHANNELS` — how a requester asked (Support ticket, Call, Email, ...).
-
-The outside systems a request's external references point into (Jira, ServiceNow, ...) are shared by every record
-type and live in `services.external_references`.
-
-Design decisions:
-- Nested projects (**Decided by: User**): a child project with no configuration of its own shows its nearest
-  ancestor's effective list, else the organisation's (`TypeVocabulary(inherit_from_ancestors=True)`). Its first change
-  copies the inherited configuration into it, so it is then its own. A record in a child may reference the
-  ancestor's row for an entry the ancestor added or renamed.
-- A project record references a *project* row (`resolve_channel` creates the passthrough row the first time an
-  organisation entry is chosen).
-- Entries are seeded when an organisation is created (`seed_org_defaults`), never for a project.
+The organisation-defined list requesters are classified by: `REQUEST_CHANNELS`,
+a `TypeVocabulary` (organisation base list; a project overrides, adds, hides).
+A child project with no configuration shows its nearest ancestor's effective
+list, else the organisation's; its first change copies it in. A project record
+references a project row (`resolve_channel`). Entries are seeded at organisation
+creation, never per project; external systems live in `services.external_references`.
 """
 
 from __future__ import annotations

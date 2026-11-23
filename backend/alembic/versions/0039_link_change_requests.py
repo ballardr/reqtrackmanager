@@ -4,39 +4,23 @@ Revision ID: 0039
 Revises: 0038
 Create Date: 2026-09-14
 
-Closes an asymmetry `unlink_action` had ever since ADD_ACTION (0013): adding
-an action to a locked requirement already required a change request, but
-removing one didn't — `unlink_action` had no lock check at all. Also adds an
-opt-in sibling for `RequirementLink`: a project (or an org-wide force, minus
-a per-project exemption) can now require that adding/removing a
-traceability link on an already-approved requirement go through a change
-request too, mirroring the same mechanism rather than inventing a new one.
+Gates removing an action from a locked requirement behind a change request, as adding one is since 0013
+(`unlink_action` had no lock check). Also adds an opt-in gate for `RequirementLink`: a project (or an
+org-wide force, with a per-project exemption) can require that adding or removing a traceability link on
+an approved requirement goes through a change request.
 
-Three new `ChangeRequestKind` values (`remove_action`, `add_link`,
-`remove_link` — plain VARCHAR `str_enum` column, no migration needed for the
-enum value itself, same reasoning as 0012/0013's own notes) plus:
+Three `ChangeRequestKind` values (`remove_action`, `add_link`, `remove_link`; a plain VARCHAR `str_enum`
+column needs no migration for the value, as in 0012/0013) plus:
 
-- Three new nullable columns on `change_request_versions`:
-  `proposed_link_target_requirement_id` + `proposed_link_type_id`
-  (ADD_LINK-only — the target and org link type to link to) and
-  `proposed_link_id` (REMOVE_LINK-only — the existing `RequirementLink` row
-  to remove on approval). `REMOVE_ACTION` reuses the existing
-  `proposed_action_link_id` column (0013) rather than adding a duplicate —
-  the two kinds never coexist on one version row.
-- Two new boolean columns on `projects`:
-  `require_change_request_for_approved_links` (opt-in per-project gate,
-  default false) and `exempt_from_org_link_lock` (escape hatch from the
-  org-wide force below, default false).
-- One new boolean column on `organizations`:
-  `force_require_change_request_for_approved_links` (org-wide force,
-  default false, overridden per-project by `exempt_from_org_link_lock`).
+- `change_request_versions`: nullable `proposed_link_target_requirement_id` and `proposed_link_type_id`
+  (ADD_LINK) and `proposed_link_id` (REMOVE_LINK: the `RequirementLink` to remove on approval).
+  REMOVE_ACTION reuses `proposed_action_link_id` (0013); the two kinds never share a version row.
+- `projects`: boolean `require_change_request_for_approved_links` (per-project gate) and
+  `exempt_from_org_link_lock` (exemption from the org-wide force), both default false.
+- `organizations`: boolean `force_require_change_request_for_approved_links` (org-wide force), default false.
 
-All-nullable/defaulted additive columns, so every existing row is
-unaffected — `NULL`/`false` on backfill is correct (an existing
-`change_request_versions` row of a different kind has nothing to do with
-links; an existing project/org has this feature off by default, matching
-`Project.allow_member_change_requests`'s own permissive-default precedent).
-No backfill needed.
+New columns are nullable or default false (matching `Project.allow_member_change_requests`), so existing
+rows need no backfill.
 """
 
 from collections.abc import Sequence

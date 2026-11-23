@@ -4,14 +4,9 @@ Revision ID: 0073
 Revises: 0072
 Create Date: 2026-10-12
 
-Adds the Risk tables:
-`risk_type_definitions`/`project_risk_types` (two-tier type vocabulary),
-`risks`/`risk_versions` (identity + temporal content, project scope) and the
-module-local comment/attachment tables.
-
-Existing organisations get the default Risk types backfilled, since
-`on_org_created` only seeds organisations created afterwards. The `risk`
-scoring levels are seeded by core's `sync_scoring_levels` at process start.
+Adds the Risk tables (two-tier type vocabulary, `risks`/`risk_versions`, the
+module-local comment and attachment tables) and backfills the default Risk
+types for existing organisations; the `risk` scoring levels are seeded by core.
 """
 
 from collections.abc import Sequence

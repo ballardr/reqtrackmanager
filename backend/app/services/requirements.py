@@ -49,10 +49,8 @@ from app.services.rbac import lock_project_for_update, lock_row_for_update
 if TYPE_CHECKING:
     from app.services.placements import PlacementPair
 
-# C-G-11: completion is an overlay marker on top of APPROVED, not a
-# separate lifecycle status a requirement can be "in" — a completed
-# requirement's status is still APPROVED (see `Requirement.is_completed`),
-# so this set no longer needs a second member to cover it.
+# C-G-11: completion is an overlay marker on APPROVED (`Requirement.is_completed`), not a separate status,
+# so a completed requirement is still APPROVED and this set has one member.
 LOCKED_STATUSES = {RequirementStatus.APPROVED}
 
 
@@ -124,14 +122,11 @@ def requires_change_request_for_links(db: Session, project: Project) -> bool:
 
 
 def _next_sequence(db: Session, project: Project) -> int:
-    """Returns the next requirement sequence number for `project`, advancing
-    the counter so it is never reused (C-G-06), including for archived
-    requirements.
+    """Returns the next requirement sequence number for `project`, advancing the counter so it is never reused
+    (C-G-06), including for archived requirements.
 
-    Locks the project row and re-reads the counter first (2026-10-05): two
-    concurrent creates in one project each read the same value and the
-    second failed on the unique `(project_id, unique_code)` constraint with
-    a 500 — the same race `services.sequences` already closes this way.
+    Locks the project row and re-reads the counter first, so concurrent creates cannot take the same value
+    (the same lock `services.sequences` uses).
     """
     lock_project_for_update(db, project.id)
     db.refresh(project, attribute_names=["next_requirement_seq"])
@@ -368,10 +363,8 @@ OPEN_CR_STATUSES = (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW
 
 @dataclass
 class ListPrefetch:
-    """Per-requirement lookups for a whole list, loaded in a fixed number of
-    queries (`prefetch_for_list`) instead of five per row — the list
-    endpoint was the second-hottest backend path in the e2e suite (99
-    queries for one page of Alpha-1, 2026-10-04 profiling).
+    """Per-requirement lookups for a whole list, loaded in a fixed number of queries (`prefetch_for_list`) instead of
+    five per row.
 
     Attributes:
         versions: Current (`valid_to IS NULL`) version per requirement id.

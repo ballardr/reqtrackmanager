@@ -1,34 +1,16 @@
-# Local development / test stack: db + storage + mailhog + backend + frontend.
-# This is the stack used to develop locally, to run the backend pytest suite,
-# and to run the Playwright end-to-end suite — it is NOT the production
-# stack (see the deployments/full/docker-compose.yml for that). Keeping this stack
-# entirely separate, in its own Compose project (directory-derived project
-# name "container", distinct from the root project), means:
-#   - its Postgres database is always `reqtrack_test`, never the real `reqtrack`
-#     database a production/root-stack deployment would use, so running
-#     tests here can never collide with or destroy real data (see
-#     docs/decisions.md, "Database: the test suite was wiping the live
-#     database").
-#   - it can be brought up/down/rebuilt independently of any root stack
-#     running on the same machine, since Compose scopes volumes and networks
-#     per project.
+# Local development / test stack: db + storage + mailhog + backend + frontend, used for local development, the backend
+# pytest suite and the Playwright end-to-end suite. It is NOT the production stack (deployments/full/docker-compose.yml).
+# It has its own Compose project (directory-derived name "container"), so:
+#   - its Postgres database is always `reqtrack_test`, never the real `reqtrack` database, so tests cannot collide with
+#     or destroy real data (docs/decisions.md, "Database: the test suite was wiping the live database");
+#   - it can be brought up, down and rebuilt independently of any root stack on the same machine.
 #
-# `backend`'s DATABASE_URL below points this container's own long-running app
-# process (the dev/demo stack this stack is also used to manually run, and
-# the backend Playwright targets) at `reqtrack_test` on the `db` service.
-# `docker compose exec backend pytest -q` does NOT run against that same
-# `reqtrack_test` database, even though it execs into this same container:
-# `backend/tests/conftest.py` unconditionally rewrites DATABASE_URL's
-# database name to a second, pytest-only database (`reqtrack_pytest_test`,
-# created automatically on the same `db` server/container the first time
-# it's needed) before any test runs. This is deliberate — pytest's fixtures
-# drop/recreate the whole schema every session and truncate every table
-# after every test, which is safe for its own dedicated database but would
-# otherwise repeatedly destroy manually-seeded demo/dev data in
-# `reqtrack_test` every time `pytest` ran (see docs/decisions.md's entry on
-# this, and `backend/tests/conftest.py`'s own module docstring for the full
-# incident this fixes). `reqtrack_test` itself is left exclusively to this
-# container's own app process and to Playwright.
+# `backend`'s DATABASE_URL points the container's long-running app process (the dev/demo stack and the Playwright
+# target) at `reqtrack_test`. `docker compose exec backend pytest -q` does NOT use that database:
+# `backend/tests/conftest.py` rewrites DATABASE_URL's database name to a pytest-only database
+# (`reqtrack_pytest_test`, created on the same `db` server on first use), because pytest drops and recreates the schema
+# every session and truncates every table after every test, which would destroy seeded demo data in `reqtrack_test`
+# (docs/decisions.md; `backend/tests/conftest.py`). `reqtrack_test` is left to the app process and Playwright.
 #
 # Usage:
 #   cd tests/container && docker compose up --build -d
@@ -55,22 +37,13 @@ services:
       timeout: 5s
       retries: 5
 
-  # S3-compatible object storage for the backend's STORAGE_BACKEND=s3 mode.
-  # This used to be MinIO, but MinIO discontinued anonymous/free pulls of
-  # its own images from both Docker Hub (repos deleted 2026-09-11) and
-  # quay.io (anonymous pulls cut off 2026-09-24) — see docs/decisions.md,
-  # "Storage backend: MinIO images no longer pullable, replaced with
-  # SeaweedFS". SeaweedFS's S3 gateway is a verified drop-in replacement for
-  # the plain head_bucket/create_bucket/put_object/get_object/delete_object
-  # calls `backend/app/storage_backends/s3.py` makes (no presigned URLs,
-  # multipart, versioning, or MinIO Admin API in use anywhere in the app),
-  # and it is configured with ONE S3 identity (STORAGE_ACCESS_KEY /
-  # STORAGE_SECRET_KEY) that may act on the application bucket only, with
-  # everything except the S3 gateway on loopback — the same as the production
-  # stack (see docs/deployment.md, "Storage credential scope"). There's no
-  # bundled admin console UI in this replacement (SeaweedFS has no equivalent
-  # to MinIO's `:9001` console) — see docs/deployment.md's storage backend
-  # section for how to inspect bucket contents without one.
+  # S3-compatible object storage for the backend's STORAGE_BACKEND=s3 mode (SeaweedFS; see docs/decisions.md, "Storage
+  # backend: MinIO images no longer pullable, replaced with SeaweedFS"). Its S3 gateway serves the plain head_bucket/
+  # create_bucket/put_object/get_object/delete_object calls of `backend/app/storage_backends/s3.py` (no presigned URLs,
+  # multipart, versioning or admin API). It has ONE S3 identity (STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY) limited to the
+  # application bucket, with everything except the S3 gateway on loopback, as in the production stack
+  # (docs/deployment.md, "Storage credential scope"). There is no admin console; docs/deployment.md's storage backend
+  # section describes inspecting bucket contents.
   storage:
     image: chrislusf/seaweedfs:3.97
     container_name: reqtrack-test-storage
@@ -87,11 +60,9 @@ services:
     ports:
       - "9000:9000"
     healthcheck:
-      # The S3 API's own /healthz is broken in this image (returns 404 —
-      # it's parsed as a bucket name; see seaweedfs#8243), so this checks
-      # the master's cluster-status endpoint (loopback only) and that the S3
-      # gateway answers (403 without credentials). wget, not curl — this
-      # image has no curl binary.
+      # The S3 API's /healthz returns 404 in this image (parsed as a bucket name; seaweedfs#8243), so this checks the
+      # master's cluster-status endpoint (loopback only) and that the S3 gateway answers (403 without credentials).
+      # wget, not curl: the image has no curl.
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status && wget -S -qO- http://127.0.0.1:9000/ 2>&1 | grep -q 'HTTP/1.1 403'"]
       interval: 10s
       timeout: 5s
@@ -104,25 +75,18 @@ services:
       - "1025:1025"
       - "8025:8025"
 
-  # Real OIDC identity provider used to test the SSO login flow end-to-end
-  # (Massif v3, E-U-01) — see tests/container/keycloak/realm-export.json for
-  # the realm/client/test-user configuration, and
-  # tests/playwright/tests/e2e-workflows/sso.spec.ts for the spec that
-  # drives a real login through this instance's own login form.
+  # Real OIDC identity provider for the end-to-end SSO login flow (E-U-01): tests/container/keycloak/realm-export.json
+  # holds the realm, client and test users, and tests/playwright/tests/e2e-workflows/sso.spec.ts drives a login.
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: start-dev --import-realm --health-enabled=true
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-      # Keycloak always advertises this as its issuer/endpoint host in
-      # discovery documents and issued tokens, regardless of which hostname
-      # a caller actually used to reach it (KC_HOSTNAME_STRICT=false) — this
-      # is what makes the split browser-vs-backend addressing below work:
-      # the browser is redirected to http://localhost:8080/..., matching
-      # this setting, while the backend itself reaches this same container
-      # via the internal http://keycloak:8080 (see backend's
-      # OIDC_INTERNAL_BASE_URL_OVERRIDE below).
+      # Keycloak advertises this as its issuer/endpoint host in discovery documents and tokens whichever hostname a
+      # caller used (KC_HOSTNAME_STRICT=false), which makes the split addressing work: the browser is redirected to
+      # http://localhost:8080/..., while the backend reaches the container at http://keycloak:8080
+      # (OIDC_INTERNAL_BASE_URL_OVERRIDE below).
       KC_HOSTNAME: localhost
       KC_HOSTNAME_PORT: "8080"
       KC_HOSTNAME_STRICT: "false"
@@ -186,11 +150,8 @@ services:
       MCP_SERVER_PUBLIC_URL: ${MCP_SERVER_PUBLIC_URL:-http://localhost:8100}
       # The header Help link opens this stack's own `docs` service (below), not the public site.
       HELP_URL: ${HELP_URL:-http://localhost:3001/reqtrackmanager/}
-      # See keycloak service's comment above: the backend reaches Keycloak
-      # over the Docker-internal network, but every org's oidc_issuer_url is
-      # configured with Keycloak's browser-facing public URL
-      # (http://localhost:8080/realms/...) since that's what must appear in
-      # tokens and what the browser gets redirected to.
+      # The backend reaches Keycloak over the Docker-internal network, but every org's oidc_issuer_url is Keycloak's
+      # browser-facing URL (http://localhost:8080/realms/...), which is what tokens carry (see the keycloak service).
       OIDC_INTERNAL_BASE_URL_OVERRIDE: http://keycloak:8080
       # EPS and PDF logos are converted by the `converter` service (below), which the real-conversion tests also use.
       REPORT_CONVERTER_URL: http://converter:8300
@@ -221,12 +182,11 @@ services:
       timeout: 5s
       retries: 10
 
-  # Converter: runs Ghostscript and poppler on uploaded EPS and PDF logos, and draws Mermaid diagrams for reports, so the
-  # backend never does
-  # (docs/solution-architecture.md). It is the sandbox: only on the `converter`
-  # network, which is `internal` (no route out, no published port) and shared with the backend alone; no secrets and
-  # no application code; non-root, read-only root filesystem with a small scratch `tmpfs`, no Linux capabilities, and
-  # CPU, memory and process ceilings. Nothing is stored.
+  # Converter: runs Ghostscript and poppler on uploaded EPS and PDF logos and draws Mermaid diagrams for reports, so the
+  # backend never does (docs/solution-architecture.md). It is the sandbox: only on the `internal` `converter` network
+  # (no route out, no published port) shared with the backend; no secrets or application code; non-root, read-only
+  # root filesystem with a small scratch `tmpfs`, no Linux capabilities, and CPU, memory and process ceilings.
+  # Nothing is stored.
   converter:
     build:
       context: ../../converter
@@ -268,10 +228,8 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
-    # See the deployments/full/docker-compose.yml's frontend service for the full
-    # explanation — Tier C (Module Federation) frontend module support,
-    # module system follow-up, 2026-09-07. Uncomment to test a Tier C
-    # module against this dev/test stack.
+    # Tier C (Module Federation) frontend module support; see the frontend service in
+    # deployments/full/docker-compose.yml. Uncomment to test a Tier C module against this dev/test stack.
     # volumes:
     #   - ./external-modules:/usr/share/nginx/external-modules:ro
     healthcheck:
@@ -363,18 +321,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # Local preview of docs/website/ (Docusaurus).
-  # Port 3001 (not 3000, already taken by
-  # `frontend` above). No `depends_on`: unlike every other service in this
-  # stack, the docs site is fully static and built entirely from files in
-  # docs/website/ — it neither calls nor is called by db/backend/frontend/
-  # anything else here, so it can be brought up in isolation
-  # (`docker compose up --build -d docs`) without any of them running.
-  # Dev/eval-only, like the rest of this stack — the real, public docs site
-  # is what GitHub Pages serves once the `docs-deploy` CI job runs against
-  # `main` (see docusaurus.config.ts's `url`/`baseUrl`, hence the
-  # /reqtrackmanager/ prefix on the URLs below matching that same path
-  # locally).
+  # Local preview of docs/website/ (Docusaurus), on port 3001 (3000 is the `frontend`). No `depends_on`: the site is
+  # static and built from docs/website/ alone, so `docker compose up --build -d docs` runs it in isolation. Dev only:
+  # the public site is served by GitHub Pages from the `docs-deploy` CI job (docusaurus.config.ts `url`/`baseUrl`),
+  # hence the /reqtrackmanager/ prefix on the URLs below.
   docs:
     build:
       context: ../../docs/website

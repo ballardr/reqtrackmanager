@@ -3,17 +3,13 @@
  *
  * Shows Mermaid diagram text as a drawing, inside rendered Markdown.
  *
- * Responsibilities:
- * - Draw the text with `utils/mermaidRender` for the page's current theme (drawing again when the theme changes).
- * - Show the drawing as an image with a text alternative: the diagram's type as its name, and the source in an
- *   expandable block, so a screen reader or a person who needs the exact text still has it.
- * - On failure, show the source and the reason instead of a drawing; one bad diagram never hides the rest.
+ * Draws the text with `utils/mermaidRender` for the page's current theme (redrawn when it changes), as an image with
+ * a text alternative: the diagram's type as its name and the source in an expandable block. On failure it shows the
+ * source and the reason, so one bad diagram never hides the rest.
  *
- * Design decisions:
- * - The drawing is an `<img>` of a data URI, never inline SVG, so nothing in a diagram can run script.
- * - The library loads on first use only, so a page with no diagram never downloads it.
- * - The theme is read from the `data-theme` attribute the application sets on the page, so the component needs no
- *   provider and stories can switch it.
+ * The drawing is an `<img>` of a data URI, never inline SVG, so nothing in a diagram can run script. The library
+ * loads on first use only. The theme is read from the `data-theme` attribute, so the component needs no provider
+ * and stories can switch it.
  */
 import { useEffect, useState } from "react";
 

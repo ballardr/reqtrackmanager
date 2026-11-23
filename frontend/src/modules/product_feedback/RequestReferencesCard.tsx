@@ -2,12 +2,12 @@
  * Module: modules/product_feedback/RequestReferencesCard
  *
  * A request's external references: the items in outside tools (Jira, ServiceNow, ...) it came from or is delivered in,
- * each with its system, key, role and (for an http or https link only) a link that opens in a new tab. A triager can
- * add, change and remove them; everyone else reads. A reference is not a version of the request, so changing one
- * does not touch the version history.
+ * each with its system, key, role and (for an http or https link only) a link opening in a new tab. A triager can add,
+ * change and remove them; everyone else reads. A reference is not a version of the request, so changing one leaves
+ * the version history alone.
  *
- * The link is user content, so it is rendered as a clickable link only when it is an absolute http(s) URL (the server
- * enforces the same rule on save; this also covers anything stored before it did) and always with `rel="noopener noreferrer"`.
+ * The link is user content, so it renders as a clickable link only when it is an absolute http(s) URL (the server
+ * enforces the same rule on save; this also covers earlier stored values) and always with `rel="noopener noreferrer"`.
  */
 import { Pencil, Trash2 } from "lucide-react";
 

@@ -1,64 +1,29 @@
 """
 Module: services.report_model
 
-The neutral report document every renderer consumes . A report is built once, as a
-`ReportDocument` of simple blocks, and then rendered by `report_pdf`
-(ReportLab) and `report_docx` (python-docx), so a layout change is made in one
-place rather than once per output format.
+The neutral report document every renderer consumes: a report is built once as a `ReportDocument` of simple blocks and
+rendered by `report_pdf`, `report_docx`, `report_odt` and `report_html`.
 
 Responsibilities:
-- Block types: `Heading`, `Paragraph`, `Equation` (a display equation), `Note`, `BulletList`, `NumberedList` (both may nest, see
-  `list_entries`), `CodeBlock`, `Quote`, `Image` (raster bytes or SVG markup), `Table`,
-  `Grid` (an author-written table: merged cells, per-cell alignment and colour), `Gap`, `VerticalSpace`,
-  `BottomStart`/`BottomEnd` (a run placed at the page foot), `PageBreak`,
-  `PageStyleChange` (a new page in another `PageStyle`: paper, orientation, `Margins`), and the
-  `ReportDocument` that holds them with the title, branding and the page style of its own pages; `RunningBand` (a
-  header or footer: an invisible left, centre and right table, with page fields and an optional logo).
-- `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
-  document block, so it is never inside a `ReportDocument`. Its cells are text or a typed `DataCell` (a real number,
-  date or UTC instant, so a spreadsheet can sort, sum and filter it); `typed_cell` is the one place a value is judged
-  safe to type.
-- Cell tones: `Table.tones` marks cells the screen colours (a rating band, a
-  matrix cell) and `TONE_FILL` is the one tone-to-colour table both renderers use;
-  `text_on` picks black or white text for any fill by contrast.
-- `markdown_to_blocks`: the restricted Markdown reader (headings, paragraphs,
-  bullet and numbered lists, bold, italic and code spans, images on their own line) that turns author-written
-  text (a layout's text block, and the introduction, chapters and appendices) into blocks.
+- Block types (`Heading`, `Paragraph`, `Equation`, `Note`, lists, `CodeBlock`, `Quote`, `Image`, `Table`, `Grid`, `Gap`,
+  `VerticalSpace`, `BottomStart`/`BottomEnd`, `PageBreak`, `PageStyleChange`), `RunningBand`, `ReportDocument`.
+- `Sheet` for table-family reports (typed `DataCell`s via `typed_cell`); cell tones (`Table.tones`, `TONE_FILL`, `text_on`).
+- `markdown_to_blocks`: the restricted author Markdown reader.
 
 Design decisions:
-- Blocks hold plain strings and bytes only. Nothing here knows about ReportLab
-  markup or Word XML, so escaping is the renderer's job, done at one choke
-  point per renderer.
-- Inline Markdown is read for four things only: bold (`**x**`), italic (`*x*`, `_x_`), code (`` `x` ``) and links
-  (`[words](address)`). They ride in `MathText` as `Styled` runs, so every string-only consumer sees the plain words
-  without the markers. Everything else stays the author's source verbatim, as it always was: bare addresses and
-  autolinks, reference-style links, images inside a sentence, raw HTML and entities. The reader runs on the author's
-  text alone, before any `{{value}}` is filled in, so a record value holding `**` or a backtick is plain text, never a
-  style. Math (`\\( \\)`, `$$ $$`) is set aside first and put back unread, so `\\(a_1 * b_2\\)` is never taken for
-  emphasis.
-- A link is the one place text points somewhere else, so it is the most guarded: `link_problem` allows only an absolute
-  http, https or mailto address (or `#heading` in the same document) and refuses whitespace, control characters, quotes,
-  angle brackets and backslashes; an address with a `{{placeholder}}` is checked again after it is filled; a link that
-  fails stays as written text; `finalize_links` (called first by every renderer) gives each heading an anchor and turns a
-  link to a missing heading into plain words; and each renderer writes the address only as an attribute or relationship
-  target, never as markup.
-- Images arrive pre-resolved as bytes (`report_document.resolve_report_images`
-  does the tenant check) or as SVG markup (sanitised by `report_svg` in each renderer), so this module
-  and the renderers never fetch anything.
-- A tone is a name (the same five as the on-screen `BadgeTone`), never a colour,
-  so a collector cannot put an arbitrary value into PDF or Word XML. The text of
-  a toned cell still carries its meaning (the band name), so a greyscale print
-  reads the same.
-- An equation is TeX source in the model, never a drawing: each renderer asks `report_math` for the form it needs
-  (SVG for PDF and HTML, native markup or a picture for Word) and prints the source when it cannot draw it. Inline
-  equations ride in `MathText`, a `str` subclass, so headings, paragraphs, list items and table cells need no new
-  field and every string-only consumer is unaffected. Only the layout evaluator makes `Equation`, from text where
-  math is switched on, so a module report's ordinary text is never scanned for delimiters.
-- `Gap` is a vertical-whitespace hint kept so the PDF layout is exactly what it
-  was before the model existed; the DOCX renderer ignores it and relies on
-  paragraph spacing.
+- Blocks hold plain strings and bytes only; each renderer escapes at one choke point.
+- Inline Markdown is read for bold, italic, code and links only, on the author's text before any `{{value}}` is filled
+  in (a record value holding `**` is plain text), with math set aside first. Everything else stays verbatim.
+- A link is the most guarded text: `link_problem` allows only absolute http, https, mailto or `#heading` and refuses
+  whitespace, control characters, quotes, angle brackets and backslashes; `finalize_links` anchors headings and
+  neutralises links to missing ones; renderers write an address only as an attribute or relationship target.
+- Images arrive as pre-resolved bytes or SVG markup sanitised by `report_svg`; nothing is fetched here.
+- A tone is a name (the five `BadgeTone`s), never a colour, and the cell text keeps its meaning for greyscale print.
+- An equation is TeX source in the model; each renderer asks `report_math` for its form. Inline equations ride in
+  `MathText` (a `str` subclass); only the layout evaluator makes `Equation`.
+- `Gap` is a whitespace hint for the PDF; DOCX relies on paragraph spacing.
 
-Dependencies: markdown-it-py. `ReportBranding` is imported for typing only.
+Dependencies: markdown-it-py; `ReportBranding` is imported for typing only.
 """
 
 from __future__ import annotations
@@ -101,10 +66,9 @@ class _ReportMarkdown(MarkdownIt):
         return True
 
 
-# The reader understands emphasis, code spans and `[words](address)` links and leaves the rest of the inline syntax as
-# written text: no autolinks or bare addresses, no reference-style links, no raw HTML, no entities and no images inside
-# a sentence. Backslash escapes are not the reader's either: only the six this module documents are honoured (see
-# `set_aside`), so a backslash anywhere else, as in `C:\temp` or an unclosed `\(`, prints as written.
+# The reader understands emphasis, code spans and `[words](address)` links; the rest of the inline syntax (autolinks,
+# reference links, raw HTML, entities, inline images) stays as written text. Only the six backslash escapes documented
+# here are honoured (see `set_aside`), so `C:\temp` or an unclosed `\(` prints as written.
 author_reader = (
     _ReportMarkdown().disable(["image", "autolink", "html_inline", "entity", "strikethrough", "escape", "reference"]).enable("table")
 )

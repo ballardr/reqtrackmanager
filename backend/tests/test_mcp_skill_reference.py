@@ -2,13 +2,11 @@
 Drift guard for the MCP agent skill's module-tool reference.
 
 Module tools (and one tool per module `ReportDefinition`) appear in the MCP
-server as a side effect of a module declaration, so nothing else would
-prompt anyone to update the skill. These tests fail when the committed
-`mcp_skill_reference/module-tools.md` no longer matches
-`build_mcp_tool_manifest()`; fix by running
-`python scripts/generate_mcp_module_tools_reference.py` (and see root
-CLAUDE.md: a new or changed MCP tool updates `mcp-server/skill/` in the
-same change). The core-tool counterpart lives in `mcp-server/tests/`.
+server as a side effect of a module declaration, so nothing else prompts a
+skill update. These tests fail when the committed
+`mcp_skill_reference/module-tools.md` differs from `build_mcp_tool_manifest()`;
+run `python scripts/generate_mcp_module_tools_reference.py` to fix. The
+core-tool counterpart lives in `mcp-server/tests/`.
 """
 
 import sys

@@ -1,37 +1,12 @@
 """
 Module: modules.product_feedback.scoring
 
-Product Feedback's registration into core's generic scoring-matrix mechanism: the `enhancement_request` scheme,
-scored on Reach, Impact, Confidence, Ease, Effort and Demand, combined by one of three models chosen when viewing.
-
-- `ice`: Impact x Confidence x Ease.
-- `rice`: Reach x Impact x Confidence / Effort (the default).
-- `rice_demand`: Demand x Impact x Confidence / Effort, RICE with the manual Reach replaced by the request's
-  derived demand.
-
-Design decisions:
-- Ease and Effort are two ways of asking the same question, so both exist: ICE multiplies by Ease (higher is
-  better) and RICE divides by Effort, a *divisor* axis (`ScoringModelDefinition.divisor_axis_keys`) whose weights
-  run low-to-high. An organisation uses whichever it already estimates (**Decided by: User**).
-- Demand is a *derived* axis (`ScoringAxisDefinition.derived_source`): the weighted demand (`demand.py`) is
-  bucketed into levels by org-editable thresholds, so the best case stays defined and bands still normalise.
-  A scorer may pick a demand level manually, which then wins over the derived one (**Decided by: User**).
-- Reach stays a manual level, never derived from demand: the derived demand is shown beside any score so the two
-  can be compared without one silently overriding the other (**Decided by: User**).
-- Impact follows the usual RICE scale (0.25 to 3) and Confidence discounts (0.5 to 1.0), both org-editable
-  (**Decided by: Agent**).
-- Default bands are per model because a divided product sits lower on the normalised scale than a plain one;
-  three bands, none coloured `danger`, since a high score is a priority and not a fault (**Decided by: Agent**).
-- An organisation, or a project, may define its own axes and models beside these (`allow_custom_criteria`): the
-  registered ones can only be hidden. Every read goes through the *effective* scheme
-  (`services.scoring_custom.effective_scheme`), never `REQUEST_SCORING_SCHEME` itself, so a custom axis scores,
-  filters, exports and imports like a registered one.
-- A request's levels are stored one row per axis (`EnhancementRequestVersionScore`), not one column per axis,
-  so an axis added to the scheme needs no schema change.
-- Levels are organisation-wide (core's rule), so an inbox request and a project request are scored on the same
-  scale. Org-level configuration is gated by the `org_feedback_triager` role (plus org admins).
-- `count_level_usage` / `reassign_level_usage` act on *current* versions only, so deleting an in-use level
-  forces a reassignment while history loses its reference.
+Registers the `enhancement_request` scheme into core's scoring-matrix
+mechanism: axes Reach, Impact, Confidence, Ease, Effort, Demand; models `ice`,
+`rice` (default) and `rice_demand`. Effort is a divisor axis; Demand is derived
+from weighted demand (a manual level wins); Reach stays manual. Levels are
+organisation-wide; configuration needs `org_feedback_triager`. Custom criteria
+resolve through `services.scoring_custom.effective_scheme`.
 """
 
 from __future__ import annotations

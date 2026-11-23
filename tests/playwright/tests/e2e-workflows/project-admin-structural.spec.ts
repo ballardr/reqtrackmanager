@@ -3,39 +3,23 @@ import { expect, type Page, test } from "@playwright/test";
 import { addStructureCategory, addStructureComponent, clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, moveStageToPhase, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving, structureRow } from "./helpers";
 
 /**
- * Job to be done: a project's structural admin — stages, and the
- * component/category tree — supports renaming and deleting existing items,
- * with deletion requiring reassignment of whatever the item currently
- * governs to another existing one (C-G-07/C-E-01/C-E-02; a category that
- * governs nothing is deleted with no target), except a stage
- * with an approved baseline, which is refused outright rather than
- * reassigned (a baseline is an immutable historical snapshot, C-G-10).
- * Also covers project archiving (C-P-01).
+ * Job to be done: a project's structural admin (stages, and the component/category tree) supports renaming and
+ * deleting existing items, with deletion requiring reassignment of whatever the item governs to another existing one
+ * (C-G-07/C-E-01/C-E-02; a category that governs nothing is deleted with no target), except a stage with an approved
+ * baseline, which is refused outright (a baseline is an immutable historical snapshot, C-G-10). Also covers project
+ * archiving (C-P-01).
  *
- * Uses its own disposable, uniquely-named project (created fresh each run,
- * seeded via direct API calls with the same Hardware/Software + Functional/
- * Performance starting shape `seed_e2e_dataset.py`'s own `seed_project_content`
- * gives every seeded project) rather than the shared "Beta-2" fixture this
- * spec used to mutate in place. Found and fixed during a branch hardening
- * pass, not part of that branch's own diff: this test renamed Beta-2's
- * default "Scoping" stage to "Milestone 1" and deleted/recreated its
- * components, so a second run — standalone or repeated, without a fresh
- * reseed in between — could no longer find "Scoping" at all, violating this
- * project's own rule that a test must pass "whether it runs alone, first,
- * last, or repeated back-to-back against the same database". Mutating a
- * shared, non-dedicated seed fixture like this is exactly the anti-pattern
- * that rule calls out; every other spec in this suite that needs full
- * control over a project's structure already uses a project dedicated to it
- * alone (see PROJECT_NAMES.delta1/gamma3/gamma4 in ./helpers.ts) rather than
- * repurposing one shared across many specs.
+ * Uses its own disposable, uniquely named project per test, seeded through the API with the same Hardware/Software +
+ * Functional/Performance starting shape as `seed_e2e_dataset.py`'s `seed_project_content`. Renaming a shared
+ * project's default "Scoping" stage would break a repeated run, so every spec needing full control over a
+ * project's structure uses a dedicated project (see PROJECT_NAMES.delta1/gamma3/gamma4 in ./helpers.ts).
  *
- * Stage names are rendered as editable `<input>` value attributes (the rename form), not text nodes — the stage
- * locators below match `input[value="..."]`. Components and categories are the rows of the Structure tree, edited in a
+ * Stage names are rendered as editable `<input>` value attributes (the rename form), not text nodes, so the stage
+ * locators match `input[value="..."]`. Components and categories are the rows of the Structure tree, edited in a
  * side panel (`addStructureComponent`, `structureRow` in ./helpers).
  *
- * Split into three independent tests (2026-10-04), each with its own
- * disposable project created via the API: as one test it ran ~25s of the
- * 30s default budget and timed out intermittently under load.
+ * Split into three independent tests, each with its own disposable project, so each stays within the default 30s
+ * budget under load.
  */
 
 /** Creates this test's disposable project (archived afterwards by
@@ -236,12 +220,8 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       const milestone1 = stages.find((s) => s.name === "Milestone 1")!;
       await moveStageToPhase(page.request, authHeaders, projectId, milestone1.id, "Review");
       await moveStageToPhase(page.request, authHeaders, projectId, milestone1.id, "Approved");
-      // ProjectAdminPage's group is now a real route segment
-      // (`ResourceMenu`, converted from `Tabs`), so a full page reload no
-      // longer resets it to the default (Overview) the way client-only tab
-      // state used to — the reselect below is now a harmless no-op
-      // (`selectProjectAdminGroup` only clicks if not already active),
-      // kept for robustness against a future reversion.
+      // ProjectAdminPage's group is a route segment (`ResourceMenu`), so a full reload keeps it rather than resetting to
+      // Overview; the reselect below is a harmless no-op (`selectProjectAdminGroup` clicks only if not already active).
       await page.reload();
       await selectProjectAdminGroup(page, "Workflows and phases");
 

@@ -1,12 +1,12 @@
 /**
  * Module: utils/sortRows
  *
- * Client-side sorting of an already-loaded table for the shared `DirectoryTable`'s sort state. Used by tables that hold
- * their whole list in the browser (a short administrative list); a paged table sorts on the server instead.
+ * Client-side sorting of an already-loaded table for the shared `DirectoryTable`'s sort state; a paged table sorts on
+ * the server instead.
  *
- * Responsibilities: order rows by one column's value, ascending or descending; leave the order untouched when there is
- * no sort. Text compares case-insensitively and by locale (digit runs by value, so `ELM-9` precedes `ELM-10`), numbers numerically, and an empty value sorts last in
- * ascending order.
+ * Responsibilities: order rows by one column's value, ascending or descending, or leave the order untouched with no
+ * sort. Text compares case-insensitively and by locale (digit runs by value, so `ELM-9` precedes `ELM-10`), numbers
+ * numerically, and an empty value sorts last in ascending order.
  */
 import type { SortState } from "../components/sortState";
 

@@ -5,15 +5,13 @@ Module: perf.compare
 Diffs one results bundle against the latest comparable bundle of the same host and reports what moved.
 
 Responsibilities:
-- Decide whether two bundles are comparable (same host label, commit aside: workers, pool, PostgreSQL settings,
-  caps, seed, dataset profile version, density and breadth), and say why not (`incomparable`).
-- Find the baseline for a bundle automatically: the newest earlier comparable bundle of the same host label
-  (`find_baseline`).
-- Flag a latency regression only when it exceeds the run's own noise band: the spread across the repeats of the
-  newer run (three standard deviations), a relative floor and an absolute floor (`latency_changes`).
-- Flag exact changes without a noise band: statements per request (an N+1 grows them), peak memory per service,
-  and the usable capacity level and its delivered rate (`query_changes`, `memory_changes`, `capacity_changes`).
-- Flag a request that is over budget in the newer bundle and was not in the older one (`new_budget_findings`).
+- Decide whether two bundles are comparable (same host label, workers, pool, PostgreSQL settings, caps, seed, dataset
+  profile version, density and breadth; commit aside) and say why not (`incomparable`); find the newest comparable
+  earlier bundle (`find_baseline`).
+- Flag a latency regression only beyond the run's own noise band: three standard deviations across the newer run's
+  repeats, a relative floor and an absolute floor (`latency_changes`).
+- Flag exact changes: statements per request, peak memory per service, usable capacity level and delivered rate
+  (`query_changes`, `memory_changes`, `capacity_changes`), and requests newly over budget (`new_budget_findings`).
 
 Usage:
     python3 perf/compare.py perf/results/<host-label>/<date>-<commit>            (against the latest comparable)
@@ -21,13 +19,12 @@ Usage:
 Exit status: 0 nothing regressed, 1 a regression, 2 no comparable baseline or bad usage.
 
 Design decisions:
-- Pure functions over rows, unit-tested; the command line only loads files. Reads results only: it never starts a
-  stack, so it is safe on any host and in a scheduled job.
-- A difference is only reported between like and like. A bundle that differs in an input (workers, pool, caps, seed)
-  is refused with the reason, never diffed with a caveat, because the number would describe the input and not the code.
-- A shared host's latency is noisy; the noise band is measured from the bundle's own repeats, and a single-repeat
-  (quick) run falls back to the wider relative floor, so a quick run flags large moves only.
-- Imports `analyse` for budgets, the capacity curve and the request classes so there is one definition of each.
+- Pure functions over rows; the command line only loads files and never starts a stack, so it is safe on any host.
+- Only like is compared with like: a bundle that differs in an input is refused with the reason, because the number
+  would describe the input and not the code.
+- The noise band is measured from the bundle's own repeats; a single-repeat (quick) run uses the wider relative
+  floor, so it flags large moves only.
+- Imports `analyse` for budgets, the capacity curve and the request classes, so each has one definition.
 
 Dependencies: PyYAML (through `analyse`); standard library otherwise (Python 3.9+).
 """

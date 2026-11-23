@@ -58,12 +58,7 @@ function mockDetailApis(current: Decision) {
   });
 }
 
-/**
- * `DecisionDetailPage` replaced the `SidePanel`-only `DecisionDetailPanel`
- * — see that page's own module docstring. It's a real
- * routed page, so stories go through `withRouter`/`withAuth` rather than
- * passing props directly.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props. */
 const meta: Meta<typeof DecisionDetailPage> = {
   title: "Modules/Decisions/DecisionDetailPage",
   component: DecisionDetailPage,

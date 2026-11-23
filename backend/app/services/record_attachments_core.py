@@ -4,15 +4,14 @@ Module: services.record_attachments_core
 The files attached to the core artefact types, as `RecordAttachmentProvider`s, for a report's record-images block.
 
 Responsibilities:
-- Name each core type's file-link table and record column (requirement and requirement action), and give the reason a
-  core type's attachments are not printable (a change request has no direct attachments).
+- Name each core type's file-link table and record column (requirement, requirement action) and give the reason a
+  change request's attachments are not printable (it has none directly).
 
 Design decisions:
-- Core types register through the same mechanism as module types, in core code because core owns them; a module's
-  types are registered by the module (`ModuleDefinition.record_attachments`), never listed here.
+- Core owns these types, so they register here; a module registers its types through `ModuleDefinition.record_attachments`.
 - Comment-thread files are not record attachments: a discussion is not the record's own content.
 
-Dependencies: the core file-link models, `modules.registry` (the provider type).
+Dependencies: the core file-link models, `modules.registry`.
 """
 
 from __future__ import annotations

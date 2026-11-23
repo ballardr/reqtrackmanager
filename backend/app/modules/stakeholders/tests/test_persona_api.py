@@ -1,15 +1,10 @@
-"""Tests for the Stakeholders & Personas module's backend API
-(Persona), through the real HTTP endpoints.
+"""Tests for the Stakeholders & Personas module's Persona API, through the real HTTP endpoints.
 
-Covers: org- and project-scoped CRUD and the scope rules, partial update
-(including clearing nullable fields), version history, the Draft/Active/
-Retired lifecycle (including an illegal-transition 409), the Persona type
-vocabulary (org CRUD, project override/local/delete, in-use blocking), the
-weight resolution chain (own -> ancestor override -> project override),
-RBAC composition (owner roles, FGAC grant, type admin, view-only members),
-disabled module/sub-component 404s, cross-tenant isolation, comments, files,
-the `scoring_target_providers` hook (including disabled-module output), and
-the default-type seeding for new organisations.
+Covers: org- and project-scoped CRUD and scope rules, partial update (including clearing nullable
+fields), version history, the Draft/Active/Retired lifecycle (illegal transition 409), the type
+vocabulary (org CRUD, project override/local/delete, in-use blocking), the weight resolution chain,
+RBAC composition, disabled module/sub-component 404s, cross-tenant isolation, comments, files, the
+`scoring_target_providers` hook and default-type seeding for new organisations.
 """
 
 from __future__ import annotations

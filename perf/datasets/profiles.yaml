@@ -25,7 +25,7 @@ ratios:
   aliases_per_requirement: 0.15   # further places (each with an alias code) on a requirement (mean; most have none)
   versions_per_requirement: 2.0   # mean, so one edit per requirement on average; the history tables grow fastest
   tag_vocabulary: 25     # tags defined in each project
-  # Records of every other registered type per requirement (the "heavier mix", chosen 2026-10-27: about twice the
+  # Records of every other registered type per requirement (the "heavier mix": about twice the
   # first proposal, so cross-type views are stressed harder). Compliance is not here: a catalogue of standards per
   # organisation assigned to each project, whose size does not follow the requirement count (see `compliance`).
   records:

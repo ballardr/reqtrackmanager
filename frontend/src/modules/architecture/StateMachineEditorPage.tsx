@@ -14,15 +14,17 @@
  * is added at once, with a default name, by choosing it in the Add to diagram menu or dropping it on the canvas; it is then
  * selected with the cursor in its name, and its values are set in the Selection card (double-clicking a state opens the same
  * fields in a dialog). A transition is added the same way, at once and empty, by drawing a line between two states or from the
- * Selection card's "Add transition to" list (the same state draws a loop); its event (its guard for a line leaving a choice) takes
- * the focus, and double-clicking a line opens its fields in a dialog. Keyboard operation: Cmd or Ctrl with Z and Shift or Y undo and redo (`EditHistoryButtons`); the canvas moves a selected state with the arrow keys and removes it with Delete (which
+ * Selection card's "Add transition to" list (the same state draws a loop); its event (its guard for a line leaving a
+ * choice) takes the focus, and double-clicking a line opens its fields in a dialog. Keyboard operation: undo and redo
+ * through `EditHistoryButtons`; the canvas moves a selected state with the arrow keys and removes it with Delete (which
  * asks first); the Selection card is the keyboard route to nesting a state and to the attach points.
  * The status moves are the server's; a move to Active is refused with the list of errors while the checks find any.
  * Export (PNG and SVG images, Mermaid `stateDiagram-v2` text to download or copy) saves a pending drawing first, then asks the
  * server for its own drawing and text of the stored diagram, so a file shows what the editor shows.
  *
  * Design decisions:
- * - The validation issues are the server's (`state_machine_checks`); the page only displays them (the toolbar's Validation list and the Selection card's one-line note) and tints the states they name.
+ * - The validation issues are the server's (`state_machine_checks`); the page only displays them (the toolbar's
+ *   Validation list and the Selection card's one-line note) and tints the states they name.
  * - Comments are anchored to a state or a transition by its id and stored at once, never making the drawing look unsaved.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

@@ -8,21 +8,14 @@ import { deleteOrgOnCleanup, installCleanupHook, loginAs, logout, PASSWORD, PERS
 installCleanupHook();
 
 /**
- * Job to be done: exporting an entire organisation (settings, members,
- * report templates, every project's full structure/history) as a self-
- * describing bundle, and importing it to stand up a brand-new organisation
- * — the actual UI path for org backup/offboarding/migration
- * (`services.org_export`), not just the underlying API.
+ * Job to be done: exporting an entire organisation (settings, members, report templates, every project's structure
+ * and history) as a bundle and importing it to create a new organisation: the UI path for backup, offboarding and
+ * migration (`services.org_export`).
  *
- * Deliberately does NOT reuse any of the shared Alpha/Beta/Gamma personas:
- * importing an org bundle genuinely grants the matched existing admin a
- * real role in the freshly-created org (that's the feature working
- * correctly, not a test artifact) — reusing e.g. orgAdminGamma here would
- * permanently turn that persona from single-org into multi-org for every
- * other spec in this suite that assumes it stays single-org (several
- * specs navigate via `/orgs` relying on its single-org auto-redirect).
- * Everything below is built from scratch via the API and torn down to a
- * disposable admin account instead.
+ * Reuses none of the shared Alpha/Beta/Gamma personas: an import grants the matched existing administrator a real
+ * role in the new organisation, which would turn e.g. orgAdminGamma from single-org into multi-org for every spec
+ * that navigates via `/orgs` relying on the single-org redirect. Everything is built through the API with a
+ * disposable admin account.
  */
 test.describe("organisation bundle export/import", () => {
   test("export an organisation from its admin page, then import it as a new organisation", async ({ page }) => {
@@ -113,13 +106,9 @@ test.describe("organisation bundle export/import", () => {
       await expect(page.getByRole("heading", { name: newOrgName })).toBeVisible();
       const newOrgId = page.url().match(/orgs\/([0-9a-f-]+)\/admin/)![1];
 
-      // The server admin who ran the import has no role in the new org
-      // themselves (I-M-05: no bypass) — this project only shows up in
-      // *their* "Projects" tab if the "guaranteed project manager" fallback
-      // wrongly attributed to them instead of the org's real admin. Verify
-      // as the bundle admin (who was granted a real org_admin role by the
-      // import, matched by email) instead, confirming the fallback landed
-      // on the right person.
+      // The importing server admin has no role in the new organisation (no bypass), so the project would show in their
+      // "Projects" tab only if the "guaranteed project manager" fallback wrongly attributed it to them; the check runs as
+      // the bundle admin (granted org_admin by the import, matched by email).
       const bundleAdminToken2 = (
         await (
           await page.request.post("http://localhost:8000/api/v1/auth/login", { data: { email: bundleAdminEmail, password: PASSWORD } })

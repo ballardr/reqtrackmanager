@@ -1,14 +1,14 @@
 /**
  * Module: modules/product_feedback/RequestLoopPanel
  *
- * Closing the loop on a delivered or declined request: each requester, the channel they asked through (so you know
- * how to reach them), a "Told" checkbox, the date it was
- * recorded and an optional note, plus "Mark all told" for the ones still open. Nothing is sent to anyone: this records
- * that someone told them (the note says how), so the open-loop badge and list can show who is still waiting.
+ * Closing the loop on a delivered or declined request: each requester, the channel they asked through (to show how to
+ * reach them), a "Told" checkbox, the date it was recorded and an optional note, plus "Mark all told" for the open
+ * ones. Nothing is sent: this records that someone told them (the note says how), so the open-loop badge and list show
+ * who is still waiting.
  *
- * Requesters come from the request's demand, merged duplicates' included, so a person who asked twice is told once.
- * A requester the viewer may not see still gets a row (they are owed an answer) without a name. Telling is
- * recorded only for a delivered or declined request; before then the panel says so.
+ * Requesters come from the request's demand, merged duplicates included, so a person who asked twice is told once. A
+ * requester the viewer may not see still gets a row (they are owed an answer) without a name. Telling is recorded
+ * only for a delivered or declined request; before then the panel says so.
  */
 import { useState } from "react";
 

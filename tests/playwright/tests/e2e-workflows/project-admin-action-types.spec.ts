@@ -3,30 +3,16 @@ import { expect, type Page, test } from "@playwright/test";
 import { addDefinition, loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Job to be done: a project's requirement-action types (Review, Test, ...)
- * support the same add/rename/reorder/delete-with-reassignment contract as
- * every other definition list in this codebase (§4.0 of the traceability
- * plan) — project-scoped rather than org-scoped, matching custom fields.
- * Covers: a brand-new, unused type deletes immediately with no reassignment
- * prompt; a type currently used by a real action 409s and requires an
- * explicit reassignment target; and once only one type remains, its delete
- * control is disabled outright rather than offered and rejected.
+ * Job to be done: a project's requirement-action types (Review, Test, ...) support the same
+ * add/rename/reorder/delete-with-reassignment contract as every other definition list, project-scoped like custom
+ * fields. Covers: an unused type deletes immediately with no reassignment prompt; a type used by a real action
+ * returns 409 and requires a reassignment target; and once only one type remains, its delete control is disabled
+ * rather than offered and rejected.
  *
- * Creates its own dedicated, per-run project (via the UI, dynamically
- * timestamp-suffixed) rather than running this test's own destructive
- * "reduce down to exactly one remaining type" sequence against a shared
- * seeded project — this test permanently deletes one of its project's two
- * default action types (Review, reassigning its one use to Test) to reach
- * that "only one left" state, and never restores it, so running it twice
- * back-to-back against the same project (e.g. Beta-1, or any other shared
- * fixture another spec also depends on) would find "Review" already gone
- * on the second run — the exact non-idempotent-fixture-consumption failure
- * mode this repo's own testing conventions call out. Every new project
- * auto-seeds its own fresh Review/Test pair (`definitions.py`'s
- * `DEFAULT_ACTION_TYPES`), so a fresh project per run sidesteps this
- * entirely without needing to fabricate throwaway type names of its own —
- * left behind afterward, harmless, matching this suite's own established
- * per-run-project convention (see role-display-collapsing.spec.ts).
+ * Creates its own per-run project through the UI: the test permanently deletes one of the two default action types
+ * (Review, reassigning its use to Test) to reach "only one left", so a shared seeded project would lack "Review" on
+ * the second run. Every new project is seeded with a fresh Review/Test pair (`definitions.py`'s
+ * `DEFAULT_ACTION_TYPES`); the project is left behind, as in role-display-collapsing.spec.ts.
  */
 
 /** Action type/status/link-type names render as editable `<input>` value
@@ -54,10 +40,8 @@ test.describe("project admin: action types", () => {
       await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
     });
     await page.getByRole("link", { name: "Project admin", exact: true }).click();
-    // Action types now lives inside the merged "Fields & actions" tab
-    //, alongside
-    // Custom Fields — the two-select ("Name"-exact) locators below stay
-    // unambiguous since Custom Fields has no "Name"-exact field itself.
+    // Action types sit in the merged "Fields & actions" tab beside Custom Fields; the two-select ("Name"-exact)
+    // locators below stay unambiguous since Custom Fields has no "Name"-exact field itself.
     await selectProjectAdminGroup(page, "Fields & actions");
 
     await test.step("Review and Test are seeded by default", async () => {

@@ -1,16 +1,13 @@
 /**
  * Module: modules/stakeholders/NeedDetailPage
  *
- * A single Stakeholder Need's detail (`/projects/:projectId/modules/
- * stakeholders/needs/:needId`): the need and its rationale, lifecycle, owner,
- * the Stakeholders and Personas that have it ("has need"), the Requirements it
- * gave rise to ("gives rise to"), version history, attachments and comments.
- * Built from the same shared parts as `StakeholderDetailPage`; the link lists
- * are `RepresentationPanel`s. A need is project-scoped only, so there is no
- * org route and no read-only-in-project case.
+ * A single Stakeholder Need's detail (`/projects/:projectId/modules/stakeholders/needs/:needId`): the need and its
+ * rationale, lifecycle, owner, the Stakeholders and Personas that have it ("has need"), the Requirements it gave rise
+ * to ("gives rise to"), versions, attachments and comments. Built from the shared parts of `StakeholderDetailPage`;
+ * the link lists are `RepresentationPanel`s. A need is project-scoped only, so there is no organisation route.
  *
- * Every mutating control always renders regardless of role; the backend
- * enforces `stakeholder_need_owner` and a 403 surfaces as a toast.
+ * Mutating controls always render whatever the role; the backend enforces `stakeholder_need_owner` and a 403 surfaces
+ * as a toast.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

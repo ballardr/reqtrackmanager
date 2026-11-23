@@ -1,35 +1,28 @@
 """
 Module: services.code_prefixes
 
-The prefix new records of each type are numbered with (`DEC-006`, or `ADR-006` where an
-organisation or a project chose `ADR`), and the rules for choosing it.
+The prefix new records of each type are numbered with (`DEC-006`, or `ADR-006` where an organisation or
+project chose `ADR`), and the rules for choosing it.
 
 Responsibilities:
-- Know every type's built-in default prefix (core types here, module types from
+- Know each type's built-in default prefix (core types here, module types from
   `ModuleDefinition.default_code_prefixes`).
-- Resolve the effective prefix for an owner: the project, then its nearest ancestor project that
-  sets one, then the organisation, then the built-in default (`effective_prefix`, called by
-  `services.sequences.generate_unique_code`, so no create path changes).
-- Validate and store an override (`set_override`, `clear_override`) and describe a scope's rows
-  (`describe_scope`).
-- Carry a scope's overrides in the organisation and project bundles and into a project made from a
-  template (`export_overrides`, `import_overrides`, `copy_overrides`).
+- Resolve the effective prefix for an owner: the project, its nearest ancestor project that sets one, the
+  organisation, then the default (`effective_prefix`, called by `services.sequences.generate_unique_code`).
+- Validate and store an override (`set_override`, `clear_override`), describe a scope (`describe_scope`), and
+  carry overrides in the bundles and into template projects (`export_overrides`, `import_overrides`,
+  `copy_overrides`).
 
 Design decisions:
-- Resolution is per record type over a sparse override map, so a child project inherits instead
-  of silently reverting (the nested-project rule, as for action types); an organisation-owned
-  record resolves from the organisation's overrides only.
-- An override affects records created afterwards. A stored code never changes and the counter
-  keeps counting, so a number is never reused across a change.
-- Within one scope the effective prefixes of all types are unique. A write is checked against
-  every scope it changes (the organisation and every project for an organisation change; the
-  project and its descendants for a project change), and only for the type being changed, so a
-  collision that predates the write (a later module default) cannot block an unrelated edit.
-- A prefix may not equal the organisation's code or a project's code in an affected scope: a
-  qualified code is split on its first hyphen and must stay readable.
-- Requirement codes are built from component and category prefixes and are outside this mechanism.
-- A read is memoised on the session (`db.info`) and dropped when the session commits or rolls
-  back, so a bulk import resolves once, not per record.
+- Resolution is per type over a sparse override map, so a child project inherits (the nested-project rule); an
+  organisation-owned record resolves from the organisation's overrides only.
+- An override affects records created afterwards; a stored code never changes and the counter is never reused.
+- Effective prefixes are unique within a scope. A write is checked against every scope it changes, for the type
+  being changed only, so an existing collision (a later module default) cannot block an unrelated edit.
+- A prefix may not equal the organisation's code or a project code in an affected scope: a qualified code is
+  split on its first hyphen and must stay readable.
+- Requirement codes use component and category prefixes and are outside this mechanism.
+- Reads are memoised on the session (`db.info`) and dropped on commit or rollback, so a bulk import resolves once.
 
 Dependencies: `app.code_rules`, `app.modules.registry`, `services.audit`, `services.project_hierarchy`.
 """

@@ -3,51 +3,29 @@ import { type APIRequestContext, expect, test } from "@playwright/test";
 import { installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openProject, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: a project stage's full lifecycle — scoping, a review
- * period stakeholders can explicitly approve or reject (C-R-05), PM
- * approval (which locks requirements and writes a baseline, C-G-10/C-G-12),
- * and completion, optionally cascaded to the stage's requirements (C-P-02,
- * C-P-03).
+ * Job to be done: a project stage's full lifecycle: scoping, a review period stakeholders can explicitly approve or
+ * reject (C-R-05), PM approval (which locks requirements and writes a baseline, C-G-10/C-G-12), and completion,
+ * optionally cascaded to the stage's requirements (C-P-02, C-P-03).
  *
- * Uses Alpha-2 (untouched by other specs in this suite) so its stage's
- * lifecycle state doesn't collide with Alpha-1's, which other specs lock
- * via their own "Approve stage" flow. Alpha-2 has no stakeholder seeded, so
- * this test grants one via a direct API call (this codebase's own
- * established pattern for setup steps the seed script doesn't cover)
- * purely to exercise the review-response UI as a real stakeholder.
+ * Uses Alpha-2 (untouched by other specs) so its stage's lifecycle state does not collide with Alpha-1's, which
+ * other specs lock via their own "Approve stage" flow. Alpha-2 has no seeded stakeholder, so the test grants one
+ * through a direct API call to exercise the review-response UI as a real stakeholder.
  *
- * Creates its own dynamically-named stage and two dynamically-named
- * requirements targeting it, rather than reusing Alpha-2's single seeded
- * stage/requirements — a stage transition is one-way (scoping -> review ->
- * approved -> completed is terminal, with no "reopen" endpoint), so a
- * fixed stage exhausted by one run of this test would leave every
- * subsequent run unable to find "Start review" at all. Per this repo's
- * idempotent-test convention (test independence, standalone/repeat-safe),
- * each run gets its own fresh stage to cycle through and its own fresh
- * requirements to lock/complete, rather than mutating shared seed state.
+ * Creates its own dynamically named stage and two dynamically named requirements targeting it: a stage transition is
+ * one-way (scoping -> review -> approved -> completed is terminal, with no "reopen" endpoint), so a fixed stage
+ * exhausted by one run would leave later runs unable to find "Start review". Each run cycles its own stage and
+ * locks/completes its own requirements rather than mutating shared seed state.
  *
- * The stage itself is left behind permanently on every run, by necessity
- * rather than laziness: once approved it carries a `Baseline` record, and
- * `DELETE /projects/{id}/stages/{id}` refuses to delete any stage with
- * baseline history (C-G-10 — baselines are immutable). The two requirements
- * it creates *are* archived by an onCleanup (afterEach) below, though —
- * archiving (unlike stage deletion) has no such restriction, and bounding
- * the requirements list matters: an unrelated spec, role-display-collapsing
- * .spec.ts, was found flaking not from timing but from an analogous
- * unbounded-growth bug (its own throwaway project groups piling up past a
- * table's pagination window until a brand-new row landed off-page and a
- * locator waited forever for it) — see docs/decisions.md. Archiving these
- * requirements after each run keeps Alpha-2's active requirements list from
- * growing the same way, even though the stage row itself can't be avoided.
+ * The stage is left behind on every run by necessity: once approved it carries a `Baseline` record, and
+ * `DELETE /projects/{id}/stages/{id}` refuses to delete a stage with baseline history (C-G-10: baselines are
+ * immutable). The two requirements are archived by an onCleanup (afterEach), since archiving has no such
+ * restriction and unbounded growth of the requirements list would push rows past a table's pagination window (see
+ * docs/decisions.md).
  *
- * Trimmed 2026-10-04: setup (the stage, its two requirements, the member's
- * 403 probe) goes through the API, requirements are opened by URL, and the
- * PM's session headers are captured once — only the PM's review/approve/
- * complete actions and the stakeholder's review response stay in the UI,
- * since those are what this spec tests. The previous all-UI version took
- * ~32s and timed out even against a raised 45s budget under full-suite
- * load. A stakeholder grant or requirements leaked by an interrupted run
- * are swept before starting.
+ * Setup (the stage, its two requirements, the member's 403 probe) goes through the API, requirements are opened by
+ * URL, and the PM's session headers are captured once; only the PM's review/approve/complete actions and the
+ * stakeholder's review response stay in the UI, since those are what this spec tests. A stakeholder grant or
+ * requirements leaked by an interrupted run are swept before starting.
  */
 const API = "http://localhost:8000/api/v1";
 
@@ -57,11 +35,8 @@ test.describe("stage review deadlines and completion", () => {
   test("scoping -> review (with a deadline and a stakeholder response) -> approved -> completed, cascaded", async ({
     page,
   }) => {
-    // Budget kept from the earlier root-caused decision (docs/decisions.md,
-    // "bcrypt login cost under concurrent load"): three real UI logins plus
-    // ~20 multi-persona UI round trips at ~0.8s each. The 2026-10-04 trim
-    // cut runtime from ~32s to ~25s, so this is now ~20s of headroom, not a
-    // blind bump.
+    // Budget (docs/decisions.md, "bcrypt login cost under concurrent load"): three real UI logins plus ~20 multi-persona
+    // UI round trips at ~0.8s each, about 25s of runtime, leaving ~20s of headroom.
     test.setTimeout(45_000);
     const stamp = Date.now();
     const stageName = `E2E Stage Cycle ${stamp}`;

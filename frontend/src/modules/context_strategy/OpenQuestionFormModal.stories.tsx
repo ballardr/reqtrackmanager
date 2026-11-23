@@ -4,11 +4,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import type { OpenQuestion } from "./types";
 
-/**
- * `OpenQuestionFormModal` renders via `Modal`, which portals to
- * `document.body` — every assertion here queries `within(document.body)`,
- * mirroring `PainPointFormModal.stories.tsx`'s own identical convention.
- */
+/** `Modal` portals to `document.body`, so every assertion queries `within(document.body)`, as in `PainPointFormModal.stories.tsx`. */
 const meta: Meta<typeof OpenQuestionFormModal> = {
   title: "Modules/ContextStrategy/OpenQuestionFormModal",
   component: OpenQuestionFormModal,

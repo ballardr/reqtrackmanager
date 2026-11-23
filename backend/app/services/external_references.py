@@ -2,32 +2,31 @@
 Module: services.external_references
 
 External references on any record of any registered artefact type: the organisation's list of outside systems
-(Jira, ServiceNow, ...), and the pointers from a record to an item in one of them (`models.external_reference`).
+(Jira, ServiceNow, ...) and the pointers from a record to an item in one (`models.external_reference`).
 
 Responsibilities:
-- `EXTERNAL_SYSTEMS`: the two-tier system vocabulary (organisation list; a project overrides, adds and hides entries),
-  `seed_org_defaults`, and `resolve_system` (a payload's system id to the row a reference stores).
-- Validation: `check_web_url` (a link is http or https only), `check_url_template` (one `{key}`), `link_for` (a
-  reference's effective link: its own URL, else the system's template with the key URL-encoded in).
-- A record's references: `references_for_records` (many records, a fixed number of statements), `add_reference`,
-  `update_reference`, `remove_reference`, `get_reference`, `forget_record_references` and
-  `convert_record_to_project` (an organisation-owned record that becomes a project's).
-- `audit_reference`: the audit event a change writes against the record.
-- Bundle halves: `export_record_references` / `import_record_references` (by system name, never id) and
+- Systems: `EXTERNAL_SYSTEMS` (two tiers: the organisation list, which a project overrides, extends and hides),
+  `seed_org_defaults`, `resolve_system`.
+- Validation: `check_web_url` (http or https only), `check_url_template` (one `{key}`), `link_for` (the
+  reference's own URL, else the system's template with the key URL-encoded).
+- A record's references: `references_for_records` (a fixed number of statements), `add_reference`,
+  `update_reference`, `remove_reference`, `get_reference`, `forget_record_references`,
+  `convert_record_to_project`; `audit_reference` writes the audit event against the record.
+- Bundles: `export_record_references` / `import_record_references` (by system name, never id) and
   `copy_project_systems` (a template).
 
 Design decisions:
-- Keyed by the registered artefact type string like tags and placements, so a new type needs no code here; the
-  record has no foreign key, so its owner calls `forget_record_references` when it deletes the record for good.
-- A reference is metadata, not record content: it is not versioned with the record and is not blocked by an approval
-  lock. The authority is the one for tags (`services.tags.can_tag`).
-- Nested projects (**Decided by: User**): a child project with no system configuration of its own shows its nearest
-  ancestor's effective list, else the organisation's (`TypeVocabulary(inherit_from_ancestors=True)`).
-- A reference needs a key or a URL (or both). At most `MAX_REFERENCES` per record, so a list stays bounded.
-- A URL or template that is not http(s) is rejected at every entry point (API, bundle, import), and `link_for` checks
-  its result again, so a `javascript:` or `data:` link can never reach a rendered page or an export.
+- Keyed by the registered artefact type string like tags and placements, so a new type needs no code here;
+  there is no foreign key, so a record's owner calls `forget_record_references` on permanent deletion.
+- A reference is metadata: not versioned with the record and not blocked by an approval lock; the authority is
+  `services.tags.can_tag`.
+- Nested projects (**Decided by: User**): a child with no system configuration shows its nearest ancestor's
+  effective list, else the organisation's (`TypeVocabulary(inherit_from_ancestors=True)`).
+- A reference needs a key or a URL; at most `MAX_REFERENCES` per record.
+- A URL or template that is not http(s) is rejected at every entry point and `link_for` re-checks its result,
+  so a `javascript:` or `data:` link never reaches a page or export.
 
-External dependencies: `models.external_reference`, `services.type_vocabulary`, `services.audit`, `modules.registry`.
+Dependencies: `models.external_reference`, `services.type_vocabulary`, `services.audit`, `modules.registry`.
 """
 
 from __future__ import annotations

@@ -2,34 +2,29 @@
  * Module: components/ReportLayoutBlocks
  *
  * The block editor: a layout drawn as blocks on a Blockly workspace, with the selected block's full form (every
- * field, including source, columns, condition, widget settings and long text) in an inspector. It is the
- * designer's second view of the layout tree. The canvas takes the width of its column; the inspector is drawn into a
- * host element the caller owns (the designer's side panel, or a place under the canvas in a dialog), so the caller
- * decides where the form lives and this component holds no layout for it.
+ * field, including source, columns, condition, widget settings and long text) in an inspector. It is the designer's
+ * second view of the layout tree. The canvas takes the width of its column; the inspector is drawn into a host
+ * element the caller owns (the designer's side panel, or a place under the canvas in a dialog).
  *
- * Responsibilities:
- * - Draw the tree as blocks and write every edit back to the tree through `onChange`; the tree is the designer's,
- *   this component holds no second model (`utils/reportLayoutBlockly` does the conversion without losing a key).
- * - Generate the block types and the Add block list from the server's block schemas, so a module's block type needs
- *   no code here; show the server's problems as warnings on the blocks and in the inspector.
- * - Keep the inspector's edits and the workspace in step: an edit that changes only values is patched into the
- *   blocks in place (selection and scroll stay), a change in shape rebuilds the workspace.
- * - Add blocks from one dropdown ("Add block") at a place it names: after the selected block, inside it, or at the
- *   end of the layout. The block is created in the workspace itself, so Ctrl+Z undoes the addition like a drag.
- * - Save the selected block, with everything inside it, as a snippet ("Save as snippet"; the designer owns the dialog).
- * - Insert a snippet at the same place, or at the start of the layout ("Insert snippet", `ReportSnippetPicker`): the server returns the new tree; its
- *   root-level changes (page styles, variables) are taken as they are and its blocks are created in the workspace in one
- *   undo group, so Ctrl+Z removes them together.
- * - Tell the caller (`onInspect`) when the inspector has something new to show (a block was selected, the layout's settings
- *   were opened), so a tabbed host can bring it forward.
- * - Follow the app's light and dark themes.
+ * - Draws the tree as blocks and writes every edit back through `onChange`; the tree is the designer's and this
+ *   component holds no second model (`utils/reportLayoutBlockly` converts without losing a key).
+ * - Generates block types and the Add block list from the server's block schemas, so a module's block type needs no
+ *   code here; shows the server's problems as warnings on the blocks and in the inspector.
+ * - An edit that changes only values is patched into the blocks in place (selection and scroll stay); a change in
+ *   shape rebuilds the workspace.
+ * - Adds blocks from one dropdown ("Add block") at a place it names: after the selected block, inside it or at the
+ *   end. The block is created in the workspace, so Ctrl+Z undoes it like a drag. "Save as snippet" saves the
+ *   selected block with its contents (the designer owns the dialog); "Insert snippet" (`ReportSnippetPicker`) inserts
+ *   at the same place or the layout's start: the server returns the new tree, its root-level changes (page styles,
+ *   variables) are taken as they are and its blocks are created in one undo group.
+ * - Tells the caller (`onInspect`) when the inspector has something new to show, so a tabbed host can bring it
+ *   forward. Follows the app's light and dark themes.
  *
- * Design decisions: there is no Blockly toolbox (flyout palette): it took a column of the canvas and listed the least
- * used blocks first; the dropdown is the one way to add and says where the block will land. Blockly is loaded lazily by the designer (`React.lazy`), keeping its ~1 MB out of the main
- * bundle. Blocks show a read-only summary; the inspector holds every field with the shared field
- * editors, reused as they are, because embedding React inside SVG blocks would give two editing worlds, and a plain
- * form is the route for people who do not use a pointer. A block
- * dropped outside the layout is not part of it and is counted, not silently dropped. Validity is the server's.
+ * There is no Blockly toolbox (flyout palette): it took a column of the canvas and listed the least used blocks
+ * first. Blockly is loaded lazily by the designer (`React.lazy`) to keep its ~1 MB out of the main bundle. Blocks
+ * show a read-only summary and the inspector holds every field with the shared field editors, because embedding
+ * React inside SVG blocks would give two editing worlds and a plain form serves people who do not use a pointer. A
+ * block dropped outside the layout is counted, not silently dropped. Validity is the server's.
  */
 import * as Blockly from "blockly/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -137,7 +132,6 @@ function describeBlock(node: TreeNode, type: BlockType | undefined): string {
  * @param images The picture library an image block chooses from (absent where the layout has none).
  * @param colours The branding colour and the organisation's colour scheme (stock values when absent).
  * @param fonts The fonts an author may choose (the four standard ones when absent).
- * @param colours The branding colour and the organisation's colour scheme (stock values when absent).
  * @param snippets The snippet calls, and what to tell the designer after an insertion; with `images` (a snippet may need a
  *   picture), else no Insert snippet button. `onSave`, when given, adds Save as snippet for the selected block.
  */

@@ -1,14 +1,13 @@
 /**
  * Module: components/SortField
  *
- * The **Sort by** and **Order** controls of a record list's filter panel (docs/ux-style-guide.md, "Pattern: list sort"). One component for every list, so a person finds the sort in the
- * same place with the same words, and a record they have just created or changed can be put at the top by creation or
- * modification time.
+ * The **Sort by** and **Order** controls of a record list's filter panel (docs/ux-style-guide.md, "Pattern: list sort").
+ * One component for every list, so the sort is in the same place with the same words, and a just-created or changed
+ * record can be put at the top by creation or modification time.
  *
- * Responsibilities:
- * - Draw the two selects over a `ListSortState` (`useListSort`), the same state the table's column headers use.
- * - Offer a choice for each sortable column of the table plus **Created** and **Modified** (`sortChoices`, `sortChoices.ts`).
- * - Describe every choice in the caption's `(?)` tooltip, one line each, so a person can compare before choosing.
+ * Responsibilities: draw the two selects over a `ListSortState` (`useListSort`, shared with the table's column headers);
+ * offer each sortable column plus **Created** and **Modified** (`sortChoices`); describe every choice, one line each, in
+ * the caption's `(?)` tooltip so a person can compare before choosing.
  *
  * Dependencies: `FilterSelect`, `useListSort`, `strings.sort`.
  */
@@ -45,7 +44,7 @@ export function SortField({
   const strings = useStrings();
   const text = strings.sort;
   const offered = sortChoices(columns, text.created, text.modified);
-  // A sort in force that the table no longer shows a column for (a hidden score column) stays visible, by its key.
+  // A sort in force whose column the table does not show (a hidden score column) stays visible, by its key.
   const choices = offered.some((c) => c.value === list.sort.key) ? offered : [...offered, { value: list.sort.key, label: list.sort.key }];
   const labelOf = (choice: SortChoice) => choice.label;
   const lineFor = (choice: SortChoice): string => {

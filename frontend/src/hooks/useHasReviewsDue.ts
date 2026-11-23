@@ -1,14 +1,12 @@
 /**
  * Module: hooks/useHasReviewsDue
  *
- * Whether the signed-in person has any requirement review due, for the navigation: the "My reviews due" entry is shown
- * only when there is something on that page. Asks for one row of `GET /me/reviews/due` (its total is in a header), once
- * when the person is signed in and again on the notification poll's interval, never per navigation, so the count costs
- * one small read every half minute rather than a list query on every page view.
+ * Whether the signed-in person has any requirement review due, so the "My reviews due" navigation entry is shown only
+ * when that page has content. Reads one row of `GET /me/reviews/due` (its total is in a header) on sign-in and on the
+ * notification poll's interval, never per navigation, so the cost is one small read every half minute.
  *
- * Design decisions: unknown counts as "nothing due", so the entry appears once known rather than appearing and
- * disappearing; a failed read leaves the last known answer. The page stays reachable by its address and from
- * notifications whatever this returns.
+ * Design decisions: unknown counts as "nothing due", so the entry never appears and disappears; a failed read keeps
+ * the last known answer. The page stays reachable by its address and from notifications whatever this returns.
  */
 import { useState } from "react";
 

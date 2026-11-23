@@ -40,9 +40,8 @@ function mockApis(rows: ProjectComplianceStatus[]) {
 }
 
 /**
- * The standard workspace's "Projects" section — reached from the Overview's "Projects"/"Compliant"
- * `MetricTile`s. A single standard's own project-assignment list, each row
- * drilling through to that project's own Compliance page.
+ * The standard workspace's "Projects" section, reached from the Overview's "Projects" and "Compliant" `MetricTile`s: one
+ * standard's project-assignment list, each row drilling to that project's Compliance page.
  */
 const meta: Meta<typeof StandardProjectsPanel> = {
   title: "Modules/Compliance/StandardProjectsPanel",

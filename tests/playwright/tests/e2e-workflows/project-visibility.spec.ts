@@ -5,35 +5,25 @@ import { apiHeaders, clickAndAwaitSave, deleteOrgOnCleanup, installCleanupHook, 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
-/** The hierarchical-projects "Parent project" <select> shares every form
- * this spec's own "Visibility" <select> lives on. A wrapping <label>'s
- * computed accessible name flattens in all descendant text, including
- * every <option> — so once "Parent project" lists every project in the
- * org, a leftover/dynamically-named project (this spec's own included,
- * since it names its throwaway project `Org Wide Visibility ${Date.now()}`,
- * repeated back-to-back without an org wipe between runs per this
- * project's own idempotency rule) can make its accessible name contain
- * "Visibility" too, and getByLabel("Visibility") ambiguous. Located
- * structurally instead — the Visibility select is the one whose own
- * <option> list contains "Only specified" (never a project name) —
- * rather than by label, so this doesn't depend on a debris-free org. */
+/** The "Parent project" <select> shares every form this spec's "Visibility" <select> lives on. A wrapping <label>'s
+ * computed accessible name includes all descendant text, including every <option>, so once "Parent project" lists
+ * every project in the org, a leftover or dynamically named project (including this spec's own
+ * `Org Wide Visibility ${Date.now()}`) can make its accessible name contain "Visibility" and getByLabel("Visibility")
+ * ambiguous. The Visibility select is located as the one whose <option> list contains "Only specified" (never a
+ * project name), so it does not depend on a debris-free org. */
 function visibilitySelect(scope: Page | Locator): Locator {
   return scope.locator("select").filter({ hasText: "Only specified" });
 }
 
 /**
- * Job to be done: a project can be marked "Organisation-wide visibility" so every
- * member of its organisation gets automatic read access with no explicit
- * user/group assignment — as opposed to the default "Only specified" mode,
- * where access requires one. Covers both places the toggle lives (the "New
- * project" creation form, and Project Admin's settings tab) and confirms
- * the grant is read-only (never implies management rights) and reversible.
+ * Job to be done: a project can be marked "Organisation-wide visibility" so every member of its organisation gets
+ * automatic read access with no explicit user/group assignment, unlike the default "Only specified" mode. Covers
+ * both places the toggle lives (the "New project" creation form, and Project Admin's settings tab) and confirms the
+ * grant is read-only (never implies management rights) and reversible.
  *
- * Runs in its own disposable organisation, with a disposable org admin and
- * a disposable plain member holding no project role (2026-10-04). It used
- * the shared Alpha org and `stakeholderAlpha`, so while it ran, its
- * org-wide project was visible to that shared persona and broke other
- * specs' exact counts running in parallel (org-overview.spec.ts) — a
+ * Runs in its own disposable organisation, with a disposable org admin and a disposable plain member holding no
+ * project role: an organisation-wide project in the shared Alpha org would be visible to the shared
+ * `stakeholderAlpha` persona and break other specs' exact counts running in parallel (org-overview.spec.ts), a
  * cross-spec race no cleanup can prevent.
  */
 test.describe("project visibility: org-wide vs only specified", () => {

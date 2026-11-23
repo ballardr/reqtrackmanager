@@ -1,25 +1,23 @@
 /**
  * Module: components/RecordTags
  *
- * The labels of one existing record, in its header or a side panel: ONE row holding a chip for each tag, each place in
- * the component tree (component or category) and each external reference, followed by ONE (+) button whose menu names what
- * it adds: Add tag, Add component or category, Add external reference. Every page that shows a record's tags shows its
- * components and references the same way, so a person learns one control.
+ * The labels of one existing record, in its header or a side panel: one row of chips (each tag, each place in the
+ * component tree, each external reference) followed by one (+) button whose menu names what it adds: Add tag, Add
+ * component or category, Add external reference. Every page that shows a record's tags shows components and
+ * references the same way.
  *
- * Responsibilities:
- * - Read the three sets through `useRecordLabels` (one endpoint each) and draw them in the order tags, components,
- *   references, each chip kind with its own remove (and, for a reference, edit) control for someone who may change it.
- * - Offer a menu row only for what the person may do: tags and places need the record's edit right (places also a
- *   project with components and a record that does not keep its own component), references need a system to exist. A row
- *   that does not apply is absent, never disabled, and with no row the (+) is not drawn.
- * - Open the editor that exists for each kind: the shared `TagAddBox` in a popover at the (+), the `PlacementPicker` in a
- *   dialog (a tree picker is a popover of its own and popovers do not nest) and the `ReferenceFormModal`.
- * - Say nothing for a record with no labels that the viewer cannot add to, and nothing for a failed read.
+ * - Reads the three sets through `useRecordLabels` and draws them as tags, components, references, each chip with
+ *   its own remove (and, for a reference, edit) control for someone who may change it.
+ * - A menu row appears only for what the person may do: tags and places need the record's edit right (places also a
+ *   project with components and a record that keeps no component of its own), references need a system to exist. A
+ *   row that does not apply is absent, never disabled, and with no row the (+) is not drawn.
+ * - Editors: the shared `TagAddBox` in a popover at the (+), the `PlacementPicker` in a dialog (a tree picker is a
+ *   popover and popovers do not nest) and the `ReferenceFormModal`.
+ * - Nothing is drawn for a record with no labels that the viewer cannot add to, or for a failed read.
  *
- * Design decisions: there is one form, with no compact variant, so the header and a side panel cannot drift; the row
- * wraps, keeping the (+) after the last chip. `components` and `references` leave out a kind the page keeps elsewhere
- * (a type that cannot be placed, a Product Feedback request). `onChanged` lets a page refresh anything that shows the
- * change (the Activity tab). The three `*Api` props are injectable for stories.
+ * One form with no compact variant, so the header and a side panel cannot drift; the row wraps, keeping the (+)
+ * after the last chip. `components` and `references` leave out a kind the page keeps elsewhere. `onChanged` lets a
+ * page refresh anything showing the change (the Activity tab). The three `*Api` props are injectable for stories.
  */
 import { Boxes, Plus } from "lucide-react";
 import { useRef, useState } from "react";

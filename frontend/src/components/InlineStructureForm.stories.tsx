@@ -5,8 +5,8 @@ import { buildStructureApi, STRUCTURE_PROJECT_ID } from "../testing/structureFix
 import { InlineStructureForm } from "./InlineStructureForm";
 
 /**
- * The small form inside a create dialog that adds the first component, or the first category under a component, for a
- * project that has none: the Structure page's name and prefix fields with an Add button.
+ * The small form inside a create dialog that adds the first component, or the first category under a component,
+ * for a project that has none: the Structure page's name and prefix fields with an Add button.
  */
 const meta: Meta<typeof InlineStructureForm> = {
   title: "Components/InlineStructureForm",

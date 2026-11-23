@@ -1,27 +1,12 @@
 """
 Module: modules.product_feedback._shared
 
-Helpers behind the two routers (`project_router.py`, `router.py`) and the record-table import: the
-gates, the API shape (a request merged with its current version), the create / update / transition
-bodies, and the comment and file wrappers over the shared `services.module_attachments` kit.
-
-RBAC: viewing needs the sub-component enabled and membership. Submitting needs only that, unless a
-project administrator restricted submission to triagers (`SubmissionPolicy.TRIAGERS`). Editing,
-transitions, archiving and attachments need the triager role of the tier (`feedback_triager` in a
-project, `org_feedback_triager` in the organisation) or a Fine-Grained Access Control
-`(enhancement_request, manage)` grant.
-
-Closing the loop: `close_the_loop_out` reads what became of a request (who was told, the problems and work it is
-linked to, the cue to mark it delivered), `inform_from_payload` is the gated, audited body of the "told" endpoint and
-`open_loops_out` is the project's list of delivered or declined requests with requesters still to be told.
-
-Demand and merging: `request_extras` adds each request's place in a merge and its demand to the list and detail
-shapes in a fixed number of statements; `merge_from_payload` / `unmerge_from_payload` are the gated, audited
-bodies of the merge endpoints, and `demand_out` is the per-request demand breakdown with names the caller may
-view.
-
-Tenancy: every lookup is scoped to the project or organisation in the URL, so another tenant's ids
-look absent (404), and an owner must belong to the organisation.
+Helpers behind the two routers and the record-table import: gates, the API
+shape (a request merged with its current version), create/update/transition
+bodies, comment and file wrappers, close-the-loop and demand/merge shapes.
+Viewing needs the sub-component and membership; submitting only that unless
+`SubmissionPolicy.TRIAGERS`; edits and transitions need the triager role or an
+`(enhancement_request, manage)` grant. Lookups are tenant-scoped (404 otherwise).
 """
 
 from __future__ import annotations
@@ -598,7 +583,7 @@ def move_to_project_from_payload(
     enabled, and the actor must be allowed to submit there (its submission policy applies, so a triager of the
     inbox cannot push requests into a project that restricted submission to its own triagers). Anything else about
     the project looks absent (404). Locks the request, re-owns it (`triage.move_to_project`), writes one audit event
-    carrying the old code and commits.
+    carrying the code before the move and commits.
 
     Raises:
         HTTPException: 404 for a project the actor cannot open, of another organisation or with the list disabled;

@@ -24,12 +24,8 @@ const projectGroups: ProjectGroup[] = [
   { id: "pg1", name: "Reviewers", roles: ["stakeholder"], member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [] },
 ];
 
-/** `organizationId` (matching production usage, which always passes it —
- * `OrgAdminPage.tsx`/`ProjectAdminPage.tsx` both do) puts `UserAutocomplete`
- * into its debounced server-side search mode, so every story that types a
- * user name needs this mocked rather than relying on client-side filtering
- * over `users`. Mirrors the substring match the real backend endpoint
- * (`orgs/{id}/users/search`) performs. */
+/** `organizationId` (as production always passes it) puts `UserAutocomplete` into its debounced server-side search
+ * mode, so every story that types a user name mocks `orgs/{id}/users/search` with the same substring match. */
 function mockUserSearch() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     const needle = new URL(path, "http://localhost").searchParams.get("q")?.toLowerCase() ?? "";
@@ -123,11 +119,8 @@ export const RemoveStagedRow: Story = {
   },
 };
 
-/** Style guide "Pattern: bulk operations on a list"'s tail, applied here:
- * one failing staged entry among several stays visible with its own inline
- * error and the modal stays open, while the entries that succeeded are
- * removed — a partial failure is never silently swallowed into "it must
- * have worked." */
+/** One failing staged entry among several stays visible with its own inline error and the modal stays open, while
+ * the entries that succeeded are removed (style guide "Pattern: bulk operations on a list"). */
 export const PartialFailureStaysOpenWithError: Story = {
   args: {
     onAddEntry: fn(async (entry: { id: string }) => {
@@ -155,10 +148,8 @@ export const PartialFailureStaysOpenWithError: Story = {
   },
 };
 
-/** `showRole={false}` — the "add into an existing ProjectGroup" variant
- * (`ProjectAdminPage.tsx`'s hand-off, see module docstring): no per-row
- * role `<select>` at all, since group membership here grants no role by
- * itself. */
+/** `showRole={false}`: the "add into an existing ProjectGroup" variant has no per-row role `<select>`, since
+ * group membership grants no role by itself. */
 export const RolelessVariantForGroupMembership: Story = {
   args: {
     title: 'Add to "Stakeholders"',
@@ -185,11 +176,8 @@ export const RolelessVariantForGroupMembership: Story = {
   },
 };
 
-/** Passing `projectGroups` also matches this project's own groups — but
- * picking one is a hand-off, not a staged entry: `onSelectProjectGroup`
- * fires directly and nothing is added to the staged list (see module
- * docstring for why a project-group match names a destination, not a
- * person to add). */
+/** Passing `projectGroups` also matches the project's own groups, but picking one is a hand-off:
+ * `onSelectProjectGroup` fires directly and nothing is added to the staged list. */
 export const ProjectGroupMatchHandsOff: Story = {
   args: { projectGroups, onSelectProjectGroup: fn() },
   play: async ({ args }) => {

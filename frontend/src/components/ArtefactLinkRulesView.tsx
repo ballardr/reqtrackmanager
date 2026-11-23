@@ -16,20 +16,15 @@ function isProjectRule(rule: ArtefactLinkRule | ProjectArtefactLinkRule): rule i
 }
 
 /**
- * "By artefact type": for every artefact type, which link types it may use.
- * No rule means any link type (shown as such, with `OverridePill`'s "no
- * override" state); limiting one starts from all link types checked, so nothing
- * changes until a type is unchecked. A rule must keep at least one link type,
- * and removing it asks for a Tier-1 confirmation. Every change is saved at once
- * and confirmed with a Toast; existing links are never touched (rules apply when
- * a link is made).
+ * "By artefact type": for every artefact type, which link types it may use. No rule means any link type
+ * (`OverridePill`'s "no override" state); limiting one starts from all checked. A rule keeps at least one link
+ * type and removing it asks for a Tier-1 confirmation. Each change saves at once with a Toast; existing links are
+ * never touched (rules apply when a link is made).
  *
- * Organisation scope edits the organisation's rules. Project scope shows the
- * rule each artefact type resolves to for the project (its own, else a parent's,
- * else the organisation's: the nearest wins and replaces the farther one
- * entirely, so a project can allow more as well as less); the pill names the
- * source and "Use inherited rule" drops the project's own. `readOnly` while the
- * organisation locks customisation.
+ * Organisation scope edits the organisation's rules. Project scope shows the rule each type resolves to (its own,
+ * else a parent's, else the organisation's: the nearest replaces the farther entirely, so a project can allow more
+ * as well as less); the pill names the source and "Use inherited rule" drops the project's own. `readOnly` while
+ * the organisation locks customisation.
  */
 export function ArtefactLinkRulesView({
   scope,

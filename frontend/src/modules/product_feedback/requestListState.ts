@@ -6,14 +6,13 @@
  * are `RequestFilterFields` and the table columns `requestColumns`.
  *
  * - **Status.** One dropdown: "Open statuses" (New, Under review, Accepted; the default), "All statuses" or a single
- *   status. It is held as the URL's `status` (a single status) and `open=1|0` (open statuses, or all); a link that
- *   names a status or `open=0` starts on that choice, so a link never lands on an empty list.
- * - **Pain Points.** Where Pain Points are on for the project (`painPointsAvailable`), an optional Pain Points column
- *   (a count, sortable) and a filter, `pain_points=none|some` (requests addressing none, or at least one), which is
- *   also sent to the server so Export narrows the same way. Where they are off, neither is offered and a stale
- *   `pain_points` in the link is ignored.
- * - **Criteria not rated.** `missing=<axis key>` keeps requests with no level on that criterion, and `missing=any` those not
- *   rated on every criterion (any one missing); no value is no filter.
+ *   status, held as the URL's `status` and `open=1|0`. A link that names a status or `open=0` starts on that choice,
+ *   so a link never lands on an empty list.
+ * - **Pain Points.** Where Pain Points are on for the project (`painPointsAvailable`): an optional sortable Pain
+ *   Points column (a count) and a filter `pain_points=none|some`, also sent to the server so Export narrows the same
+ *   way. Where they are off, neither is offered and a stale `pain_points` in the link is ignored.
+ * - **Criteria not rated.** `missing=<axis key>` keeps requests with no level on that criterion and `missing=any`
+ *   those not rated on every criterion; no value is no filter.
  * - **Unscored filter.** A request is unscored when the primary model has no score for it (a manual axis it needs has
  *   no level). The list holds every row and filters here, so the count beside the filter stays right whatever is
  *   chosen; the same filter goes to the server (`filterParams`) so Export and the grid narrow identically.
@@ -22,7 +21,7 @@
  *   and the scheme's enabled models start shown. Title and code are always on.
  * - **Models.** Scores are derived on every read, so the list shows a column per ticked model. The first ticked is the
  *   primary: it drives the Unscored filter and the Score sort. The server is asked for exactly the ticked models once
- *   the person has chosen, and for its default (the scheme's enabled models) until then.
+ *   the person has chosen, and for the scheme's enabled models until then.
  * - **Demand** is shown beside the score and never mixed into it.
  */
 import { useMemo } from "react";

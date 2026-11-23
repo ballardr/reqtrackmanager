@@ -2,12 +2,12 @@
  * Module: components/ScoringAxisThresholds
  *
  * A project's thresholds for one derived axis (Demand): where each level starts in this project, beside the
- * organisation's own. The level names and weights are the organisation's and shown read-only; only the "From" column
- * is editable. A project either keeps the inherited values or sets its own for every level (a set, so the
- * thresholds can never fall out of order); `OverridePill` says which and offers the way back.
+ * organisation's own. Level names and weights are the organisation's and read-only; only "From" is editable. A project
+ * keeps the inherited values or sets its own for every level (a set, so thresholds never fall out of order);
+ * `OverridePill` says which and offers the way back.
  *
- * The caller owns the saving and its feedback (toast); this component only holds the draft and validates it the way
- * the server does (every level filled, none negative, each above the one before).
+ * The caller owns saving and its feedback; this component holds the draft and validates it as the server does (every
+ * level filled, none negative, each above the one before).
  */
 import { useState } from "react";
 

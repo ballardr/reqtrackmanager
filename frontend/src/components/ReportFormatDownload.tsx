@@ -3,18 +3,16 @@
  *
  * The download step of a report: the formats the report offers as a radio list, and one Download button.
  *
- * Responsibilities:
- * - List each format by its one name (`REPORT_FORMAT`) with its full name as a tooltip; a report offering a single
+ * - Lists each format by its one name (`REPORT_FORMAT`) with its full name as a tooltip; a report offering a single
  *   format shows that format and the button, not a one-item list.
- * - Preselect the format the person last downloaded (`REPORT_FORMAT_PREFERENCE`, per person across reports), PDF
- *   when there is no history, and the report's first format when it does not offer that one. Choosing an option
- *   remembers nothing; the format is recorded only once a download has gone through.
- * - Disable the button and say why in the same place when the report cannot be produced yet (`blockedReason`),
- *   so the reason is read with the button.
+ * - Preselects the format last downloaded (`REPORT_FORMAT_PREFERENCE`, per person across reports), PDF with no
+ *   history, and the report's first format when it does not offer that one. Choosing an option remembers nothing;
+ *   the format is recorded only once a download has gone through.
+ * - Disables the button and says why beside it when the report cannot be produced yet (`blockedReason`).
  *
- * Design decisions: it neither runs nor names the report; `onDownload` is the host's job and resolves `true` when a
- * file was delivered or queued and `false` when it failed (the host has already shown the error), which is what
- * decides whether the choice is remembered. A radio, not a checkbox list: one download is one run and one file.
+ * It neither runs nor names the report: `onDownload` is the host's job and resolves `true` when a file was delivered
+ * or queued and `false` when it failed (the host has shown the error), which decides whether the choice is
+ * remembered. A radio, not a checkbox list: one download is one run and one file.
  */
 import { Download } from "lucide-react";
 import { useId, useState } from "react";

@@ -1,22 +1,18 @@
 """Tests for direct org-group project role grants (docs/decisions.md): an org group holding a project role
-*directly*, as its own independently-revocable `OrgGroupProjectRole` row
-(`POST`/`DELETE /{project_id}/group-roles/...`), parallel to how
-`UserProjectRole` already works for a single user — genuinely distinct from,
-and additive alongside, nesting an org group inside a `ProjectGroup`
-(C-U-12, `test_org_group_nesting.py`).
+directly, as its own independently-revocable `OrgGroupProjectRole` row
+(`POST`/`DELETE /{project_id}/group-roles/...`), parallel to `UserProjectRole` for a
+user and additive to nesting an org group inside a `ProjectGroup` (C-U-12,
+`test_org_group_nesting.py`).
 
 Covers: grant/revoke and their provenance (`kind="direct_org_group_role"`,
-`via_group_id`/`via_group_name`), idempotent grant, cross-tenant rejection,
-403 for a non-manager, audit logging, two groups granting the same role
-producing two source entries (matching the existing `direct_group`/
-`direct_org_group` precedent in `test_effective_members_provenance.py`),
-descendant-expansion through a nested subgroup, the C-U-08 "at least one
-manager" guard's actual (narrow, documented) behavior for this mechanism,
-and — the highest-risk, most novel part of this PR — the inheritance
-cascade: an org group's direct grant on an ancestor/source project flowing
-down through forward inheritance (`role_inheritance_mode`) and the
-member-source mechanism (`ProjectMemberSource`) the same way a user's own
-direct grant already does.
+`via_group_id`/`via_group_name`), idempotent grant, cross-tenant rejection, 403 for a
+non-manager, audit logging, two groups granting the same role producing two source
+entries (as `direct_group`/`direct_org_group` do in `test_effective_members_provenance.py`),
+descendant expansion through a nested subgroup, the narrow C-U-08 "at least one manager"
+guard for this mechanism, and the inheritance cascade: a group's direct grant on an
+ancestor/source project flowing down through forward inheritance
+(`role_inheritance_mode`) and the member-source mechanism (`ProjectMemberSource`) as a
+user's direct grant does.
 """
 
 from sqlalchemy import select
@@ -146,11 +142,9 @@ def test_revoke_of_a_nonexistent_grant_is_a_no_op_204(client, admin_token, org_i
 
 
 def test_revoke_of_a_nonexistent_grant_does_not_fabricate_an_audit_event(client, admin_token, org_id):
-    """Hardening-pass regression test: the no-op path used to unconditionally
-    log a "revoked" audit event and resolve group membership even when
-    nothing was actually removed — a caller could fabricate audit-trail
-    entries for grants that never existed by calling revoke against any
-    real org group in their own organisation with no matching grant."""
+    """Revoking a grant that does not exist logs no "revoked" audit event and
+    resolves no group membership: otherwise a caller could fabricate audit-trail
+    entries by revoking against any org group in their own organisation."""
     project = create_project(client, admin_token, org_id, "Revoke Noop Audit Project")
     org_group = _create_org_group(client, admin_token, org_id, "Never Granted Audit Group")
     assert _revoke(client, admin_token, project["id"], org_group["id"], "member").status_code == 204
@@ -170,14 +164,11 @@ def test_revoke_of_a_nonexistent_grant_does_not_fabricate_an_audit_event(client,
 
 
 def test_revoke_404s_for_an_org_group_belonging_to_a_different_organization(client, admin_token, org_id):
-    """Hardening-pass regression test: `org_group_id` was previously never
-    validated at all before use — the delete itself was safely scoped by
-    its own `project_id` filter, so no real cross-tenant grant could be
-    removed, but an unvalidated id still let the endpoint run a real
-    membership-resolution query against an arbitrary group and log a
-    fabricated audit event (see the no-op test above). `_get_group_in_project`'s
-    sibling `ProjectGroupRole`-scoped endpoint 404s a foreign group; this
-    endpoint now does the same for a foreign *org* group."""
+    """`org_group_id` is validated before use: the delete is scoped by `project_id`,
+    so no cross-tenant grant could be removed, but an unvalidated id would run a
+    membership-resolution query against an arbitrary group and log a fabricated audit
+    event (see the no-op test above). Like the `ProjectGroupRole`-scoped sibling
+    endpoint (`_get_group_in_project`), it 404s a foreign *org* group."""
     project = create_project(client, admin_token, org_id, "Revoke Cross Tenant Project")
     other_org, other_admin_token = create_org_admin_in(client, admin_token, "Other Group Revoke Org")
     foreign_group = _create_org_group(client, other_admin_token, other_org["id"], "Foreign Revoke Group")
@@ -501,17 +492,11 @@ def test_cascade_via_member_source_mechanism(client, admin_token, org_id):
 
 
 def test_grant_makes_the_project_appear_in_the_groups_members_own_project_list(client, admin_token, org_id):
-    """Regression: `_accessible_project_ids` (the function behind `GET
-    /projects`, search, and the hierarchy endpoints — distinct from
-    `get_effective_project_roles`, which `GET /{project_id}` already uses
-    directly) used to only ever cover a user's *direct* membership, never a
-    role reached only via an org group. `GET /{project_id}` has therefore
-    always worked for a user whose only access is a group's direct grant
-    (see `test_grant_gives_group_member_effective_role_with_provenance`'s
-    own sanity check above) — but before this fix, that same project simply
-    never appeared in the user's own project list. This would have failed
-    with the project missing from `listing` before the `_accessible_
-    project_ids` fix (docs/decisions.md)."""
+    """`_accessible_project_ids` (behind `GET /projects`, search and the hierarchy
+    endpoints; `GET /{project_id}` uses `get_effective_project_roles` directly) covers
+    a role reached only through an org group's direct grant, so the project appears in
+    the member's own project list (see `test_grant_gives_group_member_effective_role_with_provenance`
+    for the effective role itself)."""
     project = create_project(client, admin_token, org_id, "List Visibility Via Group Grant")
     user_id = create_org_user(client, admin_token, org_id, "list-visibility-user@example.com", role="member")
     org_group = _create_org_group(client, admin_token, org_id, "List Visibility Group")
@@ -555,14 +540,12 @@ def test_nested_org_group_membership_also_appears_in_the_project_list(client, ad
 # --- Per-group materialize (docs/decisions.md) ----------------------------------------------------
 #
 # `POST /{project_id}/materialize-inherited-access/group/{org_group_id}`
-# converts an org group's own forward-/member-source-inherited role on a
-# project (via `get_group_inherited_project_roles`, walking this group's
-# `OrgGroupProjectRole` grants on ancestor/source projects — the cascade
-# this same test module already exercises above for user-level effective
-# access) into a direct `OrgGroupProjectRole` grant on that project. Same
-# rank-based idempotency and audit action
-# (`inherited_access_materialized`) as the per-user endpoint, entity type
-# `org_group_project_role` instead of `project`/`user_project_role`.
+# converts an org group's forward-/member-source-inherited role on a project
+# (via `get_group_inherited_project_roles`, which walks the group's
+# `OrgGroupProjectRole` grants on ancestor/source projects) into a direct
+# `OrgGroupProjectRole` grant. Rank-based idempotency and the audit action
+# (`inherited_access_materialized`) match the per-user endpoint; the entity
+# type is `org_group_project_role`.
 
 
 def _materialize_group(client, token, project_id, org_group_id):
@@ -740,10 +723,9 @@ def test_materialize_for_group_audit_log_has_expected_detail(client, admin_token
 
 # --- Listing ----------------
 #
-# `GET /{project_id}/group-roles` — the read side the assign/revoke
-# endpoints above never got, added so a group's direct grant is visible and
-# manageable in `ProjectMembersTable`'s own new group row, not just
-# discoverable via a member's per-role Source line.
+# `GET /{project_id}/group-roles` is the read side of the assign/revoke endpoints:
+# it makes a group's direct grant visible and manageable in `ProjectMembersTable`'s
+# group row, not only via a member's per-role Source line.
 
 
 def _list_group_roles(client, token, project_id):

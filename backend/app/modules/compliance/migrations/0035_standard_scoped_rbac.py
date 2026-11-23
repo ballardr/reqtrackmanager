@@ -4,21 +4,13 @@ Revision ID: 0035
 Revises: 0034
 Create Date: 2026-09-09
 
-Adds `compliance_org_settings` (`app.modules.compliance.models.
-ComplianceOrgSettings`) — this module's first org-level settings table,
-holding (so far) one field: the org's designated default compliance-
-managers group, the SSO-friendly fallback that keeps a standard from ever
-being left with no `standards_manager` at all (§3). See that model's own docstring for the full design
-and why this is a module-owned table rather than a new `Organization`
-column.
+Adds `compliance_org_settings` (`ComplianceOrgSettings`), the module's organisation-level settings table, holding the
+organisation's default compliance-managers group: the fallback that keeps a standard from having no `standards_manager`
+(§3). See that model for why it is a module-owned table rather than an `Organization` column.
 
-This module's actual new roles (`standards_manager`/`standards_contributor`)
-need no schema of their own beyond the core `user_module_roles.
-scope_entity_id` column added by the companion core migration (0034,
-`backend/alembic/versions/`) — a grant is just an ordinary `UserModuleRole`
-row with `scope_entity_id` set to the standard's own id, following exactly
-the same "no per-role table" precedent `compliance_manager`/
-`compliance_officer` already set.
+The `standards_manager` and `standards_contributor` roles need no schema beyond the core `user_module_roles.
+scope_entity_id` column (core migration 0034): a grant is a `UserModuleRole` row whose `scope_entity_id` is the
+standard's id.
 """
 
 from collections.abc import Sequence

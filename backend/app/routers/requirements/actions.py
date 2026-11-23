@@ -48,18 +48,13 @@ def link_action(
     project_id: UUID, requirement_id: UUID, payload: RequirementActionLinkCreate,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Links an existing action to this requirement. Unlike `create_link`
-    (requirement-to-requirement, in `routers.requirements.links`), linking
-    an action isn't itself content with a display direction — just
-    membership in the action's "which requirements does this satisfy"
-    set — so this returns no body.
+    """Links an existing action to this requirement. Unlike `create_link` (requirement-to-requirement, in
+    `routers.requirements.links`), linking an action is membership in the action's "which requirements does
+    this satisfy" set with no display direction, so this returns no body.
 
-    Governed by the same creation-or-change-request-only rule as every
-    other requirement content once it's locked (C-G-12) — see
-    `routers.requirements.files.upload_requirement_attachment`'s docstring.
-    This endpoint previously had no lock
-    check at all, unlike the requirement's own fields, letting an action
-    bypass the change-request-only rule entirely once approved.
+    Governed by the same creation-or-change-request-only rule as other requirement content once it is locked
+    (C-G-12); see `routers.requirements.files.upload_requirement_attachment`. A locked requirement's action
+    links change only through a change request.
     """
     _require_edit_role(db, current_user, project_id)
     requirement = _get_requirement_in_project(db, project_id, requirement_id)
@@ -158,17 +153,13 @@ def unlink_action(
     project_id: UUID, requirement_id: UUID, action_id: UUID,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Unlinks an action from this requirement — never deletes the action
-    itself, which may still be linked from other requirements.
+    """Unlinks an action from this requirement; never deletes the action, which may still be linked from other
+    requirements.
 
-    Governed by the same creation-or-change-request-only rule as
-    `link_action`/`create_and_link_action`, above (C-G-12) — Platform
-    review 2026-09: this endpoint previously had no lock check at
-    all, an asymmetry with the *add* side (which has been gated since item
-    514) that let an action be silently unlinked from an approved
-    requirement with no review step. Unconditional across every project —
-    unlike the traceability-link gate in `routers.requirements.links`, this
-    doesn't depend on any project/org opt-in.
+    Governed by the same creation-or-change-request-only rule as `link_action`/`create_and_link_action`
+    (C-G-12), so an action cannot be silently unlinked from an approved requirement without review.
+    Unconditional across every project, unlike the traceability-link gate in `routers.requirements.links`,
+    which depends on a project/org opt-in.
     """
     _require_edit_role(db, current_user, project_id)
     requirement = _get_requirement_in_project(db, project_id, requirement_id)

@@ -1,12 +1,10 @@
 /**
  * Module: components/RemovableItemList
  *
- * A wrapped row of compact items, each with a small "x" that asks to remove it: the one shape
- * for "these records are linked here" lists (participants, covered Personas, audiences, outcomes)
- * that used to be a bulleted list with a text "Remove" button on every line. Chips take a
- * fraction of the height. The "x" only *asks*: the caller opens its tier-1 confirm
- * (docs/ux-style-guide.md "confirmation, in two tiers") and does the removal. A long list is
- * capped by `CappedList`.
+ * A wrapped row of compact items, each with a small "x" that asks to remove it: the one shape for "these records
+ * are linked here" lists (participants, covered Personas, audiences, outcomes). Chips take a fraction of the height
+ * of a bulleted list. The "x" only *asks*: the caller opens its tier-1 confirm (docs/ux-style-guide.md
+ * "confirmation, in two tiers") and does the removal. A long list is capped by `CappedList`.
  */
 import type { ReactNode } from "react";
 

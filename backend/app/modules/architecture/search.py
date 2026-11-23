@@ -54,10 +54,9 @@ def _comments(artefact_type: str) -> SearchComments:
     )
 
 
-#: A state machine diagram (and so its states) is found by the global search only when it describes an element of its own
-#: project: the search has no person, so it cannot apply the sharing rules that decide whether another owner's element is
-#: readable, and a diagram of an element the person cannot read must not be disclosed. One of a shared element is reached
-#: through the project's lists and the link finder, which do apply them.
+#: A state machine diagram (and so its states) is searchable only when it describes an element of its own project: the
+#: search has no person to apply the sharing rules, so another owner's element must not be disclosed. A diagram of a
+#: shared element is reached through the project's lists and the link finder, which apply them.
 _OWN_ELEMENT = exists().where(
     ArchitectureElement.id == ArchitectureStateMachineDiagram.element_id,
     ArchitectureElement.project_id == ArchitectureStateMachineDiagram.project_id,

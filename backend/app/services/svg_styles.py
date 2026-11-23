@@ -1,28 +1,22 @@
 """
 Module: services.svg_styles
 
-Turns the `<style>` sheet of a drawing into plain attributes on the elements it styles, so the drawing keeps its colours
-and line styles after `report_svg.sanitize_svg` (which removes every `style` element) and when it is placed inside an HTML
-page (where a style sheet would apply to the whole page).
+Turns a drawing's `<style>` sheet into plain attributes on the elements it styles, so the drawing keeps its colours and
+line styles after `report_svg.sanitize_svg` (which removes `style` elements) and inside an HTML page.
 
 Responsibilities:
-- `flatten_styles`: read the drawing's style sheets, work out for each element which declarations apply (the CSS
-  cascade: specificity, order, `!important`, the element's own `style` attribute), write the drawing-related ones as
-  attributes, remove the elements the sheet hides (`display: none`) and drop the sheets.
+- `flatten_styles`: resolve per element which declarations apply (CSS cascade: specificity, order, `!important`, the
+  element's `style` attribute), write drawing properties as attributes, remove `display: none` elements and drop the sheets.
 
 Design decisions:
-- **Only drawing properties survive** (`_PROPERTIES`: fill, stroke, line styles, font and text anchoring). Layout, animation
-  and interaction properties (`animation`, `cursor`, `position`, `transform` in CSS form) mean nothing in a printed or
-  embedded figure, and dropping them is what makes the result safe to hand to the sanitiser.
-- The reader is a real CSS parser (`tinycss2`) and selector engine (`cssselect2`), not a pattern match, because Mermaid's
-  sheet uses descendant, class, id, attribute and `:not()` selectors. A rule whose selector is not understood (a
-  `:hover` state) is skipped; an `@` rule (keyframes, media) is ignored.
-- Custom properties (`--name`) are substituted into `var()` values from the sheet's own declarations; an unresolved one
-  with no fallback drops the declaration.
-- Nothing is fetched or executed here: the markup is parsed with entities and network access off, and a value is only text
-  that the sanitiser then checks again.
+- Only drawing properties survive (`_PROPERTIES`: fill, stroke, line styles, font, text anchoring); layout, animation and
+  interaction properties mean nothing in a printed figure and dropping them makes the result safe for the sanitiser.
+- A real CSS parser (`tinycss2`) and selector engine (`cssselect2`) read the sheet, since Mermaid uses descendant, class,
+  id, attribute and `:not()` selectors; an unsupported selector or `@` rule is skipped.
+- `var()` values are substituted from the sheet's own custom properties; an unresolved one without fallback drops the declaration.
+- Nothing is fetched or executed: parsing has entities and network off, and the sanitiser checks values again.
 
-Dependencies: `lxml`, `tinycss2` (BSD), `cssselect2` (BSD); both are also what `svglib` itself reads style sheets with.
+Dependencies: `lxml`, `tinycss2`, `cssselect2` (also what `svglib` reads style sheets with).
 """
 
 from __future__ import annotations

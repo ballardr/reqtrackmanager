@@ -17,24 +17,17 @@ const localUsers: OrgUser[] = [
   },
 ];
 
-// the members/groups directory rework — org groups the
-// optional `groups`/`onSelectGroup` pair matches against, always
-// client-side (see the component's own module docstring). "Jamie's Team"
-// deliberately overlaps the "jamie" needle with `localUsers[1]` ("Jamie
-// Lee") for `KeyboardNavigationMovesThroughGroupOptionsToo` below, so one
-// query exercises both a user and a group option in the same dropdown.
+// Org groups for the optional `groups`/`onSelectGroup` pair, matched client-side (see the component's module docstring).
+// "Jamie's Team" overlaps the "jamie" needle with `localUsers[1]` ("Jamie Lee"), so one query exercises both a user and a
+// group option in `KeyboardNavigationMovesThroughGroupOptionsToo`.
 const localGroups: OrgGroup[] = [
   { id: "g1", name: "Engineering", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
   { id: "g2", name: "Jamie's Team", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
 ];
 
-// the members/groups directory rework — this project's own
-// groups, the optional `projectGroups`/`onSelectProjectGroup` pair matches
-// against, same client-side substring match as `groups`/`onSelectGroup`
-// above. A genuinely different concept from an org group (local to one
-// project, not org-wide), so it gets a visually distinguishable match —
-// `FolderKanban` instead of `Users`, and a "Project group" badge instead of
-// "Organisation group" — see the component's own module docstring.
+// This project's own groups for the optional `projectGroups`/`onSelectProjectGroup` pair, matched client-side like
+// `groups`. A project group is local to one project, not org-wide, so it has its own icon (`FolderKanban` instead of
+// `Users`) and badge ("Project group" instead of "Organisation group").
 const localProjectGroups: ProjectGroup[] = [
   { id: "pg1", name: "Reviewers", roles: ["stakeholder"], member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [] },
 ];
@@ -63,10 +56,8 @@ export const LocalFilterMode: Story = {
   },
 };
 
-/** the members/groups directory rework: passing `groups` also
- * matches org groups by name, client-side, alongside the user matches —
- * rendered with a `Users` icon and an "Organisation group" badge so it's visually
- * distinct, and selecting one calls `onSelectGroup` (not `onSelect`). */
+/** Passing `groups` also matches org groups by name, client-side, alongside the user matches, rendered with a `Users`
+ * icon and an "Organisation group" badge; selecting one calls `onSelectGroup` (not `onSelect`). */
 export const GroupMatchRendersAndSelects: Story = {
   args: { groups: localGroups, onSelectGroup: fn() },
   play: async ({ canvasElement, args }) => {
@@ -86,11 +77,8 @@ export const GroupMatchRendersAndSelects: Story = {
   },
 };
 
-/** Passing `projectGroups` also matches this project's own groups by
- * name, client-side, alongside user and org-group matches — rendered with a
- * `FolderKanban` icon and a "Project group" badge, visually distinct from
- * both a user row and an "Organisation group" match, and selecting one calls
- * `onSelectProjectGroup` (not `onSelect`/`onSelectGroup`). */
+/** Passing `projectGroups` also matches this project's own groups by name, client-side, with a `FolderKanban` icon and a
+ * "Project group" badge; selecting one calls `onSelectProjectGroup` (not `onSelect`/`onSelectGroup`). */
 export const ProjectGroupMatchRendersAndSelects: Story = {
   args: { projectGroups: localProjectGroups, onSelectProjectGroup: fn() },
   play: async ({ canvasElement, args }) => {
@@ -111,10 +99,8 @@ export const ProjectGroupMatchRendersAndSelects: Story = {
   },
 };
 
-/** All three group-like match kinds — org group and project group — can
- * appear in the same dropdown at once, each with its own distinct badge, so
- * a caller wiring up both (the "Add member" modal) never has to guess
- * which is which. */
+/** Org groups and project groups can appear in the same dropdown at once, each with its own badge, so a caller wiring up
+ * both (the "Add member" modal) can tell them apart. */
 export const OrgGroupAndProjectGroupMatchesCoexist: Story = {
   args: {
     groups: [{ id: "g3", name: "Review Squad", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null }],
@@ -184,11 +170,8 @@ export const KeyboardNavigationSelectsHighlightedOption: Story = {
   },
 };
 
-/** Arrow-key navigation must reach group options too, not just users —
- * the regression this repo's "don't regress existing keyboard nav" note
- * calls out explicitly. Group options render after user matches in the
- * dropdown (see `UserAutocomplete`'s own `options` composition), so the
- * third `ArrowDown` from a fresh query lands on the one group match here. */
+/** Arrow-key navigation reaches group options as well as users. Group options render after user matches (see
+ * `UserAutocomplete`'s `options` composition), so the third `ArrowDown` from a fresh query lands on the one group match. */
 export const KeyboardNavigationMovesThroughGroupOptionsToo: Story = {
   args: { groups: localGroups, onSelectGroup: fn() },
   play: async ({ canvasElement, args }) => {

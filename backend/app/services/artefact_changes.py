@@ -1,29 +1,22 @@
 """
 Module: services.artefact_changes
 
-Tells interested modules that an artefact changed, so something that depends on
-it can be flagged for a human to re-judge ("Invalidation": detection and notification, not automatic
-rewriting). Risk Management uses it to mark a treatment verdict for
-reassessment when the requirement that mitigates a risk changes.
+Tells interested modules that an artefact changed, so a dependent can be flagged for a human to re-judge
+(detection and notification, not automatic rewriting). Risk Management uses it to mark a treatment verdict
+for reassessment when the requirement mitigating a risk changes.
 
-Responsibilities:
-- `notify_artefact_changed`: hand an `ArtefactChange` to every registered
-  module's `on_artefact_changed` hook, inside the caller's transaction.
-- `requirement_content_changed`: say whether a new requirement version altered
-  what the requirement says (as opposed to its owner, review date or status),
-  which is what may invalidate a dependent.
+Responsibilities: `notify_artefact_changed` hands an `ArtefactChange` to every registered module's
+`on_artefact_changed` hook inside the caller's transaction; `requirement_content_changed` says whether a new
+requirement version altered what it says (not owner, review date or status).
 
 Design decisions:
-- A generic hook on `ModuleDefinition`, not an import of any module: core code
-  must never name a specific module (CLAUDE.md, Modular Feature System Boundary).
-- Hooks run synchronously and must not commit, so a change and the flags it
-  raises are one atomic unit. A hook that raises is logged and skipped: a
-  dependent's bookkeeping must never fail the edit that triggered it.
-- Only changes that can make a dependent wrong raise the hook: content edits and
-  archival. Status moves, owner and review-date edits do not, to keep flags rare
-  enough to be worth a human's attention.
+- A generic hook on `ModuleDefinition`, not an import of a module (Modular Feature System Boundary).
+- Hooks run synchronously and must not commit, so a change and its flags are one atomic unit. A hook that
+  raises is logged and skipped, so a dependent's bookkeeping never fails the triggering edit.
+- Only content edits and archival raise the hook; status, owner and review-date edits do not, so flags stay
+  rare enough to merit attention.
 
-External dependencies: `app.modules.registry` (the module registry).
+Dependencies: `app.modules.registry`.
 """
 
 from __future__ import annotations

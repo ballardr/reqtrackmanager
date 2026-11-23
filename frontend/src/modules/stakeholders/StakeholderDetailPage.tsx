@@ -1,28 +1,22 @@
 /**
  * Module: modules/stakeholders/StakeholderDetailPage
  *
- * A single Stakeholder's detail: fields, lifecycle, owner, Influence/Interest
- * position and engagement cadence, the Personas they represent, their needs, version
- * history, their engagement timeline with a "Log contact" quick add (project
- * route only), attachments, comments, and permanent deletion. One scope-aware
- * component serving three routes (`module.ts`): a project stakeholder and an
- * org stakeholder opened *from a project* (both `/projects/:projectId/...`),
- * and an org stakeholder opened from the org dashboard (`/orgs/:organizationId/
- * ...`). Mirrors `PersonaDetailPage`, built from the same shared parts.
+ * A single Stakeholder's detail: fields, lifecycle, owner, Influence/Interest position and engagement cadence, the
+ * Personas they represent, their needs, versions, their engagement timeline with a "Log contact" quick add (project
+ * route only), attachments, comments, and permanent deletion. One scope-aware component serves three routes
+ * (`module.ts`): a project stakeholder and an organisation stakeholder opened from a project (both
+ * `/projects/:projectId/...`), and an organisation stakeholder opened from the organisation dashboard
+ * (`/orgs/:organizationId/...`). It mirrors `PersonaDetailPage`, built from the same shared parts.
  *
- * An org stakeholder viewed inside a project is read-only here apart from
- * comments and its per-project visibility (the project API can't mutate the
- * record itself); a link leads to the org route where the owner role can edit
- * it. Hiding it from the project (`RecordVisibilityControl`) returns to the
- * list, since a hidden stakeholder is no longer reachable from the project.
+ * An organisation stakeholder viewed inside a project is read-only apart from comments and its per-project visibility
+ * (the project API cannot mutate the record); a link leads to the organisation route where the owner role can edit it.
+ * Hiding it from the project (`RecordVisibilityControl`) returns to the list, since a hidden stakeholder is not
+ * reachable from the project.
  *
- * Personal data: contact info is Confidential, so it sits behind the same
- * visibility as the record. "Delete permanently" is
- * the module's one irreversible action, so it is a tier-2 `ConfirmDialog`
- * requiring the stakeholder's exact name to be typed, and says exactly what is
- * removed. Every mutating control always renders regardless of role; the
- * backend enforces `stakeholder_owner`/`org_stakeholder_owner` and a 403
- * surfaces as a toast.
+ * Personal data: contact info is Confidential, so it sits behind the same visibility as the record. "Delete
+ * permanently" is the module's one irreversible action, so it is a tier-2 `ConfirmDialog` requiring the stakeholder's
+ * exact name and stating what is removed. Mutating controls always render whatever the role; the backend enforces
+ * `stakeholder_owner` / `org_stakeholder_owner` and a 403 surfaces as a toast.
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

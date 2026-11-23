@@ -3,24 +3,22 @@ Module: services.org_dashboard_metrics
 
 The bounded catalogue of figures an organisation dashboard's widgets show, and the batched evaluation behind them.
 
-Responsibilities:
-- Define the core organisation metrics (projects, requirements, members, file storage, projects by status, and a
-  record count over any registered type summed across the projects the caller may read).
-- Validate a metric reference against that catalogue, for a stored layout and for a request alike.
-- Evaluate a batch for a caller: identical references once, a cap, a time budget, and a state per result so one slow
-  or unreadable figure never blanks the page.
+Responsibilities: define the core organisation metrics (projects, requirements, members, file storage,
+projects by status, and a record count over any registered type summed across the projects the caller may
+read); validate a metric reference for a stored layout and a request alike; evaluate a batch for a caller
+(identical references once, a cap, a time budget, a state per result so one slow or unreadable figure never
+blanks the page).
 
 Design decisions:
-- The headline counts reuse `org_overview_stats`, so the dashboard and the stats endpoint cannot disagree: an
-  organisation administrator sees the organisation's real totals, anyone else sees what their own roles let them open.
-- A figure the caller may not read is `unavailable`, never zero (a zero would show that nothing is hidden).
-- A metric is never an arbitrary query; the record count accepts a registered record type and nothing else.
-- A module adds organisation figures either as a metric (`ModuleDefinition.org_overview_metrics`, usable by the tile,
-  gauge and chart widgets and offered only while the organisation has the module enabled) or as a whole widget of its
-  own (`org_overview_widgets`).
+- Headline counts reuse `org_overview_stats`, so the dashboard and the stats endpoint agree: an organisation
+  administrator sees the real totals, anyone else what their roles let them open.
+- A figure the caller may not read is `unavailable`, never zero.
+- A metric is never an arbitrary query; the record count accepts only a registered record type.
+- A module adds organisation figures as a metric (`ModuleDefinition.org_overview_metrics`, usable by the tile,
+  gauge and chart widgets while the organisation has the module enabled) or as a widget of its own
+  (`org_overview_widgets`).
 
-External dependencies: `services.org_overview_stats`, `services.project_access`, `services.record_counts`,
-`modules.registry`.
+Dependencies: `services.org_overview_stats`, `project_access`, `record_counts`, `modules.registry`.
 """
 
 from __future__ import annotations

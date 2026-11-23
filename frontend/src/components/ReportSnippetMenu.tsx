@@ -3,8 +3,8 @@
  *
  * The designer toolbar's one snippet control: an icon button that opens a menu with Insert snippet and Save as snippet.
  *
- * Responsibilities: name the button and the menu, and grey Save as snippet out with its reason when nothing can be saved.
- * It holds no state of its own; the Blocks and Text views each pass the two actions, so both toolbars read the same.
+ * Responsibilities: name the button and the menu, and make Save as snippet unavailable with its reason when nothing can be saved.
+ * It holds no state; the Blocks and Text views each pass the two actions, so both toolbars read the same.
  */
 import { Puzzle } from "lucide-react";
 
@@ -14,7 +14,7 @@ import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 /**
  * @param onInsert Opens the snippet picker; omit where snippets cannot be inserted (no Insert snippet item).
  * @param onSave Starts saving the selection as a snippet; omit where it cannot be saved (no Save as snippet item).
- * @param saveDisabledReason When set, Save as snippet is greyed out and this is its tooltip (nothing is selected yet).
+ * @param saveDisabledReason When set, Save as snippet is unavailable and this is its tooltip (nothing is selected yet).
  */
 export function ReportSnippetMenu({
   onInsert, onSave, saveDisabledReason,

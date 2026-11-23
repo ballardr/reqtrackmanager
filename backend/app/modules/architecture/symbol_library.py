@@ -2,32 +2,24 @@
 Module: modules.architecture.symbol_library
 
 The read model of the symbol library page: a filtered, sorted, paged list of the symbols a project or the organisation
-offers, each with its folder, the kind of file it came from and where it is used, and the full list of where one symbol
-is used.
-
-Responsibilities:
-- `library_page`: the rows for one place (the organisation's library, or a project's effective library) after the
-  search, source, file type, used and folder filters, the sort and the page.
-- `usage_for`: the owners that use one symbol, with counts.
+offers (each with its folder, source file kind and where it is used) and the full list of where one symbol is used.
+`library_page` returns the rows for one place after the search, source, file type, used and folder filters, sort and
+page; `usage_for` returns the owners that use one symbol, with counts.
 
 Design decisions:
-- **One effective list, filtered in memory.** The library is the vocabulary's own resolved list (`SymbolLibrary.
-  resolve_effective`, which applies hiding and the nested fallback), so the page can never offer a symbol a picker would
-  not. Filtering, sorting and paging happen on that list; its size is the number of symbols (hundreds), and only the
-  page's rows are read for their owners. The usage figures are two grouped statements however many rows there are.
-- **Used means referred to directly** by an element type or an element (`symbol_id`); an element drawn with its type's
-  symbol counts for the type. In a project, usage is the project's own types and elements; the organisation's page counts
-  every owner.
-- **Owners are named only when the viewer may open them.** The organisation page shows a project's name to a person who
-  can open that project and counts the others together as "Other projects". Element names are never listed (an element
-  may be restricted); element type names are vocabulary and are.
-- **A folder is per-owner content.** An organisation symbol is filed under an organisation folder (shown to every project
-  that offers the symbol, by path), a project's own symbol under a project folder, and a symbol inherited from an ancestor
-  project is not filed.
-- **File type** is read from the stored name: an EPS or PDF is converted to SVG at upload and keeps its name with `.svg`
+- One effective list, filtered in memory: the list is `SymbolLibrary.resolve_effective` (hiding and nested fallback
+  applied), so the page never offers a symbol a picker would not. Its size is hundreds, only the page's rows are read for
+  their owners, and usage figures are two grouped statements.
+- Used means referred to directly by an element type or element (`symbol_id`); an element drawn with its type's symbol
+  counts for the type. A project counts its own types and elements; the organisation page counts every owner.
+- Owners are named only when the viewer may open them (others are counted as "Other projects"). Element names are never
+  listed (an element may be restricted); element type names are vocabulary and are.
+- A folder is per-owner content: an organisation symbol is filed under an organisation folder (shown by path), a
+  project's own under a project folder, and an inherited symbol is not filed.
+- File type is read from the stored name: an EPS or PDF is converted to SVG at upload and keeps its name with `.svg`
   appended (`logo.eps.svg`).
 
-Dependencies: `service` (the library), `folders`, the models, and core `report_converter`, `project_access`, `files`.
+Dependencies: `service`, `folders`, the models, core `report_converter`, `project_access`, `files`.
 """
 
 from __future__ import annotations

@@ -506,12 +506,9 @@ def test_action_type_delete_requires_reassignment_when_in_use(client, admin_toke
     listed = client.get(f"{_base(org_id)}/action-types", headers=auth_headers(admin_token)).json()
     assert in_use["id"] not in {a["id"] for a in listed}
 
-    # An organisation's compliance action-type vocabulary may be emptied to
-    # zero — deleting the last remaining, entirely-unused action type must
-    # succeed (no "must always retain at least one" floor here, unlike
-    # project-scoped ActionTypeDefinition). `other` is now in use (the
-    # reassignment above moved the required action onto it), so this uses a
-    # fresh, never-referenced action type instead.
+    # An organisation's compliance action-type vocabulary may be emptied (no "retain at least one" floor, unlike
+    # project-scoped `ActionTypeDefinition`). `other` is in use after the reassignment above, so a fresh unreferenced
+    # action type is deleted instead.
     unused = _create_action_type(client, admin_token, org_id, name="Never Referenced")
     resp = client.delete(f"{_base(org_id)}/action-types/{unused['id']}", headers=auth_headers(admin_token))
     assert resp.status_code == 204

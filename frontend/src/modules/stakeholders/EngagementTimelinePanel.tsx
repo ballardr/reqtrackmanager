@@ -1,15 +1,11 @@
 /**
  * Module: modules/stakeholders/EngagementTimelinePanel
  *
- * A Stakeholder's or Persona's engagement history on its detail page, with the
- * "Log contact" quick add beside it. The history is the shared
- * `RepresentationPanel` (read-only: an engagement is edited on its own page),
- * newest first, each row "date · channel · title" linking to the engagement.
- * "Log contact" opens the compact `EngagementFormModal`, records an engagement
- * with this person (or Persona) already attached, toasts, and refreshes the
- * list, so a one-line email is a few seconds' work.
- * Renders nothing outside a project: engagements are project-scoped, so the
- * organisation route has no history to show.
+ * A Stakeholder's or Persona's engagement history on its detail page, with the "Log contact" quick add beside it. The
+ * history is the shared `RepresentationPanel` (read-only: an engagement is edited on its own page), newest first, each
+ * row "date · channel · title" linking to the engagement. "Log contact" opens the compact `EngagementFormModal`,
+ * records an engagement with this person (or Persona) attached, toasts, and refreshes the list. It renders nothing
+ * outside a project: engagements are project-scoped.
  */
 import { useState } from "react";
 

@@ -1,19 +1,13 @@
 /**
  * Module: components/ScoringSchemeEditor
  *
- * Org-level configuration of one scoring scheme (generic scoring-matrix
- * core): each axis's levels (and the thresholds of a derived axis), the org
- * default model, the models shown side by side, the organisation's own axes
- * and models with hide/restore (`ScoringCriteria`), and each model's rating
- * bands. A module embeds this in its own org-admin
- * section, passing its scheme key (e.g. Context & Strategy's "pain_point")
- * — core never knows which modules score what (Decided by: User
- * sign-off: scoring config sits beside the feature it scores).
+ * Organisation-level configuration of one scoring scheme: each axis's levels (and the thresholds of a derived axis),
+ * the default model, the models shown side by side, the organisation's own axes and models with hide/restore
+ * (`ScoringCriteria`), and each model's rating bands. A module embeds this in its own org-admin section with its scheme
+ * key (e.g. "pain_point"), so core never knows which modules score what.
  *
- * Levels reuse the shared `DefinitionList` (inline edit, delete with
- * reassign-on-409), ordered by weight rather than manually. Every mutation
- * reports success or failure through the shared toast. Permission is
- * enforced server-side; a 403 surfaces as an error toast.
+ * Levels reuse the shared `DefinitionList` (inline edit, delete with reassign-on-409), ordered by weight. Every mutation
+ * toasts. Permission is enforced server-side; a 403 surfaces as an error toast.
  */
 import { useEffect, useState } from "react";
 

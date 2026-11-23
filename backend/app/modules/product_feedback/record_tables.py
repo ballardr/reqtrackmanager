@@ -1,31 +1,12 @@
 """
 Module: modules.product_feedback.record_tables
 
-The `RecordTableProvider` of Product Feedback's one record type, the enhancement request: the list as a table, so
-it exports to CSV, PDF and Word and imports from the same CSV (a row with a code updates, a blank code creates).
-The organisation's inbox is the provider's `OrganizationRecordTable`.
-
-Responsibilities:
-- Declare the columns (title, description, owner, external references, the scoring levels, tags) and the
-  status, decline reason, demand, channel mix and derived score as export-only cells.
-- Share the create and edit logic with the endpoints (`_shared.stage_request` / `stage_request_update`), so the
-  owner validation, the version history and the audit event are the ones the screen applies.
-
-Design decisions:
-- `status` and `decline_reason` are export-only: a request moves through its lifecycle only by the transition
-  endpoint, whose rules (a reason to decline, no direct move to duplicate) a file must not bypass. A created
-  request starts `New`, as the create endpoint starts it.
-- A scoring level is written by its name on its axis (`Many`, `Large`) for the organisation's own scheme; the
-  score is derived (under the owner's default model) and so is export-only. A blank level cell clears the level.
-- `references` is one list cell, `System:key` (the system's name; `System:https://...` for a link with no key;
-  ` (origin)` after a reference that came from there), the way the export writes it. An import *adds* the
-  references a cell names that the request lacks and never removes or edits one (the role and link of an existing
-  reference are not in the cell), so a round trip changes nothing and removing a reference stays a deliberate act
-  on the request. `channels` (how the requesters asked, as a count per channel) is export-only.
-- Updating needs the triager role (the edit endpoint's gate); creating follows the endpoint's gate (any member,
-  unless the project restricted submission to triagers).
-
-Dependencies: `_shared` (stage functions, gates), `service`, `services.record_tables_core`.
+The `RecordTableProvider` of the enhancement request (the organisation inbox is
+its `OrganizationRecordTable`): list columns exported to CSV, PDF and Word and
+imported from the same CSV. Create/edit use `_shared.stage_request`/
+`stage_request_update`; `status`, decline reason, demand, channels and score are
+export-only. Levels are written by name (blank clears); `references`
+(`System:key`) only adds, never edits or removes.
 """
 
 from __future__ import annotations

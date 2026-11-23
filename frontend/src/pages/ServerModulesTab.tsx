@@ -1,25 +1,15 @@
 /**
  * Module: pages/ServerModulesTab
  *
- * The "Modules" group of Server Management: the three server-tier levers over which modules
- * exist for whom.
- * - The default entitlement policy (open or closed).
- * - The server-wide default module states (available, and on for new projects), with an
- *   explicit "apply to all organisations" action.
- * - Per-organisation availability: grant or withdraw a module for one organisation and see
- *   which tier decides its effective state.
- *
- * The policy and defaults levers are shown only to a Module administrator or server administrator; a Platform
- * subscription manager sees per-organisation availability alone.
- *
- * Design decisions:
- * - Rows are the shared `ModuleSettingsList` and the three-state `ModuleAvailabilitySelect`
- *   the organisation and project pages use, so a module reads the same at every tier.
- * - Every control saves at once and ends in a toast. Changing the entitlement policy is Tier 1 (it changes what every
- *   organisation without an override may use) and "apply to all" is Tier 2 because it overwrites other organisations'
- *   own choices (style guide, confirmation tiers).
- * - What a lever means is in its section's `(?)` help, not in the layout.
- * - Nothing here names a module: the lists come from the API (module boundary).
+ * The "Modules" group of Server Management: the server-tier levers over which
+ * modules exist for whom: the default entitlement policy (open or closed), the
+ * server-wide default module states (with an "apply to all organisations"
+ * action) and per-organisation availability with the tier that decides it. The
+ * policy and defaults levers show only to a Module or server administrator.
+ * Design: rows are the shared `ModuleSettingsList` and `ModuleAvailabilitySelect`;
+ * every control saves at once with a toast. Changing the policy is Tier 1 and
+ * "apply to all" is Tier 2 (it overwrites other organisations' choices). Nothing
+ * here names a module: the lists come from the API.
  */
 import { useEffect, useState } from "react";
 

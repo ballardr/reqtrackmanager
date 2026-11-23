@@ -47,10 +47,9 @@ function mockWorkspaceApis() {
 }
 
 /**
- * `StandardWorkspacePage` — the per-standard drill-down at `/standards/
- * :standardId[/versions|/history]`. Resolves its owning org via the new `GET /api/v1/compliance/
- * standards/{id}` before threading it through to every existing org-scoped
- * nested call (action types, versions, history) unchanged.
+ * `StandardWorkspacePage` is the per-standard drill-down at `/standards/:standardId[/versions|/history]`. It resolves its owning
+ * organisation through `GET /api/v1/compliance/standards/{id}` before threading it to the organisation-scoped nested calls
+ * (action types, versions, history).
  */
 const meta: Meta<typeof StandardWorkspacePage> = {
   title: "Modules/Compliance/StandardWorkspacePage",
@@ -181,10 +180,8 @@ const SIBLING_STANDARD: ComplianceStandard = {
   ...STANDARD, id: "std-2", reference: "EN-60529", name: "EN 60529", organization_id: ORG.id,
 };
 
-/** With more than one standard reachable across the caller's
- * orgs, a chevron next to the standard's name opens a popover listing the
- * others as plain links to their own workspace, via the same cross-org
- * fan-out `StandardListPage.tsx` uses (`listStandardsAcrossMyOrgs`). */
+/** With more than one standard reachable across the caller's organisations, a chevron beside the standard's name opens a popover
+ * of the others as plain links to their workspaces, through the fan-out `StandardListPage.tsx` uses (`listStandardsAcrossMyOrgs`). */
 export const EntitySwitcherOffersSiblingStandards: Story = {
   decorators: [withRouter(`/standards/${STANDARD.id}`, "/standards/:standardId/:section?/:versionId?")],
   beforeEach: () => {

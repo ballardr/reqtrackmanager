@@ -4,14 +4,13 @@
  * The project's stages on the delivery status page: each stage's current phase (movable in place by a project manager),
  * owner, progress, expected range and overdue state, as a table or, with `view="timeline"`, as bars on the shared axis.
  *
- * Responsibilities:
- * - One row per stage from `utils/deliveryPlan.stageRows`; the phase picker moves a stage through the shared
- *   `usePhaseMove` (a closed phase first asks about completing its requirements).
- * - A locked phase is shown unavailable, with the reason, to a person who cannot enter or leave it (the server enforces it).
- * - `onSchedule` adds a control to set the current phase's expected range, for a manager.
+ * Responsibilities: one row per stage from `utils/deliveryPlan.stageRows`; the phase picker moves a stage through the
+ * shared `usePhaseMove` (a closed phase first asks about completing its requirements); a locked phase is shown
+ * unavailable with the reason to a person who cannot enter or leave it (the server enforces it); `onSchedule` adds a
+ * control to set the current phase's expected range, for a manager.
  *
- * Design decisions: the same columns and wording as the component track list (`ComponentTracksList`), so a stage and a
- * track read alike; the stage's workflow, owner and name are still edited in project administration.
+ * Design decision: the same columns and wording as `ComponentTracksList`; a stage's workflow, owner and name are edited
+ * in project administration.
  */
 import { CalendarRange } from "lucide-react";
 

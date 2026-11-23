@@ -1,35 +1,26 @@
 """
 Module: services.report_markdown
 
-The one Markdown walk that feeds every report format: Markdown text in, neutral report blocks out (`report_model`), for
-PDF, Word, OpenDocument and HTML alike.
+The one Markdown walk that feeds every report format: Markdown text in, neutral blocks (`report_model`) out, for PDF,
+Word, OpenDocument and HTML.
 
 Responsibilities:
-- Read Markdown with one of two readers and walk its block tokens into `Heading`, `Paragraph`, `BulletList` and
-  `NumberedList` (nested through `levels`), `CodeBlock`, `Quote`, `Grid` (a table) and `Image` (a drawn diagram).
-- `markdown_to_blocks` (in `report_model`) is the author reader's entry point: the text a person writes in a layout.
-- `record_markdown_blocks` is the record reader's entry point: the stored value of a Markdown field of a record.
-- Draw a `mermaid` fenced block through `report_diagram` when a budget is given, else (or when it cannot be drawn) print
-  its source as a labelled `CodeBlock`, so a report always carries the diagram's content.
-- Print a record's pictures (`![alt](attachment:<file id>)` on a paragraph of its own) as `Image` blocks with the caption
-  the text gave, through the run's resolver; a picture the resolver cannot supply (confidential, not a printable
-  picture, not an attachment of the record) prints as its alternative text.
+- Walk block tokens into `Heading`, `Paragraph`, `BulletList`, `NumberedList`, `CodeBlock`, `Quote`, `Grid` and `Image`;
+  `markdown_to_blocks` is the author reader's entry, `record_markdown_blocks` the record reader's.
+- Draw a `mermaid` fence through `report_diagram` within a budget, else print its source as a labelled `CodeBlock`.
+- Print a record's `![alt](attachment:<file id>)` pictures as `Image` blocks through the run's resolver; one it cannot
+  supply prints as its alternative text.
 
 Design decisions:
-- **Two readers, one walk.** The author reader keeps the long-standing narrow inline reading of a layout's own text (no
-  autolinks, entities, strikethrough, reference links or backslash escapes beyond six, equations and escaped characters
-  set aside first), so existing layouts print exactly as before. The record reader is the screen's reading
-  (`markdown_text`: CommonMark with tables, raw HTML read as text, a single line break kept), so a record prints as it
-  reads on screen. Only block structure is new for the author reader: fences, quotations, tables and nested lists.
-- **Nothing here produces markup.** The reader's tokens become model objects with plain text; each renderer escapes at its
-  own choke point. A link is kept only when `report_model.link_problem` allows it, and an image other than a record's own
-  attachment picture stays as the text typed.
-- **A value's own structure is bounded**: a document nested past the reader's limit is cut by the reader, a table is cut at
-  `MAX_TABLE_ROWS` and `MAX_TABLE_COLUMNS`, and a diagram is drawn within the run's budget.
-- A heading inside a record's value is placed below the heading the report printed for the record: its level is shifted
-  (`heading_offset`), as the screen shifts `#` to a third-level heading.
+- Two readers, one walk: the author reader keeps the narrow inline reading of a layout's own text (no autolinks,
+  entities, strikethrough or reference links); the record reader is the screen's reading (`markdown_text`: CommonMark
+  with tables, raw HTML as text, single line breaks kept).
+- Nothing here produces markup: tokens become plain-text model objects each renderer escapes; a link is kept only when
+  `report_model.link_problem` allows it.
+- A value's structure is bounded (reader nesting limit, `MAX_TABLE_ROWS`, `MAX_TABLE_COLUMNS`, the diagram budget); a
+  heading in a record's value is shifted below the report's heading for the record (`heading_offset`).
 
-Dependencies: `markdown-it-py`, `report_model` (blocks and the inline runs), `report_diagram` (diagrams).
+Dependencies: `markdown-it-py`, `report_model`, `report_diagram`.
 """
 
 from __future__ import annotations

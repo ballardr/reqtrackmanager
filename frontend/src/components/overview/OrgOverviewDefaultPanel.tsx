@@ -1,16 +1,14 @@
 /**
  * Module: components/overview/OrgOverviewDefaultPanel
  *
- * Organisation administration's "Default overview": the layout every project of the organisation shows unless it
- * (or a parent project) has its own. The section body is a compact row (built-in or customised, and the widget
- * count) with a button that opens the shared overview editor in a large dialog, so the page stays a short list of
- * settings. The editor is the one the project overview uses, with a labelled block for each widget in place of data
- * (an organisation default has no project to read figures from).
+ * Organisation administration's "Default overview": the layout every project of the organisation shows unless it (or a
+ * parent project) has its own. The section body is a compact row (built-in or customised, and the widget count) with a
+ * button opening the shared overview editor in a large dialog, with a labelled block for each widget in place of data (an
+ * organisation default has no project to read figures from).
  *
- * Design decisions:
- * - The dialog's unsaved-changes guard is fed by the editor (`onDirtyChange`), because the editor's state is a drawn
- *   grid the dialog cannot measure from its inputs.
- * - The summary is read again after every close, so it reflects a save or a restore.
+ * Design decisions: the dialog's unsaved-changes guard is fed by the editor (`onDirtyChange`), because the editor's state
+ * is a drawn grid the dialog cannot measure from its inputs. The summary is read again after every close, so it reflects a
+ * save or a restore.
  */
 import { useCallback, useState } from "react";
 

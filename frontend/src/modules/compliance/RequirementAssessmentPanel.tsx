@@ -1,31 +1,16 @@
 /**
  * Module: modules/compliance/RequirementAssessmentPanel
  *
- * The per-requirement detail workspace opened from `ApplicabilityTree` (a
- * `SidePanel`, per style guide "Pattern: entity detail panel" — viewing an
- * existing entity's full detail without leaving the tree behind it, never a
- * `Modal`). Covers §21's own drill-down diagram for one requirement:
- * Applicability (§9), Assessment (§10, §16), Required Actions (§6),
- * Evidence (§13), Approval/Sign-off (§12), and history (§8/§11/§16 — "view
- * compliance history").
- *
- * Mandatory-justification rules are enforced here purely as a UX
- * convenience (disabling Save until filled) — the backend is the actual
- * enforcement (`project_router.py::update_requirement_applicability`/
- * `update_requirement_assessment`, 400 on a missing justification), so a
- * stale client check can never let a bad payload through undetected: any
- * 400 still surfaces as a toast either way.
- *
- * Evidence section: alongside linking already-existing evidence,
- * "Upload new evidence" reuses `EvidenceFormModals.tsx`'s exported
- * `EvidenceFormModal` to create a new `Evidence` record the same way that
- * panel does, immediately auto-links it to this assessment (no separate
- * manual "link existing" step), then reuses `FileAttachmentList`/
- * `ResourcePickerModal` — again exactly as `EvidenceDetailPage.tsx` already does
- * — so the actual file attaches in the same flow. `EvidenceFormModal`'s create form itself stages files before save, so
- * `createAndLinkEvidence` uploads those in the same step and only falls
- * back to the follow-up "Attach files" modal when none were staged —
- * a user who already attached a file at creation time isn't asked again.
+ * The per-requirement detail workspace opened from `ApplicabilityTree`, a `SidePanel` (style guide "Pattern: entity detail
+ * panel": full detail without leaving the tree behind it, never a `Modal`). It covers §21's drill-down for one requirement:
+ * Applicability (§9), Assessment (§10, §16), Required Actions (§6), Evidence (§13), Approval and Sign-off (§12) and history.
+ * - Mandatory-justification rules here only disable Save until filled; the backend enforces them
+ *   (`project_router.py::update_requirement_applicability` and `update_requirement_assessment` return 400), and any 400 still
+ *   surfaces as a toast.
+ * - Evidence: besides linking existing evidence, "Upload new evidence" reuses `EvidenceFormModal` to create an `Evidence`
+ *   record, links it to this assessment, then reuses `FileAttachmentList` and `ResourcePickerModal` (as `EvidenceDetailPage.tsx`
+ *   does) to attach the file. The create form stages files before save, so `createAndLinkEvidence` uploads them in the same
+ *   step and shows the follow-up "Attach files" modal only when none were staged.
  */
 import { FolderOpen } from "lucide-react";
 import { useState } from "react";

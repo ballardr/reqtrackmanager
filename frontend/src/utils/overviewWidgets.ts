@@ -1,17 +1,16 @@
 /**
  * Module: utils/overviewWidgets
  *
- * Pure helpers behind the project overview's widgets: which metric a widget reads and in which project scope,
- * where a figure links to, how a gauge reads its level, how a widget is laid out on the grid, and how a layout
- * is edited (move, resize, add, id).
- *
- * Design decisions:
- * - A tile or chart links to a list only when the list can show what the figure counts; a record count with a
- *   component or provider filter has no matching list URL, so it is not a link rather than a misleading one.
- * - The grid is a flow, not absolute positions: a widget has a width in columns of a 12-column grid and a height
- *   in rows, and the page collapses the columns for a narrower screen (`gridSpans`), so one layout serves every
- *   screen size.
- * - Layout edits return new arrays; the editor owns the draft.
+ * Pure helpers behind the project overview's widgets: which metric a widget
+ * reads and in which project scope, where a figure links, how a gauge reads its
+ * level, how a widget is laid out, and how a layout is edited (move, resize,
+ * add, id).
+ * Design: a tile or chart links to a list only when the list can show what the
+ * figure counts (a count with a component or provider filter has no matching
+ * list URL, so it is no link rather than a misleading one). The grid is a flow:
+ * a widget has a width in columns of a 12-column grid and a height in rows, and
+ * the page collapses columns on a narrower screen (`gridSpans`). Layout edits
+ * return new arrays; the editor owns the draft.
  */
 import type { OverviewCatalogue, OverviewMetricSpec, OverviewScope, OverviewWidget } from "../api/types";
 import { getArtefactListPath } from "../modules/artefactPaths";

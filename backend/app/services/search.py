@@ -1,42 +1,25 @@
 """
 Module: services.search
 
-The global search: one query across every record type the caller may see, in one project,
-every project they can open, or a module-defined unit (a Compliance standard).
+The global search: one query across every record type the caller may see, in one project, every project they can open,
+or a module-defined unit (a Compliance standard).
 
 Responsibilities:
-- Resolve the scope to the projects searched (`_resolve_scope`), keep the ones the caller can
-  open, and work out per record type the projects where the type is offered (module and
-  sub-component enabled) and viewable (`view` permission) (`_authorised_projects`).
-- Build one SQL query per record type from its `ArtefactSearchProvider` (scope, text match,
-  filters, relevance tier), run it, and merge, rank and page the results (`run_search`).
-- Resolve the fields searched (request, else the user's `search_default_fields`, else ID, Title
-  and Tags) and list the fields the caller can choose from (`available_fields`).
-- Shape each hit: code, title, status label, owning project, snippet of the first matching
-  field, and the record to open.
+- Resolve the scope and the authorised projects per type (module and sub-component enabled, `view` held).
+- Build one SQL query per type from its `ArtefactSearchProvider`, run it, merge, rank and page (`run_search`); resolve
+  the fields searched (`available_fields`); shape each hit (code, title, status, project, snippet, record to open).
 
 Design decisions:
-- Authorisation is applied before querying and results are omitted, never redacted, so a type
-  count never discloses a record the caller cannot open. A project is searched only if the
-  caller holds a genuine role there (and, for a token, may reach it); a type only where its
-  module is enabled and `view` is held *in that project*. The same rules as the link finder
-  and the project-scope lists.
-- Query-time search per type, not a central index: a second copy of every record's text would
-  have to follow erasure, hard delete, per-project hiding and permission changes. Bounds keep it
-  cheap: a minimum query length, a per-type row cap of `offset + limit`, a depth limit of
-  `MAX_DEPTH`, a project cap, and a per-search `statement_timeout`.
-- Fields are opt-in per provider; ID (the record's code, qualified or not), Title and Tags are
-  built here, so every taggable type is searched on tags with no provider work. Component and category
-  names (`placements`) and a record's external references (`external_refs`: the outside key and the system's name,
-  never the note or link) are built here the same way, opt-in and never a default.
-- A record owned by the organisation (a shared persona) is found only through a project that is
-  allowed to see it, using the owning module's `get_many_in_project` rule (per-project hiding),
-  and its count is taken after that check.
-- The query text is never logged, audited or traced: the log line carries the scope, field keys,
-  match mode, result count and duration only.
+- Authorisation precedes querying and results are omitted, never redacted, so a count never discloses a record; a project
+  is searched only with a genuine role there (and token reach), a type only where its module is on and `view` is held.
+- Query-time search, not a central index, which would have to follow erasure, hard delete, hiding and permission changes;
+  bounded by minimum query length, `offset + limit` per type, `MAX_DEPTH`, a project cap and a `statement_timeout`.
+- Fields are opt-in per provider; ID, Title, Tags, component and category names (`placements`) and external references
+  (`external_refs`: key and system name only) are built here, never default.
+- An organisation-owned record is found only through a project allowed to see it (`get_many_in_project`).
+- The query text is never logged, audited or traced; logs carry scope, field keys, match mode, count and duration.
 
-Dependencies: `modules.registry` (providers, scopes, enablement), `services.rbac`
-(permissions, memoised role lookups), `services.project_access`, `models.tag`.
+Dependencies: `modules.registry`, `services.rbac`, `services.project_access`, `models.tag`.
 """
 
 from __future__ import annotations

@@ -109,7 +109,7 @@ export const TreeToBlocksAndBackIsTheIdentity: Story = {
   },
 };
 
-/** Every value, including the short ones that used to sit on the block, is edited in the block editor and reaches the tree. */
+/** Every value, including the short ones shown on the block, is edited in the block editor and reaches the tree. */
 export const EditingABlockFieldInTheEditorChangesTheTree: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

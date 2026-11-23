@@ -1,19 +1,15 @@
 /**
  * Module: components/AppFooter
  *
- * The footer every page ends with, signed in or not: the server's company name (a link to its website, after an
- * optional prefix such as "Hosted by"), postal address and company identifier when set, the link to the Policies page (always present: it holds the licences), and the application and API
- * versions, separated by `|`.
+ * The footer every page ends with: the server's company name (a website link after an optional prefix such as
+ * "Hosted by"), postal address and identifier when set, the Policies link (always present: it holds the licences)
+ * and the application and API versions, separated by `|`. Rendered by `Layout` and the signed-out shell
+ * (`SignedOutPage`); signed-out pages show the application version only because the API version needs a session.
  *
- * Responsibilities: lay the groups out in muted, wrapping, centred lines at the end of the page's scrolling content
- * (never fixed, so it takes no viewport height); a group that is absent leaves no separator. A separator is drawn
- * only between two groups on the same line, so no line begins or ends on one: after layout, each group that shares
- * a line with the one before it is marked (`data-joined`) and its stylesheet rule draws the `|` in the gap before it.
- * The separator takes no width, so marking a group never moves it to another line (no measure/mark loop), and
- * before the first measurement, or with scripting unavailable, none is drawn. Rendered by `Layout` for signed-in
- * pages and by the signed-out page shell (`SignedOutPage`). The API version needs a session, so signed-out pages show the application version
- * only. Company details come from the public platform branding read; a website is a link only when it has no
- * scheme (then `https://` is added) or is an `http(s)` address.
+ * Groups wrap in muted, centred lines at the end of the scrolling content. A separator is drawn only between two
+ * groups on one line: after layout each group sharing a line with the previous one is marked (`data-joined`) and
+ * the stylesheet draws the `|` in a zero-width gap, so marking never moves a group (no measure/mark loop).
+ * A website is a link only when it has no scheme (`https://` is added) or is an `http(s)` address.
  */
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";

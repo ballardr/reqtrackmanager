@@ -1,19 +1,13 @@
 /**
  * Module: components/ReportViewer
  *
- * Renders any collected report (`ReportResult`) generically: its notes,
- * headline metrics and each section as a table, with gap sections (tables
- * that list problems to fix) marked. This is the default on-screen view for
- * every report in the core report framework; a module registers a custom
- * view (`TierAModuleDefinition.reportViews`) only where a table genuinely
- * fails the reader, and composes the exported pieces (`ReportSummary`,
- * `ReportSectionTable`) for the parts the table form already serves. It knows
- * nothing about any one report or module.
+ * Renders any collected report (`ReportResult`) generically: its notes, headline metrics and each section as a table,
+ * with gap sections (tables that list problems to fix) marked. This is the default on-screen view for every report; a
+ * module registers a custom view (`TierAModuleDefinition.reportViews`) only where a table fails the reader, composing
+ * the exported pieces (`ReportSummary`, `ReportSectionTable`). It knows nothing about any one report or module.
  *
- * Pure presentation: the caller (`ReportRunner`) owns loading and error
- * states. A report whose sub-component is on for no in-scope project
- * (`eligible_projects === 0`) shows an explicit empty state rather than a
- * wall of empty tables.
+ * Pure presentation: the caller (`ReportRunner`) owns loading and error states. A report whose sub-component is on for
+ * no in-scope project (`eligible_projects === 0`) shows an explicit empty state.
  */
 import { useState } from "react";
 import type { ReportMetric, ReportResult, ReportSection } from "../api/reports";

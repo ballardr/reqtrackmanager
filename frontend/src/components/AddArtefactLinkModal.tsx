@@ -1,33 +1,16 @@
 /**
  * Module: components/AddArtefactLinkModal
  *
- * The "Add a link" dialog of the shared Links panel (`ArtefactLinksPanel`): one
- * finder for the record to link to, then the relationship. A Modal rather than an
- * inline row because the aside is narrow and the form has several dependent fields
- * (style guide: a create flow is a layer, not a reflow of the page).
+ * The "Add a link" dialog of the Links panel (`ArtefactLinksPanel`): a finder for the record, then the
+ * relationship. A Modal because the aside is narrow and the fields are dependent (a create flow is a layer).
  *
- * The finder is a search box plus a scope that narrows step by step:
- * - nothing chosen searches every linkable record type (two characters or more);
- * - choosing a record type limits the search to that type and lists its records;
- * - each browse level that type declares ("Standard" -> "Version" -> "Requirement",
- *   "Component" -> "Category", "Status") then narrows further, each optional.
- * Search and the cascade are one control used to different depth, so both are
- * always available for every type, and no per-type code lives here: the levels
- * arrive from the server (`api.browse`), declared by the type's owner.
+ * The finder is a search box plus a scope narrowing step by step: nothing chosen searches every linkable type (two
+ * characters or more); a chosen type limits the search; each browse level it declares (`api.browse`) narrows
+ * further. No per-type code lives here. The relationship is chosen after the record from the link types usable
+ * between the two; the server filters everything offered and re-checks it on creation.
  *
- * The relationship is chosen after the record, from the link types usable between
- * this record and the chosen one. Everything offered is filtered by the server
- * (restrictions, artefact-type rules, hiding, nesting scope, what the user may see),
- * which re-checks it all when the link is created.
- *
- * Two modes hand the chosen link on instead of creating it:
- * - `changeRequest` (the page artefact is an approved requirement in a project that needs
- *   a change request for link changes): asks for the reason and hands the link to
- *   `changeRequest.onPropose`, which submits an `add_link` request.
- * - `collect` (the proposed-links section of a change request being drafted): hands the
- *   link, with what is needed to show it, to `collect.onCollect` and creates nothing.
- * Both reach the same records and relationships as the plain dialog; the server re-checks
- * every rule when the request is created and again when it is approved.
+ * Two modes hand the link on instead of creating it: `changeRequest` (link changes need a request) asks for a
+ * reason and calls `changeRequest.onPropose`; `collect` (a change request being drafted) calls `collect.onCollect`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 

@@ -1,19 +1,16 @@
 /**
  * Module: utils/editHistory
  *
- * An undo/redo history over any value, with a saved baseline, as plain functions with no React. An editor keeps its
- * pending edits as one value (a layout), records each edit as a step, and compares the present with what was last
- * stored to tell whether Save is needed.
- *
- * Responsibilities:
- * - `History`: past, present, future and the saved baseline.
- * - Record a step (`commitStep`), step back and forward, replace the present without a step (a merged read), and tell
- *   whether the present differs from the saved value.
- *
- * Design decisions:
- * - The value is compared through a caller-supplied signature (the part a save would send), so display data that is not
- *   stored never makes the history look edited.
- * - At most `HISTORY_LIMIT` steps are kept.
+ * An undo/redo history over any value, with a saved baseline, as plain functions
+ * with no React. An editor keeps pending edits as one value, records each edit as
+ * a step and compares the present with the last stored value to tell whether Save
+ * is needed.
+ * Responsibilities: `History` (past, present, future, saved baseline); record a
+ * step (`commitStep`), step back and forward, replace the present without a step,
+ * and tell whether the present differs from the saved value.
+ * Design: values are compared through a caller-supplied signature (the part a
+ * save would send), so unstored display data never marks the history edited; at
+ * most `HISTORY_LIMIT` steps are kept.
  */
 
 /** How many steps of undo are kept. */

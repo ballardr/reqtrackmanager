@@ -4,13 +4,11 @@
  * The one create and edit form for a component or a category, in a `SidePanel`: the name and the identifier prefix
  * (`NameAndPrefixFields`), Save in the panel header (`FormActions`).
  *
- * Responsibilities:
- * - Create a component, create a category under a component, or edit either, through `StructureApi`.
- * - Show the server's refusal (a prefix already in use) in the panel, where the prefix can be changed, and report
- *   success with a toast.
+ * Responsibilities: create a component, create a category under a component, or edit either, through `StructureApi`;
+ * show the server's refusal (a prefix already in use) in the panel and report success with a toast.
  *
- * Design decisions: create and edit share the field group, so a field added later reaches both. The prefix field
- * follows the name only on create; an edit keeps the stored prefix.
+ * Design decisions: create and edit share the field group, so a field added later reaches both. The prefix follows the
+ * name on create only; an edit keeps the stored prefix.
  */
 import { useState } from "react";
 

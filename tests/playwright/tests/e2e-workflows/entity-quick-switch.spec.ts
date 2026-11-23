@@ -3,17 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS } from "./helpers";
 
 /**
- * Job to be done: — the "entity
- * quick-switch" chevron next to an entity's name in a page's own `<h1>`,
- * opening a popover that lists every sibling instance of the same entity
- * type the current user can reach. This also covers Org Settings'
- * normal (non-degraded) admin header, whose title renders via
- * `ResourceMenu`'s own `titleAdornment` slot rather than a bespoke `<h1>`.
+ * Job to be done: the entity quick-switch chevron next to an entity's name in a page's `<h1>` opens a popover listing
+ * every sibling of the same entity type the user can reach. It also covers Org Settings' admin header, whose title
+ * renders through `ResourceMenu`'s `titleAdornment` slot rather than a bespoke `<h1>`.
  *
- * Persona: `orgAdminAlphaBeta` (`org_admin` of both Alpha and Beta, see
- * backend/scripts/seed_e2e_dataset.py) — a genuine multi-org account, so
- * the Organisation Overview and Org Settings chevrons both have a real
- * sibling to offer.
+ * Persona: `orgAdminAlphaBeta` (`org_admin` of Alpha and Beta, backend/scripts/seed_e2e_dataset.py), a multi-org
+ * account, so the Organisation Overview and Org Settings chevrons both have a sibling to offer.
  */
 test.describe("entity quick-switch", () => {
   test("switches organisations from the Organisation Overview page via the chevron popover", async ({ page }) => {

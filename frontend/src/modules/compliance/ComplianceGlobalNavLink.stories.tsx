@@ -6,19 +6,12 @@ import { buildUser, withAuth, withRouter } from "../../testing/storybook-helpers
 import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
 
 /**
- * The "Compliance Standards" top-level nav-rail link — registered via `module.ts`'s `globalNavItems`,
- * never rendered by `Layout.tsx` directly. Owns its own visibility via
- * `useComplianceNavVisibility()` (`GET /api/v1/compliance/nav-visibility`):
- * niche, unlike Projects, so it renders nothing at all until that call
- * resolves `true`.
+ * The "Compliance Standards" top-level nav-rail link, registered through `module.ts`'s `globalNavItems` and never rendered by
+ * `Layout.tsx` directly. It owns its visibility through `useComplianceNavVisibility()` (`GET /api/v1/compliance/nav-visibility`)
+ * and renders nothing until that call resolves `true`.
  *
- * No router decorator at the `meta` level (unlike most story files) —
- * `Layout.stories.tsx`'s own precedent for exactly this reason: two stories
- * below need genuinely different initial paths to exercise the active/
- * inactive nav-rail state, so each story supplies its own
- * `withRouter` rather than one shared default a story would have to
- * override (nesting two `MemoryRouter`s is a React Router error, not a
- * silent no-op).
+ * There is no router decorator at `meta` level: two stories need different initial paths to exercise the active and inactive
+ * states, so each supplies its own `withRouter` (nesting two `MemoryRouter`s is a React Router error).
  */
 const meta: Meta<typeof ComplianceGlobalNavLink> = {
   title: "Modules/Compliance/ComplianceGlobalNavLink",
@@ -29,13 +22,8 @@ export default meta;
 
 type Story = StoryObj<typeof ComplianceGlobalNavLink>;
 
-// Each story below gives its own `buildUser()` call (a fresh, distinct id
-// every time — `storybook-helpers.tsx`'s own `nextId` counter) as its own
-// `withAuth` decorator, rather than sharing one on `meta` — the underlying
-// `useComplianceNavVisibility()` hook caches its fetch per user id
-// (`useComplianceNavVisibility.ts`'s own docstring), so two stories sharing
-// one user id would have the second silently reuse the first's cached
-// result instead of exercising its own mock.
+// Each story gives its own `buildUser()` (a distinct id) as its `withAuth` decorator, because `useComplianceNavVisibility()`
+// caches its fetch per user id and stories sharing one id would reuse the first story's cached result instead of their own mock.
 
 export const VisibleWhenGranted: Story = {
   decorators: [withAuth(buildUser()), withRouter("/projects")],
@@ -60,15 +48,9 @@ export const HiddenWhenNotVisible: Story = {
   },
 };
 
-/** This link used to stay highlighted on every `/standards/...`
- * sub-route (missing `exact`, `Layout.tsx`'s active-state check falls back
- * to `startsWith`), double-highlighting alongside the separate "Standard"
- * nav-rail section that's supposed to take over navigation once inside one
- * standard. `exact` now restricts the active state to `/standards` itself,
- * mirroring `Layout.tsx`'s own `<NavRailLink to="/projects" exact .../>`.
- * `NavRailLink` signals active state via a plain `active` CSS class on the
- * link (not `aria-current` — unlike `ResourceMenu`'s links, which do use
- * it), so that's what these two stories assert. */
+/** The link is active on `/standards` itself only: `exact` stops it highlighting on every `/standards/...` sub-route, where
+ * the separate "Standard" nav-rail section takes over. `NavRailLink` signals the active state with a plain `active` CSS class
+ * (not `aria-current`, which `ResourceMenu`'s links use), so these two stories assert that class. */
 export const ActiveOnTheStandardsListPath: Story = {
   decorators: [withAuth(buildUser()), withRouter("/standards")],
   beforeEach: () => {

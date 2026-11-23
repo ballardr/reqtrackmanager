@@ -68,26 +68,15 @@ import { DetailCard } from "../components/DetailCard";
 import { MarkdownView } from "../components/MarkdownView";
 
 /**
- * Requirement detail view: direct editing while unlocked, a discussion
- * thread (C-R-01), a change log that intentionally excludes discussion
- * comments (C-A-09 clarification), a Links card for typed bidirectional
- * traceability links to other requirements (C-G-09 — server-resolved
- * direction/display name, so this page never has to guess which of a link
- * type's forward/reverse names applies), and an Actions card for
- * requirement actions (review/test/etc.) linked via `RequirementActionLink`.
- * Links aren't gated by `is_locked` — they're metadata about the
- * requirement, not its own governed content, *by default* — a project (or
- * an org-wide force, minus a per-project exemption) can opt into gating
- * link add/remove too (platform review 2026-09:
- * `Project.require_change_request_for_approved_links`/
- * `Organization.force_require_change_request_for_approved_links`), routing
- * through `ADD_LINK`/`REMOVE_LINK` change requests the same way actions
- * already do. Actions *are* always gated once locked: once
- * locked, adding, linking, or removing one requires an `ADD_ACTION`/
- * `REMOVE_ACTION` change request instead of the direct endpoint, the same
- * change-request-only-once-locked rule the requirement's own fields
- * already follow (`services.requirements.LOCKED_STATUSES`) — see
- * `docs/decisions.md` for the reasoning.
+ * Requirement detail view: direct editing while unlocked, a discussion thread,
+ * a change log that excludes discussion comments, a Links card (the server
+ * resolves direction and display name) and an Actions card for
+ * `RequirementActionLink`s.
+ * Links are ungated by default (metadata, not governed content); a project, or
+ * an org-wide force minus a per-project exemption, can gate link add/remove
+ * through `ADD_LINK`/`REMOVE_LINK` change requests. Actions are always gated
+ * once locked (`services.requirements.LOCKED_STATUSES`) through
+ * `ADD_ACTION`/`REMOVE_ACTION` change requests. See `docs/decisions.md`.
  */
 export function RequirementDetailPage() {
   const run = useMutation();
@@ -100,26 +89,18 @@ export function RequirementDetailPage() {
   const myRoles = useMyProjectRoles(projectId);
   const orgLabelCap = useOrgLabelCapitalized();
   const canArchive = myRoles.includes("project_manager") || myRoles.includes("project_administrator");
-  // Narrower than canArchive: C-U-03's clarification calls out requirement
-  // approval as a Project Manager privilege specifically, not shared with
-  // Administrator — the same split `decide_change_request` and
-  // `update_requirement`'s own status=approved branch already enforce
-  // server-side.
+  // Approval is a Project Manager privilege, not shared with Administrator;
+  // mirrors the server-side split in `decide_change_request` and `update_requirement`.
   const canApprove = myRoles.includes("project_manager");
   const canEdit = canArchive || myRoles.includes("stakeholder");
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [history, setHistory] = useState<RequirementVersionEntry[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [form, setForm] = useState<RequirementFieldValues & { changeNote: string }>({ ...EMPTY_REQUIREMENT_FIELDS, changeNote: "" });
-  // Guards `form` against `reload()` — called after every unrelated
-  // mutation on this page (posting a comment, uploading a file, linking an
-  // action, ...) and not awaited by its callers, so it can still be
-  // mid-flight when the user edits and saves this form right after
-  // triggering one of those other actions, clobbering the edit back to
-  // its last-saved value before Save is even clicked. Same real,
-  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
-  // own comment and docs/decisions.md. Set by every field's onChange via
-  // `updateForm` below, cleared once `save()` succeeds.
+  // Guards `form` against the non-awaited `reload()` (run after unrelated
+  // mutations) overwriting an edit made while it is in flight. Set by
+  // `updateForm`, cleared once `save()` succeeds; same race as OrgAdminPage's
+  // advancedDirtyRef.
   const formDirtyRef = useRef(false);
 
   function updateForm(updater: (f: typeof form) => typeof form) {
@@ -137,10 +118,8 @@ export function RequirementDetailPage() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  // Organisation id, needed to browse that org's shared resources (style
-  // guide "Pattern: resource picker dialog") — set as soon as the project
-  // itself resolves, independent of whether the org-member-only calls
-  // right after it (org users, link types) succeed for this user.
+  // Organisation id for browsing the org's shared resources; set once the
+  // project resolves, independent of the org-member-only calls below.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const watchingTab = useWatchingTab({
@@ -148,31 +127,22 @@ export function RequirementDetailPage() {
     organizationId: organizationId ?? undefined, projectId, canManage: canArchive, refreshKey: requirement?.is_subscribed,
   });
   const [showResourcePicker, setShowResourcePicker] = useState(false);
-  // The project's own
-  // `require_change_request_for_approved_links` plus the org's
-  // `force_require_change_request_for_approved_links` (minus this
-  // project's `exempt_from_org_link_lock`) determine whether link
-  // add/remove is gated the same way actions already are. Best-effort: if
-  // the org fetch fails (e.g. this user has no org role at all, the same
-  // "org member directory isn't reachable" case the org users/link types
-  // fetch below already tolerates), `orgForceLinksLocked` just stays
-  // false rather than breaking the page.
+  // Whether link add/remove is gated: the project's
+  // `require_change_request_for_approved_links` plus the org's force (minus
+  // `exempt_from_org_link_lock`). Best-effort: if the org fetch fails,
+  // `orgForceLinksLocked` stays false.
   const [project, setProject] = useState<Project | null>(null);
   const [orgForceLinksLocked, setOrgForceLinksLocked] = useState(false);
 
   // --- Traceability links (C-G-09) ------------------------------------
-  // Links are shown and edited by the shared Links panel in the aside
-  // (`ArtefactLinksPanel`) —
-  // requirement-to-requirement, module-origin (Decisions, Pain Points,
-  // Compliance, ...) and cross-project links alike. This page only decides
-  // whether link changes must go through a change request (`linksLockedForCR`,
-  // below) and supplies the two calls for that. Bumped after anything on this
-  // page that could change the links, so the panel reloads.
+  // The shared Links panel (`ArtefactLinksPanel`) shows and edits every link.
+  // This page decides only whether changes go through a change request
+  // (`linksLockedForCR`) and supplies those calls; the token is bumped after
+  // anything that could change links so the panel reloads.
   const [linksRefreshToken, setLinksRefreshToken] = useState(0);
-  // Extra module-contributed sections (`requirementDetailSections`), rendered under
-  // the Links panel in the aside. This page renders whatever each currently-enabled
-  // module hands it and never imports a specific module's entity itself, mirroring
-  // the project overview's identical `overviewWidgets` convention.
+  // Module-contributed sections (`requirementDetailSections`) render under the
+  // Links panel; this page never imports a specific module's entity (same
+  // convention as `overviewWidgets`).
   const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
   const contributedLinkSections =
     projectId && requirementId && organizationId
@@ -185,13 +155,8 @@ export function RequirementDetailPage() {
       : [];
 
   // --- Linked requirement actions --------------------------------------
-  // Same conversion as the links above: "link existing" is a one-field
-  // `Popover` (a quick decision about an existing entity, not a create
-  // flow), "create and link" opens a brand-new `Action` in a `Modal` (per
-  // the revised Principle 3 — a new entity has no "what came before it" in
-  // the app's reading order, so it doesn't belong in `SidePanel`'s
-  // contextual-detail slot), and unlinking goes through `ConfirmDialog`
-  // instead of firing immediately.
+  // "Link existing" is a one-field `Popover`, "create and link" opens a
+  // `Modal`, and unlinking goes through `ConfirmDialog`.
   const [linkedActions, setLinkedActions] = useState<RequirementAction[]>([]);
   const [projectActionTypes, setProjectActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [projectActions, setProjectActions] = useState<RequirementAction[]>([]);
@@ -284,11 +249,8 @@ export function RequirementDetailPage() {
     reload();
   }
 
-  /** Links one or more already-uploaded organisation shared resources onto
-   * this requirement, via the `POST .../files/link` endpoint (previously
-   * unused from the frontend — "Shared org
-   * resources have almost no way to consume them"). One request per file
-   * id, sequentially — the endpoint itself only accepts one id at a time. */
+  /** Links organisation shared resources onto this requirement via
+   * `POST .../files/link`, one request per file id (the endpoint takes one). */
   async function linkOrgResources(fileIds: string[]) {
     for (const fileId of fileIds) {
       await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/files/link`, { file_id: fileId });
@@ -358,10 +320,8 @@ export function RequirementDetailPage() {
     }
   }
 
-  /** `unlink_action` previously had no
-   * lock check at all, an asymmetry with the already-gated add side (item
-   * 514); unconditional across every project, unlike `removeLink` above
-   * which only gates when `linksLockedForCR`. */
+  /** Unlinking an action is gated in every project, unlike `removeLink`,
+   * which gates only when `linksLockedForCR`. */
   async function unlinkAction(actionId: string, reason?: string) {
     if (requirement?.is_locked) {
       await api.post(`/api/v1/projects/${projectId}/change-requests`, {
@@ -401,37 +361,31 @@ export function RequirementDetailPage() {
       try {
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
         setOrgUsers(users);
-        // `OrganizationOut.
-        // force_require_change_request_for_approved_links` is readable by
-        // any org member (unlike most other org policy toggles), so this
-        // shares the same try/catch as the org-member-only calls above.
+        // Readable by any org member, so it shares the try/catch with the
+        // org-member-only calls above.
         const org = await api.get<Organization>(`/api/v1/orgs/${proj.organization_id}`);
         setOrgForceLinksLocked(org.force_require_change_request_for_approved_links);
       } catch {
-        // Org member directory isn't reachable for this user (e.g. no org
-        // role) — the owner and reviewer pickers search the server instead
-        // and stay usable. `orgForceLinksLocked` stays at its default
-        // (false) — see its own state comment.
+        // Org member directory unreachable (no org role): the owner and
+        // reviewer pickers search the server and stay usable;
+        // `orgForceLinksLocked` keeps its default (false).
       }
     })();
   }, [projectId]);
 
-  // Mirrors `services.requirements.
-  // requires_change_request_for_links`'s resolution exactly: the project's
-  // own opt-in always wins when set; otherwise the org's force applies
-  // unless this project is marked exempt.
+  // Mirrors `services.requirements.requires_change_request_for_links`: the
+  // project's own opt-in wins when set; otherwise the org's force applies
+  // unless the project is exempt.
   const requiresCRForLinks = !!(
     project?.require_change_request_for_approved_links ||
     (orgForceLinksLocked && !project?.exempt_from_org_link_lock)
   );
   const linksLockedForCR = !!requirement?.is_locked && requiresCRForLinks;
 
-  /** Once `linksLockedForCR`, the Links panel
-   * proposes link changes as `add_link`/`remove_link` change requests instead of
-   * calling the link endpoints (the same branch `linkExistingAction` below takes
-   * for `add_action`). `undefined` when links are not locked. An `add_link` request
-   * carries the one link the dialog chose (any record the panel can link to, from
-   * either end); the reason is required by the panel before it calls. */
+  /** When `linksLockedForCR`, the Links panel proposes `add_link`/`remove_link`
+   * change requests instead of calling the link endpoints; `undefined`
+   * otherwise. An `add_link` request carries the one link the dialog chose;
+   * the panel requires a reason. */
   const linksChangeRequest: LinksChangeRequestMode | undefined = linksLockedForCR
     ? {
         onPropose: async (link, reason) => {
@@ -487,10 +441,8 @@ export function RequirementDetailPage() {
     }
   }
 
-  // Restore: no `ConfirmDialog` (unlike archive above) — mirrors
-  // `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
-  // immediately, since restoring is reversible again (archive it right
-  // back) rather than a Tier-1-confirmed action.
+  // Restore fires at once without a `ConfirmDialog` (as ProjectAdminPage's
+  // unarchive does) because it is reversible.
   async function restore() {
     try {
       await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/unarchive`);
@@ -715,11 +667,8 @@ export function RequirementDetailPage() {
             <Badge tone={REQUIREMENT_STATUS_TONE[requirement.status]}>
               {strings.requirements.status}: {REQUIREMENT_STATUS_LABEL[requirement.status]}
             </Badge>
-            {/* C-G-11: completion is a separate overlay marker from lifecycle
-                status — rendered as its own badge rather than merged into the
-                status badge above, since the two are now independent
-                concepts (a completed requirement's status badge still reads
-                "Approved"). */}
+            {/* C-G-11: completion is a marker independent of lifecycle status,
+                so it has its own badge. */}
             {requirement.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
             <Badge>Target: {stageName(requirement.target_stage_id)}</Badge>
             <Badge>Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</Badge>

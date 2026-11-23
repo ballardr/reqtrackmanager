@@ -5,12 +5,12 @@ The folders an organisation or project added to its Reports picker (`ReportFolde
 export bundles.
 
 Responsibilities:
-- Export a scope's own folder paths (a folder with reports in it travels as the label on those reports as well).
-- Import them: tidy each path again, skip one the scope already lists, and store the rest.
+- Export a scope's own folder paths (a folder with reports travels as the label on those reports too).
+- Import them: tidy each path, skip one the scope already lists, store the rest.
 
 Design decisions:
-- **A bundle is untrusted input.** An invalid path is dropped with a warning rather than failing the import.
-- Folders are configuration: no author or time is restored; the audit event of the store is the record.
+- A bundle is untrusted input: an invalid path is dropped with a warning, not a failed import.
+- Folders are configuration: no author or time is restored; the store's audit event is the record.
 
 Dependencies: `services.report_folder_store`, `models.report_folder`.
 """

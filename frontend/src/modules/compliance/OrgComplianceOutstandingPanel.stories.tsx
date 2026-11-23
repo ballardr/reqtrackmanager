@@ -170,12 +170,9 @@ const REQUIREMENTS_VER_1: ComplianceRequirement[] = [
   { id: "req-2", standard_version_id: "ver-1", parent_requirement_id: "sec-5", reference: "A.5.16", name: "Identity management", sort_order: 1, ...REQUIREMENT_DEFAULTS },
 ];
 
-/** Filtering by Project narrows every section that carries a
- * `project_id` (all five), and filtering by Standard then Sub-section
- * additionally narrows the three requirement-scoped sections (both
- * `req-1`/`req-2` sit under "Annex A.5," so picking "Clause 4" empties
- * them while Evidence and Reviews — not per-requirement — are unaffected
- * by the sub-section pick specifically). */
+/** Filtering by Project narrows every section carrying a `project_id` (all five). Filtering by Standard and then Sub-section
+ * narrows the three requirement-scoped sections (`req-1` and `req-2` sit under "Annex A.5", so "Clause 4" empties them) while
+ * Evidence and Reviews, which are not per-requirement, are unaffected by the sub-section. */
 export const FilteredByProjectStandardAndSubSection: Story = {
   decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () =>

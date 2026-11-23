@@ -1,12 +1,10 @@
 /**
  * Module: utils/historyButtonHelp
  *
- * The words on the Undo and Redo buttons of an editor with a local edit history: the tooltip and the key list for assistive
- * technology, for the person's platform.
- *
- * Design decisions:
- * - The tooltip says what Undo does not reach (a record created at once from the editor is already stored), so the key is
- *   not mistaken for a way to remove it.
+ * The words on the Undo and Redo buttons of an editor with a local edit history:
+ * the tooltip and the key list for assistive technology, for the person's
+ * platform. The tooltip says what Undo does not reach (a record created at once
+ * from the editor is already stored), so the key is not mistaken for removing it.
  */
 
 /** The tooltip and `aria-keyshortcuts` text for each button on the given platform. */

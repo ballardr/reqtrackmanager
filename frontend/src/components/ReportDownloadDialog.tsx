@@ -1,23 +1,20 @@
 /**
  * Module: components/ReportDownloadDialog
  *
- * The "Download report" dialog of a record list, in two steps: (1) choose a report, from the same folder picker the
- * Reports dialog uses, then (2) configure it for the project (or organisation) and download it.
+ * The "Download report" dialog of a record list, in two steps: (1) choose a report from the Reports dialog's folder
+ * picker, then (2) configure it for the project (or organisation) and download it.
  *
- * Responsibilities:
- * - Load the project's or organisation's report catalogue and keep the entries whose `record_types` include the
- *   list's type, so a requirements list never offers an engagement report, and drop `view_only` reports (read on
- *   screen in the Reports dialog; their tables stay available as widgets). The catalogue already reflects module
- *   enablement, the caller's role and placements (folders, hidden reports), so nothing is re-checked here.
- * - Offer the report packs beside them (`useReportPackEntries`): a pack is listed when any report in it reads the
- *   list's type (the server derives `record_types` from its entries), filed by the same placements as in the Reports dialog.
+ * - Loads the report catalogue and keeps the entries whose `record_types` include the list's type, so a requirements
+ *   list never offers an engagement report, and drops `view_only` reports (read on screen in the Reports dialog).
+ *   The catalogue already reflects module enablement, the caller's role and placements, so nothing is re-checked.
+ * - Offers the report packs beside them (`useReportPackEntries`): a pack is listed when any report in it reads the
+ *   list's type (the server derives `record_types`), filed by the same placements as in the Reports dialog.
  * - Step 2 names the report and the project it runs for, then shows its parameters, variables and format menu
  *   (`ReportRunner` with `showResult` off), or for a pack its variable form, counts and zip download
- *   (`ReportPackRunner`): the report is never previewed in the dialog.
+ *   (`ReportPackRunner`); the report is never previewed in the dialog.
  *
- * Design decisions: the catalogue is loaded when the dialog opens, not when the list page does, so a list that never
- * uses it costs no request. Reports carry their own filters, so the list's current filters are not passed on (the
- * list's own Export menu items already download the filtered rows).
+ * The catalogue loads when the dialog opens, so a list that never uses it costs no request. Reports carry their own
+ * filters, so the list's filters are not passed on (the list's Export items download the filtered rows).
  *
  * Dependencies: `useReportCatalogue`, `useReportPackEntries`, `useReportPlacements`, `useScopeName`, `ReportPickerPanel`,
  * `ReportRunner`, `StepIndicator`, `Modal`.

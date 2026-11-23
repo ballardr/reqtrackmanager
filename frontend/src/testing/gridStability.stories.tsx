@@ -1,7 +1,7 @@
 /**
- * Stories that pin `gridStability` itself: a tidy grid passes, and a grid built to break each rule fails it, so the
- * guard cannot silently stop detecting a defect it exists for. The broken grids are deliberately wrong (a track sized
- * by its text, a cell that wraps its controls away), which is the shape the product's own views must never take.
+ * Stories that pin `gridStability` itself: a tidy grid passes and grids built to
+ * break each rule (a track sized by its text, a cell that wraps its controls
+ * away) fail, so the guard cannot silently stop detecting a defect.
  */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";

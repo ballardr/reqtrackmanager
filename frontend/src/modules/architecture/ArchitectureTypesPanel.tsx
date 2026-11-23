@@ -1,14 +1,13 @@
 /**
  * Module: modules/architecture/ArchitectureTypesPanel
  *
- * The settings list of one vocabulary (element types, connection types or domains) for a project or for an organisation,
+ * The settings list of one vocabulary (element types, connection types or domains) for a project or an organisation,
  * on the shared `DefinitionList`: inline rename, reorder, add and delete. The one Add button above the list opens
- * `TypeFormModal` empty, the same form the Edit dialog uses, so a type is created with every attribute in one step
- * (a domain is only a name, so its Add dialog is the name alone and it has no Edit dialog). In a project, a row that
- * is an organisation default is read-only there: deleting it hides it in this project (after a confirmation) and
- * the list's actions menu offers "Add organisation defaults" (only while one is hidden) to show it again; to change
- * a default, hide it and add a type of the project's own. A type in use cannot be deleted (the server answers 409), so the message tells
- * the administrator to hide it instead.
+ * `TypeFormModal` empty, the same form the Edit dialog uses (a domain is only a name, so its Add dialog is the name
+ * alone and it has no Edit dialog). In a project, an organisation default is read-only: deleting it hides it in this
+ * project (after a confirmation) and the actions menu offers "Add organisation defaults" (only while one is hidden)
+ * to show it again. A type in use cannot be deleted (the server answers 409), so the message tells the
+ * administrator to hide it instead.
  */
 import { Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";

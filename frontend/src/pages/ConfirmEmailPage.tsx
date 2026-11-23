@@ -1,14 +1,14 @@
 /**
  * Module: pages/ConfirmEmailPage
  *
- * Signed-out page the link in the sign-up confirmation email opens (`/confirm-email#token=...`): it spends the link
- * (`POST /auth/confirm-email`) and says whether the address is now confirmed.
+ * Signed-out page opened by the sign-up confirmation link (`/confirm-email#token=...`); spends the link
+ * (`POST /auth/confirm-email`) and says whether the address is confirmed.
  *
- * Responsibilities: read the link's secret from the URL fragment and remove it from the address bar at once, send it
- * once, and show the outcome with a way to sign in.
+ * Responsibilities: read the secret from the URL fragment, remove it from the address bar, send it once and
+ * show the outcome with a way to sign in.
  *
- * Design decisions: the secret is in the fragment, which browsers never send to a server, so it stays out of access
- * logs and referrers. The page does not sign the person in: they sign in with the password they chose.
+ * Design decisions: the secret is in the fragment, which browsers never send to a server, so it stays out of
+ * access logs and referrers. The page does not sign the person in.
  */
 import { useEffect, useRef, useState } from "react";
 

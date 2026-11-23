@@ -1,22 +1,15 @@
 /**
  * Module: components/CellText
  *
- * The one way a grid cell, table cell, list row or card shows text a person typed (a name, a summary, a
- * description, a code). A layout must never take its shape from user text: a long name that widens its
- * column, or a long description that wraps and pushes the controls beside it onto a new line, is found by
- * whoever has the longest data. `CellText` keeps the text inside its own cell.
+ * The one way a grid cell, table cell, list row or card shows text a person typed. A layout must never take its
+ * shape from user text; `CellText` keeps the text inside its own cell: one line cut with an ellipsis (default) or
+ * a clamp of `lines` lines, an unbroken word broken (`overflow-wrap: anywhere`), and the full text in a `Tooltip`
+ * only while it is clipped.
  *
- * Responsibilities:
- * - One line cut with an ellipsis (default), or a clamp of `lines` lines, never taller than that.
- * - Break an unbroken word (`overflow-wrap: anywhere`) so it cannot widen a column.
- * - Show the full text in a `Tooltip` only while the text is actually clipped.
- *
- * Design decisions: the element is `min-width: 0` and flexes (`flex: 0 1 auto`), so beside a control in a flex
- * row or a grid track it gives way and the control keeps its size and its line. It never holds controls: put a
- * button beside it, not inside it. The text must be a string so the tooltip can carry it. A table column sized
- * from its content never gets narrower than a one-line text, so in a table cell use `lines` of two or more
- * (the clamp may break anywhere, so the column can give way) and, for a column that should stay narrow,
- * `maxWidth`.
+ * The element is `min-width: 0` and flexes (`flex: 0 1 auto`), so beside a control it gives way and the control
+ * keeps its size and line. It never holds controls. The text must be a string so the tooltip can carry it. A table
+ * column sized from its content never narrows below a one-line text, so a table cell uses `lines` of two or more
+ * and, for a narrow column, `maxWidth`.
  *
  * Dependencies: `Tooltip`, `useIsClipped`; the `.cell-text*` rules in `styles/theme.css`.
  */

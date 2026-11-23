@@ -1,54 +1,30 @@
 """
 Module: services.project_export
 
-Exports a project's full structure and history (components/categories/
-stages/custom field definitions/groups, every requirement's full version
-history, every change request with its versions/tasks/votes/comments,
-baselines, review outcomes, and structural audit events) as a self-
-contained, versioned zip bundle, and imports such a bundle back as a brand
-new project — same organisation or a different one.
+Exports a project's full structure and history (components, categories, stages, custom field definitions,
+groups, every requirement's version history, change requests with versions/tasks/votes/comments, baselines,
+review outcomes and structural audit events) as a versioned zip bundle, and imports a bundle as a new
+project in the same or a different organisation.
 
-Every cross-reference inside the bundle uses a portable key instead of a
-raw database id, since ids from the source database are meaningless in the
-target one: requirements by `unique_code`, change requests by `ref` (their
-`unique_code`; an import numbers its change requests afresh), components/categories by prefix, stages/custom field
-definitions by name, and every user reference by email (resolved on import
-via `services.bundle_common.UserResolver`).
+Every cross-reference uses a portable key, since source ids mean nothing in the target: requirements by
+`unique_code`, change requests by `ref` (an import numbers them afresh), components/categories by prefix,
+stages and custom field definitions by name, users by email (`services.bundle_common.UserResolver`).
+Actions travel through `services.project_actions_bundle`.
 
-Requirement actions travel too (`services.project_actions_bundle`): the project's action types, each action with its
-comments, attachments, tags and places, and its links to requirements, by `unique_code`.
+Excluded:
+- `Notification`, `NotificationPreference`, `Subscription` (per-user inbox state) and `LoginEvent` (security log).
+- `ChangeRequestVersion.proposed_attachment_file_ids` (organisation-resource files outside this bundle's
+  file enumeration); imported as empty.
+- `ProjectGroupMember` rows: only group structure (name, roles) is recreated. Re-granting membership by email
+  match would give an unrelated account project access (privilege escalation, especially across
+  organisations); member emails stay in the export for reference. The importing user is always a project
+  manager, as with `POST /projects`.
 
-Deliberately out of scope (documented rather than silently dropped):
-`Notification`/`NotificationPreference`/`Subscription` (per-user, per-
-deployment inbox state that's meaningless once ids change) and `LoginEvent`
-(security/auth log, not project content) are never included.
-`ChangeRequestVersion.proposed_attachment_file_ids` references
-organisation-resource files outside this project bundle's own file
-enumeration (`RequirementFile`/`CommentFile` attachments only) and is
-always imported as empty — re-attaching those is a manual follow-up.
-`ProjectGroupMember` rows are never recreated on import at all — only the
-group *structure* (name/roles) is. Blindly re-granting membership by email
-match would let an account with no prior relationship to the target
-organisation gain project access purely because its email happens to
-match, which is a privilege-escalation risk, not a convenience worth the
-exposure — especially for a cross-organisation import. Member emails are
-still included in the export for a human to re-populate manually. The
-importing user is always guaranteed project-manager access regardless
-(the same guarantee `POST /projects` gives its own caller).
-
-A registered module's own project-level bundle content (`app.modules.
-registry.get_all_module_project_bundle_hooks` — e.g. the Compliance
-module's own project *assessment* data) is folded into `collect_project_
-data`'s/`apply_project_data`'s own return value/`data` dict the same
-generic way `services.org_export` folds in each module's org-level content,
-via that module's own `ModuleProjectBundleHooks.export`/`import_` — this
-file never constructs a module's own entity types directly. See
-`app.modules.compliance.export`'s own module docstring for why Compliance's
-own project *assessment* content (which standards a project is assigned to,
-its per-requirement state, evidence, reviews) travels with *this* bundle
-while the *standard definitions* it assesses against stay organisation-
-level content in `services.org_export`'s bundle instead, resolved at import
-time by a portable `(standard reference, version label)` key.
+A module's project-level content travels through its `ModuleProjectBundleHooks`
+(`app.modules.registry.get_all_module_project_bundle_hooks`), folded into `collect_project_data` and
+`apply_project_data` as `services.org_export` folds in org-level content; this file never builds a module's
+types. Compliance assessments travel here while standard definitions stay in the organisation bundle,
+matched on import by `(standard reference, version label)` (`app.modules.compliance.export`).
 """
 
 from __future__ import annotations
@@ -229,11 +205,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     stage_name_by_id = {s.id: s.name for s in stages}
     component_prefix_by_id = {c.id: c.prefix for c in components}
     category_by_id = {c.id: c for c in categories}
-    # RequirementVersion.custom_fields/ChangeRequestVersion.custom_fields are
-    # JSONB dicts keyed by the *stringified* definition id (see
-    # models.requirement.RequirementVersion.custom_fields's docstring) — the
-    # lookup below must match on that string form, not the UUID object
-    # itself, or every value silently fails the `k in cf_name_by_id` check.
+    # Version custom_fields are keyed by the stringified definition id, so this lookup keys on the string form.
     cf_name_by_id = {str(d.id): d.name for d in definitions}
     req_code_by_id = {r.id: r.unique_code for r in requirements}
     cr_ref_by_id = {cr.id: cr.unique_code for cr in change_requests}
@@ -251,14 +223,9 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     keywords_by_req = keywords_for_requirements(db, req_ids)
     aliases_by_req = aliases_for_requirements(db, req_ids, include_retired=True)
 
-    # Requirement-to-requirement traceability links only (not untyped
-    # action links, which also live in `artefact_links` but aren't part of
-    # this bundle's own requirement-links section) — filtering on
-    # `source_type == REQUIREMENT` already excludes those, since an action
-    # link's source is always a `RequirementAction`, never a `Requirement`.
-    # Same-project links only: a link to an ancestor or descendant project's artefact is
-    # left out (a bundle must not embed another project's content, and import never
-    # recreates one); the manifest reports how many were left out.
+    # Requirement-to-requirement links only (action links have another source type). Same-project
+    # links only: a link to an ancestor or descendant project's artefact is left out, because a
+    # bundle must not embed another project's content; the manifest reports how many were left out.
     links = list(
         db.scalars(
             select(ArtefactLink).where(
@@ -269,14 +236,9 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         )
         if req_ids else []
     )
-    # Link types are exported/matched by name, not id — like every other
-    # cross-tenant reference in this bundle (users by email, custom fields
-    # by name), an id from the source deployment's
-    # `requirement_link_type_definitions` table means nothing on import
-    # (`apply_project_data` looks this back up by `forward_name` within the
-    # *target* organisation's own link types).
-    # Only the types the exported links reference are loaded (never every type the
-    # organisation has, which would include other projects' local types).
+    # Link types are exported by name, not id: an id means nothing in the target deployment
+    # (`apply_project_data` matches `forward_name` within the target organisation's link types).
+    # Only the types the exported links reference are loaded, so other projects' local types stay out.
     link_type_ids = {link.link_type_id for link in links if link.link_type_id is not None}
     link_type_forward_name_by_id = {
         lt.id: lt.forward_name
@@ -823,32 +785,13 @@ def _apply_project_data(
                 out[str(definition_id)] = value
         return out
 
-    # Group *structure* (name/role) is recreated, but membership is
-    # deliberately NOT replayed from `member_emails`, even though those
-    # emails were resolved for every other reference in this bundle: doing
-    # so would silently grant a real account project access purely because
-    # its email happens to match — including, for a cross-organisation
-    # import, an account with no prior relationship to the target
-    # organisation at all. That's a privilege-escalation-via-import risk,
-    # not a convenience worth the exposure. `member_emails` stays in the
-    # export purely as a human-readable reference for whoever re-populates
-    # membership by hand afterward. The importing user always ends up a
-    # project manager regardless (see the `get_effective_project_managers` fallback
-    # below), matching the same guarantee `create_project` gives its caller.
+    # Group structure (name, roles) is recreated but membership is NOT replayed from `member_emails`:
+    # that would grant a real account project access purely because its email matches, including
+    # an account with no relationship to the target organisation (privilege escalation via import).
+    # `member_emails` stays in the export as a reference only. The importing user always ends up a
+    # project manager (see the `get_effective_project_managers` fallback below), as in `create_project`.
     for g in data.get("groups", []):
-        # A bundle exported before default project groups were removed
-        # may still carry an `"is_default"` key from the old format —
-        # ignored on import, same as any other retired field: `is_default`
-        # no longer exists on `ProjectGroup` at all, and re-creating a
-        # group from a bundle is always an ordinary, fully-manageable group
-        # regardless of what it originally was.
-        #
-        # `"roles"` (docs/decisions.md) replaced the old single
-        # required `"role"` key with a list — a group may now hold zero,
-        # one, or several roles. A bundle exported before the group-roles change still carries
-        # the old singular `"role"` key instead; read either shape so an
-        # older export can still be imported without losing its group's
-        # role, without needing to re-export it first.
+        # `"roles"` is a list; the singular `"role"` key is also read so an export carrying it keeps its group's role.
         new_group = ProjectGroup(project_id=project.id, name=g["name"])
         db.add(new_group)
         db.flush()
@@ -954,17 +897,10 @@ def _apply_project_data(
                 ))
     project.next_requirement_seq = max(project.next_requirement_seq, max_seq + 1)
 
-    # Link types are matched by forward_name within the *target*
-    # organisation's own `requirement_link_type_definitions` — like every
-    # other cross-tenant reference in this bundle (users by email, custom
-    # fields by name), a source-deployment link-type id means nothing here.
-    # A bundle link whose type name has no match in the target organisation
-    # (e.g. it was a custom, non-default type the target org never defined)
-    # is skipped with a warning rather than guessing a fallback type, which
-    # would silently misrepresent the link's asserted meaning.
-    # Resolved among the types usable in the *target* project (organisation-wide, or
-    # local to it or an ancestor; the winner of a duplicate name), so a name can never
-    # land on a type the project cannot use.
+    # Link types are matched by forward_name among the types usable in the target project
+    # (organisation-wide, or local to it or an ancestor; the winner of a duplicate name), so a name
+    # never lands on a type the project cannot use. A link with no matching type is skipped with a
+    # warning, because a fallback type would misstate the link's meaning.
     link_type_id_by_name = {
         scoped.link_type.forward_name: scoped.link_type.id
         for scoped in resolve_link_type_scope(db, project)

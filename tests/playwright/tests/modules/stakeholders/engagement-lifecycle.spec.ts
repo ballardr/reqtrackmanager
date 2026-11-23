@@ -8,19 +8,14 @@ import { openAddLinkDialog } from "../linksPanel";
 installCleanupHook();
 
 /**
- * Job to be done:
- * Playwright e2e coverage for the Engagement UI
- * (`frontend/src/modules/stakeholders/`) against a real backend: log, edit and
- * permanently delete an engagement; add participants and covered Personas;
- * aim it at a Stakeholder group (a snapshot of members); log a contact from a
- * Stakeholder's page and see the timeline and "Last engaged"; record what an
- * engagement raised; and the research extras (prompts, anonymous participants,
- * findings) appearing only once the sub-component is on; and the compact
- * page layout: every "add" is a (+) button opening its form on demand, and the
- * facilitator is assigned from a popover rather than an always-open search box.
+ * Job to be done: e2e coverage of the Engagement UI (`frontend/src/modules/stakeholders/`) against a real
+ * backend: log, edit and permanently delete an engagement; add participants and covered Personas; aim it at a
+ * Stakeholder group (a snapshot of members); log a contact from a Stakeholder's page and see the timeline and
+ * "Last engaged"; record what an engagement raised; the research extras (prompts, anonymous participants,
+ * findings) appearing only once the sub-component is on; and the compact layout (every "add" is a (+) button
+ * opening its form on demand; the facilitator is assigned from a popover).
  *
- * Each test builds its own disposable org (see `./helpers.ts`), so none depends
- * on seeded state or on another test having run.
+ * Each test builds its own disposable org (see `./helpers.ts`), so none depends on seeded state.
  */
 
 type Headers = Record<string, string>;

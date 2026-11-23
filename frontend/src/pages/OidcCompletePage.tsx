@@ -12,22 +12,14 @@ import { takeReturnTo } from "../utils/returnTo";
 const strings = t();
 
 /**
- * Landing point for the OIDC login redirect (E-U-01): the backend's
- * `/api/v1/auth/oidc/callback` finishes the token exchange server-side and
- * redirects here with a working app access token — carried in the URL
- * *fragment*, not the query string, since fragments are never transmitted
- * to any server and so never land in access logs (see the backend redirect
- * in `routers/auth_oidc.py` for the matching rationale).
+ * Landing point for the OIDC login redirect (E-U-01): the backend's `/api/v1/auth/oidc/callback`
+ * completes the token exchange and redirects here with an access token in the URL fragment, not the
+ * query string, because fragments are never sent to a server or logged (`routers/auth_oidc.py`).
  *
- * Before trusting that token, this page confirms the `client_nonce` riding
- * alongside it matches the one this same browser generated and stashed in
- * `sessionStorage` before it ever started this login attempt
- * (`OrgLoginPage.generateClientNonce`). Without this check, anyone who can
- * get a victim to open `/oidc-complete#token=<attacker's own valid
- * token>` would silently log the victim's browser into the attacker's
- * account — a login-CSRF / session-fixation attack. A bare URL proves
- * nothing about who's viewing it; the nonce proves the token is the result
- * of a flow *this* browser itself kicked off.
+ * Before trusting the token, the page checks that the accompanying `client_nonce` matches the one this
+ * browser stored in `sessionStorage` when it started the login (`OrgLoginPage.generateClientNonce`).
+ * Without it, a victim opening `/oidc-complete#token=<attacker's token>` would be signed in to the
+ * attacker's account (login CSRF / session fixation).
  */
 export function OidcCompletePage() {
   const { refreshUser } = useAuth();
@@ -46,11 +38,9 @@ export function OidcCompletePage() {
 
     const deniedMessage = query.get("message");
     if (query.get("error") === "not_provisioned") {
-      // Authenticated successfully at the identity provider, but the org
-      // hasn't granted this account's IdP group access (Organization.
-      // oidc_required_group) — no token was ever issued, so there's nothing
-      // to store; just show why. Still nonce-checked so this page can't be
-      // used to plant an arbitrary-looking denial message either.
+      // The identity provider authenticated the account but the organisation's required group
+      // (Organization.oidc_required_group) was not granted: no token exists, so only show why.
+      // Nonce-checked so the page cannot be used to display an arbitrary denial message.
       const receivedNonce = query.get("client_nonce");
       if (!expectedNonce || receivedNonce !== expectedNonce) {
         setError(strings.login.error);

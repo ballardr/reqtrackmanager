@@ -1,28 +1,12 @@
-"""Tests for Context & Strategy's cross-artefact relationships backend API
-— the real HTTP endpoints on both
-`project_router.py` (all five source artefact types) and `router.py`
-(Strategy/Future State/Guiding Principle's org-scoped halves), through the
-`client` fixture, mirroring every sibling artefact-type test file's own
-"go through the real API" convention. A new sibling file, matching
-the other test files' precedent (one file per concern).
+"""
+Tests for cross-artefact relationships through the real HTTP endpoints of
+`project_router.py` (all five source types) and `router.py` (org-scoped halves).
 
-Covers: typed relationship creation (Pain Point -> drives -> Strategy,
-Strategy -> drives -> Requirement, Strategy -> defines -> Future State,
-Guiding Principle -> informs -> Requirement), an untyped "related to"
-association (Future State -> Pain Point), duplicate-link rejection (409),
-cross-organisation rejection (409), plain-member-cannot-create (403) vs.
-manager-can-create, org-scoped Strategy relationship creation (`router.py`),
-Strategy supersession (creates the typed `ArtefactLink` *and* transitions
-the old Strategy to `Superseded`), and the MCP AI-approvals gate on
-`approve_strategy` (one of the five gated tools) as a representative
-case, mirroring `test_decisions_ai_approvals_via_mcp.py`'s own pattern.
-
-No `RequirementLinkTypeDefinition` reuse-across-relationship-shape claims
-are asserted for every single kind — `test_context_strategy_relationships_
-api.py`'s own scope is proving the *mechanism* (generic dispatcher, typed
-vs. untyped, RBAC, cross-org rejection, supersession) works correctly, not
-exhaustively re-testing all fifteen or so relationship kinds one by one
-(each is a one-line dict entry in `service.py`, not independent logic).
+Covers typed and untyped link creation, duplicate (409) and cross-organisation
+(409) rejection, member 403 versus manager success, org-scoped creation,
+Strategy supersession (link plus transition to `Superseded`) and the
+AI-approvals gate on `approve_strategy`. The mechanism is tested, not every
+relationship kind.
 """
 
 from __future__ import annotations
@@ -419,9 +403,8 @@ def test_approve_strategy_via_mcp_succeeds_once_both_flags_enabled(client, admin
 def test_deleting_the_org_removes_its_artefact_links_and_type_overrides(client, admin_token):
     """Deleting an organisation that has linked Context & Strategy artefacts
     and a project pain-point type override succeeds and leaves no orphaned
-    links (2026-10-05: it returned a 500 — links blocked its link types'
-    deletion, and depending on cascade order an override's `SET NULL` FK
-    broke its CHECK constraint; org deletion now removes projects first)."""
+    links (projects are removed first, so link types are free and an
+    override's `SET NULL` FK does not break its CHECK constraint)."""
     from sqlalchemy import or_, select
 
     from app.models.relationship import ArtefactLink

@@ -1,8 +1,8 @@
 /**
  * Module: components/scoringLevelFields
  *
- * The level rows of the scoring editors (`ScoringAxisLevels`, used by the organisation `ScoringSchemeEditor` and the project
- * `ProjectScoringSettings`): the editable fields of one level, and the parse of a row's text into the API body. A derived axis (Demand) adds a
+ * The level rows of the scoring editors (`ScoringAxisLevels`, used by `ScoringSchemeEditor` and `ProjectScoringSettings`):
+ * the editable fields of one level and the parse of a row's text into the API body. A derived axis (Demand) adds a
  * threshold field, which the server requires on it and refuses on a manual axis.
  */
 import type { ScoringAxis, ScoringLevel } from "../api/scoring";

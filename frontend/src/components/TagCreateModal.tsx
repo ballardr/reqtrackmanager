@@ -4,11 +4,9 @@
  * The dialog that adds a tag to a vocabulary, opened by the Tags page's "New tag" button so the page shows no empty
  * fields until someone asks (docs/ux-style-guide.md, "Pattern: creation controls on demand").
  *
- * Responsibilities:
- * - Collect the tag's name (validated with `tagNameProblem`, the server's rule) and optional colour.
- * - Hand them to `onCreate`; a refusal stays in the dialog beside Save and the dialog closes only once the tag exists.
- *
- * The caller's `onCreate` reloads the vocabulary and shows the toast.
+ * Responsibilities: collect the name (validated with `tagNameProblem`, the server's rule) and optional colour and hand
+ * them to `onCreate`; a refusal stays in the dialog beside Save and the dialog closes only once the tag exists. The
+ * caller's `onCreate` reloads the vocabulary and shows the toast.
  */
 import { useState } from "react";
 

@@ -1,15 +1,11 @@
 /**
  * Module: components/ScoringModelBands
  *
- * The "rating bands per model" block shared by the org-level
- * `ScoringSchemeEditor` and project-level `ProjectScoringSettings`
- * (generic scoring-matrix core): pick a model, edit its
- * bands (`ScoringBandsEditor`), and preview them on the model's first two
- * axes (`ScoringMatrixChart`; first axis = rows, second = columns). For a
- * two-axis model the preview becomes the cell-ratings editor
- * (`ScoringCellRatingsEditor`) when the caller supplies the cell handlers.
- * Only *where* bands and cell ratings are saved differs between the two
- * callers, so that is all they pass in.
+ * The "rating bands per model" block shared by the organisation `ScoringSchemeEditor` and the project
+ * `ProjectScoringSettings`: pick a model, edit its bands (`ScoringBandsEditor`) and preview them on the model's first
+ * two axes (`ScoringMatrixChart`; first axis = rows). For a two-axis model the preview becomes the cell-ratings editor
+ * (`ScoringCellRatingsEditor`) when the caller supplies the cell handlers. Only where bands and cell ratings are saved
+ * differs between the callers, so that is all they pass in.
  */
 import { useState } from "react";
 

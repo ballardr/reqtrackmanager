@@ -1,30 +1,24 @@
 """
 Module: services.bundle_links
 
-Shared export/import of the `ArtefactLink` rows between a module's own records
-(and Requirements) for a project bundle, so each module's bundle hooks do not
-re-implement it.
+Shared export and import of the `ArtefactLink` rows between a module's own records (and Requirements) for a
+project bundle, so module bundle hooks do not re-implement it.
 
-Responsibilities:
-- `export_artefact_links`: same-project links whose two ends are both known to
-  the caller (its own records, by bundle ref) or are Requirements (by code).
-- `import_artefact_links`: recreates them against the new records, skipping with
-  a warning anything that no longer resolves.
+Responsibilities: `export_artefact_links` (same-project links whose ends are both the caller's own records, by
+bundle ref, or Requirements, by code); `import_artefact_links` (recreate them against the new records, warning
+about and skipping anything that no longer resolves).
 
 Design decisions (Decided by: Agent):
-- Ends are portable `(type, ref)` pairs, never ids. A module chooses its refs;
-  a Requirement's ref is its unique code, which the core import keeps.
-- A link to a record the caller does not own (another module's record, an
-  organisation-level record, another project's record) is not exported: those
-  records are not in this bundle, and an import must never reference one.
+- Ends are portable `(type, ref)` pairs, never ids; a module chooses its refs and a Requirement's ref is its
+  unique code.
+- A link to a record the caller does not own (another module's, an organisation-level or another project's)
+  is not exported: those records are not in the bundle and an import must never reference one.
 - Requirement-to-Requirement links stay with the core sections.
-- Link types travel by name. On import a project-visible type of that name is
-  used, else the organisation's is created from the registered seed
-  (`services.link_types.ensure_org_link_type`).
+- Link types travel by name: on import a project-visible type of that name is used, else the organisation's is
+  created from the registered seed (`services.link_types.ensure_org_link_type`).
 - Links are replayed with `enforce_rules=False`: they were valid when created.
 
-Dependencies: `app.services.relationships`, `app.services.link_types`,
-`app.services.link_type_scope`, `app.services.bundle_common`.
+Dependencies: `app.services.relationships`, `link_types`, `link_type_scope`, `bundle_common`.
 """
 
 from __future__ import annotations

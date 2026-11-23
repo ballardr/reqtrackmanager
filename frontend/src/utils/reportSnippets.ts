@@ -1,17 +1,16 @@
 /**
  * Module: utils/reportSnippets
  *
- * Pure helpers for the snippet picker and for placing an inserted snippet in the designer's tree. The server builds and
- * validates the result (`ReportLayoutApi.applySnippet`); these only list, filter and read what it returned.
+ * Pure helpers for the snippet picker and for placing an inserted snippet in the designer's tree.
  *
  * Responsibilities:
- * - Group and filter the snippets the picker lists (`snippetCategories`, `filterSnippets`, `suitsFamily`).
- * - Work out which parameters still need a value (`initialValues`, `missingParameters`).
- * - Draw a fragment as an indented outline of its blocks (`outlineLines`) where a rendered sample would mean running a
- *   report.
- * - Read an applied result: where its blocks landed and the root-level keys it changed (`insertedBlocks`, `withBlocksOf`).
+ * - Group and filter the picker's snippets (`snippetCategories`, `filterSnippets`, `suitsFamily`).
+ * - Find the parameters that still need a value (`initialValues`, `missingParameters`).
+ * - Draw a fragment as an indented outline (`outlineLines`), since a rendered sample would mean running a report.
+ * - Read an applied result (`insertedBlocks`, `withBlocksOf`).
  *
- * Design decisions: no tree rules live here; a refused or half-valid insertion is the server's to say.
+ * Design decisions: no tree rules live here; the server builds and validates the result
+ * (`ReportLayoutApi.applySnippet`) and refuses an invalid insertion.
  */
 import type { BlockType, LayoutFamily, ReportSnippet, SnippetApplyResult } from "../api/reportLayouts";
 import { listAt, parsePath, summarise, type Seg, type Tree, type TreeNode } from "./reportLayoutTree";

@@ -162,10 +162,8 @@ export const SortByNameRefetchesWithSortParams: Story = {
     await waitFor(() =>
       expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=name&order=asc"))
     );
-    // Re-queried after every click rather than cached: `reload()` clears
-    // `requirements` to `null` before each refetch, which unmounts and
-    // remounts the whole table (and its `<th>` nodes) — a `th` reference
-    // captured before an earlier click goes stale once that happens.
+    // Re-queried after every click: `reload()` clears `requirements` and
+    // remounts the table, so an earlier `th` reference goes stale.
     await waitFor(() =>
       expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "ascending")
     );
@@ -190,9 +188,10 @@ export const SortByNameRefetchesWithSortParams: Story = {
 };
 
 /**
- * Sort by and Order in the filter panel: the list opens in the component and category order the requirements document
- * sets (no direction, no `sort` sent); choosing Created, Descending puts the newest requirement first, sent to the
- * server, and the column headers follow the same state.
+ * Sort by and Order in the filter panel: the list opens in component and
+ * category order (no direction, no `sort` sent); Created, Descending puts the
+ * newest requirement first, sent to the server, and the column headers follow
+ * the same state.
  */
 export const SortFieldPutsTheNewestRequirementFirst: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
@@ -318,11 +317,8 @@ export const StatusFilterOptionsUseLabelMap: Story = {
   },
 };
 
-/** The "Include archived" filter checkbox is what makes an archived
- * requirement reachable at all — the default list excludes them entirely,
- * and `RequirementDetailPage.tsx`'s new Restore button only helps once a
- * user can get to that page in the first place. Mirrors
- * `ProjectActionsPage.tsx`'s existing `include_archived` checkbox. */
+/** The "Include archived" checkbox makes an archived requirement reachable;
+ * the default list excludes them. */
 export const IncludeArchivedFilterShowsArchivedRequirement: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
@@ -354,11 +350,10 @@ export const IncludeArchivedFilterShowsArchivedRequirement: Story = {
 };
 
 /**
- * C-G-11: completion is an independent overlay marker, not a status value —
- * a completed requirement renders a distinct "Completed" badge alongside
- * its (still-"Approved") status badge, and the "Completed" filter checkbox
- * (separate from the Status `<select>`, which no longer offers "Completed"
- * as an option at all) narrows the list via `is_completed=true`.
+ * C-G-11: completion is an overlay marker, not a status value. A completed
+ * requirement shows a "Completed" badge beside its "Approved" status badge,
+ * and the "Completed" checkbox (the Status `<select>` has no such option)
+ * narrows the list via `is_completed=true`.
  */
 export const CompletedBadgeAndFilterCheckbox: Story = {
   beforeEach: () => {
@@ -393,7 +388,7 @@ export const CompletedBadgeAndFilterCheckbox: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
     await expect(canvas.getByText("Completed", { selector: "span.badge" })).toBeInTheDocument();
-    // The status filter select no longer offers "Completed" as an option.
+    // The status filter select has no "Completed" option.
     const statusSelect = canvas.getByLabelText("Status") as HTMLSelectElement;
     const optionLabels = Array.from(statusSelect.options).map((o) => o.textContent);
     await expect(optionLabels).not.toContain("Completed");
@@ -464,10 +459,7 @@ export const CreateFormChoosesTheComponentAndCategoryAsOnePair: Story = {
   },
 };
 
-/** Creating shows a success toast (Principle 7, sixth-pass audit — the
- * audit named this page specifically: it got real interaction-model work
- * this pass, `Modal`/`FilterBadge`, without picking up Toast, so a
- * create still just silently re-rendered the list). */
+/** Creating shows a success toast rather than silently re-rendering the list. */
 export const CreateRequirementShowsToast: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
@@ -593,10 +585,8 @@ export const CreateRequirementLinksTheChosenRecords: Story = {
   },
 };
 
-/** Style guide Principle 13 — Name/Reasoning/Description
- * used to be the only fields on this form relying on placeholder text
- * alone, unlike every field below them (Component/Category/Target
- * version/Level), which already had a real `<label>`. All seven now do. */
+/** Name, Reasoning and Description have visible labels, not only placeholder
+ * text; every field on the form is labelled. */
 export const CreateFormFieldsAllHaveVisibleLabels: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -607,20 +597,16 @@ export const CreateFormFieldsAllHaveVisibleLabels: Story = {
     await expect(panel.getByLabelText("Name")).toBeInTheDocument();
     await expect(panel.getByLabelText("Reasoning")).toBeInTheDocument();
     await expect(panel.getByLabelText("Description")).toBeInTheDocument();
-    // Unchanged from before this fix — asserted here too so a regression
-    // in one direction (removing a label these fields never had) doesn't
-    // read as a pass just because the three new ones above did.
+    // Asserted too so a regression in one direction does not read as a pass.
     await expect(panel.getByRole("button", { name: "Component and category" })).toBeInTheDocument();
     await expect(panel.getByLabelText("Target version")).toBeInTheDocument();
     await expect(panel.getByLabelText("Level")).toBeInTheDocument();
   },
 };
 
-/** Reasoning/Description are `AutoGrowTextarea` now, not
- * a fixed `rows={2}` `<textarea>`: typing content past two lines grows the
- * field's own height to show it, rather than scrolling inside a two-line
- * box (see `AutoGrowTextarea.stories.tsx` for the height-cap behaviour
- * itself, covered there rather than re-proven per call site). */
+/** Reasoning and Description are `AutoGrowTextarea`s: content past two lines
+ * grows the field instead of scrolling inside it (the height cap is covered in
+ * `AutoGrowTextarea.stories.tsx`). */
 export const ReasoningFieldGrowsWithContent: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -634,9 +620,8 @@ export const ReasoningFieldGrowsWithContent: Story = {
   },
 };
 
-/** A failed reorder now surfaces an error toast (sixth-pass audit — this
- * used to be an unhandled rejection with zero visible feedback, named
- * explicitly in the audit's "Confirmation & feedback" findings). */
+/** A failed reorder shows an error toast rather than an unhandled rejection
+ * with no visible feedback. */
 export const MoveFailureShowsToast: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
@@ -651,10 +636,9 @@ export const MoveFailureShowsToast: Story = {
   },
 };
 
-/** Style guide "Pattern: bulk operations on a list". Checking a row
- * checkbox in list view surfaces the contextual toolbar — "N selected",
- * "Clear selection", and the two bulk actions — right above the table;
- * unchecking back down to zero hides it again. */
+/** Style guide "Pattern: bulk operations on a list". Checking a row checkbox
+ * in list view shows the toolbar ("N selected", "Clear selection" and the two
+ * bulk actions) above the table; unchecking every row hides it. */
 export const BulkSelectShowsToolbar: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -704,10 +688,9 @@ export const MemberSeesNoBulkControls: Story = {
   },
 };
 
-/** Archiving selected rows goes through the same Tier-1 `ConfirmDialog`
- * as the single-row archive button (copy pluralised, count-bearing), then
- * reports a CSV-import-wizard-style "N updated" summary via `Toast`,
- * clearing the selection and refreshing the list. */
+/** Archiving selected rows uses the same Tier-1 `ConfirmDialog` as the
+ * single-row archive (pluralised, with the count), then a `Toast` reports
+ * "N updated", the selection clears and the list refreshes. */
 export const BulkArchiveConfirmAndToast: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
@@ -730,10 +713,9 @@ export const BulkArchiveConfirmAndToast: Story = {
   },
 };
 
-/** Moving selected rows to a chosen stage: the toolbar's "Move to stage"
- * button opens a `Popover` with the same stage source the single-
- * requirement create form already uses, then a `ConfirmDialog` names the
- * count and destination stage before anything happens. */
+/** Moving selected rows to a stage: "Move to stage" opens a `Popover` with
+ * the create form's stage source, then a `ConfirmDialog` names the count and
+ * destination before anything happens. */
 export const BulkMoveToStageConfirmAndToast: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");

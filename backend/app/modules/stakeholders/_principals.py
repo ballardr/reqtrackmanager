@@ -1,22 +1,12 @@
 """
 Module: modules.stakeholders._principals
 
-The owner / champion fields of Personas, Stakeholders and Needs (and an Engagement's facilitator) are principals
-(a user, an organisation group or a project group — `services.principals`).
-This module is the one place the stakeholders code turns between the three
-shapes of such a field, so no router or exporter repeats it:
-
-- request payload (`owner: PrincipalRef`) <-> version columns (`owner_type` / `owner_id`)
-- version columns -> `PrincipalOut` (batch-resolved) for responses
-- version columns <-> bundle data (a user by email, a group by name)
-
-Design decisions:
-- A project group is valid only on a project-scoped record (`validate_principal`
-  receives the record's `project_id`, None for an organisation-scoped one).
-- Bundles written before groups existed carry `owner_email`; the importer still
-  reads it, so an older backup restores.
-
-Dependencies: `services.principals`, `services.bundle_common`.
+The single place Persona, Stakeholder, Need and Engagement-facilitator owner
+fields (principals, `services.principals`) are converted between request
+payload (`PrincipalRef`), version columns (`owner_type`/`owner_id`), responses
+(`PrincipalOut`, batch-resolved) and bundle data (a user by email, a group by
+name; a legacy `owner_email` is still read). A project group is valid only on a
+project-scoped record. Dependencies: `services.principals`, `services.bundle_common`.
 """
 
 from __future__ import annotations

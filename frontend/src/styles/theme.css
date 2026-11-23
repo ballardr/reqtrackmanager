@@ -6,11 +6,9 @@
 */
 
 /*
-  App-chrome (header) colours. Deliberately outside the [data-theme] blocks
-  below: the top bar is a fixed dark anchor independent of the active
-  light/dark theme (Power Apps/Dynamics/ServiceNow-style shell), not a
-  themed surface — see docs/decisions.md, "Header chrome is theme-
-  independent."
+  App-chrome (header) colours, outside the [data-theme] blocks on purpose: the
+  top bar is a fixed dark anchor independent of the active theme, not a themed
+  surface (docs/decisions.md, "Header chrome is theme-independent").
 */
 :root {
   /* One step of indentation per level in every tree (`TreeView`, `FolderTreeList`, the link trace). */
@@ -57,20 +55,14 @@
   --color-accent: #2f855a;
   --color-danger: #c53030;
   --color-warning: #b7791f;
-  /* "awaiting decision" status tone
-     (reviewed/submitted/in_review/pending), deliberately distinct from
-     --color-warning so routine in-progress states don't compete visually
-     with things that actually need attention (e.g. an applicability
-     override, an overdue review). See docs/decisions.md. */
+  /* "awaiting decision" status tone (reviewed/submitted/in_review/pending),
+     distinct from --color-warning so routine in-progress states do not compete
+     with things that need attention. See docs/decisions.md. */
   --color-info: #0e7490;
-  /* Entity-type accent — the 3 entity kinds core itself
-     owns (requirement/action/change_request) only. A *module's* own accent
-     colour (e.g. Compliance's) is never a variable here — see
-     frontend/src/modules/entityAccentColor.ts's own docstring for why a
-     `--color-entity-compliance` var briefly lived here and was corrected
-     back out: a module's colour is registered on its own `module.ts`
-     (`TierAModuleDefinition.entityAccentColor`) and resolved client-side,
-     not declared in this core stylesheet. */
+  /* Entity-type accent for the 3 entity kinds core owns (requirement/action/
+     change_request) only. A module's accent colour is registered on its own
+     `module.ts` (`TierAModuleDefinition.entityAccentColor`) and resolved
+     client-side, never declared here (frontend/src/modules/entityAccentColor.ts). */
   --color-entity-requirement: #3b5bdb;
   --color-entity-action: #0f766e;
   --color-entity-change-request: #7c3aed;
@@ -197,12 +189,9 @@ textarea {
   border-color: var(--color-primary);
 }
 
-/* .btn:hover's var(--color-surface-alt) is right for the plain/default
-   button (its light card-toned background against normal text), but
-   applied to .btn-primary it swapped a solid, high-contrast button for a
-   near-white/near-black chip still using --color-primary-contrast text —
-   unreadable in both themes. Darken/lighten the primary colour itself
-   instead of switching backgrounds. */
+/* The default `.btn:hover` (var(--color-surface-alt)) would leave a primary
+   button's contrast text unreadable in both themes, so the primary colour itself
+   darkens or lightens. */
 .btn-primary:hover {
   background: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
@@ -220,10 +209,9 @@ textarea {
   cursor: not-allowed;
 }
 
-/* Button sizes (docs/ux-style-guide.md, "Pattern: button sizes"). Two sizes: the default `.btn`
-   (medium, 36px tall) and `.btn-sm` (28px). `.btn-icon` makes an icon-only button square at its
-   size, so an icon button and a text button of the same size are the same height. Buttons that sit
-   next to each other share a size. */
+/* Button sizes (docs/ux-style-guide.md, "Pattern: button sizes"): the default
+   `.btn` (medium, 36px) and `.btn-sm` (28px). `.btn-icon` makes an icon-only
+   button square at its size. Buttons that sit together share a size. */
 .btn-sm {
   height: 1.75rem;
   min-height: 0;
@@ -266,10 +254,8 @@ textarea {
 }
 
 /* `SplitButtonTrigger` (style guide "Pattern: split-button trigger"): two
-   adjacent `.btn`s read as one joined control — the primary action on the
-   left, a narrow chevron affordance revealing alternatives on the right,
-   sharing one border instead of each getting its own rounded corners on
-   every side. */
+   adjacent `.btn`s read as one joined control, the primary action on the left
+   and a narrow chevron revealing alternatives on the right, sharing one border. */
 .split-button {
   display: inline-flex;
 }
@@ -287,11 +273,9 @@ textarea {
   padding-right: var(--space-3);
 }
 
-/* `Tabs` (style guide "Pattern: Tabs") — deliberately distinct from `.btn`:
-   the active tab used to be styled `.btn btn-primary`, making it
-   pixel-identical to a primary button (see docs/decisions.md). An underline indicator reads as "the current
-   view of this object," not "an action to take," which a filled button
-   shape doesn't. */
+/* `Tabs` (style guide "Pattern: Tabs"), distinct from `.btn` so the active tab is
+   not identical to a primary button (docs/decisions.md). An underline reads as
+   "the current view of this object", not "an action to take". */
 .tabs-list {
   display: flex;
   flex-wrap: wrap;
@@ -327,11 +311,10 @@ textarea {
   border-bottom-color: var(--color-primary);
 }
 
-/* Solid dark top bar (U-C-01 override): fixed chrome colour, not a themed
-   surface, so it stays the same in light and dark theme. `.btn`/`.text-muted`
-   need their own rule here because their base styles pull --color-surface/
-   -border/-text, which would render as a jarring white chip (light theme)
-   or a near-invisible ~1.1:1 ghost (dark theme) against a black bar. */
+/* Solid dark top bar (U-C-01 override): fixed chrome colour, the same in both
+   themes. `.btn`/`.text-muted` need their own rules because their base styles
+   pull --color-surface/-border/-text, which would be a white chip (light) or a
+   near-invisible ghost (dark) against a black bar. */
 .app-header {
   background: var(--color-header-bg);
   color: var(--color-header-text);
@@ -377,13 +360,13 @@ textarea.input {
   padding: var(--space-3) 0.6rem;
 }
 
-/* Every single-value <select> draws the same chevron, at the same place: the browser's own arrow
-   (appearance: auto) sits at a different distance from the edge in each browser and at different
-   widths, so two selects in one panel could disagree, and it never matched the chevron of the custom
-   dropdowns (`MultiSelectDropdown`, the tag filter). The chevron is the lucide `ChevronDown`, 14px, in
-   the theme's text colour (`--select-chevron`, set per theme), 0.6rem from the right edge, which is
-   where `MultiSelectDropdown` puts its own. Right padding keeps the value text clear of it. A
-   multi-line (`multiple`, `size`) select keeps its native look. */
+/* Every single-value <select> draws the same chevron at the same place: the
+   browser's own arrow (appearance: auto) differs in position and width between
+   browsers and does not match the custom dropdowns (`MultiSelectDropdown`, the
+   tag filter). The chevron is the lucide `ChevronDown`, 14px, in the theme's text
+   colour (`--select-chevron`, per theme), 0.6rem from the right edge as in
+   `MultiSelectDropdown`; right padding keeps the value clear. A `multiple` or
+   `size` select keeps its native look. */
 select.input:not([multiple]):not([size]) {
   appearance: none;
   padding-right: 2rem;
@@ -462,14 +445,11 @@ select.input[size] {
   --badge-min-width: 8rem;
 }
 
-/* Status colour, applied as a modifier
-   on top of the plain `.badge` shape rather than a parallel badge
-   implementation. Text + border colour only (fill stays the neutral
-   --color-surface-alt) to keep this additive to the graphite palette
-   rather than a set of solid filled pills. Driven by the *_TONE maps next
-   to each status/outcome enum's *_LABEL map in api/types.ts — a status
-   should never get an inline one-off colour, only one of these 5 tones
-   (`warning` = needs attention, e.g. a "High" scoring band). */
+/* Status colour as a modifier on the plain `.badge` shape: text and border
+   colour only (the fill stays --color-surface-alt). Driven by the *_TONE maps
+   beside each status/outcome enum's *_LABEL map in api/types.ts; a status gets
+   one of these 5 tones, never an inline colour (`warning` = needs attention,
+   e.g. a "High" scoring band). */
 .badge--muted {
   color: var(--color-text-muted);
   border-color: var(--color-border);
@@ -491,13 +471,11 @@ select.input[size] {
   border-color: var(--color-warning);
 }
 
-/* Entity-type accent: a left-border stripe applied to a
-   list row or card, coloured via the `--entity-accent-color` custom
-   property each call site sets from `ENTITY_ACCENT_COLOR` (api/types.ts)
-   — not a bespoke colour per call site. `<tr>` uses a box-shadow inset
-   (a border on `<tr>` itself is inconsistently painted across browsers
-   even with border-collapse); non-table rows/cards use border-left
-   directly via the `.entity-accent-card` variant. */
+/* Entity-type accent: a left-border stripe on a list row or card, coloured by
+   the `--entity-accent-color` custom property each call site sets from
+   `ENTITY_ACCENT_COLOR` (api/types.ts). `<tr>` uses an inset box-shadow (a
+   border on `<tr>` paints inconsistently across browsers); non-table rows and
+   cards use border-left through `.entity-accent-card`. */
 .entity-accent-row {
   box-shadow: inset 3px 0 0 0 var(--entity-accent-color, transparent);
 }
@@ -505,15 +483,11 @@ select.input[size] {
   border-left: 3px solid var(--entity-accent-color, transparent);
 }
 
-/* The unread-notification count needs to read as "something needs your
-   attention" at a glance, which the plain `.badge` (a quiet, low-contrast
-   outline chip meant for neutral labels like a status or role) doesn't
-   convey — a small solid red bubble pinned to the bell icon's corner, the
-   conventional shape for this exact kind of count. Uses a fixed vivid red
-   rather than the theme's `--color-danger` (which is tuned to read as
-   text/border against a page background, not as a solid fill behind white
-   text — too pale for that in dark theme) so it reads the same "urgent"
-   way in both themes. */
+/* The unread-notification count must read as "needs attention" at a glance,
+   which the quiet `.badge` does not: a small solid red bubble on the bell's
+   corner. It uses a fixed vivid red, not --color-danger (tuned as text/border,
+   too pale as a fill behind white text in dark theme), so it reads the same in
+   both themes. */
 .notification-count-badge {
   position: absolute;
   top: -4px;
@@ -531,15 +505,11 @@ select.input[size] {
   box-shadow: 0 0 0 2px var(--color-header-bg);
 }
 
-/* The notification bell's dropdown (components/NotificationBell.tsx) is a
-   normal light `.card` surface, but it's rendered as a DOM descendant of
-   `.app-header` (the bell lives in the header bar) — so without this reset
-   it inherits `.app-header`'s white `color` and its `.btn`/`.text-muted`
-   overrides (tuned for text sitting directly on the dark header bar), and
-   every bit of text/buttons inside the dropdown render as white-on-white
-   against the card's own light background. This selector is more specific
-   than `.app-header .text-muted`/`.app-header .btn`, so it wins regardless
-   of source order. */
+/* The notification bell's dropdown is a light `.card` rendered inside
+   `.app-header`, so it would inherit the header's white `color` and its
+   `.btn`/`.text-muted` overrides (white-on-white). This selector is more
+   specific than `.app-header .text-muted`/`.app-header .btn`, so it resets them
+   regardless of source order. */
 .app-header .notification-dropdown {
   color: var(--color-text);
 }
@@ -801,16 +771,12 @@ select.input[size] {
   padding: 0 1px;
 }
 
-/* See components/Tooltip.tsx — appears immediately on hover/focus rather
-   than relying on the native `title` attribute's slow, OS-dependent delay.
-   Rendered through a portal into `document.body` with `top`/`left` set
-   inline as viewport-relative pixel coordinates computed in JS (screen-
-   aware: flipped/clamped to stay on-screen near any viewport edge) —
-   `position: fixed` here, not `absolute`, is what lets it escape any
-   scrollable/clipping ancestor (e.g. the collapsed nav rail, whose own
-   `overflow-y: auto` implicitly makes it clip horizontally too — a plain
-   `position: absolute` bubble nested inside it would get cut off at the
-   rail's edge no matter how correctly its left/right were computed). */
+/* See components/Tooltip.tsx: shown at once on hover/focus (the native `title`
+   delay is slow and OS-dependent). Rendered through a portal into
+   `document.body` with `top`/`left` set inline as viewport pixels computed in
+   JS (flipped and clamped to stay on screen). `position: fixed`, not
+   `absolute`, lets it escape a scrollable or clipping ancestor such as the
+   collapsed nav rail (its `overflow-y: auto` also clips horizontally). */
 .tooltip-bubble {
   position: fixed;
   background: var(--color-header-bg);
@@ -842,28 +808,23 @@ select.input[size] {
   gap: var(--space-5);
 }
 
-/* Track minimum (220px) must match `StatCard`'s own inline `minWidth: 220`
-   (components/StatCard.tsx) — `MetricTile` (components/MetricTile.tsx) sets
-   no minWidth of its own, so it just gets a slightly roomier column, but a
-   track minimum *smaller* than an item's own minimum content width made
-   `auto-fit` resolve columns narrower than the `StatCard`s placed in them,
-   overlapping neighbouring tiles at moderate viewport widths (confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
-   grid once a module contributes headline tiles). */
+/* The track minimum (220px) must match `StatCard`'s inline `minWidth: 220`
+   (components/StatCard.tsx). A smaller minimum than an item's own minimum
+   content width makes `auto-fit` resolve columns narrower than the cards in
+   them, overlapping tiles at moderate widths (`OrgOverviewPage.tsx` can carry
+   up to 7 tiles in one grid). `MetricTile` sets no minWidth of its own. */
 .grid-metrics {
   /* `min(100%, 220px)` lets a track shrink below 220px in a narrow container instead of overflowing it. */
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
-/* `StatBar` (components/StatBar.tsx) — a compact block of labelled numbers.
-   Flat layout: a CSS grid of equal-width columns, never `flex-wrap` plus
-   per-item borders (that produced ragged rows and stray dividers once the
-   entries wrapped). Dividers are box-shadows drawn by each cell on its right
-   and bottom edge; the container's `overflow: hidden` clips the outer ones,
-   so only inner dividers show whatever the column count. No media queries:
-   `auto-fit` sizes to the container, which also suits narrow panes. The
-   `.stat-groups` / `.stat-group*` (components/StatGroups.tsx) is the grouped-card
-   layout for blocks beyond the flat budget. See docs/ux-style-guide.md
-   ("Pattern: stat blocks") for which applies where. */
+/* `StatBar` (components/StatBar.tsx): a compact block of labelled numbers as
+   a CSS grid of equal-width columns, never `flex-wrap` with per-item borders
+   (ragged rows, stray dividers). Dividers are box-shadows on each cell's right
+   and bottom edge; the container's `overflow: hidden` clips the outer ones. No
+   media queries: `auto-fit` sizes to the container. `.stat-groups` /
+   `.stat-group*` (components/StatGroups.tsx) is the grouped-card layout for
+   blocks beyond the flat budget (docs/ux-style-guide.md, "Pattern: stat blocks"). */
 .stat-bar {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
@@ -1171,13 +1132,9 @@ a.figure-projects-link:hover {
   color: var(--color-text-muted);
 }
 
-/* Left navigation rail: same theme-aware surface as every other panel
-   (--color-surface/-border/-text), not a fixed dark "chrome" independent
-   of the active theme — it follows light/dark like the rest of the UI.
-   Pinned full-height against the true left edge (position: fixed, not
-   sticky-in-flow) so it stays visible while the content column scrolls,
-   rather than living inside the same centred/padded .container as the
-   page content and floating as a short, inset card. */
+/* Left navigation rail: a theme-aware surface like every other panel, not a
+   fixed dark chrome. Pinned full-height to the left edge (position: fixed) so
+   it stays visible while the content column scrolls. */
 .nav-rail {
   background: var(--color-surface);
   border: none;
@@ -1195,13 +1152,11 @@ a.figure-projects-link:hover {
   transition: width 0.15s ease;
 }
 
-/* The rail's item list is its scroll container, not the rail itself, and starts level with the top
-   of the rail (the first link is level with the collapse toggle, not below it). The toggle
-   (.nav-rail-toggle-wrapper: 12px below the header, 28px tall) straddles the rail's right edge, so
-   the inner half of it, --nav-toggle-overhang, lies over the rail. The container leaves that
-   strip free (margin-right) so neither a link nor the scrollbar can run under the toggle, in
-   every browser: a WebKit-only track inset would leave Firefox's thin bar under it. The bar is
-   thin and drawn from theme tokens so it suits both themes. */
+/* The rail's item list is its scroll container and starts level with the rail's
+   top. The collapse toggle (.nav-rail-toggle-wrapper) straddles the rail's right
+   edge, its inner half (--nav-toggle-overhang) over the rail; the container
+   leaves that strip free (margin-right) so neither a link nor the scrollbar runs
+   under it in any browser. The bar is thin and drawn from theme tokens. */
 .nav-rail-scroll {
   flex: 1 1 auto;
   min-height: 0;
@@ -1291,31 +1246,20 @@ a.figure-projects-link:hover {
   margin-left: var(--nav-rail-width-collapsed);
 }
 
-/* Collapse/expand toggle: a small circular button straddling the rail/
-   content divider, rather than living inside the rail's own scrolling
-   content — a fixed-position element whose vertical position never
-   moves with rail scroll or content length. `left` is set inline from
-   Layout.tsx (`var(--nav-rail-width)` / `var(--nav-rail-width-collapsed)`,
-   the same two tokens .app-content's own margin above uses) rather than
-   via a `.nav-rail ~ .nav-rail-toggle-wrapper` sibling selector, since the button
-   renders wrapped in `Tooltip`'s own `.tooltip-trigger` span and so is not
-   actually a DOM sibling of `.nav-rail`, only a visual neighbour of one —
-   a sibling-combinator rule here would silently never match.
+/* Collapse/expand toggle: a small circular button straddling the rail/content
+   divider, fixed so its vertical position never moves with rail scroll. `left`
+   is set inline from Layout.tsx (`var(--nav-rail-width)` /
+   `var(--nav-rail-width-collapsed)`, the tokens .app-content's margin uses), not
+   by a `.nav-rail ~ .nav-rail-toggle-wrapper` sibling selector: the button is
+   wrapped in `Tooltip`'s `.tooltip-trigger` span, so it is not a DOM sibling of
+   `.nav-rail` and that rule would never match.
 
-   The fixed positioning itself lives on `.nav-rail-toggle-wrapper` (the
-   `Tooltip`-rendered `.tooltip-trigger` span, via its `className`/`style`
-   props — see Tooltip.tsx), not on the round button inside
-   it. The button is `position: fixed` independent of its parent's layout
-   position, so if the *wrapper* were left as an ordinary in-flow span
-   (sized to fit an out-of-flow child, i.e. collapsing to a zero-size box
-   wherever the DOM puts it), `Tooltip`'s own measurement of that wrapper
-   would land nowhere near the button — this was a real bug: the bubble
-   showed up near the collapsed-rail position even while expanded, because
-   the collapsed-flow span happened to sit close to that edge. Putting the
-   fixed placement on the wrapper instead makes the measured element and
-   the visible button the same box. transform: translateX(-50%) is what
-   actually centres the button on that left value rather than sitting to
-   one side of it. */
+   The fixed positioning lives on `.nav-rail-toggle-wrapper` (the
+   `Tooltip`-rendered span, via its `className`/`style` props), not the button.
+   A fixed child of an in-flow wrapper leaves the wrapper a zero-size box, so
+   `Tooltip` would measure the wrong place; fixing the wrapper makes the measured
+   element and the visible button the same box. transform: translateX(-50%)
+   centres the button on that `left` value. */
 .nav-rail-toggle-wrapper {
   position: fixed;
   top: calc(var(--header-height) + var(--announcement-height) + 12px);
@@ -1324,20 +1268,17 @@ a.figure-projects-link:hover {
   transition: left 0.15s ease;
 }
 
-/* Content-width preference (U-U-01-adjacent display preference, stored
-   like nav-rail-collapsed): "boxed" caps and centres content at the same
-   1200px the app used everywhere before this pass, for readability on
-   very wide monitors. The default is full-bleed — content simply fills
-   the space next to the rail. */
+/* Content-width preference (stored like nav-rail-collapsed): "boxed" caps and
+   centres content at 1200px for readability on very wide monitors; the default
+   is full-bleed, filling the space next to the rail. */
 .app-content.boxed .content-inner {
   max-width: 1200px;
   margin: 0 auto;
 }
 
 /* Artefact detail page frame (components/DetailLayout.tsx): content plus a
-   sticky, collapsible aside at >=1280px, stacked below that. minmax(0, 1fr)
-   for the same reason as .side-grid: wide unbreakable content must not push
-   the aside column off-screen. */
+   sticky, collapsible aside at >=1280px, stacked below. minmax(0, 1fr) as for
+   .side-grid: wide unbreakable content must not push the aside off-screen. */
 .detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1931,10 +1872,8 @@ a.figure-projects-link:hover {
    right). Collapses to one column alongside the nav rail below. */
 .side-grid {
   display: grid;
-  /* minmax(0, 1fr), not a bare 1fr — without the 0 floor, unbreakable wide
-     content in the main column can grow that track past its intended size
-     and push the 240px FilterPanel column off-screen (UX review). The
-     narrow-viewport override below already learned this the same way. */
+  /* minmax(0, 1fr), not a bare 1fr: without the 0 floor, unbreakable wide
+     content can grow the main track and push the 240px FilterPanel off-screen. */
   grid-template-columns: minmax(0, 1fr) 240px;
   align-items: start;
   gap: var(--space-5);
@@ -2003,11 +1942,9 @@ a.figure-projects-link:hover {
   flex: none;
 }
 
-/* Wraps a nav-rail link while the rail is collapsed (see
-   components/Tooltip.tsx) — without this, the tooltip's own shrink-wrapped
-   `inline-flex` box would only cover the icon's own width, not the full
-   row, so the same "click/highlight is full width" fix above needs to
-   apply one level up too whenever a link is Tooltip-wrapped. */
+/* Wraps a nav-rail link while the rail is collapsed (components/Tooltip.tsx):
+   without it the tooltip's shrink-wrapped `inline-flex` box covers only the
+   icon, not the full row, so the full-width click and highlight must apply here. */
 .tooltip-trigger {
   display: inline-flex;
 }
@@ -2026,13 +1963,10 @@ a.figure-projects-link:hover {
   color: var(--color-primary-contrast) !important;
 }
 
-/* Joins a disclosure toggle to its own nav-rail link into one shared
-   hover/active surface (e.g.
-   StandardNavSection.tsx's expandable "Versions" row). The background
-   moves to this wrapping row rather than the inner link, so hovering
-   anywhere in the row — including the toggle's own area — highlights the
-   whole thing as one control, even though the link and the toggle stay
-   two separately focusable/clickable elements underneath. */
+/* Joins a disclosure toggle to its nav-rail link (e.g. StandardNavSection.tsx's
+   expandable "Versions" row) into one hover/active surface: the background is on
+   this wrapping row, so hovering anywhere in it highlights the whole row while the
+   link and the toggle stay separately focusable. */
 .nav-link-row {
   display: flex;
   align-items: center;
@@ -2130,16 +2064,11 @@ a.figure-projects-link:hover {
   display: none;
 }
 
-/* `EntitySwitcher`'s chevron trigger
-   — the same "no separately bordered chip" fix `.nav-link-row-toggle`
-   above already applies to the expandable nav-rail disclosure toggle,
-given to the entity quick-switch chevron itself since it
-   has no wrapping row of its own to inherit a shared hover surface from
-   (it sits directly beside a page's plain `<h1>` text, owned by each
-   caller, not by this component). Borderless and transparent at rest so
-   it reads as part of the adjacent entity name rather than a bolted-on
-   control; a hover/focus background gives it the same affordance any
-   other icon-only button in the app has. */
+/* `EntitySwitcher`'s chevron trigger: no separately bordered chip (as
+   `.nav-link-row-toggle` above), since it has no wrapping row to inherit a hover
+   surface from and sits beside a page's plain `<h1>`. Borderless and transparent
+   at rest so it reads as part of the entity name; a hover/focus background gives
+   it the affordance of any icon-only button. */
 .entity-switcher-trigger {
   display: inline-flex;
   align-items: center;
@@ -2166,11 +2095,10 @@ given to the entity quick-switch chevron itself since it
   height: 14px;
 }
 
-/* Collapsed section labels ("Project", "Global", "Server Management")
-   become a thin divider line rather than vanishing outright — the text is
-   pushed off-screen (text-indent), not deleted, so it stays available to
-   assistive tech — so the icon rows below don't visibly jump up compared
-   to where they sit when the rail is expanded. */
+/* Collapsed section labels ("Project", "Global", "Server Management") become a
+   thin divider, with the text pushed off-screen (text-indent) so it stays
+   available to assistive tech and the icon rows do not shift against the
+   expanded rail. */
 .nav-rail-icons .nav-section-label {
   height: 1px;
   padding: 0;
@@ -2180,17 +2108,12 @@ given to the entity quick-switch chevron itself since it
   background: var(--color-border);
 }
 
-/* In-page resource menu (ResourceMenu.tsx) — the enterprise-console shape
-   from the UX style guide's "Pattern: settings hierarchy", first used to
-   split Org Admin's 15-way flat accordion into 6 groups. Reuses
-   .nav-link/.nav-link.active for its items so the visual language matches
-   the app's own persistent nav rail exactly (style guide Principle 4: one
-   component per pattern), but unlike .nav-rail this sits in normal
-   document flow (not position: fixed) since it's scoped to one page's
-   content area, not the whole app shell.
-   Deliberately its own class rather than the shared .row utility (which
-   this otherwise resembles) — see ResourceMenu.tsx's own comment on its
-   root element for why reusing .row here broke a real Playwright locator. */
+/* In-page resource menu (ResourceMenu.tsx): the enterprise-console shape of the
+   UX style guide's "Pattern: settings hierarchy". Reuses .nav-link/.nav-link.active
+   for its items so it matches the nav rail (Principle 4: one component per
+   pattern), but sits in normal document flow (not position: fixed) since it is
+   scoped to one page's content area. Its own class, not the shared .row utility:
+   see ResourceMenu.tsx's comment on its root element. */
 .resource-menu {
   display: flex;
   align-items: flex-start;
@@ -2200,11 +2123,12 @@ given to the entity quick-switch chevron itself since it
   scroll-margin-top: calc(var(--header-height) + var(--announcement-height) + var(--space-3));
 }
 
-/* Sticky below the app header and no taller than the window below where it starts, so a list longer than that
-   scrolls on its own, from the first view, while the content pane scrolls with the page. `--sticky-viewport-top` is
-   the list's current distance from the top of the window (`useStickyViewportTop`, never less than the sticky offset);
-   the fallback is the stuck offset, which applies until the first measurement. `position: relative` is implied by
-   sticky, so the active link's `offsetTop` is measured from the list itself. */
+/* Sticky below the app header and no taller than the window below where it
+   starts, so a long list scrolls on its own from the first view.
+   `--sticky-viewport-top` is the list's distance from the top of the window
+   (`useStickyViewportTop`, never less than the sticky offset); the fallback is the
+   stuck offset until the first measurement. Sticky implies `position: relative`,
+   so the active link's `offsetTop` is measured from the list. */
 .resource-menu-nav {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -2484,12 +2408,12 @@ th:has(> .th-with-action > .th-sort) {
   color: var(--color-primary);
 }
 
-/* `FolderTreeList`: a file manager's list view. The list is one grid (the component sets the column template as
-   `--ftl-columns`, and `--ftl-columns-narrow` without the `hideBelow` columns) and each row a subgrid of it, so the
-   columns line up and, when they do not fit, the list scrolls sideways inside its own region with the Name cell held
-   at the left edge. Rows are grid rows (not a <table>) so a row can be a tree-grid row with its own keyboard focus.
-   Banded rows have rounded ends and an open report is outlined. See docs/ux-style-guide.md's "Pattern: folder tree
-   list". */
+/* `FolderTreeList`: a file manager's list view. One grid (the component sets
+   the column template as `--ftl-columns`, and `--ftl-columns-narrow` without the
+   `hideBelow` columns) with each row a subgrid, so columns line up and, when they
+   do not fit, the list scrolls sideways with the Name cell held at the left edge.
+   Rows are grid rows (not a <table>) so a row can be a tree-grid row with its own
+   keyboard focus. See docs/ux-style-guide.md "Pattern: folder tree list". */
 .folder-tree-list {
   /* Positioned so an absolutely placed child (the screen-reader-only header text) scrolls with the list instead of
      escaping its clipping and widening the page. */
@@ -2700,18 +2624,12 @@ th:has(> .th-with-action > .th-sort) {
   margin: 0;
 }
 
-/* Borderless expand/collapse control that fills its own table cell — for a
-   plain disclosure toggle whose label and chevron are one single clickable
-   unit (unlike `.nav-link-row-toggle`, which sits beside a separately
-   navigable link). Mirrors `.th-sort` immediately above (zero the cell's
-   own padding, let the button re-add the same padding so it lines up with
-   a plain cell next to it), but with a hover *background* rather than a
-   text-colour change, since this control's whole row is the click target,
-   not just its text. Introduced for `OrgComplianceStandardsPanel.tsx`
- — the third instance of "no
-   bolted-on `.btn` chip on a disclosure control" after `.nav-link-row-
-   toggle` and `.entity-switcher-trigger`; see
-   docs/ux-style-guide.md's "Pattern: expandable nav-rail group". */
+/* Borderless expand/collapse control that fills its table cell, for a plain
+   disclosure toggle whose label and chevron are one clickable unit (unlike
+   `.nav-link-row-toggle`, which sits beside a separate link). Like `.th-sort`
+   above (zero the cell padding, let the button re-add it so it lines up with a
+   plain cell), but with a hover background since the whole row is the click
+   target. See docs/ux-style-guide.md "Pattern: expandable nav-rail group". */
 td:has(> .disclosure-toggle) {
   padding: 0;
 }
@@ -2745,11 +2663,10 @@ td:has(> .disclosure-toggle) {
   vertical-align: bottom;
 }
 
-/* `DirectoryTable`'s row-opening first-column control — a real <button>
-   (`onRowClick`) or <Link> (`rowHref`), styled identically either way so a
-   directory row that opens a side panel and one that navigates to a URL
-   read the same, matching this app's default `a { color: var(--color-
-   primary) }` link look rather than an inset button control. */
+/* `DirectoryTable`'s row-opening first-column control: a <button>
+   (`onRowClick`) or <Link> (`rowHref`), styled identically so a row that opens a
+   side panel and one that navigates read the same, matching the default
+   `a { color: var(--color-primary) }` link look. */
 .directory-table-row-trigger {
   background: none;
   border: none;
@@ -2805,16 +2722,13 @@ td:has(> .disclosure-toggle) {
   border-bottom: 1px solid var(--color-border);
 }
 
-/* Below 860px there isn't room for a full-width nav rail, a content
-   column, and a 240px filter/activity sidebar side by side (confirmed:
-   the page overflows past the viewport at 600px without this) — force the
-   rail into its existing icon-only layout and stack the sidebar under the
-   content, regardless of the user's manual expand/collapse preference. */
+/* Below 860px there is no room for a full-width nav rail, a content column and
+   a 240px filter/activity sidebar side by side: the rail is forced into its
+   icon-only layout and the sidebar stacks under the content, regardless of the
+   manual expand/collapse preference. */
 @media (max-width: 860px) {
-  /* The rail is force-collapsed below this breakpoint (see the rules
-     below), so the manual expand/collapse toggle has nothing left to do —
-     leaving it visible reads as a broken button rather than an
-     unavailable one. Hide it rather than show a control that never
+  /* The rail is force-collapsed below this breakpoint, so the manual toggle has
+     nothing to do; it is hidden rather than shown as a control that never
      changes the layout. */
   .nav-rail-toggle-wrapper {
     display: none;
@@ -2844,40 +2758,25 @@ td:has(> .disclosure-toggle) {
     text-indent: -9999px;
     background: var(--color-border);
   }
-  /* `minmax(0, 1fr)`, not bare `1fr` (shorthand for `minmax(auto, 1fr)`):
-     a bare `1fr`'s automatic minimum is the column's content's min-content
-     size, and one of this class's users nests another `repeat(auto-fill,
-     minmax(min(280px, 100%), 1fr))` grid inside it (ProjectListPage's tile
-     view) — that inner grid's own `100%` can't resolve while an ancestor
-     grid is computing ITS min-content contribution (the container size
-     it'd resolve against is, at that point, exactly what's being
-     computed), so it falls back to the literal `280px` floor instead of
-     the intended container-clamped value. On content wide enough to need
-     that clamp (e.g. a role list of "Member, Project administrator,
-     Project manager, Stakeholder"), that forced the whole `.side-grid`
-     column — everything in it, not just the nested grid — wider than the
-     viewport at narrow widths, defeating the collapse this rule exists to
-     do. `minmax(0, 1fr)` overrides the automatic minimum to 0 so nothing
-     inside this column can force it wider than the space actually
-     available. Confirmed empirically (`document.documentElement.
-     scrollWidth - clientWidth` at a 375px viewport, ProjectListPage tile
-     view): 44px of overflow with `1fr`, 0px with `minmax(0, 1fr)`. */
+  /* `minmax(0, 1fr)`, not bare `1fr` (`minmax(auto, 1fr)`): a bare `1fr`'s
+     automatic minimum is the content's min-content size. A user of this class
+     nests a `repeat(auto-fill, minmax(min(280px, 100%), 1fr))` grid
+     (ProjectListPage's tile view), whose `100%` cannot resolve while the ancestor
+     computes its min-content contribution, so it falls back to the 280px floor and
+     forces the whole column wider than the viewport at narrow widths. `minmax(0,
+     1fr)` sets the minimum to 0 (measured at a 375px viewport: 44px of overflow
+     with `1fr`, 0px with `minmax(0, 1fr)`). */
   .side-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  /* On mobile the filter panel is always the second DOM child of
-     .side-grid (list/detail content first, filters second), so users had
-     to scroll past the entire list to reach it. Reorder it first in the
-     single-column mobile layout only — desktop's two-column grid position
-     is untouched since this rule lives inside the mobile-only breakpoint
-     above. */
+  /* On mobile the filter panel is the second DOM child of .side-grid, so it is
+     reordered first in the single-column layout only (desktop is untouched). */
   .side-grid > .filter-panel {
     order: -1;
   }
-  /* Below this same breakpoint ResourceMenu.tsx swaps its .resource-menu-nav
-     link list for a <select> entirely (own useNarrowViewport check), so
-     .resource-menu-nav itself never renders here — only stack the select
-     above the content pane. */
+  /* Below this breakpoint ResourceMenu.tsx swaps .resource-menu-nav for a
+     <select> (its own useNarrowViewport check), so only the select stacks above
+     the content pane. */
   .resource-menu {
     flex-direction: column;
   }
@@ -2914,11 +2813,10 @@ td:has(> .disclosure-toggle) {
   }
 }
 
-/* Toast (style guide "Pattern: confirmation, in two tiers — and feedback,
-   always" / Principle 7). Success reuses the same solid dark chip both
-   themes' text tokens already give good contrast on; error follows this
-   app's existing convention for danger (.btn-danger is an outline, never a
-   solid red fill) — the accent colour marks it, it doesn't flood it. */
+/* Toast (style guide "Pattern: confirmation, in two tiers, and feedback, always"
+   / Principle 7). Success is a solid dark chip with good contrast in both
+   themes; error follows the danger convention (.btn-danger is an outline, never a
+   solid red fill): the accent colour marks it without flooding it. */
 .toast-stack {
   position: fixed;
   right: 1rem;
@@ -2996,9 +2894,8 @@ td:has(> .disclosure-toggle) {
 }
 
 /* Popover (style guide "Pattern: create panels, popovers, and one door for
-   bulk" / Principle 3). Fixed width in Popover.tsx's own inline style is
-   the common case; this caps it on viewports narrower than that width so
-   it can't get pushed past the screen edge on a phone. */
+   bulk" / Principle 3). Popover.tsx's inline fixed width is the common case; this
+   caps it on viewports narrower than that width. */
 /* Modal / SidePanel frame: pinned header (title, form actions, close, save error) over a scrolling body. */
 .dialog-card {
   display: flex;
@@ -3265,10 +3162,11 @@ td:has(> .disclosure-toggle) {
   font-weight: 600;
 }
 
-/* A parent row (an item with `children`, or a group of several items): a chevron that turns down while it is
-   open, and the product's selected-state colour (the primary slate, with a heavier weight) on the open entry; the
-   accent colour is for focus and selection outlines, never a menu's text. Its rows follow in `.menu-tree-group`,
-   indented under a thin guide line. */
+/* A parent row (an item with `children`, or a group of several items): a chevron
+   that turns down while open, and the selected-state colour (primary slate, heavier
+   weight) on the open entry; the accent colour is for focus and selection
+   outlines, never a menu's text. Its rows follow in `.menu-tree-group`, indented
+   under a thin guide line. */
 .menu-parent[aria-expanded="true"] {
   color: var(--color-primary);
   font-weight: 600;
@@ -3525,10 +3423,9 @@ td:has(> .disclosure-toggle) {
   padding: var(--space-2) 0;
 }
 
-/* Scoring matrix (components/ScoringMatrixChart.tsx):
-   cells tinted with the same 5 BadgeTone colours as `.badge--<tone>`,
-   mixed into the surface so text stays readable in both themes. The
-   wrapper scrolls horizontally rather than the page on narrow screens. */
+/* Scoring matrix (components/ScoringMatrixChart.tsx): cells tinted with the 5
+   BadgeTone colours of `.badge--<tone>`, mixed into the surface so text stays
+   readable in both themes; the wrapper scrolls horizontally, not the page. */
 .scoring-matrix {
   overflow-x: auto;
   max-width: 100%;

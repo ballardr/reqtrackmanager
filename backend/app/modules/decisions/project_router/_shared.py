@@ -1,17 +1,10 @@
 """
 Module: modules.decisions.project_router._shared
 
-Internal helpers shared by several bucket modules of the Decision
-Management module's project-scoped router package (docs/decisions.md's
-"Split `decisions/project_router.py` into a package" entry) — the
-module-role/module-enabled dependency factory (`_require_view`), the
-Decision ownership-chain lookup, the `decision_owner`-or-project-manager
-edit-role gate, and the content-lock check. Not a router itself — no
-`@router` routes live here. Every name here is used by three or more
-sibling bucket modules (verified by call-site grep before this split); a
-helper used by only one or two buckets instead stayed local to (or was
-hosted/imported between) those buckets, per this package's own split
-convention (mirroring `modules.compliance.project_router._shared`).
+Helpers shared by three or more bucket routers: the module-enabled dependency
+factory (`_require_view`), the Decision ownership-chain lookup, the
+`decision_owner`-or-project-manager edit-role gate and the content-lock check.
+Not a router itself.
 """
 
 from uuid import UUID

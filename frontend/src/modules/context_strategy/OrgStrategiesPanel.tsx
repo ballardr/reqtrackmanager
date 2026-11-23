@@ -3,13 +3,12 @@ const NONE: Strategy[] = [];
 /**
  * Module: modules/context_strategy/OrgStrategiesPanel
  *
- * The org-scoped equivalent of `ProjectStrategiesPage.tsx` — an organisation's own org-scoped Strategy records (the
- * org/project scope discriminator), rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s
- * `orgResourceSections`).
+ * The organisation-scoped equivalent of `ProjectStrategiesPage.tsx`: an organisation's own Strategy records, rendered
+ * as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s `orgResourceSections`).
  *
- * Placement (Decided by: Agent): an org Strategy is org-level content a Strategy Owner or Approver works with and
- * projects reuse, so it sits in Org Resources, not in Organisation Settings (configuration) or the Organisation
- * Overview (computed figures). Guiding Principle and Future State follow the same placement.
+ * Placement: an organisation Strategy is content its owners work with and projects reuse, so it sits in Org
+ * Resources, not Organisation Settings (configuration) or the Organisation Overview (computed figures). Guiding
+ * Principle and Future State follow the same placement.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

@@ -1,37 +1,24 @@
 """
 Module: services.report_copy
 
-Copies report configuration from one project to another project of the same organisation: report layouts, report
-packs (with their saved variable sets), the project's own report folders and its placements of module reports,
-and the caller's own favourites of the copied reports.
+Copies report configuration to another project of the same organisation: layouts, packs (with variable sets), report
+folders, placements of module reports and the caller's favourites of the copied reports.
 
 Responsibilities:
-- `plan_copy`: what a copy would create, rename, skip or leave out, with a warning for everything that does not carry
-  cleanly. Writes nothing.
-- `apply_copy`: runs the plan in the caller's transaction (the caller commits) and writes one audit event.
+- `plan_copy`: what a copy would create, rename, skip or leave out, with warnings. Writes nothing.
+- `apply_copy`: runs the plan in the caller's transaction and writes one audit event (counts and ids, never names).
 
 Design decisions:
-- **One serialiser, not a second copier.** A layout or pack is turned into its project-bundle entry
-  (`report_layout_bundle.layout_entry`, `report_pack_bundle.pack_entry`) and created in the target by the bundle's own
-  importer (`import_layout_entry`, `import_pack_entry`), which validates the tree again and goes through the normal
-  create path. A field added to the bundle therefore reaches the copy with no change here.
-- **Latest version only.** The copy is version 1 of a new, independent layout or pack; the source keeps its history. A
-  layout or pack inherited from an ancestor or the organisation is copied as the target's own editable copy.
-- **Never a silent replace.** A name the target project already owns is renamed "<name> (copy)", "(copy 2)", ... or
-  skipped (the caller's choice); an existing folder or placement is left as it is. Replacing is not offered.
-- **Pictures.** An organisation picture stays a reference; a project picture is copied into the target project's
-  library (once, however many copied layouts use it), never referenced across the project boundary.
-- **Packs follow the layouts they name.** A pack entry that names a copied layout is re-pointed at the copy's (possibly
-  renamed) name; one that names a project-owned layout that is not part of the copy is reported as left out, since the
-  target may have no layout of that name.
-- **Carries configuration only.** Layout definitions, pack definitions, folder paths, placements, variable values and
-  picture files; never record content. The audit event holds counts and ids, never layout text or names.
-- Favourites are per person: only the caller's own are carried, by adding the copies' keys to their stored list.
-- The caller's gates (read and manage the source, manage the target, one organisation) are checked by the route; this
-  module trusts them and only checks that both projects belong to one organisation.
+- One serialiser: a layout or pack goes through its bundle entry and the bundle's own importer, so a bundle field
+  reaches the copy with no change here. The copy is version 1 of a new independent record.
+- Never a silent replace: a taken name becomes "<name> (copy)", "(copy 2)" or is skipped; existing folders and
+  placements are kept.
+- An organisation picture stays a reference; a project picture is copied into the target library.
+- A pack naming a copied layout is re-pointed at the copy; one naming a project layout outside the copy is left out.
+- The route checks access; this module checks only that both projects share one organisation.
 
-Dependencies: `services.report_layout_bundle`, `services.report_pack_bundle`, `services.report_layout_scope`,
-`services.report_pack_scope`, `services.report_folder_store`, `services.report_placements`, `services.ui_preferences`.
+Dependencies: `services.report_layout_bundle`, `report_pack_bundle`, `report_layout_scope`, `report_pack_scope`,
+`report_folder_store`, `report_placements`, `ui_preferences`.
 """
 
 from __future__ import annotations
@@ -391,7 +378,7 @@ def apply_copy(
             except report_folder_store.FolderError as exc:
                 item.action, item.warnings = "left_out", [str(exc)]
 
-    # Layouts, then packs (which name them). `renamed` maps a copied layout's old name to its new one.
+    # Layouts, then packs (which name them). `renamed` maps a source layout's name to the name of its copy.
     images: dict[str, str] = {}
     renamed: dict[str, str] = {}
     key_map: dict[str, str] = {}

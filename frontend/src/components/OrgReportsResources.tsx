@@ -4,16 +4,12 @@
  * The Reports section of Org Resources: the organisation's report layouts and packs, its saved text snippets and its
  * report configuration (file name rule, output retention, footer text, cover page, chapters per component).
  *
- * Responsibilities:
- * - Show the layouts, packs and snippets sections to everyone who reaches the page; each call enforces its own
- *   permission (`manage_org_report_layouts`, which a custom role can grant to a user or group), so this component
- *   decides nothing about access.
- * - Load and save the configuration through `/orgs/{id}/advanced-settings`, which only organisation administrators
- *   may read; where the read is refused (403) the Configuration section is not offered.
- *
- * Design decisions: the configuration form owns its own state and sends only the five report fields, so saving it
- * never rewrites the sign-in, email or token settings that share the endpoint (the endpoint applies only the fields
- * sent). Branding of reports (accent colour, logo, colour scheme) stays in Organisation Settings, Branding defaults.
+ * The layouts, packs and snippets sections show to everyone who reaches the page; each call enforces its own
+ * permission (`manage_org_report_layouts`), so this component decides nothing about access. The configuration is
+ * loaded and saved through `/orgs/{id}/advanced-settings`, which only organisation administrators may read; where
+ * the read is refused (403) the Configuration section is not offered. Its form sends only the five report fields
+ * (the endpoint applies only the fields sent), so saving never rewrites the sign-in, email or token settings that
+ * share the endpoint. Report branding stays in Organisation Settings, Branding defaults.
  *
  * Dependencies: `reportLayoutApi`, `reportPackApi`, `reportPlacementApi`, `ReportSetupPanel`, `ReportSnippetsPanel`,
  * `FileNameField`, `GET`/`PUT /orgs/{id}/advanced-settings`.

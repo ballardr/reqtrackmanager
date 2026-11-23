@@ -1,15 +1,13 @@
 /**
  * Module: components/TagField
  *
- * The "Tags" field of a create form: choose the tags the new record starts with. Nothing is
- * written here; the form applies them with `useCommitTags` once the record exists, the same
- * contract as `QuickLinkField`. It also renders `ComponentField`, so every create form that has tags offers the
- * components too, and `useCommitTags` applies both.
+ * The "Tags" field of a create form: choose the tags the new record starts with. Nothing is written here; the form
+ * applies them with `useCommitTags` once the record exists, the same contract as `QuickLinkField`. It also renders
+ * `ComponentField`, so a create form with tags offers components too, and `useCommitTags` applies both.
  *
- * It asks the server about a record that does not exist yet (`DRAFT_ARTEFACT_ID`), so the
- * vocabulary, the project's mode and the caller's authority are the ones that will apply, and it
- * renders nothing when the caller may not tag this kind of record or the read fails: a form never
- * offers a field that would be refused.
+ * It asks the server about a record that does not exist yet (`DRAFT_ARTEFACT_ID`), so the vocabulary, mode and caller's
+ * authority are those that will apply, and renders nothing when the caller may not tag this kind of record or the read
+ * fails, so a form never offers a field that would be refused.
  */
 import { useEffect, useState } from "react";
 

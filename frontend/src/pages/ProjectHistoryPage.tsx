@@ -1,25 +1,12 @@
 /**
  * Module: pages/ProjectHistoryPage
  *
- * The project's changes-over-time view (C-A-10): one table of what happened (Time, Type, Event, Record(s), Person),
- * newest first, narrowed by a side filter panel (period, type, change, person or group, discussion comments)
- * and downloadable as CSV, PDF, Word, ODT or ODS with the same filters.
- *
- * Responsibilities:
- * - Keep every filter and the sort in the URL (`hooks/useUrlFilter`), so Back from a record, a reload and a shared
- *   link restore the view, and `ListPageLayout` restores the scroll position and the rows loaded with "Show more".
- * - Read the page from `GET .../changes` (the server narrows and pages; nothing is filtered in the browser) and
- *   keep the previous rows, dimmed, while a changed filter loads, so the panel and table do not jump.
- * - Convert the person's local period to UTC instants (`utils/historyPeriod`); show each time in local time.
- *
- * Design decisions:
- * - A day is shown once, on the first row of each local day, with the time alone on the rows below it, so the
- *   Time column carries a date without repeating it on every row.
- * - The Event column and the record's Activity aside share one wording (`describeActivityAction`), so a change of
- *   text reaches both.
- * - The Person filter holds people and groups on parity (`PrincipalListField`); a group means its current members.
- *
- * External dependencies: `GET /api/v1/projects/{id}/changes` (+ `/facets`, `/actors`, `/export`).
+ * The project's changes-over-time view (C-A-10): a table of Time, Type, Event, Record(s) and Person, newest first, narrowed by a filter panel
+ * (period, type, change, person or group, discussion comments) and exportable as CSV, PDF, Word, ODT or ODS with the same filters.
+ * Every filter and the sort live in the URL (`hooks/useUrlFilter`); pages come from `GET .../changes` (server-side narrowing and paging) with
+ * the previous rows dimmed while a filter loads; the local period converts to UTC instants (`utils/historyPeriod`). A day is written once, on
+ * its first row; Event and the Activity aside share `describeActivityAction`; the Person filter holds people and groups on parity
+ * (`PrincipalListField`). Dependencies: `GET /api/v1/projects/{id}/changes` (+ `/facets`, `/actors`, `/export`).
  */
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";

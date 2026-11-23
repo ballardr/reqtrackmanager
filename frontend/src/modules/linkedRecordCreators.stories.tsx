@@ -11,11 +11,11 @@ import creatableRecordTypes from "./creatableRecordTypes.json";
 import { getLinkedRecordCreator } from "./linkedRecordCreators";
 
 /**
- * Guards for the Links panel's "Create new": every registered type a person can author has a creator, a type that cannot
- * be authored has none, and each creator opens the type's own create form with the quick-link and tag fields and a
+ * Guards for the Links panel's "Create new": every registered type a person can author has a creator, a type that
+ * cannot be authored has none, and each creator opens the type's create form with the quick-link and tag fields and a
  * header holding Create or Save. `creatableRecordTypes.json` is kept equal to the backend registry by
- * `backend/tests/test_creatable_record_types.py`, so a new type fails there until it is listed and here until it
- * declares a creator in its module's `linkedRecordCreators`.
+ * `backend/tests/test_creatable_record_types.py`, so a new type fails there until it is listed and here until its
+ * module declares a creator in `linkedRecordCreators`.
  */
 const meta: Meta = {
   title: "Modules/LinkedRecordCreators",

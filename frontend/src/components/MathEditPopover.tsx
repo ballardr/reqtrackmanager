@@ -1,25 +1,20 @@
 /**
  * Module: components/MathEditPopover
  *
- * The small panel in which an equation is written or changed, with the equation drawn beneath the TeX as it is typed,
- * and the toolbar button that opens it.
+ * The small panel in which an equation is written or changed, with the equation drawn beneath the TeX as it is
+ * typed, and the toolbar button that opens it.
  *
- * Responsibilities:
- * - `MathEditPopover`: take the TeX, show the equation as the screen and the reports will draw it, say why it cannot
- *   be drawn (the allow-list `utils/mathTex.texProblem`, an empty equation, a closing delimiter inside it), and hand
- *   the TeX back on Insert (or Apply, for an equation being changed).
+ * - `MathEditPopover`: takes the TeX, shows the equation as the screen and reports draw it, says why it cannot be
+ *   drawn (`utils/mathTex.texProblem`, an empty equation, a closing delimiter inside it) and hands the TeX back on
+ *   Insert (or Apply, for an existing equation).
  * - `MathToolbarButton`: the Inline equation and Equation block buttons of every editor toolbar; each opens the
- *   panel, prefilled with the text selected in the field, and reports the TeX to the editor that owns the field.
+ *   panel prefilled with the selected text and reports the TeX to the editor that owns the field.
  *
- * Design decisions:
- * - One panel serves the Write view, the Visual view and a change to an equation already in the Visual view, so the
- *   three behave alike; the editor decides what the TeX becomes (source text or an equation node).
- * - The preview draws only what `utils/mathTex.texProblem` allows, the same rule the report engine applies, so a
- *   formula that would be refused in a report is not shown as fine here.
- * - KaTeX is loaded when a preview is first drawn, not with the editor.
+ * One panel serves the Write view, the Visual view and a change to an existing equation; the editor decides what
+ * the TeX becomes. The preview applies the report engine's allow-list, so a formula a report would refuse is not
+ * shown as fine. KaTeX loads when a preview is first drawn.
  *
- * Dependencies: `Popover`, `ToolbarButton`, `TextField`, `MathEquation` (loaded on first use), `utils/mathTex`,
- * `utils/visualMathNode`.
+ * Dependencies: `Popover`, `ToolbarButton`, `TextField`, `MathEquation`, `utils/mathTex`, `utils/visualMathNode`.
  */
 import { Radical, Sigma } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent, type RefObject } from "react";

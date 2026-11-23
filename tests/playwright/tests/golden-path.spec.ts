@@ -21,28 +21,19 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByLabel("Email").fill(ADMIN_EMAIL);
     await page.getByLabel("Password").fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
-    // Post-login landing depends on the admin's landing_preference (U-U-03:
-    // "auto" goes straight to the sole accessible project instead of the
-    // overview list once there's exactly one) — navigate explicitly rather
-    // than asserting a specific destination, since that's not what this
-    // spec is testing.
+    // The post-login landing depends on the admin's landing_preference (U-U-03: "auto" goes straight to the
+    // sole accessible project), so the spec navigates explicitly rather than asserting a destination.
     await page.waitForURL(/\/projects(\/|$)/);
     await page.goto("/projects");
   });
 
   await test.step("create project", async () => {
-    // "New project" opens a Modal (style guide "Pattern: modal dialog for
-    // entity create/rename") — scoped to it rather than a bare ".card", and
-    // its Name/Summary fields are real <label>s now, not placeholder-only
-    //.
+    // "New project" opens a Modal (style guide "Pattern: modal dialog for entity create/rename"); the fields
+    // are scoped to it and found by their `<label>`s.
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
-    // The org picker only renders at all when the caller belongs to more
-    // than one organisation (see ProjectListPage.tsx) — the bootstrap admin
-    // used here belongs to exactly one ("Default Organization"), so it's
-    // implicit rather than offered as a choice. Select explicitly only if
-    // a picker is actually present, so this still works if the admin ever
-    // gains a second org membership in some other stack/seed configuration.
+    // The org picker renders only when the caller belongs to more than one organisation; the bootstrap admin
+    // belongs to one, so it is selected only when a picker is present.
     const orgPicker = newProjectDialog.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
@@ -56,11 +47,8 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("add component and category", async () => {
     await page.getByText("Project Admin").click();
-    // Categories now lives inside the merged "Structure" tab (2026-08 UX
-    // audit roadmap: Project Admin's 8 tabs -> 5), alongside a "Project
-    // stages" section that also has its own "Name"-placeholder "add stage"
-    // field — scope to "Components & categories" specifically rather than
-    // relying on page-wide Name/Prefix queries.
+    // Categories sits in the merged "Structure" tab beside a "Project stages" section with its own
+    // "Name"-placeholder field, so the query is scoped to "Components & categories".
     await selectProjectAdminGroup(page, "Structure");
     await addStructureComponent(page, "Software", "SW");
     await addStructureCategory(page, "Software", "Performance", "PERF");
@@ -95,22 +83,16 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("raise and approve a change request", async () => {
     await page.getByText("Change Requests").click();
     await page.getByRole("button", { name: "New change request" }).click();
-    // The create form is a `Modal` portalled to the end of `document.body`
-    // — scope to it rather than an unscoped `getByRole("combobox").first()`,
-    // which would otherwise resolve to the filter sidebar's own Status
-    // select (it precedes the dialog in DOM order once the form is a
-    // portal instead of an inline block).
+    // The create form is a `Modal` portalled to the end of `document.body`, so it is scoped by dialog rather
+    // than `getByRole("combobox").first()`, which would resolve to the filter sidebar's Status select.
     const dialog = page.getByRole("dialog", { name: "New change request" });
     // The requirement select defaults asynchronously once project data
     // loads — wait so Create doesn't submit with an empty requirement_id
     // (same race already worked around in mockup-engagement.spec.ts).
     await expect(dialog.getByRole("combobox").first()).toContainText("Boot in under 5 seconds");
-    // Modify-requirement CRs are field-toggle driven: a field's proposed
-    // value is only editable (and only becomes part of `changed_fields`)
-    // once its "Fields to change" checkbox is ticked. Each checkbox and its
-    // (once checked) inline editor live in the same field-row container
-    // (checkbox -> label -> field-row div), so scope the fill to that row
-    // rather than a page-wide input query.
+    // Modify-requirement change requests are field-toggle driven: a field's proposed value is editable (and
+    // part of `changed_fields`) only once its "Fields to change" checkbox is ticked. The checkbox and its
+    // inline editor share a field-row container, so the fill is scoped to that row.
     const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
     await nameCheckbox.check();
     await nameCheckbox.locator("xpath=../..").locator("input.input").fill("Boot in under 3 seconds");
@@ -129,14 +111,9 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    // Role-scoped, not a page-wide getByText: React Router 7 wraps
-    // navigation state updates in React's startTransition by default (a
-    // behavior change from 6, where this app previously pinned an older
-    // 6.x), which can keep the change request detail view's own "Name:
-    // Boot in under 3 seconds" changed-field summary painted for one frame
-    // alongside the requirements list underneath as it settles in — a
-    // transient strict-mode double-match a bare getByText can catch mid
-    // transition. The requirement card's link has no such ambiguity.
+    // Role-scoped, not a page-wide getByText: React Router 7 wraps navigation updates in `startTransition`,
+    // so the change request detail's "Name: Boot in under 3 seconds" summary can stay painted for one frame
+    // beside the requirements list, a transient strict-mode double-match. The requirement card's link is unambiguous.
     await expect(page.getByRole("link", { name: "Boot in under 3 seconds" })).toBeVisible();
     requirementCode = "SW-PERF-001";
   });

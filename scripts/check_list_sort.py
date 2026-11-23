@@ -44,8 +44,8 @@ def violations() -> list[str]:
 
 
 def stale_exemptions() -> list[str]:
-    """Returns the exempt files that no longer exist, no longer draw a filter panel and the list Export, or now draw a
-    `SortField` (their entry should go)."""
+    """Returns the exempt files that do not exist, draw no filter panel and list Export, or draw a `SortField`
+    (their entry should go)."""
     stale = []
     for rel in sorted(NO_SORT):
         path = SRC / rel

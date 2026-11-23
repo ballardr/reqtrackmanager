@@ -1,9 +1,8 @@
 """
 Module: schemas.change_request
 
-Request/response models for the change request workflow (introduction,
-C-G-03, C-G-12), plus review-stage tasks (C-R-02/04) and stakeholder voting
-(C-R-03) added in Massif (v3).
+Request/response models for the change request workflow (C-G-03, C-G-12), plus review-stage tasks
+(C-R-02/04) and stakeholder voting (C-R-03).
 """
 
 from __future__ import annotations
@@ -25,28 +24,21 @@ from app.schemas.artefact_links import LinkOrientation
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
 
-#: Field names a MODIFY_REQUIREMENT change request may list in
-#: `changed_fields` — matching RequirementVersion's own attribute names,
-#: plus the synthetic `"attachments"` entry for proposed file attachments.
-#: The single source of truth both `ChangeRequestCreate`'s validator and
-#: `routers/change_requests.py::decide_change_request`'s approval-
-#: application logic key off of, so the two can never drift apart.
-#: `reviewer_id` stays the wire name of the reviewer field even though the
-#: reviewer is now a principal (user or group): it names the field, and
+#: Field names a MODIFY_REQUIREMENT change request may list in `changed_fields`: RequirementVersion's
+#: attribute names plus the synthetic `"attachments"` entry for proposed file attachments. The single source
+#: of truth for both `ChangeRequestCreate`'s validator and
+#: `routers/change_requests.py::decide_change_request`'s approval logic, so the two cannot drift apart.
+#: `reviewer_id` is the wire name of the reviewer field though the reviewer is a principal (user or group):
 #: renaming it would break every stored `changed_fields` list.
 CHANGEABLE_REQUIREMENT_FIELDS = frozenset({
     "name", "reasoning", "clarification", "description", "target_stage_id", "level",
     "review_date", "review_lead_days", "reviewer_id", "custom_fields", "attachments",
 })
 
-#: Maps a changed_fields entry to the ChangeRequestCreate attribute that
-#: must be non-None when that field is listed — only for fields where the
-#: requirement itself can never legitimately hold a null value (so None
-#: unambiguously means "not proposing a change"). review_date/
-#: review_lead_days/reviewer_id/custom_fields/attachments are deliberately
-#: excluded: those genuinely support a null/empty *proposed* value (e.g.
-#: clearing the reviewer), so changed_fields membership alone — not a
-#: non-None check — is what signals they're being touched.
+#: Maps a changed_fields entry to the ChangeRequestCreate attribute that must be non-None when that field is
+#: listed, only for fields where the requirement can never hold a null (so None means "not proposing a
+#: change"). review_date/review_lead_days/reviewer_id/custom_fields/attachments are excluded: they support a
+#: null or empty proposed value (e.g. clearing the reviewer), so changed_fields membership alone signals them.
 FIELDS_REQUIRING_A_VALUE_WHEN_CHANGED = {
     "name": "proposed_name",
     "reasoning": "proposed_reasoning",
@@ -135,10 +127,8 @@ class ChangeRequestCreate(BaseModel):
     proposed_review_date: date | None = None  # C-R-06
     proposed_review_lead_days: int | None = None
     proposed_reviewer: PrincipalRef | None = None  # C-R-10
-    # ADD_ACTION-only — see `ChangeRequestVersion`'s docstring
-    # for the mutually-exclusive link-existing-vs-create-new split.
-    # Also REMOVE_ACTION's only field:
-    # which already-linked action to unlink on approval.
+    # ADD_ACTION only (see `ChangeRequestVersion` for the mutually exclusive link-existing-vs-create-new
+    # split); also REMOVE_ACTION's only field: which linked action to unlink on approval.
     proposed_action_link_id: UUID | None = None
     proposed_action_title: str | None = None
     proposed_action_description: str | None = None
@@ -199,17 +189,11 @@ class ChangeRequestOut(ProjectScopedRow):
 class ChangeRequestDecision(BaseModel):
     approve: bool
     note: str = ""
-    # Explicit approver choice (C-G-11), meaningful only when `approve` is
-    # True, the change request is `MODIFY_REQUIREMENT`-kind, and the target
-    # requirement currently has `is_completed=True` — a no-op, not an error,
-    # for any other combination (e.g. a `NEW_REQUIREMENT` change request, or
-    # a target that isn't currently completed). Deliberately opt-in rather
-    # than automatic: a plain "Approve" must keep leaving `is_completed`
-    # untouched (see `routers.change_requests.decide_change_request`'s
-    # `status_value=None` comment for why that carry-forward behaviour is
-    # itself deliberate, not a gap to close here) — this field is how an
-    # approver says a particular change is substantial enough that
-    # completion needs re-verifying, distinct from every other approval.
+    # Explicit approver choice (C-G-11), meaningful only when `approve` is True, the change request is
+    # `MODIFY_REQUIREMENT` and the target requirement has `is_completed=True`; a no-op otherwise. Opt-in, not
+    # automatic: a plain "Approve" leaves `is_completed` untouched (see
+    # `routers.change_requests.decide_change_request`'s `status_value=None` comment). This field is how an
+    # approver says a change is substantial enough that completion needs re-verifying.
     clear_completion: bool = False
     # Which proposed links to merge on approval. Omitted merges every
     # link that is valid at decision time, which is what approving an ADD_LINK

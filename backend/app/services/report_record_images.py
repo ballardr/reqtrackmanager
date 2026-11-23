@@ -4,25 +4,20 @@ Module: services.report_record_images
 The pictures attached to a record, chosen by a report's record-images block.
 
 Responsibilities:
-- List the files attached to a batch of records through each type's `RecordAttachmentProvider`, leaving out any file its
-  owner marked confidential.
-- Match file names against the block's patterns (an exact name or `*` and `?` wildcards), with a value filled in from the
-  record never able to add a wildcard or a path.
-- Pick the candidates by name, extension, size and order, and turn a chosen file into drawable bytes by what its
-  *content* is, never its claimed type.
+- List files attached to a batch of records through each type's `RecordAttachmentProvider`, omitting confidential files;
+  match names against the block's patterns; pick candidates by name, extension, size and order; turn a chosen file into
+  drawable bytes by its content, never its claimed type.
 
 Design decisions:
-- **Authorisation is the record's.** The engine asks only about records its traversal already showed the caller, and a
-  file is reached only through the record's own link table, so a file prints exactly when the caller could open it from
-  the record's page. It never goes through the shared-library visibility rule the Image block uses.
-- **Confidential is the only per-file switch**, kept on the file (`FileAsset.confidential`); everything else is the
-  block's rules. A confidential file is excluded in the query, so it is never read from storage.
-- **No regular expressions.** An author's pattern is run over every attachment, so a pattern is matched by a linear
-  two-pointer wildcard walk (bounded by pattern length times name length) with a cap on the number of `*`.
-- **Cheap tests first, bytes last.** Name, extension, claimed type and recorded size narrow the candidates; a file's
-  bytes are read only for those that survive, in order, until the block's count is reached.
+- Authorisation is the record's: only records the traversal showed the caller are asked about, and a file is reached
+  through the record's own link table, never the shared-library rule the Image block uses.
+- Confidential (`FileAsset.confidential`) is the only per-file switch and is excluded in the query, so it is never read
+  from storage.
+- No regular expressions: a pattern is matched by a linear two-pointer wildcard walk with a cap on `*`; a value filled
+  in from the record can never add a wildcard or a path.
+- Cheap tests (name, extension, claimed type, recorded size) first; bytes are read only for survivors, until the count.
 
-Dependencies: `modules.registry` (the providers), `services.report_images` (decoding), `models.file`.
+Dependencies: `modules.registry`, `services.report_images`, `models.file`.
 """
 
 from __future__ import annotations

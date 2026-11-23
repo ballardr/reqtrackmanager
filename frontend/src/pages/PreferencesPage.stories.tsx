@@ -41,10 +41,7 @@ function mockPreferencesApis(userId: string, opts: { pats?: PersonalAccessToken[
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/notifications/preferences")) return notificationPrefs;
     if (path.includes("archived=false")) return [buildProjectListItem({ id: "p1", organization_id: "org-1", name: "Atlas Platform" })];
-    // Must come before the generic "/me/pats" check below — that check's
-    // `.includes` would otherwise also match this path (a real
-    // unmocked-route bug found via a story: it silently returned `[]`
-    // instead of the expected `{max_expires_at}` shape).
+    // Must precede the generic "/me/pats" check, whose `.includes` would also match this path.
     if (path.includes("/me/pats/max-lifetime")) return { max_expires_at: "2027-01-01T00:00:00Z" };
     if (path.includes("/me/pats")) return opts.pats ?? [];
     if (path === "/api/v1/orgs?mine=true") return opts.creatableOrgs ?? [org];
@@ -133,8 +130,7 @@ export const SecurityTabChangePassword: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Security" }));
-    // "Change password" is a `variant="plain"` CollapsibleSection with no
-    // `defaultCollapsed`, so it's already expanded — no click needed.
+    // "Change password" is an expanded `variant="plain"` CollapsibleSection, so no click is needed.
     await userEvent.type(canvas.getByLabelText("Current password"), "old-password");
     await userEvent.type(canvas.getByLabelText("New password"), "new-password-123");
     await userEvent.click(canvas.getByRole("button", { name: "Change password" }));
@@ -176,11 +172,7 @@ export const AccessTabShowsOrgsAndProjects: Story = {
   },
 };
 
-/** "Leave organisation" moved here
- * from Org Admin — it's about this user's own membership, not an org-level
- * setting. Previously fired with zero confirmation; now Tier 1
- * `ConfirmDialog` + `Toast`, matching every other ordinary/reversible
- * mutation in the app. */
+/** "Leave organisation" (the person's own membership) asks a Tier 1 `ConfirmDialog` and ends with a `Toast`. */
 export const AccessTabLeaveOrganisationConfirms: Story = {
   beforeEach: () => {
     mockPreferencesApis("user-1");
@@ -243,15 +235,12 @@ export const PatsTabCreateToken: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
-    // The create form opens in a `Modal`, portalled to
-    // `document.body` rather than nested inside the tab panel.
+    // The create form is a `Modal` portalled to `document.body`.
     await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });
     await waitFor(() => expect(within(dialog).getByPlaceholderText('e.g. "MCP server"')).toBeInTheDocument());
     await userEvent.type(within(dialog).getByPlaceholderText('e.g. "MCP server"'), "MCP server");
-    // The org checklist populates asynchronously (each org's own
-    // membership-confirming fetch), independent of the dialog already
-    // being visible.
+    // The organisation checklist fills asynchronously from each organisation's membership fetch.
     await waitFor(() => expect(within(dialog).getByLabelText("Acme Corp")).toBeInTheDocument(), { timeout: 3000 });
     await userEvent.click(within(dialog).getByLabelText("Acme Corp"));
     await userEvent.click(within(dialog).getByRole("button", { name: "Create token" }));
@@ -278,8 +267,7 @@ const onePat: PersonalAccessToken = {
   expires_at: "2027-01-01T00:00:00Z", revoked_at: null, last_used_at: null, created_at: "2026-01-01T00:00:00Z",
 };
 
-/** Revoking a token opens the shared `ConfirmDialog` (sixth-pass audit —
- * this used to fire via `window.confirm`), then shows a success toast. */
+/** Revoking a token opens the shared `ConfirmDialog`, then shows a success toast. */
 export const PatsTabRevokeConfirms: Story = {
   beforeEach: () => {
     mockPreferencesApis("user-1", { pats: [onePat] });

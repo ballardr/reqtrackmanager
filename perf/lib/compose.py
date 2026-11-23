@@ -6,18 +6,17 @@ throwaway `reqtrack-perf` Compose project.
 
 Responsibilities:
 - Build every `docker compose` command with `-p reqtrack-perf` and the runner's own compose files and env file.
-- Validate every argument vector before it runs (`validate_argv`): destructive commands may name only resources
-  of the perf project, and prune, image removal and anything not on the allowlist are refused outright.
-- Run Docker with a scrubbed environment, so a variable exported in the operator's shell (a production
-  `POSTGRES_PASSWORD`, `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`) can never leak into or redirect the perf stack.
-- Report leftovers of a crashed run and any foreign resource that shares the perf name, so a run refuses to start
-  rather than touch something that is not its own.
+- Validate every argument vector (`validate_argv`): destructive commands may name only perf-project resources;
+  prune, image removal and anything off the allowlist are refused.
+- Run Docker with a scrubbed environment, so an exported production variable (`POSTGRES_PASSWORD`, `COMPOSE_FILE`,
+  `COMPOSE_PROJECT_NAME`) cannot leak into or redirect the perf stack.
+- Report leftovers of a crashed run and foreign resources sharing the perf name, so a run refuses to start rather than
+  touch what is not its own.
 
 Design decisions:
-- Isolation by construction: the runner has no code path that accepts a database URL, API URL, project name or
-  file path from the command line. This module is that boundary, and `backend/tests/test_perf_runner.py` pins it.
-- The perf images are named `reqtrack-perf-*`, never the production image names, so a local build can never
-  retag a production image (`latest`) on a shared host.
+- Isolation by construction: no code path accepts a database URL, API URL, project name or file path from the command
+  line. This module is that boundary, pinned by `backend/tests/test_perf_runner.py`.
+- The perf images are named `reqtrack-perf-*`, so a local build never retags a production image (`latest`).
 - Python 3.9+ and the standard library only, so the runner works on a bare Raspberry Pi.
 
 Dependencies: Docker with the Compose plugin.

@@ -1,15 +1,14 @@
 /**
  * Module: utils/reportCopySelection
  *
- * Which rows of the Report setup list can be copied to another project, and what a set of ticked rows and folders adds up
- * to for the copy request.
- *
- * Responsibilities: `isCopyable` (a layout or pack the project can reach and has not hidden, or a module report the
- * project itself placed), `copyItems` (ticked rows and folders to the request's ids and keys) and `copyCount`.
- *
- * Design decisions: a report that only follows a parent's or the organisation's setup (a module report with no setting of this
- * project's own) has nothing to copy, so it cannot be ticked; a shared layout or pack can, and arrives as the target's own.
- * Pure functions over plain data.
+ * Which rows of the Report setup list can be copied to another project, and what
+ * ticked rows and folders add up to for the copy request: `isCopyable` (a layout
+ * or pack the project can reach and has not hidden, or a module report the
+ * project itself placed), `copyItems` (ticked rows and folders to request ids
+ * and keys) and `copyCount`.
+ * Design: a report that only follows a parent's or the organisation's setup has
+ * nothing to copy, so it cannot be ticked; a shared layout or pack can, and
+ * arrives as the target's own. Pure functions over plain data.
  */
 import type { CopyItems } from "../api/reportCopy";
 import type { ReportSetupRow } from "./reportSetupRows";

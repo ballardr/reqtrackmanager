@@ -1,13 +1,14 @@
 /**
  * Module: utils/activityLink
  *
- * Where an activity entry's record opens, for every registered record type: the one place the project History
- * table, the overview's activity widget and a record's Activity aside decide the link and its label.
- *
- * Requirements and change requests carry their code and title in `detail` (`activityEntryLink`); any other
- * type the viewer may see carries a `record_label` from the server and resolves its page through the module
- * registry (`getArtefactPath`), so a module's records link without a per-type case here. A record with no label
- * (hidden from the viewer) or no page of its own gets no link.
+ * Where an activity entry's record opens, for every registered record type: the
+ * one place the project History table, the overview's activity widget and a
+ * record's Activity aside decide the link and its label.
+ * Requirements and change requests carry their code and title in `detail`
+ * (`activityEntryLink`); any other visible type carries a server `record_label`
+ * and resolves its page through the module registry (`getArtefactPath`), so a
+ * module's records link without a per-type case. No label (hidden from the
+ * viewer) or no page of its own gives no link.
  */
 import { activityEntryLink, type ChangeEntry } from "../api/types";
 import { getArtefactPath } from "../modules/artefactPaths";

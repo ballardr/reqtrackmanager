@@ -144,12 +144,8 @@ def complete_standard_review(
     organization_id: UUID, standard_id: UUID, review_id: UUID, payload: ComplianceReviewCompleteRequest,
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
-    """Completes a `SCHEDULED` standard-level review, recording its outcome.
-
-    Marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-23 hardening pass) —
-    see `project_router.reviews.complete_project_review`'s docstring for
-    why review-outcome recording is categorically MCP-excluded rather than
-    gated by `require_ai_approvals_enabled`."""
+    """Completes a `SCHEDULED` standard-level review, recording its outcome. Marked `APPROVAL_ACTION_ROUTE_EXTRA`:
+    recording a review outcome is MCP-excluded (see `project_router.reviews.complete_project_review`)."""
     review = _get_standard_review_or_404(db, organization_id, standard_id, review_id)
     if review.status != ComplianceReviewStatus.SCHEDULED:
         raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed.")

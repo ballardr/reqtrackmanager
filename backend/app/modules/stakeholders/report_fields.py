@@ -1,20 +1,16 @@
 """
 Module: modules.stakeholders.report_fields
 
-The `ReportFieldProvider`s for the Stakeholders module's six artefact types, so custom report layouts can
-print and group Personas, Stakeholders, Needs, Stakeholder Groups, Engagements and Research Findings.
-
-Responsibilities:
-- Declare, per type, the text fields (from the search declaration) and the typed fields that are safe to
-  report: an engagement's date, a persona's weight.
+The `ReportFieldProvider`s for the six artefact types, so custom report layouts can print and group
+Personas, Stakeholders, Needs, Stakeholder Groups, Engagements and Research Findings.
 
 Design decisions:
+- Opt-in only: the text fields come from the search declaration, plus the typed fields safe to report
+  (an engagement's date, a persona's weight).
 - Personal and consent-sensitive data is excluded by omission: no participant identity, contact detail or
-  consent record is a field. An engagement's notes and summary come across only because the search already
-  treats them as opt-in text.
-- Opt-in only; joins and identity columns come from the search declaration.
+  consent record is a field. An engagement's notes and summary appear only because search treats them as opt-in.
 
-Dependencies: this module's models; `services.report_fields` (builders).
+Dependencies: this module's models; `services.report_fields`.
 """
 
 from __future__ import annotations

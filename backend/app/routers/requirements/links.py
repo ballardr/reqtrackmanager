@@ -36,24 +36,16 @@ router = APIRouter(tags=["requirements-links"])
 
 
 def _links_to_out(db: Session, links: list[ArtefactLink], viewpoint_requirement_id: UUID) -> list[RequirementLinkOut]:
-    """Resolves `ArtefactLink`s (requirement-to-requirement, per this
-    endpoint's own scope) into the API shape from the perspective of
-    `viewpoint_requirement_id` — whichever requirement `GET
-    /{requirement_id}/links` was called for. Direction and the
-    other-requirement's display fields can only be resolved server-side
-    (per-request), since a link row alone doesn't say which end the caller
-    is looking from (see `schemas.requirement.RequirementLinkOut`'s
-    docstring).
+    """Resolves `ArtefactLink`s (requirement-to-requirement) into the API shape from the perspective of
+    `viewpoint_requirement_id`, the requirement `GET /{requirement_id}/links` was called for. Direction and the
+    other requirement's display fields are resolved per request, since a link row does not say which end the
+    caller is looking from (see `schemas.requirement.RequirementLinkOut`).
 
-    `source_id`/`target_id` here are read as requirement ids — this
-    endpoint only ever creates/lists links where both
-    `source_type`/`target_type` are `ArtefactType.REQUIREMENT` (see
-    `create_link` below), so that's a safe assumption for any row this
-    function is handed.
+    `source_id`/`target_id` are read as requirement ids: this endpoint creates and lists only links where both
+    `source_type`/`target_type` are `ArtefactType.REQUIREMENT` (see `create_link`).
 
-    The link types, the other requirements and their current versions are
-    each loaded in one statement for the whole list, so a hub requirement
-    with hundreds of links costs the same number of statements as one with two.
+    The link types, the other requirements and their current versions are each loaded in one statement for the
+    whole list, so a hub requirement with hundreds of links costs the same number of statements as one with two.
     """
     other_ids = {
         link.target_id if link.source_id == viewpoint_requirement_id else link.source_id for link in links
@@ -100,15 +92,11 @@ def create_link(
 ):
     """Creates a traceability link between two requirements (C-G-09).
 
-    Not gated by either requirement's lock state by default — see
-    `models.relationship.ArtefactLink`'s docstring for why traceability
-    metadata sits outside C-G-12's change-log boundary. Platform review
-    2026-09
-    deliberately supersedes that default for a project (or org) that opts
-    in: once `requirement_id`'s current version is locked (approved) *and*
-    `services.requirements.requires_change_request_for_links` is true for
-    this project, adding a link must go through an `ADD_LINK` change
-    request instead — see `routers.change_requests.create_change_request`.
+    By default not gated by either requirement's lock state (see `models.relationship.ArtefactLink` for why
+    traceability metadata sits outside C-G-12's change-log boundary). For a project (or org) that opts in, once
+    `requirement_id`'s current version is locked (approved) and
+    `services.requirements.requires_change_request_for_links` is true for this project, adding a link must go
+    through an `ADD_LINK` change request (see `routers.change_requests.create_change_request`).
     """
     _require_edit_role(db, current_user, project_id)
     project = project_or_404(db, project_id)
@@ -147,13 +135,10 @@ def list_links(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     _get_requirement_in_project(db, project_id, requirement_id)
-    # `get_all_artefact_links` returns every link touching this requirement
-    # in either direction, which also includes untyped `ArtefactLink` rows
-    # where a `RequirementAction` links to this requirement (`link_action`,
-    # in `routers.requirements.actions`) — those aren't requirement-to-
-    # requirement traceability links, so they're filtered out here rather
-    # than by `link_type_id is not None` alone, to stay correct even if a
-    # future artefact type ever adds its own typed link to a requirement.
+    # `get_all_artefact_links` returns every link touching this requirement in either direction, including
+    # untyped `ArtefactLink` rows where a `RequirementAction` links to it (`link_action`,
+    # `routers.requirements.actions`). Those are not traceability links and are filtered out here rather than
+    # by `link_type_id is not None` alone, so this stays correct if another artefact type adds a typed link.
     links = [
         link for link in get_all_artefact_links(db, ArtefactType.REQUIREMENT, requirement_id)
         if link.source_type == ArtefactType.REQUIREMENT and link.target_type == ArtefactType.REQUIREMENT

@@ -3,24 +3,15 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Job to be done: `RequirementsPage`'s list/table view supports selecting
- * several requirements at once and applying a bulk action to all of them —
- * the first pilot of style guide "Pattern: bulk operations on a list"
- *. Covers the
- * golden path for both bulk actions: archive and move-to-stage. No new
- * backend endpoint exists for either — the page loops over the existing
- * single-requirement archive/update endpoints client-side — so this spec
- * is also the end-to-end proof that loop actually reaches the server for
- * every selected row, not just the first.
+ * Job to be done: `RequirementsPage`'s list/table view supports selecting several requirements at once and applying
+ * a bulk action to all of them (style guide "Pattern: bulk operations on a list"). Covers the golden path for both
+ * bulk actions: archive and move-to-stage. The page loops over the existing single-requirement archive/update
+ * endpoints client-side, so this spec is also the end-to-end proof that the loop reaches the server for every
+ * selected row, not only the first.
  *
- * Uses Alpha-1, logged in as its project manager (orgAdminAlphaBeta).
- * Every fixture this spec touches is created by the spec itself with a
- * per-run timestamp — a throwaway project stage (Project Admin has no
- * delete-free way to guarantee a second stage exists otherwise, since a
- * freshly created project only seeds one "Scoping" stage) and four
- * throwaway requirements — rather than reusing or mutating any seeded
- * data, per this repo's test-independence rule: this spec must pass
- * standalone or repeated back-to-back against the same database.
+ * Uses Alpha-1, logged in as its project manager (orgAdminAlphaBeta). Every fixture is created by the spec with a
+ * per-run timestamp: a throwaway project stage (a new project seeds only one "Scoping" stage) and four throwaway
+ * requirements, so it passes standalone or repeated against the same database.
  */
 test.describe("requirements list: bulk operations", () => {
   test("select multiple requirements, bulk-archive, and bulk-move to a stage", async ({ page }) => {
@@ -127,16 +118,11 @@ test.describe("requirements list: bulk operations", () => {
     });
 
     await test.step("clean up the throwaway stage (reassigning its requirements back to Scoping)", async () => {
-      // Unlike the four throwaway requirements above (dynamically named,
-      // harmless to leave behind — same tolerance
-      // project-admin-groups-and-fields.spec.ts's own custom fields get), a
-      // project *stage* is a small, shared, enumerable resource other specs
-      // query by role/count rather than by name — found the hard way:
-      // workflow-bypass-attempts.spec.ts's `getByRole("button", { name:
-      // "Start review" })` assumes exactly one "scoping"-status stage on
-      // Alpha-1 and hit a strict-mode violation once this spec's own extra
-      // stage was left behind uncleaned. Deleting with `reassign_to` moves
-      // both fixture requirements currently on it back to Scoping first.
+      // Unlike the four throwaway requirements above (dynamically named, harmless to leave behind), a project stage is a
+      // small, shared, enumerable resource other specs query by role/count rather than by name:
+      // workflow-bypass-attempts.spec.ts's `getByRole("button", { name: "Start review" })` assumes exactly one
+      // "scoping"-status stage on Alpha-1. Deleting with `reassign_to` moves both fixture requirements on it back to
+      // Scoping first.
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Workflows and phases");
       const deleteButtons = page.getByRole("button", { name: "Delete this stage" });

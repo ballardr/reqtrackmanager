@@ -1,16 +1,14 @@
 /**
  * Module: pages/PoliciesPage
  *
- * The Policies page: the published policies, one at a time, chosen from a side menu. Reachable without signing in
- * (the people a privacy policy concerns most have not signed in yet), so a signed-out visitor reads only the public
- * endpoints. A signed-in person also sees, under the organisation's name, the policies of each organisation they
- * belong to that they may read. Every body is rendered through `PolicyBodyView`.
+ * The Policies page: the published policies, one at a time, chosen from a side menu. It is reachable without signing in (a
+ * signed-out visitor reads only the public endpoints); a signed-in person also sees, under each organisation's name, the policies
+ * of the organisations they may read. Every body is rendered through `PolicyBodyView`.
  *
- * Responsibilities: list the readable policies (the server's first, then one group per organisation) and, last, the
- * built-in Licences group (product licence, third-party components, fonts), which is not a policy and always exists.
- * Show the selected policy (the first by default, or the Licences group when none is readable) with its effective
- * date and version. The address `/policies/:policyId` selects a policy and `/policies/licences/:section` a licence
- * section; both are read from the location, so the signed-out page, which renders outside a route, resolves them too.
+ * Responsibilities: list the readable policies (the server's first, then one group per organisation) and last the built-in
+ * Licences group (product licence, third-party components, fonts), which is not a policy; show the selected policy (the first,
+ * or Licences when none is readable) with its effective date and version. `/policies/:policyId` and
+ * `/policies/licences/:section` are read from the location so the signed-out page, outside a route, resolves them too.
  */
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -30,10 +28,7 @@ import { LICENCE_SECTIONS, parsePoliciesPath, type LicenceSection } from "../uti
 /** Which read a policy comes from: the public server policies, or the signed-in person's organisations. */
 type PolicySource = "server" | "organisation";
 
-/**
- * The panel above a policy the person must accept: why, and the Accept action. Shown only for the version being read,
- * so a text that changed meanwhile is not accepted unseen.
- */
+/** The panel above a policy the person must accept: why, and the Accept action, shown only for the version being read so a changed text is not accepted unseen. */
 function AcceptPanel({ policy }: { policy: PendingPolicy }) {
   const text = useStrings().policies;
   const accept = useAcceptPolicy();
@@ -84,10 +79,7 @@ function SelectedPolicy({ policyId, source }: { policyId: string; source: Policy
 /** The menu key of a licence section (a policy's key is its id, which never has this shape). */
 const licenceKey = (section: LicenceSection) => `licences-${section}`;
 
-/**
- * The menu: server policies as plain links, then one expandable group per organisation (an organisation with a
- * single policy is one link naming both), then the Licences group.
- */
+/** The menu: server policies as plain links, then one expandable group per organisation (one link when it has a single policy), then Licences. */
 function menuGroups(
   server: { id: string; title: string }[], member: MemberPolicySummary[], line: (organisation: string, title: string) => string,
   licences: { group: string; sections: Record<LicenceSection, string> },

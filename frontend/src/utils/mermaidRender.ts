@@ -1,26 +1,23 @@
 /**
  * Module: utils/mermaidRender
  *
- * Draws Mermaid diagram text as an image source for `MermaidDiagram`, on demand and within fixed limits.
- *
- * Responsibilities:
- * - Load the Mermaid library on first use only (a dynamic import), so no page that shows no diagram pays for it.
- * - Draw in strict mode with SVG text labels, the shared font (DejaVu Sans, a local file) and the limits in
- *   `mermaidRenderConfig.json` (source size, edges, drawn elements, time).
- * - Return the drawing as a `data:image/svg+xml` image through `safeSvgImage`, so script in a diagram can never run.
- *
- * Design decisions:
- * - One engine version, one font and one set of limits are the contract with the server's renderer (reports), so a
- *   diagram reads the same on screen and in a document. The version is the `mermaid` pin in package.json and is
- *   repeated in the JSON file, where a story keeps the two equal.
- * - An image cannot use the page's fonts, so the font is also embedded in the drawing (a trusted `@font-face`
- *   added after sanitising); the same font is registered on the page first, so Mermaid measures the text it
- *   will draw with.
- * - Mermaid keeps global state, so drawings run one at a time. A drawing that takes too long is abandoned for the
- *   caller (a library call cannot be cancelled) and the next one is not blocked behind it.
- * - Results are cached per source and theme, because a list or a re-render repeats the same diagram.
- *
- * Dependencies: `mermaid` (MIT), `utils/safeSvgImage`, the font in `assets/fonts/` (licence beside it).
+ * Draws Mermaid diagram text as an image source for `MermaidDiagram`, on demand
+ * and within fixed limits. The library loads on first use (dynamic import); it
+ * draws in strict mode with SVG text labels, the shared font (DejaVu Sans) and
+ * the limits in `mermaidRenderConfig.json`, and returns a `data:image/svg+xml`
+ * image through `safeSvgImage`, so script in a diagram can never run.
+ * Design:
+ * - One engine version, font and set of limits are the contract with the
+ *   server's report renderer, so a diagram reads the same on screen and in a
+ *   document. The version is the `mermaid` pin in package.json, repeated in the
+ *   JSON file where a story keeps the two equal.
+ * - An image cannot use the page's fonts, so the font is embedded in the drawing
+ *   (a trusted `@font-face` added after sanitising) and registered on the page
+ *   first so Mermaid measures the text it will draw.
+ * - Mermaid keeps global state, so drawings run one at a time; one that takes too
+ *   long is abandoned for the caller (a call cannot be cancelled) without blocking
+ *   the next. Results are cached per source and theme.
+ * Dependencies: `mermaid` (MIT), `utils/safeSvgImage`, the font in `assets/fonts/`.
  */
 import fontUrl from "../assets/fonts/DejaVuSans-diagram.woff2?url";
 import config from "./mermaidRenderConfig.json";

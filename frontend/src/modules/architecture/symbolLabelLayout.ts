@@ -3,29 +3,17 @@
  *
  * The layout of the label drawn inside an initial, final or choice symbol of a state machine diagram: where its lines break and
  * how large the symbol must be to hold them. Pure functions, no React.
- *
- * Responsibilities:
- * - Measure a text with a fixed, font-independent width table (`textWidth`), at any font size: annotation notes (`noteLayout`)
- *   measure with this same table, so every text on a diagram breaks at the same words.
- * - Break a label into lines between words only (`wrapLabel`): at spaces, after a hyphen, between East Asian characters and at
- *   a line break the person typed; a word is never split.
- * - Find the smallest symbol that holds the label (`fitLabel`): the symbol grows from its labelled base size in steps until the
- *   text, with `LABEL_PADDING` clear of the symbol's inner edge on every side, fits inside it (`holds`).
- * - Place a label outside its symbol (`besideLabel`): the symbol keeps its plain size and the text block sits against one side of
- *   it, `LABEL_PADDING` clear of the symbol's outer edge, wrapped to `BESIDE_MAX_WIDTH` and aligned toward the symbol.
- *
- * Design decisions:
- * - The server draws the same lines with a Python copy (`diagram_symbol_label.py`); `symbolLabelCases.json` holds the cases
- *   both are tested against, so a change is made in both. The measure is a table of average glyph widths in thousandths of the
- *   font size (integers only, so both languages agree exactly), not the browser's own metrics, so the screen and the exports
- *   break a label at the same words. It is set wider than the system fonts' glyphs, so the real text keeps its padding.
- * - Padding is measured, not implied: the text block's rectangle is centred on the symbol and its nearest corner must be at least
- *   `LABEL_PADDING` from the inner edge of the circle, the ring's disc or the diamond (measured at right angles, inside the
- *   diamond's stroke), in integers so both languages agree exactly. `TEXT_PERCENT` only sets how wide a line is first tried.
- *   Text outside a symbol keeps the same gap from the symbol's outer edge (the label position); that block is measured with the
- *   same width table and rounded up to a whole unit, and placed relative to the symbol's own box (so its offset may be negative).
- * - A word longer than the largest symbol's text area is kept whole on one line at the largest size and `fits` is false, so the
- *   Selection card can warn; it is never broken mid-word and never clipped.
+ * - `textWidth` measures with a fixed, font-independent table of average glyph widths in thousandths of the font size
+ *   (integers only), set wider than the system fonts' glyphs so real text keeps its padding. Notes (`noteLayout`) use the
+ *   same table, so every text on a diagram breaks at the same words on screen and in exports.
+ * - `wrapLabel` breaks between words only (spaces, after a hyphen, between East Asian characters, typed line breaks).
+ * - `fitLabel` grows the symbol in steps until the text block, centred on it, is at least `LABEL_PADDING` from the inner edge
+ *   of the circle, disc or diamond (integers). `besideLabel` keeps the plain symbol and places the block against one side,
+ *   `LABEL_PADDING` from the outer edge, wrapped to `BESIDE_MAX_WIDTH`; its offset may be negative.
+ * - A word longer than the largest symbol's text area stays whole at the largest size and `fits` is false so the Selection card
+ *   can warn; it is never broken or clipped.
+ * The server draws the same lines with `diagram_symbol_label.py`; `symbolLabelCases.json` holds the cases both are tested
+ * against, so a change is made in both.
  */
 
 import type { StateMarkerKind } from "./stateShapes";

@@ -1,17 +1,11 @@
 /**
  * Module: modules/compliance/ComplianceOrgSettingsPanel
  *
- * The org-level Compliance settings panel — so far, one field: this organisation's designated **default
- * compliance-managers group**, the SSO-friendly fallback that keeps a
- * standard from ever being left with no `standards_manager` at all (§3).
- * Every current member of the picked `OrgGroup` counts as an effective
- * standards manager for any standard in this org with no explicit grant of
- * its own — see `StandardMembersSection.tsx`'s own "last manager" disabled-
- * checkbox treatment for where this is actually consumed.
- *
- * A one-field "pick an existing group, or none" is a plain `<select>`, not
- * a bespoke picker component — mirrors `OrgGroup.granted_org_role`'s own
- * settings-surface simplicity one level down.
+ * The org-level Compliance settings panel: the organisation's designated **default compliance-managers group**, the
+ * SSO-friendly fallback that keeps a standard from being left with no `standards_manager`. Every current member of the picked
+ * `OrgGroup` is an effective standards manager for any standard in the organisation with no explicit grant of its own (see
+ * `StandardMembersSection.tsx`'s "last manager" disabled checkbox). Choosing an existing group, or none, is a plain `<select>`
+ * rather than a bespoke picker.
  */
 import { useEffect, useState } from "react";
 import { Spinner } from "../../components/Spinner";

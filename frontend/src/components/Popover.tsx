@@ -14,65 +14,37 @@ const MATCH_ANCHOR_USABLE_ROOM_PX = 240;
 const CARET_INSET_PX = 14;
 
 /**
- * A small anchored panel for a one- or two-field create flow — the other
- * half of style guide Principle 3 alongside `SidePanel`, for content too
- * light to justify a full panel (e.g. "+ New group" with just a name
- * field; see `docs/ux-style-guide.md`'s "Pattern: create panels, popovers,
- * and one door for bulk"). Unlike `Modal`/`SidePanel` it has no header
- * chrome of its own — callers supply the whole body, typically ending in a
- * Cancel/submit row that calls `onClose` itself — and no backdrop, so nav
- * and other page content stay interactive around it.
+ * A small anchored panel for a one- or two-field create flow, the other half of style guide Principle 3 beside
+ * `SidePanel` (`docs/ux-style-guide.md`, "Pattern: create panels, popovers, and one door for bulk"). It has no
+ * header chrome (callers supply the whole body, typically ending in a Cancel/submit row that calls `onClose`) and no
+ * backdrop, so nav and page content stay interactive around it. Callers hold `onClose` as "set open to false" and
+ * pass a stable `anchorRef`.
  *
- * Positioned relative to `anchorRef` on the same principle as `Tooltip`
- * (portalled to `document.body`, measured via `getBoundingClientRect` so a
- * scrollable ancestor like the nav rail can't clip it, flipped above the
- * anchor if there's no room below) but, unlike `Tooltip`, the measured
- * position is applied directly to the DOM node in the same layout effect
- * rather than through React state — routing it through state would add an
- * extra render between mount and the shared focus-management effect below,
- * which raced it and left focus on the page instead of moving into the
- * popover. It's also click-triggered rather than hover-triggered and is
- * interactive: focus moves into it on open and is trapped there (see
- * `dialogA11y.ts`, shared with `Modal`/`SidePanel`), and it closes on
- * Escape or a click anywhere outside itself and its anchor — the caller is
- * expected to hold `onClose` as "set open state to false" and pass a
- * stable `anchorRef` for the trigger button.
+ * Positioning: portalled to `document.body` and measured with `getBoundingClientRect` (as `Tooltip`) so a scrollable
+ * ancestor cannot clip it, flipped above the anchor when there is no room below. The position is applied directly to
+ * the DOM node in the layout effect, not through React state: an extra render before the focus-management effect
+ * races it and leaves focus on the page. It is re-measured when the window or an ancestor scrolls or resizes and
+ * when the content changes size (scrolling its own content is ignored); content that does not fit the roomier side
+ * is capped to the room and scrolls inside.
  *
- * The position is re-measured when the window or any ancestor scrolls or resizes and when the content
- * changes size, so it stays attached to its anchor (scrolling the popover's own content does not move it,
- * so it is ignored); if the content does not fit on the roomier side
- * of the anchor it is capped to the room and scrolls inside, so no control is ever out of reach.
+ * It is click-triggered and interactive: focus moves in on open and is trapped (`dialogA11y.ts`, shared with
+ * `Modal`/`SidePanel`), and it closes on Escape or a press outside itself and its anchor. A dialog opened from the
+ * popover's own content (a confirmation) is a portal after it, so a press there is not "outside". A popover clears
+ * any enclosing dialog's header slots, so a `FormActions` inside it keeps its buttons in the popover.
  *
- * A popover has no header, so it clears any enclosing dialog's header slots: a `FormActions` inside it
- * keeps its buttons in the popover instead of moving them to the dialog behind it.
- *
- * A press inside a dialog the popover's own content opened (a confirmation) is not "outside": that dialog is a portal
- * beside the popover in the DOM, opened after it, so a press in anything portalled after this popover leaves it open
- * while its confirmation is answered.
- *
- * `fit` sizes the panel to its content instead of the fixed 280px (up to the
- * viewport width less a margin, `.popover-bubble`'s `max-width`), for a menu
- * whose longest label would otherwise clip.
- *
- * `placement="side"` opens the panel to the right of the anchor with their top edges level, for a small
- * (+) button whose panel should not cover the field it sits beside; it opens below when the width does not fit.
- *
- * `menu` gives the panel the look of an action menu (`ActionMenuList`): tighter padding, a soft shadow and a small caret
- * pointing at the anchor, on the side the panel opened (the caret is hidden while the panel is capped and scrolling).
- *
- * `matchAnchor` makes the panel open like a native select list: its left edge on the anchor's and at least
- * as wide as the anchor (never under 280px), for an anchor that is a form control and not a small button. The panel's
- * content takes the width it is given and must not set a minimum of its own: the bubble is only as wide as the field,
- * so a wider fixed content runs out of the bubble, the card and the window. It also keeps below the field, scrolling
- * inside, while at least 240px of room is there, so it does not flip over the fields above the anchor.
- *
- * `maxWidth` (pixels, `matchAnchor` only) caps that width for a very wide field, such as one that spans a dialog: the
- * panel keeps its left edge on the field's and is no wider than its content needs, instead of the whole row.
- *
- * `flush` removes the panel's padding and hides its overflow: the content is a column of its own, a fixed header
- * above one `ScrollRegion` that meets the panel's border and rounded corners. When the room is short the panel
- * keeps its cap and that region shrinks and scrolls, so the header never scrolls away. Without `flush` a capped panel
- * scrolls as a whole, as a `ScrollRegion` (thin themed bar and edge indicators).
+ * - `fit` sizes the panel to its content instead of the fixed 280px (up to the viewport width less a margin,
+ *   `.popover-bubble`'s `max-width`), for a menu whose longest label would clip.
+ * - `placement="side"` opens to the right of the anchor with top edges level, for a small (+) button whose panel
+ *   should not cover its field; it opens below when the width does not fit.
+ * - `menu` gives the look of an action menu (`ActionMenuList`): tighter padding, soft shadow and a caret pointing at
+ *   the anchor (hidden while the panel is capped and scrolling).
+ * - `matchAnchor` opens like a native select list: left edge on the anchor's and at least as wide (never under
+ *   280px), for an anchor that is a form control. Content takes the width given and must set no minimum of its own,
+ *   or it runs out of the bubble. The panel stays below the field, scrolling inside, while at least 240px of room
+ *   is there. `maxWidth` (pixels) caps the width for a very wide field such as one spanning a dialog.
+ * - `flush` removes the padding and hides overflow: the content is a fixed header above one `ScrollRegion` that
+ *   meets the panel's border and corners and shrinks and scrolls when room is short. Without `flush` a capped panel
+ *   scrolls as a whole, as a `ScrollRegion`.
  */
 export function Popover({
   anchorRef,
@@ -176,10 +148,9 @@ export function Popover({
   }, [anchorRef, matchAnchor, maxWidth, placement, menu, flush]);
 
   useEffect(() => {
-    // Listens in the capture phase on `pointerdown`: React Flow's pane and nodes (d3-zoom, d3-drag) stop a
-    // `mousedown` before it bubbles to the document, so a bubble-phase `mousedown` listener never saw a click on a
-    // diagram and a popover opened over one could not be dismissed by clicking away. A capture listener on the
-    // document runs before any of them, and `pointerdown` is not suppressed with the compatibility mouse events.
+    // Capture-phase `pointerdown`: React Flow's pane and nodes (d3-zoom, d3-drag) stop `mousedown` before it bubbles
+    // to the document, so a bubble-phase listener never sees a click on a diagram. A document capture listener runs
+    // before them, and `pointerdown` is not suppressed with the compatibility mouse events.
     function onPointerDown(e: PointerEvent) {
       const target = e.target as Node;
       if (bubbleRef.current?.contains(target) || anchorRef.current?.contains(target)) return;

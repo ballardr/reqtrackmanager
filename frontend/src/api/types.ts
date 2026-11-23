@@ -106,18 +106,12 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
   failed: "Failed",
 };
 
-// Status colour. A `BadgeTone` is one of
-// only 5 values, each backed by a `.badge--<tone>` CSS modifier
-// (styles/theme.css) — muted = not yet actionable (draft/withdrawn/
-// archived), info = awaiting a decision (in review/pending — deliberately
-// NOT --color-warning, which stays reserved for things that need
-// attention, not routine in-progress states), accent = a positive
-// terminal outcome (approved/completed), danger = a negative terminal
-// outcome (rejected/failed), warning = needs attention (used by scoring
-// rating bands, e.g. a "High" pain point; the backend's
-// `SCORING_BAND_TONES` mirrors this set). Every status/outcome enum rendered as a
-// badge should have a *_TONE map here alongside its *_LABEL map, never an
-// inline colour at the call site.
+// Status colour: one of 5 tones, each backed by a `.badge--<tone>` CSS modifier (styles/theme.css). muted = not
+// yet actionable (draft/withdrawn/archived); info = awaiting a decision (in review/pending; not --color-warning,
+// which is reserved for things needing attention); accent = a positive terminal outcome (approved/completed);
+// danger = a negative terminal outcome (rejected/failed); warning = needs attention (scoring rating bands, e.g.
+// a "High" pain point; the backend's `SCORING_BAND_TONES` mirrors this set). Every status/outcome enum shown as
+// a badge has a *_TONE map beside its *_LABEL map, never an inline colour at the call site.
 export type BadgeTone = "muted" | "info" | "accent" | "warning" | "danger";
 /** Where a background custom report run is (`GeneratedReport.status`). */
 export type ReportRunStatus = "queued" | "running" | "ready" | "failed" | "expired";
@@ -169,26 +163,15 @@ export const REQUIREMENT_ACTION_OUTCOME_TONE: Record<RequirementActionOutcome, B
   failed: "danger",
 };
 
-// Entity-type accent — a left-border stripe/box-shadow
-// (`.entity-accent-row`/`.entity-accent-card`, styles/theme.css) applied
-// consistently wherever these kinds appear as a list row or card, so a
-// user scanning a mixed list (e.g. a requirement's own Links card, which
-// shows both requirement-to-requirement links and a module's own link
-// kind side by side) can tell the entity kind apart at a glance.
+// Entity-type accent: a left-border stripe (`.entity-accent-row`/`.entity-accent-card`, styles/theme.css) on
+// each list row or card of these kinds, so a mixed list (e.g. a requirement's Links card) shows the entity kind
+// at a glance.
 //
-// Covers only the 3 entity kinds core itself owns — requirement/action/
-// change_request. A *module's* own accent colour (e.g. Compliance's) does
-// NOT belong here: an earlier version of this map carried a `"compliance"`
-// entry (and `theme.css` a matching `--color-entity-compliance` variable),
-// which was corrected back out once a second module attempted the same
-// addition and made the pattern visible — a per-module value hand-added to
-// this core, closed-set map is the exact same boundary violation CLAUDE.md
-// documents for `ProjectSequenceCounter.artefact_type`, just applied to a
-// display colour instead of an artefact-type string. A module now registers
-// its own colour on its own `module.ts` (`TierAModuleDefinition.
-// entityAccentColor`) instead, resolved via `modules/entityAccentColor.ts`'s
-// `useEntityAccentColor` — see that file's own docstring for the full
-// mechanism and `modules/compliance/module.ts` for the reference example.
+// Covers only the 3 entity kinds core owns (requirement/action/change_request). A module's accent colour (e.g.
+// Compliance's) is never added to this closed core map or to `theme.css`: that is a per-module hand edit of a
+// core file (the module boundary rule in CLAUDE.md). A module registers its colour on its `module.ts`
+// (`TierAModuleDefinition.entityAccentColor`), resolved by `modules/entityAccentColor.ts`'s
+// `useEntityAccentColor` (see `modules/compliance/module.ts` for the reference example).
 export type EntityAccentKind = "requirement" | "action" | "change_request";
 export const ENTITY_ACCENT_COLOR: Record<EntityAccentKind, string> = {
   requirement: "var(--color-entity-requirement)",
@@ -231,24 +214,14 @@ export const SERVER_ROLE_LABEL: Record<ServerRole, string> = {
 };
 
 /**
- * Collapses a user's held `ProjectRole` set down to the precedence style
- * guide "Pattern: role display — effective highest role only" defines, for
- * compact summary contexts (a list row, a header badge) — see
- * docs/ux-style-guide.md and "Project role
- * display" finding. `project_manager` is the sole top tier: if held, it
- * alone is shown. Otherwise `project_administrator` and `stakeholder` are a
- * shared, mutually-equal second tier — both are shown if both are held,
- * since they aren't ordered relative to each other. Otherwise `member` is
- * the floor. Deliberately NOT applied to `OrgRole` — that's a different,
- * unordered three-value enum with no defined precedence in the style
- * guide's pattern, unlike `ProjectRole`'s real four-tier structure.
+ * Collapses a user's held `ProjectRole` set to the precedence of style guide "Pattern: role display"
+ * (effective highest role only), for compact summaries (a list row, a header badge). `project_manager` is the
+ * sole top tier: if held, it alone is shown. Otherwise `project_administrator` and `stakeholder` are an
+ * equal second tier, both shown if both are held. Otherwise `member` is the floor. Not applied to `OrgRole`, an
+ * unordered three-value enum with no defined precedence.
  *
- * As of the 2026-08-30 reversal (docs/decisions.md), this IS now applied to
- * access-audit views too — e.g. Org Admin's "View access" panel uses this
- * as each project row's *default* display, with a per-row toggle revealing
- * the full, uncollapsed set on demand, so audit detail stays reachable
- * without being the default view. See `docs/ux-style-guide.md`'s "Pattern:
- * role display" section for the current rule.
+ * Access-audit views apply it too: Org Admin's "View access" panel shows it as each project row's default, with
+ * a per-row toggle revealing the full set (docs/decisions.md; `docs/ux-style-guide.md`'s "Pattern: role display").
  */
 export function collapseProjectRoles(roles: ProjectRole[]): ProjectRole[] {
   if (roles.includes("project_manager")) return ["project_manager"];
@@ -834,15 +807,10 @@ export interface ProjectFile extends ProjectScopedRow {
   comment_id: string | null;
 }
 
-/** One available module-contributed role (`GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
- * only roles of a currently effectively-enabled module are ever returned,
- * so a role belonging to a disabled/non-entitled module simply isn't in
- * this list. `name`/`description` are data returned by the API (set
- * server-side by the module's own author), not a frontend-known closed
- * enum — render `name` directly, do not build a `MODULE_ROLE_LABEL`-style
- * lookup map for it (see `docs/ux-style-guide.md` Principle 12's label-map
- * rule, which applies to raw *enum* values the frontend itself defines,
- * not to already-human-readable API data like this). */
+/** One available module-contributed role (`GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`);
+ * only roles of an effectively enabled module are returned. `name`/`description` are API data set by the
+ * module's author, not a frontend closed enum: render `name` directly and build no `MODULE_ROLE_LABEL`-style map
+ * (Principle 12's label-map rule in `docs/ux-style-guide.md` covers enum values the frontend defines). */
 export interface ModuleRoleDefinition {
   module_key: string;
   role_key: string;
@@ -879,16 +847,11 @@ export const PERMISSION_LEVEL_LABEL: Record<PermissionLevel, string> = {
  * (`app.services.permissions.ALL_ARTEFACT_TYPES`). */
 export const ALL_ARTEFACT_TYPES = "*";
 
-/** One permission atom in an organisation's currently-valid vocabulary
- * (Fine-Grained Access Control, `GET /orgs/{id}/permissions`) —
- * mirrors `PermissionOut` exactly. Either an artefact-type/level/sub-type
- * atom (`artefact_type`/`level` set, `subtype` set or `null` for the
- * wildcard) or a bare administrative permission (`artefact_type`/`level`/
- * `subtype` all `null`, e.g. `"grant_roles"`). `label` is already a
- * human-readable, server-supplied string — render it directly rather than
- * re-deriving one from `artefact_type`/`level`/`subtype` client-side, the
- * same "derived, not hand-maintained" treatment `ModuleRoleDefinition.name`
- * already gets. */
+/** One permission atom in an organisation's valid vocabulary (Fine-Grained Access Control,
+ * `GET /orgs/{id}/permissions`); mirrors `PermissionOut`. Either an artefact-type/level/sub-type atom
+ * (`artefact_type`/`level` set, `subtype` set or `null` for the wildcard) or a bare administrative permission
+ * (`artefact_type`/`level`/`subtype` all `null`, e.g. `"grant_roles"`). `label` is a server-supplied
+ * human-readable string: render it directly, never re-derive it client-side. */
 export interface Permission {
   key: string;
   label: string;
@@ -907,18 +870,12 @@ export interface CustomRolePreset {
   permissions: string[];
 }
 
-/** An organisation-defined `CustomRoleDefinition` (Fine-Grained Access
- * Control) — a named, additive role composed from a set of
- * `Permission.key` strings, grantable to a user or org group exactly like
- * a fixed `OrgRole`/`ProjectRole` or a module-contributed role. `scope`
- * determines whether a grant of this role needs a `project_id`
- * (`"project"`), a `scope_entity_id` (any other value — a registered
- * module-owned entity scope key from `GET /orgs/{id}/entity-scopes`,
- * e.g. `"standard"`), or neither (`"org"`) — mirrors `ModuleRoleDefinition.
- * scope`'s own trichotomy. Deliberately `string`, not a literal union: the
- * set of valid non-`"org"`/`"project"` values is server-derived and grows
- * as modules register their own entity scopes, the same reason `Permission.
- * key` itself is a plain `string`. */
+/** An organisation-defined `CustomRoleDefinition` (Fine-Grained Access Control): a named, additive role composed
+ * from `Permission.key` strings, grantable to a user or org group like a fixed `OrgRole`/`ProjectRole` or a
+ * module-contributed role. `scope` decides whether a grant needs a `project_id` (`"project"`), a
+ * `scope_entity_id` (any other value: a module-registered entity scope key from `GET /orgs/{id}/entity-scopes`,
+ * e.g. `"standard"`) or neither (`"org"`), as `ModuleRoleDefinition.scope` does. It is a `string`, not a literal
+ * union, because modules register further entity scopes. */
 export interface CustomRoleDefinition {
   id: string;
   organization_id: string;
@@ -1202,14 +1159,10 @@ export interface ProjectTreeNode {
   children: ProjectTreeNode[];
 }
 
-/** One entry in a project's member-source list (the source -> receiving
- * RBAC mechanism) — the other project this project consumes members from.
- * Managed entirely from the receiving side; see docs/decisions.md for why.
- * Originally restricted to a direct child and always MEMBER-only;
- * generalized to any same-organisation project, with `mirror_mode`/
- * `mirror_filter_role` controlling what's mirrored (same vocabulary as
- * `role_inheritance_mode`/`role_inheritance_filter_role`'s forward
- * mechanism, applied in reverse). */
+/** One entry in a project's member-source list (the source -> receiving RBAC mechanism): the other project
+ * this project consumes members from, any same-organisation project. Managed entirely from the receiving side
+ * (see docs/decisions.md). `mirror_mode`/`mirror_filter_role` control what is mirrored, with the vocabulary of
+ * `role_inheritance_mode`/`role_inheritance_filter_role`'s forward mechanism applied in reverse. */
 export interface ProjectMemberSource {
   source_project_id: string;
   source_project_name: string;
@@ -1224,15 +1177,11 @@ export const PROJECT_ROLE_INHERITANCE_MODE_LABEL: Record<ProjectRoleInheritanceM
   member_only: "Member only",
 };
 
-// Access provenance (decision 10, docs/decisions.md) — why a user has a
-// given effective role: one of six direct sources on this exact project
-// (split from a single collapsed "direct" kind 2026-08-31, with `direct_org_group_role` added by the members/groups directory rework — see the backend's
-// `_direct_effective_project_roles_by_kind` docstring for the full
-// rationale), forward-inherited (role_inheritance_mode, with
-// via_project_name/via_mode naming the ancestor hop), or member-source-
-// inherited (via_project_name intentionally omitted for member_source —
-// see the backend's get_effective_project_members_with_provenance
-// docstring).
+// Access provenance (decision 10, docs/decisions.md): why a user has a given effective role. One of six
+// direct sources on this exact project (see the backend's `_direct_effective_project_roles_by_kind`),
+// forward-inherited (role_inheritance_mode, with via_project_name/via_mode naming the ancestor hop), or
+// member-source-inherited (via_project_name is omitted for member_source; see the backend's
+// get_effective_project_members_with_provenance).
 //
 // `"direct_org_group_role"` means an org group holds this role on the
 // project *directly* (its own `OrgGroupProjectRole` row) — distinct from
@@ -1249,35 +1198,16 @@ export type MemberSourceProvenanceKind =
   | "forward_inherited"
   | "member_source_inherited";
 
-/** True only for `"direct_role"` — the one provenance kind that's both a
- * genuine, individually-revocable backing row (`UserProjectRole`, deleted
- * via `DELETE /{project_id}/roles/{user_id}/{role}`) *and* scoped to a
- * single user's own row, which is what every current caller of this
- * function actually needs ("is it safe to let *this user's* row show a
- * toggle-off that only ever affects this user").
+/** True only for `"direct_role"`: the one provenance kind that is both an individually revocable backing row
+ * (`UserProjectRole`, deleted via `DELETE /{project_id}/roles/{user_id}/{role}`) and scoped to a single user's
+ * row, so a toggle-off on that user's row affects only that user.
  *
- * `"direct_org_group_role"` (`OrgGroupProjectRole`) is also a genuine,
- * individually-revocable backing row — `DELETE /{project_id}/group-roles/
- * {org_group_id}/{role}` deletes it outright, no silent no-op — but it is
- * deliberately NOT included here. Same now for `"direct_group"` itself
- * (`ProjectGroupRole`): a project group's role used to be a fixed,
- * non-per-user field with no per-role delete endpoint at all; it's now
- * also a genuine, individually-revocable row (`DELETE /{project_id}/
- * groups/{group_id}/roles/{role}`), but for the identical blast-radius
- * reason below it stays excluded from this predicate too. That row belongs
- * to the *group's* grant,
- * not to any one user: toggling it off from a single member's row in a
- * per-user members table would revoke the role for every other member of
- * that group too, which is a materially different, higher-blast-radius
- * action than what this predicate's current callers assume "direct and
- * revocable" means. The group-row UI this comment used to describe as
- * future work now exists (`ProjectMembersTable`'s `kind: "group"` row)
- * — it does not extend this
- * predicate or filter a user's own `sources` at all, since `GET
- * /{project_id}/group-roles` (`OrgGroupProjectRoleSummary` below) already
- * names exactly which roles each group holds directly, with no per-source
- * `kind` check needed. Conflating a group's own row with a per-user toggle
- * would make it silently do group-wide damage. See docs/decisions.md. */
+ * `"direct_org_group_role"` (`OrgGroupProjectRole`, `DELETE /{project_id}/group-roles/{org_group_id}/{role}`) and
+ * `"direct_group"` (`ProjectGroupRole`, `DELETE /{project_id}/groups/{group_id}/roles/{role}`) are also
+ * individually revocable rows, but they belong to the *group's* grant: toggling one off from a single member's row
+ * would revoke the role for every other member of the group. They are therefore excluded here. The group's own row
+ * (`ProjectMembersTable`'s `kind: "group"`) does not use this predicate, since `GET /{project_id}/group-roles`
+ * (`OrgGroupProjectRoleSummary` below) names the roles each group holds directly. See docs/decisions.md. */
 export function isDirectRoleKind(kind: MemberSourceProvenanceKind): boolean {
   return kind === "direct_role";
 }
@@ -1804,12 +1734,9 @@ export interface OrgOverviewStats {
 export interface ProjectGroup {
   id: string;
   name: string;
-  /** the members/groups directory rework: replaces the old
-   * single, required `role` field — a group is now created bare and may
-   * hold zero, one, or several independently-revocable roles at once,
-   * granted/revoked via `POST`/`DELETE /{project_id}/groups/{group_id}/
-   * roles`, the same "one row per role" shape `OrgGroupProjectRole`
-   * already established for org groups. */
+  /** A group is created bare and holds zero, one or several independently revocable roles, granted/revoked via
+   * `POST`/`DELETE /{project_id}/groups/{group_id}/roles`: one row per role, as `OrgGroupProjectRole` does for
+   * org groups. */
   roles: ProjectRole[];
   member_user_ids: string[];
   member_org_group_ids: string[];
@@ -2326,9 +2253,8 @@ export function activityEntryLink(entry: ChangeEntry, projectId: string): { to: 
 
 export type ExternalUserPolicy = "disabled" | "org_domain_only" | "anyone";
 
-/** SSO group→role mapping used to live here (`sso_group_mappings`) — it's
- * now a per-`OrgGroup` property (`OrgGroup.granted_org_role`, alongside
- * `idp_synced_group_name`) instead of a disconnected flat list. */
+/** The SSO group→role mapping is a per-`OrgGroup` property (`OrgGroup.granted_org_role`, alongside
+ * `idp_synced_group_name`), not a setting here. */
 export interface OrgAdvancedSettings {
   smtp_host: string | null;
   smtp_port: number | null;
@@ -2368,20 +2294,13 @@ export interface OrgAdvancedSettings {
  * enabled) computed server-side; a non-entitled module is still included
  * in the response rather than filtered out, so the Modules admin UI can
  * grey it out with an explanatory note instead of hiding it entirely. */
-/** A module's frontend integration manifest (including Tier C/`"federated"`, see
- * `docs/decisions.md`'s "Module system follow-up: Tier C (Module
- * Federation)" entries) — see backend `app.modules.registry.
- * ModuleFrontendManifest`'s docstring for the full account.
- * `tier === "installed"` (Tier A) means the module's route components ship
- * compiled into this bundle, registered in `src/modules/registry.ts`;
- * `tier === "remote"` (Tier B) means it's rendered via `<ModuleFrame>` at
- * `frame_url`, which is always non-null for that tier; `tier === "federated"`
- * (Tier C) means the module's own `TierAModuleDefinition` is loaded at
- * runtime from `remote_entry_url`/`exposed_module` (see
- * `src/modules/federatedLoader.ts`) rather than compiled into this bundle —
- * `get_frontend_manifest` on the backend guarantees this tier only ever
- * appears for a module discovered through the third-party pipeline, never a
- * first-party one. */
+/** A module's frontend integration manifest (see backend `app.modules.registry.ModuleFrontendManifest` and
+ * `docs/decisions.md`'s "Module system follow-up: Tier C (Module Federation)" entries).
+ * `tier === "installed"` (Tier A): route components are compiled into this bundle, registered in
+ * `src/modules/registry.ts`. `tier === "remote"` (Tier B): rendered via `<ModuleFrame>` at `frame_url`, always
+ * non-null for that tier. `tier === "federated"` (Tier C): the module's `TierAModuleDefinition` is loaded at
+ * runtime from `remote_entry_url`/`exposed_module` (`src/modules/federatedLoader.ts`); the backend's
+ * `get_frontend_manifest` guarantees this tier only for a module found through the third-party pipeline. */
 /** One of a Tier A module's extra nav-rail entries beyond its manifest's own
  * primary `nav_label`/`nav_path` pair (`ModuleFrontendManifest.
  * additional_nav_entries` below) — wire shape of the backend's `app.modules.
@@ -2431,13 +2350,10 @@ export interface ModuleFrontendManifest {
   nav_sub_components_any?: string[];
 }
 
-/** `enabled` is the hard floor (corrected 2026-09-29):
- * `false` means no project of this organisation may use this module at
- * all, no project override possible in either direction.
- * `default_project_enabled` is a separate, independent tier, only
- * meaningful when `enabled` is `true` — whether a project gets this module
- * on or off *by default*, absent an override of its own; a project's own
- * override may still diverge from this in either direction. */
+/** `enabled` is the hard floor: `false` means no project of this organisation may use this module, and no
+ * project override is possible in either direction. `default_project_enabled` is an independent tier, meaningful
+ * only when `enabled` is `true`: whether a project gets this module on or off by default, absent an override of
+ * its own; a project's override may diverge from it in either direction. */
 export interface OrgModule {
   module_key: string;
   name: string;

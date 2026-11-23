@@ -58,9 +58,7 @@ def test_change_requests_list_sorts_by_proposed_name(client, admin_token, org_id
             headers=auth_headers(admin_token),
         )
 
-    # Default is newest first (2026-10-05). It used to be unspecified —
-    # whatever order Postgres returned, which happened to be insertion
-    # order — so this no longer pins "unchanged" for change requests.
+    # The default order is newest first.
     default = client.get(f"/api/v1/projects/{project['id']}/change-requests", headers=auth_headers(admin_token))
     assert [c["proposed_name"] for c in default.json()] == ["Alpha change", "Zebra change"]
 

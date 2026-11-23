@@ -1,21 +1,11 @@
-"""Tests for the project-level Compliance nav entry/route is only
-advertised once its organisation has a real, assignable standard.
+"""Tests that the project-level Compliance nav entry is advertised only once its organisation has an assignable
+standard. `routers.projects.list_project_enabled_modules` (`GET /api/v1/projects/{id}/enabled-modules`) attaches the
+compliance `frontend_manifest` only when the organisation has a `ComplianceStandardVersion` with `status == PUBLISHED`:
+a DRAFT-only standard has nothing to assign, so the link would open an empty "assign a standard" page. As for a rejected
+Tier B `frame_url` (`test_module_frontend_integration.py`), the manifest is omitted and the nav entry absent.
 
-`routers.projects.list_project_enabled_modules` (`GET /api/v1/projects/
-{id}/enabled-modules`) special-cases `definition.key == "compliance"`: its
-`frontend_manifest` is only attached when the project's organisation has at
-least one `ComplianceStandardVersion` with `status == PUBLISHED` — a
-DRAFT-only standard has nothing a project could actually be assigned, so
-the nav link/route would otherwise send a user to an empty "assign a
-standard" page with nothing to pick from. This mirrors the existing
-mechanism `test_module_frontend_integration.py` already covers for a
-rejected Tier B `frame_url` (manifest silently omitted -> nav entry
-silently absent), just gated on org data instead of manifest validation.
-
-A standalone file rather than an addition to `test_compliance_standards_
-api.py`: kept deliberately independent of that file's shared `_create_
-standard`/`_create_version` helpers so it has nothing to reconcile against
-a concurrent change to the standard-creation payload shape.
+The file is independent of `test_compliance_standards_api.py`'s `_create_standard` and `_create_version` helpers, so it
+is unaffected by changes to the standard-creation payload.
 """
 
 from __future__ import annotations
@@ -31,14 +21,9 @@ def test_compliance_nav_entry_absent_until_a_standard_version_is_published(clien
     project = create_project(client, admin_token, org_id, "Nav Gating Project")
 
     def compliance_manifest():
-        # Every enabled module gets a `ModuleNavEntryOut` row regardless of
-        # whether it currently has anything to contribute (mirrors the
-        # existing Tier-B-rejected-manifest precedent, `test_module_
-        # frontend_integration.py::test_org_modules_endpoint_omits_manifest_
-        # for_a_rejected_remote_module` — the entry stays, `frontend_
-        # manifest` goes `None`); `Layout.tsx`'s `enabledModules.map(...)`
-        # already renders nothing for a `None` manifest, so that's the field
-        # this test actually needs to pin, not the entry's presence.
+        # Every enabled module gets a `ModuleNavEntryOut` row whether or not it has anything to contribute (the entry
+        # stays, `frontend_manifest` goes `None`, as for a rejected Tier B manifest); `Layout.tsx` renders nothing for a
+        # `None` manifest, which is the field this test pins.
         resp = client.get(f"/api/v1/projects/{project['id']}/enabled-modules", headers=auth_headers(admin_token))
         assert resp.status_code == 200, resp.text
         entry = next((m for m in resp.json() if m["module_key"] == "compliance"), None)

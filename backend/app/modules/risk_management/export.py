@@ -1,46 +1,12 @@
 """
 Module: modules.risk_management.export
 
-This module's contribution to the core org/project bundle export/import
-(`app.services.org_export`/`project_export`), registered through
-`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION` rather
-than those core files importing this module.
-
-- Org level: the Risk type vocabulary.
-- Project level: the project's type overrides and local types; each Risk (its
-  current content and status, evidence attachments and review history); and its
-  treatment links to Requirements with the verdict on each.
-
-Design decisions (all Decided by: Agent):
-- A Risk travels as its *current* content and status only, with its original
-  `RSK-nnn` code kept so treatment links and anything citing the code still
-  read. Version history, comments and comment attachments are not carried: a
-  bundle is a migration artefact, and the imported Risk starts at version 1
-  attributed to the importer where the author cannot be matched. Reviews are
-  carried in full because they are the audit record of what was assessed and
-  when; their rating snapshot is stored data, not re-derived.
-- Ratings are never exported, being derived. Levels are carried by *axis and
-  name* and matched to the target organisation's `risk` scoring levels; one the
-  target lacks (renamed or deleted) is left unset with a warning, so the
-  imported Risk is "not rated" on that axis rather than silently re-rated.
-  A project's own scoring configuration (default model, bands, cell ratings) travels in the core project bundle
-  (`services.scoring_config`); the organisation's levels do not.
-- Only treatment-family and impact links *to Requirements in the same project*
-  travel (matched by requirement code, as the core requirement links are).
-  Links to Actions, Decisions, other Risks or another project cannot, because
-  those records are not in the project bundle; they are dropped on export and
-  documented rather than imported half-resolved.
-- A verdict travels with its link, including `needs_reassessment` and its
-  reason, so a bundle does not quietly turn an unresolved doubt into trust.
-- Cross-references use portable keys, never database ids: type names, level
-  axis+name, requirement codes, user emails; an owner is `{type, email | name}`
-  (`services.principals`), and one the target cannot match is left unset with a
-  warning. Bundles written before groups existed carry `owner_email`, still read.
-- Org-level merge skips a type the organisation already has, so re-import is
-  idempotent. Org-level files cannot travel (the org hook receives no bytes).
-
-Dependencies: `app.services.bundle_common`, `app.services.relationships`, this
-module's models and service.
+Contributes Risks to the org/project bundle export and import
+(`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`): the Risk type vocabulary
+(org); the project's type overrides, Risks (current content, status, evidence,
+reviews) and treatment links to same-project Requirements with verdicts.
+Only current content travels, with the `RSK-nnn` code kept. Levels travel by axis
+and name (an unmatched one is left unset); cross-references use portable keys.
 """
 
 from __future__ import annotations

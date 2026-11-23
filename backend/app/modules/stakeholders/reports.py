@@ -1,43 +1,29 @@
 """
 Module: modules.stakeholders.reports
 
-Report data layer for Stakeholders & Personas: five project-level reports, one `collect_*` function
-each, returning the core framework's `ReportResult`, plus the `REPORT_DEFINITIONS`
-that declare them to the registry. Result shapes, scope (`readable_projects`),
-PDF/CSV/Word rendering, routes, MCP tools and the catalogue all live in
-`app.services.report_framework`, so this module is declarations and queries.
+Report data layer for Stakeholders & Personas: five project-level reports (S1 Power/interest grid,
+S2 Persona validation, S3 Need coverage, S4 Engagement staleness, S5 Engagement & research yield), one
+`collect_*` function each returning the framework's `ReportResult`, plus the `REPORT_DEFINITIONS`.
+Rendering, scope, routes, MCP tools and the catalogue live in `app.services.report_framework`.
 
-Reports: S1 Power/interest grid, S2 Persona validation, S3 Need coverage,
-S4 Engagement staleness, S5 Engagement & research yield.
+Design decisions:
+- Project-level only: none of the organisation roles is a sound gate for a cross-project aggregate, and
+  engagements are project-scoped. "Include child projects" covers a hierarchy; each row names its project.
+- "Current" Stakeholders and Personas are those the project can see (own plus organisation's, minus hidden)
+  that are not archived or Retired, so a report never discloses what the project has hidden.
+- Engagement evidence counts only this project's engagements dated today or earlier, so a shared org
+  Stakeholder never leaks another project's contact history and a planned engagement is not evidence. A
+  Persona's engagements cover it by link or have an anonymous participant tagged with it.
+- Research extras are counted only where that sub-component is on.
+- S3 counts a Requirement as traced when a Need gave rise to it, or a Stakeholder or Persona provides it or is
+  affected by it; approving or reviewing it is not where it came from.
+- S4 maps a target cadence to 7, 30, 91 or 365 days. One-off and Ad hoc have no interval and are excluded; a
+  Stakeholder with no cadence is listed on its own so the gap is visible.
+- Group filtering (S1, S4) includes descendant groups; `group_by` adds a branch column and orders by it.
+- Free text is clipped (`_CLIP`) so a long value cannot make a PDF row taller than a page. Reports never
+  include Restricted data and are not audit-logged (framework rule).
 
-Design decisions (all Decided by: Agent unless stated):
-- Project-level only, like Risk Management and Decision Management: none of this
-  module's organisation roles (Persona/Stakeholder owner, type admin) is a sound
-  gate for an aggregate across projects, and engagements are project-scoped.
-  "Include child projects" is the way to cover a hierarchy. Each row names its project.
-- "Current" Stakeholders and Personas are those the project can see (its own plus the
-  organisation's, minus ones hidden from it) that are not archived or Retired. A hidden
-  record is never counted, so a report never discloses what the project has hidden.
-- Engagement evidence counts only this project's engagements dated today or earlier:
-  a shared org Stakeholder never leaks another project's contact history, and a planned
-  engagement is not evidence yet. A Persona's engagements are those that cover it by
-  link plus those with an anonymous participant tagged with it.
-- Research extras (anonymous participants, findings) are counted only in projects where
-  that sub-component is on, so switching it off hides them from reports as it does the UI.
-- S3 counts a Requirement as traced when a Need gave rise to it, or a Stakeholder or
-  Persona provides it or is affected by it. Approving or reviewing a Requirement is not
-  where it came from, so those relationships do not count.
-- S4 turns a target cadence into an interval of 7, 30, 91 or 365 days. One-off and Ad hoc
-  have no interval and are excluded; a Stakeholder with no cadence cannot be judged and is
-  listed on its own so the gap is visible rather than silently skipped.
-- Group filtering (S1, S4) includes descendant groups; `group_by` adds a branch column
-  and orders by it, exactly as the Stakeholder list does.
-- Free text is clipped (`_CLIP`) so a long value cannot make a PDF row taller than a page.
-- Reports never include Restricted data (contact details are never shown) and are not
-  audit-logged (framework rule).
-
-Dependencies: `app.services.report_framework`, `app.modules.registry`, this module's
-models, service and group helpers.
+Dependencies: `app.services.report_framework`, `app.modules.registry`, this module's models, service and group helpers.
 """
 
 from __future__ import annotations

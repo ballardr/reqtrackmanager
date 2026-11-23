@@ -1,31 +1,19 @@
 /**
  * Module: modules/architecture/diagramResolver
  *
- * The browser's copy of the rule that turns the model's connections into the lines a diagram draws, so the editor can
- * redraw lines at once while a layout is being edited (a box added, a view switch flipped) without a round trip. It is a
- * line-for-line port of `backend/app/modules/architecture/diagram_resolver.py`; the server's copy stays the authority for
- * the first load, the SVG and documents.
- *
- * Responsibilities:
- * - Apply, in this order: (1) hide the elements and connections of switched-off view switches; (2) join across hidden
- *   elements (a hidden transit element is bridged); (3) roll every end up to its nearest placed ancestor; (4) merge
- *   parallel lines when connection detail is off. A connection a person routed on its own is never merged: it is a line of
- *   its own (`routed`).
- * - Report which connections each line stands for, which hidden elements a bridged line passes through, and which
- *   connections are wholly inside a placed element.
- * - Join a scoped diagram's boundary boxes: a connection that realises an outer connection is drawn to that connection's
- *   box (`ResolverBoundary`), and `outerSide` says which end of a connection lies inside a scope, which is what makes it
- *   an outer connection.
- *
- * Design decisions:
- * - **Pure, and kept equal to the server's by shared cases.** `diagramResolverCases.json` holds scenarios whose expected
- *   results the server's resolver produced; `DiagramResolver.stories.tsx` runs this port over them, and a backend test
- *   fails when the file is out of date with the server. A change to the rule is made in both places.
- * - **Ordering matches the server's:** lines sort by their ends and first connection as plain text, compared by code
- *   unit like the server's string compare, never by locale.
- * - **Nothing here decides visibility.** The model the inputs come from is already limited to what the viewer may read.
- *
- * Dependencies: none.
+ * The browser's copy of the rule that turns the model's connections into the lines a diagram draws, so the editor can redraw
+ * lines at once while a layout is edited without a round trip. It is a line-for-line port of
+ * `backend/app/modules/architecture/diagram_resolver.py`, which stays the authority for the first load, the SVG and documents.
+ * - Applied in order: (1) hide the elements and connections of switched-off view switches; (2) bridge hidden transit
+ *   elements; (3) roll every end up to its nearest placed ancestor; (4) merge parallel lines when connection detail is off
+ *   (a connection routed on its own is never merged: `routed`).
+ * - Reports which connections each line stands for, which hidden elements a bridge passes through and which connections lie
+ *   wholly inside a placed element. A scoped diagram's boundary boxes (`ResolverBoundary`) take the connections that realise
+ *   an outer connection; `outerSide` says which end lies inside a scope.
+ * - Pure, and kept equal to the server's by shared cases: `diagramResolverCases.json` holds server-produced results,
+ *   `DiagramResolver.stories.tsx` runs this port over them and a backend test fails when the file is stale. A change to the
+ *   rule is made in both places. Lines sort as plain text by code unit like the server's compare, never by locale.
+ * - Nothing here decides visibility: the model the inputs come from is already limited to what the viewer may read.
  */
 
 /** The longest chain of hidden elements a bridged line passes through, and the deepest ancestor walk. */

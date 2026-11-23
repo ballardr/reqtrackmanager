@@ -57,26 +57,18 @@ function fromOrg(org: Organization, serverDefault: Branding): Branding {
 }
 
 /**
- * Resolves which organisation's branding (logo, header wordmark, accent
- * colour) applies to the current page, and applies the accent colour to
- * `--color-primary`/`--color-primary-contrast` live.
+ * Resolves which organisation's branding (logo, header wordmark, accent colour) applies to the current page, and applies
+ * the accent colour to `--color-primary` and `--color-primary-contrast` live.
  *
  * Resolution order:
- * - Inside a project's URL space: that project's own organisation,
- *   falling back field-by-field to the platform default (`ServerSettings`)
- *   for whichever of logo/title/colour that org has not set.
- * - Everywhere else (org list, global projects list, Preferences,
- *   server-management pages — no single org is "the" context): if the
- *   viewer belongs to exactly one organisation, that org's branding is
- *   used there too; otherwise (no orgs, or more than one) the platform
- *   default applies, since there's no single right answer to whose
- *   branding should show.
+ * - Inside a project's URL space: that project's organisation, falling back field by field to the platform default
+ *   (`ServerSettings`) for whichever of logo, title or colour that organisation has not set.
+ * - Elsewhere (organisation list, global projects list, Preferences, server management; no single organisation is the
+ *   context): the branding of the viewer's one organisation if they belong to exactly one, otherwise the platform default.
  *
- * One accent colour is stored, not two — `ensureContrast` derives a
- * lightened variant for dark theme and a darkened variant for light theme
- * on demand, so the same brand colour reads correctly as link/accent text
- * against either page background, and the effect re-applies whenever the
- * resolved light/dark theme changes, not just when the colour itself does.
+ * One accent colour is stored; `ensureContrast` derives a lightened variant for the dark theme and a darkened one for the
+ * light theme, so it reads correctly as link and accent text on either background. The effect re-applies whenever the
+ * resolved theme changes, not only when the colour does.
  */
 export function BrandingProvider({ projectId, children }: { projectId: string | null; children: ReactNode }) {
   const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING);
@@ -136,10 +128,8 @@ export function useBranding(): Branding {
   return useContext(BrandingContext);
 }
 
-/** The deployment-wide word used in place of "organisation" (lower-case,
- * singular — for mid-sentence substitution), or the built-in English word if
- * no override is set. Unlike the rest of `Branding`, always deployment-wide
- * (see `fromOrg`) — there is no per-organisation override. */
+/** The deployment-wide word used in place of "organisation" (lower-case, singular, for mid-sentence substitution), or the
+ * built-in English word if no override is set. Always deployment-wide (see `fromOrg`), never per organisation. */
 export function useOrgLabel(): string {
   return useContext(BrandingContext).orgLabel;
 }

@@ -135,18 +135,14 @@ async def lifespan(_: FastAPI):
             # and gets every module available (`seed_fresh_install_defaults`).
             seed_fresh_install_defaults(db)
             run_bootstrap(db)
-            # Keeps `module_role_definitions` caught up
-            # with whatever the live registry currently declares, the same
-            # "self-heal at every process start" pattern `run_bootstrap` itself
-            # follows. See `sync_module_role_definitions`'s own docstring for
-            # why this never deletes a row for a module/role no longer
-            # registered.
+            # Keeps `module_role_definitions` in step with the live registry at every start; it never
+            # deletes a row for a module or role no longer registered (see `sync_module_role_definitions`).
             sync_module_role_definitions(db)
             # Seeds every org's missing scoring-axis levels
             # from the registry, so a module installed after orgs exist still
             # gets its levels (see `sync_scoring_levels`).
             sync_scoring_levels(db)
-            # A wrong or lost encryption key is a logged error now, not locked-out users later.
+            # Logs an unreadable stored secret at start, so a wrong or lost encryption key shows before it locks users out.
             secret_keys.warn_if_unreadable(db)
         finally:
             db.close()
@@ -198,11 +194,8 @@ markdown_fields.install()
 app = FastAPI(
     title="ReqTrackManager API",
     description="Formal engineering requirements management system API (Ossa v1).",
-    # Was hardcoded to a permanently-stale "1.0.0"
-    # — now reads the same build-time version `app.version`
-    # already exposes live at `GET /api/v1/system/version`, so
-    # `/openapi.json`/`/docs` metadata tracks real releases instead of
-    # being frozen at the value set when the app was first scaffolded.
+    # The build-time version `app.version` exposes at `GET /api/v1/system/version`, so `/openapi.json`
+    # and `/docs` track real releases.
     version=APP_VERSION,
     lifespan=lifespan,
     dependencies=[Depends(enforce_template_read_only)],
@@ -219,20 +212,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    # X-Total-Count (U-P-06 pagination) and X-Total-Unfiltered-Count
-    # are custom response headers, so they need to be
-    # explicitly exposed — browsers hide non-safelisted response headers
-    # from JS by default even with allow_headers="*" (that setting only
-    # governs allowed *request* headers). Missing this for the new header
-    # was caught only by a live Playwright run against a real browser
-    # (`fetch().headers.get()` silently returning null) — curl and pytest's
-    # TestClient both bypass CORS entirely, so neither could have caught it.
-    # `Content-Disposition` carries the server's chosen name for a generated file (a pack's zip is named by its
-    # file-name template); a cross-origin browser hides it from JS unless exposed, and the download would fall back
-    # to a client-side guess.
-    # `WWW-Authenticate` is how the client tells a dead session (an invalid or expired token) from a business 401 such as a
-    # wrong current password; without it a cross-origin browser read `null`, judged every dead session an ordinary refusal
-    # and left the page on a spinner until a reload. `X-Projects-Truncated` marks a project list that was cut short.
+    # Browsers hide non-safelisted response headers from JS unless exposed (`allow_headers` governs only
+    # request headers); only a real browser shows a missing one, as curl and TestClient bypass CORS.
+    # X-Total-Count (U-P-06 pagination) and X-Total-Unfiltered-Count carry list totals.
+    # `Content-Disposition` carries the server's file name for a generated file (a pack's zip name template).
+    # `WWW-Authenticate` lets the client tell a dead session (invalid or expired token) from a business 401
+    # such as a wrong current password. `X-Projects-Truncated` marks a project list that was cut short.
     expose_headers=[
         "X-Total-Count",
         "X-Total-Unfiltered-Count",
@@ -252,18 +237,12 @@ _SENSITIVE_FIELD_NAMES = {
 
 @app.exception_handler(RequestValidationError)
 async def redact_sensitive_validation_errors(request: Request, exc: RequestValidationError) -> JSONResponse:
-    """Overrides FastAPI's default 422 handler to strip the submitted value
-    out of validation errors on password/secret fields.
+    """Replaces FastAPI's 422 handler to strip the submitted value from validation errors on
+    password/secret fields.
 
-    Pydantic v2's `ValidationError.errors()` includes the raw `input` that
-    failed validation (e.g. so a client can show "you typed X, expected Y").
-    For most fields that's useful; for a password field it means a request
-    that fails a constraint like `new_password`'s `min_length=8` would echo
-    the attempted password back in the response body. FastAPI's default
-    handler passes `exc.errors()` straight through, so this must be
-    overridden rather than fixed at the schema level (Pydantic does not
-    otherwise redact `input` for plain `str` fields). Also stringifies a
-    non-finite float `input`, which would otherwise crash JSON encoding.
+    Pydantic's `errors()` includes the raw `input`, so a failed `new_password` constraint would echo the
+    attempted password in the response; Pydantic does not redact plain `str` fields, so this is handled
+    here. Also stringifies a non-finite float `input`, which would otherwise crash JSON encoding.
     """
     errors = []
     for error in exc.errors():
@@ -272,8 +251,7 @@ async def redact_sensitive_validation_errors(request: Request, exc: RequestValid
         if any(str(part) in _SENSITIVE_FIELD_NAMES for part in loc):
             error["input"] = "***"
         elif isinstance(error.get("input"), float) and not math.isfinite(error["input"]):
-            # `inf`/`nan` can't be JSON-encoded; echoing one back would turn a
-            # rejected value into a 500.
+            # `inf`/`nan` cannot be JSON-encoded; echoing one would turn a rejected value into a 500.
             error["input"] = str(error["input"])
         errors.append(error)
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": jsonable_encoder(errors)})
@@ -299,27 +277,17 @@ async def invalid_token_response(request: Request, exc: InvalidTokenError) -> JS
 
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
-    """Adds baseline security response headers to every request (hardening
-    review finding: none were set anywhere, and it wasn't a documented,
-    deliberate deferral to a reverse-proxy layer either).
+    """Adds baseline security response headers to every request.
 
-    Deliberately conservative: `X-Frame-Options`/`frame-ancestors` close
-    clickjacking-style UI-redress against an authenticated session without
-    touching what scripts/styles/fonts the app is allowed to load — a full
-    `Content-Security-Policy` restricting *those* would need to be tuned
-    against this specific SPA's actual script/style sources to avoid
-    silently breaking it, so it's left as a documented follow-up
-    (docs/deployment.md) rather than shipped unverified here.
+    Conservative: `X-Frame-Options`/`frame-ancestors` prevent clickjacking against an authenticated
+    session without restricting the scripts, styles and fonts the app loads. A full
+    `Content-Security-Policy` for those would need tuning against this SPA's actual sources, so it is a
+    documented follow-up (docs/deployment.md).
 
-    `frame-src` is the exception, added for the modular feature system's
-    Tier B remote modules: unlike
-    `frame-ancestors` (who may frame *this app* — always `'none'`), `frame-
-    src` governs what *this app* may embed in its own `<ModuleFrame>`
-    iframe, so it is built from `Settings.module_frame_allowed_origins`
-    every request (cheap — `get_settings()` is `lru_cache`d) rather than
-    hardcoded, and defaults to `'none'` (no origin allowlisted) exactly
-    like every other module-system opt-in in this codebase (`ALLOW_
-    EXTERNAL_MODULES`, `MCP_WRITES_ENABLED`).
+    `frame-src` is the exception, for Tier B remote modules: it governs what this app may embed in its
+    `<ModuleFrame>` iframe (unlike `frame-ancestors`, which is always `'none'`). It is built per request
+    from `Settings.module_frame_allowed_origins` (`get_settings()` is `lru_cache`d) and defaults to
+    `'none'`, like every module-system opt-in (`ALLOW_EXTERNAL_MODULES`, `MCP_WRITES_ENABLED`).
 
     A route that serves user-supplied markup (a symbol's SVG) sets its own, stricter
     `Content-Security-Policy`, which is kept; it must carry `frame-ancestors 'none'` itself.
@@ -361,17 +329,10 @@ _METRIC_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "O
 async def metrics_middleware(request: Request, call_next):
     """Records request count and latency for every HTTP request (I-M metrics).
 
-    Labels with the matched route's *template* (`/api/v1/projects/{project_id}`),
-    never the resolved request path — a request that matches no route (a
-    genuine 404, or a CORS preflight `OPTIONS`, which `CORSMiddleware`
-    short-circuits before FastAPI's router ever sets `request.scope["route"]`,
-    even for a path that would otherwise have matched) has no template to
-    label with and is bucketed under the fixed `path="unmatched"` instead of
-    falling back to the raw path. Falling back to the raw path previously
-    leaked real path parameters — project/org/requirement ids — as literal,
-    unbounded-cardinality label values into the unauthenticated `/metrics`
-    output on every preflight (one per non-simple cross-origin request the
-    SPA makes), not just on genuine 404s.
+    Labels with the matched route's template (`/api/v1/projects/{project_id}`), never the resolved
+    path. A request that matches no route (a 404, or a CORS preflight `OPTIONS`, which `CORSMiddleware`
+    short-circuits before the router sets `request.scope["route"]`) is bucketed under `path="unmatched"`;
+    the raw path would expose real ids as unbounded-cardinality labels on the unauthenticated `/metrics`.
     """
     start = time.perf_counter()
     response = await call_next(request)
@@ -462,28 +423,18 @@ app.include_router(pats.router)
 app.include_router(system.router)
 app.include_router(scim.router)
 if settings.websocket_enabled:
-    # I-A-04: the WebSocket interface is optional — deployments that can't
-    # or don't want persistent socket connections can disable it entirely
-    # via WEBSOCKET_ENABLED=false rather than it always being mounted.
+    # I-A-04: the WebSocket interface is optional; WEBSOCKET_ENABLED=false disables it entirely.
     app.include_router(ws.router)
 
 # --- Module system ---------------------
-# Mounts every registered module's own router(s), if it has any. Building the
-# registry here (via `get_module_registry`, which internally caches) is
-# also what produces this run's "every loaded module logged at startup"
-# operational record (see `app.modules.registry`'s module docstring) — no
-# separate lifespan-hook logging is needed for that. A module contributes up
-# to three routers — `get_router()` (org-scoped, `/api/v1/orgs/
-# {organization_id}/modules/<key>/...`), an optional `get_project_router()`
-# (project-scoped, `/api/v1/projects/{project_id}/modules/<key>/...`), and an optional `get_global_router()` (no
-# org/project id in its path root at all — `/api/v1/<key>/...`, for an
-# endpoint like compliance's `nav-visibility` that aggregates across every
-# org the caller belongs to, or one that resolves its own org from some
-# other id, like `standards/{standard_id}`) — all three mounted the same
-# way here. A module's own router(s) apply their own `require_org_module_
-# enabled`/`require_project_module_enabled`/`require_module_role`/`require_
-# org_access_and_module_enabled` gating internally; there is no second gate
-# applied at this mount-loop level.
+# Mounts every registered module's router(s). Building the registry (`get_module_registry`, cached) also
+# logs every loaded module at startup (see `app.modules.registry`). A module contributes up to three routers:
+# `get_router()` (org-scoped, `/api/v1/orgs/{organization_id}/modules/<key>/...`), an optional
+# `get_project_router()` (`/api/v1/projects/{project_id}/modules/<key>/...`) and an optional
+# `get_global_router()` (`/api/v1/<key>/...`, for an endpoint that aggregates across the caller's orgs or
+# resolves its own org from another id, such as compliance's `nav-visibility` or `standards/{standard_id}`).
+# Each router applies its own `require_org_module_enabled`/`require_project_module_enabled`/
+# `require_module_role`/`require_org_access_and_module_enabled` gating; the mount loop adds no second gate.
 for _module_definition in get_module_registry().values():
     for _module_router in (
         _module_definition.get_router(),

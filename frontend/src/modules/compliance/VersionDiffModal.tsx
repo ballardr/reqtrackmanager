@@ -1,13 +1,9 @@
 /**
  * Module: modules/compliance/VersionDiffModal
  *
- * §27's version-diff viewer — fetches `GET .../diff/{other}` for
- * two versions of the same standard and renders its five categories
- * (added/removed/modified/replaced/re-mapped). Read-only: the actual
- * "migrate a project to this version" action is project-scoped
- * (`project_router.py::migrate_project_compliance_version`) and explicitly
- * out of the org-level scope — this is the "preview
- * before you commit" half only, per that endpoint's own docstring.
+ * §27's version-diff viewer: fetches `GET .../diff/{other}` for two versions of one standard and renders its five categories
+ * (added, removed, modified, replaced, re-mapped). Read-only: migrating a project to a version is project-scoped
+ * (`project_router.py::migrate_project_compliance_version`) and outside this organisation-level scope; this is the preview half.
  */
 import { useEffect, useState, type ReactNode } from "react";
 

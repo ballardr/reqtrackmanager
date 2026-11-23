@@ -1,29 +1,25 @@
 """
 Module: services.markdown_fields
 
-Enforces the limits of every declared Markdown field when the value is written, whichever path writes it.
+Enforces the limits of every declared Markdown field when a value is written, whichever path writes it.
 
-Responsibilities:
-- Resolve the registry's `MarkdownField` declarations into `{model class: {attribute: field}}` and the inventory rows
-  (`declared_columns`, `column_key`).
-- Check, in a session `before_flush` hook, each new or changed declared attribute against `validate_markdown` (size,
-  nesting, diagram count and size, control characters, pictures) and refuse the write with a 422 naming the field.
-  A picture (`![alt](attachment:<file id>)`) is allowed only in a field that declares `MarkdownImages`, and only for a
-  file attached to the record that holds the text (`services.markdown_images`); a bundle import defers that check until
-  its attachments exist.
+Responsibilities: resolve the registry's `MarkdownField` declarations into `{model class: {attribute: field}}`
+and the inventory rows (`declared_columns`, `column_key`); in a session `before_flush` hook, check each new or
+changed declared attribute with `validate_markdown` (size, nesting, diagrams, control characters, pictures)
+and refuse the write with a 422 naming the field. A picture is allowed only in a field declaring
+`MarkdownImages`, for a file attached to the record holding the text (`services.markdown_images`); a bundle
+import defers that check until its attachments exist.
 
 Design decisions:
-- One hook instead of a validator per request schema: an endpoint, a file import, a project bundle import, an MCP tool
-  and a seed all end in the same flush, so no path can store what another refuses and a field declared later is
-  covered with no further code.
-- Only an attribute that changed is checked, so a record already stored above a limit (a text written before the field
-  became Markdown) is refused only when that field is edited again, and an edit of another field is not blocked.
-- The refusal is an `HTTPException` (422), the shape the Decision limits already answered with; a caller that stages
-  rows (an import) turns it into that row's error.
-- The hook is installed by `install()` from the application start, not as an import side effect.
-- The declaration map is resolved lazily on the first flush, after every module's models are imported.
+- One hook instead of a validator per request schema: endpoint, file import, bundle import, MCP tool and seed
+  all end in the same flush, so no path stores what another refuses and a later-declared field is covered.
+- Only a changed attribute is checked, so a record already above a limit is refused only when that field is
+  edited again, and editing another field is not blocked.
+- The refusal is an `HTTPException` (422); a caller that stages rows (an import) turns it into the row's error.
+- `install()` installs the hook at application start, not as an import side effect; the declaration map is
+  resolved lazily on the first flush, after every module's models are imported.
 
-Dependencies: `modules.registry` (the declarations), `services.markdown_text` (the limits), SQLAlchemy.
+Dependencies: `modules.registry`, `services.markdown_text`, SQLAlchemy.
 """
 
 from __future__ import annotations

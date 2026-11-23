@@ -1,20 +1,12 @@
 /**
  * Module: modules/context_strategy/FutureStateFormModal
  *
- * Create/edit dialog for a Future State's content fields — mirrors
- * `StrategyFormModal.tsx`'s exact "shared by create and edit, distinguished
- * by whether `initial` is passed" / create-as-a-layer shape, adapted to
- * Future State's own field list: no `priority`/`time_horizon` (Future State
- * has neither — see `types.ts`'s own docstring), and one field Strategy
- * doesn't have, `target_date`.
+ * Create/edit dialog for a Future State's content fields. Shared by create and edit (edit when `initial` is passed),
+ * as `StrategyFormModal.tsx` is, with Future State's own field list: no `priority` or `time_horizon`, plus `target_date`.
  *
- * **`target_date` handling, Decided by: Agent.** A plain HTML
- * `<input type="date">`: typing a date sends that ISO string, clearing the
- * field back to empty sends `null`. No client-side "explicitly set" flag is
- * needed (see `api.ts`'s own docstring on `buildFutureStateApi`) — the `PUT`
- * endpoint is a full-replace payload where `target_date` is always present
- * (a real date string or `null`), and the backend always treats a `PUT` as
- * an explicit set/clear of every field it carries.
+ * `target_date` is a plain `<input type="date">`: a typed date sends its ISO string and clearing it sends `null`. The
+ * `PUT` payload is a full replace that always carries `target_date`, so no "explicitly set" flag is needed (see
+ * `api.ts` `buildFutureStateApi`).
  */
 import { useState } from "react";
 

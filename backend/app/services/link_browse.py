@@ -1,40 +1,29 @@
 """
 Module: services.link_browse
 
-The scoped finder behind the "Add a link" dialog: find the record a link should
-point at by searching, by narrowing step by step, or both.
+The scoped finder behind the "Add a link" dialog: find the record a link should point at by searching,
+by narrowing step by step, or both.
 
 Responsibilities:
-- Search the records a link could point at (`search_link_candidates`): across every
-  linkable type (a bounded global search) or within one type, optionally narrowed
-  by the options chosen at the type's browse levels.
-- Offer the next browse level (`next_browse_step`): its options given the earlier
-  choices, or `None` once the chain is complete.
-- Declare the browse levels of the two core types (Requirement: Component ->
-  Category; Action: Action type); every module declares its own on its
+- Search the records a link could point at (`search_link_candidates`), across every linkable type (a bounded
+  global search) or within one type, optionally narrowed by the options chosen at its browse levels.
+- Offer the next browse level (`next_browse_step`), or `None` once the chain is complete. The core types declare
+  their levels here (Requirement: Component -> Category; Action: Action type); modules declare theirs on
   `ArtefactSummaryProvider.browse_levels`.
 
 Design decisions:
-- One authorisation rule for all reads: the page artefact is a visible record of the
-  request project, any other project is a related one the caller can open, the type
-  is offered there (module enabled) and the caller holds `view` on it *in the searched
-  project*. A type or record failing that is simply absent, never an error that
-  reveals it.
-- Every level is computed server-side from the previous selection only. A selection
-  is validated against the options its level would have offered, so a client cannot
-  name an option from another organisation or project to widen a later level.
-- Global search is bounded: at least `GLOBAL_MIN_QUERY` characters, only types some
-  usable link type can reach from this record, `GLOBAL_PER_TYPE` records per type,
-  merged to `CANDIDATE_LIMIT`, so one large type cannot crowd out or stall the rest.
-- A code typed the way it is displayed elsewhere (`ACME-REQ-001`, qualified by the project or the
-  organisation) finds the record too: the finder searches the stored label (`REQ-001 Title`), so the
-  qualifying prefix is also tried stripped.
-- Narrowing defaults to the records' own `facets` (a status, a type); a type with
-  too many records to load (Requirement, Compliance requirement) supplies its own
-  SQL `filter`.
+- One authorisation rule for all reads: the page artefact is a visible record of the request project, any
+  other project is a related one the caller can open, the type is offered there, and the caller holds `view`
+  in the searched project. A type or record failing that is absent, never an error that reveals it.
+- Each level is computed server-side from the previous selection, which is validated against the options its
+  level would have offered, so a client cannot name an option from another organisation or project.
+- Global search is bounded (`GLOBAL_MIN_QUERY` characters, only reachable types, `GLOBAL_PER_TYPE` per type,
+  merged to `CANDIDATE_LIMIT`) so one large type cannot crowd out or stall the rest.
+- A displayed code (`ACME-REQ-001`) also matches: the stored label is `REQ-001 Title`, so the qualifying prefix
+  is tried stripped.
+- Narrowing defaults to a record's `facets`; a type too large to load supplies its own SQL `filter`.
 
-Dependencies: `services.link_authoring` (authorisation helpers), `services.link_graph`
-(visibility), `modules.registry` (providers, levels).
+Dependencies: `services.link_authoring`, `services.link_graph`, `modules.registry`.
 """
 
 from __future__ import annotations

@@ -1,43 +1,12 @@
 """
 Module: modules.risk_management.reports
 
-Report data layer for Risk Management: four project-level reports, one `collect_*` function each,
-returning the core framework's `ReportResult`, plus the `REPORT_DEFINITIONS`
-that declare them to the registry. Result shapes, scope (`readable_projects`),
-PDF/CSV/Word rendering, routes, MCP tools and the catalogue all live in
-`app.services.report_framework`, so this module is declarations and queries.
-
-Reports: RK1 Risk register, RK2 Risk exposure (inherent against residual),
-RK3 Treatment coverage, RK4 Review schedule.
-
-Design decisions (all Decided by: Agent unless stated):
-- Project-level only, like Decision Management's reports: the module's only
-  organisation role (Risk Type Admin) administers vocabulary, not risks, so it
-  is not a sound gate for an aggregate across projects. "Include child
-  projects" is the way to cover a hierarchy.
-- Ratings are derived per project (`ratings.load_rating_context`), so a child
-  project with its own matrix or bands is rated by its own, never its parent's.
-  Rating *labels* are shown, not scores, because bands are configurable.
-- "Exposed" risks (RK2) are those still carrying live exposure: Identified
-  through Transferred. Closed and Rejected risks are history, and Avoided and
-  Realised ones have left the exposure picture (one never arose, one already
-  has), so counting them would flatter or distort the residual column.
-- "Expected to be treated" (RK3) are Assessed, Treatment planned, Treatment in
-  progress and Mitigated: the states where something is reducing
-  the risk. Accepted and Transferred risks are deliberate non-treatment.
-- A treatment link counts toward a verdict bucket by its `RiskTreatmentAssessment`
-  row; a link with none is Proposed (the module's own rule). Links whose far end
-  the reader cannot see are still counted, never named: the report names only
-  the risk, so nothing hidden is disclosed.
-- RK4 treats a missing review date on a live, assessed risk as a gap, since a
-  risk nobody is due to look at again is exactly what the schedule exists to
-  prevent. Identified risks are exempt: they are not assessed yet.
-- Free text is clipped (`_CLIP`) so a long statement cannot make a PDF row taller
-  than a page; the Risk page holds the full text.
-- Reports never include Restricted data and are not audit-logged (framework rule).
-
-Dependencies: `app.services.report_framework`, `app.modules.registry`, this
-module's models, ratings and treatment helpers.
+Report data layer: RK1 Risk register, RK2 Risk exposure, RK3 Treatment coverage,
+RK4 Review schedule as `collect_*` functions returning `ReportResult`, plus
+`REPORT_DEFINITIONS`. Project-level only; ratings are derived per project and
+shown as labels. "Exposed" is Identified through Transferred; RK4 treats a
+missing review date on an assessed risk as a gap; hidden far ends are counted,
+never named. Free text is clipped (`_CLIP`).
 """
 
 from __future__ import annotations

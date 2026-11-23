@@ -12,12 +12,9 @@ export type { TerminologyKey };
 const NO_PROJECT_CONTEXT: ProjectContextValue = { terminology: {} };
 
 /**
- * Provides the current project's terminology overrides (C-C-03) to
- * everything rendered underneath it. Fetches once per `projectId` change;
- * outside of a project context (projectId null) terms resolve to their
- * default English word. The current project's *organisation* logo/title/
- * accent colour is a separate concern with different resolution rules —
- * see `BrandingContext`.
+ * Provides the current project's terminology overrides (C-C-03) to everything underneath it. Fetches once per `projectId`
+ * change; outside a project (projectId null) terms resolve to their default English word. The organisation's logo, title
+ * and accent colour are a separate concern with different resolution rules (see `BrandingContext`).
  */
 export function TerminologyProvider({ projectId, children }: { projectId: string | null; children: ReactNode }) {
   const [loaded, setValue] = useState<ProjectContextValue>(NO_PROJECT_CONTEXT);
@@ -52,23 +49,18 @@ export function useTerm(key: TerminologyKey): string {
   return terminology[key] || DEFAULT_TERMS[key];
 }
 
-/** Pluralises (see `pluralize`) and capitalises a resolved term — every
- * current call site uses the plural as a standalone heading or nav label
- * (the first word of its own text), never mid-phrase, so capitalising here
- * once covers all of them rather than at each site. */
+/** Pluralises (see `pluralize`) and capitalises a resolved term. Every call site uses the plural as a standalone heading
+ * or nav label (the first word of its text), so capitalising here once covers all of them. */
 export function useTermPlural(key: TerminologyKey): string {
   const plural = pluralize(useTerm(key));
   return plural.charAt(0).toUpperCase() + plural.slice(1);
 }
 
 /**
- * Returns the UI string table (`strings.ts`) with every terminology token
- * (C-C-03) substituted for the current project's resolved term, or its
- * English default outside a project context / where no override is set.
- * This is the terminology-aware replacement for calling `t()` directly —
- * any component whose strings include a `{requirement}`/`{Stage}`/etc.
- * token must use this hook, not `t()`, or the raw token renders literally.
- * Strings with no token in them read identically either way.
+ * Returns the UI string table (`strings.ts`) with every terminology token (C-C-03) substituted for the current project's
+ * resolved term, or its English default outside a project or where no override is set. It replaces calling `t()`
+ * directly: a component whose strings include a `{requirement}`/`{Stage}` token must use this hook, or the raw token
+ * renders literally. Strings with no token read identically either way.
  */
 export function useStrings(): Strings {
   const { terminology } = useContext(ProjectContext);

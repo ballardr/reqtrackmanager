@@ -5,22 +5,17 @@ Service users: an organisation's integration identity (an agent, a build job) th
 organisation administrator issues, instead of running as a named person.
 
 Responsibilities:
-- Create, change and reactivate a service user (`create_service_user`, `update_service_user`, `reactivate`), with the
-  name unique within the organisation and the responsible principal validated.
-- Answer the questions the rest of the product asks about one: is this account a service user, may it receive email
-  (`can_receive_email`), what should the access review flag (`access_flags`).
-- Hold the constants every sign-in path checks (`SERVICE_AUTH_BACKEND`).
+- `create_service_user`, `update_service_user`, `reactivate` (name unique in the organisation, responsible principal
+  validated); `can_receive_email`, `access_flags`; the `SERVICE_AUTH_BACKEND` constant every sign-in path checks.
 
 Design decisions:
 - A service user is an ordinary `User` row (`is_service_account`) with no password and an `auth_backend` no sign-in
-  backend matches, so every picker, role grant, owner field, group, notification and audit actor works unchanged
-  (users and groups on parity). The facts specific to it live in `ServiceUserProfile`.
-- It belongs to one organisation, which `services.org_membership.external_account_refusal` enforces for every
-  administrator-driven grant; a token it holds is always scoped to that organisation.
-- Its address is optional. Left blank it takes a generated address on the reserved `.invalid` domain, which is never
-  delivered to; a supplied address receives notifications only and never signs in or adopts an account (the SSO,
-  SCIM and recovery paths skip service users).
-- Callers authorise; this module raises `HTTPException` for what a request got wrong.
+  backend matches, so pickers, grants, owners, groups, notifications and audit work unchanged; specifics live in
+  `ServiceUserProfile`.
+- It belongs to one organisation (`services.org_membership.external_account_refusal`); its tokens are scoped to it.
+- Its address is optional: blank takes a generated address on the reserved `.invalid` domain; a supplied one receives
+  notifications only and never signs in (SSO, SCIM and recovery skip service users).
+- Callers authorise; this module raises `HTTPException` for a bad request.
 
 Dependencies: `models.user`, `models.service_user`, `services.principals`, `services.audit`, `services.rbac`.
 """

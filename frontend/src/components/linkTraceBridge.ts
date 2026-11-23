@@ -1,20 +1,17 @@
 /**
  * Module: components/linkTraceBridge
  *
- * The tree's side of "Hide inactive records": the hops leaving a record with the hidden
- * (superseded, archived, retired…) ones skipped and what they link to joined to the record
- * in front, so tracing DEC-002 past a superseded DEC-001 shows DEC-001's own sources
- * directly under DEC-002, marked "via DEC-001".
+ * The tree's side of "Hide inactive records": the hops leaving a record with the hidden (superseded, archived, retired)
+ * ones skipped and what they link to joined to the record in front, so tracing DEC-002 past a superseded DEC-001 shows
+ * DEC-001's own sources under DEC-002, marked "via DEC-001".
  *
- * Responsibilities: read a hidden record's own links (one read each, in parallel) and
- * continue through them in the same direction, ending at a record that stays visible.
+ * Responsibilities: read a hidden record's own links (one read each, in parallel) and continue through them in the same
+ * direction, ending at a record that stays visible.
  *
- * Design decisions:
- * - A hidden record is only ever read when the filter is on and it lies on the way, so
- *   switching it off costs nothing. A chain of hidden records is followed up to
- *   `MAX_BRIDGE_DEPTH`, which only guards against a pathological cycle (the path is also
- *   checked); a failed read fails the branch rather than silently dropping records.
- * - The direction is kept: a hop continues only through edges of the same `flow`.
+ * Design decisions: a hidden record is read only when the filter is on and it lies on the way. A chain of hidden records
+ * is followed up to `MAX_BRIDGE_DEPTH`, which only guards against a pathological cycle (the path is also checked); a
+ * failed read fails the branch rather than silently dropping records. The direction is kept: a hop continues only through
+ * edges of the same `flow`.
  */
 import type { ArtefactLinksApi, LinkGraph, LinkGraphFlow, LinkGraphNode } from "../api/artefactLinks";
 import { isArtefactInactive } from "../modules/artefactPaths";

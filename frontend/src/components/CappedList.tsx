@@ -1,12 +1,9 @@
 /**
  * Module: components/CappedList
  *
- * Caps a list that can grow without bound at a screenful (10 by default) and puts the rest
- * behind a "Show all N" button that opens a scrolling `Modal` with the full list
- * (docs/ux-style-guide.md, "Pattern: compact forms and add-on-demand"). The list's own markup
- * stays the caller's (`renderList`), so a bulleted list, a row of chips and a table body all
- * share the one cap-and-reveal behaviour. The same `renderList` renders both the inline and the
- * modal copy, so any per-item action (a remove button) works in either.
+ * Caps a list that can grow without bound at a screenful (10 by default) and puts the rest behind a "Show all N"
+ * button opening a scrolling `Modal` (docs/ux-style-guide.md, "Pattern: compact forms and add-on-demand"). The
+ * caller's `renderList` draws both the inline and the modal copy, so any per-item action works in either.
  */
 import { useState, type ReactNode } from "react";
 

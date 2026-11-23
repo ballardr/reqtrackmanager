@@ -20,13 +20,9 @@ function org(overrides: Partial<Organization>): Organization {
   };
 }
 
-// This page's own `useEffect`
-// fetches `/api/v1/orgs/creation-choices` unconditionally on mount,
-// alongside the `/api/v1/orgs` list, so every story's `api.get` mock must
-// branch on the requested path rather than returning one fixed value for
-// every call. `choices` defaults to empty (a plain "no module offers
-// anything" org-creation flow); stories that exercise the picker itself
-// pass a non-empty list explicitly.
+// The page fetches `/api/v1/orgs/creation-choices` on mount alongside
+// `/api/v1/orgs`, so every `api.get` mock branches on the path. `choices`
+// defaults to empty; stories exercising the picker pass a non-empty list.
 const ADMIN_ACCESS: ServerAccess = {
   roles: ["server_admin"], can_view_organizations: true, can_create_organizations: true, can_delete_organizations: true,
   can_manage_entitlements: true, can_administer_server: true,
@@ -229,10 +225,8 @@ export const CreateOrganisation: Story = {
   },
 };
 
-/** A module's optional
- * org-creation seeding choices (e.g. Decision Management's three ADR
- * template packs) render generically, grouped by `group_label`, with only
- * each option's own `default_selected` value pre-checked. */
+/** A module's org-creation seeding choices render generically, grouped by
+ * `group_label`, with only each option's `default_selected` pre-checked. */
 export const CreateOrganisationWithTemplateChoices: Story = {
   beforeEach: () => {
     mockOrgsGet([org({})], DECISION_TEMPLATE_CHOICES);
@@ -318,10 +312,8 @@ export const CreateOrganisationModalCancel: Story = {
   },
 };
 
-/** Disable opens the shared `ConfirmDialog`, then shows a success toast
- * (Principle 7) once the action completes. Reached via the row's
- * `ActionMenu` now, not a standalone "Disable" button — the menu is just
- * the entry point, it doesn't replace the confirmation itself. */
+/** Disable opens the shared `ConfirmDialog`, then shows a success toast. The
+ * row's `ActionMenu` is only the entry point to the confirmation. */
 export const DisableOrganisation: Story = {
   beforeEach: () => {
     mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })]);

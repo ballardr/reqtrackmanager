@@ -1,8 +1,8 @@
 import { Loader2 } from "lucide-react";
 
 /**
- * Loading indicator shown for any inherently slow task (U-P-01), so the
- * user always gets feedback that the system is processing their request.
+ * Loading indicator shown for any inherently slow task (U-P-01), so the user always gets feedback that the system is
+ * processing the request.
  */
 export function Spinner({ label }: { label?: string }) {
   return (

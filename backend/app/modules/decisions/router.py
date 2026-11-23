@@ -1,32 +1,12 @@
 """
 Module: modules.decisions.router
 
-Decision Management's org-scoped API — CRUD for
-`DecisionTemplateDefinition`, the org-managed, opt-in-seeded ADR template
-packs. Mounted at `/api/v1/orgs/
-{organization_id}/modules/decisions`.
-
-RBAC: reads are gated by `require_org_module_enabled("decisions")`
-(`_require_view`) — any org member with the module enabled may browse the
-template picker. Mutations additionally require `OrgRole.ORG_ADMIN`
-(`_require_template_manage`): Decision Management declares no org-scoped
-module role of its own (`module.py`'s two roles, `decision_owner`/
-`decision_approver`, are both `scope="project"` — there is no natural
-"org-scoped Decision Owner" concept the way Compliance's `compliance_
-manager` is, since a Decision itself is always project-scoped and only its
-*templates* live at the org level). Rather than inventing a new org-scoped
-module role solely to gate a small, low-traffic CRUD surface, this reuses
-the plain `OrgRole.ORG_ADMIN` check the same way `routers.orgs`' own
-org-scoped project-status/link-type definition endpoints do (no module
-role there either). **Decided by: Agent** — the alternative considered (a new org-scoped
-role) was rejected as premature.
-
-A `DecisionTemplateDefinition` has no persistent FK from `Decision`
-(a template is a creation-time convenience, not
-a relationship), so `delete_template` is a plain delete: no `reassign_
-to_id`/`delete_definition_with_reassignment` machinery, and an organisation
-may have zero templates without issue, unlike the org's project-statuses/
-link-types (which must always retain at least one).
+Org-scoped API: CRUD for `DecisionTemplateDefinition` (org-managed ADR template
+packs), mounted at `/api/v1/orgs/{organization_id}/modules/decisions`.
+Reads need `require_org_module_enabled("decisions")`; mutations need
+`OrgRole.ORG_ADMIN` (the module declares no org-scoped role). A template has no
+FK from `Decision`, so deletion is a plain delete and an organisation may have
+none.
 """
 
 from __future__ import annotations

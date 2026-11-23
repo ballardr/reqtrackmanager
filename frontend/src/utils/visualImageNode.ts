@@ -4,16 +4,14 @@
  * The picture node of the Visual Markdown editor: one inline, indivisible node that holds an attachment's file id, its
  * alternative text and its caption, read from and written back as `![alt](attachment:<file id> "caption")`.
  *
- * Responsibilities:
- * - Read a picture of the record's own attachment into a node, and write the node back exactly as `pictureMarkdown`
- *   writes it, so a text with pictures survives the editor unchanged.
- * - Carry the node through copy and paste inside the editor (`data-picture` markup, with no address).
+ * Responsibilities: read a picture of the record's own attachment into a node and write it back exactly as
+ *   `pictureMarkdown` does, so a text with pictures survives the editor unchanged; carry the node through copy and
+ *   paste inside the editor (`data-picture` markup, with no address).
  *
  * Design decisions:
- * - The node is an atom, like the equation node: the editor never reads or escapes what is inside it, which is why a
- *   text with pictures can be edited visually (an image used to make the field fall back to Write).
+ * - The node is an atom, like the equation node: the editor never reads or escapes what is inside it.
  * - Only an attachment picture is a node. An image with an outside address stays ordinary text, which makes the field
- *   fall back to Write (the same refusal as before): a picture is never an address the page would request.
+ *   fall back to Write: a picture is never an address the page would request.
  * - The editor extends the node with a view (`VisualMarkdownEditor`); a headless editor (the round-trip check) uses it
  *   as it is, so nothing here draws or requests anything.
  *

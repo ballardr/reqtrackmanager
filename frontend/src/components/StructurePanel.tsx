@@ -1,21 +1,17 @@
 /**
  * Module: components/StructurePanel
  *
- * The Structure page of project administration: the project's components and the categories beneath each, drawn as
- * the same collapsible folder tree the report lists use (`FolderTreeList`), with the actions of each row in a menu and
- * create and edit in a side panel (`StructureNodeForm`).
+ * The Structure page of project administration: the project's components and the categories beneath each, drawn as the
+ * same collapsible folder tree the report lists use (`FolderTreeList`), with each row's actions in a menu and create and
+ * edit in a side panel (`StructureNodeForm`).
  *
- * Responsibilities:
- * - Load the tree and its counts, and reload after every change (`onChanged` lets the page refresh what else reads it).
- * - Keep each person's open components (`useOpenFolders`); open every match while a search is active, and open the
- *   component just edited or added to.
- * - Offer Add component, and per row Edit, Move up, Move down, Add category (components), Move to another component
- *   (categories) and Delete: a category in use opens the replacement dialog after the server answers 409, a component
- *   is deleted only once it has no categories.
+ * Responsibilities: load the tree and counts and reload after every change (`onChanged` refreshes what else reads it);
+ * keep each person's open components (`useOpenFolders`), opening every match while searching and the component just
+ * edited; offer Add component and per row Edit, Move up, Move down, Add category, Move to another component and Delete
+ * (a category in use opens the replacement dialog after a 409; a component is deleted only once it has no categories).
  *
- * Design decisions: the order of components and categories is manual (the server's `sort_order`), so the list shows
- * it as given and no header sorts. Every action is a call to `StructureApi`; the panel holds no rule of its own (the
- * prefix suggestion, uniqueness and the move's effects are the server's). Injectable `api` keeps stories off the network.
+ * Design decisions: component and category order is manual (the server's `sort_order`), so no header sorts. Every action
+ * is a `StructureApi` call; the panel holds no rule of its own. Injectable `api` keeps stories off the network.
  */
 import { Boxes, Layers, Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";

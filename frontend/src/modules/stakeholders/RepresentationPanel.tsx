@@ -1,21 +1,16 @@
 /**
  * Module: modules/stakeholders/RepresentationPanel
  *
- * The "represents Persona" links, shown from either
- * end on the detail pages: a Stakeholder's "Represents" list (editable: pick a
- * Persona to add, remove one) and a Persona's "Represented by" list
- * (read-only: the link is owned from the Stakeholder side). One component for
- * both so the two ends can't drift; only the heading, the link target and
- * whether `edit` is passed differ.
+ * The "represents Persona" links, shown from either end on the detail pages: a Stakeholder's "Represents" list
+ * (editable: pick a Persona to add, remove one) and a Persona's "Represented by" list (read-only: the link is owned
+ * from the Stakeholder side). One component serves both so the ends cannot drift; only the heading, the link target
+ * and whether `edit` is passed differ.
  *
- * The panel loads its own list and renders nothing if that load fails: the
- * links ride on the *other* artefact's sub-component, so an org that switched
- * Stakeholders (or Personas) off simply doesn't see the panel rather than an
- * error. Adding and removing each give a toast; removal sits behind a tier-1
- * `ConfirmDialog` (docs/ux-style-guide.md "confirmation, in two tiers"). To keep a page of
- * several such lists short, each is a heading with a (+) button that opens the picker in a
- * `Popover`, over a row of removable chips (docs/ux-style-guide.md, "Pattern: compact forms and
- * add-on-demand").
+ * The panel loads its own list and renders nothing if that load fails: the links ride on the other artefact's
+ * sub-component, so an organisation that switched Stakeholders (or Personas) off sees no panel instead of an error.
+ * Adding and removing each toast; removal sits behind a tier-1 `ConfirmDialog` (docs/ux-style-guide.md "confirmation,
+ * in two tiers"). To keep a page of several such lists short, each is a heading with a (+) button that opens the picker
+ * in a `Popover`, over a row of removable chips (docs/ux-style-guide.md, "Pattern: compact forms and add-on-demand").
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

@@ -21,88 +21,31 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
 /**
  * Module: modules/compliance/module
  *
- * The Compliance module's frontend registration — the frontend mirror of
- * `backend/app/modules/compliance/module.py`'s `MODULE_DEFINITION`, same
- * naming/shape convention (a `module.ts` file exporting a single
- * `moduleDefinition`, the way the backend file exports a single
- * `MODULE_DEFINITION`). `frontend/src/modules/registry.ts` auto-discovers
- * this file via `import.meta.glob('./*\/module.ts', { eager: true })`
- * (see `docs/decisions.md`'s "Module system follow-up: frontend module
- * auto-discovery" entry) rather than this module hand-editing that shared
- * file, the same "don't hand-maintain a touch point every module has to
- * remember" motivation the backend's own `INSTALLED_MODULES`/registry-driven
- * `Base.metadata` auto-import follow-ups already established.
- *
- * `routes`: this module's project-scoped routes, `ProjectCompliancePage`
- * and `EvidenceDetailPage` (one piece of evidence) — `path` uses React Router's own `:projectId` param
- * syntax and must match, once the router segment is substituted for a real
- * id, the `nav_path` the backend's `ModuleFrontendManifest` declares
- * (`backend/app/modules/compliance/module.py`), which uses a literal
- * `"{project_id}"` placeholder the backend interpolates with a concrete id
- * before sending it to the frontend
- * (`routers/projects.py::list_project_enabled_modules`).
- *
- * `orgAdminSections` is empty. Standards, action types and mapping types
- * management lives on the top-level `/standards` nav-rail tab
- * (`StandardListPage.tsx`/`StandardWorkspacePage.tsx`/
- * `ComplianceSettingsPage.tsx`), and the cross-project views live on that same page as its By standard and Outstanding
- * tabs (`ComplianceStatusPage.tsx`) and as Organisation Overview widgets (`orgOverviewWidgets`) below. Labels are read from `i18n/strings.ts`'s own `t()` (the same static
- * English table `useStrings()` layers terminology substitution on top of)
- * rather than duplicated as literals here — none of this module's group
- * labels contain `{term}` tokens, so the plain, unsubstituted `t()` call
- * (this file isn't a component and can't call the `useStrings()` hook)
- * already returns the exact same string `OrgAdminPage`/`OrgResourcesPage`
- * would resolve for every other group's label.
- *
- * `orgOverviewWidgets` (`modules/types.ts`): the compliance posture as two
- * widgets for the organisation's overview dashboards (a summary of the headline
- * tiles and an attention card, `OrgComplianceWidgets.tsx`), which an
- * administrator places like any other widget; they replace the former separate
- * Compliance dashboard page.
- *
- * `globalNavItems`/`standaloneWorkspaces` (`modules/types.ts`):
- * the "Compliance Standards" top-level nav-rail tab and the "Standard"
- * left-nav section, each a thin `createElement` wrapper around a real
- * compliance-owned component (`ComplianceGlobalNavLink.tsx`/
- * `StandardNavSection.tsx`) — mirroring `orgAdminSections`' own "module
- * hands the parent a render function producing real components" shape.
- * `Layout.tsx` never imports either component directly; this file
- * is the only place they're referenced outside their own module.
- *
- * `globalRoutes` (`modules/types.ts`): this module's always-
- * mounted top-level page routes — `StandardListPage.tsx` (`/standards`),
- * `ComplianceStatusPage.tsx` (`/standards/by-standard`, `/standards/outstanding`),
- * `StandardWorkspacePage.tsx` (`/standards/:standardId/:section?/
- * :versionId?` — the trailing `:versionId?` lets a specific
- * version be deep-linked/opened directly from `StandardNavSection.tsx`'s
- * expandable Versions group, rather than always landing on the version
- * list first), and `ComplianceSettingsPage.tsx`
- * (`/standards/settings/:orgId/:group?`).
- * These live inside this module's own directory (not `frontend/src/
- * pages/`) and are registered here, not imported/hardcoded into `App.tsx`
- * (a core file importing a specific module's pages is the exact mistake
- * `Layout.tsx`'s `globalNavItems`/`standaloneWorkspaces` above exist to
- * avoid, just on the routing side instead of the nav side); see
- * `docs/decisions.md` for the account. `App.tsx` consumes `globalRoutes` the
- * same generic way it already consumes `buildModuleRoutes`'s project-scoped
- * output.
- *
- * `projectOverviewTiles` (module boundary cleanup, 2026-09-08): this
- * module's per-standard compliance-status tiles on `ProjectOverviewPage
- * .tsx` — previously a direct `getProjectComplianceStatus`/
- * `ProjectComplianceStatus` import baked into that core page, the same
- * violation as the two above, found and fixed alongside the backend's
- * `on_org_created`/`project_nav_visible` hooks (see `docs/decisions.md`'s
- * "Module system follow-up: on_org_created / project_nav_visible hooks"
- * entry). `ComplianceProjectOverviewTiles.tsx` owns the fetch and renders
- * zero or more `MetricTile`s; `ProjectOverviewPage.tsx` renders it without
- * knowing compliance exists.
- *
- * A core requirement's links to a standard's clauses are ordinary links (artefact
- * type `compliance_requirement`): the shared Links
- * panel shows and edits them, so this module contributes no requirement-page
- * section for them. A clause belongs to an organisation-level standard, so its
- * path is the Standards page rather than a project page.
+ * The Compliance module's frontend registration, the mirror of `backend/app/modules/compliance/module.py`'s `MODULE_DEFINITION`
+ * (a `module.ts` exporting a single `moduleDefinition`). `frontend/src/modules/registry.ts` auto-discovers it through
+ * `import.meta.glob('./*\/module.ts', { eager: true })` (docs/decisions.md, "Module system follow-up: frontend module
+ * auto-discovery"), so no shared file is edited by hand.
+ * - `routes`: `ProjectCompliancePage` and `EvidenceDetailPage`; `path` uses React Router's `:projectId` and must match the
+ *   `nav_path` of the backend's `ModuleFrontendManifest` once `"{project_id}"` is interpolated
+ *   (`routers/projects.py::list_project_enabled_modules`).
+ * - `orgAdminSections` is empty: standards, action types and mapping types are managed on the `/standards` tab
+ *   (`StandardListPage.tsx`, `StandardWorkspacePage.tsx`, `ComplianceSettingsPage.tsx`); the cross-project views are its By
+ *   standard and Outstanding tabs (`ComplianceStatusPage.tsx`) and the `orgOverviewWidgets`. Labels come from `i18n/strings.ts`'s
+ *   `t()`: none contains a `{term}` token and this file cannot call `useStrings()`, so the plain call returns the same string.
+ * - `orgOverviewWidgets` (`modules/types.ts`): two organisation overview widgets (headline tiles and an attention card,
+ *   `OrgComplianceWidgets.tsx`) that an administrator places like any other widget.
+ * - `globalNavItems` / `standaloneWorkspaces`: the "Compliance Standards" nav-rail tab and the "Standard" left-nav section, thin
+ *   `createElement` wrappers around `ComplianceGlobalNavLink.tsx` and `StandardNavSection.tsx`; `Layout.tsx` imports neither.
+ * - `globalRoutes`: `StandardListPage.tsx` (`/standards`), `ComplianceStatusPage.tsx` (`/standards/by-standard`,
+ *   `/standards/outstanding`), `StandardWorkspacePage.tsx` (`/standards/:standardId/:section?/:versionId?`, the trailing param
+ *   deep-linking a version from `StandardNavSection.tsx`) and `ComplianceSettingsPage.tsx` (`/standards/settings/:orgId/:group?`).
+ *   They are registered here so `App.tsx` imports none of them (see `docs/decisions.md`).
+ * - `projectOverviewTiles`: the per-standard compliance-status tiles on the project overview; `ComplianceProjectOverviewTiles.tsx`
+ *   owns the fetch and `ProjectOverviewPage.tsx` renders it without knowing compliance exists (docs/decisions.md, "Module system
+ *   follow-up: on_org_created / project_nav_visible hooks").
+ * - A core requirement's links to a standard's clauses are ordinary links (artefact type `compliance_requirement`) shown by the
+ *   shared Links panel, so no requirement-page section exists; a clause belongs to an organisation-level standard, so its path
+ *   is the Standards page.
  */
 
 export const moduleDefinition: TierAModuleDefinition = {
@@ -156,10 +99,8 @@ export const moduleDefinition: TierAModuleDefinition = {
   standaloneWorkspaces: [
     {
       key: "standard",
-      // Excludes `/standards/settings/:orgId` (`ComplianceSettingsPage.tsx`)
-      // — that path also starts with `/standards/` but names an org, not a
-      // standard, and has no "Standard" nav section of its own (it's a
-      // `ResourceMenu` page, not a project-like drill-down).
+      // Excludes `/standards/settings/:orgId` (`ComplianceSettingsPage.tsx`): it names an organisation, not a standard, and is a
+      // `ResourceMenu` page with no "Standard" nav section.
       matchPath: STANDARD_WORKSPACE_PATH,
       render: ({ entityId, railCollapsed }) => createElement(StandardNavSection, { entityId, railCollapsed }),
     },
@@ -181,15 +122,7 @@ export const moduleDefinition: TierAModuleDefinition = {
         createElement("div", { className: "grid grid-metrics" }, createElement(ComplianceProjectOverviewTiles, { projectId, projectScope })),
     },
   ],
-  // Corrected out of `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR`
-  // core map (a `"compliance"` entry there, plus a matching
-  // `--color-entity-compliance` variable in `theme.css`, was this module's
-  // own colour hand-added to a core file/map — the exact same boundary
-  // violation CLAUDE.md documents for `ProjectSequenceCounter.artefact_type`,
-  // applied to a display colour instead of an artefact-type string) into
-  // this module's own registration instead, per `modules/entityAccentColor
-  // .ts`'s own docstring. Same hex values as before, unchanged visually —
-  // `RequirementTraceabilityLinksSection.tsx` now resolves them via
-  // `useEntityAccentColor("compliance")` rather than a core CSS variable.
+  // The module registers its own colour (see `modules/entityAccentColor.ts`), not a core map entry or CSS variable;
+  // `RequirementTraceabilityLinksSection.tsx` resolves it with `useEntityAccentColor("compliance")`.
   entityAccentColor: { light: "#c2410c", dark: "#fdba74" },
 };

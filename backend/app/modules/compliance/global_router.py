@@ -1,68 +1,25 @@
 """
 Module: modules.compliance.global_router
 
-The Compliance Module's "Compliance Standards as a first-class,
-cross-org, project-like nav entity" endpoints
- — the two HTTP surfaces that
-genuinely have no single `organization_id`/`project_id` to key a path off,
-unlike everything else this module has needed so far (`router.py`'s
-org-scoped endpoints, `project_router.py`'s project-scoped ones):
+The two Compliance endpoints with no single `organization_id` or `project_id` to key a path off, mounted through
+`ModuleDefinition.get_global_router` under the bare `/api/v1/compliance` prefix:
 
-- `GET /api/v1/compliance/nav-visibility` — whether the caller should see
-  the new top-level "Compliance Standards" nav-rail tab at all. This
-  necessarily aggregates *across every org the caller belongs to*, so it
-  cannot be expressed as an org-scoped route.
-- `GET /api/v1/compliance/standards/{standard_id}` — resolves a standard to
-  its owning `organization_id` from the standard's own id alone, mirroring
-  exactly how a project's own id already resolves to its org today
-  (`app.routers.projects.get_project`) with no `organization_id` segment in
-  its path. The frontend's `/standards/:standardId` workspace uses this to
-  learn which org a standard belongs to before making every other,
-  already-existing org-scoped nested call (versions, requirements) — those
-  calls are unchanged, this just supplies the `organization_id` they need.
+- `GET /api/v1/compliance/nav-visibility`: whether the caller sees the top-level "Compliance Standards" nav tab. It
+  aggregates across every organisation the caller belongs to.
+- `GET /api/v1/compliance/standards/{standard_id}`: resolves a standard to its owning organisation from its id alone,
+  as `app.routers.projects.get_project` does for a project, so the frontend `/standards/:standardId` workspace can
+  learn the `organization_id` its org-scoped nested calls need.
 
-Both endpoints are mounted via `ModuleDefinition.get_global_router` — a new,
-third, optional router kind (`app.modules.registry`'s own docstring on that
-field explains why `get_router`/`get_project_router` don't fit) added
-specifically for these endpoints rather than bolting either endpoint onto
-`router.py`'s org-prefixed router or `project_router.py`'s project-prefixed
-one, where neither would have a real path parameter to hang off.
+Responsibilities: authorise internally, since no path parameter exists for a `require_org_module_enabled` dependency.
+`nav-visibility` iterates every organisation where the caller holds a `UserOrgRole` and applies "compliance effectively
+enabled AND (caller is `compliance_manager`, organisation admin or server admin, OR the organisation has at least one
+non-archived standard)" using `service.get_effective_compliance_managers`. `get_standard_by_id` looks the standard up,
+then calls `app.services.rbac.require_org_access_and_module_enabled`, giving the 404-not-403 posture of every compliance
+endpoint, so a standard of an invisible organisation looks absent. Both endpoints only read, so neither writes an audit
+event.
 
-Responsibilities:
-- Mount both endpoints under the bare `/api/v1/compliance` prefix — no
-  org/project id segment at all.
-- Perform authorization *internally*, per endpoint, since there is no path
-  parameter for a `require_org_module_enabled`-style dependency factory to
-  bind to:
-  - `nav-visibility` iterates every org the caller holds a direct
-    `UserOrgRole` in and applies exact
-    formula ("compliance effectively enabled AND (caller is
-    `compliance_manager`/org admin/server admin, OR that org has ≥1
-    non-archived standard)"), reusing `service.py::
-    get_effective_compliance_managers` (already computes "org admin union
-    direct `compliance_manager` grant" for this exact org) rather than
-    reimplementing that union.
-  - `get_standard_by_id` looks the standard up first, then calls
-    `app.services.rbac.require_org_access_and_module_enabled` — the
-    non-dependency-factory sibling of `require_org_module_enabled` built for
-    exactly this "resolve org from something else, not from a path
-    parameter" shape — to get the same 404-not-403 posture every other
-    compliance endpoint gives for "not a member of this org at all" /
-    "member but module disabled," so a standard belonging to an org the
-    caller cannot see is indistinguishable from a standard that doesn't
-    exist.
-- Neither endpoint mutates anything, so neither calls `services.audit.
-  log_event` — this repo's CLAUDE.md audit-logging rule applies to mutating
-  actions; these are both plain reads (mirrors this module's own `router.py`
-  GET endpoints, none of which log either).
-
-External dependencies: `app.services.rbac` (membership/module-enabled
-resolution), `app.modules.compliance.service` (the existing "effective
-compliance managers" helper), `app.modules.compliance.models`/`schemas`
-(the same `ComplianceStandard` ORM model and `ComplianceStandardOut` schema
-`router.py` already uses — this file introduces no new schema for the
-standard-by-id response, only `ComplianceNavVisibilityOut` for the boolean
-nav-visibility result).
+External dependencies: `app.services.rbac`, `modules.compliance.service`, `models` and `schemas` (`ComplianceStandardOut`
+as `router.py`; `ComplianceNavVisibilityOut` for the nav result).
 """
 
 from __future__ import annotations
@@ -94,30 +51,17 @@ def get_nav_visibility(
 ) -> ComplianceNavVisibilityOut:
     """Whether the caller should see the "Compliance Standards" nav-rail tab.
 
-    `True` if, for *any* org the caller directly belongs to (a
-    `UserOrgRole` row — the same membership source `require_org_module_
-    enabled` itself checks, not `is_server_admin`'s server-wide bypass),
-    compliance is effectively enabled there (`app.modules.registry.
-    is_module_enabled`) AND either:
-    - the caller is a server admin, or is that org's effective compliance
-      manager (`service.py::get_effective_compliance_managers` — org admin
-      union direct `compliance_manager` grant), or
-    - that org has at least one non-archived `ComplianceStandard`.
+    `True` if, for any organisation the caller directly belongs to (a `UserOrgRole` row, not `is_server_admin`'s
+    server-wide bypass), compliance is effectively enabled (`app.modules.registry.is_module_enabled`) AND either the
+    caller is a server admin or that organisation's effective compliance manager
+    (`service.get_effective_compliance_managers`), or the organisation has at least one non-archived
+    `ComplianceStandard`. A caller with no organisation membership gets `False`.
 
-    `status_organization_ids` lists the organisations (of those, compliance enabled) where the caller may read the
-    organisation-wide status views, the Compliance Manager gate those endpoints enforce (a manager, an organisation
-    administrator or a server administrator): the Standards page offers its By standard and Outstanding tabs, and
-    its Organisation filter, from it. Only the caller's own grants are listed.
+    `status_organization_ids` lists the compliance-enabled organisations where the caller may read the organisation-wide
+    status views (the Compliance Manager gate: a manager, organisation administrator or server administrator); the
+    Standards page offers its By standard and Outstanding tabs and its Organisation filter from it.
 
-    A caller with no org memberships at all gets `False` — there is no org
-    to find a `True` condition in, regardless of server-admin status,
-    matching how every other module-gated surface in this codebase treats
-    "not a member of any relevant scope."
-
-    Deliberately never raises for "no visibility" — this is a UI-gating
-    signal, not an authorization boundary in itself (the actual `/standards`
-    listing and `/standards/{id}` endpoints each enforce their own real
-    per-org access checks independently of what this returns).
+    This is a UI-gating signal, not an authorization boundary: the `/standards` endpoints enforce their own access.
     """
     org_ids = db.scalars(
         select(UserOrgRole.organization_id).distinct().where(UserOrgRole.user_id == current_user.id)
@@ -154,24 +98,15 @@ def get_nav_visibility(
 def get_standard_by_id(
     standard_id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> ComplianceStandardOut:
-    """Resolves a compliance standard by id alone, with no `organization_id`
-    in the path — the entry point the frontend's `/standards/:standardId`
-    workspace uses to learn a standard's owning org before threading that id
-    through every existing org-scoped nested call (versions, requirements),
-    mirroring how `app.routers.projects.get_project` already resolves a
-    project's own org the same way.
+    """Resolves a compliance standard by id alone, with no `organization_id` in the path, so the frontend
+    `/standards/:standardId` workspace can learn the owning organisation before its org-scoped nested calls.
 
-    Looks the standard up first (never confirms/denies existence to a
-    caller with no access to its org — see `require_org_access_and_module_
-    enabled`'s own 404-not-403 docstring), then applies the identical
-    membership/module-enabled checks every other compliance endpoint
-    applies, just resolved from the standard's own `organization_id` column
-    instead of a path parameter.
+    The standard is looked up first, then the usual membership and module-enabled checks run against its
+    `organization_id` (`require_org_access_and_module_enabled`, 404-not-403, so existence is not disclosed).
 
     Raises:
-        HTTPException: 404 if no standard with this id exists, if the
-            caller has no role in its owning org, or if compliance isn't
-            effectively enabled for that org.
+        HTTPException: 404 if no standard has this id, the caller has no role in its organisation, or compliance is not
+            effectively enabled there.
     """
     standard = db.get(ComplianceStandard, standard_id)
     if standard is None:

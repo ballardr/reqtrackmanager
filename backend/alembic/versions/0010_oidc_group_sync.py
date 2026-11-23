@@ -4,13 +4,10 @@ Revision ID: 0010
 Revises: 0009
 Create Date: 2026-08-16
 
-Adds `org_groups.idp_synced_group_name` — when set, marks an `OrgGroup`'s
-*user* membership as fully managed by `services/oidc_provisioning.py`'s
-`sync_org_groups_from_claims`, matched against the IdP's groups/roles claim
-on every login (see that function's docstring). Unique per organisation via
-a partial index (Postgres supports `CREATE UNIQUE INDEX IF NOT EXISTS`,
-unlike `ADD CONSTRAINT`, so no `pg_constraint` check-and-branch is needed
-here the way 0009's constraint renames needed one).
+Adds `org_groups.idp_synced_group_name`: when set, the `OrgGroup`'s user membership is managed by
+`services/oidc_provisioning.py`'s `sync_org_groups_from_claims`, matched against the IdP's groups/roles
+claim on every login. Unique per organisation through a partial index (`CREATE UNIQUE INDEX IF NOT
+EXISTS` is supported, unlike `ADD CONSTRAINT`).
 """
 
 from collections.abc import Sequence

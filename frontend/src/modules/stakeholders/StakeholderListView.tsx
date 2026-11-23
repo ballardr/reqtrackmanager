@@ -1,29 +1,22 @@
 /**
  * Module: modules/stakeholders/StakeholderListView
  *
- * The Stakeholder list shared by the project page (`ProjectStakeholdersPage`)
- * and the organisation panel (`OrgStakeholdersPanel`): `RecordListView`
- * configured with Stakeholder's own columns (Role, Cadence, Influence,
- * Interest), its create form and the "Add from org user" action. Influence and
- * Interest show the org's level *names* (`scheme`); they are plain labels, the
- * grid position itself is only computed server-side.
+ * The Stakeholder list shared by the project page (`ProjectStakeholdersPage`) and the organisation panel
+ * (`OrgStakeholdersPanel`): `RecordListView` configured with Stakeholder's columns (Role, Cadence, Influence,
+ * Interest), its create form and the "Add from organisation user" action. Influence and Interest show the
+ * organisation's level names (`scheme`) as plain labels; the grid position is computed server-side only.
  *
- * Groups: `groups` adds a Groups column, a group filter (a group's
- * members include those in its descendants unless "Directly in the group only" is
- * ticked) and a "Group by" control. Grouping by a top-level group adds a column
- * named for it that shows each stakeholder's branch(es) under it and orders the
- * list by branch — the answer to a "custom column" for categorical data such as
- * Client. Filtering and ordering happen here, client-side, over the
- * `groups` each stakeholder already carries; the API offers the same via
- * `group_id` / `group_by`.
+ * Groups: `groups` adds a Groups column, a group filter (a group's members include those in its descendants unless
+ * "Directly in the group only" is ticked) and a "Group by" control. Grouping by a top-level group adds a column named
+ * for it showing each stakeholder's branch(es) under it and orders the list by branch, which gives categorical data
+ * such as Client a column. Filtering and ordering run client-side over each stakeholder's `groups`; the API offers the
+ * same through `group_id` / `group_by`.
  *
- * `showLastEngaged` (project page only: an organisation list has no single
- * project's engagements) adds a "Last engaged" column from the date the API
- * derives from this project's engagements; "Never" when there is none.
+ * `showLastEngaged` (project page only: an organisation list has no single project's engagements) adds a "Last
+ * engaged" column from the date the API derives from this project's engagements; "Never" when there is none.
  *
- * The project page's "Show hidden" filter and Visibility column are
- * `RecordListView`'s; the `includeHidden`/`onIncludeHiddenChange`/`onShowHidden`
- * props pass straight through.
+ * The project page's "Show hidden" filter and Visibility column are `RecordListView`'s; the `includeHidden`,
+ * `onIncludeHiddenChange` and `onShowHidden` props pass straight through.
  */
 import { useMemo, useState } from "react";
 

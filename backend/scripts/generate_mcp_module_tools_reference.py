@@ -1,25 +1,18 @@
 """
 Module: generate_mcp_module_tools_reference
 
-Generates `backend/mcp_skill_reference/module-tools.md`, the exhaustive list of
-module-contributed MCP tools that the agent skill (`mcp-server/skill/`)
-ships as `references/module-tools.md`.
+Generates `backend/mcp_skill_reference/module-tools.md`, the list of module-contributed MCP tools shipped by the agent
+skill (`mcp-server/skill/`) as `references/module-tools.md`.
 
 Responsibilities:
-- Render every tool in `build_mcp_tool_manifest()` (the exact list the MCP
-  server registers, including the tool each module `ReportDefinition`
-  generates) grouped by contributing module, each group led by that module's
-  hand-written `ModuleDefinition.mcp_guidance` (how to use the tools).
-- `--check` fails when the committed file is stale; `backend/tests/
-  test_mcp_skill_reference.py` runs the same comparison, so adding a tool
-  without regenerating this file fails CI.
+- Render every tool in `build_mcp_tool_manifest()` (including the tool each module `ReportDefinition` generates), grouped by
+  module and led by its `ModuleDefinition.mcp_guidance`; `--check` fails when the committed file is stale
+  (`backend/tests/test_mcp_skill_reference.py` runs the same comparison).
 
 Design decisions:
-- Lives in the backend because the manifest can only be built from the live
-  module registry; `mcp-server/` has no backend code (separate container).
-  The core-tool counterpart is `mcp-server/scripts/generate_skill_reference.py`.
-- Output is deterministic (registry order, then declaration order, no
-  timestamps) so a diff means a real tool change.
+- It lives in the backend because the manifest needs the live module registry (`mcp-server/` is a separate container with
+  no backend code); the core counterpart is `mcp-server/scripts/generate_skill_reference.py`.
+- Output is deterministic (registry order, declaration order, no timestamps), so a diff means a real tool change.
 
 Usage (from `backend/`): `python scripts/generate_mcp_module_tools_reference.py [--check]`
 """

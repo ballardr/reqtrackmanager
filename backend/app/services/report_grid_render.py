@@ -4,25 +4,22 @@ Module: services.report_grid_render
 The four drawings of a custom table (`Grid`): ReportLab (PDF), python-docx (Word), OpenDocument (ODT) and HTML.
 
 Responsibilities:
-- One function per format. Each reads the finished grid (`report_grid.place_grid`: positions, merges, resolved style) and
-  draws merged cells, per-cell fill, text colour, bold, alignment and vertical alignment, per-row minimum height, borders, forced
-  column widths and repeating header rows, the same in all four.
-- Take the renderer's own inline-text writer as a callback, so a cell's bold, italic, code, links and equations are drawn by
-  exactly the code that draws a paragraph elsewhere, and this module never imports a renderer.
+- One function per format, each reading `report_grid.place_grid` and drawing merges, fill, text colour, bold, alignment,
+  minimum row height, borders, forced column widths and repeating header rows the same way.
+- Take the renderer's inline-text writer as a callback so cell text is drawn by the paragraph code and this module
+  never imports a renderer.
 
 Design decisions:
-- **Rows stay whole, merged groups stay together.** PDF keeps a row whole (ReportLab default), ODT sets `keep-together`, Word
-  `cantSplit` plus `keepNext` on every paragraph of a vertical merge but its last row (Word otherwise splits the merge across
-  a page). A group taller than a page splits, as any table does.
-- **A row taller than a page must not fail the run.** ReportLab raises `LayoutError` for one, so the PDF drawing gives a cell's
-  text as a list of paragraphs, cuts a paragraph that alone exceeds a page, leaves such a row's height to ReportLab and allows
-  splitting inside rows only for a grid that has one.
-- **Font and size come from the column or the grid** (resolved onto each cell by the evaluator; never a row or cell). A cell
-  without them keeps the document's font and the table's own 9 pt, so a grid that sets nothing draws as before.
-- **No author text reaches markup except as escaped text.** A colour is written only from the `#rrggbb` the colour resolver
-  returned (checked again here), alignments come from closed tables, and numbers are formatted by this module.
+- Rows and merged groups stay whole (ReportLab default, ODT `keep-together`, Word `cantSplit` plus `keepNext`); a
+  group taller than a page splits.
+- A row taller than a page must not fail the run: ReportLab raises `LayoutError`, so the PDF cell text is a list of
+  paragraphs, an oversize paragraph is cut and splitting inside rows is allowed only for a grid that has one.
+- Font and size come from the column or grid (resolved onto each cell by the evaluator); otherwise the document font
+  and the table's 9 pt apply.
+- Author text reaches markup only escaped; colours only from the resolver's `#rrggbb` (checked again); alignments from
+  closed tables.
 
-Dependencies: reportlab, python-docx, `services.report_grid`, `services.report_column_width`, `services.report_fonts`.
+Dependencies: reportlab, python-docx, `report_grid`, `report_column_width`, `report_fonts`.
 """
 
 from __future__ import annotations

@@ -1,21 +1,18 @@
 """
 Module: services.perf_dataset.skeleton
 
-Builds the dataset's structure (organisations, people, projects, their roles, components and categories)
-through the application's own HTTP API.
+Builds the dataset's structure (organisations, people, projects, roles, components and categories) through
+the application's own HTTP API and returns a `Skeleton` the bulk phase fills with records.
 
-Responsibilities:
-- Create organisations, an administrator and members per organisation, enable every module for each, the projects (flat or nested), the
-  taxonomy each project needs for requirement codes, and the project roles.
-- Return a `Skeleton` that the bulk phase fills with records.
+Responsibilities: create organisations, an administrator and members per organisation, enable every module for
+each, the projects (flat or nested), the taxonomy each project needs for requirement codes, and project roles.
 
 Design decisions:
-- The structure is small relative to the records (hundreds of rows against up to a hundred thousand), so it is
-  created through the real API: organisation creation seeds link types, roles and module state through hooks that
-  a hand-written insert would silently miss. Only the high-volume records are bulk-inserted
-  (`perf_dataset.core`).
-- The HTTP client is any object with httpx's `.get/.post/.put` methods (httpx.Client against a running server,
-  or the test client), so the same code runs against the stack and in the backend tests.
+- The structure is small relative to the records (hundreds of rows against up to a hundred thousand), so it
+  uses the real API: organisation creation seeds link types, roles and module state through hooks a hand-written
+  insert would miss. Only high-volume records are bulk-inserted (`perf_dataset.core`).
+- The HTTP client is any object with httpx's `.get/.post/.put`, so the same code runs against the stack and
+  in backend tests.
 - Names are generic and deterministic (`Perf Org 03`, `perf-o03-u2@perf.example.com`); no real data.
 
 Dependencies: an httpx-compatible client; the application's API.

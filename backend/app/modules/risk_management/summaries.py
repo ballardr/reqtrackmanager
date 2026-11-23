@@ -1,22 +1,11 @@
 """
 Module: modules.risk_management.summaries
 
-The `ArtefactSummaryProvider` for the `risk` artefact type, so core (the link
-graph, the "Add a link" finder) and other modules can label, status-badge and
-visibility-check a risk without importing its models.
-
-Responsibilities:
-- Build an `ArtefactSummary` (`RSK-001 title`, status, archived flag) from a
-  risk's current version, with `status` and `risk_type` facets for the finder.
-- Offer a one-query batch lookup scoped to a viewing project.
-
-Design decisions:
-- A risk is always project-owned, so a project sees only its own risks
-  (`project_id` is set, never `None`).
-- The current version (`valid_to IS NULL`) supplies label, status and type.
-
-Dependencies: this module's models and labels; `modules.registry` for the
-summary dataclasses; `services.summary_facets`.
+The `ArtefactSummaryProvider` for `risk`: an `ArtefactSummary` (`RSK-001 title`,
+status, archived flag, `status` and `risk_type` facets) from the current
+version, with a one-query batch lookup. A risk is always project-owned, so a
+project sees only its own. Dependencies: this module's models; `modules.registry`;
+`services.summary_facets`.
 """
 
 from __future__ import annotations

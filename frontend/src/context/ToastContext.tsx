@@ -19,11 +19,9 @@ interface ToastMessage extends ToastOptions {
 }
 
 interface ToastContextValue {
-  /** Shows a toast; auto-dismisses after ~4s or on manual close. `kind`
-   * defaults to "success" since that's the far more common case (see
-   * `showErrorToast` for the common error-handling shorthand). With
-   * `options.details` it stays until dismissed. Returns the toast's id for
-   * `dismissToast`. */
+  /** Shows a toast; auto-dismisses after ~4s or on manual close. `kind` defaults to "success", the more common case (see
+   * `showErrorToast` for the error shorthand). With `options.details` it stays until dismissed. Returns the toast's id
+   * for `dismissToast`. */
   showToast: (text: string, kind?: ToastKind, options?: ToastOptions) => number;
   /** Removes a toast early (for example when what its Undo button would undo is no longer there). */
   dismissToast: (id: number) => void;
@@ -34,12 +32,8 @@ const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 const AUTO_DISMISS_MS = 4000;
 
 /**
- * Style guide "Pattern: confirmation, in two tiers — and feedback,
- * always" / Principle 7 ("every mutation ends with feedback") — one
- * shared success/error toast, fired from `useToast()` anywhere in the
- * tree, replacing the ad hoc per-page "did it work?" silence found
- * almost everywhere outside the CSV import wizard's own
- * one-off summary card.
+ * Style guide "Pattern: confirmation, in two tiers, and feedback, always" / Principle 7 ("every mutation ends with
+ * feedback"): one shared success/error toast, fired from `useToast()` anywhere in the tree.
  */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);

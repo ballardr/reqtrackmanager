@@ -13,24 +13,21 @@ import { RISK_SCORING_SCHEME, RISK_STATUS_LABEL } from "./types";
 /**
  * Module: modules/risk_management/module
  *
- * The Risk Management module's frontend registration — the mirror of `backend/app/modules/
- * risk_management/module.py`'s `MODULE_DEFINITION`. `registry.ts`
- * auto-discovers this file; no core file is edited to add it.
+ * The Risk Management module's frontend registration, the mirror of `backend/app/modules/risk_management/module.py`'s
+ * `MODULE_DEFINITION`. `registry.ts` discovers this file; no core file is edited to add it.
  *
- * - `routes` (project-scoped, gated on the project's enabled-modules list): the
- *   register (`.../risks`, the path the backend `frontend_manifest` nav entry
- *   points at) and a risk's detail page (`.../risks/:riskId`, also the
- *   `artefactPaths` target other records' links follow).
- * - `orgAdminSections`/`projectAdminSections`: the two tiers of the Risk type
- *   vocabulary, and Risk scoring configuration (Likelihood/Consequence/
- *   Detectability levels, default model, rating bands and per-cell ratings)
- *   through core's shared `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
- *   (project), the same way Stakeholders and Pain Points configure theirs.
- * - Notifications about a risk deep-link through `artefactPaths` (the generic
- *   `record` notification target), so there is no per-module case in core.
+ * - `routes` (project-scoped, gated on the project's enabled modules): the register (`.../risks`, the path the backend
+ *   `frontend_manifest` nav entry points at) and a risk's detail page (`.../risks/:riskId`, also the `artefactPaths`
+ *   target that other records' links follow).
+ * - `orgAdminSections` / `projectAdminSections`: the two tiers of the Risk type vocabulary, and Risk scoring
+ *   configuration (Likelihood, Consequence and Detectability levels, default model, rating bands and per-cell
+ *   ratings) through core's shared `ScoringSchemeEditor` (organisation) and `ProjectScoringSettings` (project), as
+ *   Stakeholders and Pain Points do.
+ * - Notifications about a risk deep-link through `artefactPaths` (the generic `record` notification target), so core
+ *   has no per-module case.
  *
- * `entityAccentColor` is intentionally not set: no mixed cross-module list shows
- * a risk row yet (a risk's links are shown by the shared Links panel).
+ * `entityAccentColor` is not set: no mixed cross-module list shows a risk row (its links are shown by the shared
+ * Links panel).
  */
 
 /** The Risk settings share one expandable entry in the project and organisation admin menus. */

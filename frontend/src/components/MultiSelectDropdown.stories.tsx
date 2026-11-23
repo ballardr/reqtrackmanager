@@ -26,10 +26,8 @@ export default meta;
 
 type Story = StoryObj<typeof MultiSelectDropdown>;
 
-/** Closed by default, showing every currently-checked option's own label as
- * its summary text — visually a single dropdown, matching every other
- * `<select className="input">` in the app, even though more than one value
- * can be checked at once. */
+/** Closed by default, showing every checked option's label as its summary text: it looks like a single dropdown
+ * (as every `<select className="input">`) although several values can be checked. */
 export const ClosedShowsCheckedOptionsAsSummary: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -71,10 +69,8 @@ export const OpenListLinesUpWithTheTrigger: Story = {
   },
 };
 
-/** Toggling one option calls that option's own `onToggle` immediately —
- * there's no separate "apply"/"save" step, matching every other immediate
- * toggle in the app (Principle 7, feedback on every mutation is the
- * caller's job, not this component's). */
+/** Toggling an option calls its `onToggle` immediately, with no separate apply step (as every immediate toggle;
+ * feedback on every mutation is the caller's job, Principle 7). */
 export const TogglingAnOptionFiresItsOwnCallback: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);

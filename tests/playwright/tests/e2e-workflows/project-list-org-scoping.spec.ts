@@ -3,19 +3,14 @@ import { expect, test } from "@playwright/test";
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 
 /**
- * Job to be done: a server admin's project list — both the org filter and
- * the "new project" org picker — must only ever offer organisations they
- * actually belong to, never the full server-wide directory `GET /orgs`
- * otherwise returns them (I-M-05's one deliberate bypass, meant for the
- * platform-level org directory, not "orgs I can act within"). And when
- * that scoped set is down to a single org, neither control should even be
- * shown — there's no real choice to make.
+ * Job to be done: a server admin's project list (the org filter and the "new project" org picker) offers only
+ * organisations they belong to, never the full server-wide directory `GET /orgs` otherwise returns (a deliberate
+ * bypass meant for the platform-level org directory, not "orgs I can act within"). When that scoped set is a single
+ * organisation, neither control is shown, since there is no choice to make.
  *
- * Builds two disposable orgs via the API and self-elevates into them
- * (the same join-as-admin pattern `backend/scripts/seed_e2e_dataset.py`
- * itself uses for its zero-org server-admin persona) rather than reusing
- * the shared Alpha/Beta/Gamma orgs, so this doesn't leave PERSONAS.
- * serverAdmin permanently multi-org for other specs in the suite.
+ * Builds two disposable organisations through the API and self-elevates into them (the join-as-admin pattern
+ * `backend/scripts/seed_e2e_dataset.py` uses for its zero-org server-admin persona) rather than reusing the shared
+ * Alpha/Beta/Gamma organisations, so PERSONAS.serverAdmin does not become permanently multi-org for other specs.
  */
 test.describe("project list organisation scoping for a server admin", () => {
   installCleanupHook();
@@ -38,29 +33,24 @@ test.describe("project list organisation scoping for a server admin", () => {
     ).json();
     deleteOrgOnCleanup({ id: orgB.id });
 
-    // Both orgs are deleted after the test (`deleteOrgOnCleanup` above,
-    // an afterEach that runs even on failure or timeout): this test self-
-    // elevates the *shared* serverAdmin persona into both, and leaked orgs
-    // once compounded across retries (CI saw 2, then 4, then 6 scoped orgs).
+    // Both organisations are deleted after the test (`deleteOrgOnCleanup` above, an afterEach that runs even on failure
+    // or timeout): the test self-elevates the shared serverAdmin persona into both, and leaked organisations accumulate
+    // scoped organisations across retries.
     for (const org of [orgA, orgB]) {
       const resp = await page.request.post(`http://localhost:8000/api/v1/orgs/${org.id}/join-as-admin`, { headers: authHeaders });
       expect(resp.status()).toBe(204);
     }
 
-    // Real UI navigation, not just an API assertion — the actual bug
-    // reported was what the page renders. Intercept the real request the
-    // page fires so this checks the exact response the UI acted on,
-    // rather than a separately-issued one that could drift from what the
-    // page actually calls.
+    // Real UI navigation, not only an API assertion, since the page's rendering is what matters. The real request the
+    // page fires is intercepted so the check uses the exact response the UI acted on.
     const orgsResponse = page.waitForResponse((r) => r.url().includes("/api/v1/orgs?mine=true") && r.status() === 200);
     await page.goto("/projects");
     const orgsBody: { id: string; name: string }[] = await (await orgsResponse).json();
     const scopedIds = orgsBody.map((o) => o.id);
     expect(scopedIds).toContain(orgA.id);
     expect(scopedIds).toContain(orgB.id);
-    // The negative check that actually proves the fix: some other org in
-    // the deployment (every shared E2E persona org qualifies) must not
-    // leak in just because this caller is a server admin.
+    // The negative check: no other org in the deployment (every shared E2E persona org qualifies) may leak in because
+    // the caller is a server admin.
     expect(scopedIds.length).toBe(2);
 
     // Two orgs — a real choice exists, so both controls must be offered,
@@ -76,16 +66,10 @@ test.describe("project list organisation scoping for a server admin", () => {
     const orgPicker = newProjectDialog.locator("select").first();
     await expect(orgPicker.locator("option")).toHaveText([orgAName, orgBName]);
 
-    // Drop to a single org. Hard-deletes org B rather than self-service
-    // leaving it (`DELETE /orgs/{id}/membership`, mirroring Preferences'
-    // own "Leave organisation" action, under its "Your access" tab):
-    // this server admin self-elevated as
-    // org B's *only* admin above, so leaving would hit the "can't strip
-    // an org's last admin" guard (409) — deletion is server-admin-only
-    // and doesn't require ongoing membership, and these orgs are
-    // disposable either way. Now there's no real choice between orgs, so
-    // both controls should disappear entirely rather than offering one
-    // option.
+    // Drop to a single org by hard-deleting org B rather than self-service leaving it (`DELETE /orgs/{id}/membership`,
+    // Preferences' "Leave organisation" action): this server admin self-elevated as org B's only admin, so leaving would
+    // hit the "can't strip an org's last admin" guard (409). Deletion is server-admin-only and needs no ongoing
+    // membership. With no real choice between organisations, both controls disappear.
     const deleteBResp = await page.request.delete(`http://localhost:8000/api/v1/orgs/${orgB.id}`, {
       headers: authHeaders, data: { confirm_name: orgBName },
     });
@@ -94,16 +78,10 @@ test.describe("project list organisation scoping for a server admin", () => {
     await expect(page.locator("select:has(option:text-is('All organisations'))")).toHaveCount(0);
     await page.getByRole("button", { name: "New project" }).click();
     const soloDialog = page.getByRole("dialog", { name: "New project" });
-    // No org select now (org A has no projects yet either, so the
-    // template picker is also absent) — org A is the only valid choice,
-    // applied implicitly rather than asked for. Visibility is a real,
-    // always-meaningful choice independent of org count, so that select
-    // is still expected here. The hierarchical-projects "Parent project"
-    // picker, by contrast, is can_be_parent-gated (docs/decisions.md) and
-    // org A has zero projects at all yet, let alone any eligible ones —
-    // so it correctly renders nothing rather than a picker with only
-    // "None" to offer (requested directly: showing that field with
-    // nothing eligible in it was confusing).
+    // No org select (org A has no projects, so the template picker is also absent): org A is the only valid choice and
+    // is applied implicitly. Visibility is a meaningful choice regardless of org count, so that select is expected. The
+    // "Parent project" picker is `can_be_parent`-gated (docs/decisions.md) and org A has no projects, so it renders
+    // nothing rather than a picker whose only option is "None".
     await expect(soloDialog.locator("select")).toHaveCount(1);
     await expect(soloDialog.getByLabel("Visibility")).toBeVisible();
     await expect(soloDialog.getByText("Parent project")).toHaveCount(0);

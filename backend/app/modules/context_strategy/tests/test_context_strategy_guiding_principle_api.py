@@ -1,21 +1,12 @@
-"""Tests for Context & Strategy's Guiding Principle backend API
-— the real HTTP endpoints (`router.py`/`project_router.py`),
-through the `client` fixture, mirroring `test_context_strategy_future_
-state_api.py`'s own "go through the real API" convention. Kept as its own
-sibling file rather than folded into an existing one (Decided by: Agent,
-following the other artefact test files' precedent) — one file per artefact type.
+"""
+Tests for the Guiding Principle API (organisation and project scope) through
+the real HTTP endpoints (`router.py`/`project_router.py`).
 
-Covers, for both the org-scoped and project-scoped routers: Guiding
-Principle CRUD, the content lock once past `PROPOSED` (409), the full
-lifecycle (propose/send-back/approve/activate/supersede/retire — note: no
-`submit-for-review` step, `enums.GuidingPrincipleStatus` has no
-`UNDER_REVIEW` state), including the mandatory-comment-on-send-back rule
-and an illegal-transition 409, version history, the RBAC composition
-(`..._owner`/`..._approver`/creator-or-role for propose,
-disabled-module-is-404-not-403, disabled-subcomponent-is-404, and a
-Fine-Grained Access Control custom-role permission grant satisfying the
-approve gate), comments/comment-files, direct file attachments, and
-cross-tenant 404s.
+Covers CRUD, the content lock past `PROPOSED` (409), the lifecycle (no
+`submit-for-review` step: there is no `UNDER_REVIEW` state), mandatory
+send-back comment, illegal-transition 409, version history, RBAC (owner/
+approver roles, permission grants, disabled module and sub-component 404),
+comments, file attachments and cross-tenant 404s.
 """
 
 from __future__ import annotations

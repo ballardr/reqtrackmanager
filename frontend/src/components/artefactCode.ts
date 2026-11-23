@@ -1,11 +1,10 @@
 /**
  * Module: components/artefactCode
  *
- * Splits a record's display label into its human-readable code and its title. Every item type's
- * artefact summary label is `"<PREFIX>-<nnn> <title>"` (`REQ-001 Remote diagnostics`,
- * `FND-003 Technicians skip the checklist`), the shape the shared code generator produces, so the
- * shared link lists can show the title first and the code as a small suffix instead of leading with
- * it. A label that does not start with a code (an organisation-owned or legacy record) is all title.
+ * Splits a record's display label into its human-readable code and its title. Every item type's artefact summary label is
+ * `"<PREFIX>-<nnn> <title>"` (`REQ-001 Remote diagnostics`), the shape the shared code generator produces, so the shared
+ * link lists can show the title first and the code as a small suffix. A label that does not start with a code (an
+ * organisation-owned record) is all title.
  */
 
 // The generator's shape (`backend/app/code_rules.py`, `RECORD_CODE_PATTERN`): 2-5 capitals, a hyphen, and a zero-padded number

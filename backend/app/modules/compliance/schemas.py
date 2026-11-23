@@ -1,84 +1,35 @@
 """
 Module: modules.compliance.schemas
 
-Pydantic request/response models for the Compliance Module's API
-(§2-§6 and following). Sits
-alongside `models.py` (the ORM shape these schemas expose over HTTP) and
-`router.py` (the endpoints that use them).
+Pydantic request and response models of the Compliance Module's API (§2-§6 onward), exposing the ORM shapes of
+`models.py` for the endpoints of `router`.
 
-Design decisions, not left implicit:
-- Every `*Out` schema sets `model_config = {"from_attributes": True}`, this
-  codebase's standard convention for a schema built directly from an ORM
-  instance (see `schemas/action_type.py`, `schemas/project.py`).
-- `ComplianceStandardOut` is deliberately flat/summary-only — it does not
-  nest `versions`, matching how other list-friendly `*Out` schemas in this
-  codebase avoid embedding a full child collection by default (e.g.
-  `ProjectOut` does not embed `Requirement` rows). A caller fetches a
-  standard's versions via the separate `GET .../standards/{id}/versions`
-  endpoint instead.
-- `ComplianceRequirementCreate`/`Update` deliberately have no `sort_order`
-  field — a new requirement is always appended to the end of its sibling
-  group (mirroring `action_types.py::create_action_type`'s `count = len(...)`
-  pattern), and reordering afterward goes through the dedicated `move`
-  endpoint (`services.ordering.move_ordered`), never a direct field write.
-  The same applies to `ComplianceRequiredActionCreate`/`Update`.
-- `ComplianceRequirementUpdate` has no `parent_requirement_id` field —
-  reparenting a requirement to a different parent is not requested
-  and would complicate the sibling-group semantics `move`
-  relies on (a requirement's sibling group is its
-  `(standard_version_id, parent_requirement_id)` pair); a dedicated reparent endpoint
-  can be added if this is ever needed.
-- `ComplianceStandardUpdate` has no `reference` field — a standard's
-  `reference` is its stable, organisation-unique identifier and is treated
-  as immutable after creation, the same way this codebase never lets a
-  project's own generated `unique_code` change; simply omitting the field
-  from the update schema is what enforces this (there is no direct
-  precedent for this specific field in this codebase, so this is a new,
-  deliberate judgment call.
-- Evidence (§13-§15) has its own schemas at the bottom of this
-  file: `ComplianceEvidenceUpdate` deliberately excludes `expiry_date`
-  (§15's revalidation-only rule — see that schema's own docstring), and
-  `ComplianceEvidenceOut` is built explicitly by the router rather than
-  `from_attributes` alone, for the same "computed field" reason as
-  `ProjectComplianceRequirementOut`.
-- Approval/sign-off (§12, §16, §27) uses `ComplianceApprovalDecisionRequest`
-  (payload for both `approve` and `reject` — `decision_note` is required at
-  the API layer, not the schema layer, exactly when rejecting, mirroring
-  every other conditionally-mandatory-justification rule in this module)
-  and `PendingApprovalOut` (mirrors `NonCompliantRequirementOut`'s exact
-  shape/rationale for the same kind of cross-assignment drillable list, one
-  section up).
-- Scheduled reviews (§17) use `ComplianceReviewCreate`/`Update`/
-  `CompleteRequest`/`Out` and `ComplianceReviewEvidenceLinkCreate` at the
-  bottom of this file. `ComplianceReviewOut.schedule_state` is a computed
-  field (never stored — see `service.py::compute_review_schedule_state`),
-  the same "built explicitly by the router" shape as `ComplianceEvidenceOut.
-  validity_state`.
-- Post-publish clarification edits and editable version descriptions (§4,
-  §31) use `ComplianceStandardVersionUpdate` (carries only
-  `summary`, the one version field editable regardless of lifecycle status
-  — see `models.py`'s clarification design decisions) and `ComplianceRequirementClarifyRequest`
-  (a dedicated, narrower sibling of `ComplianceRequirementUpdate` for a
-  `PUBLISHED` version, with a mandatory `clarification_note`). `ComplianceStandardVersionOut`/
-  `ComplianceRequirementOut` carry the corresponding fields.
-- Cross-standard mapping and version impact (§19, §27) use
-  `ComplianceMappingRelationshipType*` (the org-scoped vocabulary,
-  mirroring `ComplianceActionType*`'s exact shape one section up),
-  `ComplianceRequirementMapping*`, the version-diff response shapes
-  (`ComplianceRequirementSummaryOut` plus one `*Out` per §27 diff
-  category), and the version-migration request/result shapes
-  (`ProjectComplianceMigration*`) at the bottom of this file. Every diff/
-  migration-result schema is built explicitly by the router/service layer
-  from computed data (`service.py::diff_standard_versions`/`migrate_
-  project_compliance`), never `from_attributes` alone, the same reason
-  `ProjectComplianceRequirementOut`/`ComplianceEvidenceOut`/
-  `ComplianceReviewOut` already are.
+Design decisions:
+- Every `*Out` schema sets `model_config = {"from_attributes": True}`, the codebase convention for a schema built from
+  an ORM instance. Computed fields (`ProjectComplianceRequirementOut`, `ComplianceEvidenceOut.validity_state`,
+  `ComplianceReviewOut.schedule_state`, the diff and migration result shapes) are built explicitly by the router or
+  service, never by `from_attributes` alone.
+- `ComplianceStandardOut` is flat (no nested `versions`; `GET .../standards/{id}/versions` returns them), as other
+  list-friendly `*Out` schemas are.
+- `ComplianceRequirementCreate`/`Update` and the required-action equivalents have no `sort_order`: a new row is appended
+  to its sibling group and reordering uses the `move` endpoint (`services.ordering.move_ordered`).
+- `ComplianceRequirementUpdate` has no `parent_requirement_id`: a sibling group is the
+  `(standard_version_id, parent_requirement_id)` pair that `move` relies on.
+- `ComplianceStandardUpdate` has no `reference`: it is the standard's stable, organisation-unique identifier, immutable
+  after creation, and omitting it from the update schema enforces that.
+- Evidence (§13-§15): `ComplianceEvidenceUpdate` excludes `expiry_date` (revalidation only, §15).
+- Approval (§12, §16, §27): `ComplianceApprovalDecisionRequest` serves approve and reject, with `decision_note` required
+  by the API exactly when rejecting; `PendingApprovalOut` has the shape of `NonCompliantRequirementOut`.
+- Post-publish clarification (§4, §31): `ComplianceStandardVersionUpdate` carries only `summary` (editable at any
+  status); `ComplianceRequirementClarifyRequest` is the narrower sibling of `ComplianceRequirementUpdate` for a
+  `PUBLISHED` version, with a mandatory `clarification_note`.
+- Cross-standard mapping and version impact (§19, §27): `ComplianceMappingRelationshipType*` (shaped like
+  `ComplianceActionType*`), `ComplianceRequirementMapping*`, the version-diff shapes and `ProjectComplianceMigration*`.
 
-`owner` (standard, review) and `assignee` (required-action assessment) are
-principals: a user, an organisation group or, where the record is
-project-scoped, a project group. Requests send a `PrincipalRef` (`{type, id}`;
-null clears an optional one) and responses return a resolved `PrincipalOut`
-(built by `service.standards_to_out` / `assessments_to_out` / `build_review_out`).
+`owner` (standard, review) and `assignee` (required-action assessment) are principals: a user, an organisation group or,
+for a project-scoped record, a project group. Requests send a `PrincipalRef` (`{type, id}`; null clears an optional
+one) and responses return a resolved `PrincipalOut` (`service.standards_to_out`, `assessments_to_out`,
+`build_review_out`).
 """
 
 from __future__ import annotations
@@ -107,19 +58,12 @@ from app.schemas.project_scope import ProjectScopedRow
 
 
 class ComplianceStandardCreate(BaseModel):
-    """Payload for creating a `ComplianceStandard` (§2). `owner` (a user or an
-    organisation group) defaults to the creating user when omitted — §2 lists "Owner" as an attribute
-    without mandating it always differ from the creator.
+    """Payload for creating a `ComplianceStandard` (§2). `owner` (a user or an organisation group) defaults to the
+    creating user.
 
-    Also carries the fields for the standard's mandatory first
-    `ComplianceStandardVersion` (version 1), created in the same request/
-    transaction by `router.py::create_standard` — mirroring
-    `ComplianceStandardVersionCreate`'s own `version_label`/`effective_date`/
-    `change_note` fields (minus `clone_from_version_id`, which has nothing
-    to clone from on a brand-new standard). A standard is never left with
-    zero versions: previously, creating a standard and creating its first
-    version were two separate API calls, which could leave a standard
-    version-less if the second call was never made."""
+    Also carries the fields of the mandatory first `ComplianceStandardVersion` (version 1), created in the same
+    transaction by `router.create_standard` (the `ComplianceStandardVersionCreate` fields without
+    `clone_from_version_id`), so a standard never has zero versions."""
 
     reference: str
     name: str
@@ -507,24 +451,13 @@ class ComplianceRequiredActionAssessmentOut(BaseModel):
 
 
 class ProjectComplianceStatusOut(ProjectScopedRow):
-    """§20's overall status summary for one `ProjectCompliance` assignment
-    — see `service.py::summarize_project_compliance` for the exact,
-    documented calculation this schema exposes. Always includes the raw
-    counts alongside the calculated percentage, per §20's explicit "the UI
-    should always display the actual counts as well as any calculated
-    percentage so that the percentage cannot be misleading.\"
+    """§20's overall status summary for one `ProjectCompliance` assignment (see `service.summarize_project_compliance`).
+    It includes the raw counts beside the calculated percentage (§20: the UI always shows the counts so the percentage
+    cannot mislead).
 
-    `project_name` was added later: this schema was already the one
-    exception to every other cross-assignment schema in this module in
-    being shared, unmodified, between project scope (`GET .../status`) and
-    org scope (`router.py::list_all_project_compliance`) — `project_id` has sat here, redundant at project scope, from the start
-    for exactly that reason. The org-wide "Standard | Projects |
-    Compliant | Non-Compliant | In Progress" table (§22) needs a project's
-    display name to group/label its rows, so it extends this schema's
-    existing dual-use design rather than introducing a third pattern next
-    to the `Org*Out` subclass approach used for the module's other,
-    project-scope-first schemas (see this file's org-wide section,
-    below, for that approach and why it doesn't apply here)."""
+    The schema is shared unmodified between project scope (`GET .../status`) and organisation scope
+    (`router.list_all_project_compliance`), so it carries `project_id` and `project_name` (the organisation-wide table of
+    §22 groups rows by project name) instead of an `Org*Out` subclass."""
 
     project_compliance_id: UUID
     project_id: UUID
@@ -1067,25 +1000,11 @@ class ProjectComplianceMigrationResultOut(BaseModel):
 
 # --- Org Compliance View + Dashboard (§22, §23) ------------------------
 #
-# Org-wide aggregations across every project in an organisation, mirroring
-# `router.py::list_all_project_compliance`'s existing "join ProjectCompliance
-# to Project on organization_id" pattern (§26 — Compliance Manager's "View
-# compliance across projects"). Each of `NonCompliantRequirementOut`/
-# `PendingApprovalOut`/`ComplianceEvidenceOut` already existed first
-# with consumers at project scope; rather than
-# retrofit `project_id`/`project_name` onto those (a response-shape change
-# every existing caller would silently start receiving), each gets its own
-# `Org*Out` subclass here that adds exactly those two fields — the org
-# endpoints build these from the exact same per-project computation
-# (`service.py`'s newly-extracted `list_non_compliant_requirements_for_
-# project`/etc., shared with `project_router.py`'s own endpoints) with
-# `project_id`/`project_name` stamped on afterward, so the underlying
-# business logic is never duplicated between scopes. `ComplianceReviewOut`
-# gets a nested wrapper instead of a flat subclass (`OrgReviewDueOut`)
-# because a single review has genuine multiplicity across projects — a
-# standard-level review can be "due" simultaneously for every project
-# assigned to that standard, so it cannot honestly carry one `project_id`
-# field the way a `ProjectComplianceRequirement`-derived row can.
+# Organisation-wide aggregations across every project (§26: "View compliance across projects"). Each `Org*Out` subclass
+# adds `project_id` and `project_name` to the project-scope schema and is built from the same per-project computation
+# (`service.list_non_compliant_requirements_for_project` and similar). `ComplianceReviewOut` gets a nested wrapper
+# (`OrgReviewDueOut`) because a standard-level review can be due for every project assigned to the standard, so it
+# cannot carry one `project_id`.
 
 
 class OrgNonCompliantRequirementOut(NonCompliantRequirementOut):
@@ -1192,11 +1111,9 @@ class ComplianceStandardMembersOut(BaseModel):
 
     members: list[ComplianceStandardMemberOut]
     group_members: list[ComplianceStandardGroupMemberOut] = []
-    # Whether this standard's manager floor is *also* satisfied by the
-    # org's designated fallback compliance-managers group currently having
-    # at least one member — when `True`, the frontend may let the last
-    # explicit `standards_manager` grant be revoked (the backend re-checks
-    # this independently regardless of what the frontend renders).
+    # Whether the organisation's fallback compliance-managers group, if it has a member, also satisfies this
+    # standard's manager floor; when `True` the last explicit `standards_manager` grant may be revoked (the backend
+    # re-checks).
     manager_floor_covered_by_fallback: bool
 
 

@@ -1,22 +1,12 @@
 /**
  * Module: modules/compliance/EvidencePanel
  *
- * The project's supporting-evidence library (§13-§15) — project-scoped, not
- * nested under one standard assignment, since a single piece of evidence
- * may support requirements across more than one of a project's standard
- * assignments at once (§13's "multiple compliance requirements and/or
- * standards"). A `DirectoryTable` + `FilterPanel` list (style guide
- * "Pattern: directories at scale") and a `Modal` create flow (Principle 3).
- * A row links straight to `EvidenceDetailPage` (files, links, revalidation,
- * archive) — evidence carries attachments and a Links panel, so it is a page,
- * not a `SidePanel` (style guide "Pattern: entity detail panel").
- *
- * Linking evidence to a specific requirement/required-action assessment is
- * done from the requirement side (`RequirementAssessmentPanel`'s own
- * "Link existing evidence" control, plus the "Upload new evidence"
- * inline create-and-link flow, which reuses `EvidenceFormModals.tsx`'s
- * `EvidenceFormModal`) — this panel is the canonical evidence list and
- * create surface, not a second place to manage linkage.
+ * The project's supporting-evidence library (§13-§15), project-scoped rather than nested under one standard assignment, since
+ * one piece of evidence may support requirements across several assignments. A `DirectoryTable` + `FilterPanel` list (style
+ * guide "Pattern: directories at scale") with a `Modal` create flow. A row links to `EvidenceDetailPage` (files, links,
+ * revalidation, archive): evidence carries attachments and a Links panel, so it is a page, not a `SidePanel`. Linking evidence
+ * to a requirement is done from `RequirementAssessmentPanel` ("Link existing evidence", "Upload new evidence" reusing
+ * `EvidenceFormModal`); this panel is the canonical list and create surface, not a second place to manage linkage.
  */
 import { useState } from "react";
 

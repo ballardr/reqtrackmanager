@@ -1,13 +1,10 @@
 /**
  * Module: components/HelpHeader
  *
- * A table column header that names a domain term and carries its plain-language help: the `<th>` with the
- * column's text and a `(?)` (`FieldHelp`) after it. Table headers are not form fields, so this is the one
- * shape for "a column that needs explaining" (docs/ux-style-guide.md, "Pattern: field help"); a column
- * whose text is self-explanatory stays a plain `<th>`, and a sortable column uses `SortableHeader`.
- *
- * Design decisions: the help is a pinnable tooltip (`FieldHelp`), so opening it never moves the table's
- * columns, and its button is named "Help: {label}" like every other `(?)`.
+ * A table column header that names a domain term and carries its help: the `<th>` with the column's text and a
+ * `(?)` (`FieldHelp`), the one shape for "a column that needs explaining" (docs/ux-style-guide.md, "Pattern: field
+ * help"). A self-explanatory column stays a plain `<th>`; a sortable one uses `SortableHeader`. The help is a
+ * pinnable tooltip, so opening it never moves the columns, and its button is named "Help: {label}".
  */
 import { FieldHelp } from "./FieldHelp";
 

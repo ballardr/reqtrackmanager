@@ -1,24 +1,16 @@
 /**
  * Module: components/ModuleSettingsList
  *
- * The shared "Modules" settings list used by Org Admin and Project Admin:
- * one row per module (name, version, a two-line-clamped description with
- * "More", an optional hint, and one caller-supplied control), with any
+ * The shared "Modules" settings list used by Org Admin and Project Admin: one row per module (name, version, a
+ * two-line-clamped description with "More", an optional hint and one caller-supplied control), with any
  * sub-components collapsed behind a one-line summary disclosure.
  *
- * Design decisions:
- * - A list, not a table: each row labels itself, so there are no column
- *   headers (the old table's three-line "Default for new projects" header
- *   was most of its height).
- * - Controls are render-slots (`control`), so the org page can pass a
- *   three-state availability `<select>` and the project page an on/off
- *   `ToggleSwitch` without this component knowing either's semantics.
- * - `ModuleAvailabilitySelect` is one three-state control instead of two
- *   toggles (hard on/off + default for new projects): the default does
- *   nothing while the module is off, so only three states are real.
- * - Sub-components start collapsed — most admins never change them, and
- *   expanding them all by default is what made the old page read as a
- *   wall of toggles.
+ * - A list, not a table: each row labels itself, so there are no column headers.
+ * - Controls are render-slots (`control`): the organisation page passes a three-state availability select and the
+ *   project page an on/off `ToggleSwitch`, without this component knowing either's semantics.
+ * - `ModuleAvailabilitySelect` is one three-state control, because the default for new projects has no effect while
+ *   the module is off, so only three states exist.
+ * - Sub-components start collapsed because most administrators never change them.
  */
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -137,15 +129,14 @@ function ClampedDescription({ text }: { text: string }) {
 const AVAILABILITY_OPTIONS: ModuleAvailability[] = ["off", "opt_in", "default_on"];
 
 /**
- * The org-level three-state availability `<select>` (Off / Available, off
- * for new projects / On for new projects), labelled via
- * `MODULE_AVAILABILITY_LABEL`.
+ * The organisation-level three-state availability `<select>` (Off / Available, off for new projects / On for new
+ * projects), labelled via `MODULE_AVAILABILITY_LABEL`.
  *
  * Args:
  *   value: The current availability.
  *   onChange: Called with the newly chosen availability.
  *   label: Accessible name (e.g. "Compliance availability").
- *   disabled: Greys the control out (e.g. not on the org's plan).
+ *   disabled: Makes the control unavailable (e.g. not on the organisation's plan).
  */
 export function ModuleAvailabilitySelect({
   value,

@@ -1,13 +1,13 @@
 /**
  * Module: components/AnnouncementEditor
  *
- * The create/edit dialog for an announcement: title, message, severity, the window it is shown in, whether the
- * login pages show it and whether a person can dismiss it. Used by `AnnouncementsPanel` for both the platform and an organisation, so the two cannot
- * drift. The window is entered in the person's local time and sent as UTC instants (`utils/dateTimeLocal`). A new
- * message starts now and has no end; Duplicate opens the dialog with another message's content and the same defaults.
+ * The create/edit dialog for an announcement (title, message, severity, display window, login-page flag,
+ * dismissible), shared by `AnnouncementsPanel` for platform and organisation. The window is entered in local time
+ * and sent as UTC instants (`utils/dateTimeLocal`). A new message starts now with no end; Duplicate prefills
+ * another message's content with the same defaults.
  *
- * The caller saves. Validation here only covers what is certain in the browser (a title, an end after the start);
- * the server's own rules (text, a web address in an organisation message) come back as the error shown above the form.
+ * The caller saves. Validation here covers only what the browser can know (a title, an end after the start); the
+ * server's rules come back as the error above the form.
  */
 import { useState } from "react";
 

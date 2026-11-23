@@ -6,16 +6,10 @@ import { Modal } from "./Modal";
 const strings = t();
 
 /**
- * The two confirmation tiers from style guide "Pattern: confirmation, in
- * two tiers — and feedback, always", as one component rather than the
- * four different patterns the audit found in production (nothing at all,
- * `window.confirm`, and an ad hoc inline card with typed-name confirmation
- * on the org-delete flow): Tier 1 is a plain Cancel/confirm `Modal` for an
- * ordinary, recoverable delete/archive; Tier 2 additionally requires typing
- * `requireTypedText` (typically the exact name of the thing being deleted)
- * before the confirm button enables, for an irreversible, wide-blast-radius
- * action. Which tier renders is driven entirely by whether
- * `requireTypedText` is passed — callers don't choose a variant name.
+ * The two confirmation tiers of style guide "Pattern: confirmation, in two tiers": Tier 1 is a plain
+ * Cancel/confirm `Modal` for an ordinary, recoverable delete or archive; Tier 2 also requires typing
+ * `requireTypedText` (typically the exact name of the thing) before confirm enables, for an irreversible,
+ * wide-blast-radius action. The tier is chosen by whether `requireTypedText` is passed.
  */
 export function ConfirmDialog({
   title,
@@ -32,11 +26,8 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
   requireTypedText?: string;
-  /** Generic extra gate on the confirm button, alongside `requireTypedText`
-   * above — for a caller whose `message` embeds its own extra required
-   * input (e.g. a "reason for change"
-   * field on a confirm that's about to submit a change request instead of
-   * acting directly) rather than the typed-exact-text pattern. */
+  /** Extra gate on the confirm button, alongside `requireTypedText`, for a `message` that embeds its own required
+   * input (a "reason for change" on a confirm that submits a change request). */
   confirmDisabled?: boolean;
 }) {
   const [typed, setTyped] = useState("");

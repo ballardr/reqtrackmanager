@@ -1,13 +1,9 @@
 """
 Module: modules.product_feedback.scaling_probes
 
-The `ScalingProbe` for the `enhancement_request` artefact type: how the scaling-shape guard fills and reads
-requests through the API.
-
-Responsibilities:
-- Create N requests through the real create endpoint (only a title is required) and name the list endpoint.
-
-Dependencies: `modules.registry` (`ScalingProbe`).
+The `ScalingProbe` for `enhancement_request`: creates N requests through the
+real create endpoint (only a title is required) and names the list endpoint,
+for the scaling-shape guard. Dependencies: `modules.registry` (`ScalingProbe`).
 """
 
 from __future__ import annotations

@@ -1,16 +1,15 @@
 /**
  * Module: modules/architecture/AddElementsDialog
  *
- * Picks existing elements to place on a diagram: a table of the elements not yet on it (the project's own and those shared
- * with it), narrowed by search, element type and domain. "Add selected" places the ticked rows; "Add all matching" places
- * every row the filters leave, which is how a person adds, for example, every hardware element at once. The component
- * filter is the shared collapsible tree of the project's components (`placementTree`); an element matches when it sits
- * in any ticked component or category. Only the project's own elements carry components (an element shared from another
- * owner has none here), so ticking a component narrows the list to the project's own.
+ * Picks existing elements to place on a diagram: a table of the elements not yet on it (the project's own and those
+ * shared with it), narrowed by search, element type and domain. "Add selected" places the ticked rows; "Add all
+ * matching" places every row the filters leave. The component filter is the shared collapsible tree of the project's
+ * components (`placementTree`); an element matches when it sits in any ticked component or category. Only the
+ * project's own elements carry components, so ticking a component narrows the list to those.
  *
- * The Folder filter groups the elements by owner (this project, the organisation, another project) and then by the owner's
- * folders, drawing only the folders on the way to an element the person may read, so another owner's folder structure is
- * never shown beyond that. Ticking an owner takes all its elements; ticking a folder takes those in it and below it.
+ * The Folder filter groups the elements by owner (this project, the organisation, another project) and then by the
+ * owner's folders, drawing only the folders on the way to an element the person may read, so another owner's folder
+ * structure is not shown beyond that. Ticking an owner takes all its elements; ticking a folder takes those in and below it.
  */
 import { useEffect, useMemo, useState } from "react";
 

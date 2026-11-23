@@ -1,26 +1,13 @@
 /**
  * Module: modules/navIcons
  *
- * Generic resolver for a module-contributed nav-rail entry's icon
- * (`ModuleFrontendManifest.nav_icon`/`ModuleNavEntry.nav_icon`, `app.modules.
- * registry`) — `Layout.tsx` used to render every module nav entry with the
- * same hardcoded `<Wrench>`, so Compliance, Decisions and all five of
- * Context & Strategy's own entries (Strategy, Future State, Pain Point,
- * Guiding Principle, Open Question) were visually indistinguishable in the
- * nav rail. Fixed by having each module supply its own icon **name** (plain
- * string data carried over the wire, same as `nav_label`) and resolving it
- * here, generically, for every module — not by adding a per-module case to
- * `Layout.tsx` itself, which would repeat the exact "module's own data
- * hand-edited into a core file" failure mode CLAUDE.md's "Modular Feature
- * System Boundary" section documents for `entityAccentColor`/`artefact_
- * types`. Unlike `entityAccentColor` (a literal hex pair on a Tier A
- * module's own `module.ts`), the icon *name* has to travel over the backend
- * wire: nav entries are read from `ModuleFrontendManifest`, the one nav-rail
- * source that also covers Tier B/C modules with no frontend `module.ts` of
- * their own. `ICONS_BY_NAME` below is the broad, open-set "palette" a module
- * picks a name from — adding an unused icon to it is never required to
- * support a new module, since the full lucide-react set the project already
- * depends on is available to add from as needed.
+ * Generic resolver for a module-contributed nav-rail entry's icon (`ModuleFrontendManifest.nav_icon` /
+ * `ModuleNavEntry.nav_icon`, `app.modules.registry`). Each module supplies its icon name as plain data over the wire
+ * (as `nav_label`) and it is resolved here for every module, so `Layout.tsx` has no per-module case (the boundary
+ * violation CLAUDE.md's "Modular Feature System Boundary" describes). The name travels over the backend wire, unlike
+ * `entityAccentColor`'s hex pair on a Tier A `module.ts`, because nav entries are read from `ModuleFrontendManifest`,
+ * the one nav-rail source that also covers Tier B/C modules with no frontend `module.ts`. `ICONS_BY_NAME` is an
+ * open-set palette: any lucide-react icon can be added, and none needs adding for a new module.
  */
 import {
   AlertTriangle,
@@ -59,10 +46,7 @@ const ICONS_BY_NAME: Record<string, LucideIcon> = {
   lightbulb: Lightbulb,
 };
 
-/** The same generic fallback `nav_icon`'s own backend default resolves to
- * (`"puzzle"`) — used here too so a name this palette doesn't recognise
- * (e.g. a third-party module that guessed wrong) still renders something
- * rather than nothing. */
+/** The generic fallback `nav_icon`'s backend default resolves to (`"puzzle"`), so an unrecognised name (for example a third-party module's) still renders an icon. */
 const FALLBACK_ICON = Puzzle;
 
 /** Resolves a `nav_icon` name to its lucide-react icon component. */

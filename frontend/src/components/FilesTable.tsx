@@ -1,17 +1,12 @@
 /**
  * Module: components/FilesTable
  *
- * The table both Files pages draw: a preview and name, the origin the file hangs from (with a link to the record),
- * who uploaded it, when and how large it is.
+ * The read-only table both Files pages draw: preview and name, the origin the file hangs from (linked to the
+ * record), uploader, time and size. Uploads happen from the record or the report image library.
  *
- * Responsibilities:
- * - Link each row to the record, action or report setup its file came from, inside the row's own project
- *   (`rowProjectId`), so a row of another project of a widened list opens in that project.
- * - On the organisation page (`showProject`) add a Project column linking to the project instead of the
- *   "From <project>" label a widened project list carries.
- *
- * Design decisions:
- * - Read-only: uploads happen from the record a file is attached to or from the report image library.
+ * Each row links to its record, action or report setup inside the row's own project (`rowProjectId`), so a row of
+ * another project in a widened list opens there. On the organisation page (`showProject`) a Project column links
+ * to the project instead of the "From <project>" label a widened project list carries.
  */
 import { Link } from "react-router-dom";
 

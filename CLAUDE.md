@@ -288,6 +288,7 @@ def calculate_total(items: list[Item]) -> Decimal:
 - Never refer in a source comment to a conversation, a chat, a request, a review, a bug report, a date it was raised or the person who asked ("the user wanted", "as discussed", "found in review", "raised 2026-11-23"). The same applies to commit-style history ("previously", "used to", "no longer", "now", "was changed from", "the fix for"). History belongs in `docs/decisions.md` and git.
 - Do not restate what the next line says, and keep a block as short as the reason requires: one line for a simple why, more only for a non-obvious constraint (a workaround, an ordering requirement, a security reason, a measured number the code depends on). Remove a comment that adds nothing instead of adding a longer one.
 - The file-level and function documentation required above stays, written as purpose, responsibilities, design decisions, dependencies, parameters, returns and errors, not as a narrative.
+- **Agents write comments to this rule too.** A prompt that hands a subagent code to write or edit repeats the rule (present tense, no conversation, review, date or history wording, no restating the code) and tells it to run `python3 scripts/check_comment_style.py` on its files before reporting. The same check runs in `.githooks/pre-commit`, the CI `docs` job and `backend/tests/test_comment_style.py`, so a narrating comment fails there even when nobody reads it. A comment that must keep a flagged word in its domain meaning carries `comment-style-ok: <reason>`. Review an agent's diff for comments that narrate the change it just made ("now uses", "fixed", "added for") as well as for code.
 - Reason: a story comment goes stale when the story ends, misleads the next reader about today's behaviour, and means nothing to someone who was not in the conversation; short present-tense comments stay true as long as the code does.
 
 ## Plan Lifecycle
@@ -364,6 +365,7 @@ When making significant changes, update the README to include:
 
 - Do not default to `isolation: "worktree"` when spawning implementation agents in this repo. Edit the working tree directly.
 - Only use `isolation: "worktree"` when there's a concrete reason: multiple agents genuinely running in parallel over the same files, or the user explicitly wants an easy-rollback branch for a risky change.
+- Run at most four background agents at the same time. Eighteen in parallel exhausted the account's usage limit within minutes, stopped every one of them mid-task and cost a resume round; split a large sweep into waves of four, each over its own files, and resume a stopped agent with SendMessage rather than starting a new one.
 - Sequential background agents (one implementation pass after another, even across separate `Agent` calls) do not need isolation — nothing else is touching the repo concurrently, so a worktree adds `git merge`/`git worktree remove` bookkeeping and more complex resume prompts (exact worktree paths) for no benefit.
 
 ## Git Commits

@@ -3,15 +3,12 @@ import { expect, test } from "@playwright/test";
 import { chooseRecordAction, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Archiving a requirement used to fire immediately with no confirmation at
- * all, then just `window.confirm`. Now opens the shared `ConfirmDialog`
- * (style guide "Pattern: confirmation, in two tiers" Tier 1) — this proves
- * both halves: cancelling the dialog leaves the requirement untouched,
- * accepting it archives and navigates back to the list.
+ * Archiving a requirement opens the shared `ConfirmDialog` (style guide "Pattern: confirmation, in two tiers"
+ * Tier 1). This proves both halves: cancelling leaves the requirement untouched, accepting archives it and navigates
+ * back to the list.
  *
- * Creates its own throwaway requirement rather than reusing seeded data,
- * since archiving isn't reversible from the UI and other specs may depend
- * on the seeded requirements still being present/active.
+ * Creates its own throwaway requirement rather than reusing seeded data, since archiving is not reversible from the
+ * UI and other specs may depend on the seeded requirements staying active.
  */
 test.describe("requirement archive: confirmation dialog", () => {
   test("cancel leaves it active; confirm archives and returns to the list", async ({ page }) => {

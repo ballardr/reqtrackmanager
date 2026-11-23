@@ -88,7 +88,7 @@ def test_twenty_three_hundred_at_utc_minus_eight_lands_on_the_next_utc_day():
 
 
 def test_the_same_wall_clock_time_holds_a_week_either_side_of_daylight_saving():
-    # Sydney clocks go forward at 02:00 on Sunday 2026-10-04 (+10 to +11). 09:00 local stays 09:00 local.
+    # Sydney clocks go forward at 02:00 on the first Sunday of October (+10 to +11); 09:00 local stays 09:00 local.
     schedule = parse_schedule("09:00", "Australia/Sydney")
     before = schedule.next_slot(_utc(2026, 9, 27, 0, 0))
     after = schedule.next_slot(_utc(2026, 10, 11, 0, 0))
@@ -107,7 +107,7 @@ def test_a_local_time_that_does_not_exist_runs_an_hour_later_on_the_wall_clock()
 
 
 def test_a_local_time_that_occurs_twice_runs_at_its_first_occurrence_only_once():
-    schedule = parse_schedule("02:30", "Australia/Sydney")  # clocks go back 03:00 to 02:00 on 2026-04-05
+    schedule = parse_schedule("02:30", "Australia/Sydney")  # clocks go back 03:00 to 02:00 on the first Sunday of April
     first = schedule.next_slot(_utc(2026, 4, 4, 12, 0))
     assert first == _utc(2026, 4, 4, 15, 30)  # 02:30 AEDT (+11)
     assert schedule.next_slot(first) == _utc(2026, 4, 5, 16, 30)  # the next day, 02:30 AEST (+10); not the repeat

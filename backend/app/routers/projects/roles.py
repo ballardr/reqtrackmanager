@@ -1,10 +1,9 @@
 """
 Module: routers.projects.roles
 
-Direct (non-group) project role assignment for a user or organisation
-group (C-U-10/C-U-11), the by-email flow for a user outside the project's
-own organisation (gated by `Organization.external_user_policy`), and the
-pending-invite list/resend this creates.
+Direct (non-group) project role assignment for a user or organisation group (C-U-10/C-U-11), the by-email
+flow for a user outside the project's organisation (gated by `Organization.external_user_policy`) and the
+pending-invite list/resend it creates.
 """
 
 from __future__ import annotations
@@ -101,18 +100,11 @@ def list_group_project_roles(
     project: Project = Depends(require_project_manage),
     db: Session = Depends(get_db),
 ):
-    """Lists every organisation group holding at least one direct
-    `OrgGroupProjectRole` grant on this project — the read side the assign/revoke endpoints never got. Before this endpoint,
-    a group granted a role through the
-    Members section's add-control (`assign_group_project_role`) had no way
-    to be seen, edited, or removed again except by reaching into a
-    member's own per-role Source line (`direct_org_group_role` provenance)
-    or calling the DELETE endpoint by hand — this is what lets
-    `ProjectMembersTable`'s own group row exist at all.
+    """Lists every organisation group holding a direct `OrgGroupProjectRole` grant on this project: the read
+    side of the assign/revoke endpoints, which lets `ProjectMembersTable` show a group row and its role be
+    edited or removed.
 
-    `require_project_manage`-gated like `get_effective_members`, the
-    equivalent read for user rows, and like the assign/revoke endpoints
-    this is the read counterpart to.
+    `require_project_manage`-gated like `get_effective_members`, the equivalent read for user rows.
     """
     rows = db.execute(
         select(OrgGroupProjectRole.org_group_id, OrgGroupProjectRole.role, OrgGroup.name)
@@ -137,30 +129,20 @@ def assign_group_project_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Assigns a direct (non-nested) project role to an organisation group —
-    the group-level counterpart to `assign_project_role`, and a genuinely
-    separate mechanism from nesting an org group inside a `ProjectGroup`
-    (C-U-12, `routers.projects.groups.add_project_group_member`): this
-    creates the group's own independently-revocable `OrgGroupProjectRole`
-    row, parallel to how `UserProjectRole` already works for a single
-    user. Both mechanisms coexist by design — see `docs/decisions.md`'s
-    identify/verify/remediate entry for this endpoint.
+    """Assigns a direct (non-nested) project role to an organisation group: the group-level counterpart to
+    `assign_project_role`, and a separate mechanism from nesting an org group inside a `ProjectGroup`
+    (C-U-12, `routers.projects.groups.add_project_group_member`): it creates the group's own independently
+    revocable `OrgGroupProjectRole` row, as `UserProjectRole` works for a user. Both coexist (see
+    docs/decisions.md's identify/verify/remediate entry for this endpoint).
 
-    Same cross-tenant check `add_project_group_member` already applies to
-    its own `org_group_id` target: the group must belong to this project's
-    own organisation, re-validated here rather than trusted from the
-    frontend. Idempotent like `assign_project_role`: granting an
-    already-held (group, project, role) triple is a silent no-op, not a
-    409 — no audit event or commit happens on the no-op path, matching that
-    endpoint's exact behavior.
+    The cross-tenant check of `add_project_group_member`'s `org_group_id` applies: the group must belong to
+    this project's organisation, re-validated here rather than trusted from the frontend. Idempotent as
+    `assign_project_role`: granting an already-held (group, project, role) triple is a silent no-op with no
+    audit event or commit.
 
-    No per-member notification is sent (matching `add_project_group_member`'s
-    own `org_group_id` path, not `assign_project_role`'s single-user path)
-    — a group grant potentially affects many users at once, and this
-    codebase's existing group-membership endpoints don't notify on
-    group-level composition changes either. The project's managers are
-    notified when the actor is not one of them
-    (`services.membership_notifications`).
+    No per-member notification is sent (as `add_project_group_member`'s `org_group_id` path): a group grant can
+    affect many users and group-level composition changes do not notify. The project's managers are notified
+    when the actor is not one of them (`services.membership_notifications`).
     """
     org_group = db.get(OrgGroup, payload.org_group_id)
     if org_group is None or org_group.organization_id != project.organization_id:
@@ -193,24 +175,19 @@ def assign_project_role_by_email(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The by-email counterpart to `assign_project_role`, for a user who
-    isn't (yet) a member of this project's organisation — the project-user
-    picker's "add external user" action (`orgs.py::search_org_users`
-    surfaces the candidate; this endpoint re-validates and acts on it,
-    never trusting the frontend's search-result flags).
+    """The by-email counterpart to `assign_project_role`, for a user who is not (yet) a member of this
+    project's organisation: the project-user picker's "add external user" action (`orgs.py::search_org_users`
+    surfaces the candidate; this endpoint re-validates and acts, never trusting the frontend's flags).
 
     Gated by `Organization.external_user_policy`:
-      - DISABLED: always 403, whether or not an account already exists.
-      - ORG_DOMAIN_ONLY: an *existing* account can always be added; a
-        *new* account can only be invited if the email's domain matches
-        `auto_accept_email_domain`.
-      - ANYONE: both existing and brand-new accounts are allowed.
+      - DISABLED: always 403, whether or not an account exists.
+      - ORG_DOMAIN_ONLY: an existing account can always be added; a new account can only be invited if the
+        email's domain matches `auto_accept_email_domain`.
+      - ANYONE: both existing and new accounts are allowed.
 
-    For a brand-new account, branches on `Organization.sso_only` (see
-    `services/invites.py`): an SSO-only org gets the account and roles
-    provisioned immediately (`outcome="sso_provisioned"`); otherwise an
-    email invite with a signup link is sent (`outcome="invited"`) and the
-    role is granted once they complete signup.
+    For a new account, branches on `Organization.sso_only` (see `services/invites.py`): an SSO-only org gets the
+    account and roles provisioned immediately (`outcome="sso_provisioned"`); otherwise an email invite with a
+    signup link is sent (`outcome="invited"`) and the role is granted once they complete signup.
     """
     email = payload.email.lower()
     bypass = actor_bypasses_project_managers(db, current_user, project)
@@ -226,11 +203,9 @@ def assign_project_role_by_email(
             if org.external_user_policy == ExternalUserPolicy.DISABLED:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "This organisation does not allow external users.")
             if existing_user.is_banned:
-                # Same check assign_org_role already enforces for the
-                # ordinary org-role-grant path (routers/orgs.py) — this
-                # endpoint grants org membership too (as a side effect of
-                # adding a project member by email) and must not become a
-                # second, unguarded way back in for a banned account.
+                # Same check `assign_org_role` enforces for the ordinary org-role grant (routers/orgs.py): this
+                # endpoint also grants org membership (adding a project member by email) and must not be an
+                # unguarded way back in for a banned account.
                 raise HTTPException(
                     status.HTTP_403_FORBIDDEN,
                     "This user has been banned by a server admin and cannot be granted a role.",
@@ -338,16 +313,12 @@ def list_pending_project_invites(
     project: Project = Depends(require_project_manage),
     db: Session = Depends(get_db),
 ):
-    """Lists this project's outstanding (unaccepted) `PendingInvite`s, most
-    recent first — including already-expired ones, since an expired invite
-    is exactly the case `resend_pending_project_invite` exists to fix.
+    """Lists this project's outstanding (unaccepted) `PendingInvite`s, most recent first, including expired
+    ones, which `resend_pending_project_invite` exists to fix.
 
-    Standard (non-SSO) `PendingInvite` flow only (docs/decisions.md) — an `sso_only` org's by-email invites are
-    provisioned immediately via `services.invites.provision_sso_invite`
-    and never create a row here. Gated the same as
-    `assign_project_role_by_email`, the only endpoint that creates these
-    rows, since listing/resending them is a continuation of that same
-    capability.
+    Standard (non-SSO) `PendingInvite` flow only (docs/decisions.md): an `sso_only` org's by-email invites are
+    provisioned immediately via `services.invites.provision_sso_invite` and create no row here. Gated as
+    `assign_project_role_by_email`, the only endpoint that creates these rows.
     """
     invites_list = db.scalars(
         select(PendingInvite)
@@ -444,43 +415,23 @@ def revoke_group_project_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Revokes a direct (non-nested) project role from an organisation
-    group — the group-level counterpart to `revoke_project_role`.
+    """Revokes a direct (non-nested) project role from an organisation group: the group-level counterpart to
+    `revoke_project_role`.
 
-    C-U-08 guard shaped like `delete_project_group`'s (lock the project row,
-    perform the delete, flush, then re-check `get_effective_project_
-    managers` before commit) rather than `revoke_project_role`'s
-    single-user pre-check (`managers == {user_id}`): revoking a group's
-    role can remove effective access from every member of that group at
-    once, not just one user, so there's no single user id to compare
-    against. In practice this rarely actually trips for a *group* role
-    specifically: `get_effective_project_managers`/`_direct_project_
-    managers` deliberately never count any group-derived manager — neither
-    the pre-existing nested-org-group mechanism (`ProjectGroup` +
-    `ProjectGroupMember.org_group_id`) nor this new direct-grant mechanism
-    — towards the C-U-08 "at least one manager" floor (see that function's
-    own docstring: only direct `UserProjectRole` grants and a group's
-    *direct user* members count as "concrete, individually accountable"
-    managers). This guard is kept anyway, for defense-in-depth and
-    consistency with `delete_project_group`/`update_project_group`, which
-    apply the identical pattern for the identical reason: it still
-    correctly catches the case where the project already had zero
-    individually-accountable managers at the moment of this call. See
-    docs/decisions.md's identify/verify/remediate entry for this endpoint
-    for the full reasoning on why C-U-08 was not extended to count
-    group-derived managers here — that would be a materially larger,
-    separate change to a longstanding invariant, not something this PR
-    introduces.
+    C-U-08 guard shaped like `delete_project_group`'s (lock the project row, delete, flush, then re-check
+    `get_effective_project_managers` before commit) rather than `revoke_project_role`'s single-user pre-check,
+    since revoking a group's role can remove effective access from every member at once. It rarely trips for a
+    group role: `get_effective_project_managers`/`_direct_project_managers` never count a group-derived manager
+    (nested org group or this direct-grant mechanism) towards the C-U-08 floor; only direct `UserProjectRole`
+    grants and a group's direct user members count. The guard is kept for defence in depth and consistency
+    with `delete_project_group`/`update_project_group`: it catches the case where the project already had zero
+    individually accountable managers. See docs/decisions.md's identify/verify/remediate entry for this
+    endpoint on why C-U-08 does not count group-derived managers.
 
-    `org_group_id` is validated to belong to this project's own
-    organisation before anything else runs (hardening pass, 2026-09) —
-    the delete itself was already safely scoped by its own `WHERE
-    project_id=...` clause (no cross-tenant row can ever exist to remove),
-    but an unvalidated id let a caller fabricate an "revoked" audit-log
-    entry for a grant that never existed and run the membership-resolution
-    query below against an arbitrary group, mirroring the same rowcount
-    guard `revoke_project_group_role` (its `ProjectGroupRole`-scoped
-    sibling, in `routers.projects.groups`) already has.
+    `org_group_id` is validated to belong to this project's organisation first: the delete is scoped by
+    `project_id`, but an unvalidated id would let a caller fabricate a "revoked" audit entry for a grant that
+    never existed and run the membership-resolution query below against an arbitrary group (as the rowcount
+    guard of `revoke_project_group_role` in `routers.projects.groups`).
     """
     org_group = db.get(OrgGroup, org_group_id)
     if org_group is None or org_group.organization_id != project.organization_id:
@@ -508,12 +459,9 @@ def revoke_group_project_role(
         notify_managers_of_member_change(
             db, project=project, actor=current_user, verb="Removed", target=f"group {org_group.name}", role=role,
         )
-    # Clean up subscriptions/favourites for every member of this group (direct
-    # or via a nested subgroup, same descendant-expansion `_direct_project_
-    # role_holder_ids` uses to resolve this mechanism) who has no other role
-    # left granting them access to this project — mirrors `revoke_project_
-    # role`'s own per-user cleanup, extended to the (potentially many) users
-    # a group-level revocation can affect at once.
+    # Clean up subscriptions/favourites for every member of this group (direct or via a nested subgroup, the
+    # descendant expansion `_direct_project_role_holder_ids` uses) who has no other role granting access to
+    # this project, as `revoke_project_role` does per user, extended to the many users a group revocation affects.
     affected_user_ids = set(
         present(
             db.scalars(

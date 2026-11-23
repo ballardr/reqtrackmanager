@@ -4,11 +4,9 @@ Revision ID: 0075
 Revises: 0074
 Create Date: 2026-10-12
 
-Adds `risk_reviews`: an
-immutable record of each periodic review with a snapshot of the ratings it was
-made against. Also adds the two per-risk columns that make the review-due sweep
-notify once per scheduled date, and `reassessment_reason` on treatment
-assessments (why a verdict was sent back for reassessment).
+Adds `risk_reviews` (an immutable record of each review with a rating
+snapshot), the per-risk columns that make the review-due sweep notify once per
+date, and `reassessment_reason` on treatment assessments.
 """
 
 from collections.abc import Sequence

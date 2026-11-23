@@ -1,27 +1,21 @@
 """
 Module: services.search_core
 
-The global search's `ArtefactSearchProvider`s for the three core artefact types
-(requirements, actions, change requests), plus the shared building blocks module
-providers use.
+The global search's `ArtefactSearchProvider`s for the core artefact types (requirements, actions, change requests) and
+the building blocks module providers use.
 
 Responsibilities:
-- Declare, per core type, what the search reads (code, title, status, owning project)
-  and which extra columns are searchable (description, reasoning, ...).
-- Offer `versioned_provider` and `humanise_labels`, so a module registers a type in a
-  few lines without writing SQL conventions of its own.
+- Declare, per core type, what the search reads (code, title, status, project) and the searchable columns; offer
+  `versioned_provider` and `humanise_labels`.
 
 Design decisions:
-- Core types register through the same `ArtefactSearchProvider` mechanism as module
-  types, in core code because core owns these three types (the module-boundary rule: a
-  module's types are registered by the module, never listed here).
-- A versioned record (requirement) is searched through its current version
-  (`valid_to IS NULL`); its change time is the later of the record's and the version's.
-- A change request has no title of its own: it is titled by its latest version's proposed
-  name, else the requirement it targets, exactly as `change_request_titles` does, but as
-  correlated SQL so the search can match and sort on it.
+- Core owns these types, so they register here; a module registers its types itself.
+- A requirement is searched through its current version (`valid_to IS NULL`); its change time is the later of the
+  record's and the version's.
+- A change request is titled by its latest version's proposed name, else its target requirement (as
+  `change_request_titles` does), as correlated SQL so search can match and sort on it.
 
-Dependencies: the core models and `modules.registry` (the provider shapes).
+Dependencies: the core models and `modules.registry`.
 """
 
 from __future__ import annotations

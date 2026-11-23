@@ -10,10 +10,9 @@ function mockSignupConfig(config: SignupConfig) {
   spyOn(api, "get").mockResolvedValue(config);
 }
 
-// Stable mock reference, reconfigured per-story via `beforeEach` — see
-// LoginPage.stories.tsx's `loginMock` comment for why a fresh `fn()` per
-// story's own `decorators` array isn't safe here (Vitest browser mode
-// doesn't fully remount the page between stories in this file).
+// Stable mock reference, reconfigured per story via `beforeEach` (see
+// LoginPage.stories.tsx's `loginMock`): the page is not fully remounted between
+// stories in this file.
 const signupMock = fn();
 
 const meta: Meta<typeof SignupPage> = {

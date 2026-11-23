@@ -1,23 +1,11 @@
 """
 Module: modules.product_feedback.perf_dataset
 
-The dataset generator for the `enhancement_request` artefact type: project requests with their version history
-(including declined ones with a reason), comments, tags, "Requested by" links to Stakeholders, Personas and
-Engagements, and a share of duplicates merged into an earlier request.
-
-Responsibilities:
-- Score a share of requests with the organisation's real `enhancement_request` scoring levels.
-- Write `enhancement_requests`, `enhancement_request_versions`, `enhancement_request_comments`,
-  `enhancement_request_merges`, tags, cross-type `artefact_links` and audit events, and the project's
-  `enhancement_request` sequence counter.
-
-Design decisions:
-- A duplicate is created with the `DUPLICATE` status its merge row implies and points at an earlier, non-duplicate
-  request of the batch, so no chain exists.
-- Only project-owned requests are generated; the organisation inbox is not covered (its rows belong to the
-  organisation, not a project).
-
-Dependencies: `perf_dataset.records`, this module's models.
+The dataset generator for `enhancement_request`: project requests with version
+history, comments, tags, "Requested by" links, scores from the organisation's
+levels and a share of duplicates merged into an earlier non-duplicate request
+(no chains). The organisation inbox is not generated. Dependencies:
+`perf_dataset.records`, this module's models.
 """
 
 from __future__ import annotations

@@ -1,35 +1,26 @@
 /**
  * Module: modules/stakeholders/PersonaDetailPage
  *
- * A single Persona's detail: fields, lifecycle, owner/champion, version
- * history, attachments, comments, and — on the project route — this project's
- * weight override. One scope-aware component serving three routes
- * (`module.ts`): a project persona and an org persona opened *from a
- * project* (both `/projects/:projectId/...`), and an org persona opened from
- * the org dashboard (`/orgs/:organizationId/...`).
+ * A single Persona's detail: fields, lifecycle, owner and champion, versions, attachments, comments and, on the project
+ * route, this project's weight override. One scope-aware component serves three routes (`module.ts`): a project
+ * persona and an organisation persona opened from a project (both `/projects/:projectId/...`), and an organisation
+ * persona opened from the organisation dashboard (`/orgs/:organizationId/...`).
  *
- * An org persona viewed inside a project is read-only here apart from the
- * weight override, its per-project visibility and comments (the project API
- * can't mutate the record itself); a link leads to the org route where the
- * owner role can edit it. Hiding it from the project (`RecordVisibilityControl`)
- * returns to the list, since a hidden persona is no longer reachable from the
- * project.
+ * An organisation persona viewed inside a project is read-only apart from the weight override, its per-project
+ * visibility and comments (the project API cannot mutate the record); a link leads to the organisation route where the
+ * owner role can edit it. Hiding it from the project (`RecordVisibilityControl`) returns to the list, since a hidden
+ * persona is not reachable from the project.
  *
- * Weight: the project route shows the *effective* weight with an
- * `OverridePill` naming the tier it came from ("Set on this project" /
- * "Inherited from parent project" / …) and a one-click "Use inherited value"
- * way back (docs/ux-style-guide.md principle 2 and "Pattern: scoring and
- * inherited settings"); the org route shows only the persona's own weight.
+ * Weight: the project route shows the effective weight with an `OverridePill` naming its tier ("Set on this project" /
+ * "Inherited from parent project" / ...) and a one-click "Use inherited value" (docs/ux-style-guide.md principle 2 and
+ * "Pattern: scoring and inherited settings"); the organisation route shows only the persona's own weight.
  *
- * Personas have no approval gate, so lifecycle is Activate / Retire /
- * Reactivate, each behind a tier-1 `ConfirmDialog` with an optional comment
- * (`RecordLifecycleControls`). Every mutating control always renders
- * regardless of role; the backend enforces `persona_owner`/
- * `org_persona_owner` and a 403 surfaces as a toast. Owner and champion use
- * `RecordPrincipalField` (a user or a group; a project group only on a project persona); assigning sends a partial update carrying only that
- * field. Attachments and comments are `RecordDiscussion`, version history is
- * `VersionHistoryTable`, and the Stakeholders that represent this persona are
- * `RepresentedByPanel`.
+ * Personas have no approval gate, so lifecycle is Activate / Retire / Reactivate, each behind a tier-1 `ConfirmDialog`
+ * with an optional comment (`RecordLifecycleControls`). Mutating controls always render whatever the role; the backend
+ * enforces `persona_owner` / `org_persona_owner` and a 403 surfaces as a toast. Owner and champion use
+ * `RecordPrincipalField` (a user or a group; a project group only on a project persona) and assigning sends a partial
+ * update with only that field. Attachments and comments are `RecordDiscussion`, versions are `VersionHistoryTable` and
+ * the Stakeholders representing this persona are `RepresentedByPanel`.
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

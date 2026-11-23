@@ -1,15 +1,11 @@
-"""Tests for groups as Persona / Stakeholder / Need owners and Persona champions
-(users and groups on parity).
+"""Tests for groups as Persona / Stakeholder / Need owners and Persona champions (users and groups on parity).
 
-Covers: each principal kind on create, update and clear; the display fields of a
-group; an organisation-scoped record rejecting a project group while a project
-record accepts only its own project's group; cross-organisation rejection;
-versions carrying the owner so history shows who owned each version; deleting a
-group that owns records (usage counts current versions only, blocked, reassigned,
-cleared, the audit event names the record, older versions keep a deleted group);
-project and organisation bundle round trips (a group matched by name, an
-unmatched one left empty with a warning, a bundle from before groups restored);
-and the migration backfilling existing rows to `user`.
+Covers: each principal kind on create, update and clear; a group's display fields; an organisation-scoped
+record rejecting a project group while a project record accepts only its own project's group;
+cross-organisation rejection; versions carrying the owner; deleting a group that owns records (usage counts
+current versions only; blocked, reassigned or cleared; the audit event names the record; older versions
+keep the deleted group); bundle round trips (a group matched by name, an unmatched one left empty with a
+warning); and the migration backfilling existing rows to `user`.
 """
 
 from __future__ import annotations

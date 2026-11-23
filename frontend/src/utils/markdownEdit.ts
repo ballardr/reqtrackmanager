@@ -1,14 +1,12 @@
 /**
  * Module: utils/markdownEdit
  *
- * Pure text edits behind the Markdown editor's toolbar: given the text and the selection, return the new text and
- * the selection to restore. No DOM access, so every edit is testable on its own.
- *
- * Design decisions:
- * - Line formats (heading, lists, quotation) apply to every selected line and toggle off when all of them already
- *   carry the format. Inline formats wrap the selection, or insert a placeholder that is left selected.
- * - A block (code, table, diagram, display equation) always starts on its own line, so it is valid wherever the
- *   cursor was.
+ * Pure text edits behind the Markdown editor's toolbar: given the text and the
+ * selection, return the new text and the selection to restore (no DOM access).
+ * Design: line formats (heading, lists, quotation) apply to every selected line
+ * and toggle off when all already carry the format; inline formats wrap the
+ * selection or insert a selected placeholder; a block (code, table, diagram,
+ * display equation) always starts on its own line.
  */
 
 import { pictureMarkdown } from "./markdownPicture";

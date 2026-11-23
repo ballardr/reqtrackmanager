@@ -1,28 +1,12 @@
 """
 Module: modules.stakeholders.export
 
-This module's contribution to the core org/project bundle export/import
-(`app.services.org_export`/`project_export`), registered through
-`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION`
-rather than those core files importing this module.
-
-- Org level: the Persona type vocabulary and org-scoped personas.
-- Project level: project-scoped personas (with their direct file
-  attachments), the project's type overrides/local types, and the project's
-  weight overrides.
-
-Design decisions:
-- A persona travels as its *current* content and status only. Version
-  history, comments and comment attachments are not carried: a bundle is a
-  migration artefact, and re-importing creates version 1 attributed to the
-  importer where the original creator can't be matched.
-- Cross-references use portable keys, never database ids: a persona's
-  export-scoped `ref`, a type's name, a user's email.
-- Org-level files cannot travel: `ModuleOrgBundleHooks.import_` receives no
-  attachment bytes, so an org persona's attachments are skipped with a
-  warning on export-side documentation rather than silently half-imported.
-- Merge into an existing org skips a same-named org persona/type (with a
-  warning) so a re-import is idempotent.
+Contributes Personas to the org/project bundle export and import
+(`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`): the Persona type
+vocabulary and org personas (org); project personas with attachments, type
+overrides and weight overrides (project). Only current content travels;
+cross-references use portable keys. Org-level files cannot travel (the hook
+receives no bytes); a merge skips a same-named persona or type so re-import is idempotent.
 """
 
 from __future__ import annotations

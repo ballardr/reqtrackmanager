@@ -65,11 +65,8 @@ export const AccessReviewOrphanedAccounts: Story = {
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
     await expect(canvas.getByText("None")).toBeInTheDocument();
 
-    // Deactivate/ban/assign-roles now all sit behind one `ActionMenu` kebab
-    // instead of separate always-visible buttons/columns — style guide
-    // "Pattern: action menu", same "OrgAdminPage.tsx" consolidation applied
-    // here. "Assign server roles" lives here, not in its own always-visible "Server roles" dropdown column
-    // — see `AccessReviewGrantServerAdmin` below.
+    // Deactivate, ban and "Assign server roles" all sit behind one `ActionMenu`
+    // (style guide "Pattern: action menu"); see `AccessReviewGrantServerAdmin`.
     await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
     const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
     await expect(within(menu).getByRole("menuitem", { name: "Deactivate" })).toBeInTheDocument();
@@ -161,10 +158,8 @@ export const AccessReviewBannedAndAdminBadges: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Banned")).toBeInTheDocument());
-    // The old standalone "Server admin" badge, and the "Server roles"
-    // dropdown's own closed-state summary that replaced it, are both gone —
-    // role state sits behind an "Assign server roles" modal with no row-level summary
-    // at all, so this now opens the modal to confirm the checked state.
+    // Role state has no row-level summary; it sits behind the "Assign server
+    // roles" modal, so open it to confirm the checked state.
     await userEvent.click(canvas.getByRole("button", { name: "Admin User's actions" }));
     const menu = within(document.body).getByRole("menu", { name: "Admin User's actions" });
     await userEvent.click(within(menu).getByRole("menuitem", { name: "Assign server roles" }));
@@ -230,14 +225,10 @@ export const NoServerAccessShowsAMessage: Story = {
   },
 };
 
-/** Granting server admin opens the shared `ConfirmDialog` (sixth-pass audit
- * — this used to fire via `window.confirm`), then shows a success toast
- * once the role change completes. Role
- * checkboxes moved from an always-visible "Server roles" dropdown column
- * into an "Assign server roles" modal opened from
- * the `ActionMenu`, rendered directly rather than via `MultiSelectDropdown`
- * — see `docs/decisions.md`. Still confirms via `ConfirmDialog` first,
- * since this grant is cross-tenant. */
+/** Granting server admin opens the shared `ConfirmDialog` first (the grant is
+ * cross-tenant), then shows a success toast once the role change completes.
+ * Role checkboxes are in an "Assign server roles" modal opened from the
+ * `ActionMenu` (see `docs/decisions.md`). */
 export const AccessReviewGrantServerAdmin: Story = {
   beforeEach: () => {
     mockServerManagementApis([systemUser({})]);
@@ -364,10 +355,8 @@ export const AccessReviewDeactivateCancelled: Story = {
   },
 };
 
-/** U-P-06 "Scale: two unbounded lists" — the deployment's
- * cross-org user directory previously fetched every matching user with no
- * `limit`/`offset` at all. Clicking "Load more" requests the next page at
- * the correct offset and appends its rows below the first page's. */
+/** U-P-06: the cross-org user directory is paged; "Load more" requests the
+ * next page at the correct offset and appends its rows. */
 export const AccessReviewLoadMoreAppendsTheNextPage: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -396,13 +385,10 @@ export const AccessReviewLoadMoreAppendsTheNextPage: Story = {
   },
 };
 
-/** Access Review moved onto the
- * shared `DirectoryTable` + `FilterPanel` layout (Org Admin's Users table
- * is the direct composition template). Pins that the pre-existing "view"/
- * "includeDeactivated" filters still behave identically now that they're a
- * `FilterField`/`FilterCheckbox` instead of a bare `<select>`/checkbox row,
- * and that the new search box narrows the request via the new backend
- * `search` param. */
+/** Access Review uses the shared `DirectoryTable` + `FilterPanel` layout. Pins
+ * that the "view"/"includeDeactivated" filters behave as `FilterField`/
+ * `FilterCheckbox` and that the search box narrows the request through the
+ * backend `search` param. */
 export const AccessReviewFilterPanelSearchAndFilters: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -432,21 +418,16 @@ export const AccessReviewFilterPanelSearchAndFilters: Story = {
       expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("search=orphan"))
     );
 
-    // Follow-up UX fix: this table's columns (Email, Name, Last login,
-    // Created, Organizations, Groups, Actions) crowded the old
-    // `.side-grid` sidebar, so its `FilterPanel` now renders `layout="top"`
-    // (a full-width bar above the table) instead — see
-    // docs/ux-style-guide.md's "Pattern: filter panel placement — side vs.
-    // top".
+    // The table's many columns need a full-width bar, so the `FilterPanel`
+    // renders `layout="top"` (docs/ux-style-guide.md "Pattern: filter panel
+    // placement").
     await expect(canvasElement.querySelector(".filter-panel-top")).toBeInTheDocument();
   },
 };
 
-/** Column-header sorting — Email/Name/Last login/Created are
- * sortable via `DirectoryTable`'s `SortableHeader`, backed by
- * `list_system_users`'s new `sort`/`order` params (mirrors `list_org_
- * users`'s pre-existing contract) so the full filtered result re-sorts
- * correctly, not just the currently loaded page. */
+/** Column-header sorting: Email, Name, Last login and Created are sortable
+ * through `SortableHeader`, backed by `list_system_users`'s `sort`/`order`
+ * params so the full filtered result re-sorts, not only the loaded page. */
 export const AccessReviewSortByEmail: Story = {
   beforeEach: () => mockServerManagementApis([systemUser({ user_id: "u1", email: "orphan@example.com" })]),
   play: async ({ canvasElement }) => {

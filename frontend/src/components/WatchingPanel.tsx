@@ -1,14 +1,14 @@
 /**
  * Module: components/WatchingPanel
  *
- * The users and groups watching one requirement or change request (users and groups on parity): each
- * user, and each member of a watching group who can view the project, is notified of the record's
- * comments, alongside people who subscribed themselves (the record header menu's Subscribe action).
- * Project managers and administrators add and remove watchers; everyone else sees who is watching.
+ * The users and groups watching one requirement or change request (users and groups on parity): each user, and each member
+ * of a watching group who can view the project, is notified of the record's comments, alongside people who subscribed
+ * themselves (the record header menu's Subscribe action). Project managers and administrators add and remove watchers;
+ * everyone else sees who is watching.
  *
- * It is a tab of the detail page's aside card (`DetailLayout`'s `extraTabs`), compact by design: the
- * watchers as chips with a remove button each, and one (+) button that opens the picker in a popover, so
- * a record nobody watches costs one line. `useWatchingTab` (hooks/useWatchingTab) builds the tab.
+ * A tab of the detail page's aside card (`DetailLayout`'s `extraTabs`), compact by design: watchers as chips with a
+ * remove button each and one (+) button opening the picker in a popover, so a record nobody watches costs one line.
+ * `useWatchingTab` (hooks/useWatchingTab) builds the tab.
  */
 import type { Principal } from "../api/types";
 import type { Watchers } from "../hooks/useWatchers";

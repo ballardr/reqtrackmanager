@@ -2,8 +2,8 @@
  * Module: hooks/usePhaseMove
  *
  * Moving a stage, or a component's track, to another phase of its workflow, with the one confirmation a closed phase
- * needs ("also mark the approved requirements as completed?"). Shared by the stage and track pickers on the delivery plan
- * page, the track list in project administration and the stage list there, so the rule and the dialog exist once.
+ * needs ("also mark the approved requirements as completed?"). Shared by the stage and track pickers on the delivery
+ * plan page and the track and stage lists in project administration.
  *
  * Responsibilities:
  * - `requestMove` posts `{ phase_id, cascade_to_requirements }` to a transition endpoint through `useMutation` (success

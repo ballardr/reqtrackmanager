@@ -1,56 +1,27 @@
 """
 Module: services.report_framework
 
-The module-neutral half of reporting: everything a
-module's reports have in common, so a module contributes only `collect_*`
-functions plus one `ReportDefinition` each (declared on
-`ModuleDefinition.reports`).
+The module-neutral half of reporting: a module contributes `collect_*` functions and one `ReportDefinition` each
+(`ModuleDefinition.reports`).
 
 Responsibilities:
-- Result shapes: `ReportSection`, `ReportResult`, and their JSON form
-  (`ReportOut`).
-- Scope: `ReportContext` carries the organisation, the in-scope projects, the
-  validated parameters and a cached per-sub-component enablement check;
-  `readable_projects` / `scope_projects` are the only places report scope is
-  decided.
-- Naming records: `ReportContext.code` / `org_code` give a record's code by the one rule
-  (`services.codes.display_code`) and `tag_text` its tags, so a collector never formats a code or
-  queries tags itself; `ReportDefinition.record_types` declares what a report names.
-- Output: `render_result` is the one place a module report's file formats are decided: `csv` (first
-  section only, formula-neutralised), the documents `pdf`, `docx`, `html` and `odt` (every section; one
-  neutral `ReportDocument` from `build_result_document`, so the organisation's cover, accent colour and footer
-  apply to each and the formats cannot drift) and the spreadsheets `xlsx` and `ods` (every section as a
-  tab, through the `report_render` registry the custom reports use).
-- HTTP: `build_report_routers` turns `ReportDefinition`s into a project router
-  and an organisation router (`GET .../reports/<slug>?format=json|pdf|docx|html|odt|csv|xlsx|ods`) for
-  the module to include under its own prefixes, so routes stay inside the
-  module's mount and MCP path verification keeps working.
-- MCP: `report_mcp_tools` derives read-only tools from the same declarations.
-- Catalogue: `project_catalogue` / `organization_catalogue` list what a caller
-  can run (module and sub-component enabled, organisation role held).
+- Result shapes (`ReportSection`, `ReportResult`, `ReportOut`); scope (`ReportContext`, `readable_projects`,
+  `scope_projects`, the only places scope is decided); record naming (`ReportContext.code` / `org_code` / `tag_text`).
+- `render_result`: the one place file formats are decided (`csv` first section only and formula-neutralised; `pdf`, `docx`,
+  `html`, `odt` from one `ReportDocument`; `xlsx`, `ods` one tab per section).
+- `build_report_routers` (project and organisation routers for the module to mount), `report_mcp_tools`,
+  `project_catalogue` / `organization_catalogue`.
 
 Design decisions:
-- Access is generic and fail-closed. A project route requires project
-  membership plus the module (or declared sub-component) being enabled, 404
-  otherwise. An organisation route additionally requires the definition's
-  `org_role_key` (403). Which projects an organisation run covers is the
-  definition's declared `org_scope`; the default is the stricter
-  `readable_projects`. A report whose declaration is invalid against the
-  registry (unknown sub-component or role) answers 404 and is not catalogued.
-- Report reads are not audit-logged, following `modules.compliance.reports`:
-  every field is already returned to the same caller by the module's JSON
-  endpoints. A collector must not put Restricted data (secrets, file content)
-  in a result.
-- Parameters are declared, not hand-written: the generated route signature
-  carries typed `Query` parameters (so FastAPI validates types and bounds, 422)
-  and `choices` are checked here (400). Unknown query parameters are ignored.
-- The CSV is the first section only (the flat export); the documents carry the
-  full layout and the spreadsheets one tab per table. Every CSV cell goes through `csv_safe`; PDF and DOCX cells are
-  escaped by their renderers (`report_document.safe`, `report_docx.clean_text`),
-  since cells hold user-entered text.
+- Access is generic and fail-closed: project membership plus the module or sub-component enabled (404), the
+  definition's `org_role_key` for organisation routes (403), `org_scope` defaulting to `readable_projects`; an invalid
+  declaration answers 404 and is not catalogued.
+- Report reads are not audit-logged (the module's JSON endpoints return the same fields); a collector must not return
+  Restricted data.
+- Parameters are declared, so the route signature carries typed `Query` parameters (422) and `choices` are checked (400).
+- Every CSV cell goes through `csv_safe`; PDF and DOCX cells are escaped by their renderers.
 
-Dependencies: FastAPI/Pydantic, `services.report_render` (and through it the PDF, Word, HTML, ODF and spreadsheet writers),
-`modules.registry`, `services.rbac`.
+Dependencies: FastAPI/Pydantic, `services.report_render`, `modules.registry`, `services.rbac`.
 """
 
 from __future__ import annotations

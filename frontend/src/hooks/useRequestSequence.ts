@@ -1,14 +1,9 @@
 /**
  * Module: hooks/useRequestSequence
  *
- * Guards a list page against out-of-order responses. A filter or search
- * change starts a new load while the previous one may still be in flight;
- * if the older, slower response lands last it would overwrite the newer
- * results. Each load calls `begin()` and applies its response only if
- * `isLatest()` is still true when it arrives.
- *
- * Shared by every filterable list page (2026-10-05) instead of each
- * keeping its own request-id ref.
+ * Guards a list page against out-of-order responses. A filter or search change starts a new load while the
+ * previous one may still be in flight; a slower, older response landing last would overwrite the newer results.
+ * Each load calls `begin()` and applies its response only if `isLatest()` is still true when it arrives.
  */
 import { useCallback, useRef } from "react";
 

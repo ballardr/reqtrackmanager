@@ -4,21 +4,13 @@ Revision ID: 0050
 Revises: 0049
 Create Date: 2026-09-28
 
-Adds `project_module_enablements` (`app.models.module.ProjectModuleEnablement`)
-— a project-tier override of whole-module enablement itself, one tier below
-`organization_modules` (migration for),
-mirroring that table's own shape (`project_id`/`module_key`/`enabled`/
-`updated_by`, unique on `(project_id, module_key)`). This is a genuinely
-new capability, not previously covered by any table: whole-module
-enablement had no project-level override at all before this migration —
-only the sub-component layer
-(`organization_module_subcomponent_defaults`/
-`project_module_subcomponent_enablements`, migration 0049) got one.
+Adds `project_module_enablements` (`app.models.module.ProjectModuleEnablement`): a project-tier override
+of whole-module enablement, one tier below `organization_modules` and with the same shape
+(`project_id`/`module_key`/`enabled`/`updated_by`, unique on `(project_id, module_key)`). The
+sub-component layer has its own project override in 0049.
 
-No backfill needed — explicit-override-only (absence of a row falls back
-to the organisation's own `organization_modules` row, then the registry's
-`default_enabled`), and no project-level whole-module override existed
-anywhere before this migration.
+Explicit-override-only (an absent row falls back to the organisation's `organization_modules` row, then
+the registry's `default_enabled`); no backfill.
 """
 
 from collections.abc import Sequence

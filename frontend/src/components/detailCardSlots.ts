@@ -1,8 +1,8 @@
 /**
  * Module: components/detailCardSlots
  *
- * The mount point a `DetailCard` exposes on its heading's line (see `CardHeaderAction.tsx`). Kept apart from the components so the
- * context object and hook are not mixed with component exports.
+ * The mount point a `DetailCard` exposes on its heading's line (see `CardHeaderAction.tsx`). Kept apart from the
+ * components so the context object and hook are not mixed with component exports.
  */
 import { createContext, useContext } from "react";
 

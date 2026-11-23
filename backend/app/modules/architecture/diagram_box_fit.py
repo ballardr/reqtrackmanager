@@ -4,25 +4,25 @@ Module: modules.architecture.diagram_box_fit
 The least size an element box on a block diagram needs to show its symbol, its code line and its name whole.
 
 Responsibilities:
-- Break a box's name into lines at the width the box is drawn at, between words only (`fit_box`), and total the height of the
-  symbol, the name's lines and the caption line with the box's insets.
+- Break a box's name into lines at the width the box is drawn at, between words only (`fit_box`), and total the
+  height of the symbol, the name's lines and the caption line with the box's insets.
 - Give the size a box is drawn at (`drawn_box_size`): the larger of the stored size and that fit, in each direction.
 
 Design decisions:
-- **The stored size is never rewritten.** A symbol is set on an element, on its type, or changed on the type later, which touches
-  boxes on diagrams nobody has open, so the fit is computed wherever a box is read and the stored width and height stay what the
-  person last drew. A box that was already cut therefore grows to the right and down on an existing diagram.
-- **One rule, two implementations.** The browser draws the same lines in the same frame (`frontend/src/modules/architecture/
-  elementBoxFit.ts` is the TypeScript copy) and the server SVG reads it from here, so a line attaches to the same frame on the
-  screen and in an export. `elementBoxFitCases.json`, written by `tests/test_architecture_box_fit.py`, holds the cases both are
-  tested against; a change is made in both.
-- **One measure for every text**, the symbol label's width table (`diagram_symbol_label.text_width`), which is wider than the
-  system fonts' glyphs, so a box may draw a little larger than its text needs and never smaller. The name is measured at the
-  bold factor because the exports draw it bold.
-- **The symbol has a fixed height** (`SYMBOL_HEIGHT`) rather than a share of the box, so the box's height is a plain sum and a
-  taller box leaves room, never a larger symbol.
-- **A locked box measures what it draws**: the screen draws its code and "(not visible)", the export its code, so each passes its
-  own text as the name.
+- The stored size is never rewritten: a symbol set or changed on an element or type touches boxes on diagrams
+  nobody has open, so the fit is computed wherever a box is read and the stored width and height stay what the
+  person last drew. A box that was cut therefore grows to the right and down.
+- One rule, two implementations: the browser draws the same lines in the same frame
+  (`frontend/src/modules/architecture/elementBoxFit.ts` is the TypeScript copy) and the server SVG reads it
+  from here, so a line attaches to the same frame on screen and in an export. `elementBoxFitCases.json`,
+  written by `tests/test_architecture_box_fit.py`, holds the shared cases; a change is made in both.
+- One measure for every text: the symbol label's width table (`diagram_symbol_label.text_width`), wider than
+  system glyphs, so a box may draw slightly larger than its text needs and never smaller. The name is measured
+  at the bold factor because exports draw it bold.
+- The symbol has a fixed height (`SYMBOL_HEIGHT`) rather than a share of the box, so the box's height is a plain
+  sum and a taller box leaves room, never a larger symbol.
+- A locked box measures what it draws: the screen its code and "(not visible)", the export its code, so each
+  passes its own text as the name.
 
 Dependencies: `diagram_symbol_label` (the width table and word wrapping).
 """

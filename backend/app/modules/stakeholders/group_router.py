@@ -1,17 +1,11 @@
 """
 Module: modules.stakeholders.group_router
 
-Org-scoped Stakeholder Group API, mounted at
-`/api/v1/orgs/{organization_id}/modules/stakeholders` next to the Stakeholder routes: the group tree
-(list/create/edit/move/reorder/delete), direct membership, a stakeholder's group
-set, and the "create groups from organisation / group text" action. The bodies
-live in `_group_shared.py`; this file declares the routes and the gates.
-
-Organisation groups hold org-scoped stakeholders only.
-
-Viewing needs the `stakeholder` sub-component to be enabled; every write needs
-`_group_shared.require_group_manage` (a group is
-managed by whoever manages Stakeholders, or holds a `(stakeholder_group, manage)` grant).
+Org-scoped Stakeholder Group API at `/api/v1/orgs/{organization_id}/modules/stakeholders`:
+the group tree, direct membership, a stakeholder's group set and "create groups
+from text"; bodies live in `_group_shared.py`. Organisation groups hold
+org-scoped stakeholders only. Viewing needs the `stakeholder` sub-component;
+writes need `_group_shared.require_group_manage`.
 """
 
 from __future__ import annotations

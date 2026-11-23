@@ -1,20 +1,20 @@
 /**
  * Module: modules/product_feedback/ProjectRequestsPage
  *
- * The project's enhancement request list, mounted at `/projects/:projectId/modules/product_feedback/requests`.
- * It opens on the Open statuses choice (New, Under review, Accepted); a link that names a status or the unscored slice starts
- * with that filter instead.
+ * The project's enhancement request list, mounted at `/projects/:projectId/modules/product_feedback/requests`. It
+ * opens on the Open statuses choice (New, Under review, Accepted); a link that names a status or the unscored slice
+ * starts with that filter instead.
  *
  * Columns, filters and the unscored count are `requestList.tsx`'s, shared with the organisation inbox. Demand sits
- * beside the score, never inside it. A request with no Pain Point shows a warning (a solution with no stated
- * problem), never a block.
+ * beside the score, never inside it. A request with no Pain Point shows a warning (a solution with no stated problem),
+ * never a block.
  *
- * A triager also gets a Grid view of the same rows and filters (`RecordGrid`) with the scoring levels as cells, so
- * a run of requests can be scored in bulk, typically after filtering to the unscored ones. The grid is offered only
- * to someone the server would let save; submitting is offered only where the project's policy allows it.
+ * A triager also gets a Grid view of the same rows and filters (`RecordGrid`) with the scoring levels as cells, so a
+ * run of requests can be scored in bulk, typically after filtering to the unscored ones. The grid is offered only to
+ * someone the server would let save; submitting is offered only where the project's policy allows it.
  *
- * Filters live in the URL (`status`, `open=1|0`, `scored=unscored|scored`, `pain_points=none|some`, `missing`, `model`, `q`, `archived`) so
- * the list comes back as it was left after a visit to a record.
+ * Filters live in the URL (`status`, `open=1|0`, `scored=unscored|scored`, `pain_points=none|some`, `missing`,
+ * `model`, `q`, `archived`), so the list returns as left after visiting a record.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

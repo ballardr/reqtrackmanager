@@ -5,33 +5,15 @@ import { createStandardWithVersion, openComplianceStatusTab, selectFilterOption 
 
 /**
  * Job to be done: the org-level Organisation Compliance View + Dashboard (§22/§23): the compliance summary is a
- * widget on the Organisation Overview's dashboard, and "By standard" / "Outstanding" are two tabs of the Standards page
- * (`/standards/by-standard`, `/standards/outstanding`), beside the standards list — see
- * `frontend/src/modules/compliance/ComplianceStatusPage.tsx` for why they are there and not Org Resources sections.
- * This spec also covers the summary widget (`OrgComplianceWidgets.tsx`), which the
- * built-in dashboard shows with no click into any tab required.
+ * widget on the Organisation Overview dashboard (`OrgComplianceWidgets.tsx`, no tab click needed), and "By
+ * standard" / "Outstanding" are tabs of the Standards page (`/standards/by-standard`, `/standards/outstanding`;
+ * see `ComplianceStatusPage.tsx`). Covers the drill-down path: publish a standard, assign it to a project,
+ * assess a requirement Non-Compliant, then confirm the gauges, Dashboard tab, By standard table (with its
+ * project filter) and Outstanding tab surface it and the drill-down link opens the project's Compliance page.
  *
- * Covers the read/drill-down path: author and publish a standard,
- * assign it to a project and assess a requirement Non-Compliant,
- * then confirm the headline gauges, the org-wide Dashboard
- * tab, the By standard table (with its project filter), and
- * the Outstanding tab all surface that project/requirement, and that
- * the standard table's drill-down link actually opens the underlying
- * project's own Compliance page.
- *
- * `orgAdminAlphaBeta` is reused rather than a dedicated persona, the same
- * way `project-compliance-view.spec.ts` does — Alpha's org
- * admin composes with `compliance_manager` for both the org-level
- * authoring/assignment steps and the `_require_manage`-gated
- * dashboard endpoints, and is Alpha-1's own `PROJECT_MANAGER`/
- * `compliance_officer` for the assessment step.
- *
- * Every fixture this spec creates (standard, requirement) is dynamically
- * named with a per-run timestamp suffix, per this repo's standing test-
- * idempotency rule — assertions on the org-wide table/dashboard look for
- * this spec's own dynamically-named rows among whatever else may be
- * present, never an exact total count, since other specs' own fixtures
- * may coexist in the same organisation.
+ * `orgAdminAlphaBeta` is reused, as in `project-compliance-view.spec.ts` (`compliance_manager` through the org
+ * admin, `PROJECT_MANAGER`/`compliance_officer` on Alpha-1). Fixtures carry a per-run timestamp suffix and
+ * assertions look for this spec's own rows, never an exact total.
  */
 test.describe("Compliance Module: org compliance view + dashboard", () => {
   test("a non-compliant assessment surfaces on the org-wide dashboard, standards table, and outstanding tab", async ({ page }) => {
@@ -57,20 +39,15 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
 
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    // The exact toast text, not a bare "Published" substring match — once
-    // this standard has more than one version, an earlier one's own nav-
-    // rail "Versions" entry also reads "v1.0 (Published)", which a plain
-    // substring match resolves to ambiguously alongside this toast.
+    // The exact toast text, not a bare "Published" substring: once a standard has more than one version, an
+    // earlier version's nav-rail "Versions" entry also reads "v1.0 (Published)".
     await expect(page.getByText("Version published.")).toBeVisible();
 
     // --- Assign to Alpha-1 and assess the one requirement Non-Compliant.
     await page.goto("/projects");
     await openProject(page, PROJECT_NAMES.alpha1);
-    // exact: true — the project overview page's own compliance summary
-    // tiles render as cards whose accessible name contains
-    // "Compliance" too (e.g. a standard's name), which would otherwise
-    // collide with this nav-rail link under substring matching once any
-    // standard has ever been assigned to this project.
+    // exact: true: the project overview's compliance summary tiles are cards whose accessible name contains
+    // "Compliance" (a standard's name), which would collide with this nav-rail link under substring matching.
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
@@ -96,10 +73,8 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await expect(page.getByText("Active compliance standards")).toBeVisible();
     await expect(page.getByText("Overall compliance", { exact: true })).toBeVisible();
 
-    // --- Compliance summary widget: the non-compliant project count is a headline
-    // tile that drills through to the By standard tab
-    //     pre-filtered/pre-pivoted to exactly the projects it counted,
-    //     rather than listing them inline on the tile itself.
+    // Compliance summary widget: the non-compliant project count is a headline tile that drills through to the
+    // By standard tab, pre-filtered and pre-pivoted to the projects it counted.
     const nonCompliantTile = page.getByRole("link", { name: /Non-compliant projects/ });
     await expect(nonCompliantTile).toBeVisible();
     await nonCompliantTile.click();
@@ -125,10 +100,8 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     //     open it afresh from the Standards page.
     await openComplianceStatusTab(page, "By standard", ORG_NAMES.alpha);
 
-    // This panel's own Export trigger carries its active Standard
-    // filter as a query param too — "export what I'm looking at" applies
-    // here the same way it does to the Outstanding tab (covered in the
-    // dedicated filter test below).
+    // This panel's Export trigger carries its active Standard filter as a query parameter, as the Outstanding
+    // tab does (covered in the filter test below).
     await selectFilterOption(page, "Standard", `${reference} — ${standardName}`);
     const standardsReportRequestPromise = page.waitForRequest(
       (req) => req.url().includes("/modules/compliance/reports") && req.url().includes("format=csv") && req.url().includes("standard_id=")
@@ -154,17 +127,11 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
   });
 
   /**
-   * The By standard tab's
-   * default (group-by-standard) expanded row now groups its projects by
-   * `standard_version_id` first (39d), each version's projects indented a
-   * level deeper (39c), rather than one flat list of projects each
-   * carrying its own version suffix — each version with more than one
-   * sibling is its own collapsible sub-group (a live follow-up: with only one version, per the first test in this file, that
-   * sub-group instead pre-expands with no toggle at all, since there's
-   * nothing left to disambiguate). Covers a standard with two published
-   * versions assigned to two different projects, confirming each version's
-   * sub-group lists only its own project — not the other version's — and
-   * that a project link inside the nested structure still navigates.
+   * The By standard tab's default (group-by-standard) expanded row groups its projects by `standard_version_id`
+   * first, each version's projects one level deeper. A version with more than one sibling is a collapsible
+   * sub-group (with a single version the sub-group pre-expands with no toggle, as the first test shows).
+   * Covers a standard with two published versions assigned to two projects: each version's sub-group lists
+   * only its own project, and a project link inside the nested structure still navigates.
    */
   test("a standard on two versions groups its expanded row as Standard -> Version -> Project", async ({ page }) => {
     const suffix = Date.now();
@@ -181,10 +148,8 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await page.getByRole("button", { name: "v1.0" }).click();
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    // The exact toast text, not a bare "Published" substring match — once
-    // this standard has more than one version, an earlier one's own nav-
-    // rail "Versions" entry also reads "v1.0 (Published)", which a plain
-    // substring match resolves to ambiguously alongside this toast.
+    // The exact toast text, not a bare "Published" substring: once a standard has more than one version, an
+    // earlier version's nav-rail "Versions" entry also reads "v1.0 (Published)".
     await expect(page.getByText("Version published.")).toBeVisible();
 
     // A second published version, so the standard has two to assign.
@@ -196,10 +161,8 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await page.getByRole("button", { name: "v2.0" }).click();
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    // The exact toast text, not a bare "Published" substring match — once
-    // this standard has more than one version, an earlier one's own nav-
-    // rail "Versions" entry also reads "v1.0 (Published)", which a plain
-    // substring match resolves to ambiguously alongside this toast.
+    // The exact toast text, not a bare "Published" substring: once a standard has more than one version, an
+    // earlier version's nav-rail "Versions" entry also reads "v1.0 (Published)".
     await expect(page.getByText("Version published.")).toBeVisible();
 
     async function assignStandard(projectName: string, versionLabel: string) {
@@ -219,12 +182,9 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await openComplianceStatusTab(page, "By standard", ORG_NAMES.alpha);
     await page.getByRole("button", { name: new RegExp(`Expand projects for ${reference}`) }).click();
 
-    // More than one version behind this standard — each is its own
-    // collapsible sub-group (collapsed by default), unlike the single-
-    // version case which pre-expands with no toggle at all. Matches both
-    // "Expand"/"Collapse" — the toggle's own accessible name flips once
-    // clicked, and this same locator is reused afterwards to find the
-    // (now-expanded) group.
+    // With more than one version each is a collapsible sub-group (collapsed by default; a single version
+    // pre-expands with no toggle). The pattern matches "Expand" and "Collapse" because the toggle's accessible
+    // name flips on click and the locator is reused to find the expanded group.
     const v1Toggle = page.getByRole("button", { name: /^(Expand|Collapse) projects for v1\.0$/ });
     const v2Toggle = page.getByRole("button", { name: /^(Expand|Collapse) projects for v2\.0$/ });
     await expect(v1Toggle).toBeVisible();
@@ -232,11 +192,8 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await v1Toggle.click();
     await v2Toggle.click();
 
-    // Each version's sub-group lists only its own project. `xpath=..`
-    // walks to the immediate parent (the toggle button's own `<li>`) —
-    // chaining an `ancestor::` axis off another locator instead scopes the
-    // search to each matched element's own subtree, which can't find a
-    // node "above" it.
+    // Each version's sub-group lists only its own project. `xpath=..` selects the toggle's parent `<li>`; an
+    // `ancestor::` axis chained off another locator would search each matched element's own subtree.
     const v1Group = v1Toggle.locator("xpath=..");
     await expect(v1Group.getByRole("link", { name: PROJECT_NAMES.alpha1 })).toBeVisible();
     await expect(v1Group.getByRole("link", { name: PROJECT_NAMES.alpha2 })).toHaveCount(0);
@@ -251,18 +208,12 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
   });
 
   /**
-   * The Outstanding tab gets a real Standard/Standard version/Sub-section filter
-   * set (on top of the pre-existing Category/Evidence status pair), and
-   * moves its `FilterPanel` from a full-width top bar to the standard
-   * right-hand sidebar (`layout="side"`), per the style guide's own
-   * placement rule (`.filter-panel-top` should no longer render here at
-   * all, matching `.side-grid`'s own already-used-by-"Compliance by
-   * standard" shape). "Sub-section" means "top-level ancestor requirement"
-   * — a standard's hierarchy is purely `parent_requirement_id`-based, no
-   * dedicated section field exists — so this fixture creates one top-level
-   * requirement with a child, non-compliantly assesses the child, and
-   * confirms picking the *other* top-level requirement as the sub-section
-   * filter hides it while picking its real parent keeps it.
+   * The Outstanding tab has a Standard/Standard version/Sub-section filter set beside the Category/Evidence
+   * status pair, and its `FilterPanel` is the right-hand sidebar (`layout="side"`, per the style guide's
+   * placement rule), so `.filter-panel-top` does not render. "Sub-section" means "top-level ancestor
+   * requirement" (a standard's hierarchy is `parent_requirement_id`-based; there is no section field), so
+   * the fixture creates one top-level requirement with a child, assesses the child non-compliantly, and
+   * confirms the *other* top-level requirement as the filter hides it while its real parent keeps it.
    */
   test("the Outstanding tab's Standard/Standard version/Sub-section filters narrow rows, and its filter panel renders as a sidebar", async ({ page }) => {
     const suffix = Date.now();
@@ -342,12 +293,9 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await selectFilterOption(page, "Sub-section", sectionAName);
     await expect(page.getByText(childRequirementName)).toBeVisible();
 
-    // The Export trigger's report request carries this panel's
-    // active Standard/Sub-section filters as query params — "export what
-    // I'm looking at," not an unfiltered organisation-wide dump. Exact
-    // filtering correctness is pinned server-side
-    // (test_compliance_reports.py); this only confirms the wiring from live
-    // filter state to the actual outgoing request.
+    // The Export trigger's report request carries this panel's active Standard/Sub-section filters as query
+    // parameters (the export matches what is shown). test_compliance_reports.py pins the server-side
+    // filtering; this confirms the wiring from filter state to the outgoing request.
     const reportRequestPromise = page.waitForRequest(
       (req) =>
         req.url().includes("/modules/compliance/reports") &&

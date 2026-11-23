@@ -17,11 +17,8 @@ const categories: Category[] = [{ id: "cat1", project_id: PROJECT_ID, component_
 const stages: ProjectStage[] = [
   { id: "s1", project_id: PROJECT_ID, name: "Build", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, owner: null, review_deadline: null },
 ];
-// "approved" (locked): a modify change request can only target an
-// already-locked requirement — a
-// still-draft one wouldn't appear in the "Select a requirement" dropdown at
-// all, which would break every story below that exercises the
-// modify-requirement form.
+// "approved" (locked): a modify change request can only target a locked requirement; a draft
+// is absent from the "Select a requirement" dropdown.
 const requirement = buildRequirement({
   id: "req-1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1",
   target_stage_id: "s1", reasoning: "Locked-out users need a self-service recovery path.", status: "approved",
@@ -147,15 +144,10 @@ export const EmptyState: Story = {
 };
 
 /**
- * The core documented behaviour (help/03-change-requests.md): ticking a
- * field's checkbox pre-fills its editor from the selected requirement's
- * CURRENT value — nothing is shown, let alone submitted, for an untouched
- * field.
+ * Ticking a field's checkbox pre-fills its editor from the selected requirement's current value;
+ * an untouched field is neither shown nor submitted (help/03-change-requests.md). The create form
+ * is a `Modal` portalled to `document.body`, so its fields are queried with `within(document.body)`.
  */
-/** The create form is a `Modal` (style guide "Pattern: modal dialog for
- * entity create/rename") — a layer portalled to `document.body`, not an
- * inline block inside `canvasElement`, so its fields are queried via
- * `within(document.body)` rather than `canvas`. */
 export const ModifyRequirementFieldTogglePrefills: Story = {
   beforeEach: () => mockChangeRequestsListApis(),
   play: async ({ canvasElement }) => {
@@ -188,8 +180,7 @@ export const ModifyRequirementCreateDisabledUntilFieldSelected: Story = {
   },
 };
 
-/** Switching to "New requirement" replaces the field-toggle form with a
- * plain create form — no existing requirement to diff against. */
+/** Switching to "New requirement" replaces the field-toggle form with a plain create form. */
 export const NewRequirementKindShowsPlainCreateForm: Story = {
   beforeEach: () => mockChangeRequestsListApis(),
   play: async ({ canvasElement }) => {
@@ -203,10 +194,8 @@ export const NewRequirementKindShowsPlainCreateForm: Story = {
   },
 };
 
-/** Column-header sorting — this list is backend-
- * paginated (`PAGE_SIZE`/`LoadMoreButton`), so a header click has to refetch
- * with `sort`/`order` query params rather than reordering just the loaded
- * page. Switch to list view first — sorting only applies there. */
+/** Column-header sorting on the server-paginated list refetches with `sort`/`order` rather than
+ * reordering the loaded page; sorting applies in list view only. */
 export const SortByCreatedRefetchesWithSortParams: Story = {
   beforeEach: () => mockChangeRequestsListApis(),
   play: async ({ canvasElement }) => {
@@ -227,8 +216,7 @@ export const SortByCreatedRefetchesWithSortParams: Story = {
   },
 };
 
-/** The list has a free-text search (2026-10-04), sent server-side so it
- * finds a change request on any page of the paginated list. */
+/** The free-text search is sent to the server so it finds a change request on any page. */
 export const SearchRefetchesWithSearchParam: Story = {
   beforeEach: () => mockChangeRequestsListApis(),
   play: async ({ canvasElement }) => {
@@ -258,8 +246,7 @@ export const SubmitCreatesChangeRequest: Story = {
         expect.objectContaining({ kind: "modify_requirement", changed_fields: ["reasoning"] })
       )
     );
-    // Principle 7 — every mutation ends with feedback (sixth-pass audit:
-    // this page previously just silently re-rendered the list).
+    // Principle 7: every mutation ends with feedback.
     await expect(within(document.body).getByText("Change request CR-007 created.")).toBeInTheDocument();
     // The Modal closes itself on a successful create (`setShowForm(false)`).
     await expect(dialog).not.toBeInTheDocument();
@@ -328,10 +315,8 @@ export const NoProposedLinksSectionWithoutTheRightToLink: Story = {
   },
 };
 
-/** Tri-state status filter: the page loads with "Active"
- * selected and sends `active_only=true` (no `cr_status`), hiding a
- * terminal-status change request; switching to "All statuses" sends
- * neither param and reveals it. */
+/** The status filter defaults to "Active" (`active_only=true`, no `cr_status`), hiding terminal
+ * statuses; "All statuses" sends neither parameter. */
 export const StatusFilterDefaultsToActiveAndWidensToAll: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis();
@@ -366,9 +351,7 @@ export const StatusFilterDefaultsToActiveAndWidensToAll: Story = {
   },
 };
 
-/** Filter select options render the existing `CHANGE_REQUEST_STATUS_LABEL`
- * map, not the
- * raw backend enum string — "In review", not "in_review". */
+/** Filter options render through `CHANGE_REQUEST_STATUS_LABEL` ("In review", not "in_review"). */
 export const StatusFilterOptionsUseLabelMap: Story = {
   beforeEach: () => mockChangeRequestsListApis(),
   play: async ({ canvasElement }) => {
@@ -381,12 +364,7 @@ export const StatusFilterOptionsUseLabelMap: Story = {
   },
 };
 
-/**
- * A modify change request can only target an already-locked (approved/
- * completed) requirement — a
- * still-draft one doesn't appear in the "Select a requirement" dropdown at
- * all, and a hint explains why rather than showing a silently empty select.
- */
+/** A hint explains why a draft-only project offers no requirement to modify, instead of an empty select. */
 export const NoLockableRequirementsShowsHint: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {

@@ -1,30 +1,12 @@
 """
 Module: modules.product_feedback.demand
 
-Demand aggregation: who stands behind an enhancement request, and how much weight they carry.
-
-Responsibilities:
-- `REQUESTED_BY_SEED` and the link-type names: a request is "Requested by" a Stakeholder, a Persona or an
-  Engagement, authored through the generic link endpoints.
-- `compute_demand`: for many requests at once, the de-duplicated requesters (each a Stakeholder or Persona),
-  the Engagements the request was raised in, the requester count and the weighted demand.
-
-Design decisions:
-- Requesters are *parties*, de-duplicated by `(type, id)`: a Stakeholder who asked directly and also took part
-  in a linked Engagement counts once. An Engagement expands to its participants and the Personas it covered
-  (**Decided by: User**); the expansion is Module 2's, reached through `registry.resolve_demand_parties`, so
-  this module never imports the people it counts.
-- Weighted demand is the sum of each party's weight (a Stakeholder's Influence level, a Persona's effective
-  weight); a party with no weight counts as 1, so demand never silently drops someone (**Decided by: Agent**).
-- A request's demand is the union of its own requesters and those of every request with an *active* merge into
-  it (`EnhancementRequestMerge`). Nothing is copied, so unmerging removes exactly the duplicate's contribution
-  and a requester added to the duplicate later is picked up while the merge lasts.
-- A party the project cannot see is dropped by the provider, so it is neither counted nor named.
-- Demand is a project-tier concept: an inbox request cannot be a link source (an inbox record has no project),
-  so an organisation request has no requesters until triage moves it into a project.
-- One set of statements per target type however many requests are asked about, so a list stays flat.
-
-Dependencies: `modules.registry` (`resolve_demand_parties`, `LinkTypeSeed`), `models.relationship`, `models.requirement_link_type`.
+Demand aggregation: who stands behind a request and how much weight they carry.
+`compute_demand` returns, for many requests at once, the requesters
+(Stakeholders and Personas, de-duplicated by `(type, id)`), their Engagements,
+the requester count and the weighted demand (no weight counts as 1).
+Engagements expand through `registry.resolve_demand_parties`; demand is the
+request's own requesters plus those of every active merge into it. Project-tier only.
 """
 
 from __future__ import annotations

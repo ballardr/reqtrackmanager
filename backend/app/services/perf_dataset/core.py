@@ -1,25 +1,22 @@
 """
 Module: services.perf_dataset.core
 
-The core artefact types' dataset generators: requirements (with their version history, tags, comments, links
-and audit events) and requirement actions (with their links to requirements).
+The core artefact types' dataset generators: requirements (with version history, tags, comments, links and
+audit events) and requirement actions (with their links to requirements).
 
-Responsibilities:
-- Write the same rows the application's create paths write (`services.requirements.create_requirement`,
-  `routers.actions`, `services.tags.set_record_tags`, `routers.requirements.comments`, `create_link`) for
-  thousands of records at once, in proportions taken from the dataset spec.
-- Keep the counters the application relies on ahead of the generated codes (`Project.next_requirement_seq`,
-  `Project.next_action_seq`).
-- Report the realised link-degree histogram, so "links per record" is a measured fact of the run.
+Responsibilities: write the rows the application's create paths write (`services.requirements.create_requirement`,
+`routers.actions`, `services.tags.set_record_tags`, `routers.requirements.comments`, `create_link`) for
+thousands of records at once, in proportions from the dataset spec; keep the counters ahead of the generated
+codes (`Project.next_requirement_seq`, `Project.next_action_seq`); report the realised link-degree histogram.
 
 Design decisions:
-- Bulk Core inserts, not the API: 20,000 requirements and their links and history through HTTP would take hours
-  and would measure the API, not the data. Drift from the real create path is guarded by the parity test, which
-  compares the populated columns of a generated row with an API-created one.
-- Link endpoints are drawn from a Zipf-weighted distribution (`hub_exponent`), giving a heavy tail: most
-  requirements have a few links and a handful are hubs with hundreds. Edges are oriented from the earlier to the
-  later requirement so directional link types can never form a cycle.
-- History is the fastest-growing data: every extra version adds a version row and an audit event, as an edit does.
+- Bulk Core inserts, not the API: 20,000 requirements with links and history over HTTP would take hours and
+  measure the API, not the data. Drift from the real create path is guarded by the parity test, which compares
+  the populated columns of a generated row with an API-created one.
+- Link endpoints follow a Zipf-weighted distribution (`hub_exponent`): most requirements have a few links and a
+  handful are hubs with hundreds. Edges run from the earlier to the later requirement, so directional link
+  types cannot form a cycle.
+- History is the fastest-growing data: each extra version adds a version row and an audit event, as an edit does.
 
 Dependencies: SQLAlchemy models, `perf_dataset.context/textgen`, `models.*`.
 """

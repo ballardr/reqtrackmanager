@@ -61,13 +61,10 @@ const OUTCOME_OPTIONS: RequirementActionOutcome[] = ["pending", "completed", "fa
 const ACTION_SORT_KEYS = ["unique_code", "title", "outcome_status", "due_date", ...TIME_SORT_KEYS] as const;
 
 /**
- * Project-wide list of requirement actions (review/test/etc.) — a
- * `RequirementAction` has its own project-scoped identity independent of
- * any single requirement (it may be linked from several, or none yet), so
- * this page is the project-level home for browsing/creating them,
- * separate from any one requirement's own "linked actions" card
- * (`RequirementDetailPage.tsx`). Filters mirror the backend's own query
- * params (`outcome_status`, `action_type_id`, `include_archived`).
+ * Project-wide list of requirement actions (review/test/etc.). A `RequirementAction` has its own
+ * project-scoped identity (it may link from several requirements or none), so this page is where they are
+ * browsed and created. Filters mirror the backend's query parameters (`outcome_status`, `action_type_id`,
+ * `include_archived`).
  */
 export function ProjectActionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -115,10 +112,7 @@ export function ProjectActionsPage() {
     setOutcomeFilter((current) => (current === outcome ? "" : outcome));
   }
 
-  // Request-sequencing guard, same shape as `RequirementsPage.tsx`'s: a
-  // filter change starts a new load while the previous one may still be in
-  // flight, and the slower, stale response must not overwrite the newer
-  // one (e.g. toggling "Include archived" right after the page loads).
+  // A filter change starts a new load while the previous one may be in flight; the stale response must not overwrite the newer.
   const beginLoad = useRequestSequence();
 
   async function reload() {

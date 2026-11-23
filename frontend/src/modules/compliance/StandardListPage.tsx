@@ -1,49 +1,19 @@
 /**
  * Module: modules/compliance/StandardListPage
  *
- * The cross-org "Compliance Standards" list — the top-level `/standards` tab that promotes standards from
- * three clicks deep inside Org Admin to their own project-like nav entity,
- * modelled directly on `ProjectListPage.tsx`: same `.side-grid` (content
- * column first, `FilterPanel` second — `ProjectListPage.tsx`'s own order,
- * not the backwards order the retired `StandardsPanel.tsx` used), same `showOrgColumn` convention
- * (`orgs.length > 1 || !!user?.is_server_admin`), same Modal-based create
- * flow, same `GET /api/v1/orgs?mine=true` org-fetch pattern.
- *
- * No cross-org backend listing endpoint exists for standards — every
- * compliance route requires `organization_id` in the path (by design). This page gets its rows via `complianceApi.listStandardsAcrossMyOrgs`,
- * the shared org-fan-out-and-collect helper (extracted out of
- * this file so `StandardWorkspacePage.tsx`'s `EntitySwitcher` loader could
- * reuse the exact same fan-out/404-drop behaviour rather than duplicating
- * it) — see that function's own docstring in `./api.ts` for the full
- * 404-drop/error-swallow behaviour.
- *
- * "New standard" opens the same `StandardFormModal` `StandardWorkspacePage
- * .tsx` uses for editing, in create mode — an org picker (its own first
- * field, shown only when there's more than one candidate) precedes the
- * standard's own fields when the caller has more than one org to create in,
- * mirroring `ProjectListPage.tsx`'s "New project" org picker exactly. Each
- * row opens `/standards/:standardId`. "Compliance settings" is a row of the page's one actions menu (one row per
- * organisation, grouped when there are several) that opens `/standards/settings/:orgId`
- * (`ComplianceSettingsPage.tsx`).
- *
- * A person in more than one organisation gets an Organisation filter in the filter panel; every organisation they
- * belong to shows until one is chosen (`?org=`), and each standard states its organisation.
- *
- * The page is the first tab of the Standards page: when the person may read compliance status, By standard and
- * Outstanding sit beside it (`StandardsTabs.tsx`).
- *
- * Standard-level import/export: the "New standard"
- * button is a `SplitButtonTrigger`: the default action opens
- * `StandardFormModal`, and an "Import standard" alternative
- * opens `StandardImportModal` — the style guide's "one door" pattern
- * (Principle 5/11), grouping the rarer import path behind the same
- * trigger rather than a second, permanently-visible button competing with
- * "New standard".
- *
- * The `ViewToggle` tile/list split `docs/ux-style-guide.md`'s
- * "Pattern: view toggle" requires of any list page like this one; the tiles
- * are the shared `TileCard` (the title links to the standard), the same card
- * the Projects page draws.
+ * The cross-organisation "Compliance Standards" list, the top-level `/standards` tab, modelled on `ProjectListPage.tsx`: the
+ * content column then `FilterPanel`, the `showOrgColumn` convention (`orgs.length > 1 || !!user?.is_server_admin`), a Modal create
+ * flow and the `GET /api/v1/orgs?mine=true` fetch. Every compliance route needs `organization_id` in the path, so rows come from
+ * `complianceApi.listStandardsAcrossMyOrgs`, the shared fan-out helper (also used by `StandardWorkspacePage.tsx`'s `EntitySwitcher`;
+ * see `./api.ts` for its 404-drop and error handling).
+ * - "New standard" is a `SplitButtonTrigger`: the default opens `StandardFormModal` (create; an organisation picker first with more
+ *   than one candidate) and "Import standard" opens `StandardImportModal`, the "one door" pattern (Principle 5/11).
+ * - A row opens `/standards/:standardId`. "Compliance settings" is a row of the page's one actions menu (one per organisation,
+ *   grouped when several) that opens `/standards/settings/:orgId`.
+ * - A person in more than one organisation gets an Organisation filter; all their organisations show until one is chosen
+ *   (`?org=`) and each standard states its organisation.
+ * - This is the first tab of the Standards page; By standard and Outstanding sit beside it when the person may read compliance
+ *   status (`StandardsTabs.tsx`). A `ViewToggle` splits tiles (the shared `TileCard`, as the Projects page) and list.
  */
 import { Plus } from "lucide-react";
 import { Spinner } from "../../components/Spinner";

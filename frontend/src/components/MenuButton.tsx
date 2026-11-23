@@ -1,12 +1,11 @@
 /**
  * Module: components/MenuButton
  *
- * A labelled button with a chevron ("New ▾") that opens a short menu of choices — the shape for one
- * primary action that comes in several kinds, such as creating a Persona, Stakeholder or Need from one
- * list. It is `ActionMenu`'s labelled sibling: the same `Popover` and the same `role="menu"` list
- * (`ActionMenuList`), but a visible word instead of a kebab, because the choice is the point of the
- * button and not a hidden extra (docs/ux-style-guide.md, "Pattern: action menu"). Help for the menu is a tooltip on
- * the trigger (`help`), never a `(?)` beside it ("Pattern: help on interactive elements").
+ * A labelled button with a chevron ("New ▾") that opens a short menu of choices: one primary action that comes in
+ * several kinds, such as creating a Persona, Stakeholder or Need from one list. It is `ActionMenu`'s labelled
+ * sibling (same `Popover`, same `role="menu"` list `ActionMenuList`) with a visible word instead of a kebab,
+ * because the choice is the point of the button (docs/ux-style-guide.md, "Pattern: action menu"). Help for the
+ * menu is a tooltip on the trigger (`help`), never a `(?)` beside it ("Pattern: help on interactive elements").
  */
 import { ChevronDown } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";

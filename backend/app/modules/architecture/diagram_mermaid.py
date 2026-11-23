@@ -1,29 +1,29 @@
 """
 Module: modules.architecture.diagram_mermaid
 
-Renders a resolved diagram (`schemas.DiagramView`) as Mermaid flowchart text, for the Mermaid export endpoint, so a
-diagram can be pasted into documentation that renders Mermaid.
+Renders a resolved diagram (`schemas.DiagramView`) as Mermaid flowchart text for the Mermaid export endpoint,
+so a diagram can be pasted into documentation that renders Mermaid.
 
 Responsibilities:
-- Write one node per visible placed element (code and name, outline from the element type's shape) and one line per
-  resolved line (dotted when indirect, a head at each end only when two-way, labelled with its type and protocol or its
-  count).
+- Write one node per visible placed element (code and name, outline from the element type's shape) and one
+  line per resolved line (dotted when indirect, a head at each end only when two-way, labelled with its type
+  and protocol or its count).
 - Escape every user-supplied text so no name, code or label can end its string, start a directive or add markup.
 
 Design decisions:
-- **Same resolver as the screen and the SVG.** It reads the view's already resolved nodes and lines (toggles, bridging,
-  roll-up and merging), so the text cannot disagree with the drawing. A node a toggle hides, and any line with a hidden
-  end, are not written, so nothing hidden leaves in the text.
-- **Flat.** Placed elements are not nested as subgraphs: a rolled-up line already joins the nearest placed ancestors, and
-  a line to a subgraph is drawn unreliably by Mermaid.
-- **Positions, vertices and colours are left out**: Mermaid lays the graph and routes the lines itself.
-- An annotation note with a title or text is a flag-shaped node (the title in bold; the typed line breaks are kept; Mermaid centres
-  a node's text, so a note's alignment is not written). A leader to a drawn box is a dotted link from the note (with a head
-  at each end that has an arrowhead; a dot end is written as a plain end, as Mermaid has no dotted line with a dot); a
-  leader to a line or a free point is not written, because Mermaid cannot point at a line, and a leader to a box that is
-  not drawn is not written either, so nothing hidden leaves in the text.
-- A boundary box is one node in the outline of its direction (a trapezoid each way for an input or an output, a hexagon
-  for two-way, a circle where none is disclosed), labelled with the outer connection's code and the element outside.
+- Same resolver as the screen and the SVG: it reads the view's resolved nodes and lines, so the text cannot
+  disagree with the drawing. A node a toggle hides and any line with a hidden end are not written, so nothing
+  hidden leaves in the text.
+- Flat: placed elements are not nested as subgraphs, because a rolled-up line already joins the nearest placed
+  ancestors and Mermaid draws a line to a subgraph unreliably.
+- Positions, vertices and colours are left out: Mermaid lays out the graph itself.
+- An annotation note with a title or text is a flag-shaped node (bold title; typed line breaks kept;
+  alignment not written, as Mermaid centres text). A leader to a drawn box is a dotted link from the note, with
+  a head at each arrowhead end (a dot end is a plain end, as Mermaid has no dotted line with a dot). A leader to
+  a line or free point is not written (Mermaid cannot point at a line), nor is one to an undrawn box.
+- A boundary box is one node in the outline of its direction (a trapezoid each way for input or output, a
+  hexagon for two-way, a circle where none is disclosed), labelled with the outer connection's code and the
+  element outside.
 - A locked node (an element the viewer cannot read) is written with its code only.
 
 Dependencies: `schemas` (the view).

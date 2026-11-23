@@ -1,53 +1,12 @@
 """
 Module: modules.risk_management.module
 
-Registers the Risk Management module into the modular feature system's registry
-via `MODULE_DEFINITION`. It
-delivers the Risk artefact, its type vocabulary, the `risk` scoring scheme, module
-RBAC, the lifecycle, treatment relationships, reviews with reassessment
-scheduling, and MCP tools.
-
-Registered contributions:
-- Roles (not additions to core enums): `risk_manager` (project; carries the FGAC
-  `(risk, manage)` atom) gates edit/archive/evidence/project types/lifecycle
-  moves, `risk_acceptor` (project; carries `(risk, approve_baseline)`) gates the
-  move to Accepted, and `risk_type_admin` (org; also administers the `risk`
-  scoring scheme's levels, bands and cell ratings) gates the org type
-  vocabulary. Any project member may propose a risk.
-- `artefact_types=("risk",)`, so a risk is a valid `ArtefactLink` endpoint, gets
-  FGAC atoms and unique codes (`RSK-001`).
-- `scoring_schemes`: the Likelihood/Consequence/Detectability `risk` scheme
-  (`scoring.py`).
-- `on_org_created` seeds each new organisation's default Risk types; the
-  migration backfills existing organisations.
-- One sub-component, `risk`, so a project can switch it off without disabling the
-  whole module.
-- `artefact_summary_providers` (`summaries.py`), so a risk is shown and followed
-  from any link, and `link_type_seeds` (`LINK_TYPE_SEEDS`): "Treated by"
-  (risk -> action), "Impacts" (risk -> requirement/design), and a Risk target for
-  the Decision module's "Addresses". "Mitigates", "Verified by" and "Related to"
-  are core defaults and need no seed. Relationships are made with the generic
-  link endpoints; `treatment.py` adds the verdict on each treatment link.
-
-- `notification_types` (review due, review overdue, treatment needs
-  reassessment) so core's closed `NotificationType` enum is untouched;
-  `scheduled_jobs` (the daily review sweep); `on_artefact_changed`, which moves
-  effective treatment verdicts to `needs_reassessment` when the requirement or
-  design behind them changes; and `mcp_tools` with `mcp_guidance`.
-
-- `frontend_manifest` (Tier A; `frontend/src/modules/risk_management/
-  module.ts` serves the register and detail routes and the admin sections).
-
-- `reports` (four project-level reports, `reports.py`; the framework
-  generates their routes, catalogue entries and `get_<slug>_report` MCP tools).
-- Users and groups on parity: `principal_references` declares the risk owner, so
-  an in-use group cannot be deleted without reassigning or clearing it.
-- `org_bundle_hooks`/`project_bundle_hooks` (`export.py`): Risk types,
-  and each Risk's current content, attachments, reviews and requirement
-  treatment links with their verdicts.
-
-`default_enabled=False`: an organisation opts in explicitly, matching the other
-new modules.
+Registers Risk Management through `MODULE_DEFINITION`: roles (`risk_manager`,
+`risk_acceptor`, `risk_type_admin`), the `risk` artefact type and scoring scheme,
+one sub-component, summaries, link type seeds, notification types, the daily
+review sweep, `on_artefact_changed`, reports, principal references, bundle
+hooks, MCP tools and the Tier A frontend manifest. `on_org_created` seeds the
+default types. `default_enabled=False`.
 """
 
 from __future__ import annotations

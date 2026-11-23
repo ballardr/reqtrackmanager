@@ -1,19 +1,12 @@
 """
 Module: modules.product_feedback.channels
 
-The channel per ask: how each requester of a request asked (a support ticket, a call, an e-mail).
-
-Responsibilities:
-- `channels_by_request`: many requests' requesters' channels in a fixed number of statements.
-- `set_channels`: records, changes or clears the channel of requesters of one request.
-
-Design decisions:
-- One row per `(request, party)` on `EnhancementRequestRequesterChannel`, matched to the current requesters on read
-  and holding no foreign key to the party (it belongs to another module), exactly as the informed record does.
-- A merged duplicate's requesters keep the channel they were given on the duplicate; a row on the canonical request
-  for the same party overrides it, and clearing removes both.
-- A requester reached only through an Engagement has no row (the Engagement is the channel; the UI says so).
-- Setting needs the triager gate and every party to be a current requester; the whole call fails on one bad party.
+The channel per ask: how each requester asked (ticket, call, e-mail).
+`channels_by_request` reads many requests in fixed statements; `set_channels`
+records or clears them (triager gate; every party must be a current requester).
+One row per `(request, party)` with no foreign key to the party; a merged
+duplicate's channels stay on the duplicate, and a canonical row overrides them.
+An Engagement-only requester has no row.
 """
 
 from __future__ import annotations

@@ -1,34 +1,31 @@
 /**
  * Module: testing/gridStability
  *
- * The shared "does long text move its neighbours?" assertion for every grid and table-like view. A grid that
- * looks tidy with a short demo name can lose its shape when a row holds a 200-character name or a 60-character
- * word with no space: a column widens, a description wraps and drops its Edit button onto a second line, a
- * right-hand text no longer lines up. A tidy story never shows it. This reads the real layout and returns what
- * is wrong, so Storybook play functions and Playwright specs fail instead of someone spotting it in a
- * screenshot. It extends `orphanedControls` (a control alone on a wrapped line) from one flex row to the whole
- * grid.
+ * The shared "does long text move its neighbours?" assertion for every grid and
+ * table-like view: reads the real layout and returns what is wrong (a column
+ * widened by a long name, a control dropped to a second line, right-hand text
+ * out of line), for Storybook play functions and Playwright specs. Extends
+ * `orphanedControls` from one flex row to the whole grid.
+ * Self-contained (no imports, helpers inside each function) so Playwright can
+ * ship it with `page.evaluate`, like `controlGeometry`.
  *
- * Self-contained on purpose (no imports, helpers inside each function) so Playwright can ship it into the
- * page with `page.evaluate`, the same as `controlGeometry`.
- *
- * Grids and tables checked: `.definition-grid`, `table`, `[role=grid]`, `[role=treegrid]`, `.directory-table`, `.tile-grid` and `.aligned-rows`; a
- * row layout built from flex (an item row, an aligned list, a settings row: `ROW_SELECTOR`) is checked for rules 2
- * and 3 and for its last control lining up with its siblings', and any other opts in with `data-stress-row`. An
- * element with `data-wrap-ok` (or inside one) is skipped, for a row that is meant to wrap.
+ * Checked: `.definition-grid`, `table`, `[role=grid]`, `[role=treegrid]`,
+ * `.directory-table`, `.tile-grid`, `.aligned-rows`; flex row layouts
+ * (`ROW_SELECTOR`) for rules 2 and 3 and last-control alignment; any other row
+ * opts in with `data-stress-row`. `data-wrap-ok` (or a descendant) is skipped.
  *
  * Rules, per grid:
- * 1. the cells of one column share a left edge in every row, and so do the controls inside them (the first
- *    button of each row's cell, the second...) when the cells hold the same number of controls;
- * 2. the controls of one row (`button`, `a`, `input`, `select`, `textarea`) each have their vertical centre
- *    within the span of the row's tallest control, so none has dropped to a second line;
- * 3. no cell is wider than its column and nothing overflows the grid horizontally; text clipped by an
- *    `overflow: hidden` ancestor inside its cell (an ellipsis, `CellText`) is allowed;
- * 4. (`layoutChanges`, between a short-text and a long-text render) the column widths are the same, for
- *    a CSS grid or a fixed-layout table, and long text does not make the grid scroll sideways when short text
- *    did not (a table in a scrolling wrapper is allowed to scroll when it is wide by design, not because one
- *    cell held a long word). An auto-layout table sizes its columns from its text by design; its harm is
- *    overflow, which rule 3 and the scroll comparison catch.
+ * 1. cells of one column share a left edge in every row, and so do the controls
+ *    inside them when the cells hold the same number of controls;
+ * 2. the controls of one row (`button`, `a`, `input`, `select`, `textarea`) have
+ *    their vertical centre within the span of the row's tallest control;
+ * 3. no cell is wider than its column and nothing overflows the grid
+ *    horizontally; text clipped by an `overflow: hidden` ancestor in its cell
+ *    (an ellipsis, `CellText`) is allowed;
+ * 4. (`layoutChanges`, short vs long render) column widths match for a CSS grid
+ *    or fixed-layout table, and long text does not make the grid scroll sideways
+ *    when short text did not. An auto-layout table sizes columns from its text
+ *    by design; its harm is overflow, caught by rule 3 and the scroll comparison.
  */
 
 /** One grid as drawn. */

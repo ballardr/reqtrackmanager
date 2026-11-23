@@ -1,42 +1,19 @@
 """
 Module: services.relationships
 
-Generic CRUD/query helpers over
-the polymorphic `ArtefactLink` table (`models.relationship`) — one query
-surface for "what does X link to" / "what links to X" across every
-registered artefact type, replacing the old requirement-only
-`RequirementLink` queries and the old action-only `RequirementActionLink`
-queries with a single generic implementation.
+Generic CRUD and query helpers over the polymorphic `ArtefactLink` table (`models.relationship`): "what does X link
+to" and "what links to X" across every registered artefact type.
 
-**Deliberately does not perform any authorization or tenant-scoping check.**
-This module has no way to know how to resolve an arbitrary
-`(artefact_type, artefact_id)` pair into its owning project/organisation —
-that mapping is owned by each artefact type's own router (e.g.
-`routers.requirements._get_requirement_in_project` resolves a `Requirement`
-id and 404s on cross-project access). Every caller of `create_link` must
-have already independently resolved and authorized *both* the source and
-target artefact before calling this module — see `routers.requirements`'s
-`create_link`/`list_links`/`delete_link`/`link_action`/`unlink_action` for
-the established pattern this module's callers must keep following. This
-module's own responsibility ends at "store/query this relationship row
-generically"; it is not a second place tenant isolation is enforced.
+**Performs no authorization or tenant-scoping check.** Resolving a `(artefact_type, artefact_id)` pair to its owning
+project belongs to each type's router, so every caller of `create_link` must already have authorized both ends
+(see `routers.requirements` `create_link`/`list_links`/`delete_link`).
 
-**Cross-level links** (a project and its ancestor/descendant,
-`ArtefactLink.source_project_id`/`target_project_id` set) are excluded from every
-reader here unless `include_cross_project=True`. Legacy readers load the other
-end by id and assume it shares their project, so default-deny at the query layer
-is what stops them showing an ancestor's artefact to someone who cannot open it;
-only the link graph, generic link authoring and link-type usage ask for them.
+Cross-level links (`source_project_id`/`target_project_id` set) are excluded from every reader unless
+`include_cross_project=True`, so a reader that assumes one project never shows an ancestor's record to someone who
+cannot open it; only the link graph, link authoring and link-type usage ask for them.
 
-`source_type`/`target_type` are plain strings, not the closed
-`app.models.enums.ArtefactType` enum (a fixed Python `enum.Enum` can't gain members at runtime, so extending
-that enum directly would mean a core file being hand-edited per module). `create_link` validates
-both against `app.modules.registry.get_all_registered_artefact_types` —
-the two built-in core values (`ArtefactType.REQUIREMENT`/
-`REQUIREMENT_ACTION`, themselves plain strings since `ArtefactType`
-subclasses `str`) plus every registered module's own declared
-`ModuleDefinition.artefact_types` — so a typo or an unregistered value
-fails fast here rather than surfacing later as a silent, unqueryable row.
+`source_type`/`target_type` are plain strings, validated by `create_link` against
+`modules.registry.get_all_registered_artefact_types`, so a module needs no edit to a core enum and a typo fails fast.
 """
 
 from __future__ import annotations
@@ -66,49 +43,28 @@ def create_link(
     source_project_id: uuid.UUID | None = None,
     target_project_id: uuid.UUID | None = None,
 ) -> ArtefactLink:
-    """Creates and flushes a new `ArtefactLink` row. Does not commit — the
-    caller commits once, alongside its own audit-log write, matching every
-    other service function in this codebase's transaction convention.
+    """Creates and flushes a new `ArtefactLink` row. Does not commit; the caller commits once with its audit write.
 
-    A typed link is checked against the link type's own source/target
-    restriction and both ends' artefact-type rules
-    (`services.link_types.validate_link_allowed`), so every creator, legacy
-    typed endpoints and MCP included, goes through one check. `enforce_rules`
-    is false only for a fixed-semantic action (a "Supersedes" link that flips a
-    status) and for replaying already-validated data (project import,
-    approving a change request that was validated when proposed).
+    A typed link is checked against the link type's source/target restriction and both ends' artefact-type rules
+    (`services.link_types.validate_link_allowed`), so every creator goes through one check. `enforce_rules` is false only
+    for a fixed-semantic action (a "Supersedes" link that flips a status) and for replaying already-validated data (project
+    import, approving a change request validated when proposed).
 
-    `project_id` is the project the link is created in: with it the link type must
-    also be usable there (organisation-wide, or local to that project or an
-    ancestor, and not locked out; `services.link_type_scope.assert_link_type_usable`)
-    and project/ancestor artefact-type rules apply. Every creator that knows its
-    project passes it; omitting it checks the organisation-level rules only.
-    `enforce_offered` additionally rejects a type the project hides, for creators
-    where a user picked the type (fixed-semantic actions leave it false).
+    `project_id` is the project the link is created in: with it the link type must also be usable there
+    (`services.link_type_scope.assert_link_type_usable`) and project and ancestor artefact-type rules apply; omitting it checks
+    organisation-level rules only. `enforce_offered` also rejects a type the project hides, for creators where a user picked
+    the type.
 
-    `source_project_id`/`target_project_id` are the projects the two ends belong to
-    and are given only by the generic authoring service for a link between a project
-    and its ancestor/descendant: when they differ the row is stored as a cross-level
-    link and the nesting check applies (`services.link_nesting`). Every other caller
-    omits them and gets an ordinary same-project link.
+    `source_project_id`/`target_project_id` are given only by the generic authoring service for a link between a project and
+    its ancestor or descendant: when they differ the row is a cross-level link and the nesting check applies
+    (`services.link_nesting`). Other callers omit them and get a same-project link.
 
     Raises:
-        ValueError: if `source_type`/`target_type` isn't a currently
-            registered artefact type (see this module's own docstring) —
-            almost always a caller-side typo or a value from a module that
-            forgot to declare it on its own `ModuleDefinition.
-            artefact_types`, not something an end user's request can
-            trigger (both are always internal literals, never taken
-            directly from request input).
-        sqlalchemy.exc.IntegrityError: if this exact link already exists —
-            either the typed 5-column unique constraint or the untyped
-            partial unique index on `ArtefactLink` will reject a duplicate;
-            callers that want a clean 400 instead of a raw DB error should
-            check for an existing row first (see
-            `routers.requirements.link_action`'s pre-check for the
-            established pattern).
-        services.link_types.LinkRuleError: (a `ValueError`) if a link type
-            restriction or artefact-type rule forbids this pair.
+        ValueError: `source_type`/`target_type` is not a registered artefact type (a caller typo, or a module that did not
+            declare it in `ModuleDefinition.artefact_types`; never taken directly from request input).
+        sqlalchemy.exc.IntegrityError: this exact link exists (the typed unique constraint or the untyped partial unique
+            index); callers wanting a clean 400 pre-check, as `routers.requirements.link_action` does.
+        services.link_types.LinkRuleError: (a `ValueError`) a link type restriction or artefact-type rule forbids the pair.
     """
     from app.modules.registry import get_all_registered_artefact_types
 

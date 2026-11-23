@@ -1,58 +1,50 @@
 """
 Module: modules.architecture.export
 
-The Architecture module's contribution to the organisation and project bundles:
-the organisation's default element and connection types and symbols, and a project's own types
-and symbols with the organisation defaults it has hidden, its elements (with ports, tags, places)
-and connections, and the links between them and Requirements. Registered through
-`ModuleOrgBundleHooks` and `ModuleProjectBundleHooks`, so no core export file
-names this module.
+The Architecture module's contribution to the organisation and project bundles: the organisation's default
+element and connection types and symbols; a project's own types and symbols with the organisation defaults it
+has hidden, its elements (with ports, tags, places) and connections, and their links to Requirements.
+Registered through `ModuleOrgBundleHooks` and `ModuleProjectBundleHooks`, so no core export file names this module.
 
 Design decisions:
-- A project exports the configuration it owns (rows and tombstones), not an
-  ancestor's it merely inherits: the project the bundle is imported into has its own
-  ancestors.
-- Types travel by name. An import skips a name the target already lists (so a fresh
-  organisation's seeded defaults are not doubled) and reports a hidden default the
-  organisation does not have.
-- An element or connection travels with its original code as information only; an
-  import numbers its records afresh, and the codes key the parent, the two ends of
-  a connection and the links within the bundle. The `version` counter is not carried
-  (an imported record starts at 1). A record's type is matched by name among the
-  organisation's rows and the project's own, including a default the project hides;
-  a type the target lacks is created in the project so the record keeps its type.
-- Links travel through the shared `services.bundle_links`, so only links to records
-  in this bundle and to Requirements are carried.
-- Symbols: an organisation's library travels in the organisation bundle (its files embedded) and a project's own
-  uploads in the project bundle, with the organisation symbols the project hides. A symbol travels by name and an
-  upload with its file, which an import checks and sanitises again like an upload; a built-in travels by key
-  alone. A type or element names its symbol as `{"tier", "name"}`, never by id, and an import takes no id from a
-  bundle, so a bundle can never point a record at a symbol of another organisation.
-- The four vocabulary keys are template configuration; the records, the collections and their links
-  are template records, reset to fresh drafts without creator or archived records.
-- Diagrams: a diagram travels with its element boxes (keyed by element code, or a foreign reference for an element
-  another owner shares), notes, line anchors (the two elements and their attach points, and
-  the connection code for a connection's own route) and toggles. A toggle's rule
-  names vocabulary rows by name (never an id) and its manual members by code, so a bundle holds no ids; an import
-  numbers the diagram afresh and drops, with a warning, a box, member, anchor or scope it cannot resolve. A diagram is a
-  template record, reset to a fresh draft that places only the template's own elements.
-- State machine diagrams: a diagram travels with its states and transitions (`state_machine_export`); a state names its parent
-  and a transition its two states by the state's name, and the codes are information only. A template keeps only the
-  diagrams of elements it carries, as fresh drafts.
-- Realisations and boundary boxes: a connection lists the codes of the outer connections it realises (`realises`) and a
-  diagram its boundary boxes (the outer connection's code and the box); both name connections of the same bundle only.
-  An import re-applies each realisation through the same rule as the editor and drops, with a warning, one that no
-  longer holds, and drops a box whose connection is not an outer connection of the imported diagram's scope.
-- Folders: a project's folders travel as `{kind, path, sort_order}` (parents before children) and the organisation's element
-  and symbol folders in its bundle; a record, or an uploaded symbol, names its folder by path (`folder`), never by id. An
-  import reuses a folder that already has the path and creates the rest (also for a record whose path the folder list
-  lacks), so a record is never dropped for its folder. The folder list is template configuration; a record's path is part of the record.
-- Sharing: a collection and its members (element codes) travel in its owner's bundle, **grants never do**, so
-  an import can never publish anything to a project or a group by itself. An organisation bundle carries the
-  organisation-owned elements (ports, no tags or places, which an organisation-owned record does not have) and
-  collections. A connection end another owner shares travels as a reference (the owner's code and the
-  element's code, never a name); an import resolves it through `visibility` for the person importing, and
-  drops the connection with a warning when it cannot be read.
+- A project exports the configuration it owns (rows and tombstones), not an ancestor's it inherits; the
+  importing project has its own ancestors.
+- Types travel by name. An import skips a name the target already lists (so seeded defaults are not doubled)
+  and reports a hidden default the organisation lacks.
+- An element or connection travels with its code as information only; an import numbers records afresh, and
+  the codes key the parent, a connection's two ends and the links within the bundle. `version` is not
+  carried (an imported record starts at 1). A record's type is matched by name among the organisation's rows
+  and the project's own (including a hidden default); a type the target lacks is created in the project.
+- Links travel through `services.bundle_links`: only links to records in this bundle and to Requirements.
+- Symbols: the organisation's library (files embedded) travels in the organisation bundle, a project's
+  uploads in the project bundle with the organisation symbols it hides. A symbol travels by name and an
+  upload with its file, which an import checks and sanitises as an upload; a built-in travels by key. A type
+  or element names its symbol as `{"tier", "name"}`, never an id, so a bundle cannot point a record at
+  another organisation's symbol.
+- The four vocabulary keys are template configuration; records, collections and their links are template
+  records, reset to fresh drafts without creator or archived records.
+- Diagrams travel with their element boxes (keyed by element code, or a foreign reference for an element
+  another owner shares), notes, line anchors (two elements and their attach points, plus the connection code
+  for a connection's own route) and toggles. A toggle rule names vocabulary rows by name and manual members
+  by code, so a bundle holds no ids. An import numbers the diagram afresh and drops, with a warning, a box,
+  member, anchor or scope it cannot resolve. A diagram is a template record, reset to a draft placing only
+  the template's own elements.
+- State machine diagrams travel with their states and transitions (`state_machine_export`); a state names
+  its parent and a transition its two states by name, codes being information only. A template keeps only
+  the diagrams of elements it carries, as drafts.
+- Realisations and boundary boxes: a connection lists the codes of the outer connections it realises
+  (`realises`) and a diagram its boundary boxes (outer connection code and box), both naming connections of
+  the same bundle only. An import re-applies each realisation through the editor's rule, dropping with a
+  warning one that fails it, and a box whose connection is not an outer connection of the scope.
+- Folders travel as `{kind, path, sort_order}` (parents first); a record or uploaded symbol names its folder
+  by path (`folder`), never an id. An import reuses a folder with the path and creates the rest, so a record
+  is never dropped for its folder. The folder list is template configuration; a record's path is part of
+  the record.
+- Sharing: a collection and its members (element codes) travel in its owner's bundle; grants never do, so an
+  import cannot publish anything to a project or group. An organisation bundle carries organisation-owned
+  elements (ports; no tags or places) and collections. A connection end another owner shares travels as a
+  reference (owner code and element code, never a name); an import resolves it through `visibility` for the
+  importing person and drops the connection with a warning when it cannot be read.
 """
 
 from __future__ import annotations
@@ -1096,8 +1088,8 @@ def _rule_domain_ids(rule: dict[str, Any], db: Session, project: Project) -> lis
 
 
 def _legacy_leader(entry: dict[str, Any]) -> list[dict[str, Any]]:
-    """The leader of a note written before a note could have several (`leader` with a `kind` and `arrow`), as the list of
-    one the bundle now carries; none for a note that had no leader."""
+    """The leader of a note in the single-leader bundle format (`leader` with a `kind` and `arrow`), as the list of
+    one that the current format carries; none for a note with no leader."""
     old = entry.get("leader") or {}
     if old.get("kind", LeaderKind.NONE.value) == LeaderKind.NONE.value:
         return []

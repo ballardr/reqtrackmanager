@@ -8,8 +8,7 @@
  * category that matches keeps its component), reporting which components a search opens.
  *
  * Design decisions: a node's id is the placement tree's (`componentNodeId`, `categoryNodeId`), so every control that
- * draws the tree names a node the same way. A component node's `path` is its component id, and a category's is its
- * component's, so a row finds its component without a second lookup.
+ * draws the tree names a node the same way. A node's `path` is its component id, so a row finds its component directly.
  */
 import type { PlacementTree } from "../api/placements";
 import type { Category } from "../api/types";

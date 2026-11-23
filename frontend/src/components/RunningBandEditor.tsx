@@ -3,27 +3,22 @@
  *
  * The editor of one header or footer of a page style: what it prints in an invisible three-column table (left, centre
  * and right cells), an optional logo, and whether the first page shows it. One editor serves the text view's page setup
- * dialog (for the layout and for each page style) and the Blocks view's layout settings, so a header looks and behaves
- * the same everywhere.
+ * dialog and the Blocks view's layout settings, so a band behaves the same everywhere.
  *
  * Responsibilities:
- * - Choose between "inherit" (a page style takes the layout's; the layout takes a page number), "its own text"
- *   and "nothing" (an explicitly empty band), and write the band back (`undefined`, an object, `{}`).
- * - Edit the three cells, stacked one above the other at the full width of the editor (up to three lines each). A cell's
- *   gear opens a popover with its fixed width (blank: it fits its text) and vertical alignment (blank: the band's), and a
- *   summary of both shows beside its title, with a [+] menu that writes a placeholder at that cell's caret (grouped Page, Report,
- *   Project, Organisation and Other, each with a sample; the page number, total pages and "Page X of Y" are always offered) and
- *   Bold and Italic buttons for that cell.
- * - Say how much of the margin the band takes and warn when it does not fit, using the same arithmetic the server checks;
- *   the message stays visible with the "More" group closed.
- * - In a closed-by-default "More" group (its bar counts what is set): choose the logo from the layout tier's image library, its
- *   height and its cell, through the shared `ReportImageField`; set the band's font, size and colour through the shared font
- *   and colour fields (the three cells share one setting); the band's vertical alignment and the first-page choice.
- * - Mark the selected words of a cell bold or italic (`**` and `*`, the marks the server reads).
+ * - Choose "inherit" (a page style takes the layout's; the layout takes a page number), "its own text" or "nothing"
+ *   (an explicitly empty band), and write the band back (`undefined`, an object, `{}`).
+ * - Edit the three cells stacked at full width (up to three lines each). A cell's gear opens a popover with its fixed
+ *   width and vertical alignment (blank: fit the text, the band's); a [+] menu writes a placeholder at the caret (the
+ *   page number, total pages and "Page X of Y" are always offered); Bold and Italic apply the marks the server reads
+ *   (`**` and `*`) to the selected words.
+ * - Show how much of the margin the band takes and warn when it does not fit, with the server's arithmetic; the message
+ *   stays visible with the "More" group closed.
+ * - In a closed-by-default "More" group: the logo (from the layout tier's image library, through `ReportImageField`),
+ *   its height and cell, the band's font, size and colour (shared by the three cells), vertical alignment and first page.
  *
  * Design decisions: the editor edits the band it is given and never judges it (the server checks names, placeholders and
- * fit and the designer shows its problems). Without an image library (a story or a read-only view) the logo is shown
- * but not editable.
+ * fit; the designer shows the problems). Without an image library (a story or read-only view) the logo is not editable.
  */
 import { Plus } from "lucide-react";
 

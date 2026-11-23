@@ -1,16 +1,13 @@
 /**
  * Module: components/TagUsageModal
  *
- * The dialog that shows where one tag is used, opened from the record count in the Used on column of
- * the Tags page (`TagAdminPanel`), so the secondary answer is not a permanent section of the page.
+ * The dialog that shows where one tag is used, opened from the record count in the Used on column of the Tags page
+ * (`TagAdminPanel`), so the secondary answer is not a permanent section of the page. Shared by the organisation and
+ * project Tags pages.
  *
- * Responsibilities:
- * - List, per kind of record, how many records carry the tag and when it was last used, from the usage
- *   tables the panel already loaded (no request of its own).
- * - Offer "Reclassify" for one kind of record when the vocabulary is editable; the panel closes this
- *   dialog and opens its reclassify dialog.
- *
- * Shared by the organisation and project Tags pages through `TagAdminPanel`.
+ * Responsibilities: list, per kind of record, how many records carry the tag and when it was last used, from the usage
+ * tables the panel already loaded (no request of its own); offer "Reclassify" for one kind when the vocabulary is
+ * editable, whereupon the panel closes this dialog and opens its reclassify dialog.
  */
 import type { Tag, TagUsage, TagUsageRow } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";

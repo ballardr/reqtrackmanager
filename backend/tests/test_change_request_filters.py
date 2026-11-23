@@ -76,8 +76,7 @@ def test_explicit_cr_status_wins_over_active_only(client, admin_token, org_id):
 
 def test_search_matches_proposed_name_reason_and_target_requirement(client, admin_token, org_id):
     """`search` matches what the list shows and what a user would type: the
-    proposed name, the reason, and the target requirement's name/code
-    (2026-10-04)."""
+    proposed name, the reason, and the target requirement's name/code."""
     project = create_project(client, admin_token, org_id)
     base = f"/api/v1/projects/{project['id']}/change-requests"
     headers = auth_headers(admin_token)
@@ -112,7 +111,7 @@ def test_search_matches_proposed_name_reason_and_target_requirement(client, admi
 
 def test_default_order_is_newest_first_and_pages_are_stable(client, admin_token, org_id):
     """Without `sort`, rows come newest first, so `limit`/`offset` pages
-    neither repeat nor skip rows (they were previously in arbitrary order)."""
+    neither repeat nor skip rows."""
     project = create_project(client, admin_token, org_id)
     base = f"/api/v1/projects/{project['id']}/change-requests"
     created = [

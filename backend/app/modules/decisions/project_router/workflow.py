@@ -1,36 +1,12 @@
 """
 Module: modules.decisions.project_router.workflow
 
-Lifecycle transitions: propose/submit-for-
-review/approve/reject. `approve`/`reject` carry the AI-approval MCP gate
-(`require_ai_approvals_enabled`) added 2026-09-22 — see
-`approve_decision_endpoint`'s own docstring below. Also home for
-`_apply_value_error_as_conflict` (imported by `relationships.py`, the
-only other bucket that calls into a lifecycle/relationship `service.py` function).
-See the package's own `__init__.py` docstring for the full router-split
-account.
-
-`approve`/`reject` were the first live consumer of `require_permission` as a
-FastAPI dependency, replacing the previous flat `require_module_role("decisions",
-"decision_approver")` gate, checking the unscoped `(decision,
-approve_baseline)` permission atom.
-
-This is narrowed further to a **sub-type-scoped** check: `(decision,
-approve_baseline, subtype=<this decision's own Decision Type name>)`,
-via `_require_approve_permission_for_decision` below. Because the
-sub-type is per-instance data (the loaded `Decision` row's own
-`decision_type_id`), not a path parameter, this can no longer go through
-`require_permission`'s FastAPI-dependency form — see that factory's own
-docstring for why — so it is called directly from inside the route body,
-after `_get_decision_in_project_for_update` loads the row, instead of as
-a leading `Depends`. A caller holding the flat, unscoped
-`decision_approver`/`(decision, approve_baseline)` grant is unaffected:
-`permission_satisfied`'s wildcard rule lets that unscoped grant satisfy
-any specific sub-type, so today's flat-approval behaviour is unchanged
-for every existing holder with zero configuration (additive-only).
-`_require_view` still runs first (module-enabled/project-membership,
-404) via its own leading `Depends`, exactly as every sibling endpoint in
-this package already does.
+Lifecycle transitions: propose/submit-for-review/approve/reject. `approve`/
+`reject` carry the AI-approval MCP gate (`require_ai_approvals_enabled`) and a
+sub-type-scoped permission check `(decision, approve_baseline,
+subtype=<Decision Type name>)`, called from the route body once the row is
+loaded; an unscoped holder satisfies any sub-type. Also home for
+`_apply_value_error_as_conflict`, used by `relationships.py`.
 """
 
 from __future__ import annotations
@@ -97,20 +73,10 @@ def _require_owner_of_decision_or_role(db: Session, current_user: User, project:
 
 
 def _get_decision_in_project_for_update(db: Session, project_id: UUID, decision_id: UUID) -> Decision:
-    """Row-locked variant of `_get_decision_in_project`, for `approve`/
-    `reject` only (2026-09-23 hardening pass) — mirrors `change_requests.
-    workflow.decide_change_request`'s own `with_for_update()` fix for the
-    identical race: two concurrent decide-type calls on the same row (e.g.
-    one approve, one reject) would otherwise both read the pre-transition
-    status before either commits, both pass `_ALLOWED_TRANSITIONS`
-    validation in `service.py`, and both apply their side effects —
-    whichever commits last silently overwrites the other's decision, and
-    `_supersede_predecessors`' side effect on `approve` could fire off a
-    status a losing concurrent write already invalidated. The lock
-    serializes the two calls so the second one's status check runs against
-    the first one's already-committed result. Not used by `propose`/
-    `submit-for-review`/read endpoints — those don't race a same-row
-    decide-type transition the way approve/reject do."""
+    """Row-locked variant of `_get_decision_in_project`, for `approve`/`reject`
+    only: two concurrent decide-type calls would otherwise both read the
+    pre-transition status, pass the transition check and apply their side
+    effects. The lock makes the second call check against the committed result."""
     decision = db.scalar(select(Decision).where(Decision.id == decision_id).with_for_update())
     if decision is None or decision.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Decision not found.")
@@ -163,25 +129,12 @@ def approve_decision_endpoint(
     db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Formally approves a Decision (`UNDER_REVIEW` -> `APPROVED`) — gated
-    by the `(decision, approve_baseline, subtype=<this decision's own
-    Decision Type>)` permission atom (Fine-Grained Access Control
-    — see this module's own docstring). `_require_view` (module-enabled/
-    project-membership, 404) is declared first so it is resolved before
-    `_require_approve_permission_for_decision`'s 403, matching every
-    sibling endpoint in this package.
-
-    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22, see
-    docs/decisions.md's "Decision Management MCP approval gate" entry,
-    following up on the compliance module's identical "Compliance MCP
-    write tools + generalized AI approval gate" entry): this is now MCP-
-    reachable exactly like core's `requirements.approve_requirement`/
-    `complete_requirement`, `change_requests.decide_change_request`, and
-    `modules.compliance.project_router.approve_requirement` — when reached
-    through the MCP server (`channel == "mcp"`), additionally requires
-    this project and its organisation to both have explicitly enabled AI
-    approval (`require_ai_approvals_enabled`); a plain UI/API call is
-    unaffected by that flag either way."""
+    """Formally approves a Decision (`UNDER_REVIEW` -> `APPROVED`), gated by the
+    `(decision, approve_baseline, subtype=<Decision Type>)` permission.
+    `_require_view` (404) is declared first so it resolves before the 403.
+    MCP-reachable; through the MCP server (`channel == "mcp"`) it also
+    requires the project and its organisation to enable AI approval
+    (`require_ai_approvals_enabled`). A plain UI/API call is unaffected."""
     project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
@@ -203,17 +156,9 @@ def reject_decision_endpoint(
     channel: str = Depends(get_request_channel),
 ):
     """Formally rejects a Decision (`PROPOSED`/`UNDER_REVIEW` -> `REJECTED`).
-    Rejection requires a comment — mirrors `record_review_outcome`'s
-    mandatory-comment-on-`FAILED` rule (`routers.requirements.py`) and
-    `reject_requirement`'s mandatory `decision_note`
-    (`modules.compliance.project_router`): a rejection must never appear
-    with no indication of why. Gated by the same sub-type-scoped
-    permission check as `approve` —
-    see `approve_decision_endpoint`'s docstring above.
-
-    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22) — see
-    `approve_decision_endpoint`'s docstring above; gated the same way when
-    reached through the MCP server."""
+    A comment is mandatory, so a rejection always records why. Gated like
+    `approve` (sub-type-scoped permission, and `require_ai_approvals_enabled`
+    when reached through the MCP server)."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to reject a Decision.")
     project = project_or_404(db, project_id)

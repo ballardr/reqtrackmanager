@@ -13,10 +13,9 @@ export default meta;
 
 type Story = StoryObj<typeof ReportExportButton>;
 
-/** The "report export trigger" pattern (`docs/ux-style-guide.md`): a single
- * "Export" button, no report options visibly competing for attention until
- * clicked — see `docs/ux-style-guide.md`'s Principle 11 for why two
- * permanently-visible adjacent buttons is the anti-pattern this replaces. */
+/** The "report export trigger" pattern (`docs/ux-style-guide.md`): a single "Export" button, with no report options
+ * competing for attention until clicked (Principle 11: two permanently visible adjacent buttons is the
+ * anti-pattern). */
 export const ClosedByDefault: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

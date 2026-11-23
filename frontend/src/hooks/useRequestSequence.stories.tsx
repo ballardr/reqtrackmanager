@@ -5,9 +5,8 @@ import { expect, userEvent, waitFor, within } from "storybook/test";
 import { useRequestSequence } from "./useRequestSequence";
 
 /**
- * Harness for the race `useRequestSequence` guards: two loads start, and the
- * *first* (older) one finishes last. Only the newest load's result may be
- * shown.
+ * Harness for the race `useRequestSequence` guards: two loads start and the first (older) one finishes last;
+ * only the newest load's result may be shown.
  */
 function Harness() {
   const beginLoad = useRequestSequence();

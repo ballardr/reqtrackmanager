@@ -6,9 +6,8 @@ import { GraphCanvas, type GraphCanvasEdge, type GraphCanvasNode, type GraphCanv
 import { selfLoop, selfLoopPath } from "./graphSelfLoop";
 
 /**
- * The shapes the shared canvas draws beyond a plain box and a straight line: a loop on one node, multi-line line labels,
- * marker nodes (a consumer's drawing, no box) and containers holding the nodes whose `parentId` names them. The stories use
- * a generic order-processing graph, so nothing here depends on a consumer.
+ * The shapes the shared canvas draws beyond a plain box and a straight line: a loop, multi-line line labels, marker
+ * nodes and containers holding the nodes whose `parentId` names them, on a generic order-processing graph.
  */
 const meta: Meta<typeof GraphCanvas> = {
   title: "Components/GraphCanvas/Shapes",

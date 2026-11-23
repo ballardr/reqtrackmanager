@@ -14,7 +14,7 @@ export function formAxes(scheme: ScoringScheme | null): ScoringAxis[] {
   return scheme?.axes ?? [];
 }
 
-/** True for an axis whose level is worked out from demand unless chosen manually. */
+/** True for an axis whose level is calculated from demand unless chosen manually. */
 export function isDerivedAxis(axis: ScoringAxis): boolean {
   return Boolean(axis.derived_source);
 }
@@ -29,7 +29,7 @@ export function initialLevelDraft(levels: Record<string, string> | undefined): L
  *
  * @param draft The edited draft.
  * @param previous The levels the request had before the edit (omit on a create).
- * @returns Each chosen level; on an update also a null for every axis that had a level and no longer does.
+ * @returns Each chosen level; on an update also a null for every axis that had a level and has none in the draft.
  */
 export function levelsPayload(draft: LevelDraft, previous?: Record<string, string>): Record<string, string | null> {
   const out: Record<string, string | null> = {};

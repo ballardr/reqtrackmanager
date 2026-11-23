@@ -1,52 +1,37 @@
 """
 Module: modules.context_strategy.export
 
-This module's contribution to the core org/project bundle export/import
-(`app.services.org_export`/`project_export`), registered through
-`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION` rather
-than those core files importing this module.
+This module's contribution to the core organisation and project bundles (`app.services.org_export`, `project_export`),
+registered through `ModuleOrgBundleHooks` and `ModuleProjectBundleHooks` on `MODULE_DEFINITION`.
 
-- Org level: the Pain Point type vocabulary (with definitions) and the
-  organisation-scoped Strategies, Future States and Guiding Principles.
-- Project level: the project's Pain Point type overrides, local types and hidden
-  organisation defaults; its Strategies, Future States and Guiding Principles;
-  Pain Points with their scores; Open Questions; and the links between those
-  records and to Requirements.
+- Organisation level: the Pain Point type vocabulary (with definitions) and the organisation-scoped Strategies, Future
+  States and Guiding Principles.
+- Project level: the project's Pain Point type overrides, local types and hidden organisation defaults; its Strategies,
+  Future States and Guiding Principles; Pain Points with scores; Open Questions; and the links between those records and
+  to Requirements.
+- The Pain Point submission policy travels as its own setting (the project's own, or the organisation default), only when
+  set; an organisation merge keeps a default the organisation already has.
 
-- The Pain Point submission policy travels as its own setting (project: the project's own; organisation: the
-  default) and is carried only when set. An organisation merge keeps a default the organisation already has.
+Design decisions (**Decided by: Agent**):
+- A record travels as its current content and status (Strategy, Future State and Guiding Principle as their current
+  version). Version history, comments and comment attachments are not carried: a bundle is a migration artefact, and the
+  imported record starts at version 1 attributed to the importer where the author cannot be matched.
+- Status is imported as exported, as the Requirement and Risk sections do: the bundle is a restore and an import is
+  privileged. A bundle carries no approver identity, so no approval is attributed to anyone who did not give it.
+- Codes are information only: an import numbers records afresh, in their original order; within the bundle a record is
+  addressed by its exported code (`ref`).
+- Cross-references use portable keys: type names, scoring level axis and name, persona labels, user emails; an owner is
+  `{type, email | name}`.
+- Pain Point scores are imported in `import_late`, after the Stakeholders module has recreated Personas. A score against
+  a persona the target cannot list is skipped with a warning. Scoring configuration (levels, bands, models) is not
+  bundled; a level the target lacks leaves that axis unscored with a warning rather than silently re-rating.
+- Links travel only between this module's project records and Requirements (`services.bundle_links`); links to
+  organisation-level records, other modules' records or other projects are dropped.
+- Organisation-level files cannot travel (the organisation hook receives no bytes), so organisation-scoped records import
+  without attachments. A merge skips a type, Strategy, Future State or Guiding Principle whose name the organisation
+  already has, so a re-import is idempotent.
 
-Design decisions (all Decided by: Agent):
-- A record travels as its *current* content and status only (Strategy, Future
-  State and Guiding Principle as their current version). Version history,
-  comments and comment attachments are not carried: a bundle is a migration
-  artefact, and the imported record starts at version 1 attributed to the
-  importer where the author cannot be matched. This is how the Risk and
-  Stakeholders bundles already treat their records.
-- Status is imported as exported, exactly as the core Requirement and Risk
-  sections do: the bundle is a restore, and importing a project is itself a
-  privileged action. A bundle never carries the identity of an approver, so no
-  approval is attributed to anyone who did not give it.
-- Codes are information only: an import numbers records afresh (in their original
-  order). Within the bundle a record is addressed by its exported code (`ref`).
-- Cross-references use portable keys: type names, scoring level axis+name,
-  persona labels, user emails; an owner is `{type, email | name}`.
-- Pain Point scores are imported in `import_late`, after the Stakeholders module
-  has recreated the Personas a score can target. A score against a persona the
-  target project cannot list (the module is off, or the persona is missing) is
-  skipped with a warning. Scoring configuration (levels, bands, models) is not
-  part of a bundle; a level the target lacks leaves that axis unscored, with a
-  warning, rather than silently re-rating.
-- Links travel only between this module's own project records and Requirements
-  (`services.bundle_links`). Links to organisation-level records, other modules'
-  records or other projects are dropped: those records are not in the bundle.
-- Organisation-level files cannot travel (the org hook receives no bytes), so
-  org-scoped records import without their attachments. Merging into an
-  organisation skips a type, Strategy, Future State or Guiding Principle whose
-  name the organisation already has, so a re-import is idempotent.
-
-Dependencies: `app.services.bundle_common`, `app.services.bundle_links`,
-`app.services.principals`, `app.services.tags`, this module's models and service.
+Dependencies: `app.services.bundle_common`, `bundle_links`, `principals`, `tags`, this module's models and service.
 """
 
 from __future__ import annotations

@@ -2,15 +2,12 @@
  * Module: components/ServiceUserDetailModal
  *
  * One service user in a dialog: its details and review flags, its tokens (name, prefix, projects, expiry, last use,
- * who issued it, state), and the actions an organisation administrator has on it: edit, issue a token, revoke a
- * token, deactivate or reactivate, archive.
+ * issuer, state) and the actions an organisation administrator has: edit, issue or revoke a token, deactivate or
+ * reactivate, archive.
  *
- * Design decisions:
- * - A secret returned by Issue token is held here only until the person dismisses it (`OneTimeSecret`); closing the
- *   dialog discards it, and the list never receives it.
- * - Deactivate and revoke are recoverable (a new token can be issued), so they use the plain confirmation; archive
- *   hides the account for good and asks for its name to be typed.
- * - Every change is reported through `useMutation` (a success or failure Toast) and then reloaded from the server.
+ * Design decisions: a secret returned by Issue token is held only until dismissed (`OneTimeSecret`); closing discards it
+ * and the list never receives it. Deactivate and revoke are recoverable, so they use the plain confirmation; archive
+ * hides the account for good and asks for its name. Every change reports through `useMutation` (Toast) and reloads.
  *
  * Dependencies: `/api/v1/orgs/{id}/service-users/...` and the ordinary user deactivate and archive endpoints.
  */

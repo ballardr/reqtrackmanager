@@ -1,32 +1,27 @@
 /**
  * Module: components/VisualMarkdownEditor
  *
- * The Visual view of a Markdown field: an editable document (TipTap) over the same Markdown source the Write view
- * edits, with the shared formatting toolbar, tables, code and Mermaid diagrams drawn beside their source.
+ * The Visual view of a Markdown field: an editable document (TipTap) over the same Markdown source the Write view edits,
+ * with the shared formatting toolbar, tables, code and Mermaid diagrams drawn beside their source.
  *
  * Responsibilities:
- * - Read the field's Markdown into the editor and report Markdown through `onChange` after an edit; opening a text
- *   never writes it back.
- * - Refuse a text the editor cannot hold without changing it (`findVisualBlocker`) by reporting the reason through
- *   `onBlocked` and drawing nothing, so the field falls back to Write.
- * - Offer to convert pasted text that looks like Markdown (a notice under the toolbar: Convert to formatting, or
- *   Keep as typed), replacing only the pasted range.
- * - Show the toolbar only while the field is in use (`ActiveFieldFrame`; the Markdown editor's frame when nested).
- * - Draw in the shared field box (`.md-box`), the same size as the Write and Preview views.
- * - Draw a `mermaid` code block as an editable source with a live diagram beneath it.
- * - In a field that holds mathematics (`math`), draw each equation as an equation; pressing one opens the same panel
- *   the toolbar's equation buttons use, with a live preview, to change its TeX.
- * - Draw a picture of the record's own attachment as the picture; pressing one opens the picture panel to change its
- *   alternative text and caption. Inside a record page that supplies pictures (`MarkdownImageSourceProvider`) a picture
- *   file pasted or dropped on the field is attached to the record and inserted.
+ * - Read the field's Markdown into the editor and report Markdown through `onChange` after an edit; opening a text never
+ *   writes it back.
+ * - Refuse a text the editor cannot hold without changing it (`findVisualBlocker`): report the reason through `onBlocked`
+ *   and draw nothing, so the field falls back to Write.
+ * - Offer to convert pasted text that looks like Markdown (a notice under the toolbar: Convert to formatting, or Keep as
+ *   typed), replacing only the pasted range.
+ * - Show the toolbar only while the field is in use (`ActiveFieldFrame`), in the shared field box (`.md-box`).
+ * - Draw a `mermaid` code block as an editable source with a live diagram beneath it; in a field that holds mathematics
+ *   (`math`) draw each equation as an equation, opening the toolbar's equation panel (live preview) to change its TeX.
+ * - Draw a picture of the record's own attachment as the picture; pressing it opens the picture panel (alternative text,
+ *   caption). Inside a record page that supplies pictures (`MarkdownImageSourceProvider`) a picture file pasted or dropped
+ *   on the field is attached to the record and inserted.
  *
- * Design decisions:
- * - Edits are reported after a short pause and on blur and close, because writing Markdown for a long document is
- *   not free; the value the parent holds is always what the editor last wrote.
- * - A value that changes from outside while the editor is open (not one this editor reported) replaces the
- *   content, so a form reset or a restored draft shows.
- * - Pasted HTML (from a web page or a word processor) is reduced by the editor's schema as before; only plain text
- *   that looks like Markdown gets the conversion notice, since that is the text that arrives as literal symbols.
+ * Design decisions: edits are reported after a short pause and on blur and close, because writing Markdown for a long
+ * document is not free; the parent's value is always what the editor last wrote. A value changed from outside while the
+ * editor is open (not one this editor reported) replaces the content, so a form reset or restored draft shows. Pasted
+ * HTML is reduced by the editor's schema; only plain text that looks like Markdown gets the conversion notice.
  *
  * Dependencies: TipTap, `utils/visualMarkdown`, `utils/visualMathNode`, `utils/visualImageNode`, `RichTextToolbar`,
  * `MermaidDiagram`, `MathEditPopover`, `PicturePicker`, `MarkdownPicture`, `MathEquation` (loaded on first use).

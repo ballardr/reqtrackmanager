@@ -1,12 +1,11 @@
 /**
  * Module: components/StageWorkflowEditor
  *
- * The create/edit dialog for a stage workflow: its name and its ordered phases, each with a free-text
- * name and a kind that carries the behaviour (open, review, locked, on hold, closed). The phases are one
- * grid with a heading per column and one line per phase (order, name, kind, a row actions menu), the kind
- * select sized to its options, in the aligned-rows pattern of docs/ux-style-guide.md; Save is in the dialog
- * header. Used by `StageWorkflowsPanel` for both the organisation and the project tier, so the two cannot
- * drift. The caller saves; an existing phase keeps its `id` so a stage following it is not detached.
+ * The create/edit dialog for a stage workflow: its name and its ordered phases, each with a free-text name and a kind
+ * that carries the behaviour (open, review, locked, on hold, closed). The phases are one grid, one line per phase
+ * (order, name, kind, a row actions menu), in the aligned-rows pattern of docs/ux-style-guide.md; Save is in the dialog
+ * header. `StageWorkflowsPanel` uses it for both tiers. The caller saves; an existing phase keeps its `id` so a stage
+ * following it is not detached.
  */
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";

@@ -54,10 +54,8 @@ export default meta;
 
 type Story = StoryObj<typeof PermissionPicker>;
 
-/** Options are grouped by artefact type (each its own collapsible section),
- * with the short administrative list (grant_roles, manage_members, ...)
- * grouped last under its own "Administrative" heading — mirrors
- * `get_all_permissions`'s own server-side ordering. */
+/** Options are grouped by artefact type (each its own collapsible section), with the short administrative list
+ * (grant_roles, manage_members, ...) last under an "Administrative" heading, as `get_all_permissions` orders it. */
 export const GroupedByArtefactType: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -80,10 +78,8 @@ export const AllRecordTypesGroupLeads: Story = {
   },
 };
 
-/** A sub-type-scoped atom (e.g. "decision — approve_baseline (Architecture)")
- * renders as its own independent checkbox alongside the wildcard
- * ("decision — approve_baseline") — both are real, separately-toggleable
- * options, not a nested/dependent pair. */
+/** A sub-type-scoped atom (e.g. "decision — approve_baseline (Architecture)") renders as its own checkbox beside
+ * the wildcard ("decision — approve_baseline"); the two are independent options, not a nested pair. */
 export const SubtypeScopedAtomIsItsOwnOption: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

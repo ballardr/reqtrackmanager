@@ -1,7 +1,4 @@
-/** Human-readable file size (e.g. "12.4 KB"). Extracted from `pages/ProjectFilesPage.tsx`'s own previously-local
- * helper, which named a second call site as the trigger for promoting it —
- * `pages/OrgOverviewPage.tsx`'s stats header (`total_file_size_bytes`) is
- * that second call site. */
+/** Human-readable file size (e.g. "12.4 KB"). */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB"];

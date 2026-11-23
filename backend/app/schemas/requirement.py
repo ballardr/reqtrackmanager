@@ -46,13 +46,8 @@ class RequirementCreate(BaseModel):
     component_id: UUID
     category_id: UUID
     owner: PrincipalRef | None = None
-    # A requirement must always end up with a real target (it can never be
-    # left unset in the data) — but omitting it here isn't an error: the
-    # router defaults to the project's earliest stage, the same backfill
-    # convention migration 0004 and CSV import use, so a script/API caller
-    # isn't forced to look up a stage id just to create a requirement. The
-    # frontend create form still makes the field a mandatory, pre-filled
-    # dropdown for the human-facing "can't be left unset" UX.
+    # A requirement always has a target stage; when omitted the router defaults to the project's earliest
+    # stage (as CSV import does), so an API caller need not look one up.
     target_stage_id: UUID | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
     keywords: list[str] = []
@@ -76,10 +71,7 @@ class RequirementUpdate(BaseModel):
     category_id: UUID
     owner: PrincipalRef
     status: RequirementStatus | None = None
-    # Omitting this means "not changing it" (carries the current value
-    # forward via apply_new_version's own explicitly-set convention) —
-    # never means "clear it": a requirement's target can never become
-    # unset, only omitted-from-this-particular-edit or retargeted.
+    # Omitted means unchanged (the current value carries forward); a target can be retargeted but never cleared.
     target_stage_id: UUID | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
     # Omitted leaves the requirement's tags as they are (a stale copy sent back would remove tags added since);
@@ -232,10 +224,7 @@ class RequirementReviewOut(BaseModel):
 class RequirementDueForReviewOut(BaseModel):
     requirement_id: UUID
     project_id: UUID
-    # Only populated by the cross-project `/me/reviews/due` listing — the
-    # project-scoped `/projects/{id}/requirements/reviews/due` equivalent
-    # already has the project in context (it's in the URL), so showing its
-    # own name back to the caller would be redundant there.
+    # Populated only by the cross-project `/me/reviews/due` listing; the project-scoped listing has the project in its URL.
     project_name: str | None = None
     # Qualifies `unique_code` in that cross-project listing (`services.codes`).
     project_code: str | None = None

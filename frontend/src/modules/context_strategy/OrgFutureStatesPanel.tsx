@@ -3,12 +3,9 @@ const NONE: FutureState[] = [];
 /**
  * Module: modules/context_strategy/OrgFutureStatesPanel
  *
- * The org-scoped equivalent of `ProjectFutureStatesPage.tsx` — an organisation's own org-scoped Future State records
- * (the org/project scope discriminator), rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s
- * `orgResourceSections`).
- *
- * Placement follows `OrgStrategiesPanel.tsx` (Decided by: Agent): org-level content its owners work with and projects
- * reuse, so it sits in Org Resources.
+ * The organisation-scoped equivalent of `ProjectFutureStatesPage.tsx`: an organisation's own Future State records,
+ * rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s `orgResourceSections`). Placement follows
+ * `OrgStrategiesPanel.tsx`.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

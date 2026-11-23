@@ -1,13 +1,10 @@
 /**
  * Module: modules/context_strategy/OpenQuestionRegisterReportView
  *
- * The on-screen view of report R4 (Open Question register), registered as
- * `TierAModuleDefinition.reportViews.r4`. The generic
- * tables list overdue and unowned questions separately from the register, so
- * a reader has to cross-reference; this view shows one ageing table with
- * overdue and unowned rows highlighted in place, then the by-priority and
- * by-owner counts as the generic section tables. Statuses and priorities go
- * through the module's label maps.
+ * The on-screen view of report R4 (Open Question register), registered as `TierAModuleDefinition.reportViews.r4`.
+ * It shows one ageing table with overdue and unowned rows highlighted in place, instead of the generic separate
+ * overdue and unowned tables, then the by-priority and by-owner counts as generic section tables. Statuses and
+ * priorities go through the module's label maps.
  */
 import { Link } from "react-router-dom";
 

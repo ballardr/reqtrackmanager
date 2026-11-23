@@ -1,19 +1,10 @@
-"""Tests for the Compliance Module's Project Compliance Assignment &
-Assessment API (§7-§11, §16, §20, §26): assigning a published standard
-version to a project (org router), the full per-project assessment surface
-(project router) — applicability (including §9's hierarchical inheritance/
-override), compliance status, mandatory-justification enforcement (§9/§16),
-required action assessments, assessment history, the §20 overall-status
-calculation, the two MCP-tool-backing endpoints
-(`compliance_get_project_status`/`compliance_list_non_compliant_
-requirements`), the compliance_officer/PROJECT_MANAGER RBAC composition,
-and cross-scope isolation.
-
-Reuses `test_compliance_standards_api.py`'s own small API helpers for the
-standards-catalog side of each test's setup (create/publish a
-standard version with a requirement tree), the same way `test_oidc_
-provisioning.py`/`test_scim.py` already import helpers from `test_access_
-review.py` — this file's own job starts once a published version exists.
+"""Tests for the Compliance Module's project assignment and assessment API (§7-§11, §16, §20, §26): assigning a
+published standard version to a project (organisation router), the per-project assessment surface (project router):
+applicability (including §9's inheritance and override), compliance status, mandatory-justification enforcement
+(§9, §16), required action assessments, assessment history, the §20 overall status, the two endpoints behind the
+`compliance_get_project_status` and `compliance_list_non_compliant_requirements` MCP tools, the `compliance_officer` and
+`PROJECT_MANAGER` RBAC composition, and cross-scope isolation. Catalogue setup imports helpers from
+`test_compliance_standards_api.py`.
 """
 
 from __future__ import annotations
@@ -360,10 +351,8 @@ def test_project_manager_can_self_assign_without_officer_grant(client, admin_tok
     assert resp.status_code == 201, resp.text
     assert resp.json()["standard_version_id"] == version["id"]
 
-    # The org-scoped, Compliance-Manager-only endpoint remains available
-    # unchanged alongside it (the secondary, administrative path) — a plain
-    # PM with no org-level compliance_manager grant still can't use *that*
-    # one, confirming the split is real, not just an alias.
+    # The organisation-scoped, Compliance-Manager-only endpoint stays available as the administrative path; a Project
+    # Manager without an organisation-level `compliance_manager` grant cannot use it.
     forbidden = client.post(
         f"{_base(org_id)}/projects/{project['id']}/project-compliance",
         json={"standard_id": standard["id"], "standard_version_id": version["id"]},
@@ -457,11 +446,8 @@ and overall_compliance_state — computed from four
     ).json()
     pcr_by_requirement_id = {p["requirement_id"]: p for p in pcrs}
 
-    # Freshly assigned, zero assessments performed yet — every
-    # applicable row is still Not Started. `not_yet_assessed` must be True
-    # and `has_non_compliant` must be False, so a caller rendering a binary
-    # "non-compliant?" affordance from `has_non_compliant` alone can check
-    # this field first rather than reading an unassessed standard as clean.
+    # Freshly assigned, every applicable row is Not Started: `not_yet_assessed` is True and `has_non_compliant` False, so
+    # a caller checks this field before reading an unassessed standard as clean.
     fresh_status = client.get(f"{_project_base(project['id'])}/status", headers=auth_headers(admin_token)).json()[0]
     assert fresh_status["has_non_compliant"] is False
     assert fresh_status["not_yet_assessed"] is True
@@ -505,12 +491,9 @@ and overall_compliance_state — computed from four
     # `not_yet_assessed` must not still read True once assessment has begun.
     assert summary["not_yet_assessed"] is False
     assert summary["overall_compliance_state"] == "in_progress"
-    # Performing an assessment always advances that row's own
-    # approval_state to "assessed" (service.py::advance_approval_state_on_
-    # assessment) — all three applicable rows here have been assessed
-    # (the fourth is Not Applicable, excluded from this aggregation), so
-    # the overall approval state is "assessed," not the
-    # "not_assessed" default.
+    # An assessment advances the row's `approval_state` to "assessed" (`service.advance_approval_state_on_assessment`);
+    # all three applicable rows are assessed (the fourth is Not Applicable and excluded), so the overall approval state
+    # is "assessed", not the "not_assessed" default.
     assert summary["overall_approval_state"] == "assessed"
 
     # Now push one applicable requirement to Non-Compliant: has_non_compliant

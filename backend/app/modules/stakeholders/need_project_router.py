@@ -1,16 +1,12 @@
 """
 Module: modules.stakeholders.need_project_router
 
-Project-scoped Stakeholder Need API, mounted at
-`/api/v1/projects/{project_id}/modules/stakeholders` beside the Persona and
-Stakeholder project routers: need CRUD/lifecycle/comments/files, the "has need"
-links to Stakeholders and Personas, the "gives rise to" links to Requirements,
-and the read-only needs list of a Stakeholder or Persona.
+Project-scoped Stakeholder Need API, mounted at `/api/v1/projects/{project_id}/modules/stakeholders`:
+need CRUD/lifecycle/comments/files, the "has need" links to Stakeholders and Personas, the "gives rise
+to" links to Requirements, and the read-only needs list of a Stakeholder or Persona.
 
-A Need is always project-scoped (no org router exists). RBAC: sub-component
-enablement to view; `_need_shared.require_need_manage` to change anything
-(including links). A need's files resolve through
-`service.resolve_need_file_project_id`.
+A Need is always project-scoped. RBAC: sub-component enablement to view; `_need_shared.require_need_manage`
+to change anything. Files resolve through `service.resolve_need_file_project_id`.
 """
 
 from __future__ import annotations

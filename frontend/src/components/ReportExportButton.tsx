@@ -1,30 +1,14 @@
 /**
  * Module: components/ReportExportButton
  *
- * The "report export trigger" pattern (`docs/ux-style-guide.md`) — a single
- * "Export" button that opens a `Popover` offering "Download PDF report"/
- * "Download Word report"/"Download CSV report," for a host page or panel whose report generation
- * needs no pre-generation configuration screen of its own (contrast the
- * dedicated `pages/ReportsPage.tsx`, which does). First built inline in
- * `OrgComplianceWidgets.tsx` (replacing two permanently-
- * visible adjacent buttons per style guide Principle 11) and duplicated
- * with `CsvImportWizard.tsx`'s own Export/Download-template Popover as
- * precedent; extracted here once a third and fourth caller
- * (`OrgComplianceStandardsPanel.tsx`, `OrgComplianceOutstandingPanel.tsx`,
- * `OutstandingPanel.tsx`) needed the identical PDF/CSV report shape, per
- * this codebase's own "extract a shared component once a pattern repeats,
- * and migrate the existing call sites onto it too" rule — `ProjectCompliancePage.tsx`'s
- * own pre-25b two-button layout (never fixed when the org dashboard's
- * identical layout was) is migrated onto this component in the same change,
- * rather than leaving a second, now-visibly-inconsistent copy of the old
- * anti-pattern behind.
+ * The "report export trigger" pattern (`docs/ux-style-guide.md`): a single "Export" button that opens a `Popover`
+ * offering "Download PDF report" / "Download Word report" / "Download CSV report", for a host page or panel whose
+ * report generation needs no configuration screen of its own (contrast `pages/ReportsPage.tsx`). Shared by the
+ * compliance dashboards and panels so none shows two permanently visible adjacent buttons (Principle 11).
  *
- * The host owns error handling: `onDownload` is expected to catch and
- * surface its own failure toast (each caller's message names what failed
- * to generate — "the organisation compliance report," "this project's
- * compliance report," etc.) — this component only tracks which kind (if
- * any) is mid-download, to disable the trigger while the file is produced, matching `CsvImportWizard.tsx`'s identical
- * `exporting` convention. The offered formats are the shared `ActionMenuList` (text rows).
+ * The host owns error handling: `onDownload` catches and surfaces its own failure toast, naming what failed to
+ * generate. This component only tracks which kind is mid-download, to disable the trigger while the file is
+ * produced (as `CsvImportWizard.tsx`'s `exporting`). The offered formats are the shared `ActionMenuList` (text rows).
  */
 import { Download } from "lucide-react";
 import { useRef, useState } from "react";

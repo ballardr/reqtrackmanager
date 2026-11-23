@@ -1,22 +1,16 @@
 """
 Module: generate_skill_reference
 
-Generates `mcp-server/skill/reqtrack-mcp/references/core-tools.md`, the
-exhaustive list of the MCP server's own (non-module) tools shipped in the
-agent skill.
+Generates `mcp-server/skill/reqtrack-mcp/references/core-tools.md`, the list of the MCP server's own (non-module)
+tools shipped in the agent skill.
 
 Responsibilities:
-- Import `server` twice in clean subprocesses (write mode off, then on) so
-  write-only tools can be labelled without parsing source.
-- Render name, kind (read / write / approval), first-paragraph description and
-  parameters for every tool.
-- `--check` fails when the committed file is stale; `tests/test_skill.py`
-  runs the same comparison, so adding a tool without regenerating fails CI.
+- Import `server` twice in clean subprocesses (write mode off, then on) to label write-only tools without parsing source.
+- Render name, kind (read / write / approval), first-paragraph description and parameters for every tool.
+- `--check` fails when the committed file is stale; `tests/test_skill.py` runs the same comparison.
 
-Design decisions:
-- Module-contributed tools are excluded here: they only exist in the backend's
-  manifest and are covered by `backend/scripts/generate_mcp_module_tools_reference.py`.
-- Output is deterministic (sorted by name, no timestamps).
+Design decisions: module-contributed tools are excluded (they exist only in the backend's manifest; see
+`backend/scripts/generate_mcp_module_tools_reference.py`). Output is deterministic (sorted by name, no timestamps).
 
 Usage (from `mcp-server/`): `python scripts/generate_skill_reference.py [--check]`
 """

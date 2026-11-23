@@ -4,14 +4,12 @@
  * One collapsible group of settings (a layout's Header, a custom table's Borders), the same bar wherever a form is
  * arranged in groups.
  *
- * Responsibilities: a closed-by-default `CollapsibleSection` (state remembered per person under `sectionKey`) whose
- * bar says what it holds: the given `summary`, else an "N changed" pill, with an accent edge when a setting is not at
- * its default, and a danger "N problems" pill that also holds the group open when the server reported a problem
- * inside it.
+ * Responsibilities: a closed-by-default `CollapsibleSection` (state remembered per person under `sectionKey`) whose bar
+ * shows the given `summary`, else an "N changed" pill with an accent edge when a setting is not at its default, and a
+ * danger "N problems" pill that also holds the group open when the server reported a problem inside it.
  *
- * Design decisions: arrangement only. The caller decides which settings are in the group and how many differ from
- * their defaults; the layout settings (`LayoutSettingGroup`) and a block's form (`ReportLayoutBlockForm`) both draw
- * their groups through this one component.
+ * Design decision: arrangement only. The caller decides which settings are in the group and how many differ from their
+ * defaults (`LayoutSettingGroup` and `ReportLayoutBlockForm` both use this component).
  */
 import type { ReactNode } from "react";
 

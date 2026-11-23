@@ -1,26 +1,20 @@
 """
 Module: services.report_pdf
 
-Renders a neutral `ReportDocument` (`services.report_model`) to PDF with
-ReportLab. It is the only place block types are turned into flowables, so the
-requirement report and every module report share one layout.
+Renders a neutral `ReportDocument` (`services.report_model`) to PDF with ReportLab; the only place block types become
+flowables, so the requirement report and every module report share one layout.
 
 Design decisions:
-- Every string goes through `report_document.safe` before reaching a
-  `Paragraph` (ReportLab parses markup, so unescaped user text is an SSRF /
-  local-file-read primitive; see that function's docstring).
-- Equations: a display `Equation` is the `report_math` SVG drawn as vector (centred); an inline one is a PNG of the
-  same drawing placed in the paragraph with an `<img>` tag on the text baseline, because ReportLab reads an inline
-  image only from a file path, so the PNGs live in a temporary directory that exists for one render. The `<img>`
-  tags are built here from numbers and a path this module made, never from text; one that cannot be drawn is
-  printed as its source.
-- A page style's header and footer are drawn by `report_pdf_running` after the body, in the margin, with the page total known.
-- Page setup follows the document's page style (paper, orientation, margins, gutter): one ReportLab page template per
-  style, switched where a `PageStyleChange` falls. Mirrored margins give each style a right-hand and a left-hand
-  template that alternate, and a style change picks the one that matches the parity of the page it starts on.
+- Every string goes through `report_document.safe` before reaching a `Paragraph` (ReportLab parses markup, so unescaped
+  user text is an SSRF / local-file-read primitive).
+- A display `Equation` is the `report_math` SVG as vector; an inline one is a PNG placed with an `<img>` tag on the text
+  baseline, because ReportLab reads inline images only from a path (temporary directory, one render). The tags are built
+  from numbers and a path made here, never from text; an equation that cannot be drawn prints as its source.
+- Page headers and footers are drawn by `report_pdf_running` after the body, with the page total known.
+- One ReportLab page template per page style, switched at a `PageStyleChange`; mirrored margins give each style
+  alternating right-hand and left-hand templates, and a style change picks the one matching its starting page parity.
 
-Dependencies: ReportLab, `services.report_document`, `services.report_fonts`, `services.report_math`,
-`services.report_model`, `services.report_svg` (a figure given as SVG is drawn as vector).
+Dependencies: ReportLab, `report_document`, `report_fonts`, `report_math`, `report_model`, `report_svg`.
 """
 
 from __future__ import annotations

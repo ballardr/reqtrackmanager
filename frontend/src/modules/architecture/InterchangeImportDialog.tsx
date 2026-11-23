@@ -12,7 +12,7 @@
  *
  * Design decisions:
  * - The preview runs by itself once a file is chosen, so the person never imports a file they have not seen described.
- * - The file is parsed here only to be sent; the server validates it again, so a hand-edited file is judged in one place.
+ * - The file is parsed here only to be sent; the server validates it again, so a file edited outside the product is judged in one place.
  */
 import { useState } from "react";
 

@@ -1,26 +1,15 @@
 """
 Module: services.scheduler
 
-APScheduler wiring for the date-driven background checks introduced in
-Massif (v3): the requirement review-due notification sweep (C-R-08) and the
-project-stage review-deadline auto-approval sweep (C-R-05) and the phase schedule reminder sweep. Runs in-process
-inside the existing single backend container/uvicorn process via
-AsyncIOScheduler, sharing the app's event loop — no separate worker service.
+APScheduler wiring for the date-driven background checks: the requirement review-due notification sweep (C-R-08), the
+project-stage review-deadline auto-approval sweep (C-R-05) and the phase schedule reminder sweep.
 
-The existing digest/disk-monitor loops (services/notifications.py,
-services/disk_monitor.py) are deliberately left on their own
-`while True: sleep(...)` mechanism rather than migrated here; this module is
-additive infrastructure for the new date-driven jobs, not a replacement for
-proven, already-tested code.
-
-The Compliance module extends this file with a **generic**
-module-contributed job mechanism (`app.modules.registry.ModuleScheduledJob`/
-`get_all_module_scheduled_jobs`) rather than importing Compliance's own
-sweep functions here directly — the same "core code shouldn't need much
-modification per module" goal `get_router`/`resolve_file_owner_project_id`
-already serve elsewhere is extended to APScheduler wiring, since Compliance
-is the first module needing scheduled processing of its own (§18, §28) and
-a future module will need the same thing without another hand-edit here.
+Design decisions:
+- Runs in-process in the single backend uvicorn process through `AsyncIOScheduler`, sharing the app's event loop; there is
+  no separate worker service. The digest and disk-monitor loops (`services/notifications.py`, `services/disk_monitor.py`)
+  use their own `while True: sleep(...)` mechanism.
+- Modules contribute jobs generically through `app.modules.registry.ModuleScheduledJob` /
+  `get_all_module_scheduled_jobs`, so this file never imports a module's sweep functions.
 """
 
 from __future__ import annotations

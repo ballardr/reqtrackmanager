@@ -5,27 +5,13 @@ import { chooseListAction } from "../../listActions";
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
- * Job to be done: the project-scoped Project Compliance View
- * (`frontend/src/modules/compliance/ProjectCompliancePage.tsx`), mounted
- * for real through the Tier A `installedModules`/`buildModuleRoutes`
- * mechanism (a "Compliance" nav-rail entry under a project). Covers the core project-assessment flow §7-§10, §12, §13, §21
- * describe: assign a published standard to a project, mark a requirement's
- * applicability, assess it compliant, submit for approval, approve it, and
- * attach supporting evidence — then confirms the applicability tree/status
- * summary reflect all of it.
+ * Job to be done: the project-scoped Project Compliance View (`ProjectCompliancePage.tsx`), mounted through the
+ * Tier A `installedModules`/`buildModuleRoutes` mechanism. Covers §7-§10, §12, §13, §21: assign a published
+ * standard to a project, mark a requirement's applicability, assess it compliant, submit and approve it, and
+ * attach evidence, then confirm the applicability tree and status summary reflect it.
  *
- * `orgAdminAlphaBeta` is reused rather than a dedicated persona: they are
- * Alpha's org admin (composes with `compliance_manager` for the org-level
- * standard authoring/assignment step) and, as the
- * creator of Alpha-1, also its `PROJECT_MANAGER` (composes with
- * `compliance_officer` for every project-level assessment/approval action)
- * — no new seed persona or module-role grant is needed.
- *
- * Every fixture this spec creates (standard, requirement, evidence) is
- * dynamically named with a per-run timestamp suffix, per this repo's
- * standing test-idempotency rule — nothing here mutates or depends on
- * another spec's named fixtures, and re-running this spec (alone, repeated,
- * or out of order) only ever adds new, uniquely-named rows.
+ * `orgAdminAlphaBeta` is reused: Alpha's org admin (`compliance_manager`) and, as Alpha-1's creator, its
+ * `PROJECT_MANAGER` (`compliance_officer`). Fixtures carry a per-run timestamp suffix.
  */
 test.describe("Compliance Module: project compliance view", () => {
   test("assign a standard, assess a requirement, approve it, and attach evidence", async ({ page }) => {
@@ -39,9 +25,8 @@ test.describe("Compliance Module: project compliance view", () => {
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
 
-    // --- An action type is needed for the required action below —
-    // created first via org compliance settings, same flow
-    // `compliance-standards-management.spec.ts` uses.
+    // An action type is needed for the required action below, created first through org compliance settings
+    // as `compliance-standards-management.spec.ts` does.
     // Compliance settings is a row of the page's actions menu, one per organisation.
     await page.goto("/standards");
     await chooseListAction(page, ORG_NAMES.alpha);
@@ -65,10 +50,8 @@ test.describe("Compliance Module: project compliance view", () => {
     await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(requirementName)).toBeVisible();
 
-    // --- give this requirement a required action, so the
-    // project-side assessment panel's assignee field (a searchable
-    // `AssigneePicker`, not a plain unfiltered `<select>`) has something to
-    // exercise below.
+    // Give this requirement a required action, so the project-side assessment panel's assignee field (a
+    // searchable `AssigneePicker`) has something to exercise below.
     await page.getByRole("button", { name: `Expand ${requirementName}` }).click();
     await page.getByRole("button", { name: "Add required action" }).click();
     await page.getByLabel("Required action name").fill(requiredActionName);
@@ -83,11 +66,8 @@ test.describe("Compliance Module: project compliance view", () => {
     // --- Switch to the project's own Compliance nav entry (Tier A routing).
     await page.goto("/projects");
     await openProject(page, PROJECT_NAMES.alpha1);
-    // exact: true — the project overview page's own compliance summary
-    // tiles render as cards whose accessible name contains
-    // "Compliance" too (e.g. a standard's name), which would otherwise
-    // collide with this nav-rail link under substring matching once any
-    // standard has ever been assigned to this project.
+    // exact: true: the project overview's compliance summary tiles are cards whose accessible name contains
+    // "Compliance" (a standard's name), which would collide with this nav-rail link under substring matching.
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
@@ -147,10 +127,9 @@ test.describe("Compliance Module: project compliance view", () => {
     // --- Open the requirement, assess it Compliant, submit and approve.
     await page.getByText(requirementName).click();
 
-    // --- the required action's assignee field is a searchable
-    // `AssigneePicker`, not a plain unfiltered `<select>` — search narrows
-    // to the matching org member, picking them persists it, and
-    // "Unassign" clears it back to "Unassigned".
+    // The required action's assignee field is a searchable `AssigneePicker`, not a plain unfiltered
+    // `<select>`: search narrows to the matching org member, picking persists it, "Unassign" clears it to
+    // "Unassigned".
     const assigneeSearch = page.getByRole("combobox", { name: `Assignee for ${requiredActionName}` });
     await assigneeSearch.fill("Member AlphaBeta");
     await page.getByRole("option", { name: new RegExp(PERSONAS.memberAlphaBeta.name) }).click();
@@ -203,11 +182,8 @@ test.describe("Compliance Module: project compliance view", () => {
     await page.getByRole("button", { name: "Link", exact: true }).filter({ hasText: "Link" }).click();
     await expect(page.getByRole("button", { name: `Unlink ${evidenceTitle}` })).toBeVisible();
 
-    // --- "Upload new evidence" creates a new evidence record and
-    //     auto-links it to this requirement (no separate manual "link
-    // existing" step). The create dialog itself stages a
-    //     file, so attaching one there uploads it in the same step and
-    //     skips the old follow-up "Attach files to..." modal entirely.
+    // "Upload new evidence" creates an evidence record and auto-links it to this requirement (no separate
+    // "link existing" step). The create dialog stages a file, so attaching one uploads it in the same step.
     const inlineEvidenceTitle = `E2E Inline Upload Evidence ${suffix}`;
     await page.getByRole("button", { name: "Upload new evidence" }).click();
     const createEvidenceDialog = page.getByRole("dialog", { name: "Add evidence" });
@@ -249,14 +225,10 @@ test.describe("Compliance Module: project compliance view", () => {
   });
 
   /**
-   * Parity with the org-level
-   * "Outstanding compliance items" filters (`org-compliance-view.spec.ts`),
-   * minus a Project filter (this tab is already scoped to one project).
-   * Same fixture shape: one top-level requirement ("section") with a
-   * child, the child assessed Non-Compliant, confirming the sub-section
-   * filter (derived from `parent_requirement_id`, since there is no
-   * dedicated "section" field) narrows the Outstanding tab's Non-compliant
-   * list correctly.
+   * The project Outstanding tab has the same Standard/Standard version/Sub-section filters as the org-level tab
+   * (`org-compliance-view.spec.ts`) without a Project filter (the tab is scoped to one project). Fixture: one
+   * top-level requirement ("section") with a child assessed Non-Compliant; the sub-section filter (derived from
+   * `parent_requirement_id`, as there is no "section" field) narrows the Non-compliant list.
    */
   test("the project Outstanding tab's Standard/Standard version/Sub-section filters narrow rows", async ({ page }) => {
     const suffix = Date.now();

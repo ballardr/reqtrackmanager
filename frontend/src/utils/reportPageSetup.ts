@@ -1,22 +1,20 @@
 /**
  * Module: utils/reportPageSetup
  *
- * The page setup of a document layout (paper, orientation, margins, mirrored margins and named page styles) as the
- * designer edits it, and the text view's lines that state it.
- *
- * Responsibilities:
- * - Name the vocabulary and limits the server accepts (`PAGE_SIZES`, `MARGIN_SIDES`, the margin range) so a form can
- *   offer them; the server stays the judge of what is valid.
- * - `readPageSetup` / `writePageSetup`: read the setup from a layout's text (its `@layout document …` line and its
- *   `@pagestyle` lines, and its `@tableheadings` line) and rewrite exactly those lines, leaving every block alone.
- * - `RunningBand`: a header or footer (left, centre and right text, a logo, whether the first page shows it) and the
- *   `@header` / `@footer` lines that state it under the layout or a `@pagestyle` line.
- * - `effectiveMargins`, `pageDimensionsCm`: the numbers a page sketch and a form's placeholders need, with the same
- *   defaults the server's renderers use.
- *
- * Design decisions: a heuristic reader of the lines it owns, not a parser (backend `services.report_layout_text` is
- * the parser). A line it cannot read leaves that part at its default, so the worst case is a form showing a default
- * for something the server then rejects with a positioned message.
+ * The page setup of a document layout (paper, orientation, margins, mirrored
+ * margins, named page styles) as the designer edits it, and the text view's lines
+ * that state it.
+ * - The vocabulary and limits the server accepts (`PAGE_SIZES`, `MARGIN_SIDES`,
+ *   margin range); the server stays the judge of validity.
+ * - `readPageSetup` / `writePageSetup`: read the setup from the `@layout document`,
+ *   `@pagestyle` and `@tableheadings` lines and rewrite exactly those lines.
+ * - `RunningBand`: a header or footer (left, centre, right text, logo, first-page
+ *   visibility) and its `@header` / `@footer` lines.
+ * - `effectiveMargins`, `pageDimensionsCm`: numbers for a page sketch and
+ *   placeholders, with the server renderers' defaults.
+ * Design: a heuristic reader of the lines it owns, not a parser (backend
+ * `services.report_layout_text` is). An unreadable line leaves that part at its
+ * default, so the worst case is a form showing a default the server rejects.
  */
 import type { LayoutFamily } from "../api/reportLayouts";
 import { RUN_SCOPE_WORDS, runScopeOfWords, type RunScope } from "./runScope";

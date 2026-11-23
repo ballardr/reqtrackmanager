@@ -1,36 +1,21 @@
 /**
  * Module: modules/decisions/ProjectDecisionsPage
  *
- * The Decision Management module's project-scoped route component,
- * mounted at
- * `/projects/:projectId/modules/decisions` (`module.ts`): a `DirectoryTable`
- * + `FilterPanel` list, a "New decision" `Modal`, and a row click opening
- * `DecisionQuickViewPanel` as a minimal read-only `SidePanel` peek — whose
- * own "View full details" link leads to `DecisionDetailPage.tsx`'s full
- * page for management and full context (see that
- * page's own docstring and `docs/ux-style-guide.md`'s "Pattern: entity
- * detail panel" checklist for why the two-tier shape replaced the original
- * SidePanel-only `DecisionDetailPanel.tsx`). Fetches the owning project's
- * `organization_id` once and passes it down wherever an org-scoped call is
- * needed (Decision Templates, org member list) — same "no `ProjectContext`
- * provider, fetch the project directly" convention `ProjectCompliancePage
- * .tsx` describes.
+ * The Decision Management module's project-scoped route component, mounted at `/projects/:projectId/modules/decisions`
+ * (`module.ts`): a `DirectoryTable` + `FilterPanel` list, a "New decision" `Modal`, and a row click opening
+ * `DecisionQuickViewPanel` (a read-only `SidePanel` peek) whose "View full details" link leads to
+ * `DecisionDetailPage.tsx` (`docs/ux-style-guide.md` "Pattern: entity detail panel"). It fetches the project's
+ * `organization_id` once and passes it down wherever an organisation-scoped call is needed (Decision Templates,
+ * organisation member list), without a `ProjectContext` provider, as `ProjectCompliancePage.tsx` does.
  *
- * Decision Types moved off this page's own tab bar to Project Admin's
- * `projectAdminSections` contribution (grouped with the
- * project's other definition-table settings — Action Types, Custom
- * Fields — rather than the module's day-to-day working page); this page
- * still fetches the project's decision types (`decisionTypes` state) for
- * the list's Type column/filter and the create/detail forms, it just no
- * longer hosts their CRUD UI.
+ * It also fetches the project's decision types (`decisionTypes`) for the Type column and filter and the create and
+ * detail forms; their CRUD is in Project Admin's `projectAdminSections` entry.
  *
- * The list opens on Decisions still to be made (draft, proposed, under review): the
- * "Open only" filter is ticked and stays visible, and a link with a valid
- * `status`, or `open=0`, starts with it off (`hooks/useOpenOnly.ts`).
+ * The list opens on Decisions still to be made (draft, proposed, under review): the "Open only" filter is ticked and
+ * visible, and a link with a valid `status`, or `open=0`, starts with it off (`hooks/useOpenOnly.ts`).
  *
- * Links to and from a Decision (Requirements, Pain Points, other Decisions, ...) are shown and
- * edited in the shared Links panel on `DecisionDetailPage.tsx`, and a Decision's links appear on
- * the other record's own page the same way — nothing here is Decision-specific.
+ * Links to and from a Decision are shown and edited in the shared Links panel on `DecisionDetailPage.tsx`, and appear
+ * on the other record's page the same way; nothing here is Decision-specific.
  */
 import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useState } from "react";

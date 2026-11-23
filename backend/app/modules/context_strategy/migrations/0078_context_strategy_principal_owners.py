@@ -4,14 +4,10 @@ Revision ID: 0078
 Revises: 0077
 Create Date: 2026-10-12
 
-`pain_points.owner_id`, `guiding_principle_versions.owner_id` and
-`open_questions.owner_id` may now name a user, an organisation group or a
-project group. Each gets an
-`owner_type` column (existing rows backfill to `user`), the foreign key to
-`users` is dropped (the id now points at one of three tables; the service
-validates it), and a check constraint keeps the pair consistent. Every
-Guiding Principle version row is backfilled, not only the current one, so
-history keeps who owned each version.
+`pain_points.owner_id`, `guiding_principle_versions.owner_id` and `open_questions.owner_id` may name a user, an
+organisation group or a project group. Each has an `owner_type` column (existing rows backfill to `user`), the foreign key
+to `users` is dropped (the id points at one of three tables and the service validates it), and a check constraint keeps
+the pair consistent. Every Guiding Principle version row is backfilled, so history keeps who owned each version.
 """
 
 from collections.abc import Sequence

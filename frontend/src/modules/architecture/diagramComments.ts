@@ -2,18 +2,13 @@
  * Module: modules/architecture/diagramComments
  *
  * How a diagram's comment pins map between the record keys the server stores and the ids the canvas draws.
- *
- * Responsibilities:
  * - `pinAnchorOf`: the canvas node or line a stored pin is anchored to (a box by its element id, a line by one of the
- *   connections it stands for), or `undefined` when it is not drawn (a switched-off box, a rolled-up line that no longer
- *   exists), so the canvas keeps the pin at its last place.
+ *   connections it stands for), or `undefined` when it is not drawn (a switched-off box, a rolled-up line), so the canvas
+ *   keeps the pin at its last place.
  * - `pinPlaceOf`: the place a click or a dropped pin becomes: anchored to the box or line it landed on, otherwise free.
- *
- * Design decisions:
- * - Keys are record ids (an element id, a connection id), never canvas ids: a drawn line may be rolled up or bridged and
- *   its id changes with the switches, whereas its connections do not, so a pin stays true when the drawing changes.
- * - A note or a boundary box is not a record on the diagram, so a click on one places a free pin.
- *
+ * Keys are record ids, never canvas ids: a drawn line may be rolled up or bridged and its id changes with the switches,
+ * whereas its connections do not, so a pin stays true when the drawing changes. A note or boundary box is not a record on
+ * the diagram, so a click on one places a free pin.
  * Dependencies: `diagramEditorModel`, `api/recordComments`, `types`.
  */
 import type { PinAnchorKind, PlaceInput } from "../../api/recordComments";

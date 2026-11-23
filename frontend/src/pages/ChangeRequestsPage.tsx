@@ -52,30 +52,16 @@ const CR_STATUS_OPTIONS: ChangeRequestStatus[] = [
 ];
 const STATUS_PARAMS: readonly (ChangeRequestStatus | "all")[] = [...CR_STATUS_OPTIONS, "all"];
 
-// Tri-state status filter — a change request list is
-// usually consulted for what still needs a decision, not a permanent
-// archive of every decision ever made, so the default view narrows to the
-// three non-terminal statuses (draft/submitted/in_review, matching the
-// backend's own `active_only` filter in
-// `backend/app/routers/change_requests.py::list_change_requests`).
-// "active" (default) sends `active_only=true` and no `cr_status`; "" ("All
-// statuses") sends neither param; a specific `ChangeRequestStatus` sends
-// `cr_status` as before. A sentinel string distinct from both "" and any
-// real status value is needed so the three states are distinguishable in
-// the `<select>` and in `listParams()` below.
+// Tri-state status filter. "active" (default) sends `active_only=true` and no `cr_status`, narrowing
+// to the non-terminal statuses like the backend's `active_only`; "" ("All statuses") sends neither;
+// a `ChangeRequestStatus` sends `cr_status`. The "active" sentinel keeps the three states distinct.
 type CrStatusFilterValue = ChangeRequestStatus | "" | "active";
 
-/** Change request list and creation form (introduction, C-G-03), with
- * incremental "load more" pagination (U-P-06) for large CR sets.
+/** Change request list and creation form (C-G-03), with "load more" pagination (U-P-06).
  *
- * For a MODIFY_REQUIREMENT change request, the form is field-toggle driven:
- * a field's proposed value is only editable (and only submitted as part of
- * `changed_fields`) once its checkbox is ticked, and it's pre-filled from
- * the selected requirement's current version the moment it's toggled on or
- * the selected requirement changes — the user never has to copy values
- * across by hand. NEW_REQUIREMENT change requests have no existing
- * requirement to diff against, so every field is always "changed" and the
- * form looks like a normal create form.
+ * For MODIFY_REQUIREMENT the form is field-toggle driven: a field is editable and submitted in
+ * `changed_fields` only once ticked, pre-filled from the selected requirement's current version.
+ * NEW_REQUIREMENT has nothing to diff against, so every field is always changed.
  */
 export function ChangeRequestsPage() {
   const strings = useStrings();
@@ -87,20 +73,13 @@ export function ChangeRequestsPage() {
   const referenced = usePageReferences(projectId, "change_request", (crs ?? []).map((cr) => cr.id));
   const showReferences = Object.keys(referenced).length > 0;
   const [total, setTotal] = useState(0);
-  // Unfiltered mandatory-scope count — powers
-  // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
-  // is the filtered count.
+  // Unfiltered mandatory-scope count, shown by `ResultCount` beside the filtered `total`.
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [stages, setStages] = useState<ProjectStage[]>([]);
   const changeRequestTerm = useTerm("change_request");
   const [viewMode, setViewMode] = useViewMode("change-requests");
-  // Seeded directly from the URL on initial render, not set in a separate
-  // effect after mount (bug fix, 2026-08: dashboard glance navigation race
-  // — same fix and reasoning as `RequirementsPage.tsx`'s identical
-  // two-effect shape) — only one filter state, and therefore only one
-  // fetch, ever exists per mount.
   // The list's filters, search and sort live in the URL (`useUrlFilter`), so it comes back as it was left
   // after a visit to a record; the dashboard's CR tiles link here with `status`. "Active" (the default)
   // is no parameter, "all statuses" is `status=all`.
@@ -110,9 +89,7 @@ export function ChangeRequestsPage() {
   const [targetStageFilter, setTargetStageFilter] = useUrlText("stage");
   // Free-text search, server-side like the requirements list's, so it finds a change request on any page.
   const [search, setSearch] = useUrlText("q");
-  // Column-header sorting — backend `sort`/`order` param, same reasoning as `RequirementsPage.tsx`: this
-  // list is backend-paginated (`PAGE_SIZE`/`LoadMoreButton`), so a client-side sort would only reorder the
-  // currently-loaded page.
+  // Sorting is server-side (`sort`/`order`): the list is paginated, so a client sort would reorder only the loaded page.
   const listSort = useListSort("change_requests", SORT_KEYS, "unique_code");
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const tagFilter = useTagFilter();
@@ -135,18 +112,11 @@ export function ChangeRequestsPage() {
     return addSortParams(params, listSort.sort);
   }
 
-  // Read through a ref so a reload started from an older render (a
-  // post-mutation `reload()` resuming after an `await`) still lists with the
-  // filters the user has set since — otherwise, as the newest request, it
-  // would overwrite their filtered results (found 2026-10-04 via the e2e
-  // suite). Declared before the reload effect so it's current there.
+  // Read through a ref so a reload resuming after an `await` in an older render still lists with the
+  // current filters instead of overwriting the filtered results. Declared before the reload effect.
   const listParamsRef = useLatest(listParams);
 
-  // Belt-and-suspenders guard (bug fix, 2026-08: dashboard glance
-  // navigation race), same reasoning as `RequirementsPage.tsx`'s identical
-  // guard — discards a response if a newer request has since been kicked
-  // off, covering any overlapping-fetch path beyond the mount-time race the
-  // searchParams-seeding fix above eliminates (e.g. rapid filter changes).
+  // Discards a response when a newer request has started (e.g. rapid filter changes).
   const beginLoad = useRequestSequence();
 
   async function loadChangeRequests(offset: number, append: boolean) {

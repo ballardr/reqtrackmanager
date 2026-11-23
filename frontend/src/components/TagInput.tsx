@@ -1,17 +1,13 @@
 /**
  * Module: components/TagInput
  *
- * The tag picker: the chosen tags as removable chips followed by a `[+]` chip. The `[+]` opens a
- * `Popover` holding one text box; typing filters the vocabulary and Enter, a click, a comma or a
- * semicolon adds the highlighted (or typed) tag.
+ * The tag picker: the chosen tags as removable chips followed by a `[+]` chip. The `[+]` opens a `Popover` holding the
+ * shared `TagAddBox` (the text box, suggestions and the rules for a free and a restricted project).
  *
- * Responsibilities:
- * - Draw the chips and the `[+]` that opens the shared `TagAddBox` (the text box, the suggestions and the rules for
- *   a free and a restricted project) in the popover.
- * - Report each change through `onChange`; nothing is saved here.
+ * Responsibilities: draw the chips and the `[+]`; report each change through `onChange` (nothing is saved here).
  *
- * Design decisions: the text box lives in a popover, not in the row, so a form or a record header
- * shows chips and one small control rather than a full-width field. The chips keep their vocabulary colour.
+ * Design decisions: the text box lives in a popover, not in the row, so a form or record header shows chips and one small
+ * control rather than a full-width field. The chips keep their vocabulary colour.
  */
 import { Plus } from "lucide-react";
 import { useMemo, useRef, useState } from "react";

@@ -1,14 +1,9 @@
-"""Tests for the generic polymorphic relationship model (Platform Foundations): `app.models.relationship.ArtefactLink` and
-`app.services.relationships`.
+"""Tests for the polymorphic relationship model `app.models.relationship.ArtefactLink`
+and `app.services.relationships`.
 
-`test_requirement_links.py`/`test_requirement_action_links.py` already
-exercise the two currently-wired artefact-type pairs through their own
-REST endpoints (`routers.requirements`'s links/actions sections), which
-internally call this generic service — this file instead exercises the
-*service layer itself* directly, across artefact types, since the entire
-point of building a polymorphic table is that it generalises past one type
-pair (the cross-module
-case, rather than only a single-type-pair happy path).
+Exercises the service layer directly across artefact types (the cross-module
+case); `test_requirement_links.py` and `test_requirement_action_links.py` cover
+the REST endpoints that call it.
 """
 
 from uuid import UUID
@@ -127,12 +122,9 @@ def test_untyped_link_partial_unique_index_rejects_duplicate(client, admin_token
         db.commit()
 
         try:
-            # `create_link` flushes immediately (see its own docstring) —
-            # Postgres enforces `ux_artefact_links_untyped` (a plain
-            # `CREATE UNIQUE INDEX`, not a deferrable constraint) at
-            # statement time, so the violation surfaces here, on the
-            # flush inside `create_link` itself, not on a later
-            # `db.commit()`.
+            # `ux_artefact_links_untyped` is a plain unique index, enforced at
+            # statement time, so the violation surfaces on `create_link`'s
+            # flush, not on a later commit.
             relationships.create_link(
                 db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action_id,
                 target_type=ArtefactType.REQUIREMENT, target_id=requirement_id,

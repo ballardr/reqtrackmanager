@@ -4,10 +4,8 @@ Module: modules.stakeholders.record_attachments
 The files attached to this module's records, for a custom report's record-images block
 (`ModuleDefinition.record_attachments`).
 
-Responsibilities:
-- Name the file-link table and record column of the persona and the stakeholder need, and say why the other types print none.
-
 Design decisions:
+- Names the file-link table and record column of the persona and the stakeholder need.
 - Only a record's own attachments are listed, never a comment thread's files.
 - A type whose attachments may show or concern identifiable people is not offered, and says so in
   `NO_RECORD_ATTACHMENTS`.

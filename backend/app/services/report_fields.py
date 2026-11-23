@@ -1,36 +1,23 @@
 """
 Module: services.report_fields
 
-The field registry behind custom report layouts: what a layout may print, filter or group by
-for each registered artefact type, and the batch loader that reads those values.
+The field registry behind custom report layouts: what a layout may print, filter or group by for each registered
+artefact type, and the batch loader that reads the values.
 
 Responsibilities:
-- Offer the builders a type's `ReportFieldProvider` is written with (`from_search`, `text_field`,
-  `enum_field`, `date_field`, `principal_field`, `name_lookup_field`).
-- Describe the fields of a type for a field picker (`field_catalogue`).
-- Load records by id in one query per type (`load_records`), with enum values as labels,
-  principals as names, tags as text and the reserved `code`/`title`/`status`/`tags` fields. Every placeable type
-  also offers the shared `placements` text field (`Component / Category; Component`), built here, not by a provider.
-- Format a loaded value as report text (`format_value`).
+- The builders a `ReportFieldProvider` is written with (`from_search`, `text_field`, `enum_field`, `date_field`,
+  `principal_field`, `name_lookup_field`); `field_catalogue` for the picker; `load_records` (one query per type);
+  `format_value`. Every placeable type also gets the shared `placements` text field, built here.
 
 Design decisions:
-- Fields are opt-in per type. A column that is not declared cannot be reached from a layout, so a
-  Restricted or consent-sensitive column is excluded by omission, exactly as for search.
-- The loader **does not authorise**. It is only ever given ids the link graph's `ArtefactResolver`
-  already showed the caller (`services.report_traversal`), so there is one authorisation point;
-  a caller that skips the resolver is a defect, and the engine's public entry points take
-  resolver-approved records only.
-- A provider reuses the type's search declaration for its joins, current-version filter and
-  identity columns (`from_search`), so a versioned type is joined once and kept in one place; the
-  search's vetted text fields come across by default and a type lists its typed fields on top.
-- Values are returned typed (`date`, `datetime`, `bool`, numbers) and formatted at the edge
-  (`format_value`), so a renderer can sort and compare before it prints. A past instant stays UTC;
-  a calendar date is a plain `date` and means the person's own day.
-- A person field shows the user's name or `Name (Organisation group)` for a group (`principal_text`), never
-  an email address.
+- Fields are opt-in: an undeclared column (Restricted, consent-sensitive) is unreachable, as for search.
+- The loader does not authorise; it only receives ids the link graph's `ArtefactResolver` showed the caller
+  (`services.report_traversal`), keeping one authorisation point.
+- `from_search` reuses a type's search joins and vetted text fields, so a versioned type is joined once.
+- Values stay typed until `format_value`; a past instant stays UTC and a calendar date is a plain `date`.
+- A person field shows a name or `Name (Organisation group)`, never an email address.
 
-Dependencies: `modules.registry` (provider shapes and merge), `services.principals` (names),
-`services.tags` (tag text).
+Dependencies: `modules.registry`, `services.principals`, `services.tags`.
 """
 
 from __future__ import annotations

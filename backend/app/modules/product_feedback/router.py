@@ -1,17 +1,12 @@
 """
 Module: modules.product_feedback.router
 
-Organisation-scoped Product Feedback API (the organisation's inbox), mounted at
-`/api/v1/orgs/{organization_id}/modules/product_feedback`: request CRUD, archive, versions, lifecycle
-transitions, comments and files for requests the organisation itself owns, and the triage of a request into a project
-(`move-to-project`), plus merging a duplicate into another inbox request (`merge`, `unmerge`, `merges`).
-
-RBAC: every endpoint needs the `organization_requests` sub-component enabled for the organisation (an
-organisation administrator can switch the inbox off; the endpoints then answer 404) and organisation
-membership. Any member may submit; `_shared.require_request_manage` (organisation Feedback Triager role
-or FGAC grant) is needed to edit, transition, archive or attach evidence. An organisation request's files
-are organisation shared resources (`is_org_resource=True`), so the file-owner hook is never consulted for
-them.
+Organisation-scoped API (the inbox) at `/api/v1/orgs/{organization_id}/modules/product_feedback`:
+request CRUD, archive, versions, transitions, comments, files, triage into a
+project (`move-to-project`) and merging inbox duplicates. Endpoints need the
+`organization_requests` sub-component (404 when off) and membership; any member
+may submit; edits need `_shared.require_request_manage`. Files are organisation
+shared resources, so the file-owner hook is not consulted.
 """
 
 from __future__ import annotations

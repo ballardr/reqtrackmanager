@@ -4,17 +4,14 @@ Module: services.report_snippet_scope
 Which saved report snippets a scope can see, and hiding or restoring the inherited ones.
 
 Responsibilities:
-- `resolve_project_snippets`: the saved snippets a project can reach, each with where it comes from.
-- `hide_snippet` / `restore_snippets`: a project hides an inherited snippet and brings it back.
-- `list_org_snippets`: an organisation's own saved snippets.
+- `resolve_project_snippets`, `hide_snippet` / `restore_snippets`, `list_org_snippets`.
 
 Design decisions:
-- **Visibility is additive, as for layouts and packs.** A project sees its own snippets, its ancestors' (nearest first) and
-  the organisation's, de-duplicated by name (case-insensitively) with the nearest owner winning. The Action Types rule
-  ("own rows, else the nearest ancestor's") would hide every inherited snippet the moment a project saved one of its own.
-- **Hiding is a tombstone** (`ProjectDefinitionSuppression`, kind `report_snippet`), per project and not inherited
-  downwards. Only an inherited snippet can be hidden; a project removes its own by deleting it. A hidden snippet keeps its
-  name, so it does not let a farther snippet of the same name show through.
+- Visibility is additive, as for layouts and packs: a project sees its own snippets, its ancestors' (nearest first) and
+  the organisation's, de-duplicated by case-insensitive name with the nearest owner winning. The action-type rule (own
+  rows, else the nearest ancestor's) would hide every inherited snippet once a project saved one.
+- Hiding is a per-project tombstone (`ProjectDefinitionSuppression`, kind `report_snippet`), not inherited downwards;
+  only an inherited snippet can be hidden, and a hidden snippet keeps its name so a farther one does not show through.
 
 Dependencies: `models.report_snippet`, `services.project_hierarchy`, `services.definition_suppression`.
 """

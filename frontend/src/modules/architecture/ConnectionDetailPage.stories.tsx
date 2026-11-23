@@ -46,7 +46,7 @@ export const DiagramsCardFollowsTheDetailsCard: Story = {
   },
 };
 
-/** An end the viewer can no longer read shows only its code, with no link. */
+/** An end the viewer cannot read shows only its code, with no link. */
 export const LockedEndShowsOnlyItsCode: Story = {
   beforeEach: () => {
     mockArchitectureReads({ connection: buildConnection({ target_locked: true, target_element_name: "" }) });

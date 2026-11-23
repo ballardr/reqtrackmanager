@@ -4,14 +4,9 @@ Revision ID: 0077
 Revises: 0076
 Create Date: 2026-10-12
 
-`persona_versions.owner_id` / `champion_id`, `stakeholder_versions.owner_id` and
-`stakeholder_need_versions.owner_id` may now name a user, an organisation group
-or a project group. Each gets a
-`<name>_type` column (existing rows backfill to `user`), the foreign key to
-`users` is dropped (the id now points at one of three tables; the service
-validates it), and a check constraint keeps the pair consistent. Every version
-row is backfilled, not only the current one, so history keeps who owned it.
-`stakeholder_versions.user_id` is an identity link, not a role, and stays a user.
+Owner and champion columns may name a user or a group: adds `<name>_type`
+(backfilled to `user` on every version), drops the user foreign keys and adds
+a pair check. `stakeholder_versions.user_id` stays a user.
 """
 
 from collections.abc import Sequence

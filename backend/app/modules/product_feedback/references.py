@@ -1,24 +1,12 @@
 """
 Module: modules.product_feedback.references
 
-A request's external references: pointers to the same work in outside tools (a Jira epic, a ServiceNow ticket), each
-with the system it lives in and a role (`origin`: where the request came from; `delivery`: where it is built).
-
-The data is the shared `models.external_reference.ExternalReference` (type `enhancement_request`) and the rules are
-`services.external_references`; this module only adapts a request to them.
-
-Responsibilities:
-- `references_by_request`: many requests' references with their system names in a fixed number of statements.
-- `add_reference` / `update_reference` / `remove_reference`: the gated bodies' data changes (no commit, no audit).
-- `convert_to_project`: re-points an inbox request's references at the target project's systems when it is triaged.
-- `apply_legacy_link`: the single `external_ref_url` / `external_ref_key` pair older clients still send, kept as a
-  delivery reference on the "Other" system.
-
-Design decisions:
-- References are not versioned with the request: each is added, changed and removed on its own with its own audit
-  event, so a change here does not create a content version.
-- A reference needs a key or a URL (or both); the URL is an absolute http(s) link.
-- At most `MAX_REFERENCES` per request, so a list stays bounded.
+A request's external references: pointers to the same work in outside tools,
+each with a system and a role (`origin` or `delivery`). Data is the shared
+`ExternalReference` (type `enhancement_request`); rules are
+`services.external_references`. Reads are flat per list; changes do not commit
+or audit; `convert_to_project` re-points an inbox request's references on
+triage. References are unversioned and capped at `MAX_REFERENCES`.
 """
 
 from __future__ import annotations

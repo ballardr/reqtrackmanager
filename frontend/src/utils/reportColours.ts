@@ -1,17 +1,15 @@
 /**
  * Module: utils/reportColours
  *
- * Colour words for report layouts, as the designer reads them: the same vocabulary the server resolves
- * (`backend/app/services/report_colours.py`), so a swatch shows the colour the report will print.
- *
- * Responsibilities:
- * - Name the reserved words and the standard scheme names; resolve any colour word to a `#rrggbb` for display.
- * - Build the choices a colour field offers (branding colour, the layout's scheme, the organisation's, white, black, none).
- * - Find the scheme names a tree uses, so a name still in use cannot be removed from the scheme.
- *
- * Design decisions: display only. The server is the judge of what is valid and the only thing that writes a colour into
- * a document; this module never validates for saving. A colour is stored by name, so a swatch resolves through the
- * scheme as the server will (layout, then organisation, then the standard four).
+ * Colour words for report layouts, as the designer reads them: the vocabulary the
+ * server resolves (`backend/app/services/report_colours.py`), so a swatch shows
+ * the colour the report will print.
+ * Responsibilities: name the reserved words and standard scheme names; resolve a
+ * colour word to `#rrggbb` for display; build the choices a colour field offers;
+ * find the scheme names a tree uses so a name in use cannot be removed.
+ * Design: display only. The server judges validity and is the only writer of a
+ * colour into a document. A colour is stored by name and a swatch resolves
+ * through the scheme as the server does (layout, organisation, standard four).
  */
 import type { BlockCatalogue } from "../api/reportLayouts";
 import type { TreeNode } from "./reportLayoutTree";

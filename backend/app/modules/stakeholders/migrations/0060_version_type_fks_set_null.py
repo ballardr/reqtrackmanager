@@ -4,16 +4,9 @@ Revision ID: 0060
 Revises: 0059
 Create Date: 2026-10-05
 
-`persona_versions.org_type_id`/`project_type_id` were plain foreign keys into the
-org and project type tables. Both type tables cascade-delete with their
-organisation/project, in the same cascade that removes the personas and their
-versions, so deleting an organisation (or a project) that had a typed persona
-failed with a foreign-key violation (HTTP 500) depending on the order Postgres
-ran the cascades in. They become `ON DELETE SET NULL`. `stakeholder_versions`
-gets the same treatment (0059 creates it that way; re-applying here is
-idempotent and also repairs a database that ran an earlier draft of 0059). A type that is still in use is protected by the service
-layer (`TypeVocabulary.delete_org_type`/`delete_project_type`), not by these
-constraints, so deleting a type through the API behaves exactly as before.
+`persona_versions` type references become `ON DELETE SET NULL` (as do
+`stakeholder_versions`, idempotently), so deleting an organisation or project
+does not depend on cascade order. In-use types are protected by the service layer.
 """
 
 from collections.abc import Sequence

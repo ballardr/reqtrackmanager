@@ -4,20 +4,17 @@
  * The equation node of the Visual Markdown editor: one inline, indivisible node that holds an equation's TeX and
  * whether it is a display equation, read from and written back as the delimiters the reader uses.
  *
- * Responsibilities:
- * - Read `\( x \)` (inline) and `$$ x $$` (display) into a node, and write the node back with the TeX exactly as
- *   stored, so the text of a field survives the editor unchanged.
- * - Carry the node through copy and paste inside the editor (`data-math` markup).
+ * Responsibilities: read `\( x \)` (inline) and `$$ x $$` (display) into a node and write it back with the TeX exactly
+ *   as stored; carry the node through copy and paste inside the editor (`data-math` markup).
  *
  * Design decisions:
- * - The node is an atom: the editor never reads or escapes the characters inside it, which is why a text with
- *   equations can be edited visually (the writer used to escape the underscores a formula needs).
- * - A display equation is an inline node, as the reader makes it (a token inside its paragraph), so a text reads
- *   the same in the Visual, Write and Preview views.
+ * - The node is an atom: the editor never reads or escapes the characters inside it, so the underscores a formula
+ *   needs survive.
+ * - A display equation is an inline node, as the reader makes it, so a text reads the same in the Visual, Write and
+ *   Preview views.
  * - The delimiters and the "an opener with no closer, or enclosing nothing, is ordinary text" rule are those of
  *   `utils/markdownMath`; the round-trip cases hold the two to each other.
- * - This file draws nothing: the editor extends the node with a view (`VisualMarkdownEditor`), and a headless
- *   editor (the round-trip check) uses the node as it is.
+ * - This file draws nothing: the editor extends the node with a view (`VisualMarkdownEditor`).
  *
  * Dependencies: TipTap (MIT).
  */

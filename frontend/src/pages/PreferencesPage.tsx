@@ -51,28 +51,15 @@ function landingModeFor(preference: string | undefined): LandingMode {
 }
 
 /**
- * The resource-menu groups Preferences' previous tab bar was converted
- * into. Each key is also the route segment under `/preferences/:group?`
- * (App.tsx), so a group selection is a real navigation, not client-only
- * state. An unrecognised or absent `:group` (including the bare
- * `/preferences` used by every existing link into this page) falls back
- * to "profile".
- *
- * Converted from `Tabs` to `ResourceMenu` for cross-page consistency with
- * the other admin-tier pages (Org Admin, Project Admin, Server Admin) —
- * a deliberate reversal of the original per-page ≤5-groups Tabs-vs-
- * ResourceMenu call, since this page never exceeded 5 tabs on its own.
- * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
+ * The `ResourceMenu` groups. Each key is the route segment under `/preferences/:group?` (App.tsx), so a
+ * selection is a real navigation; an unrecognised or absent `:group` falls back to "profile". The page uses
+ * `ResourceMenu` like the other admin-tier pages (`docs/ux-style-guide.md` Principle 1).
  */
 type PreferencesGroupKey = "profile" | "search" | "security" | "access" | "pats" | "notifications";
 
 const PREFERENCES_GROUP_KEYS: PreferencesGroupKey[] = ["profile", "search", "security", "access", "pats", "notifications"];
 
-/**
- * User preferences: theme (U-U-01), post-login landing page (U-U-03),
- * pronouns (C-U-18), email digest mode (C-N-05), password change, and
- * TOTP two-factor enrollment (C-U-14).
- */
+/** User preferences: theme (U-U-01), landing page (U-U-03), pronouns (C-U-18), email digest (C-N-05), password change and TOTP enrolment (C-U-14). */
 export function PreferencesPage() {
   const strings = useStrings();
   const { group: groupParam } = useParams<{ group?: string }>();
@@ -83,9 +70,7 @@ export function PreferencesPage() {
   const orgLabelPlural = useOrgLabelPlural();
   const { showToast } = useToast();
   const [avatarError, setAvatarError] = useState<string | null>(null);
-  // ConfirmDialog (Tier 1) state for the two PAT actions below — converted
-  // from `window.confirm` per the sixth-pass audit's "Confirmation and
-  // feedback rollout, precisely" list.
+  // Tier 1 `ConfirmDialog` state for the two token actions below.
   const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [contentBoxed, setContentBoxed] = useUiPreference<boolean>("content_boxed", false);
@@ -122,8 +107,7 @@ export function PreferencesPage() {
   const [myOrgs, setMyOrgs] = useState<Organization[]>([]);
   const [myOrgRoles, setMyOrgRoles] = useState<Record<string, OrgRole[]>>({});
   const [myGroupsByOrg, setMyGroupsByOrg] = useState<Record<string, MyOrgGroup[]>>({});
-  // "Leave organisation" — Tier 1 `ConfirmDialog`, keyed on the whole
-  // `Organization` rather than just its id so the dialog can name it.
+  // "Leave organisation" Tier 1 `ConfirmDialog`; holds the whole `Organization` so the dialog can name it.
   const [orgToLeave, setOrgToLeave] = useState<Organization | null>(null);
   const [pats, setPats] = useState<PersonalAccessToken[]>([]);
   const [newPatName, setNewPatName] = useState("");
@@ -134,19 +118,12 @@ export function PreferencesPage() {
   const [fetchedMaxExpiresAt, setMaxExpiresAt] = useState<string | null>(null);
   const [patError, setPatError] = useState<string | null>(null);
   const [createdPat, setCreatedPat] = useState<PersonalAccessTokenCreateResult | null>(null);
-  // The "New personal access token" form creates a brand-new entity, not
-  // contextual detail about anything already on screen — per the revised
-  // Principle 3 it opens in a `Modal`, not the permanently-visible nested
-  // accordion it used to be.
+  // The "New personal access token" form creates a new entity, so it opens in a `Modal` (Principle 3).
   const [patFormOpen, setPatFormOpen] = useState(false);
 
   /**
-   * Loads (or reloads) everything the "Your access" tab shows: this user's
-   * own project list, their org memberships/roles, and their org groups.
-   * Extracted from the mount effect below so `leaveOrg` can call it again
-   * after a successful leave — the left org (and any project that was only
-   * reachable through it) has to disappear from all three, not just
-   * `myOrgs` itself.
+   * Loads everything the "Your access" tab shows (projects, organisation memberships and roles, groups).
+   * `leaveOrg` calls it again so a left organisation, and projects reachable only through it, disappear.
    */
   async function loadMyAccess() {
     api.get<ProjectListItem[]>("/api/v1/projects?archived=false").then(setMyProjects);
@@ -157,17 +134,10 @@ export function PreferencesPage() {
       );
     });
     const orgs = await api.get<Organization[]>("/api/v1/orgs");
-    // `GET /orgs` returns every org on the deployment for a server admin
-    // (I-M-05's platform-wide console view), not just orgs they're
-    // actually a member of — right for the server-management pages that
-    // originally called it, wrong here: this is a *personal* picker
-    // ("which of MY orgs can this PAT reach"), so it's narrowed to
-    // genuine memberships below. The org member directory (any org
-    // role, including plain "member", can call this unfiltered per
-    // `routers/orgs.py::list_org_users`) doubles as the membership test —
-    // a 403 means "server admin can see this org platform-wide but
-    // isn't actually in it," filtered out rather than left as an
-    // unhandled rejection that used to abort the whole batch.
+    // `GET /orgs` returns every organisation to a server administrator (I-M-05), but this is a personal
+    // picker, so it is narrowed to real memberships. The member directory (open to any organisation role,
+    // `routers/orgs.py::list_org_users`) is the membership test: a 403 means the administrator is not a
+    // member, and is filtered out instead of aborting the batch.
     const entries = await Promise.all(
       orgs.map(async (org) => {
         try {
@@ -207,9 +177,7 @@ export function PreferencesPage() {
       const next = new Set(current);
       if (next.has(orgId)) next.delete(orgId);
       else next.add(orgId);
-      // A project only makes sense as a scope alongside its own org — drop
-      // any selected project whose org just got deselected, rather than
-      // silently submitting a project id the org list no longer explains.
+      // A project is a scope only alongside its organisation: drop selected projects whose organisation was deselected.
       setNewPatProjectIds((currentProjects) => {
         const stillValidOrgIds = next;
         const nextProjects = new Set(
@@ -233,13 +201,8 @@ export function PreferencesPage() {
     });
   }
 
-  // Refetches the longest-allowed expiry whenever the selected orgs
-  // change, and pre-fills the date field with it — replacing the old
-  // "leave blank to use the longest lifetime allowed" convention, which
-  // made the user do the lookup themselves instead of just seeing the
-  // actual date. Only overwrites the field while it still holds a
-  // previous auto-filled value (or is empty) — a value the user typed in
-  // themselves is left alone.
+  // Refetches the longest allowed expiry when the selected organisations change and pre-fills the date
+  // with it; the field is overwritten only while it is empty or still holds an earlier pre-filled value.
   const maxExpiresAt = newPatOrgIds.size === 0 ? null : fetchedMaxExpiresAt;
 
   useEffect(() => {
@@ -317,11 +280,7 @@ export function PreferencesPage() {
     }
   }
 
-  // Edits are staged locally and only sent on `saveNotificationPrefs` — this
-  // used to PUT on every single checkbox click, which made "toggle every
-  // row in a column at once" fire one request per row with no way to tell
-  // the user it had finished (and no undo if they changed their mind
-  // mid-click).
+  // Edits are staged locally and sent once by `saveNotificationPrefs`, so toggling a whole column is one request.
   function updateNotificationPref(type: string, field: "ui_enabled" | "email_enabled", value: boolean) {
     setNotificationPrefs((prefs) => prefs.map((p) => (p.type === type ? { ...p, [field]: value } : p)));
     setNotificationPrefsDirty(true);
@@ -381,10 +340,8 @@ export function PreferencesPage() {
         current_password: currentPassword,
         new_password: newPassword,
       });
-      // A password change invalidates every token issued before it,
-      // including the one this request just used (see User.token_version) —
-      // the current session is already dead, so send the user to log back in
-      // rather than leaving the app running on a token the server now rejects.
+      // A password change invalidates every earlier token, including this session's (User.token_version),
+      // so the person signs in again.
       logout();
       navigate("/login", { state: { message: strings.login.reauthRequired } });
     } catch (err) {
@@ -419,8 +376,7 @@ export function PreferencesPage() {
     setTwoFactorError(null);
     try {
       await api.post("/api/v1/auth/2fa/status", { action: "disable", code: disableCode });
-      // Same rationale as changePassword: disabling 2FA also bumps
-      // token_version, so the current session token is already dead.
+      // Disabling 2FA also bumps `token_version`, ending this session.
       logout();
       navigate("/login", { state: { message: strings.login.reauthRequired } });
     } catch (err) {
@@ -591,10 +547,7 @@ export function PreferencesPage() {
               {strings.preferences.twoFactor}
               <ToggleSwitch
                 checked={!!user?.is_2fa_enabled || !!enrollment}
-                // Disabled once already on: turning 2FA *off* requires a
-                // live TOTP code (below), so a bare toggle can't safely do
-                // it in one click — this switch only ever drives the
-                // enrollment flow on, never disables silently.
+                // Disabled once on: turning 2FA off needs a TOTP code (below), so this switch only starts enrolment.
                 disabled={!!user?.is_2fa_enabled || !!enrollment}
                 onChange={() => startEnrollment()}
                 label={strings.preferences.enable2fa}
@@ -668,13 +621,8 @@ export function PreferencesPage() {
                   {roles.includes("org_admin") && (
                     <Link to={`/orgs/${org.id}/admin`} className="btn">{strings.preferences.manageOrganisation(orgLabel)}</Link>
                   )}
-                  {/* Moved here from Org Admin — leaving is about this user's own
-                      membership, not an org-level setting, so it lives
-                      alongside the rest of "your access" rather than Org
-                      Admin's danger-zone-adjacent controls. Previously
-                      fired with no confirmation at all; now Tier 1
-                      `ConfirmDialog` + `Toast`, matching every other
-                      ordinary/reversible mutation in the app. */}
+                  {/* Leaving is the person's own membership, not an organisation setting; it asks a Tier 1
+                      `ConfirmDialog` and ends with a `Toast`. */}
                   <button
                     className="btn btn-danger"
                     onClick={() => setOrgToLeave(org)}

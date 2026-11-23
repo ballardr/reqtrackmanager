@@ -1,24 +1,12 @@
 /**
  * Module: modules/compliance/ProjectComplianceDetail
  *
- * One project's assignment to a single compliance standard version —
- * §20's overall status summary (always showing the raw counts alongside
- * the calculated percentage, per §20's explicit "the percentage cannot be
- * misleading" requirement) plus archive/unarchive, drilling into two
- * `Tabs`: "Requirements" (`ApplicabilityTree` — the applicability/
- * assessment/evidence/approval workspace, §8-§10, §12, §16) and "Reviews"
- * (`ReviewsPanel`, §17).
- *
- * Rendered full content-column width in place of the assignment list
- * (`ProjectCompliancePage`'s own `selected` state), mirroring
- * `StandardsPanel` -> `VersionWorkspace`'s identical "replace the tab's
- * content column in place, not a nested `SidePanel`" drill-down shape
- * — a requirement tree editor needs more width than a
- * 420px `SidePanel` allows.
- *
- * The version-migration action (§27, `POST .../migrate-version`) is
- * deliberately not surfaced here — see `api.ts`'s own module docstring for
- * why this is a flagged scope trim, not an oversight.
+ * One project's assignment to a single compliance standard version: §20's overall status summary (the raw counts always
+ * beside the calculated percentage, so the percentage cannot mislead), archive and unarchive, and two `Tabs`: "Requirements"
+ * (`ApplicabilityTree`, §8-§10, §12, §16) and "Reviews" (`ReviewsPanel`, §17). It replaces the assignment list in the full
+ * content column (`ProjectCompliancePage`'s `selected` state) rather than opening a `SidePanel`, because a requirement tree
+ * editor needs more than 420px. The version-migration action (§27, `POST .../migrate-version`) is not surfaced here (see
+ * `api.ts`).
  */
 import { useEffect, useState } from "react";
 import { Spinner } from "../../components/Spinner";
@@ -65,17 +53,12 @@ export function ProjectComplianceDetail({
 }) {
   const { showToast } = useToast();
   const [tab, setTab] = useState<DetailTabKey>("requirements");
-  // `status` already carries `standard_id` for an active assignment; an
-  // archived one (excluded from `GET .../status`) needs the client-side
-  // fallback resolution — see `api.ts::resolveStandardIdForVersion`'s own
-  // docstring for why no backend endpoint gives this directly.
+  // `status` carries `standard_id` for an active assignment; an archived one (excluded from `GET .../status`) is resolved
+  // client-side (`api.ts::resolveStandardIdForVersion`) because no endpoint gives it directly.
   const [fetchedStandardId, setFetchedStandardId] = useState<string | null>(null);
   const resolvedStandardId = status ? status.standard_id : fetchedStandardId;
-  // Lifted into local state (not read directly off the `status` prop) so it
-  // can be refreshed after a nested requirement change without the parent
-  // (`ProjectCompliancePage`) needing to re-fetch its whole assignment list
-  // — see `handleAssessmentChanged` below and `ApplicabilityTree`'s own
-  // `onAssessmentChanged` docstring for the staleness this fixes.
+  // Held in local state, not read off the `status` prop, so a nested requirement change can refresh it
+  // (`handleAssessmentChanged`, `ApplicabilityTree`'s `onAssessmentChanged`) without the parent re-fetching its assignment list.
   const [liveStatus, setLiveStatus] = useState<ProjectComplianceStatus | null>(status);
 
   useResetOnChange([status], () => setLiveStatus(status));

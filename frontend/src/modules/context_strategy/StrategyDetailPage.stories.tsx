@@ -37,11 +37,7 @@ function mockDetailApis(current: Strategy) {
   });
 }
 
-/**
- * A real routed page — stories go through `withRouter`/`withAuth` rather
- * than passing props directly, mirroring `modules/decisions/
- * DecisionDetailPage.stories.tsx`'s own identical convention.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props, as in `modules/decisions/DecisionDetailPage.stories.tsx`. */
 const meta: Meta<typeof StrategyDetailPage> = {
   title: "Modules/ContextStrategy/StrategyDetailPage",
   component: StrategyDetailPage,

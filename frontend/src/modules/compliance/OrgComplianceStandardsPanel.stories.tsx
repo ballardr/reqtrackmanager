@@ -131,10 +131,8 @@ export const GroupedByStandardWithMultipleVersions: Story = {
     const table = within(canvas.getByRole("table"));
     await userEvent.click(canvas.getByRole("button", { name: /Expand projects for ISO-27001/ }));
 
-    // More than one version behind the standard — each is its own
-    // collapsible sub-group, collapsed by default (unlike the single-
-    // version case in `GroupedByStandard` above, which has no toggle at
-    // all and is pre-expanded).
+    // With more than one version behind the standard, each is a collapsible sub-group, collapsed by default (the single-version
+    // case in `GroupedByStandard` has no toggle and is pre-expanded).
     const v1Toggle = table.getByRole("button", { name: /Expand projects for v1.0/ });
     const v2Toggle = table.getByRole("button", { name: /Expand projects for v2.0/ });
     await expect(v1Toggle).toBeInTheDocument();
@@ -171,10 +169,8 @@ export const FilterByProject: Story = {
   },
 };
 
-/** The "Group by" pivot, and its URL-driven initial state
- * (`?groupBy=project&state=non_compliant`) so `OrgComplianceWidgets.tsx`'s
- * "Non-compliant projects" tile can link straight into a pre-filtered,
- * project-pivoted view. */
+/** The "Group by" pivot and its URL-driven initial state (`?groupBy=project&state=non_compliant`), so `OrgComplianceWidgets.tsx`'s
+ * "Non-compliant projects" tile can link into a pre-filtered, project-pivoted view. */
 export const GroupedByProjectViaUrl: Story = {
   decorators: [withRouter(`${DEFAULT_PATH}&groupBy=project&state=non_compliant`)],
   beforeEach: () => mockApis(STATUS_ROWS),

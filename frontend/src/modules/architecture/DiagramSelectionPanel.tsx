@@ -2,35 +2,32 @@
  * Module: modules/architecture/DiagramSelectionPanel
  *
  * The editor's "Selection" card: what the selected box, note or line is and what can be done with it.
- * - A box: open the element, edit it in place (`ElementSelectionFields`, the shared element field group), open its inside as a
- *   diagram of its own, take it off this diagram (the element is not changed), or delete the element from the model (a separate,
- *   confirmed action that needs the code typed). A box that is shared, locked or on a read-only diagram shows its description
- *   and display note as text instead. Its ports are listed with the shared `PortList`; each change is stored at
- *   once, as on the element's page. Its project components (the shared `RecordTags` chip row, also saved at once) are set
- *   here too; a box shared from another owner shows none, since a component belongs to one project and its own
- *   project's tree is not disclosed to another.
- * - A note (an annotation): edit its text (applied when the field loses focus, as one undo step) and its tone, list its leader
- *   lines and add one, or remove it (`DiagramNoteEditor`).
- * - A leader (a note's line to what it describes): what it points at (a box or connection from a list, or a spot with X and Y),
- *   where it starts, how its two ends look and its vertices, or remove it; the note stays (`DiagramLeaderEditor`).
+ * - A box: open the element, edit it in place (`ElementSelectionFields`), open its inside as a diagram of its own, take
+ *   it off this diagram (the element is not changed), or delete the element from the model (a separate, confirmed action
+ *   that needs the code typed). A box that is shared, locked or on a read-only diagram shows its description and display
+ *   note as text. Its ports are listed with the shared `PortList` and each change is stored at once. Its project
+ *   components (the shared `RecordTags` chip row, also saved at once) are set here; a box shared from another owner
+ *   shows none, since a component belongs to one project and its tree is not disclosed to another.
+ * - A note: edit its text (applied when the field loses focus, as one undo step) and tone, list its leader lines and
+ *   add one, or remove it (`DiagramNoteEditor`).
+ * - A leader (a note's line to what it describes): what it points at, where it starts, how its ends look and its
+ *   vertices, or remove it; the note stays (`DiagramLeaderEditor`).
  * - A line: the connections behind it (a rolled-up or merged line stands for several), for a bridged line the hidden
  *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
- *   keyboard route to dragging a line's end. A line that stands for one connection of this project edits it in place
- *   (`ConnectionSelectionFields`, the shared connection field group); a line that stands for several lists them as compact rows
- *   (`ConnectionSummaryList`); choosing a row (the chosen connection, kept by the page) shows that connection under a heading
- *   with Back, Open and (for one of this project) its fields edited in place, the line's own attach point and vertex fields
- *   staying below it; Escape on the card, outside a text field, goes back. Each row also has Open (the record's page) and Edit
- *   (the shared connection form, `onEditConnection`); one shared from another project is listed without Edit.
- * - A box can also start a connection to another box from a list ("Connect to"), the keyboard route to what dragging a
- *   line between two boxes does.
+ *   keyboard route to dragging a line's end. A line for one connection of this project edits it in place
+ *   (`ConnectionSelectionFields`); a line for several lists them as compact rows (`ConnectionSummaryList`), and choosing
+ *   a row (kept by the page) shows that connection under a heading with Back, Open and (for one of this project) its
+ *   fields, the line's own attach point and vertex fields staying below; Escape on the card, outside a text field, goes
+ *   back. Each row also has Open and Edit (the shared connection form, `onEditConnection`); one shared from another
+ *   project is listed without Edit.
+ * - A box can start a connection to another box from a list ("Connect to"), the keyboard route to dragging a line.
  * - A boundary box (an outer connection of the diagram's element): the connection, the element outside, its direction and
- *   whether it is covered, the connections that realise it, and a "Connect to" list of the inner elements that starts a
- *   realising connection (the keyboard route to drawing a line to the box).
- * - A line that stands for one connection also offers "Realises": the outer connections (the boundary boxes on this diagram)
- *   it is marked as realising, each removable, and a list to add another; the change is stored at once.
+ *   whether it is covered, the connections that realise it, and a "Connect to" list of inner elements that starts a
+ *   realising connection.
+ * - A line for one connection also offers "Realises": the outer connections it is marked as realising, each removable,
+ *   and a list to add another; the change is stored at once.
  * A box the viewer cannot read shows its code only and offers no actions beyond removing it from the diagram.
- * Actions are icon buttons from the shared `SelectionActions` (the state machine card uses the same set); a connection row's
- * Edit and a realised connection's Remove are the same `IconAction`.
+ * Actions are icon buttons from the shared `SelectionActions` (the state machine card uses the same set).
  */
 import { ArrowLeft, ExternalLink, Merge, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";

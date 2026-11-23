@@ -4,24 +4,19 @@ import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES, s
 import { openAddLinkDialog } from "../modules/linksPanel";
 
 /**
- * Job to be done: two requirements can be linked with a typed, bidirectional
- * relationship (C-G-09) — the link renders with the correct display name
- * from whichever requirement's page you're looking from (`forward_name`
- * from the source, `reverse_name` from the target), entirely resolved
- * server-side, and can be removed from either end.
+ * Job to be done: two requirements can be linked with a typed, bidirectional relationship (C-G-09): the link renders
+ * with the correct display name from whichever requirement's page is open (`forward_name` from the source,
+ * `reverse_name` from the target), resolved server-side, and can be removed from either end.
  *
- * Uses Alpha-1, which `backend/scripts/seed_e2e_dataset.py` already seeds
- * with a fixed custom link type ("E2E Supersedes"/"E2E Is superseded by")
- * and one fixed link (SW-PERF-002 -> HW-FN-001) for exactly this spec to
- * sanity-check read-only. The create/remove flow below uses two different,
- * untouched requirements (HW-FN-005/SW-PERF-006) so this spec never
- * mutates that shared fixture.
+ * Uses Alpha-1, which `backend/scripts/seed_e2e_dataset.py` seeds with a fixed custom link type ("E2E
+ * Supersedes"/"E2E Is superseded by") and one fixed link (SW-PERF-002 -> HW-FN-001) that this spec only reads. The
+ * create/remove flow uses two different, untouched requirements (HW-FN-005/SW-PERF-006), so the shared fixture is
+ * never mutated.
  *
  * Links are shown and edited in the shared Links panel (`ArtefactLinksPanel`): "Add link" opens a dialog (record
- * finder, then the relationship) and removing a link goes through a
- * `ConfirmDialog` (Tier 1). A link's phrase is also one of the dialog's own
- * `<option>` labels, so every assertion below is scoped to the panel's rendered
- * rows (their badge, or the real `<a>`) rather than a bare `getByText`.
+ * finder, then the relationship) and removing a link goes through a `ConfirmDialog` (Tier 1). A link's phrase is
+ * also one of the dialog's `<option>` labels, so every assertion is scoped to the panel's rendered rows (their
+ * badge, or the real `<a>`) rather than a bare `getByText`.
  */
 function linkBadge(page: import("@playwright/test").Page, text: string) {
   return page.locator(".artefact-links__phrase-label", { hasText: text });
@@ -53,11 +48,9 @@ async function removeLink(page: import("@playwright/test").Page, phrase: string)
 }
 
 /**
- * Self-heals Alpha-1 before the run: deletes any HW-FN-005 -> SW-PERF-006 or
- * HW-FN-007 -> SW-PERF-008 link an earlier run left behind (a run that
- * times out before its own removal step leaks the link, and the picker
- * then no longer offers the already-linked target — found 2026-10-04).
- * Never touches the seeded SW-PERF-002 -> HW-FN-001 fixture.
+ * Resets Alpha-1 before the run: deletes any HW-FN-005 -> SW-PERF-006 or HW-FN-007 -> SW-PERF-008 link an earlier
+ * run left behind (a run that times out before its removal step leaks the link, and the picker then omits the
+ * already-linked target). Never touches the seeded SW-PERF-002 -> HW-FN-001 fixture.
  */
 async function removeLeftoverLinks(page: import("@playwright/test").Page) {
   const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
@@ -109,10 +102,8 @@ test.describe("requirement traceability links", () => {
     });
 
     await test.step("the dialog's search narrows the offered records", async () => {
-      // A third, otherwise-untouched pair (neither seeded with a fixed
-      // link/action/attachment nor used by any other spec) — added then
-      // immediately removed so this step is fully self-contained and leaves
-      // no state behind for later runs.
+      // A third, otherwise-untouched pair (neither seeded with a fixed link/action/attachment nor used by any other spec),
+      // added then immediately removed so this step is self-contained and leaves no state behind.
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-007");
       await openAddLinkDialog(page, linksPanel(page));

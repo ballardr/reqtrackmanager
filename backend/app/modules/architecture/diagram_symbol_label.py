@@ -1,37 +1,37 @@
 """
 Module: modules.architecture.diagram_symbol_label
 
-The layout of the label drawn inside an initial, final or choice symbol of a state machine diagram: where its lines break and
-how large the symbol must be to hold them.
+The layout of the label drawn inside an initial, final or choice symbol of a state machine diagram: where its
+lines break and how large the symbol must be to hold them.
 
 Responsibilities:
-- Measure a text with a fixed, font-independent width table (`text_width`), at any font size: annotation notes
-  (`diagram_note_layout`) measure with this same table, so every text on a diagram breaks at the same words.
-- Break a label into lines **between words only** (`wrap_label`): at spaces, after a hyphen and between East Asian characters,
-  and at a line break the person typed; a word is never split.
-- Find the smallest symbol that holds the label (`fit_label`): the symbol grows from its labelled base size in steps until the
-  text, with `LABEL_PADDING` clear of the symbol's inner edge on every side, fits inside it (`holds`).
-- Place a label outside its symbol (`beside_label`): the symbol keeps its plain size and the text block sits against one side
-  of it, `LABEL_PADDING` clear of the symbol's outer edge, wrapped to `BESIDE_MAX_WIDTH` and aligned toward the symbol.
+- Measure a text with a fixed, font-independent width table (`text_width`) at any font size; annotation notes
+  (`diagram_note_layout`) use the same table, so every text on a diagram breaks at the same words.
+- Break a label into lines between words only (`wrap_label`): at spaces, after a hyphen, between East Asian
+  characters and at a typed line break; a word is never split.
+- Find the smallest symbol that holds the label (`fit_label`): it grows from its labelled base size in steps
+  until the text, `LABEL_PADDING` clear of the symbol's inner edge on every side, fits (`holds`).
+- Place a label outside its symbol (`beside_label`): the symbol keeps its plain size and the text block sits
+  against one side, `LABEL_PADDING` clear of the outer edge, wrapped to `BESIDE_MAX_WIDTH` and aligned toward
+  the symbol.
 
 Design decisions:
-- **One rule, two implementations.** The browser draws the label from the lines this module gives
-  (`frontend/src/modules/architecture/symbolLabelLayout.ts` is the TypeScript copy) and the server's SVG draws the same lines, so
-  the screen and the exports break a label at the same words. `symbolLabelCases.json`, written by
-  `tests/test_architecture_symbol_label.py`, holds the cases both are tested against; a change is made in both.
-- **A fixed width table, not font metrics.** The server has no font, and a browser's glyph widths differ by platform; a table of
-  average widths (in thousandths of the font size, integers only so both languages agree exactly) is the one measure both can
-  share. It is set wider than the system fonts' glyphs (see the table), so the real text keeps its padding.
-- **Padding is measured, not implied.** The text block's rectangle (widest line by line count) is centred on the symbol and its
-  nearest corner must be at least `LABEL_PADDING` from the inner edge of the circle, the ring's disc or the diamond (the
-  diamond's edge is measured at right angles, inside its stroke); all in integers (thousandths of a unit, squares instead of
-  roots) so both languages agree exactly. `TEXT_PERCENT` only sets how wide a line is first tried (the square that fits), so
-  lines wrap before the exact check.
-- **Text outside a symbol keeps the same gap** (`LABEL_PADDING` from the symbol's outer edge), used by the label position. The
-  block is measured with the same width table and rounded up to a whole unit, so both languages place it identically; it lies
-  outside the symbol's own box (the box lines attach to), so it is positioned relative to that box and may be negative.
-- **A word longer than the largest symbol's text area** has no good drawing: it is kept whole on one line at the largest size and
-  `fits` is False, so the Selection card can warn; it is never broken mid-word and never clipped.
+- One rule, two implementations: the browser draws the lines this module gives
+  (`frontend/src/modules/architecture/symbolLabelLayout.ts` is the TypeScript copy) and the server SVG draws
+  the same lines, so screen and exports break a label at the same words. `symbolLabelCases.json`, written by
+  `tests/test_architecture_symbol_label.py`, holds the shared cases; a change is made in both.
+- A fixed width table, not font metrics: the server has no font and browsers' glyph widths differ by platform.
+  Average widths in thousandths of the font size, integers only so both languages agree exactly, are the one
+  shared measure; the table is wider than system glyphs, so real text keeps its padding.
+- Padding is measured: the text block's rectangle (widest line by line count) is centred on the symbol and its
+  nearest corner must be at least `LABEL_PADDING` from the inner edge of the circle, ring disc or diamond (the
+  diamond's edge measured at right angles, inside its stroke), in integers (thousandths of a unit, squares
+  instead of roots). `TEXT_PERCENT` only sets how wide a line is first tried, so lines wrap before the exact check.
+- Text outside a symbol keeps the same gap from its outer edge. The block is measured with the same table and
+  rounded up to a whole unit so both languages place it identically; it lies outside the symbol's own box (the
+  box lines attach to), so it is positioned relative to that box and may be negative.
+- A word longer than the largest symbol's text area has no good drawing: it stays whole on one line at the
+  largest size and `fits` is False, so the Selection card can warn; it is never broken mid-word or clipped.
 
 Dependencies: `enums` (the state kinds).
 """

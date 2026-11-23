@@ -3,17 +3,13 @@ import { expect, type Page, test } from "@playwright/test";
 import { apiHeaders, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PERSONAS, PROJECT_NAMES, searchProjects } from "./helpers";
 
 /**
- * Job to be done: as an org admin of two organisations, I can create and
- * manage projects in either of them from the same account, but I have no
- * visibility into a third organisation I don't belong to.
+ * Job to be done: as an org admin of two organisations, I can create and manage projects in either from the same
+ * account, and have no visibility into a third organisation I do not belong to.
  *
- * Persona: OrgAdminAlphaBeta (org_admin of Alpha + Beta; not a member of
- * Gamma at all).
+ * Persona: OrgAdminAlphaBeta (org_admin of Alpha and Beta; not a member of Gamma).
  *
- * Project-list checks search by exact name (2026-10-05): the list pages at
- * 30, and an org merge-import can add a "<name> (imported)" copy that a
- * substring match also hits. The two projects it creates are archived
- * afterwards; they used to accumulate on every run.
+ * Project-list checks search by exact name: the list pages at 30, and an organisation merge-import can add a
+ * "<name> (imported)" copy that a substring match also hits. The two created projects are archived afterwards.
  */
 test.describe("org admin of two organisations", () => {
   installCleanupHook();
@@ -43,11 +39,8 @@ test.describe("org admin of two organisations", () => {
     });
 
     await test.step("create a new project in Alpha through the real UI form", async () => {
-      // "New project" opens a Modal (style guide "Pattern: modal dialog for
-      // entity create/rename"), portalled to document.body — scoped to it
-      // rather than a bare page-wide query, same reasoning as the earlier
-      // SidePanel conversion (a portalled layer doesn't sit in the same DOM
-      // position an inline block would have).
+      // "New project" opens a Modal portalled to document.body (style guide "Pattern: modal dialog for entity
+      // create/rename"), so queries are scoped to it rather than the page.
       await page.getByRole("button", { name: "New project" }).click();
       const dialog = page.getByRole("dialog", { name: "New project" });
       // The org picker's options load asynchronously — wait for the actual
@@ -88,10 +81,8 @@ test.describe("org admin of two organisations", () => {
     });
 
     await test.step("Gamma's org admin page is not accessible", async () => {
-      // /orgs is no longer linked from the nav (it duplicated the server
-      // admin console for admins who could see both — see
-      // docs/decisions.md) but the route itself is unchanged; this account
-      // belongs to two orgs, so it lists them rather than redirecting.
+      // /orgs is not linked from the nav (it duplicates the server admin console for admins who see both) but the
+      // route works; this account belongs to two organisations, so it lists them rather than redirecting.
       await page.goto("/orgs");
       await expect(page.getByText(ORG_NAMES.gamma)).toHaveCount(0);
     });

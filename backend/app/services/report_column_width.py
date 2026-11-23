@@ -1,22 +1,19 @@
 """
 Module: services.report_column_width
 
-A table column's forced width: what an author may write, and how each renderer turns it into a size.
+A table column's forced width: what an author may write and how each renderer turns it into a size.
 
 Responsibilities:
-- Parse a width written as a percentage of the table (`30%`) or a length (`4 cm`, `40 mm`); no width means auto.
-- Give the canonical text of a width, so the layout tree and the text view agree.
-- Resolve a table's widths to centimetres for a given usable width (`resolve_table_widths_cm`), and a sheet's to
-  centimetres (`sheet_widths_cm`), the same way in every renderer.
+- Parse a width as a percentage of the table (`30%`) or a length (`4 cm`, `40 mm`); none means auto. Give its
+  canonical text so the layout tree and the text view agree.
+- Resolve a table's widths (`resolve_table_widths_cm`) and a sheet's (`sheet_widths_cm`) to centimetres, identically
+  in every renderer.
 
 Design decisions:
-- A percentage is of the table, not of a page, so it survives a change of page size or orientation.
-- Auto columns share what the fixed ones leave over (in proportion to their weights, if the table has any); widths that
-  fill more or less than the table are scaled to fit it exactly, so a table is always as wide as its section.
-- No column is laid out narrower than `MIN_COLUMN_CM`: that is the stated limit for a column squeezed below a cell's padding,
-  and a word longer than the column breaks inside it rather than failing the layout or widening the column.
-- A sheet has no page, so its percentages are of a nominal sheet width (`SHEET_REFERENCE_CM`); a sheet's auto columns keep
-  their content-sized width.
+- A percentage is of the table, not the page, so it survives a page size or orientation change.
+- Auto columns share what fixed ones leave; widths are scaled so a table is exactly as wide as its section.
+- No column is narrower than `MIN_COLUMN_CM`; a longer word breaks inside the column instead of widening it.
+- A sheet has no page, so percentages are of `SHEET_REFERENCE_CM`; its auto columns keep their content width.
 
 Dependencies: none.
 """

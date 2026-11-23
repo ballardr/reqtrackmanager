@@ -1,22 +1,12 @@
 """
 Module: modules.risk_management._shared
 
-Helpers behind the Risk routers (`project_router.py`, `router.py`): the manage
-and type-admin gates, the API shape (a risk merged with its current version and
-derived ratings), the create/update bodies, and the comment/file wrappers over
-the shared `services.module_attachments` kit.
-
-RBAC: viewing needs the sub-component enabled and
-project membership; any project member may *propose* (create) a risk, which
-starts `IDENTIFIED`; edit, archive, attachment, project-type and lifecycle
-changes need the project `risk_manager` role or a Fine-Grained Access Control
-`(risk, manage)` grant; moving a risk to `ACCEPTED` instead needs the distinct
-`risk_acceptor` role or a `(risk, approve_baseline)` grant (and, via MCP, the
-AI-approval gate); the org Risk type vocabulary needs `risk_type_admin`.
-
-Tenancy: every lookup is scoped to the project in the URL, so another tenant's
-ids look absent (404), and a level or owner must belong to the project's
-organisation.
+Helpers behind the Risk routers: the manage and type-admin gates, the API
+shape (a risk with its current version and derived ratings), create/update
+bodies and comment/file wrappers. Any project member may propose a risk;
+edits and lifecycle need `risk_manager` or `(risk, manage)`; `ACCEPTED` needs
+`risk_acceptor` or `(risk, approve_baseline)` (plus the AI-approval gate via
+MCP); the org type vocabulary needs `risk_type_admin`. Lookups are tenant-scoped.
 """
 
 from __future__ import annotations

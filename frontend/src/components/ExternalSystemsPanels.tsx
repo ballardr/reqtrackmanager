@@ -1,15 +1,14 @@
 /**
  * Module: components/ExternalSystemsPanels
  *
- * The administration of the external systems (Jira, ServiceNow, ...) a record's references can name, for the two tiers:
- * the organisation's list (`OrgExternalSystemsPanel`, every project sees it) and a project's view of it
- * (`ProjectExternalSystemsPanel`: rename, reorder, disable, add its own, hide an organisation default and add it back).
- * Thin wrappers over the shared `OrgTypeVocabularyPanel` and `ProjectTypeVocabularyPanel` with one extra text field per
- * row, the link template (an address with `{key}` in it, so a reference holding only a key opens its item).
+ * Administration of the external systems (Jira, ServiceNow ...) a record's references can name, for two tiers: the
+ * organisation's list (`OrgExternalSystemsPanel`, visible to every project) and a project's view of it
+ * (`ProjectExternalSystemsPanel`: rename, reorder, disable, add its own, hide an organisation default and restore
+ * it). Thin wrappers over `OrgTypeVocabularyPanel` and `ProjectTypeVocabularyPanel` with one extra text field per
+ * row, the link template (an address containing `{key}`).
  *
- * Gating is server-side (an organisation administrator for the organisation's list, project settings authority for a
- * project's), so both panels render their controls; a refusal surfaces through the list's own error handling. The text
- * that explains the list and the template is the help of the section the page puts these in (`strings.externalSystems`).
+ * Gating is server-side, so both panels render their controls and a refusal surfaces through the list's error
+ * handling. The explanatory text is the help of the section the page puts them in (`strings.externalSystems`).
  *
  * Dependencies: `api/externalSystems`, `components/TypeVocabularyPanels`.
  */

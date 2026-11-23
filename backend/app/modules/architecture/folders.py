@@ -3,25 +3,21 @@ Module: modules.architecture.folders
 
 Folders: a tree per kind (elements, connections, diagrams, symbols) that organises a list. Navigation only.
 
-A folder belongs to a project or to the organisation (`records.ElementOwner`); the organisation has element and symbol
-folders only. A record is in one folder or none (the top level). A symbol is the one filed thing that is not a record
-(no version, no archive); the built-in symbols are seeded and shared, so they stay at the top level. A folder has no code,
-is not linkable and means nothing to the roll-up, the resolver or a report.
+A folder belongs to a project or the organisation (`records.ElementOwner`; the organisation has element and symbol
+folders only). A record is in one folder or none; built-in symbols are shared and stay at the top level. A folder has no
+code, is not linkable and means nothing to the roll-up, the resolver or a report.
 
-Responsibilities:
-- Create, rename, move and delete folders (no cycle, depth cap 12, a unique name among siblings, no `/` in a name).
-- Check that a record's folder is its owner's folder of the right kind (`usable_folder`).
-- Move records between folders in bulk, and give a record's folder as a path (`paths_for`, `resolve_path`) for the
-  lists, the CSV and the bundles.
-- Write one audit event per change holding ids, counts and field names, never a name.
+Responsibilities: create, rename, move and delete folders (no cycle, depth cap 12, unique name among siblings, no `/`
+in a name); check a record's folder is its owner's of the right kind (`usable_folder`); move records in bulk; give a
+folder path (`paths_for`, `resolve_path`); write one audit event per change with ids, counts and field names.
 
 Design decisions:
-- Deleting a folder moves its records and sub-folders to its parent; nothing is deleted with it. A sub-folder whose
-  name would clash in the parent stops the delete (rename it first) rather than being merged or renamed silently.
-- Paths are read in bulk: every folder of the owners involved is read once, so a list's cost does not grow with its rows.
-- A folder is per-project content, not a vocabulary, so a child project does not fall back to an ancestor's folders.
+- Deleting a folder moves its records and sub-folders to its parent; a sub-folder whose name would clash stops the delete
+  rather than being merged or renamed silently.
+- Paths are read in bulk (every folder of the owners involved once), so a list's cost does not grow with its rows.
+- Folders are per-project content, not a vocabulary, so a child project has no fallback to an ancestor's folders.
 
-Dependencies: this module's models and `records` (owner, rule errors, the record update paths); core `services.audit`.
+Dependencies: this module's models and `records`; core `services.audit`.
 """
 
 from __future__ import annotations

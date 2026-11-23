@@ -1,7 +1,7 @@
 /**
  * Module: utils/sliceAtPoint
  *
- * Hit-testing for the dashboard donut (`components/StatusPieChart.tsx`): which slice a pointer is over, worked out
+ * Hit-testing for the dashboard donut (`components/StatusPieChart.tsx`): which slice a pointer is over, derived
  * from the ring's geometry alone.
  */
 

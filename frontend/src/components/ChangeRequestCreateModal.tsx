@@ -4,20 +4,14 @@
  * The "New change request" dialog, shared by the Change requests page and the Links panel's "Create new"
  * (`CreateChangeRequestDialog`), so a field added to the form reaches both.
  *
- * Responsibilities:
- * - Load what the form needs (requirements, components, categories, target versions, custom fields, the organisation's
- *   members and shared resources).
- * - A request to modify a requirement is field-toggle driven: a field's proposed value is editable, and submitted as
- *   part of `changed_fields`, only once its checkbox is ticked, and it is pre-filled from the selected requirement's
- *   current version. A request for a new requirement has no requirement to compare with, so its form is a normal
- *   create form.
- * - Create the request, then apply its tags.
- *
- * Design decisions:
- * - Links are proposed with the request (`ProposedLinksEditor`) and created only if the approver merges them, so the
- *   form has no quick-link field: linking a draft request directly would bypass that approval.
- * - `defaultRequirementId` pre-selects the requirement to change (the deep link from a requirement's page, or the
- *   requirement whose Links panel opened the dialog); it is used only when that requirement can be changed (is locked).
+ * - Loads what the form needs (requirements, components, categories, target versions, custom fields, the
+ *   organisation's members and shared resources), creates the request, then applies its tags.
+ * - A request to modify a requirement is field-toggle driven: a field's proposed value is editable and submitted
+ *   in `changed_fields` only once its checkbox is ticked, pre-filled from the requirement's current version. A
+ *   request for a new requirement is a normal create form.
+ * - Links are proposed with the request (`ProposedLinksEditor`) and created only if the approver merges them, so
+ *   there is no quick-link field: linking a draft request directly would bypass that approval.
+ * - `defaultRequirementId` pre-selects the requirement to change, only when it can be changed (is locked).
  */
 import { useEffect, useState } from "react";
 
@@ -165,10 +159,9 @@ export function ChangeRequestCreateModal({
   // would only produce a refusal on submit.
   const lockableRequirements = requirements.filter((r) => r.is_locked);
 
-  // Re-prime the proposed-value form from the newly-selected requirement's current version whenever the selection
-  // changes, so a toggled field is always pre-filled with real content, and drop any previously toggled fields and
-  // attachments, since they described a different requirement's content. Keyed on the resolved requirement's id too: the
-  // requirement can be set before the list has loaded, and the form must be primed once it arrives.
+  // Re-prime the proposed-value form from the selected requirement's current version on every selection change and
+  // drop toggled fields and attachments, which described another requirement. Keyed on the resolved id too: the
+  // requirement can be set before the list has loaded.
   useResetOnChange([requirementId, kind, selectedRequirement?.id], () => {
     if (kind !== "modify_requirement" || !selectedRequirement) return;
     setProposed({

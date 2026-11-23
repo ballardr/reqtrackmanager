@@ -1,17 +1,12 @@
 """
 Module: modules.stakeholders.engagement_project_router
 
-Project-scoped Engagement API, mounted at
-`/api/v1/projects/{project_id}/modules/stakeholders` beside the other project
-routers: the engagement log (CRUD and hard delete), its participants, covered
-personas, audience groups, the Pain Points / Needs / Open Questions it raised or
-answered, comments and files, and a Stakeholder's engagement timeline.
-
-The log is always on: it needs the module enabled for the project, not a
-sub-component (the research extras live in `research_project_router.py`).
-RBAC: any project member can read; `_engagement_shared.require_engagement_manage`
-gates every change. An engagement's files resolve through
-`engagements.resolve_engagement_file_project_id`.
+Project-scoped Engagement API at `/api/v1/projects/{project_id}/modules/stakeholders`:
+the engagement log (CRUD, hard delete), participants, covered personas, audience
+groups, outcome links, comments, files and a Stakeholder's timeline. The log
+needs the module enabled, not a sub-component. Any member can read;
+`_engagement_shared.require_engagement_manage` gates changes; files resolve
+through `engagements.resolve_engagement_file_project_id`.
 """
 
 from __future__ import annotations

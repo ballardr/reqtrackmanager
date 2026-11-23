@@ -1,40 +1,26 @@
 """
 Module: modules.compliance.scheduler
 
-The Compliance Module's date-driven notification sweeps (§18, §28) — registered with the core scheduler generically via
-`app.modules.registry.ModuleScheduledJob` (`module.py`'s `MODULE_DEFINITION.
-scheduled_jobs`), the same way `services/scheduler.py`'s own two core jobs
-are, but without that core file importing anything from this module
-directly. Mirrors `app.services.reviews.send_due_review_reminders`'s own
-shape exactly: a plain `(db: Session) -> None` function, no session opened
-inside it, one `db.commit()` at the end.
+The Compliance Module's date-driven notification sweeps (§18, §28), registered with the core scheduler through
+`app.modules.registry.ModuleScheduledJob` (`MODULE_DEFINITION.scheduled_jobs`) so no core file imports this module. Each
+sweep is a plain `(db: Session) -> None` function with one `db.commit()` at the end, as
+`app.services.reviews.send_due_review_reminders`.
 
-Four sweeps, one per §28 bullet-group covered:
-- `send_evidence_expiry_notifications`: evidence approaching/past expiry
-  (§14, §18's "Evidence approaching expiry"/"Evidence expiring").
-- `send_review_due_notifications`: scheduled compliance reviews becoming
-  due/overdue (§17, §18).
-- `send_required_action_due_notifications`: required actions approaching/
-  past their due date (§6, §18).
-- `send_target_date_notifications`: a project's own compliance target date
-  approaching/exceeded (§7, §18).
+Four sweeps:
+- `send_evidence_expiry_notifications`: evidence approaching or past expiry (§14, §18).
+- `send_review_due_notifications`: scheduled reviews becoming due or overdue (§17, §18).
+- `send_required_action_due_notifications`: required actions approaching or past their due date (§6, §18).
+- `send_target_date_notifications`: a project's compliance target date approaching or exceeded (§7, §18).
 
-Every sweep is idempotent per notification: each owning row carries a pair
-of `*_reminder_sent_at`/`*_notified_at` timestamp columns (see each column's
-own docstring in `models.py`) that this file stamps the first time each of
-the two notifications for that row's *current* due/expiry value has been
-sent, so re-running the sweep (or running it more than once a day) never
-sends a duplicate — the same convention `RequirementVersion.review_
-reminder_sent_at` already established for the analogous core sweep.
+Each sweep is idempotent per notification: the owning row's `*_reminder_sent_at` / `*_notified_at` columns (see
+`models.py`) are stamped the first time each notification for the row's current due or expiry value is sent, so
+re-running never duplicates (as `RequirementVersion.review_reminder_sent_at` does for the core sweep).
 
-Recipient resolution goes through `service.py::get_effective_compliance_
-officers`/`get_effective_compliance_managers` — see those functions' own
-docstrings for why this is deliberately not an authorization check.
+Recipients come from `service.get_effective_compliance_officers` / `get_effective_compliance_managers`, which are not an
+authorization check.
 
-External dependencies: `app.services.notifications` (existing notification
-delivery, reused rather than reimplemented — §18's own explicit "should not
-create a separate notification framework"), `app.modules.compliance.models`/
-`.service`.
+External dependencies: `app.services.notifications` (§18: no separate notification framework),
+`app.modules.compliance.models` and `.service`.
 """
 
 from __future__ import annotations
@@ -67,17 +53,12 @@ from app.services import notifications
 from app.services.codes import qualify
 from app.services.principals import principal_recipients, principal_ref
 
-#: Days before a required action's `due_date` that it is notified as
-#: approaching (§18's "Required Action approaching its due date") — a
-#: shorter window than evidence's 30 days, matching a required action's own
-#: typically shorter turnaround (a task someone must still go and do,
-#: rather than a certificate whose renewal is usually planned well ahead).
+#: Days before a required action's `due_date` that it is notified as approaching (§18); shorter than evidence's 30 days
+#: because a required action is a task, not a renewal planned well ahead.
 REQUIRED_ACTION_DUE_WARNING_DAYS = 7
 
-#: Days before `ProjectCompliance.target_compliance_date` that it is
-#: notified as approaching (§18's "Project compliance target date
-#: approaching") — mirrors `EVIDENCE_EXPIRY_WARNING_DAYS`'s own 30-day
-#: window, a comparable "plan-ahead" milestone.
+#: Days before `ProjectCompliance.target_compliance_date` that it is notified as approaching (§18); the same plan-ahead
+#: window as `EVIDENCE_EXPIRY_WARNING_DAYS`.
 TARGET_DATE_WARNING_DAYS = 30
 
 

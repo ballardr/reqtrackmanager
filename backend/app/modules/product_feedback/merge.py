@@ -1,28 +1,12 @@
 """
 Module: modules.product_feedback.merge
 
-Merging a duplicate enhancement request into a canonical one, and reversing it.
-
-Responsibilities:
-- `merge_requests`: records an `EnhancementRequestMerge`, marks the duplicate `DUPLICATE` (the only way a
-  request reaches that status) and keeps its previous status for the undo.
-- `unmerge_request`: ends the active merge and restores the duplicate's previous status.
-- `active_merge_of` / `has_active_merge`: lookups other code uses (the triage move refuses a request in a merge).
-
-Design decisions:
-- Merging copies and deletes nothing. The canonical request's demand is *derived* from its own links plus the
-  active merges into it (`demand.compute_demand`), so unmerging is just ending the row (**Decided by: User**:
-  reversible; **Agent**: derived rather than copied).
-- Only requests of the same tier and owner merge, so a project's demand never absorbs another project's or the
-  inbox's requests.
-- No chains: a duplicate cannot itself be a canonical and a canonical cannot be a duplicate, so demand is
-  one level deep and an unmerge never has a cascade to explain.
-- Only a request that is still open (`NEW`, `UNDER_REVIEW`, `ACCEPTED`) can be merged away; a delivered or
-  declined request is an outcome that must not be overwritten by a bookkeeping status.
-- Nothing here commits or checks who may do it; the caller owns the transaction, the gate, the row locks
-  and the audit event.
-
-Dependencies: this module's models and service.
+Merging a duplicate request into a canonical one, and reversing it.
+`merge_requests` records an `EnhancementRequestMerge` and marks the duplicate
+`DUPLICATE`; `unmerge_request` restores its previous status. Nothing is copied:
+demand is derived from the active merges, so unmerging ends the row.
+- Same tier and owner only; no chains; only an open request can be merged away.
+- Nothing commits or checks the role; the caller owns both.
 """
 
 from __future__ import annotations

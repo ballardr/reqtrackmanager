@@ -27,11 +27,7 @@ const CR_ID = "cr-1";
 
 const emptyTally: ChangeRequestVoteTally = { votes: [], approve_count: 0, reject_count: 0 };
 
-/** Same role-permutation-pinning rationale as RequirementDetailPage.stories
- * — `canDecide`/`canManageTasks`/`canVote` mirror `rbac.py`'s role
- * hierarchy in JS for UI convenience only (see docs/decisions.md); these
- * stories catch drift between the two rather than re-implementing the
- * check itself. */
+/** Same role-permutation pinning as RequirementDetailPage.stories: `canDecide`, `canManageTasks` and `canVote` mirror `rbac.py`'s role hierarchy in JS for UI convenience only (see docs/decisions.md); these stories catch drift between the two instead of re-implementing the check. */
 function mockChangeRequestDetailApis(
   myRoles: ProjectRole[], crOverrides: Parameters<typeof buildChangeRequest>[0] = {},
   extra: {
@@ -151,10 +147,7 @@ export const AddActionShowsLinkedActionPreview: Story = {
   },
 };
 
-/** REMOVE_ACTION (closing the asymmetry
- * `unlink_action` had with ADD_ACTION's already-gated add side) resolves
- * the same way ADD_ACTION's link-existing preview does, and also hides
- * Target/Level. */
+/** REMOVE_ACTION resolves like ADD_ACTION's link-existing preview (`unlink_action` is gated on the remove side as ADD_ACTION is on the add side) and also hides Target/Level. */
 export const RemoveActionShowsLinkedActionPreview: Story = {
   beforeEach: () => {
     const action = buildRequirementAction({ id: "action-9", unique_code: "ACT-009", title: "Existing security review" });
@@ -172,10 +165,7 @@ export const RemoveActionShowsLinkedActionPreview: Story = {
   },
 };
 
-/** ADD_LINK (an opt-in sibling of ADD_ACTION
- * for `RequirementLink`) is the one-link case of the proposed-links mechanism:
- * the request page lists the link exactly as a modify or new
- * request would, the relationship read from the requirement's side. */
+/** ADD_LINK (an opt-in sibling of ADD_ACTION for `RequirementLink`) is the one-link case of the proposed-links mechanism: the request page lists the link as a modify or new request would, with the relationship read from the requirement's side. */
 export const AddLinkShowsProposedLinkContent: Story = {
   beforeEach: () => {
     const requirement = buildRequirement({ id: "requirement-1", unique_code: "AUTH-001", name: "Users can reset their password" });
@@ -351,13 +341,10 @@ export const SubmittedManagerCanDecide: Story = {
 };
 
 /**
- * C-G-11: when a MODIFY_REQUIREMENT change request targets a currently-
- * completed requirement, a project manager sees a second "Approve and clear
- * completion" action alongside the plain "Approve" — plain Approve keeps
- * `is_completed` untouched (today's default carry-forward behaviour); the
- * second button explicitly clears it via `clear_completion: true`. Neither
- * button appears for a target that isn't completed (`SubmittedManagerCanDecide`
- * above pins that single-button default).
+ * C-G-11: when a MODIFY_REQUIREMENT change request targets a completed requirement, a project manager sees a second
+ * "Approve and clear completion" action beside the plain "Approve". Plain Approve leaves `is_completed` untouched
+ * (the default carry-forward); the second button clears it via `clear_completion: true`. Neither button appears for a
+ * target that is not completed (`SubmittedManagerCanDecide` above pins the single-button default).
  */
 export const SubmittedManagerSeesClearCompletionOptionForCompletedTarget: Story = {
   beforeEach: () => {
@@ -471,10 +458,7 @@ export const ProjectAdministratorCanAddTask: Story = {
   },
 };
 
-/** MODIFY_REQUIREMENT change requests only render the fields they actually
- * propose to change (`changed_fields`) — matches ChangeRequestsPage's
- * "ticking pre-fills, unticked is never shown" rule from
- * help/03-change-requests.md. */
+/** MODIFY_REQUIREMENT change requests render only the fields they propose to change (`changed_fields`), as ChangeRequestsPage's "ticking pre-fills, unticked is never shown" rule (help/03-change-requests.md). */
 export const ModifyRequirementShowsOnlyChangedFields: Story = {
   beforeEach: () => {
     mockChangeRequestDetailApis(["project_manager"], {

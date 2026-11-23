@@ -440,7 +440,7 @@ class ConnectionRef(BaseModel):
 class ConnectionOut(ProjectScopedRow):
     """A connection with its type and end names.
 
-    An end is `locked` when the viewer can no longer read it (only its code is shown) and `shared` when another
+    An end is `locked` when the viewer cannot read it (only its code is shown) and `shared` when another
     owner shares it with the project."""
 
     id: UUID
@@ -901,7 +901,7 @@ class ViewPort(BaseModel):
 class ViewNode(BaseModel):
     """A placed element as the diagram draws it.
 
-    A `locked` node is an element the viewer can no longer read: only its code is shown. `hidden` is a node a toggle
+    A `locked` node is an element the viewer cannot read: only its code is shown. `hidden` is a node a toggle
     switches off (kept in the placements, drawn on no export). `internal_connection_ids` are the connections wholly
     inside the element (drawn on no line)."""
 

@@ -1,19 +1,15 @@
 """
 Module: modules.stakeholders.report_starters
 
-The parts of the platform's starter report layouts (Business Requirements Document, Engineering Specification,
-Review Package) that draw on Stakeholders, Personas and Stakeholder Needs.
-
-Responsibilities:
-- Declare this module's `ReportStarterSection`s, which `ModuleDefinition.report_starter_sections` registers so the core
-  starters (`services.report_starters`) name no module.
+The parts of the starter report layouts (Business Requirements Document, Engineering Specification,
+Review Package) that draw on Stakeholders, Personas and Stakeholder Needs, declared as
+`ReportStarterSection`s so the core starters name no module.
 
 Design decisions:
-- Each part is plain layout blocks over the report field registry and the widget catalogue. The core wraps a
-  part in an `if` on this module, so a project where the module is off leaves it out.
-- A part opens with its own heading; the core starters hold only the parts about core records.
+- Each part is plain layout blocks over the report field registry and widget catalogue, opening with its
+  own heading; the core wraps it in an `if` on this module, so a project with the module off omits it.
 
-Dependencies: `modules.registry` (`ReportStarterSection`), `services.report_starter_blocks`.
+Dependencies: `modules.registry`, `services.report_starter_blocks`.
 """
 
 from __future__ import annotations

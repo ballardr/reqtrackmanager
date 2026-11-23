@@ -1,32 +1,21 @@
 """
 Module: services.record_tables_core
 
-The `RecordTableProvider`s for the core artefact types (requirements, actions and change requests), plus the building blocks
-module providers use to declare a type in a few lines.
+The `RecordTableProvider`s for the core artefact types (requirements, actions, change requests) and the parser and
+cell builders module providers use to declare a type in a few lines.
 
 Responsibilities:
-- Declare, per core type, the columns of its table (export, import, grid) and how a row is created or updated.
-- Share the list query with the type's list endpoint (`services.requirements.filter_requirements`,
-  `services.actions.list_actions_filtered`) and the create/update logic with its edit endpoints
-  (`create_requirement`, `edit_requirement`, `create_action`, `edit_action`), so a filter, rule or audit event
-  added there reaches the file too.
-- Offer `text_parser`, `date_parser`, `int_parser`, `bool_parser`, `enum_parser`, `person_parser`, `list_parser`, `label_map`,
-  `list_cell`, `bool_cell`, `cached_lookup` and the filter readers (`enum_filter`, `uuid_filter`), so a module's provider is
-  declarations only.
+- Declare each core type's columns (export, import, grid) and how a row is created or updated, sharing the type's
+  list query and create/update functions so a rule added there reaches the file too.
+- Offer the `*_parser`, `list_cell`, `bool_cell`, `label_map`, `cached_lookup` and filter readers.
 
 Design decisions:
-- Core owns these types, so they register here (the module-boundary rule: a module's types are registered by
-  the module, never listed here).
-- `status` of a requirement is export-only: it has an approval gate, and a file must not bypass it. An import
-  creates drafts and edits content; an approved requirement refuses the edit (it changes through a change
-  request), reported as that row's error.
-- A change request is export-only (`CORE_NOT_IMPORTABLE` gives the reason): its content depends on its kind
-  and it moves through submit and approval, which a file cannot author.
-- A person column is one cell: an email for a user, `Name (Organisation group)` / `Name (Project group)` for a group.
-- A project's custom fields are columns named `cf_<name>`, built per project.
+- A requirement's `status` is export-only: an import creates drafts and edits content, never bypassing the approval gate.
+- A change request is export-only (`CORE_NOT_IMPORTABLE`): its content depends on its kind and an approval flow.
+- A person is one cell (an email, or `Name (Organisation group)`); custom fields are `cf_<name>` columns.
 
-Dependencies: `modules.registry` (provider shapes), `services.record_tables` (cell helpers, people),
-`services.requirements`, `services.actions`, `services.change_request_list`, `services.audit`.
+Dependencies: `modules.registry`, `services.record_tables`, `services.requirements`, `services.actions`,
+`services.change_request_list`, `services.audit`.
 """
 
 from __future__ import annotations

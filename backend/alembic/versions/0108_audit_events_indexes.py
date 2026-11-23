@@ -4,10 +4,10 @@ Revision ID: 0108
 Revises: 0107
 Create Date: 2026-10-27
 
-`audit_events` grows with every write and had no index besides its key, so a record's activity timeline, a project's
-change feed and the `SET NULL` of a deleted project each scanned the whole trail (three sequential scans per activity
-request in the PostgreSQL profile, 8-11 ms each at 1,000 requirements per project and growing with the trail). Guarded: a
-database built from the current models already has them.
+`audit_events` grows with every write, so a record's activity timeline, a project's change feed and the `SET NULL`
+of a deleted project need indexes beyond the key: without them each scans the whole trail (three sequential scans per
+activity request in the PostgreSQL profile, 8-11 ms each at 1,000 requirements per project). Guarded: a database built from the current models
+already has them.
 """
 
 from collections.abc import Sequence

@@ -11,10 +11,7 @@ import {
   type NavItemLike,
 } from "./projectNav";
 
-/**
- * Pure layout logic for the Project nav section — exercised as play functions (this repo has no
- * separate unit-test runner). The component renders nothing; the assertions are the point.
- */
+/** Pure layout logic for the Project nav section, exercised as play functions; the component renders nothing and the assertions are the point. */
 function Noop() {
   return <div>projectNav logic — see the play functions</div>;
 }

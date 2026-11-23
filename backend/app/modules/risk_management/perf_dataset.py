@@ -1,21 +1,11 @@
 """
 Module: modules.risk_management.perf_dataset
 
-The dataset generator for the `risk` artefact type: risks with their version history (ratings drawn from the
-organisation's scoring levels), treatment links from requirements with verdicts, periodic reviews, comments, tags,
-and links to other records.
-
-Responsibilities:
-- Write `risks`, `risk_versions`, `risk_treatment_assessments`, `risk_reviews`, `risk_comments`, treatment and
-  cross-type `artefact_links`, tags and audit events, and the project's `risk` sequence counter.
-
-Design decisions:
-- Ratings use the real scoring levels of the organisation (seeded when the module is enabled), so rating
-  computation reads the same rows it does in production use.
-- A treatment link is a requirement that "Mitigates" the risk, the same family the application's treatment
-  listing reads; a share carry a verdict (effective, ineffective, needs reassessment).
-
-Dependencies: `perf_dataset.records`, this module's models, `services.scoring`, `services.link_types`.
+The dataset generator for `risk`: risks with version history (ratings from the
+organisation's scoring levels), treatment links from requirements with verdicts,
+reviews, comments, tags, links, audit events and the sequence counter.
+Dependencies: `perf_dataset.records`, this module's models, `services.scoring`,
+`services.link_types`.
 """
 
 from __future__ import annotations

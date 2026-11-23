@@ -40,10 +40,9 @@ def test_project_creator_can_create_project(client, admin_token, org_id):
 
 
 def test_project_creator_becomes_project_manager(client, admin_token, org_id):
-    """The project creator is granted a direct PROJECT_MANAGER role (C-U-10)
-    — no group is created at all (2026-08-31,
-    docs/decisions.md: the four auto-created "standard" project groups were
-    removed; a fresh project's initial manager grant is now always direct)."""
+    """The project creator is granted a direct PROJECT_MANAGER role (C-U-10); no
+    group is created (docs/decisions.md: a project's initial manager grant is
+    always direct)."""
     create_org_user(client, admin_token, org_id, "creator2@example.com", role="project_creator")
     token = login(client, "creator2@example.com", "Password123!")
     project = client.post(
@@ -116,8 +115,8 @@ def test_org_admin_can_manage_group_membership_on_a_project_with_no_role(client,
     project = create_project(client, creator_token, org["id"], "Group Manage Project")
     target_id = create_org_user(client, admin_token, org["id"], "reach_target@example.com", role="member")
 
-    # No group is auto-created on project creation any more (2026-08-31) — create the member-role group this test
-    # needs explicitly.
+    # No group is auto-created on project creation, so create the member-role
+    # group this test needs.
     member_group = client.post(
         f"/api/v1/projects/{project['id']}/groups", json={"name": "Members"},
         headers=auth_headers(creator_token),
@@ -224,12 +223,10 @@ def test_plain_member_can_leave_organization(client, admin_token, org_id):
 def test_leaving_org_removes_subscriptions_so_no_more_content_leaks_via_notifications(
     client, admin_token, org_id
 ):
-    """Security regression: leave_organization used to delete the user's
-    org/project role rows but never their Subscription rows — so a comment
-    posted after they left still triggered a notification containing real
-    project content (the comment excerpt) for a user who could no longer
-    view the project at all, since get_subscriber_ids has no access check
-    of its own."""
+    """leave_organization deletes the user's Subscription rows as well as their
+    org/project role rows: get_subscriber_ids has no access check of its own, so a
+    comment posted after they left would otherwise notify them with project content
+    (the comment excerpt)."""
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     req = client.post(

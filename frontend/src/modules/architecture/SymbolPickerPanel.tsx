@@ -1,21 +1,14 @@
 /**
  * Module: modules/architecture/SymbolPickerPanel
  *
- * The panel the symbol picker opens: a name filter above, the chosen view of the symbols in the middle and the view buttons
- * below (List, Gallery and, when the person may change the library, Upload), as an emoji picker lays them out. It owns the
- * filter text and nothing else: the view, the choice and the upload result belong to the picker.
- *
- * Design decisions:
- * - The panel has no width of its own: the popover is as wide as the field it opened from (never under its floor), so a
- *   fixed minimum here ran out of the bubble, the card and the window in a narrow Selection card.
- * - The filter is the first control, so the popover's own focus management puts the focus there on opening and a person can
- *   type at once; it is hidden in the Upload view, where it would filter nothing.
- * - The Upload view is only offered when `scope` is given, so a person who may not upload sees no such button (not a
- *   disabled one).
- * - The library is managed on its own page (Org Resources, or the project's settings), so the panel links to it for a person
- *   who may change the library, in a new tab so the form being filled in is not left. A plain link, not a router link, because a
- *   picker is also drawn where no router is mounted (a story, a dialog opened from a canvas).
- *
+ * The panel the symbol picker opens: a name filter above, the chosen view (List, Gallery and, when the person may change the
+ * library, Upload) in the middle and the view buttons below. It owns the filter text only; the view, the choice and the upload
+ * result belong to the picker.
+ * - No width of its own: the popover is as wide as its field, so a fixed minimum would overflow a narrow card.
+ * - The filter is the first control, so the popover's focus management lets a person type at once; it is hidden in Upload.
+ * - Upload is offered only when `scope` is given, so a person who may not upload sees no such button.
+ * - The library link opens in a new tab so the form being filled in is kept; it is a plain link because a picker is also
+ *   drawn where no router is mounted (a story, a dialog opened from a canvas).
  * Dependencies: `SymbolGallery`, `SymbolList`, `SymbolUploadField`, `useSymbolUpload`.
  */
 import { LayoutGrid, List, Upload } from "lucide-react";

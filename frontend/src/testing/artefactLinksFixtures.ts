@@ -109,10 +109,10 @@ export interface TraceLink {
 }
 
 /**
- * A fake API over a small fixed universe of records and links whose `graph` answers like the
- * server's: breadth-first out to `depth` hops, each edge oriented away from the record it was
- * reached from with its `flow` resolved from the stored link's. The rest of the API is the
- * usual spies. Only `graph` is exercised by the trace views.
+ * A fake API over a small fixed universe of records and links whose `graph`
+ * answers like the server's: breadth-first to `depth` hops, each edge oriented
+ * away from the record it was reached from with its `flow` resolved. The rest
+ * of the API is spies; only `graph` is exercised by the trace views.
  */
 export function buildTraceApi(records: TraceRecord[], links: TraceLink[]): ArtefactLinksApi {
   const byId = new Map(records.map((r) => [r.id, r]));

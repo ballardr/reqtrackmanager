@@ -1,16 +1,10 @@
 """
 Module: routers.change_requests.workflow
 
-Submitting a change request for review, withdrawing it, and a project
-manager approving or rejecting it. Approval applies the proposed change to
-the target requirement (or creates a new one, or adds/removes an action or
-link) through the same versioning mechanism used for direct scoping-stage
-edits, so both paths share one audit trail.
-
-Split out of the former flat `routers/change_requests.py` as a pure
-code-organization refactor — see `routers/change_requests/__init__.py`'s
-module docstring for the package layout. Imports `_to_out`/`_latest_version`
-from `core.py`, the only other bucket that needs them.
+Submitting a change request for review, withdrawing it, and a project manager approving or rejecting it.
+Approval applies the proposed change to the target requirement (or creates a new one, or adds/removes an
+action or link) through the versioning mechanism used for direct scoping-stage edits, so both paths share
+one audit trail. Imports `_to_out`/`_latest_version` from `core.py`.
 """
 
 from __future__ import annotations
@@ -81,16 +75,11 @@ def _decision_body(note: str, result) -> str:
 
 
 def _display_title(db: Session, cr: ChangeRequest, version: ChangeRequestVersion) -> str:
-    """Human-readable label for a change request, used in notification
-    titles. `proposed_name` alone is only ever set for NEW_REQUIREMENT, or
-    for MODIFY_REQUIREMENT when `"name"` is itself one of `changed_fields`
-    — every other case needs a fallback, rather than a notification title
-    silently rendering "None" (a pre-existing gap for a MODIFY_REQUIREMENT
-    CR that doesn't rename anything, found while adding ADD_ACTION — item
-    514's own new kind never sets `proposed_name` at all, so it would hit
-    this on every single notification without a fallback). The request's qualified code leads the
-    title (`ACME-CR-003 Wider doors`): a notification is read out of any project's context, so a
-    bare `CR-003` would be ambiguous."""
+    """Human-readable label for a change request, used in notification titles. `proposed_name` alone is set
+    only for NEW_REQUIREMENT, or MODIFY_REQUIREMENT when `"name"` is in `changed_fields`, so every other
+    case needs a fallback rather than rendering "None". The request's qualified code leads the title
+    (`ACME-CR-003 Wider doors`): a notification is read out of any project's context, so a bare `CR-003`
+    would be ambiguous."""
     project = db.get(Project, cr.project_id)
     code = qualify(project.code, cr.unique_code) if project is not None else cr.unique_code
     return f"{code} {_title_text(db, cr, version)}"
@@ -223,30 +212,20 @@ def decide_change_request(
 ):
     """Approves or rejects a submitted change request (C-U-03: project manager only).
 
-    Approval applies the proposed change immediately: for a modification, a
-    new requirement version is created via the change-request path; for a
-    new requirement, the requirement is created directly in approved state.
+    Approval applies the proposed change immediately: for a modification a new requirement version is
+    created via the change-request path; for a new requirement it is created directly in approved state.
 
-    When reached through the MCP server (`channel == "mcp"`), additionally
-    requires this project and its organisation to both have explicitly
-    enabled AI approval — see `requirements.approve_requirement`'s
-    docstring and docs/decisions.md's "AI approval via MCP" entry. A plain
-    UI/API call is unaffected by that flag either way.
+    Through the MCP server (`channel == "mcp"`) this additionally requires the project and its
+    organisation to have enabled AI approval (see `requirements.approve_requirement` and docs/decisions.md's
+    "AI approval via MCP" entry); a UI/API call is unaffected.
     """
     _require_project_manager(db, current_user, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project_or_404(db, project_id))
 
-    # Row-locked (not a plain db.get): two concurrent /decide calls on the
-    # same CR (e.g. one approve, one reject) would otherwise both read
-    # status == SUBMITTED before either commits, both pass the status
-    # check, and both apply their side effects — whichever commits last
-    # silently overwrites the other's decision, leaving cr.status
-    # mismatched with whatever side effects actually landed (e.g. a
-    # requirement gets modified/created by the "approve" transaction while
-    # the CR itself ends up recorded as REJECTED). The lock serializes the
-    # two calls so the second one's status check runs against the first
-    # one's already-committed result.
+    # Row-locked: two concurrent /decide calls (one approve, one reject) would otherwise both read
+    # status == SUBMITTED, both pass the check and both apply side effects, leaving cr.status out of step
+    # with the requirement changes. The lock makes the second call see the first's committed result.
     cr = db.scalar(select(ChangeRequest).where(ChangeRequest.id == cr_id).with_for_update())
     if cr is None or cr.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
@@ -274,14 +253,10 @@ def decide_change_request(
         if cr.kind == ChangeRequestKind.MODIFY_REQUIREMENT:
             requirement = get_or_404(db, Requirement, cr.requirement_id, "Requirement")
             current_version = get_current_version_for_update(db, requirement.id)
-            # Only fields actually listed in changed_fields are applied —
-            # everything else is left completely untouched (apply_new_version's
-            # own "None/not-explicitly-set carries the current value forward"
-            # convention), not silently re-written with a stale or default
-            # proposed value. See ChangeRequestVersion.changed_fields's
-            # docstring and docs/decisions.md's "Change request field-level
-            # tracking" entry for why this replaced the previous
-            # unconditional-apply-every-field behaviour.
+            # Only fields listed in changed_fields are applied; the rest carry the current value forward
+            # (`apply_new_version`'s convention) rather than being rewritten with a stale proposed value
+            # (see ChangeRequestVersion.changed_fields and docs/decisions.md's "Change request field-level
+            # tracking" entry).
             changed = set(version.changed_fields)
             apply_new_version(
                 db, requirement, current_version, current_user,
@@ -289,20 +264,11 @@ def decide_change_request(
                 reasoning=version.proposed_reasoning if "reasoning" in changed else None,
                 clarification=version.proposed_clarification if "clarification" in changed else None,
                 description=version.proposed_description if "description" in changed else None,
-                # Was unconditionally `RequirementStatus.APPROVED` — silently reverted an already-completed
-                # requirement's *lifecycle status* as a side effect of any
-                # modify-CR approval. `create_change_request`'s own guard
-                # (above) only allows a MODIFY_REQUIREMENT change request
-                # against an already-locked (`APPROVED`) requirement, so the
-                # current status is always `APPROVED` by the time it's
-                # decided — `None` carries it forward unchanged
-                # (`apply_new_version`'s own convention) instead of forcing
-                # it back down. Since C-G-11's completion overlay
-                # (`Requirement.is_completed`) is a separate field from
-                # `status` entirely, this line was never responsible for
-                # preserving/clearing it either way — see `clear_completion`
-                # below for the explicit, opt-in way an approver can clear
-                # it as a deliberate part of this same decision.
+                # `None` carries the current status forward (`apply_new_version`'s convention): a
+                # MODIFY_REQUIREMENT change request is only allowed against a locked (`APPROVED`) requirement
+                # (see `create_change_request`), so approval must not rewrite the lifecycle status. The
+                # completion overlay (`Requirement.is_completed`) is a separate field, cleared only through
+                # `clear_completion` below.
                 status_value=None,
                 target_stage_id=version.proposed_target_stage_id, target_stage_explicitly_set="target_stage_id" in changed,
                 level=version.proposed_level if "level" in changed else None,
@@ -322,11 +288,9 @@ def decide_change_request(
                 for raw_file_id in version.proposed_attachment_file_ids:
                     file_id = UUID(raw_file_id) if isinstance(raw_file_id, str) else raw_file_id
                     asset = db.get(FileAsset, file_id)
-                    # Re-checked here, not just trusted from creation time
-                    # (the same file could theoretically have been deleted
-                    # or changed ownership between CR creation and approval)
-                    # — same "never trust a stale reference" posture as
-                    # report image resolution.
+                    # Re-checked here, not trusted from creation time: the file could have been deleted
+                    # or changed ownership since (the same "never trust a stale reference" posture as
+                    # report image resolution).
                     if asset is None or asset.organization_id != project.organization_id or not asset.is_org_resource:
                         continue
                     existing = db.scalar(
@@ -344,16 +308,9 @@ def decide_change_request(
                             actor_id=current_user.id, project_id=project_id,
                             detail={"file_id": str(file_id), "via": "change_request", "change_request_id": str(cr.id)},
                         )
-            # C-G-11: an explicit, opt-in approver choice, applied as a
-            # separate step from the version-apply above (which never
-            # touches `is_completed` either way — see the `status_value`
-            # comment). A no-op, not an error, unless every precondition
-            # holds — `clear_completion=True` on a requirement that isn't
-            # currently completed (or wasn't otherwise applicable) simply
-            # does nothing extra, matching this field's own docstring.
-            # Logged as a distinct audit event from `approved` below, so
-            # it's traceable that the approver made this call deliberately
-            # rather than it being a side effect of approving the CR.
+            # C-G-11: an explicit, opt-in approver choice applied separately from the version-apply above
+            # (which never touches `is_completed`). A no-op unless every precondition holds. Logged as an
+            # audit event distinct from `approved` below, so the approver's deliberate choice is traceable.
             if payload.clear_completion and requirement.is_completed:
                 requirement.is_completed = False
                 requirement.completed_at = None
@@ -364,18 +321,11 @@ def decide_change_request(
                     detail={"change_request_id": str(cr.id)},
                 )
         elif cr.kind == ChangeRequestKind.ADD_ACTION:
-            # Item 514 — mirrors the "attachments" re-check just above:
-            # the referenced action/action-type could have changed or been
-            # archived between submission and approval, so both are
-            # re-validated here rather than trusted from creation time.
-            # `linked_by`/`creator_id` attribute to `cr.creator_id` (the
-            # original submitter), matching `RequirementFile.linked_by`'s
-            # own convention just above rather than `apply_new_version`'s —
-            # an added action is closer in kind to a proposed attachment
-            # (a new artifact the submitter is contributing) than to a
-            # requirement version (whose authorship follows the approving
-            # PM, since approval is what actually changes the requirement's
-            # own content).
+            # Mirrors the "attachments" re-check above: the referenced action/action-type may have changed
+            # or been archived since submission, so both are re-validated. `linked_by`/`creator_id` is
+            # `cr.creator_id` (the submitter), as for `RequirementFile.linked_by`: an added action is a new
+            # artefact the submitter contributes, whereas a requirement version's authorship follows the
+            # approving PM.
             requirement = get_or_404(db, Requirement, cr.requirement_id, "Requirement")
             project = project_or_404(db, project_id)
             if version.proposed_action_link_id is not None:
@@ -430,10 +380,8 @@ def decide_change_request(
                         },
                     )
         elif cr.kind == ChangeRequestKind.REMOVE_ACTION:
-            # Mirrors ADD_ACTION's own
-            # re-check above: the link could have already been removed
-            # directly (before this requirement was re-locked, say) between
-            # submission and approval, so re-verify rather than assume.
+            # Mirrors ADD_ACTION's re-check above: the link can be removed directly between submission and
+            # approval, so it is re-verified rather than assumed.
             requirement = get_or_404(db, Requirement, cr.requirement_id, "Requirement")
             action_link = (
                 get_artefact_link_between(
@@ -457,9 +405,8 @@ def decide_change_request(
             # `resolve_links` below merges (re-validated now, as the approver chose).
             pass
         elif cr.kind == ChangeRequestKind.REMOVE_LINK:
-            # Same re-check posture as
-            # ADD_LINK above: the link may already have been removed via
-            # some other path between submission and approval.
+            # Same re-check as ADD_LINK above: another path can remove the link between submission and
+            # approval.
             link = db.get(ArtefactLink, version.proposed_link_id)
             if link is not None:
                 log_event(

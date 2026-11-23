@@ -3,14 +3,11 @@
  *
  * Remembers, per viewer and per layout, which projects the designer's preview was last run on.
  *
- * Responsibilities:
- * - Read and write the choice in `localStorage`, keyed by scope (organisation or project) and layout.
- * - Re-check what was stored against what the caller can still choose, so a project that was deleted or is no
- *   longer readable drops silently and the default (all projects) applies.
+ * Responsibilities: read and write the choice in `localStorage`, keyed by scope and layout, and re-check it against
+ * what the caller can still choose, so a deleted or unreadable project drops out and the default (all projects) applies.
  *
- * Design decisions: this is a per-viewer convenience, so it never reaches the server (it is neither shared nor audited
- * state). Every storage call is wrapped: blocked or full storage means the choice lasts until the page is reloaded
- * (a module-level copy serves the reads), so the choice still holds when the panel is reopened.
+ * Design decisions: a per-viewer convenience that never reaches the server. Every storage call is wrapped; blocked or
+ * full storage falls back to a module-level copy that lasts until the page is reloaded.
  */
 import type { LayoutScope } from "../api/reportLayouts";
 

@@ -1,13 +1,8 @@
 """
 Module: routers.orgs.groups
 
-Organisation groups (C-U-08, C-U-12): create/list/update (IdP-sync target
-and granted-role configuration), delete, and member/nested-group
-add/remove.
-
-Split out of the former flat `routers/orgs.py` as a pure code-organization
-refactor — see `routers/orgs/__init__.py`'s module docstring for the
-package layout.
+Organisation groups (C-U-08, C-U-12): create/list/update (IdP-sync target and granted-role configuration),
+delete, and member/nested-group add/remove.
 """
 
 from __future__ import annotations
@@ -80,35 +75,20 @@ def list_org_groups(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
     db: Session = Depends(get_db),
 ):
-    """Lists an organisation's groups, each with its resolved member/nested-
-    group id lists.
+    """Lists an organisation's groups, each with its resolved member and nested-group id lists.
 
-    `search` (name substring, case-insensitive) and `limit`/`offset`
- are optional — same
-    contract as `list_org_users`/`list_requirements`: omitting `limit`
-    returns every group unpaginated (existing callers, e.g. Project Admin's
-    own org-group nesting picker, rely on exactly this to keep working
-    unchanged), and when given, the pre-slice total is returned via
-    `X-Total-Count`.
+    `search` (case-insensitive name substring) and `limit`/`offset` are optional, as in `list_org_users`:
+    omitting `limit` returns every group unpaginated (Project Admin's org-group nesting picker relies on
+    this); when given, the pre-slice total is returned via `X-Total-Count`.
 
-    `order` (2026-08-31 — `DirectoryTable`'s
-    Name column is this list's only sortable column, so there's no
-    separate `sort` param to pick a field the way `list_org_users` has;
-    only which direction to apply to the existing name order) defaults to
-    `asc` (unchanged pre-existing behaviour) — style guide "Pattern:
-    sortable column header"'s "already pages via limit/offset -> backend
-    sort/order params" branch, since a client-side sort of only the
-    currently-loaded page would misrepresent the true full-list order.
+    `order` (`asc` default, or `desc`) sets the direction of the name order; Name is the list's only sortable
+    column, so there is no `sort` field. It is a server parameter because sorting only the loaded page would
+    misrepresent the full-list order.
 
-    `granted_org_role` is masked to `None` for a non-admin
-    caller — this endpoint is deliberately open to any org member (a
-    `MEMBER`/`PROJECT_CREATOR` needs group names/ids for the nesting
-    picker above), but which group auto-grants which `OrgRole` via SSO
-    sync is exactly the kind of privilege-configuration detail
-    `sso_group_mappings` used to keep behind the `ORG_ADMIN`-only
-    `GET .../advanced-settings` before this field existed — hardening-pass
-    finding: it must not become member-readable recon just because it
-    moved onto an already-broadly-readable endpoint.
+    `granted_org_role` is masked to `None` for a non-admin caller: the endpoint is open to any org member
+    (a `MEMBER`/`PROJECT_CREATOR` needs group names and ids for the nesting picker), but which group
+    auto-grants which `OrgRole` via SSO sync is privilege configuration that stays behind the
+    `ORG_ADMIN`-only `GET .../advanced-settings` and must not become member-readable.
     """
     is_admin = OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
     query = select(OrgGroup).where(OrgGroup.organization_id == organization_id)
@@ -247,28 +227,22 @@ def delete_org_group(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Deletes an org group (2026-10-05, Decided by: User — groups had no
-    delete at all). Its memberships, nested-group links and every role it
-    held (org-group project roles, project-group memberships, module and
-    custom role grants) go with it via `ondelete="CASCADE"`; members keep
-    any access they hold some other way.
+    """Deletes an org group. Its memberships, nested-group links and every role it held (org-group project
+    roles, project-group memberships, module and custom role grants) go with it via `ondelete="CASCADE"`;
+    members keep any access they hold another way.
 
-    Guard: every registered module may block it
-    (`run_org_group_deletion_hooks`, e.g. Compliance's fallback compliance-
-    managers group). No project-manager (C-U-08) or last-org-admin check is
-    needed: both floors count only direct grants (and a project group's
-    direct user members), never anything an org group carries — see
-    `rbac._direct_project_managers` — so deleting an org group can't take
-    either below one.
+    Guard: every registered module may block it (`run_org_group_deletion_hooks`, e.g. Compliance's fallback
+    compliance-managers group). No project-manager (C-U-08) or last-org-admin check is needed: both floors
+    count only direct grants and a project group's direct user members, never anything an org group carries
+    (`rbac._direct_project_managers`).
 
-    Records that name the group as an owner/assignee (`services.principals`)
-    block the delete (409) unless `replacement_type`/`replacement_id` names a
-    user or org group to take over every one of them, or `clear_optional`
+    Records that name the group as an owner/assignee (`services.principals`) block the delete (409) unless
+    `replacement_type`/`replacement_id` names a user or org group to take over every one, or `clear_optional`
     empties the optional fields (a mandatory field always needs a replacement).
 
     Raises:
-        HTTPException: 404 if the group isn't in this organisation; 400 if a
-            module blocks it or the replacement is invalid; 409 if records still name it.
+        HTTPException: 404 if the group isn't in this organisation; 400 if a module blocks it or the
+            replacement is invalid; 409 if records still name it.
     """
     group = _get_org_group_in_org(db, organization_id, group_id)
     block_message = run_org_group_deletion_hooks(db, group_id)
@@ -321,26 +295,14 @@ def add_org_group_member(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Adds a member to an organisation group: either a user, or another
-    org group nested inside it (exactly one of `payload.user_id`/
-    `payload.member_org_group_id`, same convention as
-    `add_project_group_member`).
+    """Adds a member to an organisation group: a user or another org group nested inside it (exactly one of
+    `payload.user_id`/`payload.member_org_group_id`, as `add_project_group_member`).
 
-    Hardening-review finding (user branch): this endpoint checked that
-    `group_id` belongs to `organization_id`, but never that
-    `payload.user_id` itself holds any role in that organisation — unlike
-    the structurally parallel `add_project_group_member`
-    (`routers/projects.py`), which explicitly enforces C-U-02 ("All Project
-    users must be an organisation user") via `_require_user_in_org`.
-    Because `get_effective_project_roles` resolves project access through
-    org groups nested into project groups purely from `OrgGroupMember` rows
-    (re-checking only that the *group's* org matches the project's, never
-    that the *member* actually belongs to that org), an org admin adding an
-    arbitrary user id here — anyone in the system, with zero relationship
-    to this organisation — would have silently handed that user full
-    project access the moment this group is (routinely, legitimately)
-    nested into any project group. A genuine cross-tenant privilege
-    escalation, not merely a data-integrity nit.
+    A user member must hold a role in this organisation (C-U-02, as `add_project_group_member` enforces via
+    `_require_user_in_org`). `get_effective_project_roles` resolves project access through org groups nested in
+    project groups from `OrgGroupMember` rows alone (it checks the group's org, never the member's), so an
+    arbitrary user id added here would gain full project access when the group is nested into any project
+    group: a cross-tenant privilege escalation.
     """
     if not payload.user_id and not payload.member_org_group_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide user_id or member_org_group_id.")
@@ -365,10 +327,8 @@ def add_org_group_member(
             )
             db.commit()
     else:
-        # Nesting a group belonging to a different organisation would let
-        # its members inherit membership here, crossing the tenant boundary
-        # — same reasoning as `add_project_group_member`'s org_group_id
-        # branch, one level up.
+        # Nesting a group of a different organisation would let its members inherit membership here across
+        # the tenant boundary (as `add_project_group_member`'s org_group_id branch, one level up).
         if payload.member_org_group_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide user_id or member_org_group_id.")
         child_group = _get_org_group_in_org(db, organization_id, payload.member_org_group_id)
@@ -399,18 +359,13 @@ def remove_org_group_member(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Removes a member from an organisation group — `member_id` is matched
-    against either a user member or a nested-group member (whichever it
-    is), same generic-id convention as `remove_project_group_member`.
+    """Removes a member from an organisation group; `member_id` is matched against a user member or a
+    nested-group member (the generic-id convention of `remove_project_group_member`).
 
-    When `member_id` names a
-    genuine *user* member (never a nested-group member — a module-owned
-    floor concept is about real people, not group structure), every
-    registered module gets a chance to block this specific removal via
-    `run_org_group_member_removal_hooks` (e.g. Compliance's own "this group
-    is a standard's last fallback compliance-manager coverage" check) —
-    core code deciding to ask, without importing any specific module's own
-    models, per the Modular Feature System Boundary."""
+    For a genuine user member (never a nested-group member: a module-owned floor concerns real people, not
+    group structure), every registered module may block the removal via `run_org_group_member_removal_hooks`
+    (e.g. Compliance's check that the group is a standard's last fallback compliance-manager coverage), so
+    core asks without importing any module's models."""
     _get_org_group_in_org(db, organization_id, group_id)
     is_user_member = db.scalar(
         select(OrgGroupMember.id).where(OrgGroupMember.org_group_id == group_id, OrgGroupMember.user_id == member_id)

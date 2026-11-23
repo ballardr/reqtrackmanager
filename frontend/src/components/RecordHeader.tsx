@@ -1,20 +1,21 @@
 /**
  * Module: components/RecordHeader
  *
- * The header of every record detail page: back link, title (with the record's
- * code as a muted suffix), status pills, the Edit icon button and the object-action
- * menu, with the record's visible workflow buttons beneath. Tags, components and references share the line under the title with the badges and the version. A `stateMenu` (a record's "Change status" control) sits beside Edit. A `returnTo` control
- * sits beside the back link when the person arrived from another record's page (docs/ux-style-guide.md, "Pattern: return to where you came from").
+ * The header of every record detail page: back link, title (with the record's code as a muted suffix), status
+ * pills, the Edit icon button and the object-action menu, with the record's visible workflow buttons beneath. Tags,
+ * components and references share the line under the title with the badges and the version. A `stateMenu` (a
+ * "Change status" control) sits beside Edit; a `returnTo` control sits beside the back link when the person arrived
+ * from another record's page (docs/ux-style-guide.md, "Pattern: return to where you came from").
  *
  * Design decisions (style guide "Pattern: record header and object actions"):
- * - Edit and the menu sit at the right edge of the title row, in an `ItemRow`, so they
- *   never move or wrap under a long title at any viewport width.
- * - *Object actions* (Archive/Restore, Delete permanently, Export, Subscribe) live in
- *   the menu, which renders even for a single action; *transitions* (Submit, Approve,
- *   Retire, Withdraw) stay visible beside the status because they depend on it.
- * - The page passes only what the current user may do: an action they cannot perform
- *   is omitted, never disabled, and with no actions at all the menu is not drawn.
- * - The page owns each action's confirmation dialog (`useConfirmedAction`).
+ * - Edit and the menu sit at the right edge of the title row in an `ItemRow`, so they never move or wrap under a
+ *   long title.
+ * - *Object actions* (Archive/Restore, Delete permanently, Export, Subscribe) live in the menu, which renders even
+ *   for a single action; *transitions* (Submit, Approve, Retire, Withdraw) stay visible beside the status because
+ *   they depend on it.
+ * - The page passes only what the current user may do: an action they cannot perform is omitted, never disabled,
+ *   and with no actions the menu is not drawn. The page owns each action's confirmation dialog
+ *   (`useConfirmedAction`).
  *
  * External dependencies: `ActionMenu`, `ItemRow`, react-router `Link`.
  */

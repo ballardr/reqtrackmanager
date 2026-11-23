@@ -16,7 +16,7 @@ const notADrawing = (name: string) => ({ name: `${name}.svg`, mimeType: "image/s
  * Job to be done: an organisation administrator keeps a growing library of symbols (uploaded drawings) shared with every
  * project. The library is a list on Org Resources with a filter panel and folders: upload several files into a folder at
  * once (a refused file does not stop the others), narrow the list by folder, source and name, see where a symbol is used,
- * and see in a project the organisation's symbols read-only under their folder. Organisation Settings no longer lists Symbols.
+ * and see in a project the organisation's symbols read-only under their folder. Organisation Settings does not list Symbols.
  *
  * Disposable org, admin and project via `setUpOrg` with System Architecture on; the library is used through the UI.
  */

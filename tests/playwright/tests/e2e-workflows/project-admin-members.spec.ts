@@ -3,24 +3,15 @@ import { expect, test } from "@playwright/test";
 import { expectReasonTooltip, loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Job to be done: (docs/decisions.md)
- * the unified "Members" section (`ProjectMembersTable`, built on top of
- * `GET /effective-members`'s provenance) that replaced the old
- * `MemberRoleTable` (direct users + groups editable table) and the separate
- * effective-members audit table. Covers: adding a direct member with a
- * role, toggling a `direct_role`-kind role off, the C-U-08 last-manager
- * guard, a group-sourced role showing checked-and-disabled with an
- * explanatory title (the core fix — `DELETE /roles` would silently
- * no-op against it), and filtering by role. Pending-invite display/resend
- * and the "Show invited" toggle are covered by
- * `external-project-invite.spec.ts`, which already sets up an org that
- * permits external invites; no need to duplicate that org setup here.
+ * Job to be done (docs/decisions.md): the unified "Members" section (`ProjectMembersTable`, built on
+ * `GET /effective-members`'s provenance). Covers: adding a direct member with a role, toggling a `direct_role`-kind
+ * role off, the C-U-08 last-manager guard, a group-sourced role showing checked-and-disabled with an explanatory
+ * title (`DELETE /roles` would silently no-op against it), and filtering by role. Pending-invite display/resend and
+ * the "Show invited" toggle are covered by `external-project-invite.spec.ts`, which sets up an org that permits
+ * external invites.
  *
- * Uses a brand-new, dedicated throwaway project (created via the API under
- * the shared Beta org) rather than a shared seeded project — the
- * last-manager scenario specifically needs a project whose *only* manager
- * source is knowable and won't have been mutated by another spec sharing
- * this suite's run.
+ * Uses a dedicated throwaway project (created through the API under the shared Beta org): the last-manager scenario
+ * needs a project whose only manager source is known and not mutated by another spec.
  */
 test.describe("project admin: Members section", () => {
   test("add a direct member, toggle a role off, last-manager guard, group-sourced role disabled, and role filter", async ({ page }) => {
@@ -54,7 +45,7 @@ test.describe("project admin: Members section", () => {
       expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
-    await test.step("add a direct member with a role via the Members page's own add control (members/groups directory rework: 'Add member' now opens the control in a Modal instead of it sitting permanently above the table, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
+    await test.step("add a direct member with a role via the Members page's own add control ('Add member' opens the control in a Modal on the shared `AddMembersModal` staged multi-add)", async () => {
       await page.getByRole("button", { name: "Add member" }).click();
       const modal = page.getByRole("dialog", { name: "Add member" });
       await modal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.memberAlphaBeta.name);
@@ -126,8 +117,7 @@ test.describe("project admin: Members section", () => {
       const memberUserId = orgUsers.find((u) => u.email === PERSONAS.memberAlphaBeta.email)!.user_id;
 
       const groupName = `E2E Members Group Source ${suffix}`;
-      // the members/groups directory rework: `ProjectGroupCreate`
-      // no longer accepts a role — create bare, then grant it separately.
+      // A group takes no role: create bare, then grant it separately.
       const group = await (
         await page.request.post(`http://localhost:8000/api/v1/projects/${project.id}/groups`, {
           headers: authHeaders,
@@ -156,15 +146,10 @@ test.describe("project admin: Members section", () => {
     });
 
     await test.step("filtering by role narrows the table to only members holding it", async () => {
-      // Not `getByLabel`: `FilterField` wraps the `<select>` in a plain
-      // `<label>` (text + control together), so the *label's own*
-      // `textContent` a browser/Playwright's `getByLabel` reads includes
-      // every rendered `<option>` text too ("RoleAll rolesProject
-      // manager…"), which `{ exact: true }` can never equal literally
-      // "Role" against. `getByRole`'s `name` instead uses the real
-      // computed accessible name (which correctly excludes the select's
-      // own option text), matching how every other `<select>`-inside-a-
-      // `FilterField` locator elsewhere in this suite already does it.
+      // Not `getByLabel`: `FilterField` wraps the `<select>` in a plain `<label>`, so the label's `textContent` includes
+      // every rendered `<option>` text ("RoleAll rolesProject manager…") and `{ exact: true }` never equals "Role".
+      // `getByRole`'s `name` uses the computed accessible name, which excludes the option text, as every other
+      // `FilterField` `<select>` locator in this suite does.
       const roleFilter = page.getByRole("combobox", { name: "Role", exact: true });
       await roleFilter.selectOption("stakeholder");
       await expect(page.getByRole("cell", { name: PERSONAS.memberAlphaBeta.name, exact: true })).toBeVisible();

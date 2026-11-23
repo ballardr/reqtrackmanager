@@ -32,67 +32,39 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
 /**
  * Module: modules/context_strategy/module
  *
- * The Context & Strategy module's frontend registration — the frontend mirror
- * of `backend/app/modules/context_strategy/module.py`'s `MODULE_DEFINITION`,
- * same single-`moduleDefinition`-export convention every other Tier A
- * module uses. `frontend/src/modules/registry.ts` auto-discovers this file
- * via `import.meta.glob('./*\/module.ts', { eager: true })`; no hand-edit
- * to that file is needed (confirmed by reading `registry.ts`'s own
- * docstring before adding this file).
+ * The Context & Strategy module's frontend registration, the mirror of `backend/app/modules/context_strategy/module.py`'s
+ * `MODULE_DEFINITION`. `frontend/src/modules/registry.ts` discovers this file through
+ * `import.meta.glob('./*\/module.ts', { eager: true })`.
  *
- * Five artefact types (Strategy, Future State, Pain Point, Guiding Principle,
- * Open Question) each get **their own top-level nav-rail entry**, not one
- * grouped entry with tabs — diverging from `docs/ux-style-guide.md`'s usual
- * grouping preference by the user's own deliberate call. Each type adds its
- * `routes`/`globalRoutes` entries here and its own `additional_nav_entries`
- * row on the backend's `MODULE_DEFINITION.frontend_manifest`
+ * Five artefact types (Strategy, Future State, Pain Point, Guiding Principle, Open Question) each have their own
+ * top-level nav-rail entry, not one grouped entry with tabs. Each type adds its `routes` / `globalRoutes` entries here
+ * and an `additional_nav_entries` row on the backend's `MODULE_DEFINITION.frontend_manifest`
  * (`app.modules.registry.ModuleFrontendManifest`; see `docs/decisions.md`).
  *
- * `routes` (project-scoped, gated on this project's own enabled-modules
- * list, `buildModuleRoutes.tsx`): the list and detail pages of each artefact
- * type — `path` matches the corresponding `nav_path` `module.py`'s own
- * `frontend_manifest`/`additional_nav_entries` declares.
+ * `routes` (project-scoped, gated on the project's enabled modules, `buildModuleRoutes.tsx`): the list and detail
+ * pages of each type; `path` matches the `nav_path` declared in `module.py`.
  *
- * `globalRoutes` (always-mounted, the precedent set in
- * `modules/compliance/module.ts`): `StrategyDetailPage`, `FutureStateDetailPage`
- * and `GuidingPrincipleDetailPage`, each at an **org**-scoped path
- * (`/orgs/:organizationId/modules/context_strategy/{strategies,
- * future-states,guiding-principles}/:id`). **Decided by: Agent** — an
- * org-scoped record has no single *project* whose enabled-modules list
- * `routes` above could gate a detail route against; each detail page is one
- * shared, scope-aware component reading whichever of `projectId`/
- * `organizationId` its current route supplies, not two near-identical page
- * components.
+ * `globalRoutes` (always mounted, as in `modules/compliance/module.ts`): `StrategyDetailPage`, `FutureStateDetailPage`
+ * and `GuidingPrincipleDetailPage` at organisation-scoped paths
+ * (`/orgs/:organizationId/modules/context_strategy/{strategies,future-states,guiding-principles}/:id`). An
+ * organisation-scoped record has no single project whose enabled modules could gate a route, and each detail page is
+ * one scope-aware component reading whichever of `projectId`/`organizationId` the route supplies.
  *
- * `orgResourceSections`: `OrgStrategiesPanel`, `OrgFutureStatesPanel` and
- * `OrgGuidingPrinciplesPanel` — see `OrgStrategiesPanel.tsx`'s docstring for
- * the reasoning on why `orgResourceSections` (Org Resources) rather than
- * `orgAdminSections` (Organisation Settings) was chosen.
+ * `orgResourceSections`: `OrgStrategiesPanel`, `OrgFutureStatesPanel` and `OrgGuidingPrinciplesPanel` (placement
+ * reasoning in `OrgStrategiesPanel.tsx`).
  *
- * Pain Point and Open Question are **project-scoped only** (§6 and §9): `routes` has their list/detail pages, but there is no
- * `globalRoutes` entry and no `orgResourceSections` contribution for them,
- * since there is no org-scoped artefact to reach via either mechanism.
+ * Pain Point and Open Question are project-scoped only: `routes` has their pages, with no `globalRoutes` or
+ * `orgResourceSections` entry. Pain Point has a two-tier type vocabulary: `orgAdminSections` has
+ * `OrgPainPointTypesPanel` and `projectAdminSections` has `ProjectPainPointTypesPanel`. Guiding Principle and Open
+ * Question have no type vocabulary.
  *
- * Pain Point also has a **two-tier type vocabulary** with its own admin
- * surfaces: `orgAdminSections` has `OrgPainPointTypesPanel` (the org-scoped
- * shared base tier) and `projectAdminSections` has
- * `ProjectPainPointTypesPanel` (the project-scoped override/local-type tier)
- * — see each panel's docstring for the full placement reasoning, including
- * why the type vocabulary lands on the admin sections while the artefacts'
- * own org-scoped siblings are `orgResourceSections`. Guiding Principle
- * and Open Question have no configurable type vocabulary, so they need none
- * of that admin-section wiring.
+ * There is no `globalNavItems`, `standaloneWorkspaces`, `overviewWidgets`, `requirementDetailSections` or
+ * `entityAccentColor`: none of the types is a cross-organisation standalone entity, a project-overview tile or a row
+ * in a mixed list of entity kinds.
  *
- * No `globalNavItems`/`standaloneWorkspaces`/`overviewWidgets`/
- * `requirementDetailSections`/`entityAccentColor`: none of the artefacts has
- * a cross-org standalone entity, a project-overview summary tile, or a
- * place in a mixed list of entity kinds yet.
- *
- * Pain Point scoring configuration — the backend's `pain_point` scoring
- * scheme — is edited through core's shared `ScoringSchemeEditor` (org) and
- * `ProjectScoringSettings` (project) under a "Pain Point Scoring" admin
- * section beside Pain Point Types (Decided by: User — scoring config sits
- * with the feature it scores, core stays generic).
+ * Pain Point scoring configuration (the backend's `pain_point` scoring scheme) is edited through core's
+ * `ScoringSchemeEditor` (organisation) and `ProjectScoringSettings` (project) under a "Pain Point Scoring" admin
+ * section beside Pain Point Types: scoring configuration sits with the feature it scores and core stays generic.
  */
 /** Backend scoring-scheme key registered by `modules/context_strategy/scoring.py`. */
 const PAIN_POINT_SCORING_SCHEME = "pain_point";

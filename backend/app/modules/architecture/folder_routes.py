@@ -1,19 +1,15 @@
 """
 Module: modules.architecture.folder_routes
 
-The endpoints for folders, added to the project router (`add_project_folder_routes`) and the organisation router
+Folder endpoints, added to the project router (`add_project_folder_routes`) and the organisation router
 (`add_org_folder_routes`). Each kind has its own routes (`/element-folders`, `/connection-folders`, `/diagram-folders`,
-`/symbol-folders`) so the matching sub-component and manage permission gate it.
+`/symbol-folders`) so the matching sub-component and manage permission gate it, and `records.RuleError` maps to its
+HTTP status.
 
-Responsibilities:
-- Declare the routes and translate `records.RuleError` to its HTTP status.
-
-RBAC: a project's folders of a kind are readable by its members with that kind's sub-component enabled and changed by
-the project `architect` (the kind's manage permission); symbol folders belong to the symbol library, so the Types and
-symbols sub-component gates them and `architecture_admin` changes them. The organisation's element and symbol folders
-are read and changed by `architecture_org_admin`; another member sees only the path to an element or symbol they may
-read, in the record itself. Every
-lookup is scoped to the owner in the URL, so another owner's folder ids look absent.
+RBAC: project folders are readable by members with the kind's sub-component enabled and changed by the project
+`architect`; symbol folders belong to the symbol library (Types and symbols sub-component, `architecture_admin`).
+Organisation element and symbol folders are read and changed by `architecture_org_admin`. Every lookup is scoped to the
+owner in the URL, so another owner's folder ids look absent.
 """
 
 from __future__ import annotations

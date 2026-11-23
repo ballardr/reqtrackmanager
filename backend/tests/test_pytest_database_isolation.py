@@ -1,16 +1,11 @@
-"""Pins the fix for "pytest was destroying dev/demo data every time it ran"
-(docs/decisions.md) — `tests/conftest.py` must always route this test suite
-at its own dedicated `reqtrack_pytest_test` database (or, under
-`pytest-xdist`, a `reqtrack_pytest_test_gw*` database per worker — see
-), never at `reqtrack_test`
-(the database `tests/container/docker-compose.yml`'s `backend` service —
-the dev/demo stack and Playwright's target backend — uses), regardless of
-what DATABASE_URL the process inherited from the environment.
+"""Pins the database isolation of the test suite (docs/decisions.md): `tests/conftest.py`
+routes the suite at its own `reqtrack_pytest_test` database (under `pytest-xdist`, a
+`reqtrack_pytest_test_gw*` database per worker), never at `reqtrack_test` (used by the
+`backend` service of `tests/container/docker-compose.yml`, the dev/demo stack and
+Playwright's target), whatever DATABASE_URL the process inherits.
 
-Every rewrite test below pins `PYTEST_XDIST_WORKER` explicitly via
-`monkeypatch` rather than relying on the ambient environment, so these
-assertions hold the same way whether this file itself happens to be running
-under an xdist worker or not.
+Every rewrite test sets `PYTEST_XDIST_WORKER` with `monkeypatch`, so the assertions hold
+whether or not this file runs under an xdist worker.
 """
 
 from app.config import get_settings

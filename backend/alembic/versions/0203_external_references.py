@@ -6,9 +6,8 @@ Create Date: 2026-11-19
 
 One table of pointers from any record to an item in an outside tool, keyed by the registered artefact type string
 (no foreign key on the record id; the owning project and organisation cascade), and an optional `url_template` on
-the organisation's external systems and a project's rows for them. The systems tables already exist (they were
-created for Product Feedback and are now shared), so they only gain the column. Guarded so a database built from the
-current models passes.
+the organisation's external systems and a project's rows for them. The systems tables already exist (shared with Product Feedback), so
+they only gain the column. Guarded so a database built from the current models passes.
 """
 
 from collections.abc import Sequence

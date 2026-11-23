@@ -23,19 +23,15 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  // Pre-populated when arriving from OrgLoginPage's own 2FA branch (E-P-03) —
-  // that page never duplicates the code-entry form, it hands off its
-  // already-issued challenge token here via router state so this page opens
-  // straight on step two instead of asking for email/password again.
+  // Set when arriving from OrgLoginPage's 2FA branch (E-P-03): it hands its issued challenge token over
+  // in router state so this page opens on the code step.
   const [challengeToken, setChallengeToken] = useState<string | null>(routerState?.challengeToken ?? null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loginBackgroundFileId, setLoginBackgroundFileId] = useState<string | null>(null);
   const [signupAvailable, setSignupAvailable] = useState(false);
-  // Platform-default branding (U-C-02) — this page is pre-auth/outside
-  // BrandingProvider (no org/project context to resolve an org's own
-  // branding against), so it falls back straight to the deployment-wide
-  // default, same fields `BrandingContext`'s own serverDefault uses.
+  // Platform-default branding (U-C-02): the page is outside BrandingProvider (no organisation context),
+  // so it uses the deployment-wide default, the same fields as `BrandingContext`'s serverDefault.
   const [brandLogoFileId, setBrandLogoFileId] = useState<string | null>(null);
   const [brandTitle, setBrandTitle] = useState(strings.appName);
   const [brandBandColorHex, setBrandBandColorHex] = useState<string | null>(null);

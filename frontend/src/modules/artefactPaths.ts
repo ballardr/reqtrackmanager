@@ -1,14 +1,11 @@
 /**
  * Module: modules/artefactPaths
  *
- * Resolves the page of a record from its artefact type, so one module's UI
- * (the links panel, Stakeholders' relationship list) can link to another's
- * records (a Pain Point, a Decision) without importing that module or
- * hardcoding its URLs. Two sources, merged like `entityAccentColor.ts`: the
- * core-owned types (`requirement`, `requirement_action`, `change_request`), and every installed
- * module's own `TierAModuleDefinition.artefactPaths`. Every artefact type the
- * backend registers must resolve here, or it could be linked yet unreachable
- * (`artefactPaths.stories.tsx` guards this).
+ * Resolves the page of a record from its artefact type, so one module's UI (the links panel, Stakeholders' relationship list)
+ * can link to another's records without importing that module or hardcoding its URLs. Two sources, merged like
+ * `entityAccentColor.ts`: the core-owned types (`requirement`, `requirement_action`, `change_request`) and every installed
+ * module's `TierAModuleDefinition.artefactPaths`. Every artefact type the backend registers must resolve here, or it could be
+ * linked yet unreachable (`artefactPaths.stories.tsx` guards this).
  */
 import { CHANGE_REQUEST_STATUS_LABEL, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { installedModules } from "./registry";

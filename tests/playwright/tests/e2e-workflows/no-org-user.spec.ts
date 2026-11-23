@@ -3,25 +3,15 @@ import { expect, test } from "@playwright/test";
 import { PASSWORD, PERSONAS } from "./helpers";
 
 /**
- * Job to be done: a user who belongs to zero organisations at all can
- * still use the app shell without a crash, an infinite spinner, or a
- * console error — every page most of this session's new code implicitly
- * assumes "at least one org" for (Users table, project members, groups,
- * the org-admin hierarchy bypass, the combined add-member/add-group
- * autocomplete, the new per-row action menus) is unreachable with zero
- * org/project context in the first place, so this is really a general
- * app-shell robustness check, not something specific to the own new UI
- * (the members/groups directory rework "Additional test"
- * note, docs/decisions.md).
+ * Job to be done: a user who belongs to no organisation can use the app shell without a crash, an infinite spinner
+ * or a console error. Pages that assume at least one organisation (Users table, project members, groups, the
+ * org-admin hierarchy bypass, the add-member autocomplete, per-row action menus) are unreachable with no
+ * organisation context, so this is a general app-shell robustness check.
  *
- * Uses the orphan persona (seeded as an Alpha member, then removed via
- * self-service leave — see `backend/scripts/seed_e2e_dataset.py` — so it
- * ends up with genuinely zero `UserOrgRole` rows, not just zero *visible*
- * orgs). Already shared, read-only-safe, across `two-factor-auth.spec.ts`/
- * `org-login-2fa-handoff.spec.ts`/`user-directory-and-bans.spec.ts` for the
- * same "zero org memberships" reason; this spec only navigates and asserts
- * — it makes no mutation, so it can't leave the persona in a different
- * state for any of those.
+ * Uses the orphan persona (seeded as an Alpha member, then removed through self-service leave in
+ * `backend/scripts/seed_e2e_dataset.py`, so it has zero `UserOrgRole` rows). It is shared read-only with
+ * `two-factor-auth.spec.ts`, `org-login-2fa-handoff.spec.ts` and `user-directory-and-bans.spec.ts`; this spec only
+ * navigates and asserts, so it leaves the persona unchanged.
  */
 test.describe("app shell for a user with zero organisation memberships", () => {
   test("orgs, nav rail, projects, and favourites all degrade gracefully", async ({ page }) => {

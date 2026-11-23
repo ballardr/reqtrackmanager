@@ -1,28 +1,19 @@
 /**
  * Module: modules/context_strategy/ProjectOpenQuestionsPage
  *
- * The Context & Strategy module's project-scoped Open Question list route,
- * mounted at
- * `/projects/:projectId/modules/context_strategy/open-questions`, reached
- * via this module's fifth and last top-level nav-rail entry.
- * Mirrors `ProjectPainPointsPage.tsx`'s exact `DirectoryTable` + `FilterPanel`
- * + "New X" `Modal` shape — Open Question is project-scoped only (source
- * overview §9), so unlike `ProjectStrategiesPage.tsx`/
- * `ProjectGuidingPrinciplesPage.tsx` there is no org-scoped sibling panel,
- * and unlike `ProjectPainPointsPage.tsx` there is no type vocabulary to load
- * up front either — the simplest of the five list pages this module ships.
+ * The project-scoped Open Question list route, mounted at
+ * `/projects/:projectId/modules/context_strategy/open-questions` (the module's last top-level nav-rail entry). It has
+ * `ProjectPainPointsPage.tsx`'s `DirectoryTable`, `FilterPanel` and "New X" `Modal` shape. Open Question is
+ * project-scoped only, so there is no organisation-scoped sibling panel and no type vocabulary to load.
  *
- * The list column shows `question` itself, not a separate `title` — Open
- * Question has no `title` field (see `types.ts`'s own docstring).
+ * The list column shows `question`, which is the display title (see `types.ts`).
  *
- * The list opens on unresolved Open Questions only (the "Open only" filter is
- * ticked and stays visible); a link with a valid `status`, or `open=0`, starts
- * with it off (`hooks/useOpenOnly.ts`).
+ * The list opens on unresolved Open Questions only (the "Open only" filter is ticked and visible); a link with a valid
+ * `status`, or `open=0`, starts with it off (`hooks/useOpenOnly.ts`).
  *
- * Filters can be pre-set from the URL (a report figure links here, e.g.
- * `?open=1&overdue=1`): `status`, `priority`, `open=1|0` (unresolved; the
- * default), `overdue=1` (due date passed) and `unowned=1`. They only seed the
- * state; each is a visible control in the filter panel.
+ * Filters can be pre-set from the URL (a report figure links here, e.g. `?open=1&overdue=1`): `status`, `priority`,
+ * `open=1|0` (unresolved; the default), `overdue=1` (due date passed) and `unowned=1`. They only seed the state; each
+ * is a visible control in the filter panel.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

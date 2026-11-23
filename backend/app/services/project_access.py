@@ -72,15 +72,8 @@ def accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
     project_ids_via_role = set(
         db.scalars(select(UserProjectRole.project_id).where(UserProjectRole.user_id == user_id)).all()
     )
-    # Members/groups directory rework (docs/decisions.md): a group
-    # can now hold zero roles, so plain membership alone no longer implies
-    # any access — the `join(ProjectGroupRole, ...)` below requires the
-    # group to actually hold at least one role, matching `get_effective_
-    # project_roles`'s own authoritative check (`rbac._direct_effective_
-    # project_roles_by_kind`'s `direct_group` branch already requires this).
-    # Found and fixed together with the identical pre-existing gap in
-    # `rbac._direct_project_member_ids_base` — see that function's own
-    # docstring for the regression this closes.
+    # A group can hold zero roles, so membership alone implies no access: the `ProjectGroupRole` join
+    # requires at least one role, matching `rbac._direct_effective_project_roles_by_kind`.
     project_ids_via_group = set(
         db.scalars(
             select(ProjectGroup.project_id)
@@ -101,21 +94,10 @@ def accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
         if user_org_ids
         else set()
     )
-    # Pre-existing gap fixed here, found while regression-testing the org-group role grants (see
-    # docs/decisions.md): the two sets above only ever covered a user's
-    # *direct* membership (a UserProjectRole, or being a plain user_id
-    # member of a ProjectGroup) — never a role reached only via an org group
-    # the user belongs to, whether nested inside a ProjectGroup
-    # (`ProjectGroupMember.org_group_id`, pre-existing) or granted a role
-    # directly (`OrgGroupProjectRole`, the new mechanism). Both are
-    # already correctly resolved by `get_effective_project_roles`/`require_
-    # project_view`, so `GET /{project_id}` has always worked for such a
-    # user — but `_accessible_project_ids` is the separate function behind
-    # `list_projects`/`/ancestors`/`/children`, so that same user's project
-    # simply never appeared in their own project list or search. Uses the
-    # same `get_user_org_group_ids` (direct + transitively-nested) already
-    # used elsewhere for this exact resolution, once per organisation the
-    # user belongs to.
+    # The sets above cover direct membership only. A role reached through an org group (nested in a
+    # ProjectGroup via `ProjectGroupMember.org_group_id`, or granted directly via `OrgGroupProjectRole`)
+    # must also list the project, as `get_effective_project_roles` grants access to it. Uses
+    # `get_user_org_group_ids` (direct and nested) once per organisation the user belongs to.
     all_user_org_group_ids: set[UUID] = set()
     for member_org_id in user_org_ids:
         direct_group_ids, inherited_group_ids = get_user_org_group_ids(db, user_id, member_org_id)

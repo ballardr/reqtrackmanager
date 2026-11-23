@@ -1,8 +1,8 @@
 /**
  * Module: components/CommentComposer
  *
- * The box for writing a new comment on a canvas (the body of the new-comment marker's pop-over): a growing text area with
- * Comment and Cancel, and the last failure's message. It stores nothing; the caller's `onPost` does.
+ * The box for writing a new comment on a canvas (the new-comment marker's pop-over body): a growing text area with
+ * Comment and Cancel and the last failure's message. It stores nothing; the caller's `onPost` does.
  */
 import { useState } from "react";
 

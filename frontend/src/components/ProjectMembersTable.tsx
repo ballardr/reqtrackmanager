@@ -1,144 +1,36 @@
 /**
  * Module: components/ProjectMembersTable
  *
- * The unified "who has access to this {project}, and why" table (docs/decisions.md) — replaces both
- * `MemberRoleTable.tsx` (the direct-users-and-groups editable table) and
- * `PendingInvitesSection.tsx` (a separate pending-invites list), now that
- * default project groups are removed: groups are no longer the common
- * way to grant a role, so a group-and-user union row shape stopped making
- * sense, and pending invites are folded in as a per-row status rather than
- * kept as a second section. Two call sites share this exact component:
- * `ProjectAdminPage.tsx`'s own "Members" section, and `OrgAdminPage.tsx`'s
- * "Manage users" modal — the same sharing precedent `MemberRoleTable`
- * established, now over `GET /{project_id}/effective-members` (with
- * provenance) instead of the retired `GET /{project_id}/direct-members`.
+ * The unified "who has access to this {project}, and why" table (docs/decisions.md), shared by
+ * `ProjectAdminPage.tsx`'s Members section and `OrgAdminPage.tsx`'s "Manage users" modal over
+ * `GET /{project_id}/effective-members` (with provenance). Search, the role filter and "Show invited" live inside
+ * this component so both call sites behave identically.
  *
- * Responsibilities:
- * - Renders one `DirectoryTable` row per effective member (`kind:
- *   "member"`) merged with this project's outstanding pending invites
- *   (`kind: "invited"`, from `GET /{project_id}/pending-invites`) — the
- *   same `kind`-discriminated union pattern `MemberRoleTable`/Org Admin's
- *   own Users table already established. Search, the role filter, and
- *   "Show invited" are handled entirely inside this component (unlike bare
- *   `DirectoryTable` call sites elsewhere, which leave `FilterPanel`
- *   composition to the page) precisely so both call sites render and
- *   behave identically — a real single implementation, not two pages each
- *   re-composing their own `FilterPanel` around a shared shell.
- * - A member row's Role cell is a `MultiSelectDropdown` over the four
- *   `ProjectRole` values — checked options come from `EffectiveMember.
- *   sources`. An option is only freely togglable (via the caller's
- *   `onToggleRole`, which calls `POST`/`DELETE /roles`) when its *only*
- *   source is the `direct_role` provenance kind — a genuine, individually
- *   revocable `UserProjectRole` row. An option whose sources include any of
- *   the other five kinds (`direct_group`, `direct_org_group`,
- *   `direct_org_group_role`, `direct_project_ref`, `direct_org_wide`) is
- *   shown checked-but-disabled with a `title` explaining why: `DELETE
- *   /{project_id}/roles/{user_id}/{role}` only ever deletes `UserProjectRole`
- *   rows, so offering it as if it worked for any other source would
- *   silently no-op while this table
- *   showed the role as removed. See `MemberSourceProvenanceKind`'s own doc
- *   comment (`api/types.ts`) for the full rationale — this is the exact
- * fix the `kind` split exists to make possible. A disabled
- *   option's own label also carries an inline "(by group)"/"(only
- *   manager)" suffix (platform review 2026-09 follow-up) stating which of
- *   the two disabled reasons applies, rather than relying solely on the
- *   `title` tooltip a user has no visible cue to hover for.
- * - An invited row's Role cell shows a status badge (Pending/Expired,
- *   through `PENDING_INVITE_STATUS_LABEL`) and a Resend button instead of a
- *   `MultiSelectDropdown` — folded in from the retired
- *   `PendingInvitesSection.tsx`, unchanged in behavior (`onResendInvite`
- *   calls the same `POST .../pending-invites/{id}/resend`).
- * - A member row's Source cell is a click-to-open `Popover` summary
- *   (`MemberSourceSummary` below), not the always-visible per-role
- *   provenance stack this table originally shipped with (platform review
- *   2026-09 follow-up): the Role cell above already names which roles a
- *   member holds, so repeating that per source line in this column too was
- *   redundant and got noisier the more sources/roles a member had. The
- *   cell instead shows one plain word/phrase for the whole row — "Direct",
- *   "Group", or "Direct and group" — and the full per-source detail
- *   (`sourceLine`, unchanged) moves behind the popover so nothing is lost,
- *   just no longer forced into view for every row.
- * - A fast, client-side "last manager" hint (disabled + `title`) on a
- *   purely-`direct_role` `project_manager` option, computed only from
- *   `direct_role`-kind entries (not the old collapsed `direct` bucket a
- *   manager whose role actually comes from a group or org-wide visibility
- *   would otherwise misreport through) — mirrors the same disabled+title
- *   treatment `MultiSelectDropdown` already gives self-role-revoke on
- *   `OrgAdminPage.tsx`'s own Users table. Approximation only: the backend's
- *   own C-U-08 guard on every mutating endpoint this table calls into is
- *   what's actually authoritative (e.g. it also accounts for forward
- *   inheritance, which this client-side hint can't see) — see that guard's
- *   own docstring (`routers/projects.py::revoke_project_role`).
+ * Rows (a `kind`-discriminated union), `members`/`invites` caller-supplied and fully loaded (the role filter and
+ * the invite merge need the complete set, so they are not server-paginated):
+ * - `member`: one row per effective member. The Role cell is a `MultiSelectDropdown` over the four `ProjectRole`
+ *   values, checked from `EffectiveMember.sources`. An option is togglable (`onToggleRole`, `POST`/`DELETE
+ *   /roles`) only when its sole source is `direct_role`, an individually revocable `UserProjectRole` row; the
+ *   delete endpoint removes only those rows, so any other source (`direct_group`, `direct_org_group`,
+ *   `direct_org_group_role`, `direct_project_ref`, `direct_org_wide`; see `MemberSourceProvenanceKind` in
+ *   `api/types.ts`) shows checked but disabled, with a "(by group)" / "(only manager)" label suffix stating why.
+ *   A client-side "last manager" hint covers a purely direct `project_manager` option; it is an approximation,
+ *   and the backend guard on every mutating endpoint (`routers/projects.py::revoke_project_role`) is authoritative.
+ *   Module-contributed roles (`availableModuleRoles`, already project-scoped) are extra options toggled through
+ *   `onToggleModuleRole`; they are direct-grant-only, so never disabled, and labelled with the role's own `name`.
+ *   The Source cell is one phrase ("Direct", "Group", "Direct and group") that opens a `Popover` with the
+ *   per-source detail (`MemberSourceSummary`).
+ * - `invited`: a pending invite from `GET /{project_id}/pending-invites`, with a status badge
+ *   (`PENDING_INVITE_STATUS_LABEL`) and a Resend button (`onResendInvite`) in place of the dropdown.
+ * - `group`: an organisation group with a direct `OrgGroupProjectRole` grant (`groupRoles`). Its Role cell is a
+ *   `MultiSelectDropdown` over the core roles, always togglable (`onToggleGroupRole`) because the row is the
+ *   grant; the Name cell carries a "Group" badge, the Source cell says "Direct" and Actions offers only "Remove
+ *   group" (`onRemoveGroup`, behind a Tier 1 `ConfirmDialog`).
  *
- * - Module roles: the Role column's `MultiSelectDropdown` also
- *   merges in `availableModuleRoles` (already filtered to project scope by
- *   the caller), one option per module-contributed role — checked from a
- *   member's own `module_roles`, toggled via `onToggleModuleRole`. Unlike
- *   the core-role options above, a module-role option is **never**
- *   subjected to the `purelyDirect`/inherited-disabled treatment: V1
- *   module roles are direct-grant-only with no group/hierarchy
- *   inheritance concept at all (a deliberate scope boundary — see
- * spec), so every module-role
- *   option is always freely togglable. Its `label` renders the role
- *   definition's own `name` directly — not a `MODULE_ROLE_LABEL`-style
- *   frontend lookup map — since it is already human-readable data returned
- *   by the API (set server-side by the module's own author), not a raw
- *   closed-enum wire value the frontend itself defines (contrast
- *   `PROJECT_ROLE_LABEL` above, which *does* need a lookup because
- *   `ProjectRole` is such an enum).
- *
- * Does not fetch or mutate any data itself, matching `MemberRoleTable`'s
- * own contract: `members`/`invites` are caller-supplied, already loaded in
- * full (small enough to load whole and search/filter/paginate client-side
- * — the same precedent `MemberRoleTable`'s own two data sources already
- * set, and why `GET /{project_id}/effective-members`'s own new `search`/
- * `limit`/`offset` support — added for completeness and
- * future consumers — isn't used by this component: role-filtering and the
- * pending-invite merge both need the *complete* set to stay correct, and a
- * `LoadMoreButton` backed by real server-side offset pagination would make
- * a role filter silently incomplete for any member not yet loaded).
- * `onToggleRole`/`onResendInvite`/`addControl` are the caller's own API
- * calls and composed control, same division of responsibility
- * `MemberRoleTable` already proved out.
- * - Per-row Actions column (docs/decisions.md): "Remove all access" and "Convert inherited
- *   access to direct roles", behind one `ActionMenu` per member row —
- *   offered/hidden per-row per that PR's own eligibility rules (see
- *   `allDirectRoleSourced`/`hasInheritedSource` below). `onRemoveAllAccess`/
- *   `onConvertToDirect` are the caller's own API calls, same division of
- *   responsibility as `onToggleRole` — this component only owns the Tier-1
- *   `ConfirmDialog` in front of "Remove all access" (a real, destructive,
- *   full revocation, not a single toggle); "Convert inherited access to
- *   direct roles" is additive/non-destructive, so it calls straight
- *   through with no confirm step, matching the bulk "Convert all inherited
- *   access to direct roles" button's own (confirm-free) treatment on
- *   `ProjectAdminPage.tsx`.
- * - A third row kind, `kind: "group"`: an organisation group holding at least one direct
- *   `OrgGroupProjectRole` grant on this project (`groupRoles`, from `GET
- *   /{project_id}/group-roles`) — a real, first-class mechanism the Members
- *   section's "Add member" autocomplete has always been able to *create*
- *   (picking an org group there calls `POST .../group-roles`), but which
- *   had no row of its own to show it afterward, only a `direct_org_group_
- *   role`-kind Source line on whichever members happened to belong to that
- *   group. Its Role cell is a `MultiSelectDropdown` over the four core
- *   `ProjectRole`s (module-contributed roles are out of scope here — see
- *   `EffectiveMember.module_roles`'s own docstring; a module role's group-
- * grant path, is a separate mechanism/table),
- *   always freely togglable in both directions since the row's very
- *   existence *is* the direct grant (no `purelyDirect`-style disabling
- *   needed, unlike a user row's Role cell) — `onToggleGroupRole` is the
- *   caller's own `POST`/`DELETE .../group-roles[...]` call. Its Actions
- *   column offers only "Remove group" (`onRemoveGroup`, behind this
- *   component's own Tier-1 `ConfirmDialog`, mirroring "Remove all access"'s
- *   treatment) — revokes every role the group holds at once. No email, no
- *   Source-column provenance chain (there's nothing upstream of a group's
- *   own direct grant to attribute it to) — the Name cell instead carries a
- *   small "Group" badge so the row doesn't read as a person with a blank
- *   email, and the Source cell just states "Direct" plainly (no popover —
- *   there's nothing upstream to disclose). `groupRoles` defaults to `[]`
- *   and `onToggleGroupRole`/
- *   `onRemoveGroup` are optional, same "omit to hide" contract `onRemoveAllAccess`/
- *   `onConvertToDirect` already use, so a future read-only rendering of this
- *   table doesn't need a no-op stub.
+ * Actions column, one `ActionMenu` per member row: "Remove all access" (`onRemoveAllAccess`, offered only when
+ * every source is `direct_role`, behind a Tier 1 `ConfirmDialog`) and "Convert inherited access to direct roles"
+ * (`onConvertToDirect`, additive so no confirm). Each callback is optional ("omit to hide"); the component fetches
+ * and mutates nothing itself.
  */
 import { Info, Send, Trash2, Wand2 } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
@@ -178,10 +70,8 @@ type Row =
   | { kind: "group"; group: OrgGroupProjectRoleSummary };
 type SortKey = "name" | "email";
 
-/** Per-role provenance text for the Source column — one line per source a
- * user holds a given role through. See `MemberSourceProvenanceKind`'s own
- * doc comment (`api/types.ts`) for what each of the five direct kinds
- * means. */
+/** Per-role provenance text for the Source column: one line per source a user holds a given role through
+ * (`MemberSourceProvenanceKind` in `api/types.ts` describes the five direct kinds). */
 function sourceLine(strings: Strings, s: MemberSourceProvenance): string {
   switch (s.kind) {
     case "direct_role":
@@ -215,16 +105,9 @@ function sourceLine(strings: Strings, s: MemberSourceProvenance): string {
   }
 }
 
-/** The Source column's cell for a `kind: "member"` row (platform review
- * 2026-09 follow-up) — a single plain-language summary word/phrase
- * ("Direct" / "Group" / "Direct and group") rather than the old
- * always-visible per-role `sourceLine` stack: the Role column already
- * names which roles this member holds, so repeating that per source line
- * here was redundant, just noisier the more roles/sources a member had.
- * The full per-source detail isn't dropped, only moved behind a
- * click-to-open `Popover` (reusing `sourceLine` unchanged for its
- * contents) so it's still traceable — which specific group, project, or
- * mode granted each role — without cluttering the row itself. */
+/** The Source column's cell for a `kind: "member"` row: one plain word or phrase ("Direct" / "Group" / "Direct and
+ * group"), because the Role column already names the roles held. The per-source detail (`sourceLine`) is behind a
+ * click-to-open `Popover`. */
 function MemberSourceSummary({ strings, member }: { strings: Strings; member: EffectiveMember }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -234,11 +117,7 @@ function MemberSourceSummary({ strings, member }: { strings: Strings; member: Ef
   const hasDirect = member.sources.some((s) => s.kind === "direct_role");
   const hasIndirect = member.sources.some((s) => s.kind !== "direct_role");
 
-  // Every source is `direct_role` — the popover would only ever say
-  // "Direct" once per held role, nothing the Role column doesn't already
-  // convey, so (like the `kind: "group"` row's own Source cell) this skips
-  // the disclosure control entirely rather than offering a popover with
-  // nothing worth opening it for.
+  // Every source is `direct_role`, so a popover would only repeat "Direct" per role; the disclosure is skipped.
   if (!hasIndirect) return <span className="text-muted">{strings.membersTable.sourceDirectRole}</span>;
 
   const label = hasDirect ? strings.membersTable.sourceSummaryDirectAndGroup : strings.membersTable.sourceSummaryGroup;
@@ -293,53 +172,31 @@ export function ProjectMembersTable({
 }: {
   members: EffectiveMember[];
   invites: PendingInvite[];
-  /** Organisation groups holding a direct `OrgGroupProjectRole` grant on
-   * this project — rendered as their own `kind: "group"` rows,
-   * alongside (not replacing) the member/invited rows above. Defaults to
-   * `[]`, matching this table's original behavior for a caller that
-   * hasn't fetched `GET /{project_id}/group-roles` yet. */
+  /** Organisation groups holding a direct `OrgGroupProjectRole` grant on this project, rendered as `kind: "group"`
+   * rows beside the member and invited rows. Defaults to `[]`. */
   groupRoles?: OrgGroupProjectRoleSummary[];
-  /** Grants `role` to the user when `checked` is true, revokes it otherwise
-   * — only ever called for an option whose sole source is `direct_role`
-   * (see the module docstring); a non-`direct_role` option is rendered
-   * disabled, so it can't reach this callback via the UI. */
+  /** Grants `role` to the user when `checked` is true, revokes it otherwise. Only called for an option whose sole
+   * source is `direct_role`; any other option is disabled. */
   onToggleRole: (userId: string, role: ProjectRole, checked: boolean) => void;
-  /** Grants/revokes one role on a group's own `kind: "group"` row —
-   * always freely callable in both directions, since (unlike a user's
-   * `onToggleRole`) there is no inherited/group-sourced state to guard
-   * against here: the row's existence already means every listed role is
-   * this group's own direct grant. The caller's own `POST`/`DELETE
-   * .../group-roles[...]` call, same division of responsibility as
-   * `onToggleRole`. Required only when `groupRoles` is non-empty in
-   * practice; typed optional so a caller with nothing to pass doesn't need
-   * a no-op stub. */
+  /** Grants or revokes one role on a group's `kind: "group"` row. Always callable, because the row's existence
+   * means every listed role is the group's own direct grant. Typed optional so a caller with nothing to pass needs
+   * no stub. */
   onToggleGroupRole?: (orgGroupId: string, role: ProjectRole, checked: boolean) => void;
   onResendInvite: (invite: PendingInvite) => void;
   /** The invite currently being resent, if any — disables that row's
    * Resend button while the request is in flight. */
   resendingInviteId?: string | null;
-  /** Per-row "Remove all access" (Actions column) — called only after
-   * the built-in `ConfirmDialog` is confirmed, and only ever offered for a
-   * member whose sources are entirely `direct_role` (see
-   * `allDirectRoleSourced` below). The caller loops the actual per-role
-   * `DELETE /roles/{user_id}/{role}` calls itself, same division of
-   * responsibility as `onToggleRole`. Omit to hide the Actions column
-   * entirely (e.g. a future read-only rendering) — both current call sites
-   * always supply it. */
+  /** Per-row "Remove all access", called after the built-in `ConfirmDialog` is confirmed and only offered for a
+   * member whose sources are all `direct_role` (`allDirectRoleSourced`). The caller loops the per-role
+   * `DELETE /roles/{user_id}/{role}` calls. Omit to hide the Actions column. */
   onRemoveAllAccess?: (userId: string) => void;
-  /** Per-row "Convert inherited access to direct roles" (Actions column)
-   * — called directly (no confirm step; additive, not destructive),
-   * only ever offered for a member with at least one `forward_inherited`/
-   * `member_source_inherited` source. The caller calls the new `POST
-   * /{project_id}/materialize-inherited-access/{user_id}` endpoint and
-   * refreshes `members` itself. Omit to hide the Actions column entirely. */
+  /** Per-row "Convert inherited access to direct roles", called directly (additive, so no confirm) and only
+   * offered for a member with a `forward_inherited` or `member_source_inherited` source. The caller calls
+   * `POST /{project_id}/materialize-inherited-access/{user_id}` and refreshes `members`. Omit to hide the Actions
+   * column. */
   onConvertToDirect?: (userId: string) => void;
-  /** A group row's own "Remove group" — called
-   * only after the built-in `ConfirmDialog` is confirmed. The caller loops
-   * `DELETE .../group-roles/{org_group_id}/{role}` over every role the
-   * group currently holds, same division of responsibility as
-   * `onRemoveAllAccess`'s per-user loop. Omit to hide "Remove group" (the
-   * rest of the Actions column, if any, still renders). */
+  /** A group row's "Remove group", called after the built-in `ConfirmDialog` is confirmed. The caller loops
+   * `DELETE .../group-roles/{org_group_id}/{role}` over every role the group holds. Omit to hide "Remove group". */
   onRemoveGroup?: (orgGroupId: string) => void;
   /** Caller-composed "add a member" control (`UserAutocomplete` + a role
    * `<select>`) — differs slightly per call site, so this table only
@@ -347,20 +204,11 @@ export function ProjectMembersTable({
   addControl?: ReactNode;
   /** Accessible name for the table itself. */
   ariaLabel: string;
-  /** Project-scoped module-contributed role definitions available to
-   * grant on this project — already filtered to
-   * currently-enabled modules by the caller (`GET /{project_id}/module-
-   * roles`). Defaults to `[]`, the default when no module has any
-   * roles registered — the Role column's
-   * `MultiSelectDropdown` then shows only the four core `ProjectRole`
-   * options. */
+  /** Project-scoped module-contributed role definitions available to grant, already filtered to enabled modules by
+   * the caller (`GET /{project_id}/module-roles`). Defaults to `[]`, leaving the four core `ProjectRole` options. */
   availableModuleRoles?: ModuleRoleDefinition[];
-  /** Grants/revokes one module-contributed role on a member — always
-   * freely callable (no `purelyDirect`-style disabling), since module
-   * roles are direct-grant-only with no inherited-source state to guard
-   * against (see the module docstring). Required only when
-   * `availableModuleRoles` is non-empty in practice; typed optional so
-   * existing call sites with nothing to pass don't need a no-op stub. */
+  /** Grants or revokes one module-contributed role on a member. Always callable: module roles are direct-grant-only
+   * with no inherited source to guard against. Typed optional so a caller with nothing to pass needs no stub. */
   onToggleModuleRole?: (userId: string, moduleKey: string, roleKey: string, grant: boolean) => void;
 }) {
   const strings = useStrings();
@@ -405,13 +253,8 @@ export function ProjectMembersTable({
     return true;
   });
 
-  // Invited and group rows always render ahead of the sorted member rows
-  // rather than interleaved into that sort order — same precedent Org
-  // Admin's own Users table set for its "kind: user | invited" merge
-  // (there's no meaningful name to sort an invited row by yet), and the
-  // style guide's "type-badged mixed rows" pattern's own "fixed kind first"
-  // rule (both invited and group rows here are small, fully-loaded sets,
-  // unlike the paginated/sortable member rows).
+  // Invited and group rows render ahead of the sorted member rows ("fixed kind first" in the style guide's
+  // type-badged mixed rows pattern): they have no name to sort by and are small, fully loaded sets.
   const rows: Row[] = [
     ...filteredInvites.map((invite): Row => ({ kind: "invited", invite })),
     ...filteredGroupRoles.map((group): Row => ({ kind: "group", group })),
@@ -447,11 +290,8 @@ export function ProjectMembersTable({
           );
         }
         if (row.kind === "invited") return <span className="text-muted">—</span>;
-        // `kind === "group"` — a small "Group" badge ahead of the
-        // name so the row doesn't read as a person with a blank email (the
-        // Email column below), matching this table's own existing "badge
-        // signals kind" idiom (the invited row's status badge in the Role
-        // column) rather than a whole extra Type column.
+        // A "Group" badge ahead of the name so the row does not read as a person with a blank email; no separate
+        // Type column.
         return (
           <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
             <Badge>{strings.membersTable.groupRowBadge}</Badge>
@@ -493,15 +333,10 @@ export function ProjectMembersTable({
         }
         if (row.kind === "group") {
           const group = row.group;
-          // No `purelyDirect`/`isLastManager` treatment here (unlike the
-          // member branch below) — this row's very existence means every
-          // listed role is this group's own direct `OrgGroupProjectRole`
-          // grant, and `get_effective_project_managers` never counts a
-          // group-derived manager towards the C-U-08 floor in the first
-          // place (see `revoke_group_project_role`'s own docstring), so a
-          // client-side "last manager" hint would almost never accurately
-          // predict a real block. The backend's own guard is authoritative;
-          // a rejected revoke surfaces via the caller's own error toast.
+          // No `purelyDirect`/`isLastManager` treatment: the row's existence means every listed role is the group's
+          // direct grant, and `get_effective_project_managers` never counts a group-derived manager towards the
+          // last-manager floor, so a client-side hint would rarely predict a real block. The backend guard is
+          // authoritative; a rejected revoke surfaces through the caller's error toast.
           return (
             <MultiSelectDropdown
               triggerLabel={strings.membersTable.rolesFor(group.org_group_name)}
@@ -554,12 +389,8 @@ export function ProjectMembersTable({
                     : isLastManager
                       ? strings.membersTable.cannotRemoveLastManager
                       : strings.membersTable.cannotRemoveOnlyRole;
-                // Inline suffix on the option's own label (not just its
-                // hover `title` above) so a greyed-out option states why
-                // at a glance — platform review 2026-09 follow-up; see
-                // `roleByGroupSuffix`'s own doc comment for why this is one
-                // generic "(by group)" wording covering every non-`direct_
-                // role` kind rather than five kind-specific phrases.
+                // Inline suffix on the option's label (not only its hover `title`) so a disabled option states why
+                // at a glance; `roleByGroupSuffix` explains the one generic "(by group)" wording.
                 const disabledSuffix = !disabled
                   ? ""
                   : !purelyDirect
@@ -579,11 +410,8 @@ export function ProjectMembersTable({
                   onToggle: () => onToggleRole(member.user_id, role, !checked),
                 };
               }),
-              // Merged in alongside the core roles
-              // above, same dropdown/checkbox styling and optionLabel
-              // pattern — never disabled (see this component's own
-              // docstring for why module roles skip the purelyDirect
-              // check entirely).
+              // Merged in beside the core roles with the same styling; never disabled (module roles skip the
+              // `purelyDirect` check).
               ...availableModuleRoles.map((d) => {
                 const checked = member.module_roles.some(
                   (g) => g.module_key === d.module_key && g.role_key === d.role_key
@@ -615,11 +443,7 @@ export function ProjectMembersTable({
           );
         }
         if (row.kind === "group") {
-          // No provenance chain to walk (unlike a member's `sources`) —
-          // there's nothing upstream of a group's own direct grant to
-          // attribute it to, and every role this row lists (Role column)
-          // is that same direct grant, so the cell just states "Direct"
-          // plainly rather than repeating it once per role.
+          // A group's direct grant has no upstream provenance, so the cell states "Direct" once rather than per role.
           return <span className="text-muted">{strings.membersTable.sourceDirectRole}</span>;
         }
         return <MemberSourceSummary strings={strings} member={row.member} />;
@@ -646,15 +470,10 @@ export function ProjectMembersTable({
           return <ActionMenu triggerLabel={strings.membersTable.actionsFor(group.org_group_name)} items={items} />;
         }
         const member = row.member;
-        // "Remove all access" is only safe (and only offered) when every
-        // source this member holds is a genuine, individually-revocable
-        // `direct_role` row — the same "purely direct" test the Role
-        // `MultiSelectDropdown` above already applies per-option, just
-        // required across *all* of a member's held roles at once here:
-        // if even one role were group-/inheritance-sourced, looping the
-        // per-role DELETE over "currently-held direct roles" would leave
-        // that other access silently in place while claiming to remove
-        // "all" of it.
+        // "Remove all access" is offered only when every source is an individually revocable `direct_role` row,
+        // the same "purely direct" test the Role dropdown applies per option, across all held roles: looping the
+        // per-role DELETE would otherwise leave group- or inheritance-sourced access in place while claiming to
+        // remove all of it.
         const allDirectRoleSourced = member.sources.length > 0 && member.sources.every((s) => s.kind === "direct_role");
         const hasInheritedSource = member.sources.some(
           (s) => s.kind === "forward_inherited" || s.kind === "member_source_inherited"
@@ -713,14 +532,9 @@ export function ProjectMembersTable({
           onCancel={() => setConfirmRemoveGroupId(null)}
         />
       )}
-      {/* `FilterPanel` renders as a full-width bar ABOVE the table
-          (`layout="top"`), not the standard `.side-grid` side layout —
-          this table has 4 columns (Name, Email, Role, Source) with a
-          multi-select role dropdown and per-source provenance text in the
-          last column, wide enough that a 240px side sidebar visibly
-          crowded it on both this component's call sites (follow-up UX
-          fix; see docs/decisions.md and docs/ux-style-guide.md's "Pattern:
-          filter panel placement — side vs. top"). */}
+      {/* `FilterPanel` renders as a full-width bar above the table (`layout="top"`), not the side layout: the
+          four columns (Name, Email, Role, Source), a multi-select role dropdown and per-source text are too wide
+          for a 240px side panel (docs/ux-style-guide.md, "Pattern: filter panel placement — side vs. top"). */}
       <FilterPanel
         layout="top"
         sectionKey="projectMembersTableFilters"

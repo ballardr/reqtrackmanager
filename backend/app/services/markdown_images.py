@@ -4,26 +4,24 @@ Module: services.markdown_images
 The pictures inside a record's Markdown text: `![alt](attachment:<file id>)`, an attachment of the same record.
 
 Responsibilities:
-- `attached_file_ids` / `require_attached`: decide which referenced files really are attachments of the record whose
+- `attached_file_ids` / `require_attached`: decide which referenced files are attachments of the record whose
   field holds the reference (the one integrity rule of a picture), through the type's `RecordAttachmentProvider`.
-- `importing_images` / `ImageImport`: carry a reference through a project bundle import. The bundle's text names the
-  *source* file ids; an import creates new files, so the references are rewritten to the new ids once the records and
-  their attachments exist, and a picture whose file did not arrive becomes its alternative text.
+- `importing_images` / `ImageImport`: carry references through a project bundle import. Bundle text names the
+  source file ids; an import creates new files, so references are rewritten to the new ids once records and
+  attachments exist, and a picture whose file did not arrive becomes its alternative text.
 
 Design decisions:
-- A picture is never an outside address and never another record's file: reading a record makes no request to another
-  site, the confidential mark and the record's access rules decide who sees a file, and a bundle already carries the
-  record's attachments.
-- The check runs in the Markdown write hook (`services.markdown_fields`), so every path that stores a field (endpoint,
-  file import, MCP tool, seed) is held to it. A record that does not exist yet has no attachments, so it can hold no
-  picture; pictures are added when a record is edited.
-- An import cannot be checked at write time (the records are written before their attachments), so the hook defers the
-  check to `ImageImport.finish`, which maps each source id to the new file with the same name and bytes that is attached
-  to the same record, rewrites the text, and then lets the ordinary check run. A source file that is not in the bundle
-  (or a project imported without files) leaves the picture's alternative text in its place, never a dangling reference.
-- Matching on name and bytes (not on a per-call-site id) means no attachment import path needs to know about pictures.
+- A picture is never an outside address or another record's file: reading makes no request to another site,
+  the confidential mark and record access rules decide who sees a file, and a bundle carries the attachments.
+- The check runs in the Markdown write hook (`services.markdown_fields`), so every write path (endpoint, file
+  import, MCP tool, seed) is held to it. A record not yet created has no attachments, so it holds no picture.
+- An import cannot be checked at write time (records are written before attachments), so the hook defers to
+  `ImageImport.finish`: it maps each source id to the new file with the same name and bytes attached to the
+  same record, rewrites the text, then runs the ordinary check. A source file missing from the bundle leaves
+  the alternative text, never a dangling reference. Matching on name and bytes means no attachment import path
+  needs to know about pictures.
 
-Dependencies: `modules.registry` (the declarations and attachment providers), `models.file`, SQLAlchemy.
+Dependencies: `modules.registry`, `models.file`, SQLAlchemy.
 """
 
 from __future__ import annotations

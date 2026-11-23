@@ -1,28 +1,22 @@
 """
 Module: services.process_coordination
 
-Coordinates several backend worker processes (uvicorn `--workers`,
-`BACKEND_WORKERS`) through PostgreSQL advisory locks, so the API can use
-more than one CPU core without duplicating process-wide work:
+Coordinates several backend worker processes (uvicorn `--workers`, `BACKEND_WORKERS`) through PostgreSQL
+advisory locks, so the API uses more than one CPU core without duplicating process-wide work:
 
-- `startup_lock()` serialises each worker's startup (migrations, bootstrap,
-  registry syncs). The first worker does the work; later ones find it done.
-- `run_leadership_loop()` elects one *leader* worker to run the singleton
-  background work (scheduled jobs, the digest emailer, the disk monitor),
-  so emails and sweeps never run once per worker. Non-leaders retry
-  periodically, so leadership moves on if the leader dies; the leader
-  re-checks its lock connection and steps down if it is lost, so two
-  workers never believe they lead at once for longer than one interval.
+- `startup_lock()` serialises each worker's startup (migrations, bootstrap, registry syncs): the first worker
+  does the work and later ones find it done.
+- `run_leadership_loop()` elects one leader to run singleton background work (scheduled jobs, the digest
+  emailer, the disk monitor). Non-leaders retry periodically, so leadership moves on if the leader dies; the
+  leader re-checks its lock connection and steps down if it is lost, so two workers never believe they lead
+  at once for longer than one interval.
 
-Design decisions (2026-10-04, Decided by: User — "do 1": multi-worker
-backend after e2e profiling showed a single process saturating one core):
-- Advisory locks need no extra infrastructure and are released by Postgres
-  automatically when a holder's connection closes (including a crash).
-- Locks are taken on dedicated DBAPI connections *detached* from the
-  SQLAlchemy pool, so closing one really ends its session (releasing the
-  lock) and request traffic can never reuse a lock-holding session.
-- Advisory-lock keys are scoped to the current database, so the pytest
-  database and the live database never contend.
+Design decisions:
+- Advisory locks need no extra infrastructure and Postgres releases them when a holder's connection closes,
+  including a crash.
+- Locks use dedicated DBAPI connections detached from the SQLAlchemy pool, so closing one ends its session
+  (releasing the lock) and request traffic cannot reuse a lock-holding session.
+- Lock keys are scoped to the current database, so the pytest and live databases never contend.
 """
 
 from __future__ import annotations

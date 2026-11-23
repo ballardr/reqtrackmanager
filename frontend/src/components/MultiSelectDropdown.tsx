@@ -1,22 +1,14 @@
 /**
  * Module: components/MultiSelectDropdown
  *
- * A compact, closed-by-default control for picking any subset of a small,
- * fixed option list — visually a single dropdown (matches every other
- * `<select className="input">` in the app when closed, showing the
- * currently-checked options' own labels as its summary text) but opens into
- * a checkbox list rather than forcing single-choice, for a field whose
- * underlying data genuinely allows holding more than one value at once. See
- * `docs/ux-style-guide.md`'s "Pattern: multi-select dropdown" — first call
- * site is `OrgAdminPage.tsx`'s Users table Roles column, replacing an
- * always-visible checkbox stack that read as a broken single-select and
- * crowded the row.
+ * A compact, closed-by-default control for picking any subset of a small, fixed option list. Closed it looks like a
+ * single dropdown (as every `<select className="input">`, with the checked options' labels as its summary) and it
+ * opens into a checkbox list, for a field that can hold more than one value. See `docs/ux-style-guide.md`,
+ * "Pattern: multi-select dropdown".
  *
- * Reuses `Popover` for the revealed checkbox list, the same way `ActionMenu`
- * and `SplitButtonTrigger` already do — positioning, focus trap, and
- * outside-click/Escape close all come from there rather than a second
- * implementation. Opened from the dropdown trigger the list lines up with it and is as wide as it, like a
- * native select list; the icon-only trigger opens the fixed-width panel to its right.
+ * Reuses `Popover` for the checkbox list (as `ActionMenu` and `SplitButtonTrigger`), so positioning, focus trap and
+ * outside-click/Escape close come from there. From the dropdown trigger the list lines up with it and is as wide as
+ * it, like a native select list; the icon-only trigger opens the fixed-width panel to its right.
  */
 import { ChevronDown } from "lucide-react";
 import { Fragment, useRef, useState, type ReactNode } from "react";
@@ -137,15 +129,10 @@ export function MultiSelectDropdown({
           setOpen((o) => !o);
         }}
       >
-        {/* `.row`'s own `flex-wrap: wrap` (theme.css) let a long summary
-            (more roles checked) wrap onto a second line with just the
-            chevron on it, where `justify-content: space-between` left it
-            flush left instead of on the right — the chevron visibly
-            "moved" depending on how many roles were checked. Forcing
-            `nowrap` here and truncating the summary instead keeps the
-            chevron pinned to the same spot on every row regardless of
-            content length; the untruncated text is still available via
-            the tooltip above (shown while the text is clipped or collapsed) and the opened list itself. */}
+        {/* `.row` wraps (theme.css), so a long summary would drop the chevron alone onto a second line where
+            `justify-content: space-between` leaves it flush left. `nowrap` with a truncated summary pins the
+            chevron to the same spot on every row; the full text stays in the tooltip (shown while the text is
+            clipped or collapsed) and in the opened list. */}
         <span ref={summaryRef} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 /* grid-text-ok: the label of a select control, not a cell of a grid */ }}>
           {summary}
         </span>

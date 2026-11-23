@@ -1,13 +1,11 @@
 /**
  * Module: components/SendPasswordResetDialog
  *
- * The confirmation an organisation or server administrator sees before emailing a person a password-reset
- * link ("Send password reset link" in a user's action menu). One component for both tiers: the caller passes
- * the endpoint it is entitled to (`/orgs/{id}/users/{userId}/password-reset` or
- * `/system/users/{userId}/password-reset`).
+ * The confirmation an organisation or server administrator sees before emailing a person a password-reset link
+ * ("Send password reset link" in a user's action menu). One component for both tiers: the caller passes the endpoint
+ * it is entitled to (`/orgs/{id}/users/{userId}/password-reset` or `/system/users/{userId}/password-reset`).
  *
- * Responsibilities: ask once (a Tier 1 confirmation), call the endpoint, and report the outcome with a toast
- * (success, or the server's reason: no password to reset, email disabled, sent too recently).
+ * Responsibilities: a Tier 1 confirmation, the call, and a toast with the outcome (success, or the server's reason).
  * The administrator never sees the link; it goes to the person's own address.
  */
 import { api } from "../api/client";

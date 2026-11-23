@@ -25,16 +25,12 @@ const CS_REPORTS = [
 const CS_TITLES = CS_REPORTS.map((r) => r.title);
 
 /**
- * Job to be done:
- * — the shared Reports UI over the core report catalogue. Covers the project
- * Reports page (catalogue reports beside the requirement report), the R1 and
- * R4 custom views, PDF/CSV downloads (every catalogue report, plus branding
- * template pass-through), the Organisation Overview "Reports" group and its
- * org-role gate, and that a module- or sub-component-disabled project shows
- * no entry.
+ * Job to be done: the shared Reports UI over the core report catalogue. Covers the project Reports page
+ * (catalogue reports beside the requirement report), the R1 and R4 custom views, PDF/CSV downloads (every
+ * catalogue report, plus branding template pass-through), the Organisation Overview "Reports" group and its
+ * org-role gate, and that a module- or sub-component-disabled project shows no entry.
  *
- * Everything is created through the API in a disposable, `Date.now()`-suffixed
- * org (CLAUDE.md's test-independence rule) and deleted afterwards.
+ * Everything is created through the API in a disposable, `Date.now()`-suffixed org and deleted afterwards.
  */
 installCleanupHook();
 
@@ -389,7 +385,7 @@ test.describe("Context & Strategy: Reports UI", () => {
 
       await projectPicker.selectOption({ label: project.name });
       await expect(page.getByRole("table", { name: "Ranked Pain Points" })).toContainText(titles.major);
-      // One project: the list no longer needs a Project column.
+      // With one project chosen, the list has no Project column.
       const ranking = page.getByRole("table", { name: "Ranked Pain Points" });
       await expect(ranking.getByRole("columnheader", { name: "Project", exact: true })).toHaveCount(0);
 

@@ -1,13 +1,11 @@
 /**
  * Module: components/CommentConfirmDialog
  *
- * The confirm dialog for a workflow step that carries a comment (approve, reject, send back, activate,
- * retire, withdraw): an explanation, one comment box and a confirm button. The comment is optional unless
- * `commentRequired` is set, in which case the box carries the shared required mark and confirming stays
- * disabled until it holds text. One component replaces the per-page copies, so a step's comment is typed the
- * same way everywhere and reaches the record's activity as `detail.comment`.
- *
- * Owns the comment text, so a caller holds no state for it and a reopened dialog always starts empty.
+ * The confirm dialog for a workflow step that carries a comment (approve, reject, send back, activate, retire,
+ * withdraw): an explanation, one comment box and a confirm button. The comment is optional unless
+ * `commentRequired`, which adds the required mark and keeps confirm disabled until the box holds text. The
+ * comment reaches the record's activity as `detail.comment`. The dialog owns the text, so a reopened dialog starts
+ * empty.
  *
  * External dependencies: `ConfirmDialog` (style guide, "confirmation, in two tiers"), `TextAreaField`.
  */

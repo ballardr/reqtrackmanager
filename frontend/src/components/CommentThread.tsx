@@ -15,15 +15,12 @@ import { RemovableChip } from "./RemovableChip";
 const strings = t();
 
 /**
- * Discussion thread shared by requirement and change-request detail pages
- * (mockup: author name, timestamp, and a heart reaction count per comment).
+ * Discussion thread shared by requirement and change-request detail pages (author, timestamp and a heart reaction
+ * count per comment).
  *
- * Attachments are only ever added while composing a new comment or editing
- * your own existing one — never as a standalone action against an
- * already-posted comment — matching the backend's author-only enforcement
- * on the underlying upload/remove endpoints. A comment shows "(edited)"
- * once `edited_at` is set; only the comment's own author sees the Edit
- * control at all (`currentUserId`).
+ * Attachments are added only while composing a new comment or editing one's own, never against a posted comment,
+ * matching the backend's author-only upload and remove endpoints. A comment shows "(edited)" once `edited_at` is
+ * set; only its author sees Edit (`currentUserId`).
  */
 export function CommentThread({
   comments,

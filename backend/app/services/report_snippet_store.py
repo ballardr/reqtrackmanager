@@ -1,28 +1,24 @@
 """
 Module: services.report_snippet_store
 
-Author-saved report snippets: save a selection of a layout's blocks, change its details, delete it, copy it to another
+Author-saved report snippets: save a selection of a layout's blocks, change its details, delete or copy it to another
 tier, and offer it to the designer next to the built-in set.
 
 Responsibilities:
-- `fragment_from_selection`: the blocks of a draft layout an author selected, with the page styles and variables they use.
-- `validate_fragment`: the one check every way in (save, copy, bundle import, MCP) applies to a fragment.
-- `create_snippet` / `update_snippet` / `delete_snippet` / `copy_snippet`: the stored row and its audit events.
+- `fragment_from_selection`; `validate_fragment` (the one check for save, copy, bundle import and MCP);
+  `create_snippet` / `update_snippet` / `delete_snippet` / `copy_snippet` with their audit events.
 
 Design decisions:
-- **A saved snippet is the blocks exactly as saved**, with no parameters; the author edits after inserting. Its blocks
-  change by saving a whole edited tree over them (`update_snippet(fragment=...)`), checked as a new snippet is.
-- **Checked as a whole layout would be.** The fragment is wrapped in a minimal tree and validated by the tree validator,
-  so no unknown block, no raw HTML, no field the registry does not know and no reference to something defined outside the
-  selection (an alias of an enclosing `each`) can be stored. A rejected selection says why, with paths in the fragment.
-- **Pictures obey the library rule at the tier.** A fragment naming a project's picture can be saved only at that
-  project's level and is refused at the organisation level, and copying it up is refused the same way, with the picture
-  named; publishing a project's picture to the whole organisation is the person's decision, not a side effect. Copying
-  down keeps organisation pictures by reference; a project picture is usable by the project it lives in only.
-- **Nothing is logged but keys and counts**: the audit events carry the tier, family and block count, never block text.
+- A saved snippet is the blocks exactly as saved, with no parameters; its blocks change by saving a whole edited tree
+  (`update_snippet(fragment=...)`), checked as a new snippet is.
+- A fragment is wrapped in a minimal tree and checked by the tree validator, so no unknown block, raw HTML, unknown
+  field or reference to something outside the selection can be stored; a rejection names paths.
+- Pictures obey the library rule at the tier: a fragment naming a project's picture can be saved only at that project's
+  level and is refused at the organisation level (publishing a picture to all members is the person's decision); copying
+  down keeps organisation pictures by reference.
+- Audit events carry the tier, family and block count, never block text.
 
-Dependencies: `models.report_snippet`, `services.report_layout_tree` (validation), `services.report_images` (library rule),
-`services.report_snippet_scope`, `services.report_snippets` (insertion; offers the saved rows).
+Dependencies: `models.report_snippet`, `report_layout_tree`, `report_images`, `report_snippet_scope`, `report_snippets`.
 """
 
 from __future__ import annotations

@@ -1,57 +1,28 @@
 """
 Module: services.record_tables
 
-The engine behind every record list's **Export** and **Import**: one file format both ways, for every
-registered artefact type that has a `RecordTableProvider`.
+The engine behind every record list's **Export**, **Import** and bulk edit grid, for every artefact type with a
+`RecordTableProvider` (project-owned and, through `OrganizationRecordTable`, organisation-owned).
 
 Responsibilities:
-- Authorise a table request (record type enabled for the project, `view` permission; the type's own create /
-  update check for an import) and resolve which columns may leave or enter (`resolve_export_columns`).
-- Build the table of a list (`build_table`): the provider's filtered rows, the project scope (`parents`,
-  `children`, `both`) and tag filter applied generically, cells written for a spreadsheet.
-- Run an import (`run_import`): parse the CSV, match each row to a record by its `code`, and create or update
-  it **through the type's own create/update path**, as a preview (rolled back) or an apply (committed).
-- Do the same for the records an **organisation** owns (`org_provider_for`, `build_org_table`, `run_org_import`),
-  through the provider's `OrganizationRecordTable`: one import body serves both tiers, so a rule added to it
-  reaches the organisation lists too.
-- Serve the **bulk edit grid** of a project list (`build_grid`, `update_row`): the same rows, filters, scope and
-  column policy as the export, with the editable columns as cells, saved one record at a time through the type's
-  own update path.
-- Audit an export or an apply as one event each; counts and keys only, never cell values.
+- Authorise a request and resolve which columns may leave or enter (`resolve_export_columns`); build the filtered,
+  scoped table (`build_table`, `build_org_table`, `build_grid`); run an import (`run_import`, `run_org_import`)
+  and a grid save (`update_row`); audit an export or apply as one event (counts and keys only).
 
 Design decisions:
-- The CSV an export writes is the CSV an import reads. A row with a `code` updates that record, a blank `code`
-  creates one, a code that is unknown, or belongs to another project or organisation, is a row error and says
-  the same thing for all three so it cannot be used to probe other projects.
-- A preview is the apply run inside a transaction that is rolled back, so what it reports is what the type's
-  own validation, version lock and approval gate say, not a second implementation of them. Each row runs in a
-  savepoint: a refused row leaves nothing behind and the rest still apply.
-- Update changes only the columns that differ from the exported value, so re-importing an unchanged export
-  reports no change and writes no new version.
-- Spreadsheet safety: a cell starting with `=`, `+`, `-`, `@`, tab or CR is written with a leading `'`
-  (`services.csv_safety`); the importer strips exactly that one prefix again so the round trip is lossless.
-- A provider never commits and never skips an authorisation the type's own endpoint makes; this engine only
-  decides who may use the table at all.
-- The organisation tier matches only the organisation's own records (a code of a project's record is a row error,
-  as is a code of another organisation) and applies the organisation-level personal-data grant, since there is no
-  project to hold a project grant. Its codes are always qualified by the organisation code (`ACME-PER-001`); the
-  bare form is accepted on the way in.
-- A grid save is one record per request (so one failure never blocks the others) and is audited by the type's own
-  update path, with no second event. It changes only the cells that differ from the value the person loaded
-  (`expected`): a cell someone else changed meanwhile is refused with the current value instead of being
-  overwritten, which is the version lock for types whose update path has none.
-  Only closed-value columns (`GRID_KINDS`) are edited in the grid; free text is edited in the record's form.
-- Personal-data columns: every column carries a sensitivity tag set by the provider. `resolve_export_columns`
-  is the single place that decides which are kept, and every route (export, import, the record-list report, the
-  grid) goes through it, so the rule cannot be bypassed on one of them. A tagged column needs the organisation's
-  policy (`services.record_policy`) to allow its tag and the person to hold `export_personal_data`; otherwise it
-  is left out and the response says so.
-- Placement: every type except the requirement (which has its own component and category columns) gets one
-  shared `placements` column (`services.placements.placement_column`), added here, never by a provider. An import
-  writes it after the type's own create or update path, through `set_record_placements`.
+- The exported CSV is the import file. A `code` updates that record, a blank one creates; an unknown or foreign code
+  is one row error that reads the same everywhere, so it cannot probe other projects.
+- A preview is the apply inside a rolled-back transaction, each row in a savepoint, so it reports what the type's own
+  validation, version lock and approval gate say. Only differing columns change, so an unchanged re-import writes nothing.
+- A cell starting `=`, `+`, `-`, `@`, tab or CR gets a leading `'` (`services.csv_safety`); import strips that one prefix.
+- A grid save is one record per request and edits only cells that differ from the loaded value (`expected`); a cell
+  changed meanwhile is refused, which is the version lock for types without one. Only `GRID_KINDS` columns are editable.
+- `resolve_export_columns` is the single decision point for personal-data columns (policy tag plus
+  `export_personal_data`); every route goes through it. The organisation tier uses the organisation-level grant.
+- Every type but the requirement gets the shared `placements` column here, written after the type's own update path.
 
-Dependencies: `modules.registry` (the provider shapes), `services.rbac` and `services.permissions` (access),
-`services.project_scope` and `services.tags` (the shared list filters), `services.codes`, `services.audit`.
+Dependencies: `modules.registry`, `services.rbac`, `services.permissions`, `services.project_scope`, `services.tags`,
+`services.codes`, `services.audit`.
 """
 
 from __future__ import annotations

@@ -4,17 +4,11 @@ Revision ID: 0029
 Revises: 0028
 Create Date: 2026-09-06
 
-Adds the three columns `ProjectComplianceRequirement`'s approval/sign-off
-decision step needs (§12, §16, §27) on top of the existing `approval_state`
-column: `approved_decided_at`/`approval_decided_by`
-(§12's "Date/time of approval"/"Who approved/signed off the assessment")
-and `decision_note` (rationale attached to an approve/reject decision — see
-`models.py`'s approval workflow design decisions for why this is one column pair serving
-both decisions, not two).
+Adds the columns of the approval and sign-off decision step (§12, §16, §27) beside `approval_state` on
+`ProjectComplianceRequirement`: `approved_decided_at`, `approval_decided_by` (§12 "Date/time of approval", "Who
+approved/signed off") and `decision_note` (one column serving both approve and reject, see `models.py`).
 
-No new tables: §12's "Approval/sign-off history" is satisfied by the
-existing `audit_events` table (already created), not a bespoke history
-table — see `models.py`'s approval workflow design decisions.
+No new table: §12's approval history is the existing `audit_events` table.
 """
 
 from collections.abc import Sequence

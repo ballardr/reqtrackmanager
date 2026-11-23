@@ -4,14 +4,13 @@ Module: services.report_raster
 Re-encodes a raster picture (PNG, JPEG, GIF, WebP) without its metadata.
 
 Responsibilities:
-- `normalise_raster`: decode within the pixel limit, apply the EXIF orientation, drop every metadata chunk (EXIF,
-  GPS, comments) by encoding afresh, and return PNG (JPEG stays JPEG).
-- The shared raster vocabulary: `RASTER_TYPES`, `ImageRejectedError`, `NormalisedImage`, `max_image_pixels`.
+- `normalise_raster`: decode within the pixel limit, apply the EXIF orientation, drop all metadata (EXIF, GPS, comments)
+  by encoding afresh, and return PNG (JPEG stays JPEG).
+- The shared vocabulary: `RASTER_TYPES`, `ImageRejectedError`, `NormalisedImage`, `max_image_pixels`.
 
 Design decisions:
-- Used for an uploaded library picture, a record attachment and a bitmap embedded inside an SVG, so all three get the
-  same limits and the same metadata removal. It has no dependency on the SVG sanitiser (which uses it), so the two do
-  not import each other.
+- Library pictures, record attachments and bitmaps inside an SVG share these limits and this metadata removal. The module
+  does not depend on the SVG sanitiser (which uses it), so the two never import each other.
 
 Dependencies: Pillow, `app.config` (`report_image_max_pixels`).
 """

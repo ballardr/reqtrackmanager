@@ -1,25 +1,12 @@
 """
 Module: modules.risk_management.mcp_tools
 
-The Risk Management module's MCP tool declarations (`docs/modules.md` section 6). Each tool proxies an
-existing project-router endpoint, so the endpoint's own authorisation, guards
-and audit logging apply unchanged; declaring a tool grants nothing.
-
-Responsibilities:
-- `build_mcp_tools`: read tools (risks, versions, treatments, reviews, comments,
-  types, the scoring scheme) and write tools (create, update, lifecycle move,
-  treatment verdict, review, comment), then the read-only `get_<slug>_report` tools
-  the report framework generates from `reports.REPORT_DEFINITIONS`.
-
-Design decisions:
-- Write-enabled, per the 2026-09-22 instruction (Decided by: User). Writes
-  still need `MCP_WRITES_ENABLED` and the caller's own role.
-- Moving a risk to `accepted` goes through the same `transition_risk` tool: the
-  endpoint applies the Risk Acceptor role and the org+project AI-approval gate
-  itself, so no separate tool or special casing is needed here.
-- There is no delete tool; archiving is a UI action. Relationships are made with
-  the core link tools, since the generic link endpoints are not under this
-  module's prefix.
+MCP tool declarations (`docs/modules.md` section 6); each proxies a project
+router endpoint, so its authorisation and audit apply. `build_mcp_tools`
+declares read tools, write tools (create, update, lifecycle move, treatment
+verdict, review, comment) and the report tools. Writes need `MCP_WRITES_ENABLED`
+and the caller's role. Moving to `accepted` uses `transition_risk`, whose
+endpoint applies the acceptor role and AI-approval gate. No delete tool.
 """
 
 from __future__ import annotations

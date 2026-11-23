@@ -1,21 +1,19 @@
 /**
  * Module: hooks/useLiveSearch
  *
- * The request behaviour behind the header search's live dropdown, built so the results never flicker
- * while someone types:
+ * The request behaviour behind the header search's live dropdown, so results never flicker while someone types:
  *
- * 1. a debounce (300ms after the last keystroke) and no request under 2 characters;
- * 2. a new request aborts the one in flight, and a response for a query that has since changed is dropped;
- * 3. while a request is in flight the previous results stay (`pending` lets the UI dim them) and are
- *    replaced in one render when the new ones arrive: never cleared to a spinner or an empty state;
- * 4. `slow` turns true only if a request takes longer than ~250ms, so a fast one shows no spinner;
- * 5. a result already fetched for the same query, scope and fields is reused for a few minutes, so
- *    backspacing does not refetch;
+ * 1. a 300ms debounce after the last keystroke and no request under 2 characters;
+ * 2. a new request aborts the one in flight, and a response for a changed query is dropped;
+ * 3. while a request is in flight the previous results stay (`pending` lets the UI dim them) and are replaced in one
+ *    render, never cleared to a spinner or an empty state;
+ * 4. `slow` turns true only if a request takes longer than ~250ms;
+ * 5. a result already fetched for the same query, scope and fields is reused for a few minutes, so backspacing does
+ *    not refetch;
  * 6. "no results" is for a completed request for the current query only (`settled`).
  *
- * `pending`, `slow` and `error` are derived from the request's identity (`key`), so a change of query
- * clears them without any state being reset. The cache lives in the hook instance (the header box), so
- * it is dropped on sign-out.
+ * `pending`, `slow` and `error` derive from the request's identity (`key`), so a changed query clears them without a
+ * state reset. The cache lives in the hook instance (the header box), so it is dropped on sign-out.
  */
 import { useEffect, useRef, useState } from "react";
 

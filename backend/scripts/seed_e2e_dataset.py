@@ -1,32 +1,21 @@
 """
 Module: scripts.seed_e2e_dataset
 
-Seeds a fixed, multi-org, multi-persona dataset used by the Playwright suite
-under tests/playwright/tests/e2e-workflows/ (see docs/e2e-workflows.md for
-the full persona/workflow catalogue this backs).
+Seeds a fixed, multi-org, multi-persona dataset for the Playwright suite under tests/playwright/tests/e2e-workflows/
+(docs/e2e-workflows.md has the persona and workflow catalogue).
 
-Design notes:
-- Every org/user/project/requirement/change-request is created through the
-  real HTTP API (not direct DB writes), including the zero-org server-admin
-  persona's org departure — it calls DELETE /orgs/{id}/membership on itself,
-  the same self-service "leave organisation" endpoint added specifically to
-  close this gap (see docs/e2e-workflows.md).
-- RBAC constraint that shapes the script's odd-looking ordering: creating a
-  brand-new organisation grants the creator (a server admin) no role in it,
-  and only `create_org_user` (creating a brand-new *user*) has a
-  server-admin carve-out — `assign_org_role` always requires the caller to
-  already be an org_admin of that specific org. So a persona who needs
-  org_admin (or member) status in a *second* org can't get it directly from
-  the server admin; a throwaway "bootstrap helper" user is created as that
-  second org's first org_admin (via the create-user carve-out) purely so it
-  can then grant the real persona a role there, exactly as a human admin
-  handing off access would.
+Design decisions:
+- Every org, user, project, requirement and change request is created through the real HTTP API, including the zero-org
+  server-admin persona's departure (`DELETE /orgs/{id}/membership` on itself, the self-service "leave organisation").
+- Ordering is shaped by RBAC: creating an organisation grants its creator (a server admin) no role in it, only
+  `create_org_user` has a server-admin carve-out, and `assign_org_role` needs an existing org_admin of that organisation.
+  A persona needing a role in a second organisation therefore relies on a throwaway "bootstrap helper" user created as
+  that organisation's first org_admin, which then grants the role.
 
 Run via (from tests/container):
     docker compose exec backend python scripts/seed_e2e_dataset.py
 
-Idempotent: exits without changes if "E2E Alpha Robotics" already exists.
-Intended primary usage is against a freshly migrated database.
+Idempotent: exits unchanged if "E2E Alpha Robotics" exists. Intended for a freshly migrated database.
 """
 
 from __future__ import annotations
@@ -167,39 +156,26 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
     return r.json()
 
 
-# Fixed, deliberate values the terminology-override Playwright spec asserts
-# against verbatim (see docs/decisions.md's terminology entry) — a project
-# dedicated solely to that spec, not one of the 6 "Alpha/Beta/Gamma-N"
-# projects every other e2e-workflows spec already reuses for its own
-# assertions (several of which check exact default-English button/nav text
-# that a terminology override would otherwise break). No other spec may
-# depend on this project's terminology staying at, or moving away from,
-# these values.
+# Fixed values the terminology-override Playwright spec asserts verbatim (docs/decisions.md, terminology). The project is
+# dedicated to that spec, since the Alpha/Beta/Gamma-N projects other specs reuse check default-English button and nav
+# text that an override would break. No other spec may depend on its terminology.
 TERMINOLOGY_PROJECT_NAME = "Delta-1 Terminology Demo"
 TERMINOLOGY_OVERRIDE = {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"}
 
-# A real, standing compliance standard for Alpha — Fine-Grained Access
-# Control needs one real registered `"standard"` entity-scope entity for role-
-# management.spec.ts's entity-picker coverage to select (the picker is built
-# generically; this module's own compliance standard is its first
-# real thing to pick). This module previously had no seeded data in this
-# script at all.
+# A standing compliance standard for Alpha: role-management.spec.ts's entity-picker coverage needs one registered
+# `"standard"` entity-scope entity to select.
 FGAC_STANDARD_REFERENCE = "FGAC-1"
 FGAC_STANDARD_NAME = "FGAC Demo Standard"
 
-# A project dedicated solely to the
-# require-change-request-for-links Playwright coverage, per this file's own
-# established "dedicated project, not a shared one" convention (see
-# TERMINOLOGY_PROJECT_NAME's own comment just above, and GAMMA3_NAME/
-# GAMMA4_NAME below) — Alpha-1's own already-fixed links/actions (below)
-# make it unsuitable for a project-level setting change, and Delta-1 is
-# explicitly reserved for terminology-override coverage alone.
+# A project dedicated to the require-change-request-for-links Playwright coverage (the "dedicated project, not a shared
+# one" convention, as TERMINOLOGY_PROJECT_NAME and GAMMA3_NAME/GAMMA4_NAME): Alpha-1's fixed links and actions make it
+# unsuitable for a project-level setting change, and Delta-1 is reserved for terminology overrides.
 LINK_LOCK_PROJECT_NAME = "Epsilon-1 Link Lock Demo"
 
-# A project holding one submitted modify-requirement change request that proposes three
-# links, the last made unmergeable on purpose (its record was linked directly after the request was made), so the
-# approval dialog's "can no longer be merged, with the reason" state has a fixed fixture. Read-only: nothing here may
-# approve or reject that request (change-request-proposed-links.spec.ts builds its own disposable organisation for that).
+# A project holding one submitted modify-requirement change request that proposes three links, the last made unmergeable
+# on purpose (its record is linked directly after the request), giving the approval dialog's "cannot be merged, with
+# the reason" state a fixed fixture. Read-only: nothing may approve or reject it (change-request-proposed-links.spec.ts
+# builds its own organisation for that).
 PROPOSED_LINKS_PROJECT_NAME = "Zeta-1 Proposed Links Demo"
 ALIASES_PROJECT_NAME = "Eta-1 Requirement Aliases Demo"
 ALIASES_DISABLED_PROJECT_NAME = "Theta-1 Aliases Disabled Demo"
@@ -207,10 +183,9 @@ ALIASES_DISABLED_PROJECT_NAME = "Theta-1 Aliases Disabled Demo"
 # numbered, one long name abbreviated) and one empty component, for the Structure page's tree and suggestion.
 STRUCTURE_PROJECT_NAME = "Iota-1 Structure Tree Demo"
 
-# Fixed hierarchy fixture for project-hierarchy.spec.ts — Gamma-4 mirrors
-# all roles from Gamma-3 (forward), and Gamma-3 also consumes members from
-# Gamma-4 (reverse, member-source). See docs/decisions.md's "Hierarchical
-# projects" entry. No other spec may depend on this pair's configuration.
+# Fixed hierarchy fixture for project-hierarchy.spec.ts: Gamma-4 mirrors all roles from Gamma-3 (forward) and Gamma-3
+# consumes members from Gamma-4 (reverse, member source); docs/decisions.md, hierarchical projects. No other spec may
+# depend on this pair's configuration.
 GAMMA3_NAME = "Gamma-3 Hierarchy Parent"
 # A parent that owns a project-level link type, and a
 # child that uses it and inherits its hide of an organisation type. Kept apart from Gamma-3/4 so the hierarchy spec's
@@ -549,10 +524,8 @@ def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_sta
     return r.json()
 
 
-# Stakeholders & Personas. The module is default-off, so it is enabled for Gamma only —
-# Alpha/Beta keep the nav and module list the existing specs were written
-# against. Fixed names the persona specs may rely on; the persona Playwright
-# spec itself builds its own disposable org rather than depending on these.
+# Stakeholders & Personas. The module is default-off and enabled for Gamma only, so Alpha and Beta keep the nav and module
+# list their specs assert. The persona Playwright spec builds its own organisation rather than using these names.
 PERSONA_ORG_WEIGHTED_NAME = "E2E Field Inspector"
 PERSONA_ORG_UNWEIGHTED_NAME = "E2E Compliance Auditor"
 PERSONA_PROJECT_NAME = "E2E Hierarchy Operator"
@@ -979,20 +952,15 @@ def main() -> None:
             f"{BASE}/system/users/{holder['user_id']}/server-roles", json={"role": role}, headers=h_admin, timeout=30,
         )
         r.raise_for_status()
-    # No org-level role at all — deliberately, for project-hierarchy.spec.ts:
-    # exercises the relaxed parent-manage-only child-creation path (decision
-    # 11, docs/decisions.md), which must work for a plain project manager
-    # with zero org-level standing, and the `parent_required` bypass-closure
-    # block that keeps them from detaching what they create that way.
+    # No org-level role, for project-hierarchy.spec.ts: it exercises the parent-manage-only child-creation path
+    # (docs/decisions.md decision 11), which must work with no org-level standing, and the `parent_required` block that
+    # keeps such a manager from detaching what they create.
     projectmgr_g = create_org_user(h_admin, gamma["id"], "e2e-projectmgr-g@example.com", "E2E ProjectMgr Gamma Only", "member")
 
-    # Bootstrap helper: no product endpoint lets a server admin grant a role
-    # in an org they don't already belong to (assign_org_role requires a
-    # genuine org_admin caller) — only creating a brand-new user has that
-    # carve-out. So a throwaway user becomes Beta's first org_admin purely
-    # to hand orgadmin_ab and member_ab their second-org roles, mirroring
-    # how a real admin handoff would work. Not one of the documented
-    # personas; never logged into by the Playwright suite.
+    # Bootstrap helper: a server admin cannot grant a role in an organisation they do not belong to (`assign_org_role`
+    # needs an org_admin caller; only creating a new user has a carve-out). A throwaway user becomes Beta's first
+    # org_admin to grant orgadmin_ab and member_ab their second-organisation roles. Not a documented persona; the
+    # Playwright suite never signs in as it.
     create_org_user(h_admin, beta["id"], "e2e-bootstrap-beta@example.com", "E2E Bootstrap Helper (Beta)", "org_admin")
     h_beta_bootstrap = h(login("e2e-bootstrap-beta@example.com", PASSWORD))
     # Both already belong to Alpha, so Beta's default policy (no external users) refuses them; open it for
@@ -1274,10 +1242,8 @@ def main() -> None:
     assign_project_role(h_ab, alpha1["id"], member_ab["user_id"], "member")
     assign_project_role(h_ab, beta1["id"], member_ab["user_id"], "member")
     assign_project_role(h_g, gamma1["id"], projectmgr_g["user_id"], "project_manager")
-    # A direct (non-inherited) role on Gamma-3 only, so it shows up on
-    # Gamma-4 as forward-inherited (mirror_all) — orgAdminGamma is a direct
-    # PM on both Gamma-3 and Gamma-4 already (project-creation seeding), so
-    # they can't demonstrate the "inherited, not direct" provenance case.
+    # A direct role on Gamma-3 only, so it appears on Gamma-4 as forward-inherited (mirror_all); orgAdminGamma is already a
+    # direct PM on both, so cannot show the "inherited, not direct" provenance case.
     assign_project_role(h_g, gamma3["id"], projectmgr_g["user_id"], "stakeholder")
 
     print("Seeding requirements (6-8 per project)...")

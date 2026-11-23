@@ -8,12 +8,7 @@ import type { DecisionTypeDefinition } from "./types";
 
 const PROJECT_ID = "project-1";
 
-/**
- * `DecisionTypesPanel` fetches and reloads its own list
- * (it lives in Project Admin's `projectAdminSections` — see this
- * panel's own module docstring), so these stories mock the `api` directly
- * rather than wrapping it in a state-owning `Harness`.
- */
+/** The panel (a `projectAdminSections` entry) fetches and reloads its own list, so these stories mock `api` directly instead of wrapping it in a state-owning `Harness`. */
 function mockDecisionTypeApis(initial: DecisionTypeDefinition[]) {
   let items = initial;
   spyOn(api, "get").mockImplementation(async () => items);

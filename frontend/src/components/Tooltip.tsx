@@ -7,68 +7,36 @@ const VERTICAL_GAP_PX = 6.4; // 0.4rem
 const POINTER_OFFSET_PX = 20;
 
 /**
- * A lightweight hover/focus tooltip for icon-only controls, replacing
- * reliance on the native `title` attribute — `title` has a slow,
- * inconsistent OS-level hover delay and doesn't appear on touch at all,
- * which is exactly what made the collapsed nav rail hard to use before
- * this was added. Appears immediately on hover or keyboard focus (no
- * delay to tune), and disappears on blur/mouse-leave.
+ * A lightweight hover/focus tooltip for icon-only controls, used instead of the native `title` attribute (slow,
+ * inconsistent hover delay, absent on touch). It appears immediately on hover or keyboard focus and disappears on
+ * blur or mouse-leave.
  *
- * Screen-aware, and rendered through a portal into `document.body` as a
- * viewport-`fixed` element positioned with plain pixel coordinates
- * computed from the trigger's `getBoundingClientRect()` plus the bubble's
- * own (intrinsic, position-independent) width/height. The portal is the
- * important part: an ordinary absolutely-positioned bubble nested inside
- * the trigger would still get clipped by the nearest scrollable ancestor
- * regardless of how correct its left/right math was — the nav rail is
- * exactly such an ancestor (`overflow-y: auto` implicitly makes its
- * `overflow-x` clip too, per the CSS spec), which is what made tooltips
- * on the collapsed rail's icons disappear off-screen. Re-measured on
- * every show (not just on mount/resize) because the trigger's position
- * can change for reasons that never fire a `resize` event at all — e.g.
- * that same rail collapsing to icon-only width.
+ * Rendered through a portal into `document.body` as a viewport-`fixed` element positioned in pixels from the trigger's
+ * `getBoundingClientRect()` and the bubble's own size. The portal matters: a bubble nested in the trigger would be
+ * clipped by the nearest scrollable ancestor (the nav rail, whose `overflow-y: auto` also clips `overflow-x`). It is
+ * measured again on every show, since the trigger can move without a `resize` event (the rail collapsing).
  *
- * This does *not* set the wrapped child's `aria-label` automatically —
- * the child is arbitrary JSX, not a component this can safely clone props
- * onto — so callers must still set `aria-label={label}` (and may keep
- * `title={label}` too, redundant but harmless) on the actual interactive
- * element themselves.
+ * It does not set the child's `aria-label` (the child is arbitrary JSX), so callers set `aria-label={label}` on the
+ * interactive element themselves.
  *
- * `followPointer` is for wide hover targets (a whole table row or stat cell
- * made clickable by a stretched link), where centring on the trigger would
- * put the bubble away from the cursor: the bubble then sits just below the
- * pointer, centred on it, and tracks it while it moves over the target.
- * It still stays inside the viewport (clamped horizontally, flipped above the
- * pointer when there is no room below), and a keyboard focus (no pointer)
- * falls back to the trigger-centred placement.
+ * `followPointer` is for wide hover targets (a table row or stat cell made clickable by a stretched link): the bubble sits
+ * just below the pointer, centred on it, and tracks it, staying inside the viewport (clamped horizontally, flipped above
+ * when there is no room below); keyboard focus falls back to trigger-centred placement.
  *
- * `className`/`style` are applied to the wrapping span itself (merged with
- * its own default `tooltip-trigger` class), not the child. They matter for
- * a `position: fixed` child like the nav-rail collapse toggle: that button
- * is placed by its own `left`/`top`, entirely independent of where its
- * parent sits in normal flow, so the default shrink-wrapped, in-flow
- * `tooltip-trigger` span collapses to a zero-size box wherever the DOM
- * happens to put it — nowhere near the button it wraps — and `measure()`
- * below (which reads *this* span's `getBoundingClientRect()`, not the
- * child's) would position the bubble there instead. The fix is for the
- * caller to give the wrapping span the same `position: fixed` placement as
- * the fixed child, via these props, so the span IS the button's true
- * on-screen box and measurement is accurate again.
+ * `className`/`style` apply to the wrapping span (merged with its default `tooltip-trigger` class), not the child. A
+ * `position: fixed` child (the nav-rail collapse toggle) is placed independently of the DOM flow, so its in-flow wrapper
+ * would collapse to a zero-size box and `measure()` (which reads the span's rectangle) would place the bubble there;
+ * the caller gives the span the same fixed placement so it is the button's true on-screen box.
  *
- * `pinnable` is for a tooltip that carries a sentence or two the person
- * needs to read (field help), so hover alone is not enough: a click or tap
- * on the trigger (Enter or Space on the keyboard focus, which the browser
- * turns into a click) pins the bubble open and the next one closes it; hover
- * and keyboard focus still show it as before. Escape closes it without
- * leaving the trigger (and stops there, so a dialog around it stays open),
- * and so does a press anywhere outside the trigger. `wrap` lets a long label
- * wrap inside a bounded width instead of running on one line. `bubbleId` is
- * the id of the bubble, for the trigger's `aria-describedby`. The bubble is
- * measured again when anything scrolls, since it is `fixed` and a pinned one
- * would otherwise be left behind by a scrolling dialog body.
+ * `pinnable` is for a tooltip carrying a sentence or two to read (field help): a click or tap on the trigger (Enter or
+ * Space on keyboard focus) pins the bubble open and the next closes it; hover and focus still show it. Escape closes it
+ * without leaving the trigger (and stops there, so a dialog around it stays open), as does a press outside the trigger.
+ * `wrap` lets a long label wrap inside a bounded width. `bubbleId` is the bubble's id, for the trigger's
+ * `aria-describedby`. The bubble is measured again when anything scrolls, since a pinned one would otherwise be left
+ * behind by a scrolling dialog body.
  *
- * `disabled` keeps the wrapper (so the layout does not change) but never shows the bubble: for a label that
- * is worth showing only some of the time, such as the full text of a clipped cell (`CellText`).
+ * `disabled` keeps the wrapper (so the layout does not change) but never shows the bubble: for a label worth showing only
+ * some of the time, such as the full text of a clipped cell (`CellText`).
  */
 export function Tooltip({
   label, children, className, style, followPointer = false, pinnable = false, wrap = false, bubbleId, disabled = false,

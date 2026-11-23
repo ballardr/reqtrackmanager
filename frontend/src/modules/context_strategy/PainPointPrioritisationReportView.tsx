@@ -1,20 +1,14 @@
 /**
  * Module: modules/context_strategy/PainPointPrioritisationReportView
  *
- * The on-screen view of report R1 (Pain Point prioritisation), registered as
- * `TierAModuleDefinition.reportViews.r1`. A table of
- * ranked rows fails the reader here: the point of R1 is *where* Pain Points
- * sit on the Severity × Frequency matrix and which are Blockers, so this view
- * draws the shared `ScoringMatrixChart` per scoring model and a ranked list
- * with score and Blocker badges, and chooses the model and persona roll-up
- * with the shared `ScoringModelSwitcher` (it owns the `model_key` and `rollup`
- * parameters, so the generic form hides them). Everything else R1 returns
- * (Blockers, unscored, intentional, per-persona breakdown) stays the generic
- * section tables so there is one rendering of each.
+ * The on-screen view of report R1 (Pain Point prioritisation), registered as `TierAModuleDefinition.reportViews.r1`.
+ * R1 is about where Pain Points sit on the Severity x Frequency matrix and which are Blockers, so the view draws the
+ * shared `ScoringMatrixChart` per scoring model and a ranked list with score and Blocker badges, and chooses the model
+ * and persona roll-up with the shared `ScoringModelSwitcher` (it owns the `model_key` and `rollup` parameters, so the
+ * generic form hides them). Everything else R1 returns stays the generic section tables.
  *
  * Items are ranked within one model only; a group per model is never mixed.
- * Dependencies: core scoring components and `api/scoring` (read-only scheme
- * lookup for the switcher's model list).
+ * Dependencies: core scoring components and `api/scoring` (read-only scheme lookup for the model list).
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

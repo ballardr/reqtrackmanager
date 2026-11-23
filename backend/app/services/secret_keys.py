@@ -1,21 +1,19 @@
 """
 Module: services.secret_keys
 
-Checks and rotation for the application-layer key that encrypts stored secrets (a person's second-factor secret,
-an organisation's single sign-on client secret and SMTP password).
+Checks and rotation for the application-layer key that encrypts stored secrets (a second-factor secret, an organisation's
+single sign-on client secret and SMTP password).
 
 Responsibilities:
-- `unreadable_counts`: how many stored values of each encrypted column cannot be decrypted with the configured
-  keys, run at start-up so a wrong or lost `APP_SECRET_ENCRYPTION_KEY` is a logged error at once rather than
-  locked-out users and a broken sign-in later.
-- `rotate`: re-encrypts every stored value under the current key (the previous keys are then no longer needed).
+- `unreadable_counts`: how many stored values of each encrypted column cannot be decrypted with the configured keys, run at
+  start-up so a wrong or lost `APP_SECRET_ENCRYPTION_KEY` is a logged error at once.
+- `rotate`: re-encrypts every stored value under the current key, after which the previous keys are unnecessary.
 
 Design decisions:
-- Column names are a fixed list here, not discovered: the three columns are the product's secrets, and a new one
-  must be added deliberately (and to the disaster-recovery verification that lists the same columns).
-- Only counts and column names are returned or logged, never a value.
+- The column list is fixed, not discovered: a new secret must be added deliberately (and to the disaster-recovery
+  verification that lists the same columns). Only counts and column names are returned or logged, never a value.
 
-External dependencies: PostgreSQL (raw reads of the stored ciphertext), `models.encrypted_type`.
+Dependencies: PostgreSQL (raw reads of ciphertext), `models.encrypted_type`.
 """
 
 from __future__ import annotations

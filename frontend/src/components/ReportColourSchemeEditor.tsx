@@ -1,20 +1,17 @@
 /**
  * Module: components/ReportColourSchemeEditor
  *
- * Edits a colour scheme: up to eight named colours that blocks use by name (`primary`, `warning`), so one change re-colours
- * everything that uses the name. It serves two places: a layout's own scheme (Layout settings) and the organisation's scheme
- * (the Branding page), which a layout without a scheme of its own follows.
+ * Edits a colour scheme: up to eight named colours that blocks use by name (`primary`, `warning`), so one change
+ * re-colours everything using the name. It serves a layout's own scheme (Layout settings) and the organisation's
+ * scheme (the Branding page), which a layout without its own follows.
  *
- * Responsibilities:
- * - List the colours as `ItemRowList` rows (name, the colour it resolves to, a gear for the name and colour, remove).
- * - Layout only: say whether the layout follows the organisation's colours, offer **Start from** (one-shot fills) and
- *   **Follow the organisation's colours** (clears the layout's own).
- * - Refuse to remove, rename, or drop (by starting over or following) a name a block still uses, and say why.
- *
- * Design decisions: a name is the link between a block and its colour, so a used name is fixed; the server also reports
- * a name that no longer resolves. The colour of an entry points at a colour (hex or the branding colour's forms), never
- * at another name, matching the server's rule that resolution is one step. The settings sit in a popover that holds the
- * choice list inline, so popovers do not nest.
+ * - Lists the colours as `ItemRowList` rows (name, resolved colour, a gear for name and colour, remove).
+ * - Layout only: says whether the layout follows the organisation's colours and offers **Start from** (one-shot
+ *   fills) and **Follow the organisation's colours** (clears the layout's own).
+ * - Refuses to remove, rename or drop (by starting over or following) a name a block still uses, and says why: a
+ *   name links a block to its colour, so a used name is fixed; the server also reports a name that no longer
+ *   resolves. An entry's colour is a colour (hex or the branding colour's forms), never another name, matching the
+ *   server's one-step resolution. The settings popover holds the choice list inline, so popovers do not nest.
  */
 import { X } from "lucide-react";
 import { useState } from "react";

@@ -4,26 +4,17 @@ Revision ID: 0049
 Revises: 0048
 Create Date: 2026-09-28
 
-Adds the two-tier gating tables for `app.modules.registry.
-ModuleSubComponentDefinition`/`is_module_subcomponent_enabled`/`is_org_
-module_subcomponent_enabled` finer-grained, per-sub-component on/off toggling
-one tier below whole-module enablement (`organization_modules`,
-migration for).
+Adds the two-tier gating tables for `app.modules.registry.ModuleSubComponentDefinition`
+(`is_module_subcomponent_enabled`/`is_org_module_subcomponent_enabled`): per-sub-component toggling one
+tier below whole-module enablement (`organization_modules`).
 
-- `organization_module_subcomponent_defaults` (`app.models.module.
-  OrganizationModuleSubComponentDefault`) — org-tier default, mirrors
-  `organization_modules` field-for-field with an added `subcomponent_key`
-  column.
-- `project_module_subcomponent_enablements` (`app.models.module.
-  ProjectModuleSubComponentEnablement`) — project-tier override, a
-  genuinely new capability: whole-module enablement itself has no
-  project-level override table at all today, only this finer-grained
-  layer gets one.
+- `organization_module_subcomponent_defaults` (`app.models.module.OrganizationModuleSubComponentDefault`):
+  org-tier default, mirroring `organization_modules` with a `subcomponent_key` column.
+- `project_module_subcomponent_enablements` (`app.models.module.ProjectModuleSubComponentEnablement`):
+  project-tier override.
 
-No backfill needed — both tables are explicit-override-only (absence of a
-row falls back to the org default, then the registry's own
-`default_enabled`), and no sub-component-level toggle exists anywhere
-before this migration.
+Both are explicit-override-only (an absent row falls back to the org default, then the registry's
+`default_enabled`); no backfill.
 """
 
 from collections.abc import Sequence

@@ -6,26 +6,15 @@ import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook } from "./helper
 installCleanupHook();
 
 /**
- * End-to-end proof (docs/decisions.md):
- * Org Admin gets its own "Invite user" entry point — previously the
- * token-link invite flow (`services/invites.py`) was only reachable from
- * inside a project. An org admin invites someone by email (no password, no
- * name — the invitee sets those at signup), sees the invite listed as
- * "Pending" in the same Users table real users appear in, and can resend
- * it, retriggering a fresh email — the same MailHog-verified pattern
- * `external-project-invite.spec.ts` already established for the
- * project-level equivalent.
+ * End-to-end proof (docs/decisions.md): Org Admin has its own "Invite user" entry point to the token-link invite
+ * flow (`services/invites.py`). An org admin invites someone by email (no password or name; the invitee sets those
+ * at signup), sees the invite listed as "Pending" in the Users table, and can resend it, triggering a fresh email
+ * (verified through MailHog, as in `external-project-invite.spec.ts`).
  *
- * Also covers the new `org_role` `FilterField` (`GET /orgs/{id}/users`'s
- * `org_role` param already existed server-side but had no frontend control
- * wired up to it originally).
+ * Also covers the `org_role` `FilterField` (`GET /orgs/{id}/users` `org_role`).
  *
- * Each test creates its own fresh organisation (with its own admin), the
- * same isolation `external-project-invite.spec.ts` uses — an org-only
- * invite must never land in one of the shared seeded orgs (Alpha/Beta/
- * Gamma), since `user-access-panel.spec.ts`'s Users-table sort test reads
- * every visible row and would be corrupted by an unsorted invited row
- * mixed into a different org's directory.
+ * Each test creates its own organisation and admin: an organisation-only invite must not land in a shared seeded
+ * organisation, because `user-access-panel.spec.ts`'s Users-table sort test reads every visible row.
  */
 
 const ADMIN_EMAIL = "admin@example.com";
@@ -50,10 +39,7 @@ async function setupOrgAndAdmin(page: Page, adminToken: string, label: string) {
   return { org, orgAdminEmail };
 }
 
-/** Same MailHog decode/extract helper `external-project-invite.spec.ts`
- * uses — kept local rather than shared since these are the only two spec
- * files that need it, and duplicating a small, stable helper avoids adding
- * cross-file coupling for a two-caller utility. */
+/** MailHog decode/extract helper, as in `external-project-invite.spec.ts`; local because only these two specs use it. */
 async function extractInviteLinksFromMailHog(page: Page, toEmail: string): Promise<string[]> {
   const messages = await (await page.request.get(`${mailhogUrl}/api/v2/messages?limit=50`)).json();
   const matches = messages.items.filter((m: { To: { Mailbox: string; Domain: string }[] }) =>

@@ -67,17 +67,16 @@ const PAGE_SIZE = 30;
 // own `FilterCheckbox` below rather than a status option.
 const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "archived"];
 /**
- * The sort keys of the list. `component` is the default order the requirements document sets (C-G-04: by component, then
- * category, then the project's own order); it is the one choice with no direction, and the server is sent no `sort` for it.
+ * The sort keys of the list. `component` is the default order (C-G-04: component, then category, then the project's own
+ * order); it has no direction and the server is sent no `sort` for it.
  */
 const COMPONENT_ORDER = "component";
 const SORT_KEYS = [COMPONENT_ORDER, "unique_code", "name", "status", ...TIME_SORT_KEYS] as const;
 
 /**
- * Requirement browser (C-G-04: sorted by component/category), with search
- * by name/ID (U-E-01), a filter panel (status/target version/category/
- * comments/watched), scoping-stage-only reordering (C-E-03), and
- * incremental "load more" pagination (U-P-06) for large requirement sets.
+ * Requirement browser (C-G-04: sorted by component/category): search by name/ID
+ * (U-E-01), filter panel, scoping-stage-only reordering (C-E-03) and
+ * incremental "load more" pagination (U-P-06).
  */
 export function RequirementsPage() {
   const strings = useStrings();
@@ -148,12 +147,9 @@ export function RequirementsPage() {
   const [viewMode, setViewMode] = useViewMode("requirements");
 
   // --- Bulk operations (list view only) ---------------------------------
-  // Style guide "Pattern: bulk operations on a list" — the first pilot of
-  // this shape in the app. Selection is a plain `id` Set rather than tied to array
-  // indices, so it survives `loadRequirements`'s append-on-"load more"
-  // without extra bookkeeping, and "select all" only ever means "all
-  // currently loaded rows" (U-P-06's incremental pagination makes a true
-  // "all 500 matching the filter" unsafe to promise from the client).
+  // Style guide "Pattern: bulk operations on a list". Selection is a Set of ids
+  // so it survives "load more" appends; "select all" means all loaded rows
+  // (U-P-06 pagination makes "all matching the filter" unsafe to promise).
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkArchiveDialogOpen, setBulkArchiveDialogOpen] = useState(false);
@@ -194,21 +190,14 @@ export function RequirementsPage() {
     return params;
   }
 
-  // Read through a ref so a reload started from an older render (a
-  // post-mutation `reload()` resuming after an `await`) still lists with the
-  // filters the user has set since — otherwise, as the newest request, it
-  // would overwrite their filtered results (found 2026-10-04 via the e2e
-  // suite). Declared before the reload effect so it's current there.
+  // Read through a ref so a reload resuming after an `await` lists with the
+  // filters set since, instead of overwriting the filtered results. Declared
+  // before the reload effect so it is current there.
   const listParamsRef = useLatest(listParams);
 
-  // Belt-and-suspenders guard (bug fix, 2026-08: dashboard glance
-  // navigation race) alongside the filters living in the URL — neither
-  // `loadRequirements` nor `reload()` previously sequenced requests at all,
-  // so *any* path that can fire two overlapping fetches (e.g. rapid filter
-  // changes, not just the mount-time race the seeding fix eliminates) could
-  // still let a slower, stale response overwrite a faster, newer one. Each
-  // call claims the next id; a response is applied only if no newer call
-  // has started since.
+  // Guards any two overlapping fetches (rapid filter changes, mount-time race)
+  // so a slower, stale response cannot overwrite a newer one: each call claims
+  // the next id and a response applies only if no newer call has started.
   const beginLoad = useRequestSequence();
 
   async function loadRequirements(offset: number, append: boolean) {
@@ -226,10 +215,8 @@ export function RequirementsPage() {
   async function reload() {
     if (!projectId) return;
     setRequirements(null);
-    // A fresh load invalidates any prior selection (a filter/search change,
-    // or the post-bulk-op reload below, may drop previously-selected rows
-    // from the result set entirely) — "load more" append, by contrast,
-    // calls `loadRequirements` directly and never touches this.
+    // A fresh load (filter/search change, post-bulk-op reload) invalidates the
+    // selection; "load more" calls `loadRequirements` directly and keeps it.
     setSelectedIds(new Set());
     const [comps, cats, stgs, flows] = await Promise.all([
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
@@ -296,10 +283,8 @@ export function RequirementsPage() {
     }
   }
 
-  // `indeterminate` isn't a settable HTML attribute/React prop — it's a
-  // DOM-only property, so the "some but not all loaded rows selected"
-  // visual state has to be applied imperatively via the ref, same as any
-  // other indeterminate-checkbox implementation.
+  // `indeterminate` is a DOM-only property, not a React prop, so the "some
+  // but not all rows selected" state is applied through the ref.
   useEffect(() => {
     if (!selectAllRef.current || !requirements) return;
     const own = requirements.filter((r) => !r.from_project_id);
@@ -326,13 +311,10 @@ export function RequirementsPage() {
     });
   }
 
-  /** Runs `action` once per selected requirement, sequentially (simpler
-   * than bounded concurrency and fine for the list sizes this pilot
-   * targets), tolerating individual failures rather than aborting the
-   * whole batch — one locked/already-archived row shouldn't block the
-   * rest. Reports a CSV-import-wizard-style "N updated"/"N updated, M
-   * failed" summary via the shared `Toast`, then clears the selection and
-   * refreshes the list regardless of outcome. */
+  /** Runs `action` once per selected requirement, sequentially, tolerating
+   * individual failures so one locked or archived row does not block the rest.
+   * Reports "N updated"/"N updated, M failed" via `Toast`, then clears the
+   * selection and refreshes the list. */
   async function runBulkAction(action: (r: Requirement) => Promise<void>) {
     if (!requirements) return;
     const targets = requirements.filter((r) => selectedIds.has(r.id));
@@ -365,11 +347,9 @@ export function RequirementsPage() {
   async function bulkMoveToStage() {
     setBulkMoveDialogOpen(false);
     const targetStageId = bulkMoveStageId;
-    // Mirrors `RequirementDetailPage.tsx`'s own `save()` payload exactly
-    // (the direct-edit `PUT` endpoint requires the full `RequirementUpdate`
-    // shape, not a partial patch) — every field except `target_stage_id`
-    // carries the row's own current value forward unchanged, so the only
-    // effective change is the stage.
+    // Mirrors `RequirementDetailPage.tsx`'s `save()` payload: the direct-edit
+    // `PUT` needs the full `RequirementUpdate`, so every field except
+    // `target_stage_id` carries the row's current value.
     await runBulkAction((r) =>
       api.put(`/api/v1/projects/${projectId}/requirements/${r.id}`, {
         name: r.name,
@@ -521,15 +501,10 @@ export function RequirementsPage() {
               <ViewToggle mode={viewMode} onChange={setViewMode} />
             </div>
 
-            {/* Bulk operations toolbar (style guide "Pattern: bulk operations
-                on a list") — table/list view only, per this pilot's scope;
-                tile view has no checkbox column to select from. Sits directly
-                above the table rather than replacing the search/view-toggle
-                row above, so it's visible without scrolling away from the
-                list it acts on. Gated on `canManageProject` the same way the
-                checkbox column itself is (see below) — both bulk actions
-                require the same manager/administrator role the single-row
-                Archive button already requires on `RequirementDetailPage.tsx`. */}
+            {/* Bulk toolbar (style guide "Pattern: bulk operations on a list"):
+                list view only (tile view has no checkbox column), directly above
+                the table, gated on `canManageProject` like the checkbox column
+                (both actions need the role the single-row Archive requires). */}
             {viewMode === "list" && canManageProject && selectedIds.size > 0 && (
               <div className="card row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)" }}>
                 <div className="row" style={{ gap: "var(--space-4)", alignItems: "center" }}>
@@ -661,10 +636,8 @@ export function RequirementsPage() {
                         >
                           {REQUIREMENT_STATUS_LABEL[r.status]}
                         </FilterBadge>
-                        {/* C-G-11: rendered as its own badge, distinct from
-                            the status badge above (which stays "Approved"
-                            for a completed requirement) — completion is now
-                            an independent overlay, not a merged status. */}
+                        {/* C-G-11: own badge; completion is independent of the
+                            status badge, which stays "Approved". */}
                         {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
                         {r.is_locked && <Badge>{strings.requirements.locked}</Badge>}
                         {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}

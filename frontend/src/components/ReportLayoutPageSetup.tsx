@@ -1,17 +1,15 @@
 /**
  * Module: components/ReportLayoutPageSetup
  *
- * The text view's page setup: a settings button beside the block toolbar that opens a dialog with the layout's paper,
- * orientation, margins, mirrored margins and named page styles, and writes them into the text (`@layout document
- * landscape A3 mirror margins top=2` and one `@pagestyle` line per style).
+ * The text view's page setup: a settings button beside the block toolbar that opens a dialog with the layout's
+ * paper, orientation, margins, mirrored margins and named page styles, and writes them into the text (`@layout
+ * document landscape A3 mirror margins top=2` and one `@pagestyle` line per style).
  *
- * Responsibilities: arrange it in the shared setting groups (`LayoutSettingGroup`: Page, Margins, Header, Footer, Look (the table heading colours), Tables and
- * Page styles, each collapsible and marked when it holds a non-default value), read the setup from the text (`readPageSetup`), draw it with the shared page-setup fields and
- * rewrite exactly those lines on a change (`writePageSetup`). The server's parser stays the judge of the text. A table
- * layout has no pages, so it renders nothing.
- *
- * Design decisions: changes apply as they are made (there is no Save to press, as in the other settings popovers), so
- * the dialog's close button is the only action.
+ * It arranges the settings in the shared groups (`LayoutSettingGroup`: Page, Margins, Header, Footer, Look (the
+ * table heading colours), Tables and Page styles, each collapsible and marked when non-default), reads the setup
+ * from the text (`readPageSetup`), draws it with the shared page-setup fields and rewrites exactly those lines on a
+ * change (`writePageSetup`). The server's parser stays the judge of the text. A table layout has no pages, so it
+ * renders nothing. Changes apply as they are made, so the dialog's close button is its only action.
  */
 import { Settings } from "lucide-react";
 import { useState } from "react";

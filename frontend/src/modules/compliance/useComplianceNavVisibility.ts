@@ -1,43 +1,15 @@
 /**
  * Module: modules/compliance/useComplianceNavVisibility
  *
- * Backs whether the current user should see the top-level "Compliance
- * Standards" nav-rail tab, via
- * the compliance module's own `GET /api/v1/compliance/nav-visibility`
- * (`backend/app/modules/compliance/global_router.py`) — a genuinely
- * compliance-module-owned decision (module effectively enabled for at
- * least one of the caller's orgs, and either a manage-capable role there
- * or that org having a real standard), so this logic lives inside the
- * compliance module rather than as a field bolted onto core `/auth/me/
- * memberships`, by design.
+ * Whether the current user sees the top-level "Compliance Standards" nav-rail tab, from the compliance module's own
+ * `GET /api/v1/compliance/nav-visibility`, so the decision stays in this module and not in core `/auth/me/memberships`.
  *
- * Deliberately a **self-contained hook backed by a tiny module-level
- * external store** (`useSyncExternalStore`), not a React Context/Provider —
- * this value is read by exactly one compliance-owned component
- * (`ComplianceGlobalNavLink.tsx`), reached only through `module.ts`'s
- * declarative `globalNavItems` registration. `Layout.tsx` never imports
- * anything from this module directly (the same boundary `orgAdminSections`
- * already enforces for `OrgAdminPage.tsx` — see that mechanism's own
- * docstring in `modules/types.ts`), so there is no core-owned tree position
- * to mount a Provider at; a plain external store needs no such position.
- *
- * Cache is keyed to the currently authenticated user's id (mirroring
- * `FavouritesContext`'s own "refetch when `user` changes" behaviour, just
- * expressed as a store invalidation instead of a Context re-render) — a
- * different user logging in on the same tab always gets a fresh fetch
- * rather than momentarily inheriting the previous user's cached value.
- * `refreshComplianceNavVisibility()` forces a refetch for the current user
- * and notifies every subscriber — call after any action that could flip
- * visibility. Known call sites today: `StandardListPage.tsx` (creating an
- * org's first standard) and `StandardWorkspacePage.tsx` (archiving/
- * unarchiving a standard, which can flip an org from/to zero non-archived
- * standards) — both already compliance-owned pages. A core page performing
- * an action that could also flip it (e.g. `OrgAdminPage.tsx` toggling the
- * module's own enablement, or granting/revoking `compliance_manager`)
- * cannot call this without the same core-imports-a-specific-module coupling
- * this file exists to avoid — visibility there converges on the next full
- * page load instead, a deliberate, documented trade-off (see
- * docs/decisions.md) rather than a boundary exception.
+ * A module-level external store (`useSyncExternalStore`), not a Provider: the only reader is a compliance-owned
+ * component registered through `module.ts`'s `globalNavItems`, and `Layout.tsx` has no tree position to mount one at.
+ * The cache is keyed to the signed-in user's id, so a different user always gets a fresh fetch.
+ * `refreshComplianceNavVisibility()` refetches and notifies subscribers; compliance-owned pages call it after an action
+ * that can flip visibility (first standard created, standard archived). Core pages cannot call it without importing
+ * this module, so visibility there converges on the next full page load (see docs/decisions.md).
  */
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -110,11 +82,8 @@ export function refreshComplianceNavVisibility(): void {
 function useCachedVisibility(): Snapshot {
   const { user } = useAuth();
   const userId = user?.id ?? null;
-  // A `useEffect`, not a direct call during render — triggering the lazy
-  // fetch is a side effect, and `useSyncExternalStore`'s own contract
-  // requires `getSnapshot` (and, transitively, the render itself) to stay
-  // pure. `ensureFetchedFor`'s own in-flight/cached-user guards make this
-  // safe to call on every `userId` change without ever double-fetching.
+  // Fetched in an effect, not during render: the fetch is a side effect and `getSnapshot` must stay pure.
+  // `ensureFetchedFor`'s guards make a call on every `userId` change safe.
   useEffect(() => {
     ensureFetchedFor(userId);
   }, [userId]);

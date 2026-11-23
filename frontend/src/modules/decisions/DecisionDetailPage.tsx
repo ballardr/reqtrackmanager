@@ -1,30 +1,18 @@
 /**
  * Module: modules/decisions/DecisionDetailPage
  *
- * A single Decision's full detail — management and full context — as its
- * own routed page (`/projects/:projectId/modules/decisions/:decisionId`,
- * `module.ts`), replacing the `SidePanel`-only `DecisionDetailPanel.tsx`
- *. `docs/ux-style-guide.md`'s "Pattern: entity detail
- * panel" checklist called for a page here: a Decision's detail carries a
- * comment thread, file attachments, a Links panel, and 3+
- * lifecycle actions each with their own `ConfirmDialog` — all four of the
- * checklist's "too much for a SidePanel" markers. `ProjectDecisionsPage
- * .tsx`'s list opens `DecisionQuickViewPanel` (a minimal read-only peek) on
- * row click instead; that panel's own "View full details" link is what
- * lands here.
+ * A single Decision's full detail (management and full context) as a routed page
+ * (`/projects/:projectId/modules/decisions/:decisionId`, `module.ts`). `docs/ux-style-guide.md` "Pattern: entity
+ * detail panel" calls for a page here: the detail carries a comment thread, file attachments, a Links panel and three
+ * or more lifecycle actions each with a `ConfirmDialog`. `ProjectDecisionsPage.tsx`'s list opens
+ * `DecisionQuickViewPanel` (a read-only peek) on row click, and its "View full details" link leads here.
  *
- * Fetches its own data on mount (`project`, `orgUsers`, `decisionTypes`,
- * and the `Decision` itself via `decisionsApi.getDecision`) — the same
- * self-contained-page shape `RequirementDetailPage.tsx` already uses,
- * appropriate now that this is a real, bookmarkable/deep-linkable route
- * rather than a panel handed data by its parent list page.
+ * Fetches its own data on mount (`project`, `orgUsers`, `decisionTypes` and the `Decision` through
+ * `decisionsApi.getDecision`), as `RequirementDetailPage.tsx` does, so the route is deep-linkable.
  *
- * Every mutating control always renders regardless of the caller's actual
- * role (same posture `DecisionDetailPanel.tsx` established — see
- * `ProjectCompliancePage.tsx`'s own docstring for the precedent) — the
- * backend enforces `decision_owner`/`decision_approver` and a 403 surfaces
- * as a toast. Edit/archive/file-attach controls specifically for *content*
- * are hidden (not just toast-blocked) once `decision.is_locked`.
+ * Mutating controls always render whatever the caller's role (see `ProjectCompliancePage.tsx`); the backend enforces
+ * `decision_owner` / `decision_approver` and a 403 surfaces as a toast. Content edit, archive and file-attach controls
+ * are hidden once `decision.is_locked`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

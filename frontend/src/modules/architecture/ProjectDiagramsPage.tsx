@@ -1,7 +1,8 @@
 /**
  * Module: modules/architecture/ProjectDiagramsPage
  *
- * The project's diagrams, the Diagrams tab of `SystemArchitecturePage` (`/projects/:projectId/modules/architecture?tab=diagrams`; `chrome` is the page's tab strip): a
+ * The project's diagrams, the Diagrams tab of `SystemArchitecturePage`
+ * (`/projects/:projectId/modules/architecture?tab=diagrams`; `chrome` is the page's tab strip): a
  * `DirectoryTable` (code opens the editor) listing block diagrams and state machine diagrams together, with a Type column, the
  * element, the contents (elements or states), status and a `FilterPanel` (search, Type, status, "Open only", folder, scope, tags,
  * archived). The list opens on open diagrams (`useOpenOnly`) and keeps its filters in the URL. A second view, **States**
@@ -10,9 +11,8 @@
  *
  * Design decisions:
  * - Each type keeps its own endpoints, so the list loads each and merges and sorts in the browser (the lists are not paged).
- * - A person sees a type only when they can read it: a type whose list answers 403 or 404 contributes no rows, its Type filter
- *   value, its Export group and the Type choice are left out, so someone with no state machine diagram access sees the tab
- *   as before. The tab shows an error only when no type can be read.
+ * - A person sees a type only when they can read it: a type whose list answers 403 or 404 contributes no rows, and its
+ *   Type filter value, Export group and Type choice are left out. The tab shows an error only when no type can be read.
  * - Export and Import are one `ListActions` per type shown (the page's `records` array), each acting on its own filtered rows;
  *   the Type filter hides the other group.
  */

@@ -1,21 +1,19 @@
 /**
  * Module: utils/reportGrid
  *
- * The pure model behind the custom table editor: a `grid` block's columns and rows as an editable matrix, and the
- * operations the editor offers on it (merge, unmerge, style a selection, add and remove rows and columns).
- *
- * Responsibilities:
- * - Place a grid's cells on a rows x columns matrix the way the server does (`services/report_grid.place_spans`): a merged
- *   region is stored once on its top-left cell and the covered positions are omitted from the row.
- * - Return a new `{ columns, rows, header_rows }` for every operation, never changing the input; a refused operation
- *   returns a problem key instead of a half-applied result.
- * - Resolve a cell's style through the cascade (cell, row, column, grid) so the editor draws what a run prints.
- *
- * Design decisions: every operation works on a dense matrix (`Slot[][]`) and writes it back, so a merge that spans the
- * insertion or removal point is adjusted in one place. Column operations are the row operations on the transposed
- * matrix (`colspan` and `rowspan` swapped), which keeps one implementation of the hard case. The server stays the judge:
- * the editor refuses what it can see is wrong (a merge across the header, a limit) and the saved tree is still checked.
- * A tree that is short or overflows is normalised on the first edit (short rows get blank cells).
+ * The pure model behind the custom table editor: a `grid` block's columns and
+ * rows as an editable matrix and the editor's operations on it (merge, unmerge,
+ * style a selection, add and remove rows and columns).
+ * - Cells are placed as the server does (`services/report_grid.place_spans`): a
+ *   merged region is stored once on its top-left cell, covered positions omitted.
+ * - Every operation returns a new `{ columns, rows, header_rows }` and never
+ *   changes the input; a refused operation returns a problem key.
+ * - A cell's style resolves through the cascade (cell, row, column, grid).
+ * Design: operations work on a dense matrix (`Slot[][]`) written back afterwards,
+ * so a merge spanning the insertion or removal point is adjusted in one place;
+ * column operations are row operations on the transposed matrix. The server stays
+ * the judge: the editor refuses what it can see is wrong (a merge across the
+ * header, a limit). A short or overflowing tree is normalised on the first edit.
  */
 
 export type Obj = Record<string, unknown>;

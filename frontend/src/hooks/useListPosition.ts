@@ -16,12 +16,10 @@
  * Design decisions:
  * - The position is keyed by path plus query string, so the URL must carry the list's filters: a saved
  *   position is never applied to a list with different filters.
- * - Restored on back navigation (POP) or when a navigation carries `RESTORE_STATE`; a fresh visit (a nav
- *   link, a typed address, a new tab) starts at the top. A position saved by an earlier page load is only
- *   used when the browser itself is restoring (a reload, or Back across page loads), since React Router
- *   reports every page load as POP.
- * - `sessionStorage` (per tab, gone when the tab closes). Every access is guarded: with storage blocked
- *   the list simply starts at the top.
+ * - Restored on back navigation (POP) or when a navigation carries `RESTORE_STATE`; a fresh visit starts at the
+ *   top. A position saved by an earlier page load is used only when the browser itself is restoring (a reload, or
+ *   Back across page loads), since React Router reports every page load as POP.
+ * - `sessionStorage` (per tab) with every access guarded: with storage blocked the list starts at the top.
  * - The window is the scroll container (the app shell does not scroll an inner element).
  */
 import { useLayoutEffect, useRef, useState } from "react";

@@ -1,21 +1,18 @@
 /**
  * Module: testing/buttonHeights
  *
- * The shared "do neighbouring buttons share a height?" assertion. The style guide's button sizes
- * pattern says buttons that sit next to each other share a size ("Neighbours match"), but nothing
- * measured it: a small Undo beside a medium Export menu passed every other check. This reads the
- * rendered height of the buttons in each row and returns what is wrong, so Storybook play functions
- * and Playwright specs fail instead of someone spotting it in a screenshot.
+ * The shared "do neighbouring buttons share a height?" assertion (style guide
+ * "Neighbours match"): reads the rendered height of the buttons in each row and
+ * returns what is wrong, for Storybook play functions and Playwright specs.
+ * Self-contained (no imports, helpers inside the function) so Playwright can
+ * ship it with `page.evaluate`, like `orphanedControls` and `iconSizes`.
  *
- * Self-contained on purpose (no imports, helpers inside the function) so Playwright can ship it into
- * the page with `page.evaluate`, the same as `orphanedControls` and `iconSizes`.
- *
- * Rules (an ancestor with `data-button-size-ok` opts out, with a reason beside it):
- * - a row is a flex container laid out horizontally; each visible child is one item, and an item is a
- *   `.btn` or a wrapper holding exactly one `.btn` (a tooltip or a menu trigger's wrapper);
- * - items of one row that share a line (their boxes overlap vertically) must have the same height,
- *   to within one pixel. A row of buttons that wraps compares each line on its own.
- * A button beside text, a pill or a chip is not compared: those have their own checks.
+ * Rules (an ancestor with `data-button-size-ok` opts out, with a reason):
+ * - a row is a horizontal flex container; each visible child is an item: a `.btn`
+ *   or a wrapper holding exactly one `.btn` (tooltip or menu trigger);
+ * - items of one row sharing a line (overlapping vertically) have the same
+ *   height to within one pixel; a wrapped row compares each line on its own.
+ * A button beside text, a pill or a chip is not compared (they have own checks).
  */
 
 /** One row of the measurement table: a button and the line of siblings it is compared with. */

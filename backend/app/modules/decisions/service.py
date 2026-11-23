@@ -1,86 +1,12 @@
 """
 Module: modules.decisions.service
 
-Seeding logic for Decision Management's two definition tables:
-
-- `seed_decision_types` — the project-scoped `DecisionTypeDefinition`
-  defaults, called unconditionally from `on_project_created`
-  (`module.py`), mirroring `services.definitions.seed_action_types`'s
-  identical shape.
-- `seed_decision_templates` — the org-scoped `DecisionTemplateDefinition`
-  seeded ADR template packs, called from `on_org_created_with_choices`
-  (`module.py`) with whichever pack keys the caller selected on the
-  org-creation form (opt-in, not unconditional).
-
-`DECISION_TEMPLATE_PACKS` holds the three seeded packs' content: Nygard (the original, minimal ADR format), MADR (Markdown
-Architectural Decision Records, the fuller format), and Y-Statement (the
-compressed single-sentence form). Each pack's prompt text is guidance
-shown to a user filling in a new Decision from that template —
-not validation, not enforced structure.
-
-The approval/rejection/supersession workflow lives at this service layer,
-and supersession is deliberately built alongside the status transitions:
-
-- `propose_decision` / `submit_decision_for_review` / `approve_decision` /
-  `reject_decision` — the `DecisionStatus` transitions
-  (`DRAFT -> PROPOSED -> UNDER_REVIEW -> APPROVED`, with `REJECTED`
-  reachable from `PROPOSED`/`UNDER_REVIEW`), each validated against
-  `_ALLOWED_TRANSITIONS` and recorded via `services.audit.log_event`
-  (reusing the audit-log pattern rather than a
-  bespoke approval-history table), mirroring `services.stages.
-  complete_stage`'s shape: a plain service function that mutates status and
-  writes the audit event in one call, without committing (the
-  router owns the transaction, same as every other service
-  function in this codebase).
-- `create_supersession` — creates the typed `ArtefactLink` (the platform's
-  polymorphic relationship model, `services.relationships.create_link`)
-  recording that one Decision supersedes another, using a `"Supersedes"` /
-  `"Is superseded by"` `RequirementLinkTypeDefinition` row this module
-  fetches-or-creates on demand for the owning organisation (that table is
-  already a generic, org-shared vocabulary — see its own module docstring
-  — so this is an ordinary consumer of an existing extension point, not a
-  new core mechanism; no `DEFAULT_LINK_TYPES` core-file edit or migration
-  backfill is needed since it's created lazily, the first time any Decision
-  in that organisation is actually superseded).
-- The *old* Decision's status only flips to
-  `SUPERSEDED` once the supersession link exists **and** the *new* Decision
-  itself reaches `APPROVED` — not before, and not automatically for a
-  predecessor that isn't currently `APPROVED` (e.g. one already `REJECTED`
-  or itself `SUPERSEDED`). This condition is checked from both directions
-  it can become true: `create_supersession` (the link is created after the
-  new Decision is already approved) and `approve_decision` (the new
-  Decision is approved after the link already exists) — see `_maybe_
-  supersede`/`_supersede_predecessors`.
-- Content-field immutability once a Decision reaches `APPROVED`/
-  `SUPERSEDED` (§13/10.6) is deliberately **not** enforced
-  here — every existing lock-after-approval check in this codebase
-  (`services.requirements.is_locked`'s call sites) lives at the router
-  layer, and it belongs there.
-
-Two relationship groups are buildable now, both plain `ArtefactLink`
-consumers using the same lazy fetch-or-create `RequirementLinkTypeDefinition`
-pattern `create_supersession` already established — generalised here into
-`_get_or_create_link_type` rather than duplicated four more times:
-
-- `create_decision_requirement_link` — Decision -> Requirement, either
-  `"Implements"` or `"Affects"` (§13/10.7).
-- `create_decision_decision_link` — Decision -> Decision, either
-  `"Depends on"` or `"Conflicts with"` (`"Supersedes"` already has its own
-  dedicated `create_supersession`, above, because it also drives the
-  status-flip side effect these two plain relationships don't have).
-
-Other relationship targets (Open Question, Pain Point, Strategy, Guiding
-Principle, Compliance, Design) are reserved and not built here.
-
-The backend API (`project_router.py`/`router.py`) sits on top of this layer,
-with one more small helper here: `resolve_decision_file_project_id`, this module's `ModuleDefinition.
-resolve_file_owner_project_id` hook (`module.py`), mirroring `modules.
-compliance.service.resolve_evidence_file_project_id`'s exact shape/reasoning
-— resolves a `FileAsset` id to its owning project if it's attached to a
-`Decision` directly (`DecisionFile`) or via a `DecisionComment`
-(`DecisionCommentFile`), so the core, module-agnostic `GET /api/v1/files/
-{id}` download endpoint can authorize either attachment kind without
-importing anything from this module directly.
+Service layer: seeding (`seed_decision_types`, `seed_decision_templates` with
+the Nygard, MADR and Y-Statement packs), the audited, uncommitted status
+workflow (`_ALLOWED_TRANSITIONS`) and relationships. Supersession links the old
+Decision and flips it to `SUPERSEDED` only once the new one is `APPROVED`,
+whichever happens last (`_maybe_supersede`). The content lock after approval
+lives at the router layer; other modules' targets are not linked here.
 """
 
 from __future__ import annotations
@@ -116,25 +42,14 @@ from app.services.relationships import create_link, get_link_between, get_links_
 # project's own admin may add/rename/reorder/remove from there.
 DEFAULT_DECISION_TYPES: list[str] = ["Architecture", "Design", "Engineering", "Strategy", "Operational"]
 
-# This module's own artefact-type string, registered on `ModuleDefinition.
-# artefact_types` (module.py) — used by `services.sequences.
-# generate_unique_code` for `Decision.unique_code` and for
-# Decision<->Requirement/Decision<->Decision artefact links.
+# This module's artefact-type string, registered on
+# `ModuleDefinition.artefact_types`; used for `Decision.unique_code` and links.
 DECISION_ARTEFACT_TYPE = "decision"
 DECISION_CODE_PREFIX = "DEC"
 
-# Fine-Grained Access Control — the unscoped `(decision, approve_baseline)` permission
-# atom, declared on the `decision_approver` module role (`module.py`).
-# The approval check additionally checks this same atom's sub-type-scoped form
-# (`encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_
-# BASELINE.value, subtype)`, `subtype` looked up from the decision's own
-# `DecisionTypeDefinition.name` — `Decision` has no ORM relationship to it,
-# only `decision_type_id`) directly via `get_effective_permissions`/
-# `permission_satisfied`, for a caller who holds only a narrower,
-# per-Decision-Type grant — see `project_router.workflow`'s own
-# `_require_approve_permission_for_decision`. This constant is the
-# unscoped wildcard both the flat role and that narrower check compose
-# against.
+# The unscoped `(decision, approve_baseline)` atom on the `decision_approver`
+# role (`module.py`); the approval check also tests its sub-type-scoped form
+# (the decision's type name) for callers holding only a per-type grant.
 DECISION_APPROVE_PERMISSION = encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 # This module's own key prefix for `OrgCreationChoiceOption.key` /
@@ -235,35 +150,20 @@ def seed_decision_types(db: Session, project_id: uuid.UUID) -> None:
         db.add(DecisionTypeDefinition(project_id=project_id, name=name, sort_order=i))
 
 
-# Mirrors `app.services.project_hierarchy._PROJECT_TREE_ITERATION_CAP`'s own
-# value — not imported directly since that name is module-private to
-# `project_hierarchy.py` (a cross-module import of an underscore-prefixed
-# name would itself be the wrong kind of coupling); this is a plain safety
-# cap on the same walk-up-the-tree shape, not a shared piece of state.
+# Safety cap on the walk up the project tree; matches
+# `project_hierarchy._PROJECT_TREE_ITERATION_CAP`, which is module-private.
 _PROJECT_TREE_ITERATION_CAP = 5000
 
 
 def resolve_effective_decision_types(db: Session, project_id: uuid.UUID) -> list[DecisionTypeDefinition]:
-    """Returns the decision types a project should offer when creating a
-    Decision: its own, if it has any, else its nearest ancestor's (walking
-    `Project.parent_project_id` upward), else an empty list at an
-    unconfigured root.
+    """Returns the decision types a project offers when creating a Decision:
+    its own if it has any, else its nearest ancestor's (walking
+    `Project.parent_project_id`), else an empty list at an unconfigured root.
 
-    Added 2026-09-22 (**Decided by: User** — supersedes this
-    module's own earlier **Decided by: Agent** call that Decision
-    Types would have no hierarchical-project fallback, unlike
-    `ActionTypeDefinition`). Exact mirror of `app.services.project_
-    hierarchy.resolve_effective_action_types` — always on, independent of
-    `role_inheritance_mode`/`ProjectMemberSource` (a purely structural
-    fallback, not gated by either RBAC mechanism, per `docs/decisions.md`).
-    Does not check the caller's access to the parent: this only ever runs
-    in the context of an endpoint that has already checked the caller's
-    access to `project_id` itself, and it never returns the parent's
-    identity, just its decision-type rows for use within the child — the
-    same accepted trade-off `resolve_effective_action_types` already
-    documents (a broader audience than the parent's own could see the
-    parent's decision-type *names* through a more-visible child;
-    low-sensitivity metadata, not content).
+    Mirrors `resolve_effective_action_types`: always on, independent of
+    `role_inheritance_mode`. It does not check access to the parent: callers
+    have already checked access to `project_id`, and only the parent's
+    decision-type names (low-sensitivity metadata) are visible through a child.
     """
     visited: set[uuid.UUID] = set()
     current_id: uuid.UUID | None = project_id
@@ -283,36 +183,22 @@ def resolve_effective_decision_types(db: Session, project_id: uuid.UUID) -> list
 
 
 def list_decision_type_names_for_organization(db: Session, organization_id: uuid.UUID) -> list[str]:
-    """Returns the distinct `DecisionTypeDefinition.name` values currently
-    in use anywhere in `organization_id`, sorted — this module's `Module
-    Definition.subtype_providers["decision"]` registration (`module.py`)
-    for Fine-Grained Access Control, used to populate the Role
-    Management UI's sub-type picker and to validate a `CustomRolePermission`
-    /`ModuleRoleDefinition.permissions` sub-type value at write time
-    (`app.services.permissions.validate_permission_key`).
+    """Returns the distinct `DecisionTypeDefinition.name` values in use anywhere
+    in `organization_id`, sorted: this module's
+    `ModuleDefinition.subtype_providers["decision"]`, which fills the Role
+    Management sub-type picker and validates a permission sub-type at write time.
 
-    **Deliberately a flat union across every project in the organisation,
-    not `resolve_effective_decision_types`'s own per-project hierarchy
-    fallback** (Decided by: Agent) — a permission atom's `subtype` is a
-    plain string compared directly against a *specific decision's own*
-    `DecisionTypeDefinition.name` at check time, never resolved
-    through this function again, so there is no parent/child project to
-    walk here: this function's only job is enumerating which sub-type
-    *strings* currently mean something somewhere in the org, for an
-    org-scoped role definition to reference. A role scoped to a sub-type
-    name that happens not to exist in some particular project simply never
-    matches a decision in that project — the same harmless non-match any
-    other unrecognised sub-type value would produce, not a fallback
-    concern this function needs to resolve.
+    A flat union across the organisation's projects, not the per-project
+    hierarchy fallback: a permission `subtype` is compared as a plain string
+    with a decision's own type name, so only the set of names is needed. A role
+    scoped to a name absent from a project never matches there.
 
     Args:
         db: An active database session.
-        organization_id: The organisation to resolve current Decision Type
-            names for.
+        organization_id: The organisation to list Decision Type names for.
 
     Returns:
-        Sorted, deduplicated Decision Type names currently defined by any
-        project in this organisation.
+        Sorted, deduplicated Decision Type names.
     """
     names = db.scalars(
         select(DecisionTypeDefinition.name)
@@ -368,11 +254,9 @@ def seed_decision_templates(db: Session, organization_id: uuid.UUID, selected_ke
 
 # --- approval, rejection, and supersession workflow --------------
 
-# Legal `DecisionStatus` transitions (`enums.
-# DecisionStatus`'s own docstring): forward through the four "in-flight"
-# states, `REJECTED` reachable from either `PROPOSED` or `UNDER_REVIEW`,
-# `SUPERSEDED` reachable only from `APPROVED` and only via `_maybe_
-# supersede`/`_supersede_predecessors` below, never a direct caller choice.
+# Legal `DecisionStatus` transitions: forward through the in-flight states;
+# `REJECTED` from `PROPOSED` or `UNDER_REVIEW`; `SUPERSEDED` only from
+# `APPROVED`, via `_maybe_supersede`/`_supersede_predecessors`.
 _ALLOWED_TRANSITIONS: dict[DecisionStatus, frozenset[DecisionStatus]] = {
     DecisionStatus.DRAFT: frozenset({DecisionStatus.PROPOSED}),
     DecisionStatus.PROPOSED: frozenset({DecisionStatus.UNDER_REVIEW, DecisionStatus.REJECTED}),
@@ -382,10 +266,8 @@ _ALLOWED_TRANSITIONS: dict[DecisionStatus, frozenset[DecisionStatus]] = {
     DecisionStatus.SUPERSEDED: frozenset(),
 }
 
-# This module's own `RequirementLinkTypeDefinition` name for the typed
-# supersession link `create_supersession` creates/reuses — see module
-# docstring for why that (already generic, org-shared) table is the right
-# extension point rather than a new mechanism.
+# The `RequirementLinkTypeDefinition` name of the typed supersession link
+# `create_supersession` creates or reuses.
 SUPERSEDES_LINK_TYPE_FORWARD_NAME = "Supersedes"
 SUPERSEDES_LINK_TYPE_REVERSE_NAME = "Is superseded by"
 
@@ -395,25 +277,14 @@ def _transition_status(
     action: str, comment: str | None = None, via_mcp: bool = False,
 ) -> Decision:
     """Validates and applies a `Decision.status` transition, then records it
-    via `services.audit.log_event` (not committed — caller's transaction).
+    via `services.audit.log_event` (not committed).
 
-    `via_mcp` (2026-09-22, see docs/decisions.md's "Decision Management MCP
-    approval gate" entry) folds a `"via": "mcp"` key into the logged
-    `detail` alongside any `comment` — the same audit-trail marker
-    `modules.compliance.project_router`'s `approve_requirement`/`reject_
-    requirement` already record when reached through the MCP server,
-    applied here identically now `approve_decision_endpoint`/`reject_
-    decision_endpoint` get the same `allow_ai_approvals` gate treatment.
-    Only `approve_decision`/`reject_decision` ever pass `via_mcp=True` —
-    `propose_decision`/`submit_decision_for_review` are not approval-type
-    actions and never need it.
+    `via_mcp` adds `"via": "mcp"` to the logged `detail`; only
+    `approve_decision`/`reject_decision` pass it.
 
     Raises:
         ValueError: if `new_status` isn't reachable from `decision.status`
-            per `_ALLOWED_TRANSITIONS` — mirrors `services.relationships.
-            create_link`'s own convention of a plain `ValueError` for a
-            service-layer validation failure, for the
-            router to translate into an HTTP 409.
+            per `_ALLOWED_TRANSITIONS` (the router returns 409).
     """
     if new_status not in _ALLOWED_TRANSITIONS[decision.status]:
         raise ValueError(f"Cannot move a Decision from '{decision.status.value}' to '{new_status.value}'.")
@@ -545,15 +416,13 @@ def _supersede_predecessors(db: Session, decision: Decision, actor_id: uuid.UUID
 
 
 def create_supersession(db: Session, *, new_decision: Decision, old_decision: Decision, actor_id: uuid.UUID):
-    """Records that `new_decision` supersedes `old_decision`: creates the
-    typed `"Supersedes"` `ArtefactLink` (§13/10.6), then
-    immediately flips `old_decision` to `SUPERSEDED` if `new_decision` is
-    already `APPROVED` (see `_maybe_supersede`) — otherwise the flip
-    happens later, when/if `new_decision` itself reaches `APPROVED` via
-    `approve_decision`.
+    """Records that `new_decision` supersedes `old_decision`: creates the typed
+    `"Supersedes"` `ArtefactLink` (§13/10.6), then flips `old_decision` to
+    `SUPERSEDED` at once if `new_decision` is already `APPROVED`
+    (`_maybe_supersede`), otherwise when it reaches `APPROVED`.
 
     Args:
-        db: Active session; not committed (caller's transaction).
+        db: Active session; not committed.
         new_decision: The superseding Decision (the link's source).
         old_decision: The superseded Decision (the link's target).
         actor_id: The user recording this relationship.
@@ -562,13 +431,10 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
         The created `ArtefactLink`.
 
     Raises:
-        ValueError: if `new_decision`/`old_decision` are the same row, are
-            in different projects (supersession is scoped to one project's
-            Decision set, same as `DecisionTypeDefinition`), `old_decision`
-            is already `SUPERSEDED`, `new_decision` is in a terminal status
-            that can never reach `APPROVED` (`REJECTED`/`SUPERSEDED` — see
-            `_ALLOWED_TRANSITIONS`), or this exact supersession link
-            already exists.
+        ValueError: if the Decisions are the same row or in different
+            projects, `old_decision` is already `SUPERSEDED`, `new_decision`
+            is `REJECTED`/`SUPERSEDED` (it can never reach `APPROVED`), or
+            the supersession link already exists.
     """
     if new_decision.id == old_decision.id:
         raise ValueError("A Decision cannot supersede itself.")
@@ -577,16 +443,9 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
     if old_decision.status == DecisionStatus.SUPERSEDED:
         raise ValueError("This Decision has already been superseded.")
     if new_decision.status in (DecisionStatus.REJECTED, DecisionStatus.SUPERSEDED):
-        # A Decision only ever flips to SUPERSEDED via `_maybe_supersede`
-        # (here) or `_supersede_predecessors` (once `new_decision` itself
-        # reaches APPROVED via `approve_decision`) — both conditioned on
-        # `new_decision.status == APPROVED`. DRAFT/PROPOSED/UNDER_REVIEW are
-        # fine (the link resolves later if/when approval happens), but
-        # REJECTED/SUPERSEDED are terminal (`_ALLOWED_TRANSITIONS` has no
-        # outgoing edges for either) — recording a supersession from either
-        # would create a link that can never resolve into the status
-        # transition its own name implies, permanently misleading the
-        # relationship graph. Found in a 2026-09-23 hardening pass.
+        # A supersession from a REJECTED/SUPERSEDED Decision (terminal, no
+        # outgoing transitions) would never resolve into the status change its
+        # name implies and would mislead the relationship graph.
         raise ValueError(
             f"A '{new_decision.status.value}' Decision can never be approved, so it cannot supersede another Decision."
         )
@@ -617,10 +476,8 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
 
 # --- relationships to Requirements and other Decisions -----------
 
-# Source overview §13/10.7's Decision<->Requirement relationship names.
-# Both already exist in `services.definitions.DEFAULT_LINK_TYPES` except
-# "Affects" — `_get_or_create_link_type` creates on miss regardless (an org
-# admin may have renamed/deleted a seeded row, or the org may predate it).
+# §13/10.7 Decision<->Requirement relationship names; `_get_or_create_link_type`
+# creates a missing one (an admin may have renamed or deleted a seeded row).
 IMPLEMENTS_LINK_TYPE_FORWARD_NAME = "Implements"
 IMPLEMENTS_LINK_TYPE_REVERSE_NAME = "Is implemented by"
 AFFECTS_LINK_TYPE_FORWARD_NAME = "Affects"
@@ -669,14 +526,11 @@ def create_decision_requirement_link(
     db: Session, *, decision: Decision, requirement: Requirement, kind: DecisionRequirementLinkKind,
     actor_id: uuid.UUID,
 ) -> ArtefactLink:
-    """Records that `decision` either `Implements` or `Affects`
-    `requirement` (§13/10.7): creates the typed
-    `ArtefactLink`, with `decision` as the source, using the same lazy
-    fetch-or-create `RequirementLinkTypeDefinition` pattern
-    `create_supersession` established.
+    """Records that `decision` either `Implements` or `Affects` `requirement`
+    (§13/10.7): creates the typed `ArtefactLink` with `decision` as source.
 
     Args:
-        db: Active session; not committed (caller's transaction).
+        db: Active session; not committed.
         decision: The linking Decision (the link's source).
         requirement: The target Requirement.
         kind: Which relationship name to use.
@@ -686,8 +540,7 @@ def create_decision_requirement_link(
         The created `ArtefactLink`.
 
     Raises:
-        ValueError: if `decision` and `requirement` are in different
-            projects, or this exact link already exists.
+        ValueError: if they are in different projects, or this link exists.
     """
     if decision.project_id != requirement.project_id:
         raise ValueError("A Decision can only link to a Requirement in the same project.")
@@ -717,13 +570,11 @@ def create_decision_decision_link(
     actor_id: uuid.UUID,
 ) -> ArtefactLink:
     """Records a `Depends on` or `Conflicts with` relationship from
-    `source_decision` to `target_decision` — the two plain Decision<->
-    Decision relationships (`"Supersedes"` has its own dedicated
-    `create_supersession`, above, for the status-flip side effect these two
-    don't have).
+    `source_decision` to `target_decision` (`"Supersedes"` has
+    `create_supersession`).
 
     Args:
-        db: Active session; not committed (caller's transaction).
+        db: Active session; not committed.
         source_decision: The linking Decision (the link's source).
         target_decision: The target Decision.
         kind: Which relationship name to use.
@@ -733,9 +584,8 @@ def create_decision_decision_link(
         The created `ArtefactLink`.
 
     Raises:
-        ValueError: if `source_decision`/`target_decision` are the same
-            row, are in different projects, or this exact link already
-            exists.
+        ValueError: if the Decisions are the same row or in different
+            projects, or this exact link already exists.
     """
     if source_decision.id == target_decision.id:
         raise ValueError("A Decision cannot link to itself.")
@@ -766,18 +616,13 @@ def create_decision_decision_link(
 
 
 def resolve_decision_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
-    """Resolves a `FileAsset` id to the project it belongs to, if it is
-    attached to a Decision directly (`DecisionFile`) or via a
-    `DecisionComment` (`DecisionCommentFile`) — this module's own
-    `ModuleDefinition.resolve_file_owner_project_id` hook (`module.py`),
-    mirroring `modules.compliance.service.resolve_evidence_file_project_id`'s
-    exact shape, called generically by `routers.files.download_file`
-    without that core router needing to import anything from this module
-    directly.
+    """Resolves a `FileAsset` id to the project of the Decision it is attached
+    to, directly (`DecisionFile`) or through a `DecisionComment`
+    (`DecisionCommentFile`): this module's
+    `ModuleDefinition.resolve_file_owner_project_id` hook.
 
     Returns:
-        The owning project's id, or `None` if `file_id` isn't attached to
-        a Decision or a Decision's comment at all.
+        The owning project's id, or `None`.
     """
     direct_link = db.scalar(select(DecisionFile).where(DecisionFile.file_id == file_id))
     if direct_link is not None:
@@ -794,13 +639,9 @@ def resolve_decision_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
     return None
 
 
-# Link types Decision Management ships (`ModuleDefinition.link_type_seeds`):
-# Decision <-> Pain Point / Open Question / Strategy / Guiding Principle /
-# Compliance requirement (link-type seeds), the Decision ->
-# Requirement "Affects", and the dedicated "Supersedes". "Implements",
-# "Depends on" and "Conflicts with" are core defaults. The target type strings
-# of other modules are plain names, not imports; a restriction naming a type
-# whose module is not installed simply matches nothing.
+# Link types shipped by this module (`ModuleDefinition.link_type_seeds`). Other
+# modules' type strings are plain names, not imports; a restriction naming an
+# uninstalled module's type matches nothing.
 LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
     LinkTypeSeed(
         "Addresses", "Is addressed by", LinkFlow.FORWARD_IS_UPSTREAM,

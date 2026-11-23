@@ -3,17 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: browsing every file in a project from one place, rather
- * than opening each requirement/action/comment individually — the gap
- * ProjectOverviewPage's "Files" metric tile always counted (only direct
- * requirement attachments, per `ProjectMetricsOut.file_count`'s own
- * narrower scope) but never let you actually see. See
- * backend/scripts/seed_e2e_dataset.py's "Files on Alpha-1" step, which
- * seeds one file via each of the three origins this page combines: a
- * direct requirement attachment (on the requirement named "Must expose a
- * health-check endpoint"), a requirement action attachment (on "E2E
- * Review Action"), and a comment attachment (on "Must support role-based
- * access control").
+ * Job to be done: browse every file in a project from one place, rather than opening each requirement, action or
+ * comment. ProjectOverviewPage's "Files" metric tile counts only direct requirement attachments
+ * (`ProjectMetricsOut.file_count`); this page combines all three origins. backend/scripts/seed_e2e_dataset.py's
+ * "Files on Alpha-1" step seeds one file per origin: a direct requirement attachment (on "Must expose a health-check
+ * endpoint"), a requirement action attachment (on "E2E Review Action"), and a comment attachment (on "Must support
+ * role-based access control").
  */
 test.describe("project files", () => {
   test("the Files page lists files from multiple requirements/actions, a download link works, and the dashboard tile links here", async ({ page }) => {

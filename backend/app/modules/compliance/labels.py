@@ -1,20 +1,13 @@
 """
 Module: modules.compliance.labels
 
-Human-readable, sentence-cased labels for this module's own enum wire values
-— read by `modules.compliance.reports` when rendering the PDF/CSV compliance
-reports. Split out of the core `app.services.labels` (which still holds only
-`REQUIREMENT_STATUS_LABEL`, core's own enum) so this module owns every one of
-its own display concerns, not just its data/service/router/schema layers —
-the same "modules are self-contained" principle `resolve_file_owner_
-project_id` (`app.modules.registry`) already applies to file-ownership
-resolution. Mirrors the frontend's equivalent maps in
-`frontend/src/modules/compliance/types.ts`; kept in sync by hand since the
-two run in different languages, not generated from one shared source.
+Sentence-cased labels for this module's enum wire values, read by `modules.compliance.reports` for the PDF and CSV
+reports. They live here, not in the core `app.services.labels` (which holds only core enums), so the module owns its
+display concerns; the frontend's equivalent maps in `frontend/src/modules/compliance/types.ts` are kept in sync manually
+because the two are in different languages.
 
-Casing follows the Australian Government Style Manual's "minimal
-capitalisation" rule (sentence case: capitalise only the first word), the
-same convention `app.services.labels` uses for core enums.
+Casing follows the Australian Government Style Manual's minimal capitalisation (capitalise only the first word), as
+`app.services.labels` does.
 """
 
 from __future__ import annotations

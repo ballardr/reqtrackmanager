@@ -1,17 +1,13 @@
 /**
  * Module: utils/markdownPlain
  *
- * The readable words of a Markdown text, with no marks, for a place that shows one line of it (a summary card, a list
- * cell, a tooltip). The browser counterpart of the server's `services.markdown_text.plain_text`, which a list, search
- * snippet or notification uses, so the two read a text the same way.
- *
- * Responsibilities:
- * - Read the text with the product's reader (`parseMarkdown`) and join the words of every block with single spaces;
- *   a diagram is named `[Diagram]`, a fenced block keeps its text, an equation keeps its TeX, a picture is its
- *   alternative text.
- *
- * Design decisions:
- * - Nothing here produces markup, so the result can be shown as text wherever a plain string is shown.
+ * The readable words of a Markdown text, with no marks, for a place that shows
+ * one line of it (a summary card, list cell, tooltip). The browser counterpart
+ * of the server's `services.markdown_text.plain_text`, so both read a text the
+ * same way. Reads the text with `parseMarkdown` and joins every block's words
+ * with single spaces; a diagram is `[Diagram]`, a fenced block keeps its text,
+ * an equation its TeX, a picture its alternative text. Nothing here produces
+ * markup, so the result can be shown wherever a plain string is.
  */
 import { isMermaidFence, parseMarkdown, type Token } from "./markdownIt";
 

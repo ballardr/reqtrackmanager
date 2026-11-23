@@ -1,21 +1,15 @@
 /**
  * Module: modules/architecture/StateMachineSelectionPanel
  *
- * The state machine editor's "Selection" card: what the selected state or transition is and what can be done with it.
- * - A state: its fields, edited in place through the shared field group (name, kind, description, entry, exit and do lines; read-only
- *   text when the diagram cannot be edited), its tags (the shared `RecordTags`; a state sits in no component), its links, the
- *   issues that name it; Comment, Delete (confirmed, naming how many transitions and links go with it) and, for an ordinary
- *   or marker state, "Inside": the state it sits inside, the keyboard route to dragging it into a frame. A state that holds
- *   others cannot become a marker. Double-clicking a state on the canvas opens the same fields in a dialog.
- * - A transition: its two states, event, condition (guard), action and description, edited in place through the shared field group (read-only
- *   text when the diagram cannot be edited), the issues that name it, the attach points of its two ends (the keyboard route to
- *   dragging a line's end); Comment and Delete. Double-clicking a line on the canvas opens the same fields in a dialog.
- * - A note or one of its leader lines: the shared note and leader forms (`StateMachineNoteCards`).
- * - Nothing selected: a short prompt.
+ * The state machine editor's "Selection" card: what the selected state, transition, note or leader is and what can be done with it.
+ * - A state: fields edited in place through the shared field group, tags, links, issues, Comment, Delete (confirmed, naming
+ *   what goes with it) and, for an ordinary or marker state, "Inside" (the keyboard route to nesting it in a frame).
+ * - A transition: its two states and fields edited in place, issues, the attach points of its ends (the keyboard route to
+ *   dragging a line's end), Comment and Delete. Fields are read-only text when the diagram cannot be edited.
+ * - A note or leader line: the shared forms (`StateMachineNoteCards`). Nothing selected: a short prompt.
  *
- * Design decisions:
- * - The actions are icon buttons from the shared `SelectionActions`, the same set the block diagram's card uses.
- * - The card stores nothing: every action is a callback onto the page, which stores content at once and the drawing on Save.
+ * The card stores nothing: every action is a callback onto the page, which stores content at once and the drawing on Save.
+ * Actions are the shared `SelectionActions` icon buttons, as on the block diagram's card.
  */
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailCard } from "../../components/DetailCard";

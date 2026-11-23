@@ -1,101 +1,49 @@
-# GitHub Actions CI pipeline.
+# GitHub Actions CI pipeline, run on every push to main, every pull request and on demand.
 #
-# Thirteen jobs, run on every push to main, every pull request, and on demand:
-#   1. frontend          - lint, type-check, production build, then the
-#                          Storybook/Vitest suite (real Chromium) with
-#                          coverage, run as three `frontend-shard` jobs whose
-#                          blob reports `frontend` merges (it keeps the
-#                          required check name)
-#   2. backend-tests     - the same dev/test Docker Compose stack developers
-#                          run locally, but only the services backend pytest
-#                          actually needs (db, storage, mailhog, backend — not
-#                          frontend/mcp-server/keycloak, which only
-#                          e2e-tests below exercises); backend pytest with
-#                          coverage + JUnit reporting, ruff lint, mypy.
-#   3. e2e-tests         - three shards, each the full dev/test stack (adds
-#                          frontend, mcp-server, keycloak on top of
-#                          backend-tests' subset), the mcp-server's own
-#                          integration test suite (shard 1), then its share of
-#                          the Playwright E2E suite against the running
-#                          containers; `e2e-suite` reports their combined
-#                          result under the required check name. Split out from backend-tests (was one
-#                          "backend-and-e2e" job) specifically so the two
-#                          largest chunks of what used to be a single ~26min
-#                          job — pytest at ~12min, Playwright at ~9min — run
-#                          on two separate runners in parallel instead of
-#                          back-to-back on one (an earlier CI-runtime-
-#                          reduction pass only parallelised *within* the
-#                          Playwright step and left this larger, sequential
-#                          cost untouched; see docs/decisions.md). Each job
-#                          independently builds the backend image it needs
-#                          (both) via the same `cache-from/cache-to:
-#                          type=gha` scope — a small amount of duplicated
-#                          build time in exchange for not needing a third
-#                          shared "build images" job plus artifact tar
-#                          transfer just to avoid it.
-#   4. publish-badges    - needs: [frontend, backend-tests]. Best-effort;
-#                          turns both jobs' coverage/JUnit output into the
-#                          four README badges and pushes them together to the
-#                          `badges` branch. A dedicated job specifically to
-#                          avoid frontend and backend-tests (which run in
-#                          parallel) independently force-pushing their own
-#                          badge files and racing each other — see that job's
-#                          own comment. Doesn't need e2e-tests: nothing it
-#                          reads comes from that job.
-#   5. dependency-scan   - pip-audit (backend, mcp-server) and npm audit
-#                          (frontend, Playwright; the docs site is reported
-#                          only) against the pinned dependency files. Runs in
-#                          parallel with the test jobs; docker-build needs it.
-#   5a. licences         - scripts/check_licences.py --live: every shipped
-#                          dependency, operating-system package and base image
-#                          is judged against scripts/licence_policy.json and
-#                          the committed third-party inventory must match the
-#                          lockfiles. docker-build needs it.
-#   5a2. cla             - pull requests only: every commit author must be a
-#                          maintainer, an automation account or a signatory of
-#                          the current CLA.md (scripts/check_cla.py).
-#   5b. image-scan      - builds the production images (amd64) and scans
-#                          each with Trivy; starts with the test jobs so a
-#                          vulnerable image fails the run early.
-#   5c. restore-test    - disaster-recovery backup/restore self-check on
-#                          throwaway stacks; docker-build needs it.
-#   5d. version         - GitVersion SemVer + build date, computed once for
-#                          every image leg and the manifest job.
-#   6. docker-build      - one leg per production image (backend, backup,
-#                          frontend, mcp-server, docs) and CPU architecture
-#                          (amd64, arm64), each on a native runner. Gated on
-#                          jobs 1-3, dependency-scan, licences, image-scan and the
-#                          version job. Every leg builds on every run; the
-#                          arm64 legs also smoke test the image
-#                          (scripts/smoke_test_image.sh) and Trivy scan it,
-#                          and only a passing leg pushes its digest -
-#                          never on pull_request runs. Needs the version job
-#                          (GitVersion SemVer + build date, computed once).
-#   6b. docker-publish   - main only, after every docker-build leg passed:
-#                          assembles each image's digests into a multi-arch
-#                          manifest tagged with the SemVer, commit SHA and
-#                          `latest` on ghcr.io, and verifies both platforms.
-#   6c. images-gate      - reports the ruleset's required check name
-#                          "Build, version, and push production container
-#                          images"; passes only if version, every docker-build
-#                          leg and (on main) docker-publish passed.
-#   7. docs              - builds docs/website/ (Docusaurus) and fails on any
-#                          broken internal link/anchor (onBrokenLinks/
-#                          onBrokenAnchors: 'throw'), on every push and PR —
-#                          independent of and parallel with every job above.
-#   8. docs-deploy       - needs: [docs]. Push-only-on-main, same gating
-#                          shape as docker-build; deploys docs/website/'s
-#                          build to GitHub Pages via actions/deploy-pages.
-#                          Requires GitHub Pages enabled in this repo's own
-#                          Settings → Pages (source: "GitHub Actions") — a
-#                          repo-admin action outside CI's own reach; fails
-#                          with a clear error until that's done.
+# Jobs:
+#   1. frontend         - lint, type-check, production build, then the Storybook/Vitest suite
+#                         (real Chromium) with coverage, run as three `frontend-shard` jobs whose
+#                         blob reports `frontend` merges (it keeps the required check name).
+#   2. backend-tests    - the dev/test Docker Compose services backend pytest needs (db, storage,
+#                         mailhog, backend); pytest with coverage and JUnit reporting, ruff, mypy.
+#   3. e2e-tests        - three shards on the full dev/test stack (adds frontend, mcp-server,
+#                         keycloak): the mcp-server integration suite (shard 1) and each shard's
+#                         share of Playwright; `e2e-suite` reports the combined result under the
+#                         required check name. Separate from backend-tests so pytest and
+#                         Playwright run on parallel runners; each job builds its own backend image
+#                         through the shared `type=gha` cache scope rather than a shared build job.
+#   4. publish-badges   - needs frontend and backend-tests; best-effort. Turns their coverage and
+#                         JUnit output into the README badges and pushes them together to the
+#                         `badges` branch (one job, so parallel jobs never race on the push).
+#   5. dependency-scan  - pip-audit (backend, mcp-server) and npm audit (frontend, Playwright; the
+#                         docs site is reported only) against the pinned dependency files.
+#   5a. licences        - scripts/check_licences.py --live: every shipped dependency, operating-system
+#                         package and base image is judged against scripts/licence_policy.json and
+#                         the committed third-party inventory must match the lockfiles.
+#   5a2. cla            - pull requests only: every commit author is a maintainer, an automation
+#                         account or a signatory of the current CLA.md (scripts/check_cla.py).
+#   5b. image-scan      - builds the production images (amd64) and scans each with Trivy.
+#   5c. restore-test    - disaster-recovery backup/restore self-check on throwaway stacks.
+#   5d. version         - GitVersion SemVer and build date, computed once for every image leg.
+#   6. docker-build     - one leg per production image (backend, backup, frontend, mcp-server, docs)
+#                         and architecture (amd64, arm64), each on a native runner. Gated on jobs
+#                         1-3, dependency-scan, licences, image-scan and version. The arm64 legs
+#                         also smoke test (scripts/smoke_test_image.sh) and Trivy scan the image;
+#                         only a passing leg pushes its digest, never on pull_request runs.
+#   6b. docker-publish  - main only, after every docker-build leg: assembles each image's digests
+#                         into a multi-arch manifest tagged with the SemVer, commit SHA and
+#                         `latest` on ghcr.io, and verifies both platforms.
+#   6c. images-gate     - reports the ruleset's required check "Build, version, and push production
+#                         container images"; passes only if version, every docker-build leg and (on
+#                         main) docker-publish passed.
+#   7. docs             - builds docs/website/ (Docusaurus); fails on a broken internal link or
+#                         anchor (onBrokenLinks/onBrokenAnchors: 'throw').
+#   8. docs-deploy      - main only, needs docs; deploys the build to GitHub Pages through
+#                         actions/deploy-pages (requires Pages enabled with source "GitHub Actions").
 #
-# Test results are published as GitHub check annotations and as downloadable
-# artifacts; a coverage summary is written to the job summary. This exists to
-# close the primary gap flagged in docs/soc2/policies/change-management-and-
-# secure-development-policy.md (SOC 2 CC4.1/CC8.1): tests existed and passed
-# locally, but nothing enforced them automatically before this.
+# Test results are published as check annotations and downloadable artifacts, with a coverage
+# summary in the job summary. Automatic test enforcement addresses the gap named in
+# docs/soc2/policies/change-management-and-secure-development-policy.md (SOC 2 CC4.1/CC8.1).
 
 name: CI
 
@@ -165,29 +113,20 @@ jobs:
   frontend-shard:
     name: Storybook shard ${{ matrix.shard }} of 3
     runs-on: ubuntu-latest
-    # 2026-08-19: running this job inside Playwright's own image instead of
-    # bare `ubuntu-latest` + `playwright install --with-deps` (see the
-    # deleted "Install Playwright browsers" step this replaced, and its
-    # e2e-tests counterpart) — that install step ran `apt-get` on the
-    # runner for Chromium's OS deps, which stalled inside `apt-get update`
-    # against a flaky archive.ubuntu.com/security.ubuntu.com mirror twice in
-    # one day (PR #9, then this same job again on PR #10; see
-    # docs/decisions.md). This image ships Chromium and every OS dep
-    # preinstalled, so there's no `apt-get` in the job at all — the stall
-    # can't recur, not just fail faster.
+    # Runs inside Playwright's own image rather than bare `ubuntu-latest` plus `playwright install
+    # --with-deps`: that install ran `apt-get` on the runner, which stalled against a flaky Ubuntu mirror
+    # (docs/decisions.md). The image ships Chromium and every OS dependency, so no `apt-get` runs in the job.
     #
-    # The tag's version MUST match frontend/package-lock.json's resolved
-    # `playwright` version exactly (the e2e-tests job's `docker run` image
-    # below tracks tests/playwright/package-lock.json instead — a separate
-    # lockfile that can legitimately sit on a different release) (Playwright requires the npm package and
-    # browser build to be the same release) — bump this tag in the same
-    # change as any `playwright` version bump, the same way Node's version is
-    # kept in lockstep across ci.yml/Dockerfile/.nvmrc (see CLAUDE.md).
+    # The tag's version MUST match frontend/package-lock.json's resolved `playwright` version (the npm
+    # package and the browser build must be the same release); the e2e-tests job's `docker run` image
+    # tracks tests/playwright/package-lock.json, a separate lockfile that can sit on a different release.
+    # Bump the tag with any `playwright` bump, as Node's version is kept in lockstep across
+    # ci.yml/Dockerfile/.nvmrc (see CLAUDE.md).
     # Available tags: https://mcr.microsoft.com/en-us/artifact/mar/playwright
     container:
       image: mcr.microsoft.com/playwright:v1.65.0-noble
-    # A shard is ~2 minutes of set-up and ~5 of tests on a 4-vCPU runner (the whole suite was 13 to 19 minutes in
-    # one job). If one is outgrown, raise the shard count here and in `--shard`, never the ceiling.
+    # A shard is ~2 minutes of set-up and ~5 of tests on a 4-vCPU runner. If one is outgrown, raise the
+    # shard count here and in `--shard`, never the ceiling.
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -264,31 +203,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: [frontend-shard]
     if: always()
-    # 2026-08-19: running this job inside Playwright's own image instead of
-    # bare `ubuntu-latest` + `playwright install --with-deps` (see the
-    # deleted "Install Playwright browsers" step this replaced, and its
-    # e2e-tests counterpart) — that install step ran `apt-get` on the
-    # runner for Chromium's OS deps, which stalled inside `apt-get update`
-    # against a flaky archive.ubuntu.com/security.ubuntu.com mirror twice in
-    # one day (PR #9, then this same job again on PR #10; see
-    # docs/decisions.md). This image ships Chromium and every OS dep
-    # preinstalled, so there's no `apt-get` in the job at all — the stall
-    # can't recur, not just fail faster.
+    # Runs inside Playwright's own image rather than bare `ubuntu-latest` plus `playwright install
+    # --with-deps`: that install ran `apt-get` on the runner, which stalled against a flaky Ubuntu mirror
+    # (docs/decisions.md). The image ships Chromium and every OS dependency, so no `apt-get` runs in the job.
     #
-    # The tag's version MUST match frontend/package-lock.json's resolved
-    # `playwright` version exactly (the e2e-tests job's `docker run` image
-    # below tracks tests/playwright/package-lock.json instead — a separate
-    # lockfile that can legitimately sit on a different release) (Playwright requires the npm package and
-    # browser build to be the same release) — bump this tag in the same
-    # change as any `playwright` version bump, the same way Node's version is
-    # kept in lockstep across ci.yml/Dockerfile/.nvmrc (see CLAUDE.md).
-    # Available tags: https://mcr.microsoft.com/en-us/artifact/mar/playwright
+    # The tag's version MUST match frontend/package-lock.json's resolved `playwright` version (the npm
+    # package and the browser build must be the same release); the e2e-tests job's `docker run` image
+    # tracks tests/playwright/package-lock.json, a separate lockfile that can sit on a different release.
+    # Bump the tag with any `playwright` bump, as Node's version is kept in lockstep across
+    # ci.yml/Dockerfile/.nvmrc (see CLAUDE.md).
     container:
       image: mcr.microsoft.com/playwright:v1.65.0-noble
     timeout-minutes: 20
-    # checks: write is for the "Publish frontend test results" step below
-    # (dorny/test-reporter creating a check run) — same reasoning as
-    # backend-tests'/e2e-tests' identical permission.
+    # checks: write is for the "Publish frontend test results" step (dorny/test-reporter creating a check run).
     permissions:
       checks: write
     defaults:
@@ -347,11 +274,9 @@ jobs:
           total = sum(int(s.attrib.get("tests", 0)) for s in suites)
           failures = sum(int(s.attrib.get("failures", 0)) for s in suites)
           errors = sum(int(s.attrib.get("errors", 0)) for s in suites)
-          # An empty report is not a passing one: if the browser can't launch
-          # (e.g. the container image's Playwright release drifting from
-          # package-lock.json's) vitest runs zero tests and writes a valid,
-          # failure-free report — which previously passed this gate and
-          # published a "0 passed" / 0% coverage badge.
+          # An empty report is not a passing one: when the browser cannot launch (for example the
+          # container image's Playwright release differs from package-lock.json's), vitest runs zero tests
+          # and writes a valid, failure-free report that would publish a "0 passed" / 0% coverage badge.
           if total == 0:
               print("vitest-report.xml contains no tests — the run never executed any story.", file=sys.stderr)
               sys.exit(1)
@@ -383,11 +308,8 @@ jobs:
           )
           PY
 
-      # Same continue-on-error reasoning as backend-tests'/e2e-tests'
-      # equivalent steps: "Run frontend tests with coverage" above (no
-      # if: always()) is the real pass/fail gate via its own exit code;
-      # these three are reporting/artifact-attachment conveniences layered
-      # on top.
+      # `Run frontend tests with coverage` above (no `if: always()`) is the pass/fail gate through its
+      # exit code; these three steps are reporting and artifact conveniences, so they continue on error.
       - name: Storybook timing
         if: always()
         continue-on-error: true
@@ -426,42 +348,26 @@ jobs:
   backend-tests:
     name: Backend tests & coverage
     runs-on: ubuntu-latest
-    # Runs finish in 30-45 minutes (docker build + 29-41 min of pytest at
-    # -n 4 over ~3.4k tests + ruff); runner speed varies by ~10 minutes
-    # between runs. The ceiling has been outgrown twice (20 -> 45 -> 75): a
-    # healthy run past it is cancelled mid-pytest (shown as "cancelled", not
-    # failed). If this is hit again, shard the suite instead of raising it.
-    # Without a ceiling here a stalled step just sits until someone notices
-    # and cancels it manually, instead of failing the run automatically —
-    # see e2e-tests' identical timeout-minutes comment for the real incident
-    # (an 18-minute apt-get mirror hang) this pattern exists to catch.
+    # Runs finish in 30-45 minutes (docker build, 29-41 minutes of pytest at -n 4 over ~3.4k tests, ruff);
+    # runner speed varies by ~10 minutes. A healthy run past the ceiling is cancelled mid-pytest (shown as
+    # "cancelled", not failed); if it is reached, shard the suite instead of raising it. Without a ceiling
+    # a stalled step (see e2e-tests' timeout-minutes comment) sits until someone cancels it.
     timeout-minutes: 75
     permissions:
-      # checks: write is for the "Publish backend test results" step below
-      # (dorny/test-reporter creating a check run). Badge publishing (which
-      # used to run here, needing contents: write) now happens in the
-      # dedicated publish-badges job instead — see that job's own comment
-      # for why.
+      # checks: write is for the "Publish backend test results" step (dorny/test-reporter creating a
+      # check run). Badge publishing needs contents: write and runs in the publish-badges job.
       checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      # Pre-build via buildx directly (rather than letting `docker compose
-      # up --build` build it) so it can use its own GitHub Actions cache
-      # scope for BuildKit layers (`cache-from`/`cache-to: type=gha`) —
-      # layers for an unchanged requirements.txt then survive between CI
-      # runs instead of every run reinstalling every dependency from
-      # scratch. `load: true` puts the built image into the runner's local
-      # Docker daemon under the exact `<compose-project>-backend` name
-      # Compose would otherwise build itself (the project name defaults to
-      # this directory's basename, "container" — see docker-compose.yml's
-      # own top comment), so the `docker compose up -d` step below finds a
-      # matching image already present and skips building it again. This
-      # same image is also built independently by e2e-tests (below) — see
-      # this file's own top comment for why that small duplication is
-      # preferable to a third, shared "build images" job.
+      # Pre-builds through buildx so the image uses its own GitHub Actions cache scope (`cache-from`/
+      # `cache-to: type=gha`) and layers for an unchanged requirements.txt survive between runs.
+      # `load: true` puts the image into the local Docker daemon under the `<compose-project>-backend`
+      # name Compose expects (the project name is the directory basename, "container"; see
+      # docker-compose.yml), so `docker compose up -d` finds it. e2e-tests builds the same image
+      # independently; see the top comment for why.
       - name: Build backend image (cached)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
@@ -480,22 +386,13 @@ jobs:
           cache-from: type=gha,scope=converter
           cache-to: type=gha,mode=max,scope=converter
 
-      # The dev/test stack (tests/container/docker-compose.yml) is the same
-      # one developers run locally, and the only one the backend test suite
-      # is allowed to run against — tests/conftest.py hard-fails if
-      # DATABASE_URL doesn't resolve to a database whose name ends in
-      # `_test` (see docs/decisions.md, "Database: the test suite was
-      # wiping the live database"). Only the services backend pytest
-      # actually needs come up here — db and storage are backend's own
-      # declared `depends_on`, so `docker compose up -d backend` would
-      # start them regardless, but mailhog isn't (backend just points
-      # SMTP_HOST at it with no formal dependency) and several backend
-      # tests do send real mail through it (test_notifications.py,
-      # test_digest.py, etc.), so it's listed explicitly. frontend/
-      # mcp-server/keycloak are left down entirely — only e2e-tests (below)
-      # needs them. No `--build`: the step above already built (and
-      # cached) the backend image; passing `--build` here would rebuild it
-      # a second time with none of buildx's GHA cache wired in.
+      # The dev/test stack (tests/container/docker-compose.yml) is the same one developers run locally and
+      # the only one the backend test suite may run against: tests/conftest.py fails unless DATABASE_URL
+      # names a database ending in `_test` (docs/decisions.md, "Database: the test suite was wiping the
+      # live database"). Only the services pytest needs come up: db and storage are backend's
+      # `depends_on`; mailhog is listed explicitly because several tests send mail through it
+      # (test_notifications.py, test_digest.py). frontend, mcp-server and keycloak are needed only by
+      # e2e-tests. No `--build`: the step above built and cached the backend image.
       # One API process, not the default four: this job only runs pytest inside the container, nothing calls the
       # served API, and four idle processes hold about 1.5 GB that the four pytest workers need (a pytest worker was
       # killed by the out-of-memory killer mid-run, which fails whichever test it was running).
@@ -505,21 +402,11 @@ jobs:
           BACKEND_WORKERS: "1"
         run: docker compose up -d db storage mailhog converter backend
 
-      # Diagnostic only: `docker compose up -d` above fails outright (exit 1)
-      # if a `depends_on: condition: service_healthy` dependency never
-      # reaches healthy, so the step above carries no dependency's own logs.
-      # This dumps every service's state/logs so a stuck healthcheck (e.g.
-      # the `storage` service never becoming healthy) is diagnosable from
-      # the run's own log instead of requiring a local repro. The
-      # `docker inspect .State.Health` call is the important one: a prior
-      # investigation found the `storage` service's own app logs showed
-      # master/filer/S3 all starting cleanly within ~16s, so `docker compose
-      # logs` alone didn't explain the healthcheck still failing for the
-      # full retry budget — `.State.Health` carries each individual
-      # `wget -qO- http://localhost:9333/cluster/status` probe's own
-      # stdout/stderr and exit code, which `docker compose logs` never
-      # shows (that's the container's own stdout, not the exec'd
-      # healthcheck's).
+      # Diagnostic only: `docker compose up -d` above fails (exit 1) when a `depends_on:
+      # condition: service_healthy` dependency never becomes healthy, so it carries no dependency's logs.
+      # This dumps every service's state and logs. `docker inspect .State.Health` is the important call:
+      # it carries each healthcheck probe's own stdout, stderr and exit code (for the `storage` service,
+      # `wget -qO- http://localhost:9333/cluster/status`), which `docker compose logs` never shows.
       - name: Diagnose dev/test stack on startup failure
         if: failure()
         working-directory: tests/container
@@ -542,17 +429,11 @@ jobs:
           docker compose logs backend
           exit 1
 
-      # `-n 4`, not `-n 2`: the GitHub-hosted `ubuntu-latest` runner has 4
-      # vCPUs (confirmed via buildx's own "CPUs: 4" setup log on this exact
-      # job), and this step is the single largest chunk of CI time (~12 of
-      # the old combined job's ~26 minutes) — `-n 2` was only using half
-      # the runner's cores on it. `_pytest_database.py`'s per-worker
-      # database isolation is already generic on `PYTEST_XDIST_WORKER`
-      # (`_gw0`, `_gw1`, ...), not hardcoded to any worker count, so this is
-      # a mechanical bump, not a design change.
-      # --cov-fail-under is the published figure (95.2% on 2026-10-22) minus two
-      # points, so a real drop fails the build while normal churn does not. Raise
-      # it when coverage rises; never lower it to make a failing run pass.
+      # `-n 4`: the GitHub-hosted `ubuntu-latest` runner has 4 vCPUs and this step is the largest chunk of
+      # CI time. `_pytest_database.py` isolates a database per `PYTEST_XDIST_WORKER` (`_gw0`, `_gw1`, ...)
+      # for any worker count.
+      # --cov-fail-under is the published figure (95.2%) minus two points, so a real drop fails the build
+      # while normal churn does not. Raise it when coverage rises; never lower it to pass a failing run.
       - name: Run backend tests with coverage
         working-directory: tests/container
         run: |
@@ -638,19 +519,9 @@ jobs:
           print("Full HTML report attached as the `backend-coverage-html` artifact.")
           PY
 
-      # continue-on-error on this and the two upload-artifact steps below:
-      # the real pass/fail signal for the backend suite is already pytest's
-      # own exit code, on the "Run backend tests with coverage" step above
-      # (which has no if: always() and correctly fails the job on a real
-      # test failure) — these three are reporting/artifact-attachment
-      # conveniences layered on top, not the gate itself. Without
-      # continue-on-error, an unrelated hiccup in any one of them (a
-      # GitHub API blip creating the check run, an artifact-service issue)
-      # would fail the job for a reason that has nothing to do with whether
-      # the tests actually passed. Found via local `act` runs where these
-      # steps fail for a different reason (`act` has no real
-      # ACTIONS_RUNTIME_TOKEN), which surfaced the same underlying gap:
-      # this job's step graph, not just this local limitation.
+      # continue-on-error on this and the two upload-artifact steps below: pytest's own exit code, on the
+      # "Run backend tests with coverage" step above, is the pass/fail gate. These three are reporting
+      # conveniences, and a GitHub API or artifact-service failure in one must not fail the job.
       - name: Publish backend test results
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
         if: always()
@@ -692,20 +563,14 @@ jobs:
     # The suite is split over three shards, each with a stack and database of its own, so nothing a spec changes on the
     # deployment (the `global-state-mutators` project) can reach another shard. Shard 1 first runs that serial
     # project (about 5 minutes) and then its third of the parallel project; the others run a third each. A shard takes
-    # ~9 minutes of setup (docker build x3 + stack startup + seeding) and 11 to 17 of Playwright (the whole suite was
-    # ~32 on 2 workers); the `e2e-suite` job below reports their combined result under the required check name. If a
+    # ~9 minutes of setup (docker build x3 + stack startup + seeding) and 11 to 17 of Playwright; the `e2e-suite` job below reports their combined result under the required check name. If a
     # shard is outgrown, raise the count here, in `--shard` and in `e2e-suite`'s comment, never the ceiling.
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
-    # Without a ceiling
-    # here a stalled step (see docs/decisions.md for a real instance of
-    # this: an 18-minute apt-get mirror hang with no output, in what was
-    # then this job's "Install Playwright browsers" step before it moved
-    # into a Docker image — see "Run Playwright E2E suite" below) just sits
-    # until someone notices and cancels it manually, instead of failing the
-    # run automatically.
+    # Without a ceiling a stalled step (an 18-minute apt-get mirror hang is in docs/decisions.md) sits until
+    # someone cancels it, instead of failing the run.
     timeout-minutes: 60
     permissions:
       # checks: write is for the "Publish E2E test results" step below
@@ -728,22 +593,12 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      # Pre-build each of tests/container/docker-compose.yml's three
-      # buildable images via buildx directly (rather than letting `docker
-      # compose up --build` build them) so each can use its own GitHub
-      # Actions cache scope for BuildKit layers (`cache-from`/`cache-to:
-      # type=gha`) — layers for unchanged dependency files (requirements.txt,
-      # package-lock.json) then survive between CI runs instead of every run
-      # reinstalling every dependency from scratch. `load: true` puts each
-      # built image into the runner's local Docker daemon under the exact
-      # `<compose-project>-<service>` name Compose would otherwise build
-      # itself (the project name defaults to this directory's basename,
-      # "container" — see docker-compose.yml's own top comment), so the
-      # `docker compose up -d` step below finds a matching image already
-      # present and skips building it again. The backend image here is
-      # also built independently by backend-tests (above) — see this
-      # file's own top comment for why that small duplication is
-      # preferable to a third, shared "build images" job.
+      # Pre-builds each of tests/container/docker-compose.yml's three buildable images through buildx, so
+      # each uses its own GitHub Actions cache scope (`cache-from`/`cache-to: type=gha`) and layers for
+      # unchanged dependency files survive between runs. `load: true` puts the image into the local
+      # Docker daemon under the `<compose-project>-<service>` name Compose expects (the project name is
+      # the directory basename, "container"; see docker-compose.yml), so `docker compose up -d` finds it.
+      # backend-tests builds the backend image independently; see the top comment for why.
       - name: Build backend image (cached)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
@@ -780,23 +635,16 @@ jobs:
           cache-from: type=gha,scope=mcp-server
           cache-to: type=gha,mode=max,scope=mcp-server
 
-      # The dev/test stack (db, storage, mailhog, keycloak, backend, frontend,
-      # mcp-server) is the same one developers run locally. Using the real
-      # compose file here, rather than hand-rolled GitHub Actions
-      # `services:` blocks, keeps CI's environment identical to what's
-      # documented and what a developer actually runs — no second config to
-      # keep in sync. No `--build`: the three steps above already built
-      # (and cached) backend/frontend/mcp-server; passing `--build` here
-      # would rebuild them a second time with none of buildx's GHA cache
-      # wired in.
+      # The dev/test stack (db, storage, mailhog, keycloak, backend, frontend, mcp-server) is the same
+      # compose file developers run locally, so CI matches the documented environment with no second
+      # configuration. No `--build`: the steps above built and cached the images, and `--build` would
+      # rebuild them without buildx's GHA cache.
       - name: Start the dev/test stack
         working-directory: tests/container
         run: docker compose up -d
 
-      # See the backend-tests job's identical step for why this exists:
-      # `docker compose up -d` fails outright, with no per-service logs, if
-      # a `depends_on: condition: service_healthy` dependency never reaches
-      # healthy.
+      # `docker compose up -d` fails without per-service logs when a `depends_on: condition: service_healthy`
+      # dependency never becomes healthy; see the backend-tests job's identical step.
       - name: Diagnose dev/test stack on startup failure
         if: failure()
         working-directory: tests/container
@@ -835,19 +683,11 @@ jobs:
           docker compose logs keycloak
           exit 1
 
-      # `docker compose restart backend` right before seeding is a cheap,
-      # deterministic way to guarantee a clean bootstrap-admin state rather
-      # than depending on whatever `reqtrack_test` happened to look like
-      # after container startup — unrelated to backend-tests (a separate
-      # job/runner entirely now, so there's no shared state to recover
-      # from). The two seed scripts are what this step actually exists
-      # for: reseeding both fixed datasets the Playwright suite expects —
-      # the E2E persona/org/project set most specs are written against, and
-      # the demo dataset (demo.admin@example.com etc.) badge-filters.spec.ts
-      # specifically needs — since nothing earlier in this job has
-      # populated `reqtrack_test` with either one yet. Same sequence
-      # documented for local development in docs/deployment.md's
-      # troubleshooting section.
+      # Restarting the backend right before seeding gives a clean bootstrap-admin state regardless of what
+      # `reqtrack_test` held after container startup. The two seed scripts load the fixed datasets the
+      # Playwright suite expects: the E2E persona/org/project set most specs are written against, and the
+      # demo dataset (demo.admin@example.com etc.) that badge-filters.spec.ts needs. The same sequence is
+      # in docs/deployment.md's troubleshooting section.
       - name: Restart backend and reseed test datasets
         working-directory: tests/container
         run: |
@@ -884,45 +724,23 @@ jobs:
         if: matrix.shard == 1
         run: python3 scripts/check_playwright_shards.py
 
-      # This job can't switch to running entirely inside Playwright's Docker
-      # image the way the frontend job does (see that job's `container:`
-      # comment for the full reasoning) — it already spends most of its time
-      # driving `docker compose`/`docker compose exec` directly against the
-      # runner's own Docker daemon to run the dev/test stack above, and
-      # nesting that inside a job container would mean Docker-in-Docker, not
-      # a one-line change. Instead, only the test run itself moves into a
-      # throwaway container of that same image, via a plain `docker run`
-      # against the same host daemon the compose stack is already using.
-      # `--network host` lets it reach the stack's services on `localhost`
-      # exactly like a native `npx playwright test` would (see
-      # playwright.config.ts's baseURL and every service's host port mapping
-      # in tests/container/docker-compose.yml); mounting the working
-      # directory (already `npm ci`'d above — @playwright/test has no native
-      # deps, so a host-installed node_modules is safe to mount into another
-      # Linux/glibc container) means this runs the exact same test files and
-      # config as a native process would, just without an `apt-get`-based
-      # browser install in the path — which removes the flaky-mirror stall
-      # that hit this exact step (see docs/decisions.md and the frontend
-      # job's identical fix) instead of merely timing it out faster.
+      # Only the test run moves into a throwaway container of the Playwright image, through a plain
+      # `docker run` against the runner's Docker daemon; the job itself cannot run inside that image
+      # because it drives `docker compose` against the host daemon (nesting would be Docker-in-Docker).
+      # This keeps `apt-get` out of the job, so a flaky package mirror cannot stall the run.
+      # `--network host` lets the container reach the stack on `localhost` like a native
+      # `npx playwright test` (playwright.config.ts baseURL, host port mappings in
+      # tests/container/docker-compose.yml). The working directory is mounted with its host-installed
+      # node_modules (@playwright/test has no native dependencies).
       #
-      # `-e CI=true`: playwright.config.ts's `retries: process.env.CI ? 2 :
-      # 0` is meant to retry a test on the transient client-side connection
-      # stall documented in docs/decisions.md — but `docker run`
-      # starts a fresh container with its own empty environment, so without
-      # this flag `process.env.CI` was always undefined *inside* the
-      # container regardless of the real CI run's own environment, silently
-      # disabling that retry on every CI run since it was added (found
-      # investigating PR #20's failures: none of the 5 failing tests showed
-      # a retry attempt in the log). `true` matches the truthy-string value
-      # GitHub Actions itself sets on the runner.
+      # `-e CI=true`: `docker run` starts with an empty environment, and playwright.config.ts enables
+      # `retries: process.env.CI ? 2 : 0` (for the transient client-side connection stall in
+      # docs/decisions.md) only when `CI` is set inside the container.
       #
-      # The image tag's version MUST match tests/playwright/package-lock.json's
-      # resolved `@playwright/test` version exactly — see the frontend job's
-      # `container:` comment for why, and bump both together.
-      # The whole repo is mounted (not just tests/playwright) because
-      # e2e-workflows/helpers.ts imports the shared stat-block geometry
-      # assertion from frontend/src/testing/ — mounting only tests/playwright
-      # made that import resolve to /frontend/... and fail every spec.
+      # The image tag's version MUST match tests/playwright/package-lock.json's resolved `@playwright/test`
+      # version; see the frontend job's `container:` comment, and bump both together.
+      # The whole repo is mounted, not only tests/playwright, because e2e-workflows/helpers.ts imports the
+      # shared stat-block geometry assertion from frontend/src/testing/.
       - name: Run Playwright E2E suite
         working-directory: tests/playwright
         run: |
@@ -1000,41 +818,23 @@ jobs:
     runs-on: ubuntu-latest
     needs: [frontend, backend-tests]
     if: always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    # Normal runs finish in ~10 seconds; see backend-tests'
-    # timeout-minutes comment for why every job here now has a ceiling.
+    # Normal runs finish in ~10 seconds.
     timeout-minutes: 10
-    # Feeds the four shields.io "endpoint" badges at the top of README.md
-    # (backend/frontend × coverage %/pass-fail count). No external badge
-    # service or extra secret: this job's own GITHUB_TOKEN pushes small JSON
-    # files to a dedicated `badges` branch, which shields.io's endpoint
-    # format reads directly via a raw.githubusercontent.com URL.
+    # Feeds the four shields.io "endpoint" badges at the top of README.md (backend/frontend x coverage and
+    # pass-fail count). No external badge service or extra secret: this job's GITHUB_TOKEN pushes small JSON
+    # files to a dedicated `badges` branch, which shields.io reads through a raw.githubusercontent.com URL.
     #
-    # A dedicated job, not a step inside frontend/backend-tests (where the
-    # backend half used to live): those two jobs run in parallel, and each
-    # independently force-pushing its own badge files straight to `badges`
-    # is a real race — whichever push lands second would wipe out the
-    # other's files, since each started from a bare, freshly-initialised
-    # git history with no knowledge of the other job's commit. Waiting for
-    # both jobs via `needs:` and publishing once, from one job, removes the
-    # race entirely.
+    # A dedicated job, not a step in frontend/backend-tests: those run in parallel, and two independent
+    # force-pushes to `badges` would race, the second wiping the first's files. Waiting on both through
+    # `needs` and publishing once removes the race.
     #
-    # The job-level `if` uses `always()` and every step below is best-effort: a
-    # coverage/badge hiccup must never fail the actual CI signal (already
-    # reported via each job's own pass/fail and the dorny/test-reporter check
-    # runs), and one side being unavailable (e.g. the frontend job failed
-    # before producing a report) shouldn't block publishing the other side's
-    # badges.
+    # The job-level `if` uses `always()` and every step is best-effort: a badge problem never fails the CI
+    # signal, and one side being unavailable does not block publishing the other side's badges.
     permissions:
       contents: write
     steps:
-      # upload-artifact preserves each artifact's paths relative to the
-      # *common ancestor* of the paths it was given, not the workspace root
-      # — backend-tests uploaded `tests/container/{coverage.xml,pytest-
-      # report.xml}` (ancestor `tests/container/`) and frontend uploaded
-      # `frontend/{coverage/coverage-summary.json,vitest-report.xml}`
-      # (ancestor `frontend/`), so each artifact's own root already is that
-      # directory's contents — no `tests/container/`/`frontend/` prefix to
-      # account for below.
+      # upload-artifact keeps each artifact's paths relative to the common ancestor of the uploaded paths,
+      # so each artifact's root is that directory's contents (no `tests/container/` or `frontend/` prefix).
       - name: Download backend test reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
@@ -1078,9 +878,7 @@ jobs:
               coverage_name: str, tests_name: str,
               coverage_pct: float | None, counts: tuple[int, int] | None,
           ) -> None:
-              # A run that executed zero tests produced no real signal; keep
-              # the last published badges rather than overwriting them with
-              # "0 passed" / "0.0%".
+              # A run that executed zero tests carries no signal; keep the last published badges.
               if counts is not None and counts[0] == 0:
                   return
               if coverage_pct is not None:
@@ -1131,17 +929,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          # Start from whatever's already published, if anything, so a
-          # partial run (e.g. only one side's tests produced a report this
-          # time) updates just those files rather than wiping out the other
-          # side's most recently published badges.
+          # Start from the published branch so a partial run (one side produced no report) updates only
+          # its own files and keeps the other side's badges.
           if git fetch -q origin badges:refs/remotes/origin/badges 2>/dev/null && \
              git rev-parse -q --verify refs/remotes/origin/badges >/dev/null; then
             git checkout -q -B badges refs/remotes/origin/badges
           else
             git checkout -q --orphan badges
           fi
-          # frontend-tests-badge.json was renamed to storybook-tests-badge.json.
+          # Removes the superseded frontend-tests badge file.
           git rm -q --ignore-unmatch frontend-tests-badge.json
           cp "$workdir"/*-badge.json .
           git add -A
@@ -1189,11 +985,10 @@ jobs:
         working-directory: tests/playwright
         run: npm audit --omit=dev --audit-level=high
 
-      # Reported but not gating, because the only open finding (`braces`, a
-      # build-time glob dependency of Docusaurus) has no patched release: the
-      # published docs image is static files served by nginx and contains none
-      # of it. Make this step gating (remove continue-on-error) once
-      # Docusaurus moves off the vulnerable range.
+      # Reported but not gating: the only open finding (`braces`, a build-time glob dependency of
+      # Docusaurus) has no patched release, and the published docs image is static files served by
+      # nginx that contain none of it. Gate this step (remove continue-on-error) once Docusaurus
+      # moves off the vulnerable range.
       - name: Audit documentation site npm dependencies (not gating)
         working-directory: docs/website
         continue-on-error: true
@@ -1244,10 +1039,8 @@ jobs:
   image-scan:
     name: Image build, smoke test & vulnerability scan
     runs-on: ubuntu-latest
-    # No `needs`: starts with the test jobs and takes ~5 minutes, so a
-    # vulnerable base image or a broken image build fails the run within
-    # minutes instead of after the ~40 minute test jobs. docker-build needs it,
-    # so a vulnerable image is still never published.
+    # No `needs`: starts with the test jobs and takes ~5 minutes, so a vulnerable base image or a broken
+    # image build fails the run early. docker-build needs it, so a vulnerable image is never published.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -1391,10 +1184,7 @@ jobs:
       semver: ${{ steps.gitversion.outputs.semVer }}
       build_date: ${{ steps.builddate.outputs.date }}
     steps:
-      # fetch-depth: 0 (full history, including tags) is required for
-      # GitVersion below to compute a version from the repo's actual commit
-      # graph rather than the single shallow commit Actions checks out by
-      # default.
+      # fetch-depth: 0 (full history and tags) lets GitVersion compute the version from the commit graph.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -1404,11 +1194,8 @@ jobs:
         with:
           versionSpec: "6.x"
 
-      # GitVersion.yml (repo root) sets `mode: ContinuousDeployment` — every
-      # commit on main is treated as a release, so the version bumps
-      # automatically with each merge instead of requiring a manually pushed
-      # git tag. No tags exist yet, so this starts at 0.1.0 (`next-version`)
-      # and increments from there.
+      # GitVersion.yml (repo root) sets `mode: ContinuousDeployment`: every commit on main is a release, so
+      # the version increments with each merge without a pushed git tag. `next-version` sets the starting 0.1.0.
       - name: Determine version
         id: gitversion
         uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
@@ -1422,16 +1209,14 @@ jobs:
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
   # One leg per image and CPU architecture, each on a runner of that architecture. arm64 is built natively
-  # (not under QEMU emulation, which is several times slower for the pip and npm builds) so Raspberry Pi and other
-  # arm hosts get a real image; amd64 is unchanged. Every leg builds on every run, pull requests included, so an
-  # arch-specific build break fails the PR. The arm64 legs additionally smoke test the image they just built and
-  # scan it, and only a leg that passes pushes its digest, so a broken or vulnerable arm image can never receive
-  # a tag. Unit, backend and end-to-end tests stay amd64-only; the smoke test is the arm gate.
+  # (QEMU emulation is several times slower for the pip and npm builds). Every leg builds on every run,
+  # pull requests included, so an architecture-specific build break fails the PR. The arm64 legs also smoke
+  # test and scan the image, and only a passing leg pushes its digest, so a broken or vulnerable arm image
+  # never receives a tag. Unit, backend and end-to-end tests run on amd64 only; the smoke test is the arm gate.
   #
-  # Pushes happen by digest (untagged); `docker-publish` below assembles the tags once every leg has succeeded.
-  # No `cache-from/to`: the build args at the top of each Dockerfile change on every commit and invalidate every
-  # later layer, so a shared cache would never hit, and the builder's own cache already covers the load-then-push
-  # rebuild within a leg.
+  # Pushes are by digest (untagged); `docker-publish` assembles the tags once every leg has succeeded.
+  # There is no `cache-from/to`: the build args at the top of each Dockerfile change on every commit and
+  # invalidate every later layer, so a shared cache never hits.
   docker-build:
     name: Build ${{ matrix.image }} (${{ matrix.arch }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
@@ -1667,10 +1452,8 @@ jobs:
           done
 
   # The "Main Branch" ruleset requires a check named exactly "Build, version, and push production container
-  # images" (the name the single pre-matrix job had). docker-build and docker-publish replaced it, so nothing
-  # reported that name and every pull request sat on "Expected - waiting for status". This job reports it
-  # again, passing only when every image leg and (off pull requests) the manifest job passed, so the ruleset
-  # keeps gating on the whole image pipeline and a future matrix change needs no ruleset edit.
+  # images". This job reports that name, passing only when every image leg and (off pull requests) the
+  # manifest job passed, so the ruleset gates the whole image pipeline and a matrix change needs no ruleset edit.
   images-gate:
     name: Build, version, and push production container images
     runs-on: ubuntu-latest
@@ -1696,12 +1479,9 @@ jobs:
   docs:
     name: Build documentation website
     runs-on: ubuntu-latest
-    # Independent of and parallel with every job above — shares no state
-    # with them, so no `needs:`. Runs on every push and PR (unlike
-    # docs-deploy below): `npm run build` is what actually exercises
-    # onBrokenLinks/onBrokenAnchors: 'throw' (docusaurus.config.ts), so a PR
-    # that breaks a doc link or leaves a page unreachable fails here before
-    # merge, not silently after deploy.
+    # Shares no state with other jobs, so no `needs`. Runs on every push and pull request: `npm run build`
+    # enforces onBrokenLinks/onBrokenAnchors: 'throw' (docusaurus.config.ts), so a broken doc link fails
+    # before merge.
     timeout-minutes: 10
     defaults:
       run:
@@ -1716,6 +1496,9 @@ jobs:
       - name: Check documentation references resolve
         working-directory: .
         run: python3 scripts/check_doc_links.py
+      - name: Check comments describe the code
+        working-directory: .
+        run: python3 scripts/check_comment_style.py
       - name: Check health probes use 127.0.0.1
         working-directory: .
         run: python3 scripts/check_health_probes.py
@@ -1731,12 +1514,9 @@ jobs:
     name: Deploy documentation website to GitHub Pages
     runs-on: ubuntu-latest
     needs: [docs]
-    # Only push a new deployment from main (a push or a manual run), never
-    # from a PR — mirrors docker-build's push-vs-PR gating above. GitHub Pages must be enabled
-    # in this repo's own Settings → Pages (source: "GitHub Actions") before
-    # this job can succeed — a repo-admin action outside git/CI that CI
-    # itself cannot perform; until it's enabled, this job fails with a
-    # clear "Pages not enabled" error, which is expected, not a bug here.
+    # Deploys only from main (a push or a manual run), never from a pull request. GitHub Pages must be
+    # enabled in the repository settings (source: "GitHub Actions"); until it is, this job fails with a
+    # "Pages not enabled" error.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     timeout-minutes: 10
     permissions:
@@ -1755,11 +1535,8 @@ jobs:
           node-version: "26"
           cache: npm
           cache-dependency-path: docs/website/package-lock.json
-      # A separate job has a separate runner/workspace, so `docs` above
-      # can't hand this job its already-built output directly — rebuilding
-      # here (~1min) is simpler than a third shared job plus
-      # upload-artifact/download-artifact just to avoid it, the same
-      # trade-off docker-build's own comment makes for its image builds.
+      # A separate job has a separate workspace, so the build output of `docs` is not available here;
+      # rebuilding (~1 minute) is simpler than an artifact hand-off (docker-build makes the same trade-off).
       - run: npm ci
       - name: Build agent-skill downloads
         working-directory: .

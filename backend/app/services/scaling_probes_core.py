@@ -1,19 +1,16 @@
 """
 Module: services.scaling_probes_core
 
-The `ScalingProbe`s of the core artefact types (requirements, actions and change requests): how the scaling-shape guard
-(`tests/test_scaling_shapes.py`) fills each through its public API.
+The `ScalingProbe`s of the core artefact types: how the scaling-shape guard (`tests/test_scaling_shapes.py`) fills each
+through its public API.
 
 Responsibilities:
 - Declare, per core type, the list endpoint and a `create` that makes N records through the real create endpoint.
 
 Design decisions:
-- Core owns these types, so they register here; a module's types are registered by the module on
-  `ModuleDefinition.scaling_probes`, never listed here.
-- Records are made through the API, not the ORM, so a probe exercises the same create path, gates, numbering and audit
-  a person does, and cannot drift from them.
-- A probe fetches its own prerequisites (component, category, action type, a modifiable requirement) on every call; the
-  guard calls it once per data size.
+- Core owns these types, so they register here; a module uses `ModuleDefinition.scaling_probes`.
+- Records are made through the API, not the ORM, so a probe exercises the same create path, gates, numbering and audit.
+- A probe fetches its own prerequisites on every call; the guard calls it once per data size.
 
 Dependencies: `modules.registry` (`ScalingProbe`).
 """

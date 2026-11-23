@@ -2,44 +2,21 @@
  * Module: components/GraphCanvasView
  *
  * The drawing half of the shared graph canvas: React Flow (`@xyflow/react`, MIT) behind the plain props of
- * `GraphCanvas`. Loaded lazily by `GraphCanvas`; nothing else may import `@xyflow/react`
- * (`scripts/check_graph_canvas_imports.py`).
+ * `GraphCanvas`, loaded lazily by it. Nothing else may import `@xyflow/react` (`scripts/check_graph_canvas_imports.py`).
  *
- * Responsibilities:
- * - Turn `GraphCanvasNode`/`GraphCanvasEdge` into React Flow nodes and edges, and report selection, moves and new
- *   connections back through the callbacks.
- * - Draw eight attach handles on every box and route each line between the points `graphAttachPoints` chooses (the nearest
- *   pair, or the ends the consumer fixed), following a box while it is dragged or resized; dragging a line's end to
- *   another handle of the same box is reported as an anchor change.
- * - Show a box's attach points only near the pointer, on the selected box and on a box with focus (`attachPointVisibility`);
- *   the nearness is worked out from the pointer position and set as an attribute on the box's element, never as React state.
- * - Draw each leader (an annotation's pointer) as a selectable line (the routed edge: vertices, a curve, an arrowhead or a dot at either
- *   end) from its node to the target: a node (the chosen or nearest attach points), the
- *   middle of a line or a free position (a small end handle the person can drag; dropping a dragged end on a node names that node).
- * - In comment mode report a click (empty canvas, a node or a line) instead of selecting or editing, and draw the consumer's
- *   pins in a layer above the canvas: each at one screen size, anchored to a node's corner or a line's middle, draggable
- *   when `movable`, and rendered by the consumer (`renderPin`).
- * - With `lineHops` on, draw a small arc where one line crosses another (`graphLineHops`; connections and leaders are one set of
- *   lines, a loop is not in it): a crossed line is drawn along its hop path by the routed edge, the others as before.
- * - Draw a line from a node back to itself as a loop (`graphSelfLoop`), a line label with line breaks over several lines, a
- *   marker node (consumer-supplied SVG filling the frame, met only on its sides) and a container node whose children sit
- *   inside it: React Flow places a child relative to its parent, so this file converts between that and the consumer's
- *   absolute coordinates, and moving a container reports every node inside it.
- * - Keep the canvas keyboard operable: nodes and connections take focus, Enter/Space selects, arrow keys move the
- *   selected node (React Flow's own handling, off in read-only mode), Alt with an arrow key resizes it and Delete or
- *   Backspace asks the consumer to delete it, each with a spoken name. With `deleteKeyScope="page"` the delete key is heard
- *   wherever the focus is on the page, not only on the canvas.
+ * - Turns `GraphCanvasNode`/`GraphCanvasEdge` into React Flow nodes and edges and reports selection, moves and new
+ *   connections through callbacks. Eight attach handles per box, shown only near the pointer, on the selected box
+ *   and on a focused box (`attachPointVisibility`, set as an element attribute, never React state); lines route
+ *   between the points `graphAttachPoints` chooses and follow a box while dragged or resized.
+ * - Leaders, loops (`graphSelfLoop`), line hops (`graphLineHops`), multi-line labels, marker nodes and containers
+ *   (React Flow places a child relative to its parent, so this file converts to and from absolute coordinates).
+ *   In comment mode a click is reported instead of selecting; pins draw in a layer above the canvas (`renderPin`).
+ * - Keyboard: nodes and connections take focus, Enter/Space selects, arrows move, Alt+arrow resizes, Delete or
+ *   Backspace asks the consumer to delete (`deleteKeyScope="page"`: anywhere), each with a spoken name.
  *
- * Design decisions:
- * - Labels are React text children (nodes) or React Flow's SVG text (connections), never markup. A symbol is an
- *   `<img>` of a sanitised data URI (`utils/safeSvgImage`), so it cannot run script or reach the page's DOM.
- * - Lines are straight, joining two attach points, so the canvas and the server's drawing of a diagram show the same line.
- * - Selection is single (no multi-select) and deletion is not handled here: what a delete means belongs to the
- *   consumer. Selection may be controlled (`selected`) or kept here.
- * - A dragged position is kept locally until the consumer's props change to a different position, so a consumer
- *   that does not store positions still sees the node stay where it was dropped.
- * - Styling points React Flow's variables at the product tokens (`GraphCanvasView.css`).
- *
+ * Design: labels are text, never markup; a symbol is an `<img>` of a sanitised data URI (`utils/safeSvgImage`).
+ * Lines are straight between attach points, so the canvas and the server's drawing agree. Selection is single and
+ * may be controlled (`selected`). A dragged position is kept locally until the consumer's props change.
  * Dependencies: `@xyflow/react`, `utils/safeSvgImage`.
  */
 import {
@@ -146,8 +123,8 @@ type FlowNode = Node<NodeData, "graph"> | Node<{ free: boolean }, "leaderEnd">;
 type GraphFlowNode = Node<NodeData, "graph">;
 
 /**
- * Where each attach point's handle sits. A handle is centred on its point; the position tells React Flow which part of the
- * handle's own box a line ends on, so a corner handle uses the side facing outward vertically.
+ * Where each attach point's handle sits. A handle is centred on its point; the position tells React Flow which part
+ * of the handle's box a line ends on, so a corner handle uses the side facing outward vertically.
  */
 const HANDLE_POSITION: Record<AttachPoint, Position> = {
   top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left,
@@ -161,8 +138,8 @@ const HANDLE_STYLE: Partial<Record<AttachPoint, CSSProperties>> = {
 };
 
 /**
- * The points of a shaped node's outline in a 0-100 square that is stretched over the box (the stroke does not stretch), or
- * null for an ellipse (drawn as an ellipse) and a rectangle (the box's own border).
+ * The points of a shaped node's outline in a 0-100 square stretched over the box (the stroke does not stretch), or
+ * null for an ellipse and a rectangle (the box's own border).
  */
 const OUTLINE_POINTS: Partial<Record<GraphNodeOutline, string>> = {
   "pointed-right": "0,0 88,0 100,50 88,100 0,100",
@@ -181,8 +158,8 @@ function NodeOutline({ outline }: { outline: GraphNodeOutline }) {
 }
 
 /**
- * The body text of a node, clipped with an ellipsis to the whole lines its space allows (re-measured when the box is
- * resized). Nothing is shown when not even one line fits.
+ * The body text of a node, clipped with an ellipsis to the whole lines its space allows (re-measured on resize).
+ * Nothing is shown when not even one line fits.
  */
 function NodeBody({ text }: { text: string }) {
   const frame = useRef<HTMLSpanElement>(null);
@@ -338,8 +315,9 @@ interface RoutedEdgeData extends Record<string, unknown> {
 const VERTEX_DRAG_THRESHOLD = 4;
 
 /**
- * A line with vertices: the path through them (`graphLinePath`), its label at the middle and, on a selected line that can be
- * edited, a handle on each vertex (drag to move, double-click or Delete to remove) and one on each segment's middle (drag to add a vertex).
+ * A line with vertices: the path through them (`graphLinePath`), its label at the middle and, on a selected editable
+ * line, a handle on each vertex (drag to move, double-click or Delete to remove) and on each segment's middle (drag
+ * to add a vertex).
  */
 function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, markerEnd, style, selected, id, data }: EdgeProps<Edge<RoutedEdgeData, "routed">>) {
   const text = useStrings().graphCanvas;
@@ -569,9 +547,8 @@ function PinLayer({
 }
 
 /**
- * The marker for one end of a leader: the canvas's closed arrow or dot (both defined once in `LeaderMarkerDefs`) or none. The
- * ids are passed as strings, which React Flow uses as they are; React Flow's own arrow has a colour of its own, so it would not
- * follow the line's colour when the line is selected.
+ * The marker for one end of a leader: the closed arrow or dot (defined once in `LeaderMarkerDefs`) or none. Ids are
+ * passed as strings; React Flow's own arrow has its own colour and would not follow the selected line's colour.
  */
 function leaderMarker(end: GraphLineEnd, ids: LeaderMarkerIds): Edge["markerEnd"] {
   if (end === "arrow") return ids.arrow;
@@ -667,10 +644,9 @@ export function GraphCanvasView({
   const [localSelection, setLocalSelection] = useState<GraphCanvasSelection | null>(null);
   const selection = selected !== undefined ? selected : localSelection;
   /**
-   * The selection as the latest change left it. Choosing an element makes React Flow report two changes in one event (the
-   * old selection is cleared through the node callback and the new one set through the edge callback, or the reverse), and
-   * both callbacks would otherwise start from the selection of the last render: the later one then undid the earlier one
-   * and an edge chosen while a node was selected ended with nothing selected.
+   * The selection as the latest change left it. Choosing an element makes React Flow report two changes in one event
+   * (old selection cleared through the node callback, new one set through the edge callback, or the reverse); both
+   * callbacks would otherwise start from the last render's selection, so the later undid the earlier.
    */
   const latestSelection = useRef(selection);
   useLayoutEffect(() => { latestSelection.current = selection; }, [selection]);
@@ -770,7 +746,7 @@ export function GraphCanvasView({
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   /**
-   * Fits the view to the drawing: every node and every label placed outside its marker, with the usual padding and never past
+   * Fits the view to every node and every label placed outside its marker, with the usual padding and never past
    * `fitMaxZoom`. With no such label this is React Flow's own fit.
    */
   const fitContent = useCallback((instance: ReactFlowInstance<FlowNode, Edge>, duration: number) => {
@@ -1200,8 +1176,8 @@ export function GraphCanvasView({
   );
 
   /**
-   * A line drawn from a node and released where no handle took it: on a line, on a node's body or on empty canvas. The consumer is
-   * told what it landed on (a leader's end, for an annotation); a connection started from a box ignores it.
+   * A line drawn from a node and released where no handle took it: on a line, a node's body or empty canvas. The
+   * consumer is told what it landed on (a leader's end, for an annotation); a connection from a box ignores it.
    */
   const handleConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
@@ -1233,8 +1209,8 @@ export function GraphCanvasView({
   );
 
   /**
-   * A line's end was dragged to a handle. Only a move to another handle of the same box counts as choosing a point; an end
-   * dropped on a different box changes nothing (a line's ends are its connection's elements, not a point to move).
+   * A line's end was dragged to a handle. Only a move to another handle of the same box chooses a point; an end
+   * dropped on a different box changes nothing (a line's ends are its connection's elements).
    */
   const handleReconnect = useCallback(
     (previous: Edge, c: Connection) => {
@@ -1349,8 +1325,8 @@ export function GraphCanvasView({
   const keyDelete = !readOnly && onDelete !== undefined;
 
   /**
-   * Handles the keys React Flow does not: Alt with an arrow key resizes the selected node, and Delete or Backspace asks
-   * the consumer to delete the selection. Runs before React Flow's own key handling so Alt+arrow does not also move the node.
+   * Handles the keys React Flow does not: Alt+arrow resizes the selected node, Delete or Backspace asks the consumer
+   * to delete the selection. Runs before React Flow's key handling so Alt+arrow does not also move the node.
    */
   const handleKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -1391,8 +1367,8 @@ export function GraphCanvasView({
   const pageDelete = useLatest({ enabled: keyDelete && deleteKeyScope === "page", selection, onDelete });
   useEffect(() => {
     /**
-     * The delete key heard anywhere on the page: a plain Delete or Backspace with a selection, outside a text field, a dialog
-     * or a menu. A line's vertex handle takes the key for itself (it removes the vertex), so it is not heard here.
+     * The delete key heard anywhere on the page: a plain Delete or Backspace with a selection, outside a text field,
+     * dialog or menu. A vertex handle takes the key itself (it removes the vertex), so it is not heard here.
      */
     function onKeyDown(event: globalThis.KeyboardEvent) {
       const current = pageDelete.current;

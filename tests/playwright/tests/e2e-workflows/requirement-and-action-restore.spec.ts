@@ -3,20 +3,14 @@ import { expect, test } from "@playwright/test";
 import { chooseRecordAction, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, recordActionNames } from "./helpers";
 
 /**
- * The `/unarchive` counterpart to `requirement-archive-confirm.spec.ts`
- *. Covers the full
- * archive-then-restore round trip for both a requirement and an action:
- * archive it, confirm it's reachable only via each list's own "Include
- * archived" filter with an "Archived" badge, restore it via the detail
- * page's new "Restore" button (no `ConfirmDialog` — mirrors
- * `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
- * immediately), and confirm it's back in the default active list.
+ * The `/unarchive` counterpart to `requirement-archive-confirm.spec.ts`. Covers the archive-then-restore round trip
+ * for a requirement and an action: archive it, confirm it is reachable only through each list's "Include archived"
+ * filter with an "Archived" badge, restore it with the detail page's "Restore" button (no `ConfirmDialog`, as
+ * `ProjectAdminPage.tsx`'s unarchive button fires immediately), and confirm it is back in the default active list.
  *
- * Creates its own throwaway requirement and action rather than reusing
- * seeded data, matching `requirement-archive-confirm.spec.ts`'s own
- * reasoning: other specs may depend on the seeded fixtures staying in
- * their current (active) state, so a spec that itself archives/restores
- * something must own a fixture nobody else touches.
+ * Creates its own throwaway requirement and action rather than reusing seeded data, as
+ * `requirement-archive-confirm.spec.ts` does: a spec that archives or restores something must own a fixture nobody
+ * else touches.
  */
 test.describe("requirement and action restore", () => {
   test("archiving a requirement, then restoring it, returns it to the active list", async ({ page }) => {

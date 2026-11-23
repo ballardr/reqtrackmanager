@@ -82,8 +82,8 @@ function Host({
 }
 
 /**
- * A file manager's list view of folders and items: a sortable Name header, a chevron and folder icon on each folder,
- * a type icon on each item, indented children and banded rows.
+ * A file manager's list view of folders and items: a sortable Name header, a chevron and folder icon on each
+ * folder, a type icon on each item, indented children and banded rows.
  */
 const meta: Meta<typeof Host> = { title: "Components/FolderTreeList", component: Host };
 export default meta;

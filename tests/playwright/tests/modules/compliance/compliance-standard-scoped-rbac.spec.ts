@@ -6,26 +6,15 @@ import { createStandardWithVersion } from "./helpers";
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: a standard's own "Members" section (`standards_manager`/
- * `standards_contributor`, scoped to just this one standard). Covers:
+ * Job to be done: a standard's own "Members" section (`standards_manager`/`standards_contributor`, scoped to
+ * this standard). Covers: the creator's direct `standards_manager` role; the last manager's checkbox disabled
+ * (with an explanatory title) when no fallback compliance-managers group is configured; adding another org
+ * member as `standards_contributor` through the "Add member" picker (`UserAutocomplete`; the second test covers
+ * group matching) and revoking it, a contributor's checkbox never being disabled.
  *
- * - Creating a standard auto-grants the creator a direct `standards_manager`
- *   role, visible on the new "Members" nav-rail section.
- * - The last remaining `standards_manager`'s own checkbox is disabled (with
- *   an explanatory title) when no fallback compliance-managers group is
- *   configured for the organisation.
- * - Adding another org member as `standards_contributor` via the "Add
- * member" picker (rebuilt on `UserAutocomplete` search-as-you-type; see the
- * second test below for its group-matching half), and revoking that grant again — a contributor's
- *   own checkbox is never disabled (there's always at least one manager
- *   already, this add/revoke doesn't touch the floor).
- *
- * `orgAdminAlphaBeta` creates the standard (compliance_manager-via-
- * ORG_ADMIN override, per `compliance-standards-management.spec.ts`'s own
- * precedent for why no dedicated persona is needed); `memberAlphaBeta` (a
- * genuine plain member of Alpha, seed_e2e_dataset.py) is the org member
- * added as a contributor. The standard itself is dynamically named with a
- * per-run timestamp suffix, per this repo's standing test-idempotency rule.
+ * `orgAdminAlphaBeta` creates the standard (compliance_manager through the ORG_ADMIN override, as in
+ * `compliance-standards-management.spec.ts`); `memberAlphaBeta` (a plain Alpha member, seed_e2e_dataset.py) is
+ * the contributor. The standard has a per-run timestamp suffix.
  */
 test.describe("Compliance Module: standard-scoped RBAC — Members section", () => {
   test("standard creation auto-grants the creator, the last manager checkbox is disabled, and a contributor can be added and revoked", async ({ page }) => {
@@ -72,24 +61,18 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section", () 
     // A contributor grant never touches the manager floor -> always freely revocable.
     await expect(contributorCheckbox).toBeEnabled();
 
-    // Revoke it — the row disappears entirely (no roles left on this
-    // standard), so a plain `.click()` is used rather than `.uncheck()`:
-    // the latter re-verifies the checkbox is still present and unchecked
-    // after clicking, which never resolves once its whole row is gone.
+    // Revoking removes the whole row (no roles left on this standard), so a plain `.click()` is used: `.uncheck()`
+    // re-verifies the checkbox after clicking, which never resolves once the row is gone.
     await contributorCheckbox.click();
     await expect(page.getByText(PERSONAS.memberAlphaBeta.name)).toHaveCount(0);
   });
 
   /**
-   * Job to be done: group-based grants for
-   * module-contributed roles (`GroupModuleRole`), exercised here through
-   * Compliance's own Standards Manager/Contributor picker: granting
-   * `standards_manager` to a dynamically-created org group (via the same
-   * `UserAutocomplete` add flow's group-matching half) and confirming a
-   * member of that group — `memberAlphaBeta`, added to the group via the
-   * API, mirroring `preferences-and-theme.spec.ts`'s own dynamic-group
-   * fixture convention — can then perform a manager-gated action (archiving
-   * the standard) with no direct grant of their own.
+   * Job to be done: group-based grants for module-contributed roles (`GroupModuleRole`) through Compliance's
+   * Standards Manager/Contributor picker: granting `standards_manager` to a dynamically created org group
+   * (the `UserAutocomplete` add flow's group-matching half) lets a member of that group (`memberAlphaBeta`,
+   * added to the group through the API) perform a manager-gated action (archiving the standard) with no
+   * direct grant.
    */
   test("granting standards_manager to an org group lets its member perform a manager-gated action", async ({ page }) => {
     const suffix = Date.now();
@@ -115,11 +98,8 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section", () 
       headers: authHeaders, data: { user_id: memberUser.user_id },
     });
 
-    // Grant the group standards_manager on the standard, via the "Add
-    // member" control's group-matching half. A reload is needed first: the
-    // page's own `orgGroups` fetch already ran (triggered by navigating to
-    // the standard) before the group above existed via the API calls just
-    // made, so the in-memory list is stale without it.
+    // Grant the group standards_manager via the "Add member" control's group-matching half. A reload is
+    // needed first: the page's `orgGroups` fetch ran before the group was created through the API.
     await page.getByRole("link", { name: "Members" }).click();
     await page.reload();
     await page.getByRole("button", { name: "Add member" }).click();

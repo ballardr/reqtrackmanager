@@ -1,17 +1,14 @@
 /**
  * Module: modules/stakeholders/types
  *
- * Frontend types for the Stakeholders & Personas module (Persona and
- * Stakeholder) — the wire shapes of `backend/app/modules/
- * stakeholders/schemas.py` plus the label/tone maps every rendered enum value
- * must go through (UX style guide principle 12).
+ * Frontend types for the Stakeholders & Personas module (Persona and Stakeholder): the wire shapes of
+ * `backend/app/modules/stakeholders/schemas.py` plus the label and tone maps every rendered enum value must go
+ * through (UX style guide principle 12).
  *
- * Neither artefact has an approval gate, so each lifecycle is the three-state
- * `draft | active | retired`. `PersonaFieldValues`/`StakeholderFieldValues`
- * deliberately exclude the people fields (`owner`, `champion`, `user_id`): the
- * detail pages assign those through `RecordPrincipalField`, the same split
- * Guiding Principle makes for its owner. `owner` and `champion` are principals
- * (a user, an organisation group or a project group), returned resolved.
+ * Neither artefact has an approval gate, so each lifecycle is the three-state `draft | active | retired`.
+ * `PersonaFieldValues` / `StakeholderFieldValues` exclude the people fields (`owner`, `champion`, `user_id`): the
+ * detail pages assign those through `RecordPrincipalField`, as Guiding Principle does for its owner. `owner` and
+ * `champion` are principals (a user, an organisation group or a project group), returned resolved.
  */
 import type { BadgeTone, Principal } from "../../api/types";
 import type { ProjectScopedRow } from "../../api/projectScope";

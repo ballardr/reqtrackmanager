@@ -85,7 +85,7 @@ Grammar (one statement per line; indentation is cosmetic):
   are written `\\( x \\)` (inline) or `$$ x $$` (display), which are ordinary text to this grammar.
 - A widget is one component of a report (a table, its headline figures or its notes) on a line of its own,
   `[[widget.<module>.<report>.<part> name=value ... sort <column> [asc|desc] ... empty "<text>"]]`: a bare word,
-  number, `true` or `false` is read as such, anything else is quoted (`since="2026-10-01"`); `sort` orders the table by
+  number, `true` or `false` is read as such, anything else is quoted (`since="<date>"`); `sort` orders the table by
   a column heading (up to three, most significant first); `empty` is the text shown when the component has
   nothing in it. A line starting `[[widget` is always a widget (and an error if malformed), so prose that needs
   one writes it inside `@text`.

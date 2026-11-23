@@ -1,13 +1,12 @@
 /**
  * Module: components/SearchFieldPicker
  *
- * The "Search in" control: a filterable multi-select over the fields the global search can match
- * (`GET /search/fields`). Used by the search page (this search only) and by Preferences (the viewer's
- * default), so the two cannot drift.
+ * The "Search in" control: a filterable multi-select over the fields the global search can match (`GET /search/fields`).
+ * Used by the search page (this search only) and by Preferences (the viewer's default), so the two cannot drift.
  *
- * ID and Title are always searched and cannot be unchecked: a search that cannot match a record's
- * code or title would surprise people. A selected key that is no longer offered (a module switched
- * off, a renamed field) is shown as "no longer available" so it can be removed rather than failing the search.
+ * ID and Title are always searched and cannot be unchecked, since a search that cannot match a record's code or title
+ * would surprise people. A selected key that is not offered (a module switched off, a renamed field) is shown as
+ * unavailable so it can be removed rather than failing the search.
  */
 import { useStrings } from "../context/TerminologyContext";
 import { COMMENTS_SEARCH_FIELD, LOCKED_SEARCH_FIELDS, type SearchField } from "../api/search";

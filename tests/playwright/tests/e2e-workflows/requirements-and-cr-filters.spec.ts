@@ -3,21 +3,17 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
- * Job to be done: the requirements list can be narrowed by search
- * (name/ID, U-E-01), status/target-version/category filters, and
- * has-comments/only-watched checkboxes; the tile/list view choice persists
- * across a reload (synced server-side, not just localStorage).
+ * Job to be done: the requirements list can be narrowed by search (name/ID, U-E-01), status/target-version/category
+ * filters, and has-comments/only-watched checkboxes; the tile/list view choice persists across a reload (synced
+ * server-side, not only in localStorage).
  *
- * badge-filters.spec.ts already covers the status-badge click-to-filter
- * interaction specifically — this spec covers the FilterPanel's remaining
- * controls, which aren't covered anywhere else.
+ * badge-filters.spec.ts covers the status-badge click-to-filter interaction; this spec covers the FilterPanel's
+ * remaining controls.
  *
- * RequirementsPage's fetch effect has no request-cancellation guard, so
- * firing a new filtered fetch while a previous one is still in flight can
- * let the older response resolve later and overwrite the newer one —
- * `settled()` waits for the known-unfiltered baseline (both HW-FN-001 and
- * a requirement NOT matching the previous filter are visible) before the
- * next filter change, so each change starts from a confirmed-quiescent list.
+ * RequirementsPage's fetch effect has no request-cancellation guard, so a new filtered fetch while a previous one is
+ * in flight can let the older response resolve later and overwrite the newer one. `settled()` waits for the
+ * known-unfiltered baseline (both HW-FN-001 and a requirement not matching the previous filter are visible) before
+ * the next filter change, so each change starts from a quiescent list.
  */
 test.describe("requirements list filters and view-mode persistence", () => {
   test("search, status/category filters, has-comments/watched checkboxes, and view-mode persistence", async ({ page }) => {
@@ -25,22 +21,11 @@ test.describe("requirements list filters and view-mode persistence", () => {
     await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
-    // A throwaway requirement, guaranteed to start (and stay) `draft`,
-    // rather than the seeded "Must expose a health-check endpoint" this
-    // step originally used for the "not approved" side of the status
-    // filter check: `workflow-bypass-attempts.spec.ts` approves Alpha-1's
-    // whole "Scoping" stage baseline as part of its own scenario, an
-    // irreversible action that locks *every* requirement already in that
-    // stage at the time — including this one, even though it isn't
-    // touched by name. Once that spec has run once against a given
-    // database, the seeded requirement stays `approved` for good and this
-    // assertion would start failing for real, not just in a freshly
-    // reseeded run. A requirement created fresh by this test starts
-    // `draft` regardless of the stage's own already-applied baseline (a
-    // stage approval locks requirements that existed at that moment, not
-    // a standing rule for ones created afterward), so it's immune to this
-    // either way. Per this repo's own test-independence rule, a spec must
-    // pass whether it runs before or after `workflow-bypass-attempts.spec.ts`.
+    // A throwaway requirement, guaranteed to start (and stay) `draft`, for the "not approved" side of the status filter
+    // check: `workflow-bypass-attempts.spec.ts` approves Alpha-1's whole "Scoping" stage baseline, an irreversible action
+    // that locks every requirement in that stage at the time, including the seeded "Must expose a health-check
+    // endpoint". A requirement created fresh by this test starts `draft` regardless (a stage approval locks requirements
+    // that existed at that moment, not a standing rule), so the spec passes before or after that spec.
     const draftReqName = `E2E Filter Draft Target ${Date.now()}`;
     await page.getByRole("button", { name: "New Requirement" }).click();
     const createPanel = page.getByRole("dialog", { name: "New Requirement" });
@@ -84,9 +69,8 @@ test.describe("requirements list filters and view-mode persistence", () => {
     });
 
     await test.step("completed filter narrows the list independently of status (C-G-11)", async () => {
-      // "Completed" is no longer a status <select> option (it's the
-      // separate `Requirement.is_completed` overlay) — a dedicated filter
-      // checkbox alongside Status instead.
+      // "Completed" is not a status <select> option (it is the separate `Requirement.is_completed` overlay); a dedicated
+      // filter checkbox sits beside Status.
       const statusOptionLabels = await page.getByLabel("Status", { exact: true }).locator("option").allTextContents();
       expect(statusOptionLabels).not.toContain("Completed");
 
@@ -125,10 +109,8 @@ test.describe("requirements list filters and view-mode persistence", () => {
     });
 
     await test.step("switching to list view persists across a reload", async () => {
-      // Wait for the PATCH to actually settle before reloading — a bare
-      // click() races the async save (AuthContext.tsx's setUiPreference is
-      // fire-and-forget) against the immediate reload below, which can
-      // observe the pre-save state if it wins the race — same fix as
+      // Wait for the PATCH to settle before reloading: a bare click() races the async save (AuthContext.tsx's
+      // setUiPreference is fire-and-forget) against the immediate reload, which can observe the pre-save state; as in
       // preferences-and-theme.spec.ts's "pronouns save and persist" step.
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/auth/me/preferences") && r.request().method() === "PATCH"),
@@ -139,14 +121,10 @@ test.describe("requirements list filters and view-mode persistence", () => {
       await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
     });
 
-    // Column-header sorting — this list is backend-paginated, so a
-    // header click refetches with `sort`/`order` query params. Asserts
-    // general sortedness of the ID column's displayed text rather than
-    // specific rows, since which requirements exist/how many can shift as
-    // the suite evolves; ID (`unique_code`) has no null-fallback-display
-    // quirk the way Name (`proposed_name`-equivalent on the CR side) does,
-    // so comparing displayed text directly against its own sorted copy is
-    // a faithful check here.
+    // Column-header sorting: this list is backend-paginated, so a header click refetches with `sort`/`order` query
+    // params. Asserts general sortedness of the ID column's displayed text rather than specific rows, since which
+    // requirements exist can shift; ID (`unique_code`) has no null-fallback display (unlike Name on the CR side), so
+    // comparing displayed text against its own sorted copy is a faithful check.
     await test.step("column-header sorting: ID ascending then descending", async () => {
       const idHeader = page.getByRole("button", { name: "ID" });
       const idHeaderCell = page.locator("th", { has: idHeader });
@@ -160,10 +138,8 @@ test.describe("requirements list filters and view-mode persistence", () => {
         );
       }
 
-      // `aria-sort` flips synchronously on click, before the refetch this
-      // header click triggers has actually landed — `toPass()` retries the
-      // sortedness check rather than reading the table once right after
-      // the attribute changes, which can race a still-in-flight response.
+      // `aria-sort` flips synchronously on click, before the refetch has landed; `toPass()` retries the sortedness check
+      // rather than reading the table once after the attribute changes, which can race a still-in-flight response.
       async function assertSorted(reversed: boolean) {
         await expect(async () => {
           const ids = await visibleIds();
@@ -198,14 +174,11 @@ test.describe("requirements list filters and view-mode persistence", () => {
 });
 
 /**
- * Change requests list sorting — separate `describe` from the requirements one
- * above since it needs its own fixtures: `ChangeRequest.proposed_name` is
- * nullable, and the list falls back to the linked requirement's own name
- * for display (`crTitle()` in ChangeRequestsPage.tsx) — sorting the raw
- * column can't see that fallback (documented on the backend endpoint
- * itself), so comparing the *displayed* text against a plain alphabetic
- * sort of seed data would be unreliable. Creating two change requests with
- * guaranteed, distinct, non-null proposed names sidesteps that entirely.
+ * Change requests list sorting, in a separate `describe` because it needs its own fixtures: `ChangeRequest.proposed_name`
+ * is nullable and the list falls back to the linked requirement's name for display (`crTitle()` in
+ * ChangeRequestsPage.tsx), a fallback sorting the raw column cannot see (documented on the backend endpoint), so
+ * comparing displayed text against an alphabetic sort of seed data would be unreliable. Two change requests with
+ * distinct, non-null proposed names avoid that.
  */
 test.describe("change requests list sorting", () => {
   test("sort by name ascending and descending via the column header", async ({ page }) => {
@@ -242,13 +215,10 @@ test.describe("change requests list sorting", () => {
     const nameHeader = page.getByRole("button", { name: "Name" });
     const nameHeaderCell = page.locator("th", { has: nameHeader });
 
-    // The two fixture rows' relative order is the only thing asserted —
-    // other, unrelated change requests may also be present in this shared
-    // project, and their proposed names aren't controlled by this test.
-    // `aria-sort` flips synchronously on click, before the refetch this
-    // header click triggers has actually landed — waiting on the network
-    // response itself (rather than just the attribute) avoids asserting
-    // row order against data that's still the *previous* sort's response.
+    // Only the two fixture rows' relative order is asserted: other change requests in this shared project have
+    // uncontrolled proposed names. `aria-sort` flips synchronously on click, before the refetch has landed, so the test
+    // waits on the network response rather than the attribute, to avoid asserting row order against the previous sort's
+    // response.
     async function assertOrder(before: string, after: string) {
       await expect(async () => {
         const isOrdered = await page.locator("table tbody tr").evaluateAll((rows, [a, b]) => {
@@ -280,13 +250,9 @@ test.describe("change requests list sorting", () => {
 });
 
 /**
- * Default active-only status filter — a change request list
- * is usually consulted for what still needs a decision, not a permanent
- * archive of every decision ever made, so the page now loads with "Active"
- * selected (sending `active_only=true`) rather than every status. Creates
- * its own dynamically-named fixture and withdraws it (a terminal status)
- * rather than relying on/mutating any shared seed data, per this repo's
- * idempotent-test convention.
+ * Default active-only status filter: a change request list is usually consulted for what still needs a decision, so
+ * the page loads with "Active" selected (sending `active_only=true`) rather than every status. Creates its own
+ * dynamically named fixture and withdraws it (a terminal status) rather than mutating shared seed data.
  */
 test.describe("change requests default to an active-only status filter", () => {
   test("withdrawn CR is hidden by default and reappears under All statuses", async ({ page }) => {

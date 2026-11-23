@@ -1,15 +1,14 @@
 /**
  * Module: components/ScoringAxisLevels
  *
- * The "Levels" block shared by the organisation `ScoringSchemeEditor` and the project `ProjectScoringSettings`
- * (generic scoring-matrix core): one collapsible block per axis (folded by default, remembered per person) holding
- * that axis's levels as a labelled grid. An axis the tier may edit shows the editable `DefinitionList` grid (name,
- * weight, guidance, and a threshold on a derived axis); any other axis (an organisation axis seen from a project)
- * shows the same columns read-only, so nothing looks editable that is not; except that a project may set its own
- * thresholds for a derived axis (`ScoringAxisThresholds`), the one part of an organisation level it can change.
+ * The "Levels" block shared by the organisation `ScoringSchemeEditor` and the project `ProjectScoringSettings`: one
+ * collapsible block per axis (folded by default, remembered per person) holding its levels as a labelled grid. An axis
+ * the tier may edit shows the editable `DefinitionList` grid (name, weight, guidance, and a threshold on a derived
+ * axis); any other axis (an organisation axis seen from a project) shows the same columns read-only, except that a
+ * project may set its own thresholds for a derived axis (`ScoringAxisThresholds`).
  *
- * The caller supplies the three level calls for its tier and `onChanged` (to re-fetch the scheme); every mutation
- * reports its outcome through the shared toast, a failure staying in the list's own error line.
+ * The caller supplies the tier's three level calls and `onChanged` (re-fetch the scheme); every mutation reports through
+ * the shared toast, a failure staying in the list's own error line.
  */
 import { useToast } from "../context/ToastContext";
 import { scoringOriginLabel, type ScoringAxis, type ScoringLevel, type ScoringScheme } from "../api/scoring";

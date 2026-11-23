@@ -1,28 +1,19 @@
 """
 Module: models.pat
 
-Defines the PersonalAccessToken model — a long-lived, user-created bearer
-credential (an alternative to the 12-hour session JWT), primarily intended
-for non-interactive integrations like mcp-server that shouldn't need
-re-authenticating every 12 hours. See docs/decisions.md's "Personal Access
-Tokens" section for the full design writeup and docs/soc2/policies/
-access-control-policy.md for how this fits the authentication model.
+Defines the PersonalAccessToken model: a long-lived, user-created bearer credential (an alternative to the
+12-hour session JWT) for non-interactive integrations such as mcp-server. See docs/decisions.md's
+"Personal Access Tokens" section and docs/soc2/policies/access-control-policy.md.
 
 Responsibilities:
-- Stores only a SHA-256 hash of the token secret, never the secret itself
-  (mirrors how User.password_hash is handled) — the raw token is shown to
-  its creator exactly once, at creation, and is unrecoverable afterward.
-- Records which organisations the token may be used against
-  (`allowed_organization_ids`), chosen by the creating user at creation
-  time from among the orgs they belong to. This is a *restriction* layered
-  on top of the user's own real RBAC roles, never a grant beyond them —
-  services/rbac.py enforces it.
-- `expires_at_ceiling` is the expiry computed from org/system lifetime caps
-  in effect at creation time. The *effective* expiry actually enforced at
-  auth time is `min(expires_at_ceiling, live caps of currently-scoped
-  orgs)` — see deps.py — so an org admin tightening their cap later
-  retroactively shortens matching tokens' effective lifetime without this
-  stored column ever needing to change.
+- Stores only a SHA-256 hash of the token secret (as `User.password_hash`); the raw token is shown once at
+  creation and is unrecoverable.
+- Records the organisations the token may be used against (`allowed_organization_ids`), chosen at creation
+  from the creator's organisations. It restricts the user's own RBAC roles and never grants beyond them
+  (enforced in services/rbac.py).
+- `expires_at_ceiling` is the expiry computed from the org and system lifetime caps at creation. The
+  effective expiry enforced at authentication is `min(expires_at_ceiling, live caps of the scoped orgs)`
+  (deps.py), so tightening an org cap shortens matching tokens without changing the stored column.
 """
 
 from __future__ import annotations

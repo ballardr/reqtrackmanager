@@ -18,52 +18,26 @@ type Option =
   | { kind: "external"; match: ExternalUserMatch };
 
 /**
- * Type-to-filter picker over org users — replaces asking the caller to
- * paste a raw user id, which meant looking one up elsewhere first.
+ * Type-to-filter picker over org users, so a caller never pastes a raw user id.
  *
  * Two modes:
- * - Default (no `organizationId`): matches by display name/email against
- *   whatever `users` this org/project screen already has loaded (no extra
- *   API call) — unchanged from the original behaviour.
- * - `organizationId` set: debounced server-side search
- *   (`orgs/{id}/users/search`), which can also surface a synthetic
- *   "external" result (an email not yet a member of this org, matching or
- *   not matching an existing account) when `Organization.
- *   external_user_policy` allows it. Selecting an external result calls
- *   `onSelectExternal` instead of `onSelect` — required in this mode.
- *   `projectId`, if also passed, lets the search reveal a match against an
- *   *existing* account elsewhere in the system to a caller who manages
- *   that specific project (not just org admins) — see the backend
- *   endpoint's own docstring for why that fact is gated at all.
+ * - Default (no `organizationId`): matches display name or email against the `users` the screen already loaded (no API call).
+ * - `organizationId` set: debounced server-side search (`orgs/{id}/users/search`), which can also surface a synthetic
+ *   "external" result (an email not yet a member of this org) when `Organization.external_user_policy` allows it.
+ *   Selecting it calls `onSelectExternal` instead of `onSelect` (required in this mode). `projectId` lets the search
+ *   reveal an existing account elsewhere in the system to a caller who manages that project, not only to org admins (see
+ *   the backend endpoint's docstring for why that fact is gated).
  *
- * Optional third match kind: pass `groups` (and `onSelectGroup`) to also match org groups by
- * name, always client-side against the passed-in array — mirroring the
- * default (no-`organizationId`) user-matching logic exactly, regardless of
- * whether user matching itself is running client- or server-side in this
- * instance. A group match renders with a `Users` icon and an "Organisation group"
- * badge so it's visually distinct from a user row in the same dropdown, and
- * selecting one calls `onSelectGroup(groupId)` instead of `onSelect`, then
- * closes/resets the control the same way a user pick does. There is no
- * dedicated "group" icon anywhere else in this app to match (grepped every
- * existing group-related header/row for one before adding this) — `Users`
- * (plural) was chosen over the single-person `User` glyph used implicitly
- * elsewhere for exactly that reason: it reads as "more than one person," a
- * reasonable stand-in for "a group of users," and isn't already claimed by
- * another concept in this codebase's icon usage.
+ * Optional third match kind: `groups` (with `onSelectGroup`) also matches org groups by name, always client-side against
+ * the passed array, whether user matching is client- or server-side. A group match shows a `Users` icon and an
+ * "Organisation group" badge, and selecting it calls `onSelectGroup(groupId)` instead of `onSelect`, then closes and
+ * resets the control as a user pick does. `Users` (plural) reads as "more than one person" and is not used by another
+ * concept in the icon set.
  *
- * Optional fourth match kind: pass `projectGroups` (and
- * `onSelectProjectGroup`) to also match this project's own `ProjectGroup`s
- * by name, same client-side substring match. A project group is a
- * genuinely different concept from an org group — local to this one
- * project rather than org-wide — so it needs a visually distinguishable,
- * not identical, treatment: `FolderKanban` (the same icon `Layout.tsx`'s
- * nav rail already uses for "Projects") instead of `Users`, and a
- * "Project group" badge instead of "Organisation group" (the org-group badge's text
- * was tightened from the previous bare "Group" to "Organisation group" at the same
- * time, now that a second, similarly-named group concept can appear in the
- * same dropdown — leaving it as just "Group" would read as ambiguous next
- * to "Project group"). Selecting a project-group match calls
- * `onSelectProjectGroup(groupId)` instead of `onSelect`/`onSelectGroup`.
+ * Optional fourth match kind: `projectGroups` (with `onSelectProjectGroup`) also matches this project's own
+ * `ProjectGroup`s by name, with the same client-side substring match. A project group is local to one project rather than
+ * org-wide, so it has a distinct treatment: `FolderKanban` (the icon `Layout.tsx`'s nav rail uses for "Projects") and a
+ * "Project group" badge, so the two group badges cannot be confused. Selecting one calls `onSelectProjectGroup(groupId)`.
  */
 export function UserAutocomplete({
   users,
@@ -98,11 +72,8 @@ export function UserAutocomplete({
   organizationId?: string;
   projectId?: string;
   placeholder?: string;
-  /** Accessible name for the search input, for callers where the visible
-   * `placeholder` alone isn't enough to disambiguate multiple instances on
-   * the same page (e.g. one per row in a list) — same reasoning as any
-   * other form control's `aria-label`. Falls back to `placeholder` when
-   * omitted, unchanged from before this prop existed. */
+  /** Accessible name for the search input, for callers where the visible `placeholder` alone cannot tell several
+   * instances on one page apart (e.g. one per row). Falls back to `placeholder` when omitted. */
   ariaLabel?: string;
 }) {
   const [query, setQuery] = useState("");
@@ -165,11 +136,8 @@ export function UserAutocomplete({
           .filter((u) => u.display_name.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle))
           .slice(0, 8);
 
-  // Group matches (see module docstring): always client-side against
-  // the passed-in `groups` array, mirroring the default user-matching
-  // branch above exactly (substring match on the one text field a group
-  // has, `name`), regardless of whether `matches` above is running
-  // client- or server-side in this instance.
+  // Group matches are always client-side against the passed `groups` array (substring match on `name`), whether
+  // `matches` above runs client- or server-side.
   const groupMatches =
     groups && needle.length > 0 ? groups.filter((g) => g.name.toLowerCase().includes(needle)).slice(0, 8) : [];
 

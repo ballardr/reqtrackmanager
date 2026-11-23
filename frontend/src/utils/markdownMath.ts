@@ -1,23 +1,18 @@
 /**
  * Module: utils/markdownMath
  *
- * A markdown-it inline rule that reads equations, so a Markdown field that holds mathematics (a requirement's
- * description, reasoning and clarification) can also be formatted.
- *
- * Responsibilities:
- * - Read `\( x \)` as an inline equation and `$$ x $$` as a display equation, with the delimiters the report engine
- *   and `utils/mathTex.splitMath` use: an opener with no closer, or enclosing nothing, is ordinary text, and a bare
- *   `$` is never a delimiter.
- * - Produce one `math` token (`content` is the TeX, `meta.display` the kind), so the equation's characters are never
- *   read as emphasis, escapes or code.
- *
- * Design decisions:
- * - The rule runs before `escape` (which would turn `\(` into `(`) and consumes the whole equation, so `x_1 * y_2`
- *   inside it stays TeX. A code span or fenced block that holds the delimiters is read first by the reader's own
- *   rules (they start earlier in the line or are block-level), so code is still shown as typed.
- * - An equation lives inside one paragraph: the inline reader never sees a blank line, so an equation spanning
- *   paragraphs is not one (the report engine's reader has the same limit).
- * - The TeX is not checked here (`utils/mathTex.texProblem` does that when it is drawn).
+ * A markdown-it inline rule that reads equations, so a Markdown field holding
+ * mathematics (a requirement's description, reasoning, clarification) can also
+ * be formatted. Reads `\( x \)` as inline and `$$ x $$` as display, with the
+ * delimiters of the report engine and `utils/mathTex.splitMath`: an opener with
+ * no closer, or enclosing nothing, is text, and a bare `$` is never a delimiter.
+ * Produces one `math` token (`content` is the TeX, `meta.display` the kind) so
+ * its characters are never read as emphasis, escapes or code.
+ * Design: the rule runs before `escape` (which would turn `\(` into `(`) and
+ * consumes the whole equation, so `x_1 * y_2` stays TeX; code spans and fences
+ * are read first by the reader's own rules, so code shows as typed. An equation
+ * lives inside one paragraph (the report engine's reader has the same limit).
+ * The TeX is not checked here (`utils/mathTex.texProblem` does that when drawn).
  */
 import type { MarkdownIt, StateInline } from "markdown-it";
 

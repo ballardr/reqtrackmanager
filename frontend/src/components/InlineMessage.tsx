@@ -1,12 +1,10 @@
 /**
  * Module: components/InlineMessage
  *
- * A one-line outcome message drawn where an action happened: an error under a failed save, or a short success
- * note under an upload. One component so every such line takes its colour from the theme's tokens and is announced
- * to assistive technology, instead of each page hand-writing a coloured `<div>`.
- *
- * Responsibilities: draw nothing for an empty message; mark errors `role="alert"` and successes `role="status"`.
- * A failure that is also shown as a toast keeps only the toast; this is for a result that belongs beside its control.
+ * A one-line outcome message drawn where an action happened (an error under a failed save, a success note under an
+ * upload), so every such line takes its colour from the theme's tokens and is announced to assistive technology.
+ * Nothing is drawn for an empty message; errors are `role="alert"`, successes `role="status"`. A failure also shown
+ * as a toast keeps only the toast; this is for a result that belongs beside its control.
  */
 import type { ReactNode } from "react";
 

@@ -1,31 +1,19 @@
 """
 Module: services.email_templates
 
-Renders outgoing HTML + plain-text email bodies from the Jinja2 templates
-in `backend/app/templates/email/`. See docs/decisions.md's "HTML email
-template system" entry for the full safety reasoning; summarised here
-since it governs every choice in this module:
+Renders outgoing HTML and plain-text email bodies from the Jinja2 templates in `backend/app/templates/email/`
+(docs/decisions.md, "HTML email template system", has the safety reasoning).
 
-- Templates are only ever loaded from static files on disk
-  (`FileSystemLoader`), never built from a runtime string
-  (`Environment.from_string`/`from_string`) — no org- or user-supplied
-  text (org name, header title, footer address, notification title/body)
-  is ever compiled as template *source*, only ever passed in as data via
-  `render(**context)`. This is what actually rules out the server-side
-  template injection (SSTI) class behind Jinja2's historical sandbox-
-  escape CVEs (2024-56201, 2024-56326, 2025-27516) — they all require the
-  template *source* itself to be attacker-influenced, which is structurally
-  impossible here, so a `SandboxedEnvironment` isn't needed either.
-- `autoescape` is always on, restricted via `select_autoescape` to files
-  ending `.html.jinja` (the `.txt.jinja` plain-text siblings are rendered
-  unescaped, since they're never interpreted as markup). Nothing in these
-  templates uses the `|safe` filter or `markupsafe.Markup(...)` on org-/
-  user-supplied data — the one legitimate near-miss, turning
-  `email_footer_address`'s embedded newlines into `<br>`, is handled by
-  the `nl2br` filter below, which escapes the raw value *first* and only
-  marks the already-escaped result `Markup` afterwards.
-- The `xmlattr` filter (the mechanism behind CVE-2024-22195/34064) is not
-  used anywhere in these templates.
+Design decisions:
+- Templates load only from static files (`FileSystemLoader`), never from a runtime string
+  (`Environment.from_string`): organisation or user text (organisation name, header title, footer address,
+  notification title and body) is passed only as data to `render(**context)`, never compiled as template
+  source. That rules out server-side template injection, so a `SandboxedEnvironment` is unnecessary.
+- `autoescape` is always on, restricted by `select_autoescape` to `.html.jinja` (the `.txt.jinja` siblings are
+  never markup). No template uses `|safe` or `markupsafe.Markup(...)` on organisation or user data; the one
+  near-case, turning `email_footer_address` newlines into `<br>`, uses the `nl2br` filter, which escapes first
+  and marks the escaped result `Markup` afterwards.
+- The `xmlattr` filter is not used in any template.
 """
 
 from __future__ import annotations

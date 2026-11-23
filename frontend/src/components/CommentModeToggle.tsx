@@ -1,11 +1,8 @@
 /**
  * Module: components/CommentModeToggle
  *
- * The toolbar switch that turns a graph canvas's comment mode on and off, shared by every editor that comments on a
- * canvas so the label, the pressed look and the help are one thing (`useCanvasComments` supplies the state).
- *
- * Design decisions: it is a `CanvasModeToggle` with the comment wording, so it looks and behaves like every other canvas mode
- * switch.
+ * The toolbar switch for a graph canvas's comment mode, shared by every editor that comments on a canvas
+ * (`useCanvasComments` supplies the state). It is a `CanvasModeToggle` with the comment wording.
  */
 import { useStrings } from "../context/TerminologyContext";
 import { CanvasModeToggle } from "./CanvasModeToggle";

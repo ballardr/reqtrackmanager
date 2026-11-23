@@ -43,7 +43,7 @@ async function widthOf(locator: ReturnType<Page["getByLabel"]>) {
 
 /**
  * Job to be done: an architect writes a short text note with no box; the note is only as large as its words, so a line drawn to
- * it ends next to the text, and the box follows the text as more is typed. Resizing the note by hand makes its size Manual.
+ * it ends next to the text, and the box follows the text as more is typed. Resizing the note with its handles makes its size Manual.
  *
  * Disposable org, admin and project via `setUpOrg` with System Architecture on; the element and the diagram are created through
  * the API as setup, the behaviour under test through the UI.

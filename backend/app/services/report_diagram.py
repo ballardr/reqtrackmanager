@@ -1,32 +1,24 @@
 """
 Module: services.report_diagram
 
-Draws Mermaid diagrams for documents (reports and exports) with the same engine, version and font as the screen.
+Draws Mermaid diagrams for documents with the same engine, version and font as the screen.
 
 Responsibilities:
-- `DiagramBudget.draw`: ask the converter service (`converter/`, a separate container) for a diagram's SVG, make it safe
-  (`svg_styles.flatten_styles`, then `report_svg.sanitize_svg`), size it, and remember the result.
-- Keep one report run bounded: a number of diagrams and a total drawing time, after which a diagram is not drawn.
-- `DiagramError`: why a diagram could not be drawn, in words the reader of a report can be shown.
+- `DiagramBudget.draw`: ask the converter service for a diagram's SVG, make it safe (`svg_styles.flatten_styles`,
+  `report_svg.sanitize_svg`), size and cache it; bound one run by a diagram count and a total drawing time.
+- `DiagramError`: why a diagram could not be drawn, in words a report reader can see.
 
 Design decisions:
-- **Drawn by the converter, never here.** The drawing engine is an embedded JavaScript interpreter; it runs in the
-  converter container (no network beyond an internal one, no secrets, a read-only filesystem), in a process of its own
-  that is killed at a time limit. The backend sends text and receives markup, which it never trusts: the reply is
-  flattened and sanitised like any SVG before it goes into a document.
-- **The screen and the report agree** because both draw with the Mermaid version, font and limits in
-  `diagram_config.json` (converter) and `frontend/src/utils/mermaidRenderConfig.json` (screen); `tests/test_diagram_config.py`
-  fails when the three differ.
-- **A diagram that cannot be drawn never fails a report.** The caller prints the source as a labelled block and records the
-  reason as a warning (a converter that is not configured or not reachable, a refused diagram, a timeout, an exhausted
-  budget). After the first failure of the converter itself the rest of the run does not try again.
-- **Results are cached** by the hash of (Mermaid version, theme, source) in a size-bounded memory cache, so a report that is
-  run again, or a diagram that appears twice, is drawn once. Failures are not cached. The theme is always `light` in a
-  document (paper is white); `dark` exists for the cache key's completeness and for a screen that may ask later.
-- Every diagram gets its own element identifiers (the engine always names its drawing `my-svg`), so several inline in one
-  HTML page never share a marker or a style.
+- Drawing runs in the converter container (no external network, read-only filesystem, killed at a time limit); the
+  backend sends text and sanitises the untrusted markup it receives.
+- Screen and report agree because both read the Mermaid version, font and limits in `diagram_config.json` and
+  `frontend/src/utils/mermaidRenderConfig.json`; `tests/test_diagram_config.py` fails when they differ.
+- A diagram that cannot be drawn never fails a report: the source prints as a labelled block with a warning, and after
+  the converter itself fails the run stops trying.
+- The cache key is the hash of (version, theme, source); failures are not cached. Documents use the `light` theme.
+- Each diagram gets its own element identifiers so several inline in one HTML page never share a marker or style.
 
-Dependencies: `httpx`, `app.config` (`report_converter_url`), `svg_styles`, `report_svg`, `markdown_text` (limits).
+Dependencies: `httpx`, `app.config` (`report_converter_url`), `svg_styles`, `report_svg`, `markdown_text`.
 """
 
 from __future__ import annotations

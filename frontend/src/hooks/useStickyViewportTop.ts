@@ -11,9 +11,9 @@
  *
  * Design decisions: the value is written straight to the element's style, never to React state, so a scroll causes no
  * render. Updates are coalesced in `requestAnimationFrame` and the scroll listener is passive. The sticky offset is
- * read from the column's computed `top`, so the stylesheet stays its one source and no offset is hard-coded here.
- * Until the first measurement the stylesheet's own fallback (the stuck offset) applies. The height of the column does
- * not feed back into its top edge (a flex container aligned to the start), so the measurement cannot chase itself.
+ * read from the column's computed `top`, so the stylesheet is its one source. Until the first measurement the
+ * stylesheet's fallback (the stuck offset) applies. The column's height does not feed back into its top edge (a
+ * flex container aligned to the start), so the measurement cannot chase itself.
  */
 import { useEffect } from "react";
 

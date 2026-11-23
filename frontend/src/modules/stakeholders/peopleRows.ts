@@ -107,7 +107,7 @@ export function needsEnabled(disabledSubComponents: string[]): boolean {
   return !disabledSubComponents.includes(NEEDS_SUBCOMPONENT);
 }
 
-/** Whether a raw `?kind=` value names the retired Need kind, which now lives on the Needs tab. */
+/** Whether a raw `?kind=` value names the Need kind, which is listed on the Needs tab and not the People page. */
 export function namesNeedKind(raw: string | null): boolean {
   return (raw ?? "").split(",").includes("need");
 }

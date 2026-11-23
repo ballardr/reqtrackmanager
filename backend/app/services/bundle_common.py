@@ -31,10 +31,9 @@ from app.models.user import User
 from app.services import imported_people
 from app.services.files import upload_file
 
-# Bounds a bundle/CSV import's memory footprint. DEFLATE's ~1032:1 worst-case ratio means an unchecked zip well
-# under the upload cap could still decompress to many gigabytes, so the declared sizes, the entry count and the
-# compression ratio are checked from the central directory before any entry is read, and every read is capped at
-# the entry's own limit (a stored size can lie).
+# Bounds a bundle/CSV import's memory use. DEFLATE's ~1032:1 worst-case ratio lets a zip under the upload cap
+# decompress to gigabytes, so sizes, entry count and ratio are checked from the central directory before any read,
+# and each read is capped at the entry's limit (a stored size can lie).
 MAX_IMPORT_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_BUNDLE_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
 MAX_BUNDLE_ENTRIES = 50_000
@@ -322,9 +321,8 @@ def import_bundled_file(
     The new file is noted for the import's pictures (`services.markdown_images`), which are rewritten to it.
 
     Flushed before returning so the asset's id is assigned: callers link it
-    straight away (e.g. `RequirementFile(file_id=asset.id)`), and an
-    unflushed asset gave those links a null `file_id` — a 500 merging any
-    bundle with requirement attachments (found 2026-10-05).
+    straight away (e.g. `RequirementFile(file_id=asset.id)`), which needs a
+    non-null `file_id`.
     """
     asset = upload_file(
         db, organization_id=organization_id, uploaded_by=uploaded_by,

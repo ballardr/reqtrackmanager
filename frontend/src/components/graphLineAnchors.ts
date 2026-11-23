@@ -2,29 +2,27 @@
  * Module: components/graphLineAnchors
  *
  * Where every line of a drawing meets its boxes so that no two lines draw over each other. Pure functions, no React, so the
- * canvas, a consumer's selection panel and the tests all use the one rule.
+ * canvas, a consumer's selection panel and the tests share one rule.
  *
  * Responsibilities:
- * - Choose, for each line between two boxes, the attach point at each end (`graphAttachPoints` gives the points and the rule
- *   for one line on its own) while looking at every other line of the drawing.
+ * - Choose, for each line between two boxes, the attach point at each end (`graphAttachPoints` gives the rule for one line
+ *   alone) while looking at every other line of the drawing.
  * - Spread lines that still share both ends sideways in parallel lanes (`shift`).
  * - Give each loop (a line from a box back to itself) a slot, so several loops on one box take different corners.
- * - Say which point an end would take if a person left it automatic (`automaticEnds`), for a selection card.
+ * - Say which point an end would take if left automatic (`automaticEnds`), for a selection card.
  *
  * Design decisions:
- * - **One rule, two implementations.** The server draws the same lines with `diagram_line_anchors.py`;
- *   `graphLineAnchorCases.json` holds the cases both are tested against, so a change to the rule is made in both. Only +, -, *,
- *   / and square roots are used so both agree to the last bit.
- * - **A person's choice is never moved.** An end a person fixed keeps its point, and a line with vertices is the person's own
- *   drawing: its ends follow the vertices and it is never spread. Both still count as using their points, so an automatic line
- *   keeps clear of them whatever the order of the lines.
- * - **Automatic lines are placed in the order given**, each choosing the pair of free points nearest each other (the facing
- *   sides first, as for a single line). A point that is already the end of another line is used only when no free pair is
- *   left, and then the least used pair is taken. Callers pass the lines in the order they were created, so adding a line
- *   moves no earlier line (except to keep clear of an end a person fixed).
- * - **Lanes are the last resort.** Two lines that end on the same two points are shifted sideways in parallel, `LANE_GAP`
- *   units apart, along the normal of the direction from the lower-ordered end to the other, so a line in each direction is
- *   shifted to its own side.
+ * - One rule, two implementations: the server draws the same lines with `diagram_line_anchors.py`, and
+ *   `graphLineAnchorCases.json` holds the cases both are tested against, so a change is made in both. Only +, -, *, / and
+ *   square roots are used so both agree to the last bit.
+ * - A person's choice is never moved: a fixed end keeps its point, and a line with vertices is the person's own drawing
+ *   (its ends follow the vertices and it is never spread). Both still count as using their points, so an automatic line
+ *   keeps clear of them whatever the order.
+ * - Automatic lines are placed in the order given (callers pass creation order, so adding a line moves no earlier line),
+ *   each choosing the free pair of points nearest each other; a point already ending another line is used only when no
+ *   free pair is left, and then the least used pair is taken.
+ * - Lanes are the last resort: two lines ending on the same two points are shifted `LANE_GAP` units sideways in parallel,
+ *   along the normal of the direction from the lower-ordered end, so a line in each direction takes its own side.
  */
 
 import type { GraphCanvasEdge, GraphCanvasNode } from "./GraphCanvas";

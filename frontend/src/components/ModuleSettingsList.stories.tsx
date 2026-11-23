@@ -1,6 +1,6 @@
 /**
- * Stories for `ModuleSettingsList` and `ModuleAvailabilitySelect` — the
- * shared Modules settings list Org Admin and Project Admin both render.
+ * Stories for `ModuleSettingsList` and `ModuleAvailabilitySelect`, the shared Modules settings list that Org Admin
+ * and Project Admin both render.
  */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";

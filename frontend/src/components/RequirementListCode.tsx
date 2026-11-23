@@ -3,7 +3,7 @@
  *
  * A requirement's code in a list row: its own code and, when the list is narrowed to components or categories the
  * requirement reaches only through an alias, that alias code after it in muted text, so the row names the place the
- * list is showing it under. A row matches a narrowing as the server reads it: in any chosen component or any chosen category.
+ * list shows it under. A row matches a narrowing as the server reads it: any chosen component or any chosen category.
  */
 import type { Requirement } from "../api/types";
 import { RecordCode } from "./RecordCode";

@@ -1,16 +1,13 @@
 /**
  * Module: components/ScoringBandsEditor
  *
- * Edits one scoring model's rating bands (generic scoring-matrix core)
- * at org or project level. A band is a label, a lower
- * threshold (entered as a percentage of the model's maximum score) and a
- * tone from the shared `BadgeTone` palette. Client-side validation mirrors
- * the backend's `validate_scoring_bands` so mistakes show before saving.
+ * Edits one scoring model's rating bands at organisation or project level. A band is a label, a lower threshold (a
+ * percentage of the model's maximum score) and a tone from the shared `BadgeTone` palette. Client-side validation
+ * mirrors the backend's `validate_scoring_bands` so mistakes show before saving.
  *
- * Override visibility follows the style guide's "platform default vs.
- * override" pattern via `OverridePill`: the caller says whether the bands
- * shown are this level's own (`custom`) and what they otherwise inherit
- * from (`defaultLabel`); resetting clears the override.
+ * Override visibility follows the style guide's "platform default vs. override" pattern via `OverridePill`: the caller
+ * says whether the bands are this level's own (`custom`) and what they otherwise inherit from (`defaultLabel`);
+ * resetting clears the override.
  */
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";

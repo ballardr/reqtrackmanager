@@ -1,14 +1,8 @@
 """
 Module: routers.change_requests.tasks
 
-Task assignment during a change request's review (C-R-02, C-R-04):
-assigning, listing, and editing/completing review tasks.
-
-Split out of the former flat `routers/change_requests.py` as a pure
-code-organization refactor — see `routers/change_requests/__init__.py`'s
-module docstring for the package layout. `_get_cr_in_project` is imported
-from `_shared.py` (used by four sibling buckets — see that module's
-docstring).
+Task assignment during a change request's review (C-R-02, C-R-04): assigning, listing and
+editing/completing review tasks. `_get_cr_in_project` comes from `_shared.py`.
 """
 
 from __future__ import annotations

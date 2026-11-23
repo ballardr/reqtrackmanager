@@ -1,26 +1,11 @@
 """
 Module: modules.context_strategy.submission_policy
 
-Who may submit a Pain Point in a project, and the one resolver every path asks.
-
-- `resolve_submission_policy`: the policy that applies to a project and where it came from (its own setting,
-  the nearest ancestor project's, the organisation default, or the platform default `MANAGERS`).
-- `can_submit_pain_point` / `require_pain_point_submit`: the decision. The create endpoint, the record-table
-  `can_create` (list import, the Links panel, the New button) and the MCP tool all call it, so the answers
-  cannot drift apart.
-- `set_project_submission_policy` / `set_org_submission_policy`: write or clear a setting (the caller commits).
-
-Design decisions:
-- The platform default is `MANAGERS`: submission is restricted unless a project or its organisation opts in to
-  `MEMBERS`. Organisations that existed when the setting was introduced were given an explicit `MEMBERS` default
-  by a migration, so none of them lost the ability to submit.
-- Only submission is restricted. Editing, triage and scoring are manager-tier already, so a restricted project
-  keeps the broad-creation model's other half (comments and evidence stay open to members).
-- Resolution follows the nested-project rule used elsewhere (own, else nearest ancestor, else organisation, else
-  default), always on and independent of role inheritance. A row is stored only where someone chose a value.
-- "Managers" means the Pain Point manager tier (`can_manage_pain_points`), the same tier that triages.
-
-Dependencies: this module's models and `_shared` role helpers; `services.project_hierarchy`.
+Who may submit a Pain Point in a project: one resolver shared by the create
+endpoint, record-table `can_create` and the MCP tool. Resolution: the project's
+setting, else the nearest ancestor's, else the organisation default, else the
+platform default `MANAGERS` (the Pain Point manager tier). Only submission is
+restricted. Dependencies: `_shared`, `services.project_hierarchy`.
 """
 
 from __future__ import annotations

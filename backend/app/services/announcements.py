@@ -1,35 +1,30 @@
 """
 Module: services.announcements
 
-Announcements: scheduled plain-text messages for the whole platform (written by server administrators) or for
-one organisation (written by its administrators), shown on the login pages and as a banner after sign-in, with
-an optional one-time send as a notification.
+Scheduled plain-text messages for the whole platform (server administrators) or one organisation (its
+administrators), shown on the login pages and as a banner after sign-in, with an optional one-time send as a
+notification.
 
-Responsibilities:
-- Validate text and the active window; create, replace and delete a message in one scope, audited.
-- Bound each scope: `MAX_PER_SCOPE` messages not yet ended, `MAX_STORED_PER_SCOPE` including the history.
-- Resolve which messages a reader sees: login pages (active, flagged for login), banner (active, server-wide
-  plus the reader's organisation).
-- Send a message once as a `SYSTEM_ANNOUNCEMENT` notification to its audience.
-- Throttle the unauthenticated login-page read per client address.
+Responsibilities: validate text and the active window; create, replace and delete a message in one scope
+(audited); bound each scope (`MAX_PER_SCOPE` not yet ended, `MAX_STORED_PER_SCOPE` including history); resolve
+what a reader sees (login pages: active and flagged; banner: active, server-wide plus the reader's
+organisation); send a message once as a `SYSTEM_ANNOUNCEMENT` notification; throttle the unauthenticated
+login-page read per client address.
 
 Design decisions:
-- Scope is enforced here, not by the caller: every lookup takes the owning `organization_id` (NULL for
-  server-wide), so an organisation administrator can neither read nor change another organisation's message or
-  a server-wide one (a mismatch is a 404, not a 403, so ids of other tenants are not confirmed).
-- Text is stored and shown as plain text (no links or markup). Because organisation administrators are lower
-  trust than the server administrator and the login page is the highest phishing risk, an organisation message
-  may not contain a web address; a server-wide message may.
-- Audit events carry the severity, flags and window, never the title or body; the send event carries counts.
-- The send is idempotent: the row is locked and `notified_at` set in the same transaction as the fan-out.
-- Fan-out is synchronous in the request and uses the ordinary `notify`, so preferences and digest mode apply;
-  the sender is excluded (`actor_id`).
-- The `MAX_PER_SCOPE` cap counts only messages that have not ended, so the history of past messages never forces a
-  deletion; the larger `MAX_STORED_PER_SCOPE` ceiling still bounds the table.
-- `dismissible` is a display rule for the banner (dismissal is per browser), not a security control.
-- Window edges are UTC instants; "active" is `starts_at <= now < ends_at`, each edge optional.
+- Scope is enforced here: every lookup takes the owning `organization_id` (NULL for server-wide), and a
+  mismatch is a 404, so an organisation administrator cannot read or change another tenant's or a server-wide
+  message, or confirm its id.
+- Text is plain (no markup). Organisation administrators are lower trust and the login page is the highest
+  phishing risk, so an organisation message may not contain a web address; a server-wide one may.
+- Audit events carry severity, flags and window, never the title or body; the send event carries counts.
+- The send is idempotent: the row is locked and `notified_at` set in the same transaction as the fan-out. The
+  fan-out is synchronous, uses `notify` (preferences and digest apply) and excludes the sender.
+- `MAX_PER_SCOPE` counts only messages not ended, so history never forces a deletion.
+- `dismissible` is a display rule (dismissal is per browser), not a security control. Window edges are UTC
+  instants; "active" is `starts_at <= now < ends_at`, each edge optional.
 
-External dependencies: `services.notifications`, `services.audit`, `services.rate_limit`.
+Dependencies: `services.notifications`, `services.audit`, `services.rate_limit`.
 """
 
 from __future__ import annotations

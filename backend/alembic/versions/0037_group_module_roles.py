@@ -4,27 +4,15 @@ Revision ID: 0037
 Revises: 0036
 Create Date: 2026-09-09
 
-Adds `group_module_roles` (`app.models.module_role.GroupModuleRole`) — the
-group-level counterpart to `user_module_roles`, reversing that table's own
-originally-documented "direct grants only" boundary
- — **Decided by: User**, not an
-implementation-driven scope change: a human-review round of the Standards
-Manager/Contributor picker found the exclusion undesirable, and
-this closes it generically for every module-contributed role, not just
-Compliance's own.
-
-This is a core, module-system-generic table (`app.models.module_role`,
-`app.services.rbac`), not a compliance-specific one — same "lives in the
-core Alembic chain even though compliance's own migrations directory sits
-between the two nearest core revisions" situation 0034's own docstring
-already explains, since this revision continues on from the Compliance
-module's own most recent migration (0036) in the single merged chain
+Adds `group_module_roles` (`app.models.module_role.GroupModuleRole`), the group-level counterpart to
+`user_module_roles`, so every module-contributed role can be granted to an organisation group (**Decided
+by: User**). It is a core, module-generic table (`app.models.module_role`, `app.services.rbac`); as in
+0034, it sits in the core chain and continues the Compliance module's 0036 in the merged chain
 `app.modules.registry.configure_alembic_version_locations` builds.
 
-Structurally identical to `user_module_roles` (0025) plus its
-`scope_entity_id` widening (0034), with `org_group_id` (FK `org_groups.id`,
-CASCADE, indexed) in place of `user_id`. No backfill needed — this is a
-brand-new, initially-empty table.
+Structurally identical to `user_module_roles` (0025) plus its `scope_entity_id` (0034), with
+`org_group_id` (FK `org_groups.id`, CASCADE, indexed) in place of `user_id`. The table starts empty; no
+backfill.
 """
 
 from collections.abc import Sequence

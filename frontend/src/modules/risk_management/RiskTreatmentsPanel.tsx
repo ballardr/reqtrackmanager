@@ -1,17 +1,14 @@
 /**
  * Module: modules/risk_management/RiskTreatmentsPanel
  *
- * The treatment section of a risk's detail page: the
- * requirements, designs and actions linked as a treatment (Mitigated by, Treated
- * by), each with the risk owner's verdict on whether it *effectively* reduces the
- * risk — a link alone only proposes one. A risk counts as treated only through
- * Effective verdicts. A verdict that the backend marked "Needs reassessment"
- * (the artefact behind it changed) shows why. Treatment links are made in the
- * Links panel; this panel assesses them.
+ * The treatment section of a risk's detail page: the requirements, designs and actions linked as a treatment
+ * (Mitigated by, Treated by), each with the risk owner's verdict on whether it effectively reduces the risk; a link
+ * alone only proposes one. A risk counts as treated only through Effective verdicts. A verdict the backend marked
+ * "Needs reassessment" (the artefact behind it changed) shows why. Treatment links are made in the Links panel; this
+ * panel assesses them.
  *
- * Every Assess button always renders: the backend allows the risk's owner or a
- * Risk Manager and a 403 surfaces as a toast. A rationale is required for
- * Effective and Ineffective (409 otherwise, shown in the dialog).
+ * Every Assess button always renders: the backend allows the risk's owner or a Risk Manager and a 403 surfaces as a
+ * toast. A rationale is required for Effective and Ineffective (409 otherwise, shown in the dialog).
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -38,7 +35,7 @@ const ASSESSABLE: TreatmentAssessmentStatus[] = ["effective", "ineffective", "pr
 /**
  * @param projectId The risk's project.
  * @param riskId The risk whose treatments are listed.
- * @param refreshToken Change to reload (e.g. after a link was added in the Links panel).
+ * @param refreshToken Change to reload (e.g. after a link is added in the Links panel).
  * @param onChanged Called after a verdict was saved, so the page can reload the risk's derived fields.
  */
 export function RiskTreatmentsPanel({

@@ -1,14 +1,14 @@
 /**
  * Module: modules/product_feedback/OrgRequestsPanel
  *
- * The organisation's request inbox: requests that arrived before anyone knew which project they belong to. It is a
- * group on Org Resources (`module.ts`'s `orgResourceSections`), the same placement and reasoning as the
- * organisation-level Strategy list: it is day-to-day content, not configuration.
+ * The organisation's request inbox: requests that arrived before anyone knew their project. It is a group on Org
+ * Resources (`module.ts`'s `orgResourceSections`), placed as the organisation-level Strategy list is: day-to-day
+ * content, not configuration.
  *
- * Triage is moving a request into a project (on the request's page), which renumbers it there. An inbox request has
- * no links or tags (those belong to a project), so the list shows no demand or Pain Point warnings, and it scores only
- * on the organisation's own scoring scheme. An organisation administrator can switch the inbox off; the panel then
- * says so rather than showing an error.
+ * Triage moves a request into a project (on the request's page), which renumbers it there. An inbox request has no
+ * links or tags (those belong to a project), so the list shows no demand or Pain Point warnings, and it scores only on
+ * the organisation's own scoring scheme. An organisation administrator can switch the inbox off; the panel then says
+ * so rather than showing an error.
  */
 import { useEffect, useState } from "react";
 

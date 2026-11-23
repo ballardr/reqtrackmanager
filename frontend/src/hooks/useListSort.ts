@@ -6,19 +6,19 @@
  *
  * Responsibilities:
  * - Read the sort from the address (`sort`, `order`), else the person's last choice for this list (kept in
- *   `ui_preferences` as `list_sort_<key>`, so it follows them between browsers), else the list's default, which is the
- *   code ascending. The effective sort is never empty, so the table always shows what orders it.
+ *   `ui_preferences` as `list_sort_<key>`, so it follows them between browsers), else the list's default (code
+ *   ascending). The effective sort is never empty, so the table always shows what orders it.
  * - Write a chosen sort to the address and the preference.
  * - Offer the header click (`onHeaderSort`): another column ascending, the same column toggles its direction. There is
  *   no reset: the default (Code ascending) is a choice in the Sort by and Order fields like any other.
  *
  * Design decisions:
  * - The address wins over the stored choice, so a shared link opens in the order its sender saw.
- * - A stored key the list no longer offers is ignored (a column removed in a later release) rather than trusted.
+ * - A stored key the list does not offer is ignored rather than trusted.
  * - The preference is read from the auth context directly, so a list rendered on its own (a story) still sorts.
  * - A list that holds its whole set in the browser orders with `sortRows`; a paged list sends `sort` and `order` to
- *   the server (`sortParams`). Either way the keys are the same four common ones (`code`, `title`, `created`,
- *   `modified`) plus the list's own columns.
+ *   the server (`sortParams`). The keys are the four common ones (`code`, `title`, `created`, `modified`) plus the
+ *   list's own columns.
  *
  * Dependencies: `useUrlSort` (the address), `AuthContext` (the stored choice).
  */

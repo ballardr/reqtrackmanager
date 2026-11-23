@@ -1,17 +1,12 @@
 """
 Module: modules.decisions.long_text
 
-Which long free-text columns of this module's tables hold Markdown, and which stay plain text and why. Wired into
-`ModuleDefinition.markdown_fields` and `plain_text_fields`; `tests/test_long_text_inventory.py` fails for a long-text
-column of these tables that is in neither.
-
-Design decisions:
-- Markdown is the default reading; a column stays plain only for a stated reason.
-- A comment or short note is bounded by `NOTE_LIMIT`, a described record by the default limit.
-- A Decision's text fields hold equations (`math=True`) and the Decision's own attached pictures (`images`); its
-  comments and the template prompts (configuration text) do neither.
-
-Dependencies: this module's models and `modules.registry` (the declaration shapes).
+Declares which long free-text columns hold Markdown and which stay plain and
+why, wired into `ModuleDefinition.markdown_fields`/`plain_text_fields`
+(`tests/test_long_text_inventory.py` fails for an undeclared column).
+Decision text fields hold equations and the Decision's own pictures; comments
+and template prompts do neither. Dependencies: this module's models,
+`modules.registry`.
 """
 
 from __future__ import annotations

@@ -4,20 +4,18 @@ Module: services.dr_restic
 A thin, secret-safe wrapper around the `restic` command line, the one engine the backup tool uses to store,
 encrypt, deduplicate, copy, prune and check backup sets.
 
-Responsibilities:
-- Build every restic invocation (repository, password file, arguments) and run it without a shell.
-- Initialise a repository on first use, and a copy target with the source's chunker parameters so
-  `restic copy` deduplicates.
-- Expose the few operations the tool needs: backup, copy, forget with retention, check, list snapshots,
-  restore (optionally verified against the repository), and dump of one stored file.
-- Redact secrets from anything that can reach a log, a status file or an exception message.
+Responsibilities: build and run every restic invocation (repository, password file, arguments) without a
+shell; initialise a repository on first use, and a copy target with the source's chunker parameters so
+`restic copy` deduplicates; expose backup, copy, forget with retention, check, list snapshots, restore
+(optionally verified against the repository) and dump of one stored file; redact secrets from anything that
+can reach a log, status file or exception message.
 
 Design decisions:
-- The repository password is only ever passed as `--password-file`; cloud credentials are only ever
-  inherited from the environment. Nothing secret is placed on a command line, where `ps` would show it.
-- Output is redacted (`Redactor`) before it leaves this module: URL credentials (`sftp://user:pw@host`)
-  and every configured secret value are replaced, because restic echoes repository URLs in its errors.
-- One password serves the primary repository and every copy target, so a copy needs a single secret.
+- The repository password is passed only as `--password-file` and cloud credentials are inherited only from
+  the environment, so nothing secret is on a command line where `ps` shows it.
+- Output is redacted (`Redactor`) before leaving this module: URL credentials (`sftp://user:pw@host`) and
+  every configured secret are replaced, because restic echoes repository URLs in errors.
+- One password serves the primary repository and every copy target.
 
 Dependencies: the `restic` binary on PATH (or `RESTIC_BINARY`).
 """

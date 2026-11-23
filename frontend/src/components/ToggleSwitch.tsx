@@ -1,16 +1,11 @@
 /**
- * A binary on/off switch styled as a pill, for settings that are a single
- * yes/no state rather than a momentary action — distinct from `.btn`,
- * which reads as "do this now" rather than "this is on/off". Exposed as
- * `role="switch"` for assistive tech rather than a native `<input
- * type="checkbox">`, since the pill visual has no direct HTML equivalent.
+ * A binary on/off switch styled as a pill, for settings that are a single yes/no state rather than a momentary action
+ * (unlike `.btn`, which reads as "do this now"). Exposed as `role="switch"` for assistive technology, since the pill has
+ * no native HTML equivalent.
  *
- * Stops click propagation: at least one call site (PreferencesPage.tsx's
- * 2FA toggle) renders this inside a `CollapsibleSection`'s title, which
- * that component always wraps in its own clickable header — without this,
- * toggling "Enable 2FA" also bubbled up and collapsed the section,
- * immediately hiding the QR code/confirmation-code UI the toggle had just
- * revealed.
+ * Stops click propagation because a call site (PreferencesPage.tsx's 2FA toggle) renders it inside a
+ * `CollapsibleSection` title, whose clickable header would otherwise collapse the section and hide the UI the toggle
+ * reveals.
  */
 export function ToggleSwitch({
   checked,

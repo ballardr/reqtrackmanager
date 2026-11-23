@@ -1,17 +1,12 @@
 """
 Module: modules.architecture.export_audit
 
-The one audit event a file download of the module writes: the project's JSON or Structurizr file, and a diagram's SVG or
-Mermaid text.
+Writes the one audit event for a file download of the module (the project's JSON or Structurizr file, a diagram's SVG or
+Mermaid text).
 
-Responsibilities:
-- `audit_export`: records a `records_exported` event (the action every record-list export writes) carrying the record
-  type, the format and a row count, never a name, a cell or any drawing text, and commits it.
-
-Design decisions:
-- A download takes the architecture out of the application, which is what the export audit exists to show, so these
-  files write the same event as a record-list export rather than a module-specific action; one query finds every export.
-- The event is committed with the download, so a file that was sent always has its event.
+- `audit_export` records a `records_exported` event (the action every record-list export writes) with the record type,
+  the format and a row count, never a name, a cell or drawing text, and commits it with the download so a file that was
+  sent always has its event. One query then finds every export.
 
 Dependencies: `services.audit`.
 """

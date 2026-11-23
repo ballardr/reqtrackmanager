@@ -3,21 +3,14 @@ import { expect, test } from "@playwright/test";
 import { ensureExpanded, loginAs, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
- * Job to be done: an org admin can generate a SCIM 2.0 bearer token through
- * the real UI, see it exactly once, and that token then authenticates a
- * real inbound SCIM request (`GET /scim/v2/Users`) — proving the whole
- * generate -> configure-in-IdP -> IdP-calls-us loop actually works end to
- * end, not just that the UI round-trips. Revoking then breaks that same
- * token immediately. The SCIM protocol surface itself (Users/Groups CRUD,
- * PATCH semantics) is covered by backend/tests/test_scim.py — this spec
- * only exercises the token lifecycle through the real UI + one real
- * authenticated call, per this suite's own scoping convention for
- * config-form specs that can't reasonably drive a real external IdP.
+ * Job to be done: an org admin can generate a SCIM 2.0 bearer token through the UI, see it exactly once, and that
+ * token authenticates a real inbound SCIM request (`GET /scim/v2/Users`), proving the generate -> configure-in-IdP ->
+ * IdP-calls-us loop end to end. Revoking then breaks that token immediately. The SCIM protocol surface (Users/Groups
+ * CRUD, PATCH semantics) is covered by backend/tests/test_scim.py; this spec exercises the token lifecycle through
+ * the UI plus one authenticated call, since a config-form spec cannot drive a real external IdP.
  *
- * Uses Gamma (orgAdminGamma is single-org, so `/orgs` auto-navigates) —
- * same choice org-security-controls.spec.ts and org-group-nesting.spec.ts
- * make, to avoid interfering with Alpha/Beta specs sharing this suite's
- * single-worker run.
+ * Uses Gamma (orgAdminGamma is single-org, so `/orgs` navigates straight in), as org-security-controls.spec.ts and
+ * org-group-nesting.spec.ts do, to avoid interfering with Alpha/Beta specs.
  */
 test.describe("SCIM provisioning token", () => {
   test("generate a token via the UI, use it for a real SCIM request, then revoke it", async ({ page }) => {
@@ -31,14 +24,10 @@ test.describe("SCIM provisioning token", () => {
     await page.request.delete(`http://localhost:8000/api/v1/orgs/${orgId}/scim-token`, { headers: { Authorization: `Bearer ${bearer}` } });
     await page.reload();
 
-    // SCIM lives in the "OAuth/SSO" top-level resource-menu group
-    // — a real navigation, so it must be selected before the section is
-    // reachable at all.
+    // SCIM sits in the "OAuth/SSO" top-level resource-menu group, a real navigation that must be selected first.
     //
-    // CollapsibleSection's expand/collapse choice persists server-side per
-    // user across specs sharing a persona — an unconditional click can
-    // toggle an already-expanded section shut on a re-run (see
-    // ensureExpanded's own docstring in helpers.ts).
+    // CollapsibleSection's expand/collapse choice persists server-side per user across specs sharing a persona, so an
+    // unconditional click can toggle an already-expanded section shut on a re-run (see `ensureExpanded` in helpers.ts).
     await selectOrgAdminGroup(page, "OAuth/SSO");
     await ensureExpanded(page, "SCIM provisioning");
     await expect(page.getByText("Not enabled.")).toBeVisible();

@@ -1,15 +1,14 @@
 /**
  * Module: components/FormActions
  *
- * The actions of every create/edit form: the save error (if any), then the primary Save button on
- * the right (and Cancel, when the form is not in a dialog). One component so the error colour, button order and spacing stay the same
- * in every form (docs/ux-style-guide.md, "Pattern: form header").
+ * The actions of every create/edit form: the save error, then the primary Save button on the right (and Cancel
+ * when the form is not in a dialog), so error colour, button order and spacing are the same everywhere
+ * (docs/ux-style-guide.md, "Pattern: form header").
  *
- * Inside a `Modal` or `SidePanel` it renders into the dialog's pinned header (error under the title,
- * buttons beside it) through a portal, so Save is reachable however long the form is; the form's
- * handlers and state are untouched. In a dialog the header's close button is the only way out, so
- * there is no Cancel (closing with unsaved changes asks first; see `useDialogGuard.tsx`). Outside a
- * dialog, or inside a `Popover`, it renders inline with Cancel.
+ * In a `Modal` or `SidePanel` it renders through a portal into the dialog's pinned header (error under the title,
+ * buttons beside it), so Save is reachable however long the form is. The header's close button is the only way
+ * out, so there is no Cancel (closing with unsaved changes asks first; `useDialogGuard.tsx`). Outside a dialog, or
+ * in a `Popover`, it renders inline with Cancel.
  */
 import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";

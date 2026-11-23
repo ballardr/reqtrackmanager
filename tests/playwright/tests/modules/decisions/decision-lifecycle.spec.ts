@@ -9,37 +9,15 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: Playwright e2e coverage for create -> propose ->
- * approve -> supersede, with the quick-view +
- * full-page detail split. Exercises the full Decision Management frontend
- * (`frontend/src/modules/decisions/`) against a real backend: creating a
- * Decision, moving it through its lifecycle to Approved on its own detail
- * page, then creating a second Decision that supersedes the first and
- * watching the first flip to Superseded once the second is itself Approved
- * (§13/10.6 — see `service.py`'s own `_maybe_supersede`/
- * `_supersede_predecessors`).
+ * Job to be done: e2e coverage for create -> propose -> approve -> supersede with the quick-view and full-page
+ * detail split (`frontend/src/modules/decisions/`) against a real backend. A second Decision supersedes the
+ * first, which flips to Superseded once the second is Approved (§13/10.6, `service.py`'s `_maybe_supersede`).
  *
- * A row click on the Decisions list opens `DecisionQuickViewPanel` — a
- * minimal, read-only `SidePanel` (`role="dialog"`) with no lifecycle
- * controls of its own — whose "View full details" link is what reaches
- * `DecisionDetailPage`, a real routed page (not a dialog) carrying every
- * lifecycle action, the Links panel, comments, and attachments.
- * Locators below are scoped to `page` (not a `dialog` role) once on that
- * page, unlike the earlier version of this spec.
- *
- * Uses a brand-new, disposable organisation + admin + project created via
- * the API, not a shared seeded org/project — mirrors `org-admin-modules
- * .spec.ts`'s own established reasoning (a disposable org sidesteps any
- * collision with another spec touching shared org state, and here it's
- * doubly necessary: Decision Management is `default_enabled=False`, so this
- * spec must toggle it on for whichever org it runs against, and doing that
- * against a shared org would leak into every other spec running
- * concurrently against it).
- *
- * `selectLabeledOption` (`./helpers.ts`) works around a Playwright-specific
- * `internal:label=` quirk with `LabeledSelect`'s wrapping-`<label>` markup —
- * see that helper's own docstring (mirrors `modules/compliance/helpers.ts`'s
- * `selectFilterOption`, the same underlying issue for `FilterField`).
+ * A row click on the list opens `DecisionQuickViewPanel`, a read-only `SidePanel` (`role="dialog"`) whose
+ * "View full details" link reaches the routed `DecisionDetailPage` (lifecycle actions, Links, comments,
+ * attachments); there, locators are scoped to `page`. Uses a disposable org + admin + project created via the
+ * API, as `org-admin-modules.spec.ts` does (Decision Management is `default_enabled=False`).
+ * `selectLabeledOption` (`./helpers.ts`) works around the `LabeledSelect` wrapping-`<label>` markup.
  */
 test.describe("Decision Management: create -> propose -> approve -> supersede", () => {
   test("moves a Decision through its lifecycle and supersedes it with a second, approved Decision", async ({ page }) => {
@@ -80,13 +58,8 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
       })
     ).json();
 
-    // --- Enable Decision Management for this org (default_enabled=False —
-    // module.py's deliberate opt-in design).
-    // `OrgListPage.tsx` auto-redirects straight to `/orgs/:orgId/admin`
-    // when the caller belongs to exactly one org (true here — this admin
-    // was just created in this one disposable org), so there's no "org
-    // link" to click, unlike `org-admin-modules.spec.ts`'s own multi-org
-    // server-admin persona.
+    // Enable Decision Management for this org (`default_enabled=False`, opt-in). `OrgListPage.tsx` redirects to
+    // `/orgs/:orgId/admin` for a caller in exactly one org, so there is no "org link" to click.
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
     await selectOrgAdminGroup(page, "Modules");
@@ -135,11 +108,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(page.locator("blockquote.activity-note", { hasText: "Agreed at the architecture board." })).toBeVisible();
     await page.getByRole("tab", { name: "Links" }).click();
 
-    // --- Back to the list, create Decision B ("DEC-002") and move it to
-    // Approved too.
-    // `exact: true` and the arrow prefix disambiguate this page's own back
-    // link (`DecisionDetailPage.tsx`) from the nav-rail's own "Decisions"
-    // link, which also matches a plain substring search on this page.
+    // Back to the list, create Decision B ("DEC-002") and move it to Approved too. `exact: true` and the arrow
+    // prefix disambiguate this page's back link (`DecisionDetailPage.tsx`) from the nav-rail "Decisions" link,
+    // which also matches a plain substring search.
     await page.getByRole("link", { name: "← Decisions", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions(?:\\?.*)?$`));
 
@@ -153,12 +124,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await page.getByRole("button", { name: "DEC-002" }).click();
     quickView = page.getByRole("dialog", { name: "DEC-002" });
     await quickView.getByRole("link", { name: "View full details" }).click();
-    // Wait for the route change itself, not just page content, before
-    // querying the DOM — the list page (and its own "Superseded"/status
-    // text in the table and FilterPanel) is still mounted for one render
-    // tick after the `Link` click, and a bare `getByText` query racing that
-    // window can hit a real Playwright strict-mode violation (multiple
-    // matches) rather than a plain "not found yet" retry.
+    // Wait for the route change, not just page content, before querying the DOM: the list page (and its
+    // "Superseded"/status text in the table and FilterPanel) stays mounted for one render tick after the `Link`
+    // click, and a bare `getByText` racing that window can hit a Playwright strict-mode violation.
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
     await expect(page.locator(".record-header").getByText(recordCodeText("DEC-002"))).toBeVisible();
 
@@ -169,10 +137,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await confirmDialog.getByRole("button", { name: "Approve" }).click();
     await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
-    // --- From DEC-002's Links panel, record that it supersedes DEC-001 — both
-    // Decisions are already Approved, so the supersession should flip DEC-001 to
-    // Superseded immediately (`_maybe_supersede`: link created after the new
-    // Decision is already approved).
+    // From DEC-002's Links panel, record that it supersedes DEC-001. Both Decisions are already Approved, so the
+    // supersession flips DEC-001 to Superseded immediately (`_maybe_supersede`: link created after the new
+    // Decision is approved).
     await page.getByRole("button", { name: "Supersede another Decision" }).click();
     const supersedeDialog = page.getByRole("dialog", { name: "Supersede another Decision" });
     await selectLabeledOption(supersedeDialog, "Decision", "DEC-001 — Adopt PostgreSQL for the billing service");
@@ -184,10 +151,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(supersessionRow).toContainText("DEC-001");
     await expect(supersessionRow.getByRole("button")).toHaveCount(0);
 
-    // --- DEC-001 is now Superseded — check from its own detail page.
-    // `exact: true` and the arrow prefix disambiguate this page's own back
-    // link (`DecisionDetailPage.tsx`) from the nav-rail's own "Decisions"
-    // link, which also matches a plain substring search on this page.
+    // DEC-001 is now Superseded; check from its own detail page. `exact: true` and the arrow prefix
+    // disambiguate this page's back link (`DecisionDetailPage.tsx`) from the nav-rail "Decisions" link, which
+    // also matches a plain substring search.
     await page.getByRole("link", { name: "← Decisions", exact: true }).click();
     // The list opens on Decisions still to be made; the approved and superseded ones need the filter cleared.
     await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();

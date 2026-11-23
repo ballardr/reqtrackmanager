@@ -1,36 +1,30 @@
 """
 Module: modules.architecture.record_tables
 
-The `RecordTableProvider`s of the module's five record types, the element, the connection, the diagram, the state machine diagram and the state: each
-list as a table, so it exports to CSV, PDF and Word and (element and connection) imports from the same CSV (a row
-with a code updates that record, a blank code creates one). A diagram, a state machine diagram and a state export only (`NOT_IMPORTABLE` says why).
+The `RecordTableProvider`s of the element, connection, diagram, state machine diagram and state types: each lists as a
+table, so it exports to CSV, PDF and Word. Elements and connections import from the same CSV (a row with a code updates
+that record, a blank code creates one); the others export only (`NOT_IMPORTABLE` says why).
 
-Responsibilities:
-- Declare the columns (name, type, symbol, parent, owner, status, ports; or type, ends, ports, protocol) and
-  filters, and share the create and edit logic with the endpoints (`records.create_element` and so on), so
-  validation, the version counter and the audit event are the ones the screen applies.
+Responsibilities: declare the columns and filters, and share create and edit logic with the endpoints
+(`records.create_element` and so on) so validation, the version counter and the audit event are the screen's.
 
 Design decisions:
-- The type is written by its name (the project's effective list, or the organisation's rows at the organisation
-  tier); the parent by the code of an element of the same owner, which must already exist. A connection end
-  that another owner shares is written qualified by the owner's code (`PLAT-ELM-004`, or the organisation's code),
-  because a bare code would name one of the project's own elements; the parser resolves it through
-  `visibility`, so a file cannot reach an element the person cannot read.
-- The symbol is written by its name (the owner's effective library) and left blank for the type's own; a name is shown
-  only for a symbol the reader may read (`symbols.visible_symbol_ids`), so an element another owner shares never
-  discloses a symbol the person cannot see.
-- `status` is importable because the module has no approval gate (a record may make any move
-  `transitions.STATUS_MOVES` lists, and a row asking for another is a row error); a new record can be created
-  `Draft`, `Proposed` or `Active`, not `Retired` or `Rejected`.
-- `ports` is one list cell, `name:direction` per port (`Main:both;Debug:in`), the way the export writes it. An
-  import *adds* the ports a cell names that the element lacks and never removes or edits one, so a round trip
-  changes nothing and removing a port stays a deliberate act on the element.
-- An import update quotes the record's current `version`: a file is applied to the record as it is now.
+- A type is written by its name (the project's effective list, or the organisation's rows at the organisation tier), a
+  parent by the code of an element of the same owner that already exists. A connection end another owner shares is
+  written qualified by the owner's code (`PLAT-ELM-004`), because a bare code would name one of the project's own
+  elements; the parser resolves it through `visibility`, so a file cannot reach an element the person cannot read.
+- A symbol is written by name (the owner's effective library), blank for the type's own, and only for a symbol the
+  reader may read (`symbols.visible_symbol_ids`).
+- `status` is importable (no approval gate): a row may make any move `transitions.STATUS_MOVES` lists, and a new record
+  may be `Draft`, `Proposed` or `Active`.
+- `ports` is one cell, `name:direction` per port (`Main:both;Debug:in`). An import adds missing ports and never removes
+  or edits one, so a round trip changes nothing.
+- An import update quotes the record's current `version`.
 
-The organisation tier (`OrganizationRecordTable`) lists the organisation-owned elements the person may read and
-imports through the organisation endpoints' own path (`records.ElementOwner.of_organization`).
+The organisation tier (`OrganizationRecordTable`) lists the organisation-owned elements the person may read and imports
+through `records.ElementOwner.of_organization`.
 
-Dependencies: `records` (rules), `record_routes` (filters), `visibility`, `services.record_tables_core`.
+Dependencies: `records`, `record_routes` (filters), `visibility`, `services.record_tables_core`.
 """
 
 from __future__ import annotations

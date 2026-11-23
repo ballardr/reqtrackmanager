@@ -1,16 +1,12 @@
-"""Tests for the Stakeholders & Personas module's relationships
-(§10.5), through the real HTTP endpoints.
+"""Tests for the Stakeholders & Personas module's §10.5 relationships, through the real HTTP endpoints.
 
-Covers: the declared kinds (including the reserved Design/System Element one),
-adding/listing/removing each kind from a Stakeholder and a Persona, the
-holder/target-type rules, same-project and cross-tenant tenancy, the target
-picker, the reverse ("incoming") view, a disabled target module, the FGAC view
-filter, RBAC composition, audit logging, erasure of a stakeholder with
-relationships, and the MCP tool manifest.
+Covers: the declared kinds (including the reserved Design/System Element one), adding/listing/removing
+each kind from a Stakeholder and a Persona, holder/target-type rules, same-project and cross-tenant
+tenancy, the target picker, the reverse view, a disabled target module, the FGAC view filter, RBAC,
+audit logging, erasure of a stakeholder with relationships and the MCP tool manifest.
 
-Pain Points and Decisions are real records of their own modules, created
-through those modules' own endpoints, so the generic summary-provider hook is
-exercised end to end rather than mocked.
+Pain Points and Decisions are created through their own modules' endpoints, so the generic
+summary-provider hook is exercised end to end rather than mocked.
 """
 
 from __future__ import annotations

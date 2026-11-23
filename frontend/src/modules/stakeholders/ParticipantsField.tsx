@@ -1,19 +1,17 @@
 /**
  * Module: modules/stakeholders/ParticipantsField
  *
- * The "Participants" field of the engagement create and edit forms, laid out like the detail page's lists: a
- * (+) beside the caption opens a filterable checklist of the project's Stakeholders, and the chosen
- * people are chips beneath. With the Research extras on, text typed in the checklist that is not a
- * known Stakeholder is offered as an anonymous participant (a label such as "Participant 3", no
- * Stakeholder record); its chip carries a Persona select, so a participant first recorded without a
- * Persona (a late arrival, a name not yet known) can be given one later. Nothing is written here; the
- * form owns the lists. A new engagement sends them in the create request; an edit compares them with
- * what was recorded (`engagementParticipantEdits`). The detail page's Participants list adds and
- * removes people directly.
+ * The "Participants" field of the engagement create and edit forms, laid out like the detail page's lists: a (+) beside
+ * the caption opens a filterable checklist of the project's Stakeholders and the chosen people are chips beneath. With
+ * the Research extras on, text typed in the checklist that is not a known Stakeholder is offered as an anonymous
+ * participant (a label such as "Participant 3", no Stakeholder record); its chip carries a Persona select, so a
+ * participant first recorded without a Persona can be given one later. Nothing is written here; the form owns the
+ * lists. A new engagement sends them in the create request; an edit compares them with what was recorded
+ * (`engagementParticipantEdits`). The detail page's Participants list adds and removes people directly.
  *
- * It loads the project's Stakeholders itself and renders nothing when they cannot be read (a
- * form never offers a field the request would refuse). A project with no Stakeholders and no
- * Research extras shows an empty state naming the next step instead of an empty dropdown.
+ * It loads the project's Stakeholders itself and renders nothing when they cannot be read (a form never offers a field
+ * the request would refuse). A project with no Stakeholders and no Research extras shows an empty state naming the
+ * next step instead of an empty dropdown.
  */
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";

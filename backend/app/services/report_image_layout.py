@@ -1,20 +1,17 @@
 """
 Module: services.report_image_layout
 
-How big a layout's `Image` block prints, the same in every document format.
+How big a layout's `Image` block prints, identically in every document format.
 
 Responsibilities:
-- Read a picture's natural size (a raster's header, an SVG's declared size) in centimetres.
-- Turn the block's width, unit and height, and the width of the text, into the size drawn (`placed_size_cm`).
-- Rasterise an SVG picture for the formats that cannot embed one (`svg_block_png`).
-- Do the same for the pictures of a table cell, against the cell's width, stacked or side by side (`place_cell_pictures`).
+- Read a picture's natural size (raster header, declared SVG size) in centimetres; turn the block's width, unit,
+  height and the text width into the drawn size (`placed_size_cm`); rasterise an SVG for formats that cannot embed
+  one (`svg_block_png`); place a table cell's pictures stacked or side by side (`place_cell_pictures`).
 
 Design decisions:
-- **One rule for four renderers**, so PDF, Word, ODT and HTML never disagree about a size. A width alone keeps the
-  picture's shape; a height alone sizes it by height; both stretch it to those two. Whatever is asked, the picture is
-  never wider than the text (the height shrinks with it). With no size the picture prints at its natural size at 96
-  pixels per inch, shrunk to fit.
-- A picture whose size cannot be read is not drawn (the caller skips it), never guessed.
+- One rule for four renderers: width alone keeps the shape, height alone sizes by height, both stretch; never wider
+  than the text; with no size, the natural size at 96 pixels per inch, shrunk to fit.
+- A picture whose size cannot be read is not drawn, never guessed.
 
 Dependencies: Pillow, `svglib` (through `services.report_svg`), `services.report_model` (`Image`).
 """

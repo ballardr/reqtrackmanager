@@ -3,13 +3,10 @@ const NONE: GuidingPrinciple[] = [];
 /**
  * Module: modules/context_strategy/OrgGuidingPrinciplesPanel
  *
- * The org-scoped equivalent of `ProjectGuidingPrinciplesPage.tsx` — an organisation's own org-scoped Guiding Principle
- * records (the org/project scope discriminator), rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group
- * (`module.ts`'s `orgResourceSections`).
- *
- * Placement follows `OrgStrategiesPanel.tsx` (Decided by: Agent): org-level content its owners work with and projects
- * reuse, so it sits in Org Resources. Pain Point Type is a configuration table with no org-scoped record behind it, so
- * it is an `orgAdminSections` entry instead.
+ * The organisation-scoped equivalent of `ProjectGuidingPrinciplesPage.tsx`: an organisation's own Guiding Principle
+ * records, rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s `orgResourceSections`). Placement
+ * follows `OrgStrategiesPanel.tsx`. Pain Point Type is a configuration table with no organisation-scoped record, so it
+ * is an `orgAdminSections` entry instead.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

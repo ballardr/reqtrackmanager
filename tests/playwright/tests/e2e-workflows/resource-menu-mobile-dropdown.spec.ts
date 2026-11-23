@@ -3,14 +3,11 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS } from "./helpers";
 
 /**
- * Below 860px (theme.css/`useNarrowViewport`, matching the nav rail's own
- * mobile breakpoint per mobile-nav-rail.spec.ts) `ResourceMenu`'s vertical
- * link list is replaced with a single `<select>` (platform-review-2026-09:
- * Org Admin alone has up to 10 groups, forcing a scroll past the whole menu
- * on a phone-width viewport before reaching the selected group's own
- * content). Org Admin is the motivating, worst-case example — real content,
- * not a demo fixture — so this exercises the actual page rather than
- * Storybook's synthetic three-group `ResourceMenu.stories.tsx` fixture.
+ * Below 860px (theme.css/`useNarrowViewport`, matching the nav rail's mobile breakpoint per mobile-nav-rail.spec.ts)
+ * `ResourceMenu`'s vertical link list is replaced with a single `<select>`, since Org Admin alone has up to 10
+ * groups and would force a scroll past the whole menu on a phone-width viewport. Org Admin is the worst-case
+ * example, so this exercises the actual page rather than Storybook's synthetic three-group fixture
+ * (`ResourceMenu.stories.tsx`).
  */
 test.describe("resource menu: mobile dropdown collapse", () => {
   test("Org Admin's section list collapses to a dropdown below the breakpoint, and switching groups navigates", async ({

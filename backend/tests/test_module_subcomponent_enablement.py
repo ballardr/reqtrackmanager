@@ -1,18 +1,14 @@
-"""Tests for the module
-sub-component enablement mechanism: `ModuleSubComponentDefinition`, the two-tier
-resolution functions (`app.modules.registry.is_module_subcomponent_enabled`/
-`is_org_module_subcomponent_enabled`), the `require_project_subcomponent_
-enabled`/`require_org_subcomponent_enabled` RBAC dependencies' 404-not-403
-behaviour, and the org-tier (`/orgs/{id}/modules/{key}/subcomponents`) and
-project-tier (`/projects/{id}/modules/{key}/subcomponents`) admin
-endpoints.
+"""Tests for module sub-component enablement: `ModuleSubComponentDefinition`, the
+two-tier resolution functions (`app.modules.registry.is_module_subcomponent_enabled`/
+`is_org_module_subcomponent_enabled`), the 404-not-403 behaviour of the
+`require_project_subcomponent_enabled`/`require_org_subcomponent_enabled` dependencies,
+and the org-tier (`/orgs/{id}/modules/{key}/subcomponents`) and project-tier
+(`/projects/{id}/modules/{key}/subcomponents`) admin endpoints.
 
-Uses a fake `ModuleDefinition` with `sub_components` set (mirroring
-`test_module_registry.py`'s own `fake_module` fixture pattern), not a real
-content module, so this suite doesn't depend on Context & Strategy
-existing — see `backend/app/modules/context_strategy/tests/
-test_context_strategy_api.py` for the real end-to-end coverage of the
-Strategy artefact actually wired onto this mechanism."""
+Uses a fake `ModuleDefinition` with `sub_components` (as `test_module_registry.py`'s
+`fake_module` does), so the suite does not depend on a content module; end-to-end
+coverage of the Strategy artefact is in
+`backend/app/modules/context_strategy/tests/test_context_strategy_api.py`."""
 
 import uuid as uuid_lib
 from types import SimpleNamespace

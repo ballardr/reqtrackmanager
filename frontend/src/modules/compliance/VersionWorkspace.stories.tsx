@@ -33,14 +33,9 @@ const EMPTY_DIFF: StandardVersionDiff = {
 };
 
 /**
- * `VersionWorkspace` renders `RequirementTree` unconditionally underneath
- * its own status/publish/retire header, and opens `VersionDiffModal` on
- * "Compare versions" — both of those components' own detailed behaviour is
- * covered by their own dedicated story files
- * (`RequirementTree.stories.tsx`, `VersionDiffModal.stories.tsx`). Here,
- * `requirements`/`diff` fetches are mocked to resolve trivially (empty)
- * just so those children mount cleanly; these stories exercise what's
- * specific to `VersionWorkspace` itself: the status-driven publish/retire/
+ * `VersionWorkspace` renders `RequirementTree` under its status, publish and retire header and opens `VersionDiffModal` on
+ * "Compare versions"; those components are covered by `RequirementTree.stories.tsx` and `VersionDiffModal.stories.tsx`, so their
+ * `requirements` and `diff` fetches resolve empty here. These stories exercise the status-driven publish, retire and
  * immutability-note logic and the "Compare versions" entry point.
  */
 function mockWorkspaceApis() {
@@ -161,10 +156,8 @@ export const CompareVersionsOpensDiffModal: Story = {
 
 // --- version quick-switch -----------------------------------------
 
-/** With a sibling version to switch to, a chevron next to the version
- * heading (the `EntitySwitcher`) opens a popover listing it as a
- * plain link straight to its own workspace URL — the sibling list is just
- * this component's own `versions` prop, no extra fetch. */
+/** With a sibling version to switch to, a chevron beside the version heading (`EntitySwitcher`) opens a popover linking to its
+ * workspace URL; the sibling list is the component's `versions` prop, with no extra fetch. */
 export const EntitySwitcherOffersSiblingVersion: Story = {
   decorators: [withRouter(`/standards/std-1/versions/ver-1`, "/standards/:standardId/versions/:versionId")],
   args: {

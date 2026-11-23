@@ -9,13 +9,8 @@ import { OIDC_CLIENT_NONCE_STORAGE_KEY } from "./OrgLoginPage";
 
 const NONCE = "test-nonce-abc123";
 
-/** Sets the page's actual URL (path/search/hash) via `history.replaceState`
- * — never by assigning `window.location.search` directly, which triggers a
- * real page navigation/reload in a browser and would abandon the test run.
- * `window.location.hash`, unlike `.search`, is safe to assign directly (no
- * reload), but routing everything through one helper keeps every story's
- * URL setup consistent and avoids leaking a previous story's `search` into
- * the next one sharing this same browser page. */
+/** Sets the URL (search and hash) with `history.replaceState`: assigning `window.location.search`
+ * reloads the page and would abandon the test run, and one helper stops a story's `search` leaking into the next. */
 function setLocation(searchAndHash: string) {
   window.history.replaceState(null, "", `${window.location.pathname}${searchAndHash}`);
 }
@@ -31,15 +26,12 @@ const withOidcRoutes: Decorator = (Story) => (
   </MemoryRouter>
 );
 
-// Stable mock reference, reconfigured per-story via `beforeEach` — see
-// LoginPage.stories.tsx's `loginMock` comment for why a fresh `fn()`
-// baked into a `decorators` array literal isn't reliably re-applied here.
+// Stable mock reference reconfigured per story in `beforeEach`; a fresh `fn()` in `decorators` is not
+// reliably re-applied (see LoginPage.stories.tsx's `loginMock`).
 const refreshUserMock = fn();
 
-// Real behaviour is a one-shot side-effect sequence reading
-// `window.location.hash`/`search` (not react-router state) plus
-// `sessionStorage` — set both directly before each story, matching exactly
-// what OrgLoginPage.generateClientNonce/the backend redirect produce.
+// The page reads `window.location.hash`/`search` (not router state) and `sessionStorage` once; each
+// story sets both as OrgLoginPage.generateClientNonce and the backend redirect produce them.
 const meta: Meta<typeof OidcCompletePage> = {
   title: "Pages/OidcCompletePage",
   component: OidcCompletePage,
@@ -49,9 +41,8 @@ export default meta;
 
 type Story = StoryObj<typeof OidcCompletePage>;
 
-/** Matching nonce + a real token in the fragment — completes login and
- * redirects to /projects. Renders nothing itself (the success path is a
- * pure redirect), so the assertion is on the resulting page. */
+/** A matching nonce and a token in the fragment complete login and redirect to /projects; the page renders
+ * nothing itself, so the assertion is on the resulting page. */
 export const SuccessfulLoginRedirects: Story = {
   beforeEach: () => {
     refreshUserMock.mockResolvedValue(undefined);
@@ -79,9 +70,7 @@ export const SuccessfulLoginReturnsToTheRememberedPage: Story = {
   },
 };
 
-/** No nonce ever stashed (e.g. the tab was closed/reopened mid-flow, or the
- * page was reached directly) — nothing to compare against, so it's treated
- * as untrusted. */
+/** With no stored nonce (tab reopened mid-flow, page reached directly) there is nothing to compare, so the token is untrusted. */
 export const MissingNonceShowsError: Story = {
   beforeEach: () => {
     sessionStorage.removeItem(OIDC_CLIENT_NONCE_STORAGE_KEY);
@@ -94,9 +83,7 @@ export const MissingNonceShowsError: Story = {
   },
 };
 
-/** A mismatched nonce is exactly the login-CSRF scenario this page exists
- * to block — same error, not a more specific "nonce mismatch" message, so
- * an attacker can't distinguish "wrong nonce" from "no token" by probing. */
+/** A mismatched nonce (login CSRF) shows the generic error, so probing cannot tell "wrong nonce" from "no token". */
 export const MismatchedNonceShowsError: Story = {
   beforeEach: () => {
     sessionStorage.setItem(OIDC_CLIENT_NONCE_STORAGE_KEY, NONCE);
@@ -108,10 +95,8 @@ export const MismatchedNonceShowsError: Story = {
   },
 };
 
-/** The identity provider authenticated the user, but the org's required
- * OIDC group check rejected them (Organization.oidc_required_group) — no
- * token was ever issued server-side, so the (still nonce-checked) query
- * string carries a specific denial message instead. */
+/** When the required OIDC group check (Organization.oidc_required_group) rejects the user no token is issued;
+ * the nonce-checked query string carries a denial message instead. */
 export const NotProvisionedShowsServerMessage: Story = {
   beforeEach: () => {
     sessionStorage.setItem(OIDC_CLIENT_NONCE_STORAGE_KEY, NONCE);

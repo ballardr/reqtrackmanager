@@ -1,11 +1,9 @@
 /**
  * Module: components/HexColourInput
  *
- * The browser's colour picker and a hex box kept in sync: the pair `ColorField` and `ColourChoiceField` share, so a
- * custom colour is typed and chosen the same way everywhere.
- *
- * Design decisions: only plain hex is ever reported (`#rrggbb`, lower case). Text that is not a colour stays in the box
- * while it is typed, is flagged, and is never reported.
+ * The browser's colour picker and a hex box kept in sync, shared by `ColorField` and `ColourChoiceField`. Only
+ * plain hex (`#rrggbb`, lower case) is reported; text that is not a colour stays in the box while typed, is
+ * flagged and is never reported.
  */
 import { useState } from "react";
 

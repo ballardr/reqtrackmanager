@@ -4,32 +4,16 @@ export const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * Shared focus-trap + focus-restoration + Escape-to-close behaviour for
- * this app's floating dialog components (`Modal`, `SidePanel`, `Popover`).
- * Extracted once all three needed the identical logic, rather than
- * duplicated per component: moves initial focus into the dialog only if
- * nothing inside it already has focus (so a child's own `autoFocus`, e.g.
- * `RichTextEditor`'s link-URL field, isn't stolen back), cycles Tab/Shift+Tab
- * within the dialog while it's open, and restores focus to whatever
- * triggered it once it closes.
+ * Shared focus-trap, focus-restoration and Escape-to-close behaviour for the floating dialog components (`Modal`,
+ * `SidePanel`, `Popover`). Initial focus moves into the dialog only if nothing inside already has focus (so a child's own
+ * `autoFocus`, e.g. `RichTextEditor`'s link-URL field, is kept), Tab and Shift+Tab cycle within the dialog while it is
+ * open, and focus returns to whatever triggered it on close.
  *
- * Escape only closes *this* dialog if it currently contains focus — found
- * as a real bug (not just a test-selector artifact) while adding 2026-08-31 Playwright coverage for the "Manage users"
- * modal's per-row `MultiSelectDropdown`: every open `Modal`/`SidePanel`/
- * `Popover` registers its own independent `window` "keydown" listener, all
- * of which fire for a single Escape press regardless of nesting, since
- * `addEventListener` has no concept of "only the topmost one" on its own.
- * Without this guard, opening a `Popover` (e.g. a row's role dropdown)
- * inside a `Modal`/`SidePanel` and pressing Escape closed *both* — the
- * outer container's own contents (and whatever state it held) vanished
- * along with the popover the user actually meant to dismiss. Each
- * instance's own initial-focus effect above already moves focus inside
- * itself on open, and (since `Modal`/`SidePanel`/`Popover` are all
- * portalled to `document.body` as independent DOM subtrees, not nested
- * inside one another even when opened "inside" each other logically) only
- * the innermost currently-open one ever actually contains
- * `document.activeElement` — the same containment check the Tab-trap
- * logic just below already relies on for its own correctness.
+ * Escape closes this dialog only if it currently contains focus. Every open `Modal`/`SidePanel`/`Popover` registers its
+ * own `window` "keydown" listener and all fire for one Escape press, so without the guard a `Popover` opened inside a
+ * `Modal` closed both. Each instance moves focus inside itself on open and all three are portalled to `document.body` as
+ * independent subtrees, so only the innermost open one contains `document.activeElement` (the same containment check the
+ * Tab trap relies on).
  */
 export function useDialogA11y(dialogRef: RefObject<HTMLElement | null>, onClose: () => void): void {
   const previouslyFocused = useRef<HTMLElement | null>(null);

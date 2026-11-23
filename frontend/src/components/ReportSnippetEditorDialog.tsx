@@ -1,22 +1,18 @@
 /**
  * Module: components/ReportSnippetEditorDialog
  *
- * The dialog that creates a saved report snippet from nothing, or edits an existing one: its details (name, description,
+ * The dialog that creates a saved report snippet from nothing, or edits one: its details (name, description,
  * category) and its blocks, in the same Blocks and Text editors a layout is written in.
  *
  * Responsibilities:
- * - Create: choose the kind first (document or table, since a snippet's blocks are checked against a family), then build the
- *   blocks from an empty tree. The kind is fixed once the first block exists.
- * - Edit: load the snippet's blocks (with the page styles and variables it carries) into the same editors.
- * - Switch between Blocks (`ReportLayoutBlocks`, lazy) and Text (parse and format by the server) without keeping a second
- *   model: one tree, with the text view's text only parsed back when it is valid.
- * - Ask the server what saving the blocks would store (`ReportSnippetStoreApi.check`, whole tree selected) as they change and
- *   show it through `ReportSnippetCheckSummary`; save through the existing `save` (new) or `update` (existing) calls.
+ * - Create: choose the kind first (document or table; blocks are checked against a family), then build from an empty
+ *   tree. The kind is fixed once the first block exists. Edit: load the blocks, page styles and variables.
+ * - Switch between Blocks (`ReportLayoutBlocks`, lazy) and Text (parsed and formatted by the server) over one tree; text
+ *   is parsed back only when valid.
+ * - Ask the server what saving would store (`ReportSnippetStoreApi.check`) and show it through `ReportSnippetCheckSummary`.
  *
- * Design decisions: no editing surface of its own: the snippet is a layout fragment, so the layout editors are reused as they
- * are. The server decides every rule, so this dialog and the designer's Save as snippet cannot disagree. The empty tree of a
- * kind is written by the server (`parseText("@layout <kind>")`), never spelled out here. Follows the form header, required-
- * field and field-help patterns.
+ * Design decisions: no editing surface of its own; the server decides every rule and writes the empty tree of a kind
+ * (`parseText("@layout <kind>")`). Follows the form header, required-field and field-help patterns.
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 

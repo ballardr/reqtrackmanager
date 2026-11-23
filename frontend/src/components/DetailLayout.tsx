@@ -1,35 +1,18 @@
 /**
  * Module: components/DetailLayout
  *
- * The shared frame of an artefact detail page: the page content in the main
- * column and, beside it, a persistent aside (today the Links panel). Pattern
- * "detail page with links aside" in `docs/ux-style-guide.md`; `SidePanel` is an
- * overlay for row detail and is deliberately not reused for this.
+ * The shared frame of an artefact detail page: content in the main column and a persistent aside (the Links panel)
+ * beside it ("detail page with links aside" in `docs/ux-style-guide.md`; `SidePanel` is an overlay, not reused).
  *
- * - At 1280px and wider the aside is a sticky right-hand column that the user can
- *   collapse; the choice is stored per user (`detail_aside_collapsed`), so it
- *   follows them across pages and devices. Default is open.
- * - Below 1280px the aside stacks under the content, always shown, with no toggle
- *   (a collapse there would only hide what the user scrolled to find).
- * - The aside is one card. Its title is its tab strip (Links, Activity) or, for a page with no
- *   activity, a single "Links" heading; a panel inside it draws no card or title of its own
- *   (`detailAsideContext`), so the word "Links" appears once, wide or stacked.
- * - A page that passes `activity` as well gets two tabs in the aside, Links and Activity; the
- *   selected tab is a per-viewer preference (`detail_aside_tab`). The Links panel stays mounted
- *   while hidden (its state survives a tab switch); the Activity tab mounts when opened, so it
- *   loads fresh each time. Wide tables never go in the aside: a page keeps those in its body.
- * - A page may add further tabs after those (`extraTabs`, for example the record's Watching tab); like
- *   Links they stay mounted while hidden. A stored tab that a page does not offer falls back to Links.
- *
- * - The content is drawn in the default card order (`detailCardOrder`: header, details and purpose cards, organising,
- *   supporting, discussion last), so a card added later lands in its place; pass cards directly, not inside a wrapper.
- *
- * - A page whose record has attachments passes `pictures` (its attachment list and upload): the Markdown fields in its
- *   content (the edit form included) then offer a Picture button that inserts one of the record's attachments.
- *
- * Renders its own `.container` (unless `contained` is false, for a page that already
- * sits in a content wrapper), so a page replaces its root `<div className="container
- * stack">` with this component.
+ * - At 1280px and wider the aside is a sticky right-hand column the user can collapse (`detail_aside_collapsed`,
+ *   stored per user, default open); below it the aside stacks under the content with no toggle.
+ * - The aside is one card titled by its tab strip (Links, Activity, plus `extraTabs`) or a single "Links" heading;
+ *   a panel inside draws no card of its own (`detailAsideContext`). The selected tab is the per-viewer
+ *   `detail_aside_tab`; a stored tab the page does not offer falls back to Links. Tabs stay mounted while hidden
+ *   except Activity, which loads fresh when opened. Wide tables stay in the body.
+ * - Content is drawn in the default card order (`detailCardOrder`); pass cards directly, not in a wrapper. A page
+ *   with attachments passes `pictures` so its Markdown fields offer a Picture button.
+ * - It renders its own `.container` unless `contained` is false.
  */
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { ReactNode } from "react";

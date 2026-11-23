@@ -12,7 +12,7 @@ import {
 } from "./client";
 
 /**
- * How the client decides a refused request ends the session, and the ceiling an ordinary read is given. The page itself is
+ * How the client decides a refused request ends the session, and the ceiling an ordinary read is given. The page is
  * a placeholder: every check is in the interactions, against a replaced `fetch`.
  */
 const meta: Meta = { title: "Utils/apiClient", render: () => <p>Request handling; see the interactions.</p> };

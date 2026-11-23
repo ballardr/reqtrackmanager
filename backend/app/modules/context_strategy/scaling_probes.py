@@ -1,13 +1,9 @@
 """
 Module: modules.context_strategy.scaling_probes
 
-The `ScalingProbe`s for the five Context & Strategy artefact types (strategy, future state, pain point, guiding
-principle, open question): how the scaling-shape guard fills and reads them through the API.
-
-Responsibilities:
-- Create N records of each type through its real create endpoint and name its list endpoint.
-
-Dependencies: `modules.registry` (`ScalingProbe`).
+The `ScalingProbe`s for the five artefact types: create N records of each
+through its real create endpoint and name its list endpoint, for the
+scaling-shape guard. Dependencies: `modules.registry` (`ScalingProbe`).
 """
 
 from __future__ import annotations

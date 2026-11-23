@@ -8,8 +8,8 @@ Cards never nest (docs/ux-style-guide.md, "Pattern: detail page content"): a rec
 `DetailCard` and each panel is its own card beside it, not inside it.
 
 Checks `frontend/src/**/*.tsx`, stories excluded. Only what is written inside the tags in one file is
-visible here; a component that draws its own card and is placed inside a `DetailCard` is caught in review
-and by that component's story. The baseline of violations is empty.
+visible here; a component that draws its own card and is placed inside a `DetailCard` is caught by that
+component's story. The baseline of violations is empty.
 """
 
 import re

@@ -1,9 +1,9 @@
 /**
  * Module: hooks/useCommitTags
  *
- * Applies the tags, the components and the external references a create form collected with `TagField` (which also
- * offers `ComponentField` and `ReferenceField`), once the record exists. The record is already saved by then, so a refused set never undoes
- * it: the user is told what failed and where to add them by hand (the new record's header).
+ * Applies the tags, components and external references a create form collected with `TagField` (which also
+ * offers `ComponentField` and `ReferenceField`), once the record exists. The record is already saved, so a
+ * refused set never undoes it: the user is told what failed and where to add them manually (the record's header).
  */
 import { useCallback } from "react";
 

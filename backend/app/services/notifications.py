@@ -196,10 +196,7 @@ async def run_digest_loop() -> None:
 
     Consistent with the disk-usage monitor (services/disk_monitor.py): an
     in-process asyncio background task rather than a separate worker
-    service. This is a fixed-interval loop rather than one aligned to a
-    specific calendar time of day — adequate for this deployment model;
-    calendar-aligned scheduling would be a natural follow-up once a real
-    task scheduler is introduced.
+    service. This is a fixed-interval loop, not aligned to a calendar time of day.
     """
     import asyncio
     import logging

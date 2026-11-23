@@ -2,9 +2,8 @@
  * Module: useClientConfig
  *
  * Fetches the deployment's frontend-facing settings once per mount
- * (`GET /api/v1/system/client-config`: the Help link's `HELP_ENABLED` /
- * `HELP_URL`). Shared by the header (`Layout`) and the `/help` redirect page
- * so neither re-implements the fetch.
+ * (`GET /api/v1/system/client-config`: the Help link's `HELP_ENABLED` / `HELP_URL`),
+ * shared by the header (`Layout`) and the `/help` redirect page.
  */
 import { useEffect, useState } from "react";
 

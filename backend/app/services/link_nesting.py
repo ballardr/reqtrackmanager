@@ -1,35 +1,27 @@
 """
 Module: services.link_nesting
 
-Links between a project and its ancestors or descendants: which project pairs
-may be linked, whether a link type allows it and in which direction, and which
-related projects a user may see.
+Links between a project and its ancestors or descendants: which project pairs may be linked, whether a link
+type allows it and in which direction, and which related projects a user may see.
 
 Responsibilities:
-- Relate two projects (`project_relation`): same, one above the other, or
-  unrelated (siblings, cousins, other trees).
-- Decide whether a link type may join a project pair (`check_nesting`,
-  `nesting_violation`), from the type's `nesting_scope` and `flow`.
-- List the related projects a user can open (`related_projects`), the scope of
-  both the link-candidate endpoint and the link graph.
-- Find existing cross-level links that no longer satisfy a type's scope
-  (`count_cross_links_violating`), for the admin "N links will be flagged" line.
+- Relate two projects (`project_relation`): same, one above the other, or unrelated.
+- Decide whether a link type may join a project pair (`check_nesting`, `nesting_violation`), from the type's
+  `nesting_scope` and `flow`.
+- List the related projects a user can open (`related_projects`), the scope of the link-candidate endpoint and
+  the link graph, and find cross-level links that no longer satisfy a type's scope
+  (`count_cross_links_violating`).
 
 Design decisions:
-- Ancestry only. Siblings and unrelated projects stay unlinkable (that is the
-  general cross-project problem).
-- Related projects are walked outward from the request project and stop at the
-  first project the user cannot open, so a hole in the chain never looks
-  contiguous and nothing beyond it is disclosed (the `/ancestors` rule).
-- "Can open" is a genuine project role, not settings-management capability:
-  the related projects carry artefact content, not just structure.
-- Enforced at link creation only. A link whose projects stop being related
-  (reparent, detach) stays stored and is simply not shown (`is_link_live`) until
-  the chain is restored; narrowing a type's scope flags existing links, never
-  deletes them.
+- Ancestry only: siblings and unrelated projects stay unlinkable.
+- Related projects are walked outward and stop at the first project the user cannot open, so a gap in the
+  chain never looks contiguous and nothing beyond it is disclosed (the `/ancestors` rule).
+- "Can open" is a genuine project role, not settings-management capability, because related projects carry
+  artefact content.
+- Enforced at link creation only: a link whose projects stop being related stays stored and hidden
+  (`is_link_live`) until the chain is restored, and narrowing a type's scope flags links, never deletes them.
 
-Dependencies: `services.project_hierarchy` (chains), `services.rbac` (roles),
-`services.link_type_scope` (`LinkRuleError`).
+Dependencies: `services.project_hierarchy`, `services.rbac`, `services.link_type_scope` (`LinkRuleError`).
 """
 
 from __future__ import annotations

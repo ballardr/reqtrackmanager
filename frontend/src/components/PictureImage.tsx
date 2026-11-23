@@ -4,15 +4,12 @@
  * Draws an uploaded picture (a report image, an organisation logo) on a backdrop that keeps transparent and
  * single-colour pictures visible, and the switch that chooses the backdrop.
  *
- * Responsibilities:
- * - `PictureImage`: an `<img>` with the shared `.picture-backdrop` class, so every place a library picture is drawn
- *   looks the same; no picker has its own background style.
+ * - `PictureImage`: an `<img>` with the shared `.picture-backdrop` class, so every library picture looks the same.
  * - `PictureBackdropSwitch`: checkerboard, light or dark, for judging a logo against the page it will print on.
  *
- * Design decisions: the default is a checkerboard, the convention for transparency, and never depends on the
- * picture's pixels (a white mark, a black mark and a mid-grey mark are all visible on it). The choice is one
- * per-person display preference (`usePictureBackdrop`), read by every `PictureImage`, so a switch in one place applies
- * everywhere pictures are shown. The checkerboard is built from two theme tokens, so it reads in light and dark.
+ * The default is a checkerboard (the convention for transparency, independent of the picture's pixels), built from
+ * two theme tokens so it reads in light and dark. The choice is one per-person preference (`usePictureBackdrop`)
+ * read by every `PictureImage`, so a switch in one place applies everywhere.
  */
 import type { ImgHTMLAttributes } from "react";
 

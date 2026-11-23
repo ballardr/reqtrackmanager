@@ -1,16 +1,13 @@
 /**
  * Module: components/SearchHitSummary
  *
- * One global-search result as the header dropdown and the search page both show it, so the two
- * cannot drift: the record's code, its title (with the matched words highlighted), a type pill, a
- * status pill, where it lives, and, on the page, the snippet of the field the match was found in.
+ * One global-search result as the header dropdown and the search page both show it, so the two cannot drift: the code,
+ * the title (matched words highlighted), a type pill, a status pill, where it lives and, on the page, the snippet of the
+ * field the match was found in.
  *
- * The code is qualified by its owning project (or organisation) because a search spans projects
- * (`hitCode`). An organisation-owned record names the organisation rather than a project.
- *
- * `density="compact"` (the dropdown) is one line per hit: muted code, title truncated with a tooltip
- * and the muted place right-aligned. The type is named by the dropdown's group heading, and the
- * status and snippet stay on the results page.
+ * The code is qualified by its owning project (`hitCode`) because a search spans projects; an organisation-owned record
+ * names the organisation. `density="compact"` (the dropdown) is one line per hit: muted code, title truncated with a
+ * tooltip and the muted place right-aligned; the type is the dropdown's group heading, and status and snippet stay on the page.
  */
 import { hitCode, highlightParts, matchRanges, type SearchHit } from "../api/search";
 import { useStrings } from "../context/TerminologyContext";

@@ -21,10 +21,8 @@ export default meta;
 
 type Story = StoryObj<typeof SplitButtonTrigger>;
 
-/** The whole point of a split button (style guide "Pattern: split-button
- * trigger"): clicking the main label performs the common-case action
- * immediately — no menu stop first, unlike the `Popover`-based two-option
- * menu this component replaces on `RequirementsPage`. */
+/** The point of a split button (style guide "Pattern: split-button trigger"): clicking the main label performs the
+ * common-case action immediately, with no menu stop first. */
 export const ClickingMainButtonPerformsDefaultActionDirectly: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
@@ -35,12 +33,9 @@ export const ClickingMainButtonPerformsDefaultActionDirectly: Story = {
   },
 };
 
-/** The chevron is a separate control from the main button — its own
- * accessible name (`moreOptionsLabel`), not "New requirement" again, so
- * `getByRole("button", { name: "New requirement" })` unambiguously
- * resolves to the primary action even though both buttons render inside
- * the same `.split-button` group. Clicking it reveals the alternative(s)
- * without ever firing the default action. */
+/** The chevron is a separate control with its own accessible name (`moreOptionsLabel`), so
+ * `getByRole("button", { name: "New requirement" })` resolves to the primary action even though both buttons sit in the
+ * same `.split-button` group. Clicking it reveals the alternatives without firing the default action. */
 export const ChevronRevealsAlternativesWithoutFiringDefault: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
@@ -61,10 +56,7 @@ export const ChevronRevealsAlternativesWithoutFiringDefault: Story = {
   },
 };
 
-/** Clicking outside the revealed menu closes it — shared `Popover`
- * outside-click-close behaviour, per this component's own design note
- * that it reuses `Popover`'s positioning/close logic rather than
- * reimplementing it. */
+/** Clicking outside the revealed menu closes it, through the shared `Popover` outside-click behaviour. */
 export const OutsideClickClosesTheMenu: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

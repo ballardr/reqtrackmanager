@@ -3,26 +3,17 @@ import { expect, test } from "@playwright/test";
 import { apiHeaders, ensureExpanded, installCleanupHook, loginAs, onCleanup, openOrgGroupPanel, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
- * Job to be done: an org admin can nest one organisation group inside
- * another (transitively resolved for project-access purposes — see
- * backend/tests/test_org_group_nesting.py for the RBAC-level coverage),
- * and the UI surfaces a clear error rather than silently failing when an
- * attempted nesting would create a cycle.
+ * Job to be done: an org admin can nest one organisation group inside another (resolved transitively for project
+ * access; RBAC coverage is in backend/tests/test_org_group_nesting.py), and the UI shows a clear error rather than
+ * failing silently when a nesting would create a cycle.
  *
- * Org Groups moved off the old `CollapsibleSection`-of-`CollapsibleSection`s
- * accordion onto `DirectoryTable` + a per-row `SidePanel` (docs/decisions.md) — this spec was
- * rewritten for that shape rather than patched in place, since the old
- * `openGroupCard`/`ensureExpanded`-per-card flow no longer applies (a row
- * now opens a real `SidePanel`, not an inline expand).
+ * Groups are a `DirectoryTable` with a per-row `SidePanel` (docs/decisions.md).
  *
- * Uses Gamma (orgAdminGamma is its sole admin, single-org so `/orgs` auto-
- * navigates straight to its admin page) — same choice org-security-
- * controls.spec.ts makes, to avoid interfering with Alpha/Beta specs
- * sharing this suite's single-worker run.
+ * Uses Gamma (orgAdminGamma is its sole admin and `/orgs` redirects straight to its admin page), as
+ * org-security-controls.spec.ts does, to avoid interfering with Alpha/Beta specs.
  *
- * Ends by deleting both groups through the panel's own "Delete group"
- * (org groups became deletable 2026-10-05), with an API cleanup as a
- * backstop if the test stops early, so groups no longer pile up in Gamma.
+ * Ends by deleting both groups through the panel's "Delete group", with an API cleanup as a backstop if the test
+ * stops early, so groups do not accumulate in Gamma.
  */
 test.describe("org group nesting", () => {
   installCleanupHook();
@@ -34,11 +25,8 @@ test.describe("org group nesting", () => {
     // Groups is its own top-level resource-menu group — a real navigation, so it must be selected before the
     // section is reachable at all.
     await selectOrgAdminGroup(page, "Groups");
-    // The "Organisation groups" `CollapsibleSection` now wraps a
-    // `DirectoryTable` + `SidePanel` rather than an accordion of
-    // per-group cards, but it's still itself a `CollapsibleSection` whose
-    // collapse state persists server-side per user across specs sharing
-    // this persona.
+    // The "Organisation groups" `CollapsibleSection` wraps a `DirectoryTable` + `SidePanel`; its collapse state
+    // persists server-side per user across specs sharing this persona.
     await ensureExpanded(page, "Organisation groups");
 
     const suffix = Date.now();

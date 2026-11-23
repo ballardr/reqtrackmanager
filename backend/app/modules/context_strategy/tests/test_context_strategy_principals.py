@@ -1,15 +1,10 @@
-"""Tests for groups as Pain Point, Guiding Principle and Open Question owners
-(users and groups on parity).
+"""
+Tests for groups as Pain Point, Guiding Principle and Open Question owners.
 
-Covers: each principal kind on create/update/clear and the display fields of a
-group; Guiding Principle versions carrying the owner so history shows who owned
-each version; validation (a foreign organisation's group or user, another
-project's group, a project group on an organisation-scoped Guiding Principle);
-deleting a group that owns records (usage counts, blocked, reassigned, cleared,
-the audit event names the principle not its version row, older versions keep a
-deleted group); the Open Question register and Guiding Principle usage report
-printing and grouping by owner principal; and the migration backfilling
-existing rows to `user`.
+Covers each principal kind on create/update/clear, version owners in history,
+validation (foreign or wrong-scope groups and users), deleting a group that
+owns records (usage counts, blocked, reassigned, cleared, audit event), report
+grouping by owner and the migration backfilling existing rows to `user`.
 """
 
 from __future__ import annotations

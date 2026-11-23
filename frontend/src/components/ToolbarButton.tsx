@@ -4,9 +4,8 @@
  * One icon button of an editor toolbar (the policy editor, the Markdown editor): an icon with a tooltip and an
  * accessible name of the same text, optionally pressed (a format that is on) or unavailable.
  *
- * Design decisions:
- * - A toolbar sits inside a field's body, so its buttons are the small size (28px, `btn-sm btn-icon`); a button that
- *   opens a panel (`opens`) takes the panel's anchor through `buttonRef` and reports whether the panel is open.
+ * Design decision: a toolbar sits inside a field's body, so its buttons are the small size (28px, `btn-sm btn-icon`); a
+ * button that opens a panel (`opens`) takes the panel's anchor through `buttonRef` and reports whether the panel is open.
  *
  * Dependencies: `Tooltip`, lucide icons.
  */

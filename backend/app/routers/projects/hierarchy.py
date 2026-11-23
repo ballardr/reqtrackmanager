@@ -1,12 +1,10 @@
 """
 Module: routers.projects.hierarchy
 
-Parent/child project hierarchy (ancestors/children breadcrumb, detach),
-the member-source mechanism (`models.project.ProjectMemberSource`), and
-the access-inheritance visibility surfaces built on both: effective
-members with provenance, and the "materialize inherited access" endpoints
-that snapshot an inherited role onto a direct grant (decisions 9/10/11 in
-docs/decisions.md).
+Parent/child project hierarchy (ancestors/children breadcrumb, detach), the member-source mechanism
+(`models.project.ProjectMemberSource`) and the access-inheritance surfaces built on both: effective members
+with provenance, and the "materialize inherited access" endpoints that snapshot an inherited role onto a
+direct grant (decisions 9/10/11 in docs/decisions.md).
 """
 
 from __future__ import annotations
@@ -68,24 +66,15 @@ def get_project_ancestors(
 ):
     """Returns `project_id`'s ancestor chain, root-first, for a breadcrumb.
 
-    Truncated at the first ancestor the caller can't view — never skips
-    over an inaccessible ancestor and continues listing further-up ones,
-    since that would present a broken/misleading breadcrumb (visibility-
-    boundary rule, see docs/decisions.md).
+    Truncated at the first ancestor the caller cannot view; it never skips an inaccessible ancestor to list
+    further-up ones, which would present a misleading breadcrumb (visibility-boundary rule, docs/decisions.md).
 
-    Org-admin bypass: an org admin of `project_id`'s own organisation sees
-    the true, untruncated chain regardless of their own role/membership on
-    any ancestor — added as an explicit `or is_org_admin(...)` at this call
-    site only, not a change to what `_accessible_project_ids` itself
-    returns (see docs/decisions.md's "Project hierarchy on Project
-    Overview" entry). Safe to key off `project_id`'s own organisation for
-    every ancestor in the chain: `parent_project_id` is validated
-    same-organisation at write time in both `create_project` and
-    `update_project` (grepped both, "must be a project in this
-    organisation"), so the whole chain is guaranteed to share one
-    organisation — gated by `require_project_view_or_manage`, so this is
-    only reachable at all once the caller can view or manage `project_id`
-    itself.
+    Org-admin bypass: an org admin of `project_id`'s organisation sees the true, untruncated chain
+    regardless of their role on any ancestor, through an explicit `or is_org_admin(...)` at this call site
+    rather than a change to `_accessible_project_ids` (docs/decisions.md's "Project hierarchy on Project
+    Overview" entry). Keying off `project_id`'s organisation is safe because `parent_project_id` is validated
+    same-organisation at write time in `create_project` and `update_project`. Gated by
+    `require_project_view_or_manage`.
     """
     anchor_organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
     admin_bypass = anchor_organization_id is not None and is_org_admin(db, current_user.id, anchor_organization_id)
@@ -103,16 +92,12 @@ def get_project_ancestors(
 def get_project_children(
     project_id: UUID, current_user: User = Depends(require_project_view_or_manage), db: Session = Depends(get_db),
 ):
-    """Returns `project_id`'s direct children, filtered to the caller's
-    accessible set — no hidden-count hint for the ones omitted, same
-    visibility-boundary rule as `list_projects`'s `children` field.
+    """Returns `project_id`'s direct children, filtered to the caller's accessible set, with no hint of how
+    many were omitted (the visibility-boundary rule of `list_projects`'s `children` field).
 
-    Org-admin bypass: an org admin of `project_id`'s own organisation sees
-    every true child regardless of their own role/membership on it — a
-    child is always same-organisation as its parent (enforced at write
-    time, see `get_project_ancestors`'s docstring above), so `project_id`'s
-    own organisation is the correct one to check for every child returned
-    here.
+    Org-admin bypass: an org admin of `project_id`'s organisation sees every true child regardless of their
+    role on it. A child is always same-organisation as its parent (enforced at write time, see
+    `get_project_ancestors`), so `project_id`'s organisation is the one to check.
     """
     anchor_organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
     admin_bypass = anchor_organization_id is not None and is_org_admin(db, current_user.id, anchor_organization_id)
@@ -200,26 +185,16 @@ def add_member_source(
     project_id: UUID, payload: ProjectMemberSourceAdd, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Adds another project to `project_id`'s member-source list — gated by
-    managing `project_id` (the *receiving* side) only, never the source,
-    per the authorization-asymmetry design described in `models.project.
-    ProjectMemberSource`'s docstring and docs/decisions.md.
+    """Adds another project to `project_id`'s member-source list. Gated by managing `project_id` (the
+    receiving side) only, never the source (the authorisation asymmetry described in
+    `models.project.ProjectMemberSource` and docs/decisions.md).
 
-    `source_project_id` must belong to `project_id`'s own organisation —
-    originally restricted further, to a direct child only; generalized
-    (docs/decisions.md) to any project in the same organisation, since the
-    original parent/child-only restriction was the actual limitation this
-    generalization exists to remove. No separate accessible-set check on
-    top of the same-org requirement: the caller already manages
-    `project_id` itself, and requiring them to *also* independently hold a
-    role on the specific source would defeat the feature's own purpose —
-    a manager must be able to consume members from any project they know
-    about in their organisation, including one with no existing role
-    structure of its own yet. Project names are not confidential within an
-    organisation (a manager can already see every project in their org via
-    the ordinary project list), so this doesn't create an existence-oracle
-    concern the way an accessible-set restriction on `parent_project_id`
-    selection does elsewhere.
+    `source_project_id` must belong to `project_id`'s own organisation (any project in it, not only a direct
+    child). No separate accessible-set check: the caller already manages `project_id`, and requiring a role on
+    the source would defeat the feature, since a manager must be able to consume members from any project they
+    know about in their organisation, including one with no role structure yet. Project names are not
+    confidential within an organisation, so this creates no existence-oracle concern as an accessible-set
+    restriction on `parent_project_id` selection would.
     """
     source_project_id = payload.source_project_id
     if source_project_id == project_id:
@@ -281,16 +256,11 @@ def remove_child_project(
     child_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Lets a parent detach a specific child from its own side, without
-    needing `require_project_manage` on the child itself (decision 12 in
-    docs/decisions.md) — gated purely on managing `project_id` (the
-    parent — `require_project_manage`'s own `{project_id}` path parameter
-    name is why this route uses `project_id` rather than `parent_id`, even
-    though "parent" is the more natural name for what it means here).
-    Still subject to the child's own `Project.parent_required` gate
-    (decision 11): a parent's own manage rights are not sufficient on
-    their own to force a `parent_required` child loose, the same rule
-    `update_project` applies to a child-initiated detach.
+    """Lets a parent detach a specific child from its own side, without `require_project_manage` on the child
+    (decision 12 in docs/decisions.md). Gated on managing `project_id` (the parent; `require_project_manage`'s
+    `{project_id}` path parameter is why the route uses `project_id` rather than `parent_id`). Still subject to
+    the child's `Project.parent_required` gate (decision 11): a parent's manage rights alone cannot force a
+    `parent_required` child loose, the same rule `update_project` applies to a child-initiated detach.
     """
     parent_id = project.id
     child = db.get(Project, child_id)
@@ -332,37 +302,22 @@ def get_effective_members(
     project: Project = Depends(require_project_manage),
     db: Session = Depends(get_db),
 ):
-    """Every user with effective access to this project, with provenance —
-    direct (and, 2026-08-31, which of the five
-    direct sources specifically — see `MemberSourceProvenanceOut`'s
-    docstring), or inherited (and how) — for the project admin/access-review
-    view (decision 10 in docs/decisions.md) and the unified Members table
-    (decision 11). `require_project_manage`-gated rather than view-only:
-    this is an access-review surface, appropriately restricted to people who
-    already manage the project — see the forward/member-source-inheritance
-    blast-radius discussion in docs/decisions.md for why that's not a new
-    disclosure beyond what `role_inheritance_mode` already implies once
-    enabled.
+    """Every user with effective access to this project, with provenance: direct (and which of the five direct
+    sources, see `MemberSourceProvenanceOut`) or inherited (and how), for the project admin/access-review view
+    (decision 10 in docs/decisions.md) and the unified Members table (decision 11). `require_project_manage`
+    gated: an access-review surface for people who already manage the project (see the forward and
+    member-source inheritance discussion in docs/decisions.md for why this discloses nothing beyond what
+    `role_inheritance_mode` already implies).
 
-    `search` (name/email substring, case-insensitive) and `limit`/`offset`
-    are optional, same contract as `list_project_groups`: omitting `limit`
-    returns every matching member unpaginated, and the pre-slice
-    (post-search) total is returned via `X-Total-Count`.
+    `search` (case-insensitive name/email substring) and `limit`/`offset` are optional, as
+    `list_project_groups`: omitting `limit` returns every match unpaginated; when given, the post-search,
+    pre-slice total is returned via `X-Total-Count`.
 
-    IMPORTANT — this is application-level pagination, not database-level:
-    `get_effective_project_members_with_provenance` still resolves every
-    candidate user's full provenance in Python before any sorting/filtering
-    happens here (see that function's own docstring — it iterates every
-    user in the organisation, one admin-only view opened occasionally, not
-    a request-hot-path RBAC check). `search`/`limit`/`offset` are applied as
-    an in-memory slice *after* that full resolution and a deterministic
-    sort by `display_name` (case-insensitive), not pushed down into SQL —
-    this gets the directory pattern's UI/UX (search box, `LoadMoreButton`)
-    without restructuring the underlying query engine, and does not scale
-    indefinitely the way a real DB-level `LIMIT`/`OFFSET` would. A future
-    pass should not assume this endpoint scales past a project admin's
-    realistic member-list size without revisiting `get_effective_project_
-    members_with_provenance` itself.
+    Pagination is application-level: `get_effective_project_members_with_provenance` resolves every candidate
+    user's full provenance in Python (it iterates every user in the organisation, for an admin view opened
+    occasionally), and `search`/`limit`/`offset` are applied as an in-memory slice after a deterministic sort
+    by `display_name` (case-insensitive), not pushed into SQL. This does not scale as a database-level
+    `LIMIT`/`OFFSET` would; it suits a project admin's realistic member-list size.
     """
     provenance = get_effective_project_members_with_provenance(db, project_id)
     project_name_cache: dict[UUID, str] = {}
@@ -375,10 +330,8 @@ def get_effective_members(
             project_name_cache[pid] = p.name if p is not None else ""
         return project_name_cache[pid] or None
 
-    # This project's module-contributed role grants,
-    # filtered to currently-*enabled* modules only (see `ModuleRoleGrantOut`'s
-    # docstring for the "filter, don't delete" rationale) — computed once
-    # for the whole response, then attached per member below.
+    # This project's module-contributed role grants, filtered to currently enabled modules (see
+    # `ModuleRoleGrantOut`; filter, don't delete), computed once for the response and attached per member below.
     enabled_project_role_keys = {
         (module_key, role.role_key)
         for module_key, role in list_enabled_module_roles(db, project.organization_id, "project")
@@ -444,15 +397,11 @@ def materialize_inherited_access(
     project_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Snapshots every currently forward- or member-source-inherited user
-    onto a direct `UserProjectRole` row at their currently-effective role
-    (decision 9 in docs/decisions.md) — a one-time conversion, not an
-    ongoing sync, so those users keep access once inheritance is
-    subsequently disabled/changed/removed. Idempotent: skips anyone who
-    already holds an equal-or-higher direct role. Offered proactively
-    (before disabling a manager-contributing mode, reparenting, or
-    removing a member-source entry) so nobody's access silently
-    disappears.
+    """Snapshots every currently forward- or member-source-inherited user onto a direct `UserProjectRole` row
+    at their currently effective role (decision 9 in docs/decisions.md): a one-time conversion, not an
+    ongoing sync, so those users keep access after inheritance is disabled, changed or removed. Idempotent:
+    skips anyone who already holds an equal-or-higher direct role. Offered before disabling a
+    manager-contributing mode, reparenting or removing a member-source entry, so nobody's access disappears.
     """
     provenance = get_effective_project_members_with_provenance(db, project_id)
     created: list[dict[str, str]] = []
@@ -488,16 +437,11 @@ def materialize_inherited_access_for_user(
     project_id: UUID, user_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Per-row counterpart to `materialize_inherited_access` — `ProjectMembersTable`'s
-    per-member "Convert inherited access to direct roles" action. Same
-    rank logic, idempotency, and audit action as the bulk endpoint, just
-    filtered to `user_id`'s own provenance entries rather than iterating
-    every member: skip (no-op) if this user holds no forward-/member-
-    source-inherited role at all, or if their existing direct role already
-    ranks at or above their best inherited one. Treated as access-mutating
-    (identify -> verify -> remediate review, docs/decisions.md) since it
-    can create a new, independently-revocable `UserProjectRole` row, same
-    as the bulk endpoint it reuses the logic of.
+    """Per-row counterpart to `materialize_inherited_access` (`ProjectMembersTable`'s per-member "Convert
+    inherited access to direct roles" action): the same rank logic, idempotency and audit action, filtered to
+    `user_id`'s provenance entries. A no-op if the user holds no forward- or member-source-inherited role, or
+    their direct role already ranks at or above their best inherited one. Access-mutating (identify -> verify
+    -> remediate review, docs/decisions.md), since it can create an independently revocable `UserProjectRole`.
     """
     provenance = get_effective_project_members_with_provenance(db, project_id)
     entries = provenance.get(user_id, [])
@@ -532,33 +476,20 @@ def materialize_inherited_access_for_group(
     project_id: UUID, org_group_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Group-scoped counterpart to `materialize_inherited_access` —
-    converts an org group's *own* forward-/member-source-inherited role on
-    this project (`get_group_inherited_project_roles`, walking ancestor/
-    source projects' `OrgGroupProjectRole` grants for this exact group —
-    the inheritance-cascade extension) into a direct `OrgGroupProjectRole`
-    grant, parallel to how the per-user endpoint above converts a user's
-    inherited role into a direct `UserProjectRole`.
+    """Group-scoped counterpart to `materialize_inherited_access`: converts an org group's own forward- or
+    member-source-inherited role on this project (`get_group_inherited_project_roles`, walking ancestor and
+    source projects' `OrgGroupProjectRole` grants for this group) into a direct `OrgGroupProjectRole` grant,
+    as the per-user endpoint converts a user's inherited role into a direct `UserProjectRole`.
 
-    Same cross-tenant re-check `assign_group_project_role` already applies
-    to its own `org_group_id` target, the same rank-based "skip if an
-    equal-or-higher direct role is already held" idempotency as the bulk/
-    per-user endpoints, and the same audit action
-    (`"inherited_access_materialized"`) — entity type `org_group_project_
-    role` rather than `project`/`user_project_role`, matching `assign_
-    group_project_role`'s own entity-type choice for the same mechanism.
+    It applies `assign_group_project_role`'s cross-tenant re-check of `org_group_id`, the rank-based "skip if
+    an equal-or-higher direct role is held" idempotency of the bulk and per-user endpoints, and the audit
+    action `"inherited_access_materialized"` with entity type `org_group_project_role` (as
+    `assign_group_project_role`).
 
-    No UI currently renders a group row in an "inherited" state to offer
-    this action from (see docs/decisions.md): the unified
-    Groups directory (`ProjectAdminPage.tsx`'s `groupsTabRows`) only has
-    `ProjectGroup` rows (direct by construction) and
-    `ProjectMemberSource` virtual rows (a different mechanism, no
-    "inherited" state of its own to convert) — no row kind represents an
-    org group's own `OrgGroupProjectRole` provenance the way this endpoint
-    needs. The endpoint exists and is tested directly via the API
-    regardless, since the underlying provenance kind is real (built the
-    cascade) and a future UI surfacing a group's direct-grant provenance
-    should be able to call straight into this without a backend change.
+    No UI row kind currently represents an org group's own `OrgGroupProjectRole` provenance (the Groups
+    directory, `ProjectAdminPage.tsx`'s `groupsTabRows`, has only direct `ProjectGroup` rows and
+    `ProjectMemberSource` virtual rows), so no screen calls it; it is covered directly through the API
+    (see docs/decisions.md).
     """
     org_group = db.get(OrgGroup, org_group_id)
     if org_group is None or org_group.organization_id != project.organization_id:

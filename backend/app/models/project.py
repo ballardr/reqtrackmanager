@@ -46,70 +46,36 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
             shaped by `Organization.project_code_policy`, and distinct from the
             organisation's own code. Own code only: a child project does not
             inherit or concatenate its parent's. See `services.codes`.
-        status_id: The project's current org-defined status (e.g.
-            "Proposed", "Active" — see `ProjectStatusDefinition`). NOT NULL
-            with no `ondelete` action (implicit RESTRICT): every project
-            must always have a real status, and the app layer already
-            refuses to delete an in-use status (409) or delete the last
-            remaining status in an org (409) — see
-            `ProjectStatusDefinition`'s own docstring for why the DB-level
-            RESTRICT is kept as a second backstop rather than relied on
-            alone.
-        next_action_seq: Monotonically increasing counter used to generate
-            unique `RequirementAction.unique_code` identifiers, mirroring
-            `next_requirement_seq` exactly (see `services/actions.py`).
-        parent_project_id: Optional parent in an unlimited-depth project
-            tree. `ondelete="SET NULL"`: there is no single-project
-            hard-delete endpoint today (only archive/unarchive), so the
-            only way a project row disappears is `Organization` CASCADE,
-            which takes its whole tree in one transaction anyway — SET NULL
-            is the safe default if a hard delete is ever added later.
-            Neither cycle prevention nor same-organisation enforcement has
-            a DB-level constraint (Postgres can't express a transitive-
-            closure CHECK, and a cross-row same-org check would need a
-            trigger); both are application-level only, in
-            `services.project_hierarchy`, mirroring the equivalent
-            `OrgGroupMember.member_org_group_id` precedent.
-        role_inheritance_mode / role_inheritance_filter_role: Forward
-            (parent -> child) RBAC cascade, resolved in `services.rbac`;
-            see `ProjectRoleInheritanceMode`. `role_inheritance_filter_role`
-            must be `None` unless `role_inheritance_mode` is `MIRROR_ROLE`,
-            in which case it must be one of `STAKEHOLDER`,
-            `PROJECT_ADMINISTRATOR`, or `PROJECT_MANAGER` (not `MEMBER` —
-            already covered, more broadly, by `MEMBER_ONLY`) — enforced at
-            the schema/router layer, not a DB constraint. Authorized
-            entirely by this project's own manager, since it's this
-            project's access boundary that expands; see `ProjectMemberSource`
-            for the reverse (child -> parent) mechanism, which is
-            authorized the other way around on purpose.
-        parent_required: Set automatically by the server at project-creation
-            time — never client-settable. `True` only when the project was
-            created via the relaxed "actor manages the intended parent, no
-            org-level ORG_ADMIN/PROJECT_CREATOR role" authorization path
-            (`routers.projects.create_project`); `False` for every project
-            created via the existing org-level path, with or without a
-            parent. The sole behavioural effect: clearing
-            `parent_project_id` to `None` is rejected unless this is
-            `False` or the current actor holds `ORG_ADMIN`/`PROJECT_CREATOR`
-            in the project's organisation — closing off "create a child
-            under the relaxed permission, then detach it into an
-            unrestricted root project you were never allowed to create
-            standalone" without restricting anything else about the
-            project. See `docs/decisions.md`.
-        can_be_parent: Whether this project may be selected as a parent —
-            gates `parent_project_id` on *other* projects' create/update, not
-            this project's own. Defaults to `False`: a project is not
-            eligible to be a parent until its own manager deliberately opts
-            in, so the "Parent project" picker isn't cluttered with every
-            project in the org and a project's manager makes an explicit
-            choice before taking on the responsibility. Enforced server-side
-            (`routers.projects.create_project`/`update_project` 400 if the
-            target parent has this `False`), not just a UI-side filter — see
-            docs/decisions.md. Turning this back `False` on a project that
-            already has children does not retroactively detach them, the
-            same "changes apply going forward, not retroactively" principle
-            `role_inheritance_mode` already follows; it only blocks *new*
-            children from attaching.
+        status_id: The project's org-defined status (for example "Proposed", "Active"; see
+            `ProjectStatusDefinition`). NOT NULL with implicit RESTRICT: every project has a status, the
+            application refuses (409) to delete an in-use status or an organisation's last status, and the
+            database RESTRICT is a second backstop.
+        next_action_seq: Counter for unique `RequirementAction.unique_code` identifiers, as
+            `next_requirement_seq` (see `services/actions.py`).
+        parent_project_id: Optional parent in an unlimited-depth project tree. `ondelete="SET NULL"`: no
+            single-project hard-delete endpoint exists, and `Organization` CASCADE removes the whole tree in
+            one transaction. Cycle prevention and same-organisation enforcement are application-level only
+            (`services.project_hierarchy`), since Postgres cannot express a transitive-closure CHECK and a
+            cross-row check would need a trigger (as `OrgGroupMember.member_org_group_id`).
+        role_inheritance_mode / role_inheritance_filter_role: Forward (parent -> child) RBAC cascade,
+            resolved in `services.rbac`; see `ProjectRoleInheritanceMode`. `role_inheritance_filter_role` is
+            `None` unless the mode is `MIRROR_ROLE`, when it is `STAKEHOLDER`, `PROJECT_ADMINISTRATOR` or
+            `PROJECT_MANAGER` (not `MEMBER`, covered by `MEMBER_ONLY`); the schema/router layer enforces
+            this. Authorised by this project's own manager, because this project's access boundary expands;
+            `ProjectMemberSource` is the reverse (child -> parent) mechanism, authorised the other way on
+            purpose.
+        parent_required: Set by the server at creation, never client-settable. `True` only when the project
+            was created through the relaxed path (the actor manages the intended parent and holds no
+            org-level ORG_ADMIN/PROJECT_CREATOR role; `routers.projects.create_project`). Clearing
+            `parent_project_id` to `None` is rejected unless this is `False` or the actor holds
+            `ORG_ADMIN`/`PROJECT_CREATOR` in the organisation, so a child created under the relaxed
+            permission cannot be detached into a root project the actor could not create (docs/decisions.md).
+        can_be_parent: Whether this project may be selected as a parent; it gates `parent_project_id` on
+            other projects' create and update. Default `False`: a project's manager opts in deliberately,
+            which also keeps the "Parent project" picker short. Enforced server-side
+            (`routers.projects.create_project`/`update_project` return 400 when the target parent has it
+            `False`; docs/decisions.md). Setting it `False` on a project with children does not detach them
+            (changes apply going forward, as `role_inheritance_mode`); it blocks only new children.
     """
 
     __tablename__ = "projects"
@@ -145,47 +111,30 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # Whether project "members" may submit change requests (C-U-13); defaults
     # to enabled per the requirement's clarification.
     allow_member_change_requests: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Opt-in per-project requirement that
-    # adding/removing a requirement-to-requirement traceability `ArtefactLink`
-    # on an already-approved requirement go through a change request
-    # (`ChangeRequestKind.ADD_LINK`/`REMOVE_LINK`) instead of the direct
-    # endpoint — see `services.requirements.requires_change_request_for_links`
-    # for the full resolution (this field, or an org-wide force, minus this
-    # project's own exemption). Defaults to `False`: links stay ungated by
-    # default, matching `ArtefactLink`'s existing "traceability metadata
-    # isn't C-G-12 content" design and this repo's own
-    # `allow_member_change_requests` precedent for a permissive default that
-    # doesn't retroactively break every existing project.
+    # Opt-in: adding or removing a traceability `ArtefactLink` on an approved requirement goes through a
+    # change request (`ChangeRequestKind.ADD_LINK`/`REMOVE_LINK`) instead of the direct endpoint; see
+    # `services.requirements.requires_change_request_for_links` for the resolution (this field, or an
+    # org-wide force, minus the project's exemption). Default `False`: traceability metadata is not C-G-12
+    # content, and a permissive default (as `allow_member_change_requests`) breaks no existing project.
     require_change_request_for_approved_links: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Escape hatch from
-    # `Organization.force_require_change_request_for_approved_links` — a
-    # project marked exempt here falls back to its own
-    # `require_change_request_for_approved_links` value even while the
-    # organisation's force-on policy is active for every other project in
-    # the org. Meaningless (never consulted) unless the org's force flag is
-    # set; defaults to `False` so a newly-created project is subject to an
-    # active org force like any other, until its own manager or an org admin
-    # deliberately opts it out.
+    # Exemption from `Organization.force_require_change_request_for_approved_links`: an exempt project uses
+    # its own `require_change_request_for_approved_links` while the force applies to every other project.
+    # Consulted only when the org force is set. Default `False`, so a new project is subject to an active
+    # force until its manager or an org admin opts it out.
     exempt_from_org_link_lock: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Whether an AI assistant acting through the MCP server may perform an
-    # approval-type action in this project — see
-    # Organization.allow_ai_approvals's docstring for the full mechanism.
-    # Both this AND the organisation's own flag must be true; there is no
-    # per-project exemption/override here (unlike the link-lock pair above)
-    # since this only ever narrows what's possible, never widens it. Off by
-    # default, requiring a project manager/administrator to explicitly
-    # acknowledge the accountability trade-off in the UI before enabling it.
+    # Whether an AI assistant acting through the MCP server may perform an approval-type action in this
+    # project (see `Organization.allow_ai_approvals`). It and the organisation's flag must both be true;
+    # there is no exemption (unlike the link-lock pair), as this only narrows what is possible. Off by
+    # default; a project manager or administrator acknowledges the accountability trade-off in the UI to
+    # enable it.
     allow_ai_approvals: Mapped[bool] = mapped_column(Boolean, default=False)
     # Whether this project can be used as a template for new projects (C-E-05).
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Whether every org member automatically gets baseline view access
-    # (ProjectVisibility.ORG_WIDE) or only explicitly-assigned users/groups
-    # (ONLY_SPECIFIED, the default — see services.rbac.get_effective_project_roles
-    # for where the ORG_WIDE grant is actually applied).
+    # Whether every org member gets baseline view access (ProjectVisibility.ORG_WIDE) or only assigned
+    # users and groups (ONLY_SPECIFIED, default); see services.rbac.get_effective_project_roles.
     visibility: Mapped[ProjectVisibility] = mapped_column(str_enum(ProjectVisibility, 20), default=ProjectVisibility.ONLY_SPECIFIED)
-    # Per-project terminology overrides (C-C-03), e.g. {"stage": "Horizon"}.
-    # Keys are restricted to a fixed, documented set (see schemas/project.py);
-    # this is not a freeform key-value store.
+    # Per-project terminology overrides (C-C-03), e.g. {"stage": "Horizon"}; keys come from a fixed set
+    # (schemas/project.py), not a freeform store.
     terminology: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     # Massif (v3): default notification lead time (in days) before a
@@ -247,12 +196,10 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
-    # Massif (v3): completion tracking (C-P-02) and review-deadline "assumed
-    # approval" (C-R-05). completed_at/completed_by mirror the existing
-    # approved_at/approved_by pattern. review_deadline is set by a project
-    # manager while the stage is in REVIEW; the daily scheduler sweep
-    # (services/stages.py) auto-approves the stage once it passes, unless a
-    # stakeholder explicitly rejected via StageReviewResponse.
+    # Completion tracking (C-P-02) and review-deadline "assumed approval" (C-R-05). completed_at/
+    # completed_by mirror approved_at/approved_by. A project manager sets review_deadline while the stage is
+    # in REVIEW; the daily scheduler sweep (services/stages.py) approves the stage once it passes, unless a
+    # stakeholder rejected it through StageReviewResponse.
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     review_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -261,9 +208,8 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
 class StageReviewResponse(UUIDPKMixin, Base):
     """A stakeholder's response to a project stage's review deadline (C-R-05).
 
-    One row per (stage, user) per review cycle; rows are cleared whenever a
-    new `review_deadline` is set on the stage, so a later review cycle isn't
-    contaminated by an earlier cycle's responses.
+    One row per (stage, user) in each deadline cycle; rows are cleared when a new `review_deadline` is set,
+    so a cycle never carries an earlier cycle's responses.
     """
 
     __tablename__ = "stage_review_responses"
@@ -319,42 +265,15 @@ class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
     role(s) to many users (and, via nested org groups, whole organisational
     teams, C-U-12).
 
-    A group's role used to be a single, required field fixed at creation
-    (`role: Mapped[ProjectRole]`, directly on this table). The members/
-    groups directory rework (docs/decisions.md) replaced that
-    with `ProjectGroupRole`, a separate grant table — a group can now hold
-    zero, one, or several roles simultaneously, each its own independently-
-    revocable row, mirroring the shape `OrgGroupProjectRole` already
-    established for org groups and `UserProjectRole` established for
-    individual users ("one row per role," never an array/JSON column). A
-    migration (`alembic/versions/0022_...py`) backfilled exactly one
-    `ProjectGroupRole` row per group's pre-existing `role` value before
-    dropping the column, so no group lost its role in the transition. See
-    `services.rbac`'s module docstring (source 2's `direct_group`
-    provenance, now resolved by joining this new table instead of reading a
-    scalar) and the identify/verify/remediate entry in docs/decisions.md
-    for the full review, including every C-U-08 "must retain a manager"
-    guard site updated to check `ProjectGroupRole` instead.
+    A group's roles are `ProjectGroupRole` rows, one per role and each independently revocable, the shape
+    `OrgGroupProjectRole` and `UserProjectRole` use (not an array or JSON column); a group holds zero, one
+    or several roles. `services.rbac` resolves a group's `direct_group` provenance by joining that table,
+    and every C-U-08 "must retain a manager" guard checks `ProjectGroupRole` (docs/decisions.md's
+    identify/verify/remediate entry for the members/groups directory).
 
-    Every group is now an ordinary, user-created group (2026-08-31) — there is no longer a notion of a project
-    automatically seeding "standard" groups on creation. Previously,
-    `create_project`'s non-template path auto-created four groups
-    per project (`is_default=True`) and the creator's initial
-    `PROJECT_MANAGER` grant went through membership in one of them; that
-    made bulk-group scaffolding, not a direct grant, the *only* way a fresh
-    project ever got its first manager, and those four groups could never
-    be deleted. The creator's initial manager role is now always a direct
-    `UserProjectRole` grant instead (the same fallback the template-clone
-    path already used when a cloned project ended up with no manager) — see
-    `routers.projects.create_project` and docs/decisions.md's entry on this
-    migration. `is_default` (and every group-count/deletability special
-    case built on it) was removed entirely as part of the same change; a
-    data migration (`alembic/versions/0019_...py`) converted every
-    pre-existing `is_default=True` group's direct user members into direct
-    grants and either deleted the group (if it had no other composition) or
-    demoted it to an ordinary group (if it did — e.g. a nested org group or
-    a cross-project member reference), so no group anywhere in the schema
-    still carries any special protection based on how it was created.
+    Every group is an ordinary user-created group: project creation seeds no standard groups, and no group
+    has special protection from deletion. The creator's initial manager role is a direct `UserProjectRole`
+    grant (`routers.projects.create_project`; docs/decisions.md).
     """
 
     __tablename__ = "project_groups"
@@ -370,21 +289,14 @@ class ProjectGroupMember(UUIDPKMixin, TimestampMixin, Base):
 
     Exactly one of user_id / org_group_id / source_project_id must be set.
 
-    `source_project_id` ("members of project X") is resolved as that
-    project's *direct* members only — one hop, deliberately non-recursive
-    (never a source project's own forward-inherited, member-source-derived,
-    or project-referenced members) — see `services.rbac.
-    _direct_project_member_ids_base`'s docstring for why: two projects
-    referencing each other's rosters must never be able to cause unbounded
-    recursion, and this is the structural guarantee that prevents it, not
-    just an optimisation. Same-organisation only (enforced at write time in
-    `routers.projects.add_project_group_member`, and re-checked live at
-    read time, mirroring `org_group_id`'s existing cross-tenant defense in
-    depth). Authorized purely by `require_project_manage` on this group's
-    *own* project — no consent required from the source project, matching
-    `ProjectMemberSource`'s own documented rationale (source 6 is
-    authorized entirely by the receiving side, not the source's). See
-    docs/decisions.md for the security review performed when this was added.
+    `source_project_id` ("members of project X") resolves to that project's direct members only: one hop,
+    non-recursive (never its inherited, member-source-derived or project-referenced members;
+    `services.rbac._direct_project_member_ids_base`). Two projects referencing each other's rosters would
+    otherwise recurse without bound, so this is a structural guarantee, not an optimisation.
+    Same-organisation only, enforced at write time in `routers.projects.add_project_group_member` and
+    re-checked at read time (defence in depth, as `org_group_id`). Authorised by `require_project_manage`
+    on this group's own project, with no consent from the source project, as `ProjectMemberSource` (the
+    receiving side authorises); see docs/decisions.md.
     """
 
     __tablename__ = "project_group_members"
@@ -419,41 +331,25 @@ class UserProjectRole(UUIDPKMixin, TimestampMixin, Base):
 
 
 class OrgGroupProjectRole(UUIDPKMixin, TimestampMixin, Base):
-    """A direct (non-nested) project role assignment for an organisation
-    group — the group-level counterpart to `UserProjectRole`: the group
-    itself holds the role as its own, independently-revocable record,
-    rather than needing to be nested inside a `ProjectGroup`
-    (`ProjectGroupMember.org_group_id`, C-U-12) to grant one.
+    """A direct (non-nested) project role assignment for an organisation group: the group-level counterpart
+    to `UserProjectRole`, held by the group itself as an independently revocable record instead of by nesting
+    it in a `ProjectGroup` (`ProjectGroupMember.org_group_id`, C-U-12).
 
-    This coexists with, and does not replace, the nesting mechanism —
-    nesting stays the way to bundle several groups/users under one named
-    role; this is a genuinely separate, additive grant path added to let a
-    single org group hold a role on a project directly, the same way a
-    single user already can via `UserProjectRole`. See `docs/decisions.md`'s
-    identify/verify/remediate entry for this table (recorded when the members/groups directory rework landed) and
-    `services.rbac`'s module docstring (the new numbered source describing
-    how this resolves into effective project roles, including forward and
-    member-source inheritance cascading it the same way a user's own direct
-    role already cascades).
+    It is additive to nesting, which remains the way to bundle several groups or users under one named role.
+    See docs/decisions.md's identify/verify/remediate entry for this table and `services.rbac`'s module
+    docstring for how it resolves into effective project roles, including forward and member-source
+    inheritance cascading it as a user's own direct role is.
 
-    Both FKs `ondelete="CASCADE"`: `org_group_id` mirrors
-    `ProjectGroupMember.org_group_id`'s own cascade (deleting an org group
-    removes every grant that referenced it, not just its `OrgGroupMember`
-    rows); `project_id` mirrors `UserProjectRole.project_id`'s own cascade
-    (deleting a project takes its role grants with it).
+    Both FKs are `ondelete="CASCADE"`: deleting an org group removes every grant that references it (as
+    `ProjectGroupMember.org_group_id`), and deleting a project removes its grants (as
+    `UserProjectRole.project_id`).
     """
 
     __tablename__ = "org_group_project_roles"
     __table_args__ = (UniqueConstraint("org_group_id", "project_id", "role"),)
 
-    # `index=True` on both FKs: pre-existing gap found while implementing
-    # the group-roles change (this repo's own `test_schema_migrations_match_models.py` failed
-    # against this table too) — migration 0021 already creates
-    # `ix_org_group_project_roles_org_group_id`/`_project_id` explicitly,
-    # but the model classes never declared the matching `index=True`, so
-    # `Base.metadata` didn't know about them and Alembic's own autogenerate
-    # diff flagged both as "to be removed." Fixed here rather than left
-    # alongside the own new table with the identical gap.
+    # `index=True` on both FKs matches the indexes migration 0021 creates, so `Base.metadata` and
+    # Alembic's autogenerate diff agree (`test_schema_migrations_match_models.py`).
     org_group_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"), index=True
     )
@@ -464,31 +360,15 @@ class OrgGroupProjectRole(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectGroupRole(UUIDPKMixin, TimestampMixin, Base):
-    """One role a `ProjectGroup` holds — the project-group-level counterpart
-    to `UserProjectRole`/`OrgGroupProjectRole`: a `ProjectGroup` used to
-    carry a single, required `role` fixed at creation (a scalar column on
-    that table); it now instead holds zero, one, or several independently-
-    revocable roles, one row per role here, the same "one row per role, not
-    an array column" shape those other two direct-grant tables already use.
+    """One role a `ProjectGroup` holds: the project-group counterpart to `UserProjectRole` and
+    `OrgGroupProjectRole`. A group holds zero, one or several independently revocable roles, one row per
+    role, not an array column. It mirrors `OrgGroupProjectRole`, scoped to a `ProjectGroup`; no
+    `project_id` is needed because a `ProjectGroup` belongs to exactly one project
+    (`ProjectGroup.project_id`).
 
-    Added by the members/groups directory rework (docs/
-    decisions.md) — mirrors `OrgGroupProjectRole` almost exactly, just
-    scoped to a `ProjectGroup` instead of an `OrgGroup`. Unlike
-    `OrgGroupProjectRole`, no separate `project_id` column is needed here:
-    a `ProjectGroup` already belongs to exactly one project by construction
-    (`ProjectGroup.project_id`), so `project_group_id` alone is enough to
-    resolve which project a row's role applies to.
-
-    `ondelete="CASCADE"`: deleting a project group takes its role grants
-    with it, mirroring `ProjectGroupMember.project_group_id`'s own cascade
-    — a role grant has no independent meaning once the group itself is
-    gone. See `docs/decisions.md`'s identify/verify/remediate entry for
-    this table for the full security review, including every C-U-08
-    "must retain a manager" guard site updated to check this table instead
-    of the old scalar `ProjectGroup.role`, and the backfill migration
-    (`alembic/versions/0022_...py`) that converted every pre-existing
-    group's single `role` into exactly one row here before dropping the
-    column.
+    `ondelete="CASCADE"`: a role grant has no meaning once its group is deleted (as
+    `ProjectGroupMember.project_group_id`). See docs/decisions.md's identify/verify/remediate entry for this
+    table, including every C-U-08 "must retain a manager" guard that checks it.
     """
 
     __tablename__ = "project_group_roles"
@@ -501,67 +381,35 @@ class ProjectGroupRole(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectMemberSource(UUIDPKMixin, TimestampMixin, Base):
-    """One entry in a project's own "consume members from this other
-    project" list — the reverse (source -> receiving project) RBAC
-    mechanism, deliberately shaped as an explicit list owned and authorized
-    by the receiving project, not a flag on the source.
+    """One entry in a project's "consume members from this other project" list: the reverse (source ->
+    receiving project) RBAC mechanism, an explicit list owned and authorised by the receiving project, not
+    a flag on the source.
 
-    An earlier draft of this mechanism was a boolean on the child
-    (`share_members_with_parent`), gated by the child's own manage rights —
-    that shape let a low-privileged actor who merely managed some child
-    (with zero access to the parent) grant that child's entire membership
-    read access into a potentially confidential parent, entirely without
-    the parent's knowledge or consent. This table closes that off
-    structurally: a source project has no code path that can add itself
-    here — only someone who already holds `require_project_manage` on
-    `project_id` (the receiving side) can create or delete a row, mirroring
-    how `Project.visibility` is already the project's own unilateral
-    choice. See `docs/decisions.md`.
+    A boolean on the child gated by the child's own manage rights would let someone who merely manages a
+    child (with no access to the parent) grant that child's members read access into a confidential parent
+    without its consent. Here a source project has no code path to add itself: only someone holding
+    `require_project_manage` on `project_id` (the receiving side) can create or delete a row, as
+    `Project.visibility` is the project's own unilateral choice (docs/decisions.md).
 
-    Originally restricted to `source_project_id` being a direct child of
-    `project_id` (strict parent/child only) and always granting bare
-    `MEMBER`. Generalized (see `docs/decisions.md`'s entry on this) to any
-    project in the same organisation, with `mirror_mode`/
-    `mirror_filter_role` controlling what gets mirrored — same shape and
-    same validation as `Project.role_inheritance_mode`/
-    `role_inheritance_filter_role`'s forward mechanism, just applied in the
-    reverse direction. The authorization direction is unchanged by the
-    generalization: still the receiving project's own manage rights only,
-    never the source's — a source project's manager is never consulted or
-    notified, matching the original parent/child design's rationale exactly
-    (an actor who already manages "many settings, one direction" doesn't
-    need the other side's permission to reference its public-within-the-
-    org roster, the same way they wouldn't need permission to invite a
-    known user by email).
+    `source_project_id` may be any project in the same organisation, with `mirror_mode`/`mirror_filter_role`
+    selecting what is mirrored (the same shape and validation as `Project.role_inheritance_mode`/
+    `role_inheritance_filter_role`, in the reverse direction). Authorisation is the receiving project's
+    manage rights only; the source's manager is not consulted or notified (docs/decisions.md).
 
-    A row's existence alone is not sufficient to grant anything: resolution
-    (`services.rbac`) additionally re-validates, live at read time, that
-    `source_project.organization_id == project.organization_id` (same
-    organisation only) and that `source_project_id != project_id` — so a
-    row that becomes stale (e.g. the source project moved to a different
-    organisation via some future cross-org transfer feature — not possible
-    today, but the check costs nothing) is automatically inert without
-    needing cleanup, the same deliberate-simplification rationale the
-    original parent/child revalidation had.
+    A row alone grants nothing: `services.rbac` re-validates at read time that
+    `source_project.organization_id == project.organization_id` and `source_project_id != project_id`, so a
+    stale row is inert without cleanup.
 
-    Both FKs `ondelete="CASCADE"`: this is pure join-table configuration
-    with no independent meaning once either side is gone.
+    Both FKs are `ondelete="CASCADE"`: the table is join configuration with no meaning once either side is gone.
 
     Attributes:
-        mirror_mode: What to mirror from `source_project_id`'s own direct
-            roles — `MEMBER_ONLY` (default, preserves the original
-            behavior exactly for any row created before this field
-            existed), `MIRROR_ALL`, or `MIRROR_ROLE` (paired with
-            `mirror_filter_role`). Resolved per-hop by
-            `services.rbac._member_source_derived_roles`, reading only the
-            source's *direct* roles (never its own inherited or
-            member-sourced roles) — preserves the existing decoupling
-            property between this mechanism and forward inheritance.
-        mirror_filter_role: Required iff `mirror_mode == MIRROR_ROLE`,
-            forbidden otherwise — same validation as `Project.
-            role_inheritance_filter_role` (`STAKEHOLDER`/
-            `PROJECT_ADMINISTRATOR`/`PROJECT_MANAGER` only, never `MEMBER`,
-            already covered more broadly by `MEMBER_ONLY`).
+        mirror_mode: What to mirror from `source_project_id`'s direct roles: `MEMBER_ONLY` (default),
+            `MIRROR_ALL`, or `MIRROR_ROLE` (with `mirror_filter_role`). Resolved per hop by
+            `services.rbac._member_source_derived_roles` from the source's direct roles only (never its
+            inherited or member-sourced roles), which keeps this mechanism decoupled from forward inheritance.
+        mirror_filter_role: Required iff `mirror_mode == MIRROR_ROLE`, forbidden otherwise; the same
+            validation as `Project.role_inheritance_filter_role` (`STAKEHOLDER`, `PROJECT_ADMINISTRATOR` or
+            `PROJECT_MANAGER`, never `MEMBER`, which `MEMBER_ONLY` covers).
     """
 
     __tablename__ = "project_member_sources"

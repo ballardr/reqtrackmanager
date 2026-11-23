@@ -40,11 +40,9 @@ const ORG_GROUPS: OrgGroup[] = [
   },
 ];
 
-/** Mocks `GET/POST/DELETE .../standards/{id}/members(/roles|/group-roles)`
- * and the `UserAutocomplete` server-side search endpoint (`GET .../users/
- * search`) — mirrors `MappingTypesPanel.stories.tsx`'s own direct `api.*`
- * mocking shape, since this component (like that panel) owns its
- * fetch/reload state entirely. */
+/** Mocks `GET/POST/DELETE .../standards/{id}/members(/roles|/group-roles)` and the `UserAutocomplete` server-side search endpoint
+ * (`GET .../users/search`) with direct `api.*` mocking, as `MappingTypesPanel.stories.tsx` does, since this component owns its
+ * fetch and reload state. */
 function mockMembersApi(initial: ComplianceStandardMembers) {
   let data = initial;
   spyOn(api, "get").mockImplementation(async (path: string) => {

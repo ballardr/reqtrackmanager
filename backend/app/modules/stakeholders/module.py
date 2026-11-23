@@ -1,54 +1,27 @@
 """
 Module: modules.stakeholders.module
 
-Registers the Stakeholders & Personas module into the modular feature
-system's registry via `MODULE_DEFINITION`. It delivers the Persona, Stakeholder and
-Stakeholder Need artefacts, the Engagement contact log and the research extras.
+Registers the Stakeholders & Personas module into the modular feature system's registry via
+`MODULE_DEFINITION`: the Persona, Stakeholder and Stakeholder Need artefacts, the Engagement contact
+log and the research extras.
 
 Registered contributions:
-- Roles (not additions to core enums): `persona_owner` (project) and
-  `org_persona_owner` (org) gate create/edit/archive/retire; only the project
-  role carries the FGAC `(persona, manage)` atom, since an org-level role's
-  atoms would apply to every project; `persona_type_admin` (org) gates the org
-  Persona type vocabulary. There is no approver role because Personas have no
-  approval gate.
-- The same trio for Stakeholders: `stakeholder_owner` (project, carries the FGAC
-  `(stakeholder, manage)` atom), `org_stakeholder_owner` (org, no atom) and
-  `stakeholder_type_admin` (org; also administers the `stakeholder` scoring
-  scheme's levels and bands).
-- `stakeholder_need_owner` (project; carries the FGAC `(stakeholder_need, manage)`
-  atom) for Stakeholder Needs, which are project-scoped only so have no org role.
-- `engagement_owner` (project; carries the FGAC `(engagement, manage)` atom) for
-  Engagements, which are project-scoped only so have no org role.
-- `artefact_types=("persona", "stakeholder", "stakeholder_need", "stakeholder_group",
-  "engagement", "research_finding")` so all six are valid `ArtefactLink` endpoints and
-  get FGAC atoms. Groups have no role of their own: they are managed with
-  the Stakeholder gate.
-- `scoring_schemes`: the Influence × Interest `stakeholder` scheme (`scoring.py`).
-- `scoring_target_providers["persona"]`: the generic hook Context & Strategy's
-  per-persona Pain Point scoring reads, so Context &
-  Strategy never imports this module.
-- `demand_party_providers`: the generic hook Product Feedback reads to count who stands behind a request
-  (`demand.py`): a Stakeholder or Persona is itself, an Engagement is its participants and covered personas.
-- `on_org_created` seeds each new organisation's default Persona and
-  Stakeholder types; the migrations backfill existing organisations.
-- Org and project bundle hooks (`export.py` for Personas,
-  `stakeholder_export.py` for Stakeholders, composed here — Personas first,
-  since Stakeholders link to them) so both travel with an organisation/project
-  export.
-- Four sub-components, `persona`, `stakeholder`, `stakeholder_need` and
-  `research_extras` (session prompts, anonymous participants and findings; off by
-  default), so a project can switch any off without disabling the whole module. The
-  Engagement log itself is always on with the module.
-- Nav: one "People" entry (Personas, Stakeholders, Needs and Groups on one page, shown while any of the
-  three sub-components is on, `nav_sub_components_any`) and "Engagements".
-- `reports`: five project-level reports (`reports.py`: S1 power/interest grid,
-  S2 Persona validation, S3 Need coverage, S4 Engagement staleness, S5 Engagement &
-  research yield); the framework generates their routes, catalogue entries and
-  `get_<slug>_report` MCP tools.
+- Roles: `persona_owner`/`stakeholder_owner`/`stakeholder_need_owner`/`engagement_owner` (project; each
+  carries its FGAC `(type, manage)` atom), `org_persona_owner`/`org_stakeholder_owner` (org; no atom, as
+  an org role's atoms would apply to every project) and `persona_type_admin`/`stakeholder_type_admin`
+  (org; the latter also administers the `stakeholder` scoring scheme). No approver role: there is no approval gate.
+- `artefact_types`: persona, stakeholder, stakeholder_need, stakeholder_group, engagement,
+  research_finding (valid `ArtefactLink` endpoints with FGAC atoms). Groups use the Stakeholder gate.
+- `scoring_schemes` (`scoring.py`), `scoring_target_providers["persona"]` (read by Context & Strategy's
+  Pain Point scoring) and `demand_party_providers` (read by Product Feedback), so no other module imports this one.
+- `on_org_created` seeds default Persona and Stakeholder types for each new organisation.
+- Org and project bundle hooks, composed here with Personas first because Stakeholders link to them.
+- Sub-components `persona`, `stakeholder`, `stakeholder_need` and `research_extras` (off by default);
+  the Engagement log is always on with the module.
+- Nav: "People" (shown while any of the first three sub-components is on) and "Engagements".
+- `reports`: five project-level reports (`reports.py`); the framework generates their routes and MCP tools.
 
-`default_enabled=False`: an organisation opts in explicitly, matching the
-other new modules.
+`default_enabled=False`: an organisation opts in explicitly.
 """
 
 from __future__ import annotations

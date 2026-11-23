@@ -1,10 +1,10 @@
 /**
  * Module: modules/product_feedback/RequestDetailPage
  *
- * One enhancement request: its fields and scoring, who asked for it (project requests), the lifecycle, merge, the
- * triage move into a project (inbox requests), closing the loop, evidence files, comments and version history.
- * One scope-aware component serves both routes, like the Strategy page: exactly one of `projectId` /
- * `organizationId` is in the URL (`/projects/:projectId/modules/product_feedback/requests/:requestId`,
+ * One enhancement request: fields and scoring, who asked for it (project requests), the lifecycle, merge, the triage
+ * move into a project (inbox requests), closing the loop, evidence files, comments and version history. One
+ * scope-aware component serves both routes, like the Strategy page: exactly one of `projectId` / `organizationId` is in
+ * the URL (`/projects/:projectId/modules/product_feedback/requests/:requestId`,
  * `/orgs/:organizationId/modules/product_feedback/requests/:requestId`, the latter an always-mounted global route).
  *
  * - **Lifecycle** buttons come from the server's `allowed_next_statuses`; declining needs a reason (a required
@@ -12,11 +12,10 @@
  *   prompts "Ready to deliver?" and never moves the status itself.
  * - **Controls follow `GET .../access`**: someone who may not triage sees no edit, transition, merge or archive
  *   controls (the server refuses them regardless).
- * - **External references** (Jira, ServiceNow, ...) and each requester's **channel** are edited here by a triager;
- *   neither is a version of the request.
- * - **Problem and requesters** are linked with the generic Links panel ("Addresses" a Pain Point, "Realised by" a
- *   Requirement, "Requested by" a Stakeholder, Persona or Engagement). A solution with no Pain Point carries a warning
- *   badge, never a block. An inbox request has no links (links are a project's), so triage it into a project first.
+ * - **External references** and each requester's **channel** are edited here by a triager; neither is a version.
+ * - **Problem and requesters** use the generic Links panel ("Addresses" a Pain Point, "Realised by" a Requirement,
+ *   "Requested by" a Stakeholder, Persona or Engagement). A solution with no Pain Point carries a warning badge, never
+ *   a block. An inbox request has no links (links belong to a project), so triage it into a project first.
  */
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

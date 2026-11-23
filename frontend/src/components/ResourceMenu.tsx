@@ -38,64 +38,32 @@ type VisibleRow =
   | { id: string; kind: "child"; key: string; href: string };
 
 /**
- * A shared, accessible left-hand vertical menu of route-addressable
- * groups, with a content pane on the right — the "resource menu" shape
- * named in the style guide (Principle 1: resource-menu
- * sub-pages for more than five setting groups opened rarely as a whole).
- * First user: Org Admin's 15-way flat accordion wall, split into 6 groups
- * (`docs/ux-style-guide.md`, "Pattern: settings hierarchy").
+ * A shared, accessible left-hand vertical menu of route-addressable groups, with a content pane on the right (the
+ * "resource menu" of the style guide, Principle 1: sub-pages for more than five setting groups opened rarely as a
+ * whole; `docs/ux-style-guide.md`, "Pattern: settings hierarchy").
  *
- * Modelled on `Tabs.tsx`'s WAI-ARIA-conscious keyboard support (arrow keys
- * move focus, `Home`/`End` jump to the ends) but deliberately *not* built
- * on the `role="tablist"`/`"tab"` pattern Tabs uses — each group here is a
- * real URL segment (`href`), not client-only state, so the menu is built
- * from real links with `aria-current="page"` on the active one rather than
- * `aria-selected`. Arrow-key navigation is vertical (`ArrowUp`/`ArrowDown`,
- * matching the menu's own layout) rather than horizontal, and — mirroring
- * Tabs' own automatic-activation model, just adapted from internal state
- * to routing — moving focus with an arrow key also navigates, since a
- * highlighted-but-unselected menu item would otherwise read as active
- * without being the one whose content pane is showing.
+ * Keyboard support follows `Tabs.tsx` (arrow keys move focus, `Home`/`End` jump to the ends) but not its
+ * `role="tablist"` pattern: each group is a real URL segment, so the menu is real links with `aria-current="page"`.
+ * Arrow keys are vertical, and moving focus also navigates, since a highlighted-but-unselected item would read as active.
  *
- * Renders both the menu and the content pane (`children`) as one unit —
- * unlike `Tabs` (menu strip only, panel wrapper left to the caller) — since
- * the two are always laid out together here and the caller has no reason
- * to place them independently.
+ * Renders both the menu and the content pane (`children`), which are always laid out together.
  *
- * A group may carry `children` (sub-pages): it then renders as a disclosure button (`aria-expanded`) with its
- * sub-pages as an indented list of links beneath it. The group holding the active page is open until the person
- * collapses it, other groups start closed, and `active` may be a group key or a sub-page key. Arrow keys move through
- * the rows currently shown (headers and the sub-pages of open groups); landing on a link navigates, landing on a
- * header only moves focus. `Enter`/`Space` on a header (a native button) toggles it.
+ * A group may carry `children` (sub-pages): it renders as a disclosure button (`aria-expanded`) with its sub-pages as an
+ * indented list of links beneath it. The group holding the active page is open until collapsed, other groups start
+ * closed, and `active` may be a group key or a sub-page key. Arrow keys move through the rows shown; landing on a link
+ * navigates, landing on a header only moves focus. `Enter`/`Space` on a header toggles it.
  *
- * When there is one plain group (or none) the menu strip itself (the `<nav>`/`<ul>` of
- * group links) is skipped entirely and `children` renders directly —
- * a single-entry menu has nothing to switch between, so the chrome
- * would just be a list with one link that's always already active. This
- * lets a caller declare an always-present group unconditionally (e.g.
- * `OrgOverviewPage.tsx`'s "Overview") without that caller needing to know
- * whether any other group exists — `ResourceMenu` itself decides whether
- * that's worth a visible menu. A single group that has sub-pages is the exception: its sub-pages are the choices, so
- * the menu stays.
+ * With one plain group (or none) the menu strip is skipped and `children` renders directly, so a caller can declare an
+ * always-present group unconditionally. A single group that has sub-pages keeps the menu, since its sub-pages are the choices.
  *
- * On a wide viewport the section list is a sticky column no taller than the window below where it starts (the
- * container publishes that start as `--sticky-viewport-top`, `useStickyViewportTop`), so a long list scrolls on its own
- * from the first view and never needs the page to scroll to reach its end, and grows to the full height as the page
- * scrolls up under the header; choosing a section brings the content pane back to its top when the
- * page was scrolled past it, and the active entry is scrolled into view within the list (a deep link to a section
- * near the end of a long list). Every administration page shares this behaviour because they share this component.
+ * On a wide viewport the section list is a sticky column no taller than the window below where it starts (the container
+ * publishes that start as `--sticky-viewport-top`, `useStickyViewportTop`), so a long list scrolls on its own and grows
+ * to full height as the page scrolls up under the header. Choosing a section brings the content pane back to its top
+ * when the page was scrolled past it, and the active entry is scrolled into view within the list.
  *
- * Below `MOBILE_BREAKPOINT_PX` the vertical `<nav>`/`<ul>` link list is
- * replaced with a single native `<select>` (platform-review-2026-09,
- * "resource menus wasting space on narrow windows"). Org Admin alone has up
- * to 10 groups — the full-height list this component renders on desktop
- * pushes every group's own content below a page-and-a-half of nav chrome on
- * a phone-width viewport, forcing a scroll past all of it just to reach the
- * selected group's settings. A `<select>` collapses that same list of
- * groups to one row, matching `FilterPanel`'s own narrow-viewport pattern
- * (`useNarrowViewport`) even though the two widgets differ (accordion
- * there, since that content is optional filter chrome; a dropdown here,
- * since exactly one group is always the "current page").
+ * Below `MOBILE_BREAKPOINT_PX` the link list is replaced with a single native `<select>`, so a long group list does not
+ * push the selected group's content down a phone-width page; this matches `FilterPanel`'s narrow-viewport pattern
+ * (`useNarrowViewport`), with a dropdown here because exactly one group is always the current page.
  */
 export function ResourceMenu<K extends string>({
   title,
@@ -106,21 +74,13 @@ export function ResourceMenu<K extends string>({
   active,
   children,
 }: {
-  /** The entity actually being administered (an org or project's own
-   * name) — rendered as the page's `<h1>`, above the menu+content grid.
-   * Optional so a future non-entity-scoped resource menu (e.g. a
-   * platform-wide settings page) isn't forced to invent one, but every
-   * current consumer is scoped to one org/project and should always pass
-   * it: a resource menu with no other page chrome around it previously
-   * left no way to tell which one you were looking at. */
+  /** The entity being administered (an organisation or project name), rendered as the page's `<h1>` above the menu and
+   * content grid. Optional so a non-entity-scoped menu need not invent one; every entity-scoped consumer passes it, since
+   * a menu with no other page chrome gives no way to tell which entity is shown. */
   title?: string;
   subtitle?: string;
-  /** Rendered immediately after the `<h1>`, on the same row — e.g. an
-   * `EntitySwitcher` chevron for
-   * a page whose title is rendered by this component rather than a bespoke
-   * `<h1>` of its own (which can just place the switcher next to its own
-   * heading directly, as `ProjectAdminPage.tsx` already does). Ignored
-   * when `title` is omitted. */
+  /** Rendered immediately after the `<h1>`, on the same row (e.g. an `EntitySwitcher` chevron) for a page whose title
+   * this component renders. Ignored when `title` is omitted. */
   titleAdornment?: ReactNode;
   ariaLabel: string;
   groups: ResourceMenuGroupDef<K>[];
@@ -238,16 +198,9 @@ export function ResourceMenu<K extends string>({
       {groups.length <= 1 && !groups[0]?.children?.length ? (
         children
       ) : (
-        /* Deliberately its own "resource-menu" class, not the shared ".row"
-            utility class — ".row" is used throughout the app's Playwright specs
-            as a scoping selector for one specific list row (e.g. `page.locator(
-            ".row", { hasText: someRowsOwnText })`); this wrapper spans the
-            entire content pane, so reusing ".row" here would make it the new
-            outermost ".row" match in DOM order for *any* text anywhere in the
-            selected group's content, silently hijacking every such locator on
-            every page that adopts ResourceMenu (found via a real Playwright
-            failure on an Org Admin delete button during this
-            component's first rollout). */
+        /* Its own "resource-menu" class, not the shared ".row" utility: Playwright specs use ".row" to scope one list
+            row, and a ".row" wrapper around the whole content pane would become the outermost match for any text in
+            the selected group's content and hijack those locators. */
         <div className="resource-menu" ref={setContainer}>
           {isNarrow ? (
             <InlineSelect

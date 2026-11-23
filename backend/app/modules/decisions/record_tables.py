@@ -1,29 +1,12 @@
 """
 Module: modules.decisions.record_tables
 
-The `RecordTableProvider` of Decision Management's one record type, the Decision: the Decisions list as a table,
-so it exports to CSV, PDF and Word and imports from the same CSV (a row with a code updates, a blank code
-creates).
-
-Responsibilities:
-- Declare the Decision columns (title, statement, type, date, decision maker, owner, the ADR text fields and the
-  long-form document, tags) and the status as an export-only cell. The text columns carry the Markdown source both
-  ways, so an exported file imports back unchanged.
-- Share the list filters and the create / edit logic with the endpoints (`edits`), so the effective-type and
-  principal checks, the content lock and the audit events are the ones the screen applies.
-
-Design decisions:
-- `status` is export-only: a Decision moves through propose / review / approve / reject only by the workflow
-  endpoints, which keep segregation of duties and the AI-approval gate; a created Decision starts `Draft`.
-  The type is marked approval-gated.
-- Any project member may create (the create endpoint's gate); updating needs the Decision Owner role (the edit
-  endpoint's gate), and an approved or superseded Decision refuses the edit per row, as the endpoint does.
-- A blank owner on a new row means the importer (the create endpoint's default); a blank owner on an existing
-  row is an error, because a Decision always has one.
-- The type is written by name from the project's effective types, so a child project of a parent with decision
-  types can use the parent's.
-
-Dependencies: `edits` (queries and write paths), `service` (effective types), `services.record_tables_core`.
+The `RecordTableProvider` of the Decision: the list as a table exported to CSV,
+PDF and Word and imported from the same CSV.
+- Columns: title, statement, type, date, decision maker, owner, ADR text
+  fields, document, tags; `status` is export-only (workflow keeps segregation of duties).
+- Create/update use `edits` (any member creates; the Decision Owner role updates).
+- A blank owner on a new row is the importer; the type is written by name.
 """
 
 from __future__ import annotations

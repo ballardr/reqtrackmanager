@@ -7,11 +7,8 @@ import { applyUiPreferencePatch } from "../context/uiPreferencePatch";
 import { buildUser } from "../testing/storybook-helpers";
 import { CollapsibleSection } from "./CollapsibleSection";
 
-/** `useUiPreference` (which CollapsibleSection uses to remember collapsed
- * state) reads/writes through `useAuth()`, so this wraps stories in a real,
- * stateful `AuthContext.Provider` — not the no-op stub `withAuth` defaults
- * to — so toggling the section is actually observable across a re-render,
- * matching the server-synced preference it stands in for. */
+/** `useUiPreference` (which CollapsibleSection uses to remember collapsed state) reads and writes through
+ * `useAuth()`, so stories sit in a stateful `AuthContext.Provider` and toggling is observable across a re-render. */
 function Interactive({ variant = "card" as "card" | "plain", defaultCollapsed = false, summary = undefined as string | undefined, marked = false, forceOpen = false, collapsible = true, help = undefined as string | undefined }) {
   const [user, setUser] = useState(buildUser({ ui_preferences: {} }));
   return (

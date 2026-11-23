@@ -1,23 +1,21 @@
 /**
  * Module: components/graphAttachPoints
  *
- * The eight places a line can meet a box on the shared graph canvas (the middle of each side and the four corners) and
- * the rule that picks the two a line uses. Pure functions, no React, so the canvas, a consumer's selection panel and the
- * tests all use the one rule.
+ * The eight places a line can meet a box on the shared graph canvas (the middle of each side and the four corners) and the
+ * rule that picks the two a line uses. Pure functions, no React, so the canvas, a consumer's selection panel and the tests
+ * share one rule.
  *
  * Responsibilities:
  * - Give the position of each attach point of a box.
- * - Choose the points of one line: an end the consumer fixed stays as given, an end left open is the point nearest the
- *   other end, and with both open the pair of points nearest each other. A box may offer fewer points (`points`): a marker
- *   (a dot or a diamond) offers only the middle of each side, since its corners are not on its outline.
- * - Give the direction a line leaves a box at an attach point (`outwardDirection`), which a Curved line starts its curve along.
+ * - Choose the points of one line: an end the consumer fixed stays as given, an open end is the point nearest the other
+ *   end, and with both open the pair nearest each other. A box may offer fewer points (`points`): a marker (a dot or a
+ *   diamond) offers only the middle of each side, since its corners are not on its outline.
+ * - Give the direction a line leaves a box at an attach point (`outwardDirection`), which a Curved line starts along.
  *
- * Design decisions:
- * - The same rule runs on the server for the architecture SVG (`diagram_points.py`); `graphAttachPointCases.json` holds
- *   the cases both are tested against, so a change to the rule is made in both.
- * - Nearest means least squared distance (no square root), compared with a small tolerance and decided in the fixed order
- *   of `ATTACH_POINTS`, so a tie (two boxes side by side: the facing corners are as close as the facing sides) gives the
- *   sides in both languages.
+ * Design decisions: the same rule runs on the server for the architecture SVG (`diagram_points.py`); `graphAttachPointCases.json`
+ * holds the cases both are tested against, so a change is made in both. Nearest means least squared distance (no square
+ * root), compared with a small tolerance and decided in the fixed order of `ATTACH_POINTS`, so a tie (the facing corners
+ * of two side-by-side boxes are as close as the facing sides) gives the sides in both languages.
  */
 
 /** One of the eight attach points of a box. */

@@ -4,30 +4,9 @@ Revision ID: 0045
 Revises: 0044
 Create Date: 2026-09-21
 
-Adds the six tables backing Decision Management's data model
-:
-
-- `decision_type_definitions` (project-scoped, mirrors
-  `action_type_definitions` exactly).
-- `decision_template_definitions` (org-scoped; per-field guidance text,
-  not FK'd to a decision type — see `app.modules.decisions.models.
-  DecisionTemplateDefinition`'s own docstring for why).
-- `decisions` — the record itself.
-- `decision_comments` / `decision_comment_files` / `decision_files` — this
-  module's own module-local comment-thread and attachment tables.
-
-Also backfills `decision_type_definitions` with the 5 defaults
-(`app.modules.decisions.service.DEFAULT_DECISION_TYPES`) for every project
-that already exists — going forward, every new project gets these seeded
-at creation time by `app.modules.decisions.module._seed_new_project`
-(`on_project_created`). Mirrors migration 0032's identical backfill
-pattern for compliance action types: an `INSERT ... SELECT ... WHERE NOT
-EXISTS` per project, safe to run unconditionally.
-
-No `decision_template_definitions` backfill — template seeding is opt-in
-per organisation at creation time, so a pre-existing
-organisation simply starts with none; an org admin can create custom ones
-by hand through the API.
+Adds `decision_type_definitions`, `decision_template_definitions`, `decisions`
+and the module-local comment and file tables, and backfills the five default
+decision types for every existing project (idempotent per project).
 """
 
 from collections.abc import Sequence

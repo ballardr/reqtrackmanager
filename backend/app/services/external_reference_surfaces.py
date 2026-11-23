@@ -1,29 +1,29 @@
 """
 Module: services.external_reference_surfaces
 
-The places a record's external references appear besides its own panel: the list filter, the shared export and
-import column, the page read behind a list column, the report and search text, and the look-up of records by an
-outside key (`services.external_references` holds the table, the systems and the single-record changes).
+The places a record's external references appear besides its own panel: the list filter, the shared export
+and import column, the page read behind a list column, report and search text, and the look-up of records by an
+outside key (`services.external_references` holds the table, systems and single-record changes).
 
 Responsibilities:
-- `ReferenceFilter` / `reference_clause`: the list filter (`external_system`, `external_key`) as one SQL condition, so a
-  list endpoint, its export and a record-list report narrow the same rows.
-- `reference_column` / `ReferenceCells` / `apply_imported_references`: the shared `external_refs` table column
-  (`SYSTEM:KEY; SYSTEM:KEY`), read for a whole page in one go and written after the type's own create or update path.
-- `reference_texts`: the same text for a report field and a search snippet.
-- `find_records_by_reference`: records, visible to the caller, that carry an outside key.
+- `ReferenceFilter` / `reference_clause`: the list filter (`external_system`, `external_key`) as one SQL
+  condition, so a list, its export and a record-list report narrow the same rows.
+- `reference_column` / `ReferenceCells` / `apply_imported_references`: the shared `external_refs` column
+  (`SYSTEM:KEY; SYSTEM:KEY`), read for a page in one go and written after the type's own create or update path.
+- `reference_texts` (report field and search snippet) and `find_records_by_reference` (visible records with an
+  outside key).
 
 Design decisions:
-- A type needs nothing to take part: the filter is applied wherever `services.tags.TagFilter` is, and the column is
-  added by the record-table engine beside the placements column, never by a provider.
-- The filter, the cell and the look-up name a system by its display name, case-insensitively, because the same system
-  can be an organisation entry for one project and a project's own entry for another; a name is also what a person
-  types in a file. A key matches by substring in the filter and exactly in the look-up.
-- A cell has no link, note or role: an import keeps those of a reference it leaves in place and adds new ones bare, so a
-  round trip through a spreadsheet never loses them. A `;` or `\\` inside a key is escaped with a backslash.
-- Authority is the one for tags (`services.tags.can_tag`): changing the cell without it is a row error.
+- A type needs nothing to take part: the filter applies wherever `services.tags.TagFilter` does, and the
+  record-table engine adds the column beside the placements column.
+- Filter, cell and look-up name a system by display name, case-insensitively, since one system can be an
+  organisation entry for one project and a project entry for another, and a name is what a person types. A key
+  matches by substring in the filter and exactly in the look-up.
+- A cell has no link, note or role: an import keeps those of a reference it leaves in place and adds new ones
+  bare, so a spreadsheet round trip loses nothing. A semicolon or backslash inside a key is backslash-escaped.
+- Authority is `services.tags.can_tag`: changing the cell without it is a row error.
 
-External dependencies: `models.external_reference`, `services.external_references`, `services.link_graph`.
+Dependencies: `models.external_reference`, `services.external_references`, `services.link_graph`.
 """
 
 from __future__ import annotations

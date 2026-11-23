@@ -4,17 +4,16 @@
  * The editor of one report pack: its reports, its variables, its saved sets and its version history. One component
  * for an organisation's and a project's packs over `ReportPackApi`.
  *
- * Responsibilities:
- * - Load a pack and edit its definition as structured parts (`ReportPackEntriesEditor`, `ReportPackVariablesEditor`)
- *   held as one draft; Save sends the whole definition with the version the author started from, so a concurrent
- *   save is reported (409) instead of overwritten, and the server's positioned problems are listed.
- * - Hold Save back while a JSON box is invalid or nothing has changed; warn before leaving with unsaved changes.
- * - Show a pack shared from elsewhere read-only (with "make a copy"), while its saved sets can still be overridden
- *   for this project (`ReportPackSetsPanel`).
+ * - Loads a pack and edits its definition as structured parts (`ReportPackEntriesEditor`,
+ *   `ReportPackVariablesEditor`) held as one draft; Save sends the whole definition with the version the author
+ *   started from, so a concurrent save is reported (409) instead of overwritten, and the server's positioned
+ *   problems are listed. Client-only draft ids are dropped on save. Save is held back while a JSON box is invalid
+ *   or nothing has changed, and leaving with unsaved changes warns.
+ * - Shows a pack shared from elsewhere read-only (with "make a copy"), while its saved sets can still be overridden
+ *   for this project (`ReportPackSetsPanel`). Saved sets belong to the pack, not a version, so a new version leaves
+ *   them untouched.
  *
- * Design decisions: the server is the only validator of a definition, so the client holds no rules beyond what the
- * pickers offer; the draft's client-only ids are dropped on save. Saved sets belong to the pack, not a version, so
- * saving a new version does not touch them.
+ * The server is the only validator of a definition, so the client holds no rules beyond what the pickers offer.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";

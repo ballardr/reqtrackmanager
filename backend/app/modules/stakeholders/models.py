@@ -1,42 +1,12 @@
 """
 Module: modules.stakeholders.models
 
-Data model for the Stakeholders & Personas module: Persona and Stakeholder
-(see the second half of this file, which mirrors the Persona tables):
-
-- `Persona` / `PersonaVersion` — identity row plus temporal content
-  snapshots, the same split `models.requirement.Requirement`/
-  `RequirementVersion` and Context & Strategy's `GuidingPrinciple`/
-  `GuidingPrincipleVersion` use (full history). One
-  table with a `scope` discriminator and exactly one of `organization_id`/
-  `project_id` set (an org-level persona is one live, shared
-  record). Status and `weight` are versioned content: a lifecycle change or
-  a re-weighting is a content change like any other.
-- `PersonaTypeDefinition` / `ProjectPersonaType` — the two-tier type
-  vocabulary, the same shape as Context & Strategy's
-  `PainPointTypeDefinition`/`ProjectPainPointType`: an org base list plus
-  per-project rename/reorder/disable/add. `PersonaVersion` references either
-  an org type (org-scoped persona) or a project type row (project-scoped
-  persona); both are nullable because a type is optional.
-- `ProjectPersonaWeight` — a project's override of a persona's weight,
-  resolved through the project hierarchy by
-  `service.resolve_persona_weight`.
-- `ProjectPersonaVisibility` / `ProjectStakeholderVisibility` — a project's
-  override of whether one org Persona / Stakeholder is visible to it,
-  resolved through the project hierarchy by `service.resolve_visibility`.
-- `PersonaComment` / `PersonaCommentFile` / `PersonaFile` — module-local
-  comment and attachment tables, since extending the core
-  `ReviewTargetType` enum would be a per-module edit to a core file.
-- `StakeholderNeed` and its version/comment/file tables — a
-  project-scoped record of one stakeholder or persona need.
-- `StakeholderGroup` / `StakeholderGroupMember` —
-  a tree of groups classifying stakeholders, with many-to-many membership.
-- `Engagement` and its comment/file tables, `EngagementPrompt`,
-  `EngagementAnonymousParticipant` and `ResearchFinding` (end of this
-  file) — the contact log and the research extras. An Engagement is a single
-  row (no version table): it is a dated record of something that happened, and a
-  second copy of its notes in a history table would only widen what hard
-  deletion has to reach.
+Data model for Stakeholders & Personas: `Persona`/`PersonaVersion` (identity
+plus temporal content, org or project scope), the two-tier type vocabulary,
+`ProjectPersonaWeight`, project visibility overrides, `StakeholderNeed`,
+`StakeholderGroup`/members, `Engagement` (a single row, no version table) with
+its prompts, anonymous participants and `ResearchFinding`, and module-local
+comment and file tables for each record type.
 """
 
 from __future__ import annotations
@@ -600,9 +570,8 @@ class StakeholderFile(UUIDPKMixin, Base):
 
 
 class StakeholderNeed(UUIDPKMixin, TimestampMixin, Base):
-    """A Stakeholder Need's stable identity. Always project-scoped
-    (Decided by: Agent): a need is the intermediate statement between a person
-    and the project's own Requirements, so it has no organisation-level reading.
+    """A Stakeholder Need's stable identity. Always project-scoped: a need is the
+    intermediate statement between a person and the project's own Requirements.
     The Stakeholders/Personas that have it, and the Requirements it gave rise
     to, are `ArtefactLink`s.
 
@@ -805,8 +774,7 @@ class StakeholderGroupMember(UUIDPKMixin, Base):
 
 class Engagement(UUIDPKMixin, TimestampMixin, Base):
     """One contact with stakeholders or personas: an email, a call, a workshop, a
-    focus group. Always project-scoped (Decided by: Agent): a contact is
-    something a project did, and scoping it keeps one project's contact history
+    focus group. Always project-scoped, so one project's contact history stays
     off a stakeholder shared with other projects. Participants, personas covered,
     the audience group and the Pain Points / Needs / Open Questions it raised or
     answered are `ArtefactLink`s; anonymous participants, session prompts and
@@ -815,12 +783,12 @@ class Engagement(UUIDPKMixin, TimestampMixin, Base):
     Attributes:
         project_id: The owning project.
         creator_id: Who logged it.
-        unique_code: Project-scoped identifier (e.g. `"ENG-003"`), from `services.sequences.generate_unique_code`;
-            never reused.
+        unique_code: Project-scoped identifier (e.g. `"ENG-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         title: Short title.
         channel: How it took place.
-        engagement_date: When it took place (not when it was logged). Who ran it is a list of
-            `EngagementFacilitator` rows.
+        engagement_date: When it took place (not when it was logged). Who ran it
+            is a list of `EngagementFacilitator` rows.
         purpose: What it was for / the topics in scope.
         summary: A short outcome.
         notes: Free-text notes; may quote participants, so Confidential.
@@ -915,12 +883,12 @@ class EngagementFile(UUIDPKMixin, Base):
 
 class EngagementPrompt(UUIDPKMixin, TimestampMixin, Base):
     """A session prompt of an Engagement (research extras): a question or topic
-    asked, with the notes taken on the response. Named "session prompt" so it
-    does not collide with Context & Strategy's Open Questions.
+    asked, with the notes taken on the response. Named "session prompt" to avoid
+    a collision with Context & Strategy's Open Questions.
 
     Attributes:
         engagement_id: The engagement.
-        sort_order: Position in the session.
+        sort_order: Order of the prompt within the engagement.
         prompt: The question or topic.
         response_notes: What was said in response.
     """
@@ -960,16 +928,15 @@ class EngagementAnonymousParticipant(UUIDPKMixin, TimestampMixin, Base):
 class ResearchFinding(UUIDPKMixin, TimestampMixin, Base):
     """What an Engagement taught us (research extras). A registered artefact so
     it can link to the Pain Points, Needs and Open Questions it raised or
-    answered. It belongs to its engagement and is deleted with it (Decided by:
-    Agent): a finding can quote participants, so erasing the engagement must not
-    leave the quotes behind.
+    answered. It belongs to its engagement and is deleted with it: a finding can
+    quote participants, so erasing the engagement must not leave the quotes behind.
 
     Attributes:
         project_id: The owning project (same as the engagement's).
         engagement_id: The engagement it came from.
         creator_id: Who recorded it.
-        unique_code: Project-scoped identifier (e.g. `"FND-003"`), from `services.sequences.generate_unique_code`;
-            never reused, so a link or a conversation can name the finding.
+        unique_code: Project-scoped identifier (e.g. `"FND-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         title: Short statement of the finding.
         description: Evidence and detail.
     """

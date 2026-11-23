@@ -31,23 +31,14 @@ function dashboardGroupKey(page: OrgDashboard): string {
 const OVERVIEW_GROUP_KEY = "overview";
 
 /**
- * "Organisation Overview": the always-visible, top-level page of general organisation figures, drawn as widget
- * dashboards. Reached via `/org-overview` (`OrgListPage`'s single-org/multi-org auto-redirect) or directly at
- * `/orgs/:orgId/overview`.
+ * "Organisation Overview": the top-level page of organisation figures as widget dashboards, reached via `/org-overview` (`OrgListPage`) or
+ * `/orgs/:orgId/overview`. A `ResourceMenu` of the dashboard pages the person may see (the built-in Overview first, then administrator-added
+ * ones, optionally limited to people or groups); a dashboard is the project overview's widget grid (`OrgDashboardView`) and modules add widgets
+ * through `orgOverviewWidgets`, so no module is imported. An unknown address returns to the Overview.
  *
- * The page is a `ResourceMenu` of the dashboard pages the person may see (the built-in Overview first, then any the
- * organisation's administrators added, each optionally limited to chosen people or groups). A dashboard is the same
- * widget grid the project overview uses (`OrgDashboardView`); modules contribute widgets to it through
- * `orgOverviewWidgets`, so this core page never imports a module. The organisation's records and tables are on Org
- * Resources (`OrgResourcesPage`). An unknown address returns to the Overview.
- *
- * Actions in the title row: a section's own actions (its Export, a dashboard's Customise) are portalled in through
- * `PageActions`, just before Reports, so they stay level with Reports and the group does not shift when switching;
- * "Manage dashboards" (organisation administrators) opens the page list; "Reports" opens the Reports dialog
- * (`ReportsButton`), shown only when the caller can run at least one organisation report or pack; a "files" icon link
- * opens the organisation Files page, shown to every member because it lists only the files of projects the person can
- * open; a "settings" icon link opens the organisation admin page, shown to everyone who can see this page because that
- * page itself loads for every member and gates its sections by role (`docs/decisions.md`).
+ * Title row: a section's own actions (Export, Customise) are portalled in through `PageActions` before Reports so the group does not shift;
+ * "Manage dashboards" (administrators); "Reports" (`ReportsButton`, only when the caller can run an organisation report or pack); a files icon
+ * link (every member; only files of projects they can open); a settings icon link (every viewer; that page gates its sections by role).
  */
 export function OrgOverviewPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();

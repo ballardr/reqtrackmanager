@@ -1,18 +1,14 @@
 /**
  * Module: components/CommentMarker
  *
- * The round pin a comment thread leaves on a canvas, with the pop-over that opens from it.
+ * The round pin a comment thread leaves on a canvas, with the shared `Popover` that opens from it (a thread's body
+ * or the composer for a new comment); nothing here knows what record the comments belong to.
  *
- * Responsibilities:
- * - Draw a marker showing the author's initials and, once a thread has replies, a count; a resolved thread is outlined and
- *   muted, and a thread whose box or line has left the drawing carries a note.
- * - Open the shared `Popover` from the marker (an existing thread's body, or the composer for a new comment), anchored to it.
- *
- * Design decisions:
+ * - Shows the author's initials and, once a thread has replies, a count; a resolved thread is outlined and muted,
+ *   and a thread whose box or line left the drawing carries a note.
  * - Escape closes the open pop-over wherever focus is, because focus can leave it when a control disables itself.
- * - The marker is a real button (focusable, named with its author, count and state), so the canvas's comments are reachable
- *   without a pointer. The canvas keeps it one screen size at any zoom.
- * - Both pop-overs are the shared `Popover`; nothing here knows what record the comments belong to.
+ * - The marker is a real button (named with author, count and state), so comments are reachable without a
+ *   pointer. The canvas keeps it one screen size at any zoom.
  */
 import { useEffect, useRef, type ReactNode } from "react";
 

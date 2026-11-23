@@ -4,10 +4,9 @@ Revision ID: 0095
 Revises: 0094
 Create Date: 2026-10-18
 
-Adds `compliance_evidence.unique_code` (unique per project).
-Existing rows are numbered per project in the order they were created and the project's sequence
-counter is set past the highest number, so a code is never reused. Guarded throughout: a database
-built from the current models already has the columns.
+Adds `compliance_evidence.unique_code` (unique per project). Existing rows are numbered per project in creation order
+and the project's sequence counter is set past the highest number, so a code is never reused. Guarded: a database built
+from the current models already has the columns.
 """
 
 from collections.abc import Sequence

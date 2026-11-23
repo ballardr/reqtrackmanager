@@ -1,31 +1,26 @@
 """
 Module: profiling
 
-Developer profiling of a running backend: how many database statements each route runs per request, and which
-Python lines are still growing after warm-up. Only active when `PROFILE_MODE=true`; the production Compose file
-never sets it.
+Developer profiling of a running backend: how many database statements each route runs per request, and
+which Python lines keep growing after warm-up. Active only when `PROFILE_MODE=true`; the production Compose
+file never sets it.
 
 Responsibilities:
-- Count statements and database time per request (`RequestRecord`, filled by SQLAlchemy engine events) and
-  aggregate them per route template (`RouteStats`), keeping the statement a single request repeated most, which is
-  what an N+1 looks like.
-- Write each worker's totals to `PROFILE_OUTPUT_DIR/query_stats_<pid>.json` on a timer, and, with
-  `PROFILE_TRACEMALLOC`, the lines whose allocations grew since a post-warm-up baseline to
-  `tracemalloc_<pid>.json`.
+- Count statements and database time per request (`RequestRecord`, filled by SQLAlchemy engine events),
+  aggregate them per route template (`RouteStats`) and keep the statement one request repeated most (an N+1 suspect).
+- Write each worker's totals to `PROFILE_OUTPUT_DIR/query_stats_<pid>.json` on a timer and, with
+  `PROFILE_TRACEMALLOC`, the lines whose allocations grew since a post-warm-up baseline to `tracemalloc_<pid>.json`.
 
 Design decisions:
-- No endpoint, no metric and no log line carries any of this: the output is files in a directory the operator
-  mounts, read with `scripts/profile_tools.py`. That keeps a new unauthenticated surface (and new `/metrics`
-  label cardinality) out of the product.
-- Routes are keyed by their template (`GET /api/v1/projects/{project_id}`), never the resolved path. A statement is
-  kept as its parameterised text (placeholders, no bound values) truncated to `STATEMENT_CHARS`, so no record
-  content, id or credential reaches the output. Allocation lines are written as paths relative to `/app` or
-  `site-packages`.
-- Statements run while a streamed response body is still being produced are not counted: the request is
-  aggregated when the response starts.
-- Python sees one statement per `execute`; an `executemany` batch counts once, as in `db_statements_total`.
+- No endpoint, metric or log line carries any of this: the output is files in an operator-mounted directory
+  (read with `scripts/profile_tools.py`), so it adds no unauthenticated surface or `/metrics` label cardinality.
+- Routes are keyed by template, never the resolved path. A statement is kept as parameterised text truncated to
+  `STATEMENT_CHARS`, so no record content, id or credential reaches the output; allocation paths are relative to
+  `/app` or `site-packages`.
+- Statements run while a streamed response body is produced are not counted (the request is aggregated when the
+  response starts); an `executemany` batch counts once, as in `db_statements_total`.
 
-External dependencies: SQLAlchemy, Starlette (the request type).
+External dependencies: SQLAlchemy, Starlette.
 """
 
 from __future__ import annotations

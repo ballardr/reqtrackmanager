@@ -4,25 +4,13 @@ Revision ID: 0002
 Revises: 0001
 Create Date: 2026-08-09
 
-Adds `ServerSettings.signup_mode`; three new `Organization` columns
-(`allow_self_signup`, `auto_accept_email_domain`, `external_user_policy`);
-and the `pending_invites` table. See `app/models/organization.py` and
-docs/decisions.md's "Self-signup, invites, and SSO" entry for what these
-are for.
+Adds `ServerSettings.signup_mode`; three `Organization` columns (`allow_self_signup`,
+`auto_accept_email_domain`, `external_user_policy`); and the `pending_invites` table (see
+docs/decisions.md's "Self-signup, invites, and SSO" entry).
 
-Every statement here is written `IF NOT EXISTS`/`IF EXISTS`, not because
-that's this project's general migration style, but specifically because
-0001's `upgrade()` calls `Base.metadata.create_all()` against whatever the
-*current* model classes look like (see 0001's own docstring) — so on a
-brand-new database (this suite's own `_schema` fixture, which drops and
-recreates the schema every session), 0001 alone already creates these exact
-columns/table, and a plain `op.add_column` here would then fail with
-"column already exists". On an already-migrated database from before this
-revision existed (any long-running dev/deployment), 0001 was applied
-*before* these columns were added to the models, so they're genuinely
-missing and this migration is what adds them. `IF NOT EXISTS` makes this
-migration converge to the same end state either way, rather than only
-working for one of the two cases.
+Every statement is `IF NOT EXISTS`/`IF EXISTS`: on a new database 0001's `create_all()` already
+creates these columns from the current models, while an already-migrated database lacks them, so the
+statements converge to the same end state in both cases.
 """
 
 from collections.abc import Sequence

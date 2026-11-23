@@ -1,18 +1,16 @@
 /**
  * Module: testing/stressFixtures
  *
- * The story harness for "long text never breaks the layout" (`gridStability`). A grid or table story that
- * calls `TextStress` renders its view twice at the same width, once with short text and once with a 200
- * character name, a 60 character word with no space and a long code in several rows, and
- * `expectStressStable` then asserts the long render keeps the shape of the short one (columns, controls and
- * edges). A new grid or table view is covered by one `LongText` story that takes `short`/`long` fixtures.
- *
- * Responsibilities:
- * - `STRESS_TEXT` / `stressText`: the shared long fixtures, so every view is stressed the same way.
- * - `expectStressStable`: the play-function assertion (rules 1 to 4 of `gridStability`).
- *
- * Dependencies: `testing/gridStability`, `storybook/test`. The view itself is `TextStress` (`testing/TextStress.tsx`), a separate
- * file so each exports only components or only functions.
+ * The story harness for "long text never breaks the layout" (`gridStability`). A
+ * grid or table story that calls `TextStress` renders its view twice at the same
+ * width, with short text and with a 200-character name, a 60-character unbroken
+ * word and a long code in several rows; `expectStressStable` asserts the long
+ * render keeps the short one's shape. One `LongText` story takes `short`/`long` fixtures.
+ * Responsibilities: `STRESS_TEXT` / `stressText` (shared long fixtures) and
+ * `expectStressStable` (rules 1 to 4 of `gridStability`).
+ * Dependencies: `testing/gridStability`, `storybook/test`; the view is
+ * `TextStress` (`testing/TextStress.tsx`), a separate file so each exports only
+ * components or only functions.
  */
 import { expect } from "storybook/test";
 

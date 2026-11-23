@@ -6,20 +6,14 @@ import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PERSON
 installCleanupHook();
 
 /**
- * Job to be done: an org admin can rename their own organisation, and can
- * send a test email to confirm their org's own SMTP override
- * (`Organization.smtp_*`) actually works before relying on it; separately,
- * a server admin can send a test email to confirm the deployment-wide SMTP
- * configuration works. Verifies real delivery through MailHog's HTTP API
- * (the same SMTP relay `tests/container/docker-compose.yml` wires the
- * backend to) rather than only asserting the UI shows a success message —
- * same verification approach as `external-project-invite.spec.ts`.
+ * Job to be done: an org admin can rename their organisation, and can send a test email to confirm the
+ * organisation's SMTP override (`Organization.smtp_*`) works before relying on it; separately, a server admin can
+ * send a test email to confirm the deployment-wide SMTP configuration. Verifies real delivery through MailHog's
+ * HTTP API (the SMTP relay `tests/container/docker-compose.yml` wires the backend to), as
+ * `external-project-invite.spec.ts` does.
  *
- * Uses a disposable organisation (created via API, like
- * `server-org-lifecycle.spec.ts`) for the rename/org-SMTP test rather than
- * a shared seed org, since renaming and reconfiguring SMTP are exactly the
- * kind of mutation other specs sharing this suite's single-worker run
- * shouldn't see.
+ * Uses a disposable organisation (created through the API, like `server-org-lifecycle.spec.ts`) for the rename and
+ * organisation-SMTP test, since both mutate state other specs would see in a shared seed organisation.
  */
 
 const apiBaseUrl = "http://localhost:8000";
@@ -189,10 +183,8 @@ test.describe("organisation rename and test-email actions", () => {
         .poll(async () => mailhogReceivedMessageTo(page, testEmailRecipient), { timeout: 15_000 })
         .toBe(true);
 
-      // The email is now real, rendered HTML from the shared branded
-      // template (services/email_templates.py), not a bare plain-text
-      // string — confirm the structure and this org's own branding
-      // resolved into it, not just that something arrived.
+      // The email is rendered HTML from the shared branded template (services/email_templates.py); confirm the structure
+      // and this organisation's branding resolved into it, not only that something arrived.
       const message = await mailhogMessageTo(page, testEmailRecipient);
       const html = mailhogHtmlBody(message!);
       expect(html).toContain("<!DOCTYPE html>");

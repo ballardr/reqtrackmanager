@@ -1,15 +1,10 @@
 /**
  * Module: pages/ForcedPasswordChangePage
  *
- * The only screen an account sees while an administrator-set password is still in place
- * (`User.must_change_password`): the person enters the password they were given and chooses their own.
- *
- * Responsibilities: collect and confirm the new password, send it with `POST /auth/change-password`, and send the
- * person to the sign-in page afterwards (the change ends every session, including this one; the page they were on is
- * remembered so that signing in returns them to it). Signing out is the alternative.
- *
- * Design decisions: rendered in place of the whole signed-in application by `App.tsx`, not as a route, so there is no
- * address that leaves it; the server refuses every other request of the account in any case
+ * The only screen an account sees while an administrator-set password is in place (`User.must_change_password`): the person enters that
+ * password and chooses their own. It collects and confirms the new password, sends `POST /auth/change-password` and sends the person to
+ * sign-in (the change ends every session; the current page is remembered for the return); signing out is the alternative. `App.tsx`
+ * renders it in place of the whole application, not as a route, so no address leaves it; the server also refuses every other request
  * (`services.password_change_gate`).
  */
 import { useState, type FormEvent } from "react";

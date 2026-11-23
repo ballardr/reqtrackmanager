@@ -1,43 +1,42 @@
 """
 Module: modules.architecture.diagram_resolver
 
-The one rule that turns the model's connections into the lines a diagram draws. The API's diagram view, the server
-SVG, and (later) the report part and the Mermaid and Structurizr exports all call `resolve`, so a screen and a
+The one rule that turns the model's connections into the lines a diagram draws. The API's diagram view, the
+server SVG, the report part and the Mermaid and Structurizr exports all call `resolve`, so a screen and a
 document cannot differ.
 
 Responsibilities:
-- Apply, in this order: (1) hide the elements and connections of switched-off toggles; (2) join across hidden
-  elements (a hidden transit element is bridged); (3) roll every end up to its nearest placed ancestor; (4) merge
-  parallel lines when connection detail is off. A connection a person routed on its own is never merged: it is drawn as a
-  line of its own.
-- Report which underlying connections each line stands for, which hidden elements a bridged line passes through,
-  and which connections are wholly inside a placed element (and so drawn on no line).
-- Join a scoped diagram's boundary boxes: an inner connection that realises an outer connection and ends at the outer
-  connection's scope-side element is drawn to that connection's box (`Boundary`), and `outer_side` says which end of a
-  connection lies inside a scope, which is what makes it an outer connection.
+- Apply, in order: (1) hide the elements and connections of switched-off toggles; (2) join across hidden
+  elements (a hidden transit element is bridged); (3) roll every end up to its nearest placed ancestor;
+  (4) merge parallel lines when connection detail is off. A connection a person routed on its own is never
+  merged: it is a line of its own.
+- Report which connections each line stands for, which hidden elements a bridged line passes through, and
+  which connections lie wholly inside a placed element (drawn on no line).
+- Join a scoped diagram's boundary boxes: an inner connection that realises an outer connection and ends at
+  its scope-side element is drawn to that connection's box (`Boundary`); `outer_side` says which end of a
+  connection lies inside a scope, which makes it an outer connection.
 
 Design decisions:
-- **Pure.** The function reads only the plain data it is given (ids, parents, ends); the loader that builds that data
-  from the database, and applies visibility, is in `diagram_view`. An element the viewer may not read is never passed
-  in `hidden_elements`, so it is never bridged through and never matched by a toggle.
-- **Hidden means the element or an ancestor is switched off:** a switched-off element takes its subtree with it.
-- **Bridging follows directions.** A one-way connection is an arc from source to target; a two-way connection is an arc
-  each way. A hidden element joins every in-neighbour to every out-neighbour its arcs allow, and a chain of hidden
-  elements is followed to `MAX_HOPS`; one shortest path is kept per pair of visible ends, so a dense hidden region
-  cannot make the work explode. A hidden element with a single neighbour joins nothing and just disappears.
-- **A line is dashed ("indirect") only when every connection behind it is rolled up or bridged.** A merged line that
-  includes a direct connection stays solid.
-- **A boundary box is a placed element with no parent.** `resolve` swaps the end of each realising connection that meets
-  the box (the outer connection's scope-side element, or an element inside the one outside the scope) for the box (one
-  candidate per box, so a connection realising two outer connections is drawn to both) and drops the original, which
-  would otherwise be drawn to nothing. A scope-side element that is itself placed keeps its own lines there: the box is
-  then a coverage marker, or a line to the element outside.
-- **A routed connection is its own line.** A connection with a route of its own (`routed`: the connection and the two boxes
-  its route joins) that resolves to one direct or rolled-up line between exactly those boxes is taken out of the merge, so
-  the route moves it alone. A route whose boxes no longer match is ignored and the connection merges as before; a bridged
-  line (several connections behind it) and a line to a boundary box are never routed, so they are not offered
-  (`Line.routable`).
-- **Order is deterministic** (lines sorted by their ends and first connection), so equal inputs draw equal diagrams.
+- Pure: it reads only the plain data it is given (ids, parents, ends); `diagram_view` loads that data and
+  applies visibility. An element the viewer may not read is never in `hidden_elements`, so it is never
+  bridged through or matched by a toggle.
+- Hidden means the element or an ancestor is switched off; a switched-off element takes its subtree with it.
+- Bridging follows directions: a one-way connection is an arc source to target, a two-way connection an arc
+  each way. A hidden element joins every in-neighbour to every out-neighbour its arcs allow; a chain of hidden
+  elements is followed to `MAX_HOPS` and one shortest path is kept per pair of visible ends, so a dense hidden
+  region cannot make the work explode. A hidden element with one neighbour joins nothing.
+- A line is dashed ("indirect") only when every connection behind it is rolled up or bridged; a merged line
+  including a direct connection stays solid.
+- A boundary box is a placed element with no parent. `resolve` swaps the end of each realising connection
+  that meets the box (the outer connection's scope-side element, or an element inside the one outside the
+  scope) for the box, one candidate per box so a connection realising two outer connections is drawn to both,
+  and drops the original, which would be drawn to nothing. A scope-side element that is itself placed keeps its
+  own lines: the box is then a coverage marker or a line to the outside element.
+- A routed connection is its own line: one with a route of its own (`routed`: the connection and the two boxes
+  its route joins) that resolves to one direct or rolled-up line between exactly those boxes is taken out of
+  the merge. A route whose boxes do not match is ignored; a bridged line and a line to a boundary box are never
+  routed (`Line.routable`).
+- Order is deterministic (lines sorted by ends and first connection), so equal inputs draw equal diagrams.
 
 Dependencies: none beyond the standard library.
 """

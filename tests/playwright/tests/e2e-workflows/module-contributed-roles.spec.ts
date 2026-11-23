@@ -3,16 +3,11 @@ import { expect, test } from "@playwright/test";
 import { ensureExpanded, loginAs, ORG_NAMES, PERSONAS, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Job to be done: module system module-contributed RBAC. Both surfaces
- * covered here (`OrgAdminPage`'s
- * Users table Roles column, `ProjectMembersTable`'s own Role column) merge in
- * module-contributed role options alongside the fixed core-role ones.
+ * Job to be done: module-contributed RBAC roles appear alongside the fixed core roles in both surfaces that list
+ * them (`OrgAdminPage`'s Users table Roles column and `ProjectMembersTable`'s Role column).
  *
- * Compliance's `compliance_manager` (org-scoped)/`compliance_officer`
- * (project-scoped) roles are the real module-contributed roles it
- * interacts with: both dropdowns assert the real fourth/fifth
- * module-contributed option alongside the fixed core-role set (see
- * `org-admin-modules.spec.ts`'s docstring for the stale-container caveat).
+ * Compliance's `compliance_manager` (organisation-scoped) and `compliance_officer` (project-scoped) are the real
+ * module roles asserted (see `org-admin-modules.spec.ts` for the stale-container caveat).
  */
 test.describe("module-contributed roles: Compliance's real org/project roles", () => {
   test("org admin Users table Roles dropdown includes Compliance Manager and still grants/revokes core roles", async ({ page }) => {
@@ -27,10 +22,8 @@ test.describe("module-contributed roles: Compliance's real org/project roles", (
     await rolesButton.click();
     const rolesGroup = page.getByRole("group", { name: `${PERSONAS.memberAlphaBeta.name}'s roles` });
 
-    // The three fixed OrgRole options plus Compliance's own org-scoped
-    // module role, merged into the same dropdown by design
-    // ("Compliance Manager (Compliance)" — module.py's role name plus its
-    // owning module's display name, OrgAdminPage.tsx's own worked example).
+    // The three fixed OrgRole options plus Compliance's organisation-scoped module role, shown as
+    // "Compliance Manager (Compliance)": the role name plus its owning module's display name.
     await expect(rolesGroup.getByRole("checkbox")).toHaveCount(4);
     await expect(rolesGroup.getByText("Member", { exact: true })).toBeVisible();
     await expect(rolesGroup.getByText("Project creator", { exact: true })).toBeVisible();
@@ -80,10 +73,8 @@ test.describe("module-contributed roles: Compliance's real org/project roles", (
     await rolesButton.click();
     const rolesGroup = page.getByRole("group", { name: `${PERSONAS.orgAdminAlphaBeta.name}'s roles` });
 
-    // The four fixed ProjectRole options plus Compliance's own project-
-    // scoped module role — `ProjectMembersTable.tsx` renders a module
-    // role's own `name` directly with no owning-module suffix (a deliberate difference from the org-admin surface above, since no
-    // module with roles existed yet to force a same-name collision).
+    // The four fixed ProjectRole options plus Compliance's project-scoped module role; `ProjectMembersTable.tsx`
+    // renders a module role's `name` with no owning-module suffix, unlike the organisation surface above.
     await expect(rolesGroup.getByRole("checkbox")).toHaveCount(5);
     await expect(rolesGroup.getByText("Compliance Officer", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");

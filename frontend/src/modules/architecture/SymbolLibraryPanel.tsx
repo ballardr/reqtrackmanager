@@ -1,19 +1,13 @@
 /**
  * Module: modules/architecture/SymbolLibraryPanel
  *
- * The symbol library of the organisation (a section of Org Resources) or of a project (a section of its settings): the one
- * list page both homes render, so a project gets the same filters and folders as the organisation.
- *
- * - A `ListPageLayout` page: one primary button (Upload symbols) and one actions menu (the folder actions and, in a project,
- *   Add organisation defaults), a filter panel (search by name, Source, Used, File type and Folders) and the symbols as a
- *   sortable table or as tiles. The filters, the sort and the folder are in the page address; the server filters, sorts and
- *   pages (`useSymbolLibrary`).
- * - A project's page offers the organisation's symbols too, read-only: under their folder path in an Organisation branch of
- *   the folder tree, and hidden with Delete (restored with Add organisation defaults). Its own symbols have the project's own
- *   folders. A symbol inherited from a parent project is not filed.
- * - A built-in symbol is drawn in code: it cannot be renamed or filed. An upload goes through the server's sanitiser, which
- *   refuses scripts, external references and oversized files; each file's refusal is shown in the upload dialog.
- *
+ * The symbol library of an organisation (Org Resources) or a project (its settings): the one list page both homes render.
+ * A `ListPageLayout` page with one primary button (Upload symbols), one actions menu (folder actions and, in a project, Add
+ * organisation defaults), a filter panel and the symbols as a sortable table or tiles; filters, sort and folder are in the
+ * address and the server filters, sorts and pages (`useSymbolLibrary`).
+ * A project also lists the organisation's symbols read-only in an Organisation folder branch, hidden with Delete and restored
+ * with Add organisation defaults; a symbol inherited from a parent project is not filed. A built-in symbol is drawn in code
+ * and cannot be renamed or filed. Uploads pass the server's sanitiser (no scripts, external references or oversized files).
  * Controls render only for a person who may change the library (`useCanUploadSymbols`); the server enforces the same roles.
  */
 import { useCallback, useMemo, useState } from "react";

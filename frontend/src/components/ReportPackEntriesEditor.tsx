@@ -1,21 +1,20 @@
 /**
  * Module: components/ReportPackEntriesEditor
  *
- * The "Reports" tab of the pack editor: the ordered list of reports in the pack. Each is a custom layout (named, with
- * an optional owner tier) or a module report, with its format, the file name inside the zip, and values it pins
- * (a layout's variables) or options it sets (a module report's filters).
+ * The "Reports" tab of the pack editor: the ordered list of reports in the pack. Each is a custom layout (named,
+ * with an optional owner tier) or a module report, with its format, the file name inside the zip, and values it
+ * pins (a layout's variables) or options it sets (a module report's filters).
  *
- * Responsibilities:
- * - Add, remove and reorder entries; each entry carries a client-only `uid` so a reorder keeps the right text in
- *   the right box (`DraftEntry`).
- * - Offer only what the scope can use: the layouts the scope can reach and the module reports the catalogue lists,
- *   with the formats each can be produced in (a document layout: PDF, Word, HTML; a table layout: CSV, Excel; a
- *   module report: PDF, Word, CSV).
- * - Stay controlled: the editor owns the draft and the save; this component only edits the list it is given.
+ * - Adds, removes and reorders entries; each carries a client-only `uid` so a reorder keeps the right text in the
+ *   right box (`DraftEntry`).
+ * - Offers only what the scope can use: the layouts it can reach and the module reports the catalogue lists, with
+ *   the formats each can be produced in (a document layout: PDF, Word, HTML; a table layout: CSV, Excel; a module
+ *   report: PDF, Word, CSV).
+ * - Controlled: the editor owns the draft and the save; this component only edits the list it is given.
  *
- * Design decisions: an entry names its layout (not an id) so the pack is portable between organisations and resolves
- * for the project it runs in; a layout name no longer in the list is still shown, so a pack naming a layout that was
- * renamed or hidden can be seen and corrected rather than silently changed.
+ * An entry names its layout (not an id) so the pack is portable between organisations and resolves for the project
+ * it runs in; a layout name that is not in the list (renamed or hidden) is still shown, so it can be seen and
+ * corrected rather than silently changed.
  */
 import {
   REPORT_ENTRY_FORMATS,

@@ -12,37 +12,22 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useDialogA11y } from "./dialogA11y";
 import { DialogFrame, type DialogGuardFrame } from "./DialogHeader";
 
-/** `size="md"` (the default, 560px) is the original fixed width, sized for
- * this component's first use — a small read-only vote-comment viewer.
- * `size="lg"` (900px) is the style guide's "known implementation
- * dependency" resolution for `Pattern: modal dialog for entity
- * create/rename` — a genuinely busy multi-field form (the CSV import
- * wizard's column-mapping table, a future New Project/New Organisation
- * form) needs more horizontal room than a two-sentence viewer does. Both
- * still cap `maxHeight` at 80vh and scroll internally, and both still fit
- * within the same centred-overlay chrome — only the width changes. */
+/** `md` (default, 560px) suits a small form or viewer; `lg` (900px) suits a busy multi-field form such as the CSV
+ * import wizard's column-mapping table. Both cap `maxHeight` at 80vh and scroll internally. */
 const MODAL_MAX_WIDTH_PX: Record<"md" | "lg", number> = { md: 560, lg: 900 };
 
 /**
- * A simple centred dialog overlay, rendered through a portal into
- * `document.body` so it's never clipped by a scrollable ancestor (same
- * reasoning as `Tooltip`). Closes on Escape, the header close button and, when
- * `onBackdropClick` is given, a click on the backdrop; the dialog itself stops
- * propagation so clicks inside it don't bubble to the backdrop's handler.
+ * A centred dialog overlay, rendered through a portal into `document.body` so a scrollable ancestor never clips it
+ * (as `Tooltip`). Closes on Escape, the header close button and, when `onBackdropClick` is given, a backdrop click;
+ * the dialog stops propagation so inner clicks do not reach the backdrop handler.
  *
- * The title, the form's actions (`FormActions` portals into the header) and the close button are
- * a pinned header row; only the body scrolls, so Save is reachable on a long form (see
- * `DialogHeader.tsx`, style guide "Pattern: form header").
+ * The title, the form's actions (`FormActions` portals into the header) and the close button are a pinned header
+ * row; only the body scrolls, so Save is reachable on a long form (`DialogHeader.tsx`, style guide "Pattern: form
+ * header").
  *
- * Traps Tab/Shift+Tab focus within the dialog while open, and restores
- * focus to whatever triggered it on close (style guide Principle 8 —
- * "every interactive control has a name," extended here to "and keyboard
- * focus never silently escapes it"); see `dialogA11y.ts`, shared with
- * `SidePanel` and `Popover`. Initial focus only moves into the dialog if
- * nothing inside already has it — a child that sets its own `autoFocus`
- * (e.g. `RichTextEditor`'s link-URL field) wins; this only takes over as a
- * fallback for content with no such field of its own (e.g. the read-only
- * vote-comments viewer).
+ * Tab and Shift+Tab stay inside the dialog while open and focus returns to the trigger on close (style guide
+ * Principle 8; `dialogA11y.ts`, shared with `SidePanel` and `Popover`). Initial focus moves in only if nothing inside
+ * already has it, so a child with its own `autoFocus` (such as `RichTextEditor`'s link-URL field) wins.
  */
 export function ModalBase({
   title,

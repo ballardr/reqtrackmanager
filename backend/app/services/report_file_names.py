@@ -1,32 +1,23 @@
 """
 Module: services.report_file_names
 
-Default output file names for generated reports: the `{{placeholder}}` template a layout, a pack, a pack entry or an
-organisation can set, its check at save time and the safe file stem it produces.
+Default output file names for generated reports: the `{{placeholder}}` template a layout, pack, pack entry or
+organisation can set, its save-time check and the safe file stem it produces.
 
 Responsibilities:
-- Define which placeholders a file name may use (`FILE_NAME_PLACEHOLDERS`, `ORG_FILE_NAME_PLACEHOLDERS`).
-- `template_problems`: why a template cannot be saved (an unknown name, a record field, an unknown variable).
-- `render_stem`: the template filled in and reduced to a flat, safe stem, or `None` when nothing usable is left, so
-  the caller falls back to the name it always used.
-- `clean_filename`: the one sanitiser for a name made from user text (packs, entries, templates).
-- `sample_values`: the values the designer's live example uses.
+- Define the allowed placeholders; `template_problems` (why a template cannot be saved); `render_stem` (the filled
+  template as a safe stem, or `None` so the caller keeps its usual name); `clean_filename` (the one sanitiser for
+  names made from user text); `sample_values` for the designer's example.
 
 Design decisions:
-- **A file name, never a path.** The stem is reduced to letters, digits, space, dot, dash and underscore; accents are
-  folded to their base letter; separators, `..`, control characters (so CR and LF), quotes and non-ASCII are removed
-  or replaced; leading and trailing dots, spaces and dashes go; Windows device names are prefixed; the length is
-  capped. The extension is chosen by the renderer, never by the template, and no value reaches a response header
-  except through `services.downloads.file_response`, which encodes it.
-- **Values are cleaned one by one before they are joined** and cut to `MAX_VALUE_CHARS`, so a long project
-  description or a long list cannot crowd out the rest of the name, and a hostile value (`../x`, a line break) has
-  already lost its structure when the whole name is cleaned again.
-- **One placeholder syntax.** The pattern is the report text's own (`services.report_model.PLACEHOLDER_RE`) and the
-  values come from the same run facts the document's placeholders use, so a name cannot drift from the document.
-  Record fields are not available (a file has no current record); the record-image name rule is the place for them.
-- **Never fails a run.** An empty template or an empty result falls back; an unknown name at render time is empty.
+- A file name, never a path: only letters, digits, space, dot, dash and underscore survive (accents folded, control
+  characters and separators removed, Windows device names prefixed, length capped); the renderer chooses the extension
+  and `services.downloads.file_response` encodes the header.
+- Values are cleaned and cut to `MAX_VALUE_CHARS` before joining, then the whole is cleaned again.
+- The placeholder syntax and values are the document's own (`report_model.PLACEHOLDER_RE`); record fields are unavailable.
+- Never fails a run: an empty template or result falls back; an unknown name renders empty.
 
-Dependencies: `services.report_model`, `services.report_variables` (the `var` family name).
+Dependencies: `services.report_model`, `services.report_variables`.
 """
 
 from __future__ import annotations

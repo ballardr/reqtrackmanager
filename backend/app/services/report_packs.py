@@ -4,20 +4,17 @@ Module: services.report_packs
 Storing and versioning report packs (`models.report_pack`).
 
 Responsibilities:
-- Create a pack with its first version, save further versions, rename or re-describe it, delete it.
-- Read the current version, one version, or the version history.
-- Validate every definition before it is stored (`report_pack_definition.assert_valid`) and write one audit
-  event per change.
+- Create (with a first version), save further versions, rename or re-describe, delete; read the current version, one
+  version or the history.
+- Validate every definition before it is stored (`report_pack_definition.assert_valid`); one audit event per change.
 
 Design decisions:
-- **Editing never changes a stored version.** A save appends a version; a run pins one by number, so provenance
-  stays true (`ReportPackVersion` refuses updates).
-- **Optimistic concurrency.** A save names the version it was based on; if the pack moved on it is refused
-  (`PackConflictError`) rather than overwriting a colleague's change. The pack row is locked while the next number
-  is chosen. A save whose definition hashes the same as the current version stores nothing.
-- The audit event carries ids, the version number, the hash and counts, never the pack's text or any value.
-- Permission to manage packs is decided by the caller (the endpoint, with the same permissions as layouts); this
-  module trusts it and only checks that a project belongs to the organisation named.
+- A stored version is never changed: a save appends one and a run pins one by number (`ReportPackVersion` refuses
+  updates). A definition hashing equal to the current version stores nothing.
+- Optimistic concurrency: a save names its base version and is refused (`PackConflictError`) if the pack moved on; the
+  pack row is locked while the next number is chosen.
+- The audit event carries ids, version number, hash and counts, never pack text or values.
+- The endpoint decides permission (as for layouts); this module only checks the project belongs to the organisation.
 
 Dependencies: `models.report_pack`, `services.report_pack_definition`, `services.audit`.
 """

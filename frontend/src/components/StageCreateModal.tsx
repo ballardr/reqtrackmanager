@@ -1,15 +1,13 @@
 /**
  * Module: components/StageCreateModal
  *
- * The dialog that adds a stage to a project, opened by Project Administration's "New stage" button so the Stages
- * section shows no empty fields until someone asks (docs/ux-style-guide.md, "Pattern: creation controls on demand").
+ * The dialog that adds a stage to a project, opened by Project Administration's "New stage" button so the Stages section
+ * shows no empty fields until someone asks (docs/ux-style-guide.md, "Pattern: creation controls on demand").
  *
- * Responsibilities:
- * - Collect the stage's name and the workflow that governs its phases; offer a shortcut to define a new workflow
- *   (`onNewWorkflow`, which opens its own editor over this dialog and selects the result through `workflowId`).
- * - Hand the values to `onCreate`; the dialog closes only when it reports success, and a refusal is already toasted.
- *
- * The workflow choice is controlled by the caller because creating a workflow elsewhere selects it here.
+ * Responsibilities: collect the stage's name and the workflow governing its phases (with a shortcut, `onNewWorkflow`,
+ * to define a new workflow whose result is selected through `workflowId`); hand the values to `onCreate`, closing only
+ * on success (a refusal is already toasted). The caller controls the workflow choice because creating a workflow
+ * elsewhere selects it here.
  */
 import { Plus } from "lucide-react";
 import { useState } from "react";

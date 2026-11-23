@@ -5,7 +5,7 @@ Revises: 0117
 Create Date: 2026-10-28
 
 Drops `report_contents` (the introductions, chapters and appendices a template, project or organisation held per
-report; authored text now lives in report layouts) and `projects.default_report_template_id`. The data is not
+report; authored text is in report layouts) and `projects.default_report_template_id`. The data is not
 converted: the rows are deleted. `downgrade` recreates the empty table and column, not the data.
 """
 

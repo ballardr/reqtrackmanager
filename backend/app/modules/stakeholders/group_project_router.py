@@ -1,19 +1,12 @@
 """
 Module: modules.stakeholders.group_project_router
 
-Project-scoped Stakeholder Group API, mounted at
-`/api/v1/projects/{project_id}/modules/stakeholders` next to the Stakeholder routes: the group tree
-(list/create/edit/move/reorder/delete), direct membership, a stakeholder's group
-set, and the "create groups from organisation / group text" action. The bodies
-live in `_group_shared.py`; this file declares the routes and the gates.
-
-The project sees the organisation's groups (read-only here: they are edited through the org
-router) and its own, which may sit under an org group and hold org or project stakeholders.
-Stakeholders hidden from the project are neither listed nor addable.
-
-Viewing needs the `stakeholder` sub-component to be enabled; every write needs
-`_group_shared.require_group_manage` (a group is
-managed by whoever manages Stakeholders, or holds a `(stakeholder_group, manage)` grant).
+Project-scoped Stakeholder Group API at `/api/v1/projects/{project_id}/modules/stakeholders`:
+the group tree, direct membership, a stakeholder's group set and "create groups
+from text"; bodies live in `_group_shared.py`. The project sees organisation
+groups read-only and its own, which may sit under an org group. Hidden
+stakeholders are neither listed nor addable. Viewing needs the `stakeholder`
+sub-component; writes need `_group_shared.require_group_manage`.
 """
 
 from __future__ import annotations

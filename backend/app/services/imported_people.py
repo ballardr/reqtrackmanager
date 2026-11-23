@@ -1,27 +1,25 @@
 """
 Module: services.imported_people
 
-Imported people: inert stand-ins for the people a bundle names who are not members of the organisation importing it.
+Imported people: inert stand-ins for the people a bundle names who are not members of the importing organisation.
 
-Responsibilities:
-- Create or reuse a stand-in `User` row per organisation and person (`stand_in_for`), keyed by an HMAC of the
-  normalised email so the address itself is never stored and a later import into the same organisation reuses the row.
-- Read the people a bundle names (`bundle_emails`) and write the display names that travel with it (`people_section`).
-- Classify each person for the import preview (`classify_people`) and hold the importer's per-person choices
-  (`PeopleChoices`).
-- List and remove unused stand-ins (`unused_stand_ins`, `anonymise`).
+Responsibilities: create or reuse a stand-in `User` per organisation and person (`stand_in_for`), keyed by an
+HMAC of the normalised email so the address is never stored and a later import reuses the row; read the people
+a bundle names (`bundle_emails`) and write the display names that travel with it (`people_section`); classify
+people for the import preview (`classify_people`, `PeopleChoices`); list and remove unused stand-ins
+(`unused_stand_ins`, `anonymise`).
 
 Design decisions:
-- A stand-in is a user row because about 25 authorship and owner columns are non-null foreign keys to `users`. It is
-  always inactive and archived with no password, an `imported` backend and a synthetic non-routable address, so the
-  checks that already refuse a deactivated account (sign-in, role and group grants, invitations, notification
-  delivery, pickers) refuse it without a per-route rule; `User.imported_organization_id` marks it for display and the
-  People page. It holds no role, so it is absent from every member list and count.
-- The bundle's email is not stored on the stand-in. Whether it is kept in the replayed history's detail is the
-  importer's choice at import time (`PeopleChoices.keep_original_email`).
-- A stand-in is never merged into a real account later; re-pointing authorship would rewrite history.
+- A stand-in is a user row because about 25 authorship and owner columns are non-null FKs to `users`. It is
+  inactive and archived, with no password, an `imported` backend and a non-routable address, so the existing
+  checks that refuse a deactivated account (sign-in, grants, invitations, notifications, pickers) refuse it
+  without per-route rules; `User.imported_organization_id` marks it for display. It holds no role, so it is
+  absent from member lists and counts.
+- The bundle's email is not stored on the stand-in; whether it is kept in replayed history detail is the
+  importer's choice (`PeopleChoices.keep_original_email`).
+- A stand-in is never merged into a real account, since re-pointing authorship would rewrite history.
 
-External dependencies: `app.config.settings` (HMAC key), `models.user`, `models.organization`.
+Dependencies: `app.config.settings` (HMAC key), `models.user`, `models.organization`.
 """
 
 from __future__ import annotations

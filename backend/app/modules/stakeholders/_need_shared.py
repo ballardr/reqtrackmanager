@@ -1,20 +1,12 @@
 """
 Module: modules.stakeholders._need_shared
 
-Helpers behind the project-scoped Stakeholder Need router
-(`need_project_router.py`), mirroring `_stakeholder_shared.py`: the bodies the
-router's routes would otherwise inline — the manage gate, the API shape,
-create/update/lifecycle, and the "has need" / "gives rise to" link operations.
-Comments and files go through the shared `services.module_attachments` kit.
-
-RBAC: viewing is gated by sub-component enablement
-alone; create/edit/archive/retire/link need the project `stakeholder_need_owner`
-role or a Fine-Grained Access Control `(stakeholder_need, manage)` grant. A Need
-has no organisation scope, so there is no org-level role.
-
-Tenancy: a need only links to a Stakeholder/Persona its own project can see (its
-own or its organisation's) and to a Requirement of the same project; anything
-else 404s so another tenant's ids look absent.
+Helpers behind the project-scoped Stakeholder Need router: the manage gate, API
+shape, create/update/lifecycle and the "has need"/"gives rise to" links;
+comments and files use `services.module_attachments`. Viewing needs the
+sub-component; changes need `stakeholder_need_owner` or `(stakeholder_need,
+manage)`. A need links only to records its project can see and Requirements of
+the same project (else 404).
 """
 
 from __future__ import annotations

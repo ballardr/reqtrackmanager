@@ -2,13 +2,9 @@
  * Module: components/CustomFieldCreateModal
  *
  * The dialog that adds a custom field to a project, opened by Project Administration's "New field" button so the
- * Custom fields section shows no empty fields until someone asks (docs/ux-style-guide.md, "Pattern: creation controls
- * on demand").
- *
- * Responsibilities:
- * - Collect which kind of record the field belongs to, its name, type, options (a list type only) and whether it is
- *   required, and hand them to `onCreate`.
- * - Close only when `onCreate` reports success; a refusal is already toasted by the caller.
+ * section shows no empty fields (docs/ux-style-guide.md, "Pattern: creation controls on demand"). It collects the
+ * record kind, name, type, options (a list type only) and whether the field is required, and hands them to
+ * `onCreate`. It closes only when `onCreate` reports success; a refusal is already toasted by the caller.
  */
 import { useState } from "react";
 

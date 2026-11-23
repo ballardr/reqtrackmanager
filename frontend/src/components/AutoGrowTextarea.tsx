@@ -1,33 +1,15 @@
 /**
  * Module: components/AutoGrowTextarea
  *
- * A `<textarea>` that grows with its content instead of scrolling inside a
- * fixed number of rows, capped at a maximum visible height so a pasted
- * essay doesn't push the rest of the form off-screen. See
- * "New requirement form: three unlabelled
- * fields, no auto-grow" and docs/ux-style-guide.md's
- * "Missing components identified this pass" table — nothing in
- * `frontend/src/components/` did `scrollHeight`-based resize before this.
+ * A `<textarea>` that grows with its content, capped at a maximum visible height so a pasted essay does not push
+ * the rest of the form off-screen. `rows` is the minimum height. Every long free-text field is one of these
+ * (docs/ux-style-guide.md, "Pattern: auto-growing textarea"); `TextAreaField` renders it by default.
  *
- * Design decision: the height cap is computed from the textarea's own
- * *resolved* `line-height` (`getComputedStyle`, not a hardcoded pixel
- * number) multiplied by `maxVisibleLines` (default 8, per the audit's own
- * "roughly 8 lines" suggestion), plus its actual padding/border — so the
- * cap tracks `theme.css`'s real typography (15px body font / 1.5
- * line-height today) if that ever changes, rather than every caller
- * needing to keep a magic pixel number in sync with the stylesheet by
- * hand. Re-measured on every value change (one cheap `getComputedStyle`
- * call) rather than once on mount, since content growing past the cap is
- * exactly the case this component exists to catch.
+ * Design: the cap is the resolved `line-height` (`getComputedStyle`) times `maxVisibleLines` (default 8) plus
+ * padding and border, so it tracks the theme's typography without a hard-coded pixel value. It is re-measured on
+ * every value change, since content outgrowing the cap is the case this exists for.
  *
- * `rows` is the *minimum* height (an empty field still shows that many lines);
- * growth starts from it. Every long free-text field is one of these
- * (docs/ux-style-guide.md, "Pattern: auto-growing textarea"); the shared
- * `TextAreaField` renders it by default.
- *
- * Responsibilities: sizes itself (`element.style.height`); does not own
- * the field's value — the caller remains the source of truth via
- * `value`/`onChange`, same contract as a plain controlled `<textarea>`.
+ * It sizes itself (`element.style.height`) but does not own the value: the caller stays the source of truth.
  */
 import { useImperativeHandle, useLayoutEffect, useRef, type Ref, type TextareaHTMLAttributes } from "react";
 
@@ -62,25 +44,16 @@ export function AutoGrowTextarea({
     const el = ref.current;
     if (!el) return;
     const computed = window.getComputedStyle(el);
-    // `line-height` is one of the few properties getComputedStyle resolves
-    // to a used pixel value rather than echoing the specified keyword back
-    // (theme.css sets a real `1.5`, not `normal`, on the body, so this is
-    // reliable in practice) — the `|| 20` fallback only guards an
-    // environment where that resolution doesn't happen (e.g. a test DOM
-    // with no stylesheet loaded at all).
+    // getComputedStyle resolves a numeric line-height to pixels (theme.css sets `1.5`); the `|| 20` fallback
+    // covers a DOM with no stylesheet loaded.
     const lineHeight = parseFloat(computed.lineHeight) || 20;
     const verticalPadding = (parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0);
     const verticalBorder = (parseFloat(computed.borderTopWidth) || 0) + (parseFloat(computed.borderBottomWidth) || 0);
     const maxHeight = lineHeight * maxVisibleLines + verticalPadding + verticalBorder;
     el.style.maxHeight = `${maxHeight}px`;
     el.style.height = "auto";
-    // `scrollHeight` never includes border (it's always a content+padding
-    // measurement, regardless of box-sizing) — `theme.css` sets a global
-    // `box-sizing: border-box`, under which `height` sets the *total*
-    // border-box size, so `verticalBorder` has to be added back here or
-    // every resize would silently shrink the visible content area by the
-    // border width. `maxHeight` above already accounts for this the same
-    // way, so both branches target the same box model.
+    // `scrollHeight` excludes the border, and the global `border-box` sizing makes `height` the total box, so
+    // `verticalBorder` is added back; `maxHeight` above uses the same box model.
     el.style.height = `${Math.min(el.scrollHeight + verticalBorder, maxHeight)}px`;
   }, [value, maxVisibleLines]);
 

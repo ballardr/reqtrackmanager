@@ -19,8 +19,8 @@ import { InlineTextInput } from "./FormFields";
 const strings = t();
 
 /**
- * One editable text field of a `DefinitionList` row/add-form, keyed by
- * `key` into the `Record<string, string>` values passed to `onRename`/`onAdd`.
+ * One editable text field of a `DefinitionList` row or add form, keyed by `key` into the values passed to
+ * `onRename`/`onAdd`.
  */
 export interface DefinitionListField<T> {
   key: string;
@@ -88,21 +88,16 @@ interface DefinitionListBaseProps<T extends { id: string }> {
   onMove?: (id: string, direction: "up" | "down") => Promise<void>;
   onRename: (id: string, values: Record<string, string>) => Promise<void>;
   /**
-   * Deletes the item. Called first with no `reassignToId` — per the
-   * shared server contract, a plain delete succeeds unless the item is
-   * in use, in which case it throws an `ApiError` with status 409 whose
-   * message names the conflicting count. `DefinitionList` catches that
-   * and opens `DeleteInUseDialog`, then calls this again with the chosen
-   * `reassignToId`. `keep` is true when the dialog's "keep for other
-   * projects" box was ticked (only vocabularies offering it, link types).
+   * Deletes the item. Called first with no `reassignToId`: a plain delete succeeds unless the item is in use, when
+   * it throws an `ApiError` with status 409 whose message names the count. `DefinitionList` then opens
+   * `DeleteInUseDialog` and calls this again with the chosen `reassignToId`. `keep` is true when the dialog's
+   * "keep for other projects" box was ticked (only vocabularies offering it, link types).
    */
   onDelete: (id: string, reassignToId?: string, keep?: boolean) => Promise<void>;
   /**
-   * Optional richer content for the in-use dialog, for a vocabulary whose
-   * deletion has more to say or more choices than the default (link types:
-   * usage counts, replacements that cannot take every link, delete-the-links).
-   * Called with the item and the 409 message; omit for the default dialog
-   * (every other item as a candidate, labelled by `getReassignLabel`).
+   * Richer content for the in-use dialog, for a vocabulary whose deletion has more choices than the default (link
+   * types: usage counts, replacements that cannot take every link, delete-the-links). Called with the item and the
+   * 409 message; omit for the default dialog (every other item as a candidate, labelled by `getReassignLabel`).
    */
   loadInUse?: (item: T, message: string) => Promise<DeleteInUseConfig>;
   deleteLabel: string;
@@ -120,24 +115,16 @@ interface DefinitionListBaseProps<T extends { id: string }> {
    */
   menuItems?: ActionMenuItem[];
   /**
-   * Optional per-row slot rendered between the text field(s) and the
-   * reorder/delete buttons — for a field this component's own text-only
-   * `fields` contract can't express (e.g. a boolean toggle). Added for the
-   * Compliance Module's mapping-relationship-type vocabulary
-   * (`implies_equivalence`) rather
-   * than bolting a boolean-specific field type onto `DefinitionListField`
-   * itself — a generic escape hatch here benefits any future "definition"
-   * entity with one extra non-text attribute, not just this one caller.
-   * Omit for the common all-text case (every pre-existing call site).
+   * Per-row slot rendered between the text fields and the reorder/delete buttons, for an attribute the text-only
+   * `fields` contract cannot express (a boolean toggle). Omit for the all-text case.
    */
   renderExtra?: (item: T) => ReactNode;
   /**
-   * What `renderExtra` shows, which decides its column (`layout="grid"` only). `"text"` (default): a line of text a
-   * person typed (a summary), possibly with controls after it; the column is a bounded share of the grid, the text is
-   * a `CellText` that is cut and gives way, and the controls keep their size and their line. `"controls"`: only
-   * controls of a fixed size (a toggle, a select of a fixed width, a fixed picture); the column is as wide as they are
-   * (and shrinks them when the container is short), and they wrap onto a second line in a narrow container. Text from a record never goes in a `"controls"` column,
-   * because the width of the column would then follow its longest row.
+   * What `renderExtra` shows, which decides its column (`layout="grid"` only). `"text"` (default): a line of
+   * user-typed text (a summary), possibly with controls after it; the column is a bounded share of the grid, the
+   * text is a `CellText` that is cut and gives way, and controls keep their size and line. `"controls"`: only
+   * fixed-size controls (a toggle, a fixed-width select); the column is as wide as they are and they wrap in a
+   * narrow container. Record text never goes in a `"controls"` column: its width would follow the longest row.
    */
   extraContent?: "text" | "controls";
   /** Optional per-row slot rendered on its own line under the row — for a
@@ -152,25 +139,18 @@ interface DefinitionListBaseProps<T extends { id: string }> {
   minItems?: number;
   /**
    * `"stack"` (default): each row is a line of unlabelled inputs. `"grid"`: one CSS grid with a heading per field
-   * (`DefinitionListField.label`/`track`), every row and the add row aligned under it and the row actions in a
-   * last column, for a list of several fields (a scoring level's name, weight and guidance) or one with a per-row
-   * control beside the fields (`renderExtra` gets its own column, see `extraContent`; keep its width the same on every
-   * row so the controls line up). In a container narrower than 34rem a list with `renderExtra` drops the columns: each
-   * row is its fields and actions on one line with the extra controls wrapping onto the line below, so a narrow card
-   * (the diagram editors' Selection card) holds the row instead of cutting it off. `renderDetails` is ignored in a grid.
+   * (`DefinitionListField.label`/`track`), rows and the add row aligned under it and row actions in a last
+   * column, for several fields or a per-row control (`renderExtra` gets its own column, see `extraContent`; keep
+   * its width equal on every row). In a container narrower than 34rem a list with `renderExtra` drops the columns:
+   * the extra controls wrap onto the line below the fields and actions. `renderDetails` is ignored in a grid.
    */
   layout?: "stack" | "grid";
 }
 
 /**
- * Shared CRUD list for the app's "definition" entities — small, ordered,
- * flat lists of named things (action types, project statuses, link
- * types, ...) that support inline rename, reorder, add (an Add button
- * opening `DefinitionAddModal`), and a
- * delete-or-reassign-if-in-use flow, the latter through the shared
- * `DeleteInUseDialog`. Consolidates what were three near-identical
- * implementations of the same rename/reorder/delete logic in
- * `ProjectAdminPage`/`OrgAdminPage`.
+ * Shared CRUD list for the app's "definition" entities: small, ordered, flat lists of named things (action types,
+ * project statuses, link types ...) with inline rename, reorder, add (an Add button opening `DefinitionAddModal`)
+ * and a delete-or-reassign-if-in-use flow through `DeleteInUseDialog`.
  */
 export function DefinitionList<T extends { id: string }>({
   items,

@@ -1,28 +1,22 @@
 """
 Module: scripts.extract_repo_demo
 
-Builds the fixture behind the "ReqTrackManager (this product)" demo project
-from this repository's own documents:
-
-- `docs/requirements.md`: components, categories and requirements (with level and target version).
-- `docs/decisions.md`: decisions, each with its statement, rationale and `Decided by` attribution.
-- `docs/soc2/`: the Security and Confidentiality criteria as a compliance standard, the assessed status of
-  each criterion, the policies as evidence and the open known gaps as risks.
-- `docs/solution-architecture.md`: the core architecture principles as guiding principles.
+Builds the fixture behind the "ReqTrackManager (this product)" demo project from this repository's own documents:
+`docs/requirements.md` (components, categories, requirements), `docs/decisions.md` (decisions with rationale and `Decided by`),
+`docs/soc2/` (Security and Confidentiality criteria, assessed status, policies as evidence, open gaps as risks) and
+`docs/solution-architecture.md` (principles as guiding principles).
 
 Responsibilities:
-- Parse the Markdown documents deterministically (no network, no clock, no randomness), so the fixture can be
-  regenerated and compared with the committed file.
-- Write `backend/scripts/data/repo_demo.json` (`--write`) or report drift (`--check`, exit status 1).
+- Parse the Markdown deterministically (no network, clock or randomness); write `backend/scripts/data/repo_demo.json`
+  (`--write`) or report drift (`--check`, exit status 1).
 
 Design decisions:
-- Reading the documents never modifies them; `docs/requirements.md` remains read-only for tooling.
-- A decision is an entry that records a `Decided by` attribution, or an unattributed one in the log's original design
-  sections; hand-reviewed title rewrites and exclusions live in `data/repo_demo_curation.json`. The log only
-  grows, so `--check` treats a new entry as current and an edited or removed one as drift.
-- Resolved known gaps (struck through in the policies) are not extracted; only open gaps become risks.
+- The documents are never modified (`docs/requirements.md` stays read-only for tooling).
+- A decision is an entry with a `Decided by` attribution, or an unattributed one in the log's original design sections;
+  title rewrites and exclusions live in `data/repo_demo_curation.json`. `--check` treats a new entry as current and an
+  edited or removed one as drift. Only open known gaps (not struck through) become risks.
 
-External dependencies: the Python standard library only.
+Dependencies: the Python standard library only.
 
 Run from the repository root:
     python backend/scripts/extract_repo_demo.py --write

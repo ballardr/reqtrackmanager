@@ -1,5 +1,5 @@
-"""Tests for deleting an org group (`DELETE /orgs/{id}/groups/{group_id}`,
-2026-10-05): cascade of memberships and the roles the group carried, audit
+"""Tests for deleting an org group (`DELETE /orgs/{id}/groups/{group_id}`):
+cascade of memberships and the roles the group carried, audit
 logging, tenant scoping and org-admin-only access, and that deleting a group
 granting Project Manager never removes a project's real (floor-counted)
 manager. The Compliance fallback-group block lives in that module's own

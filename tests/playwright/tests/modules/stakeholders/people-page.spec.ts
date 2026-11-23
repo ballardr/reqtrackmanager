@@ -11,7 +11,7 @@ installCleanupHook();
  * Personas, Stakeholders and Groups are one list ("People") with one New menu, so a person
  * designing for or with people finds them in one place. Stakeholder Needs are not people: they are the
  * "Needs" tab beside People, with a New button of their own. A record created with "Save and activate" is
- * active at once, created and activated in one step; Save leaves it a draft. The old per-type list
+ * active at once, created and activated in one step; Save leaves it a draft. The per-type list
  * routes still work, and a kind whose sub-component is off disappears from the page, the New menu and,
  * when all are off, the nav rail.
  *

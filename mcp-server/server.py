@@ -1,67 +1,26 @@
 """
 Module: server
 
-A Model Context Protocol (MCP) server exposing ReqTrackManager's
-requirements to an AI assistant to call directly, instead of a human
-copy-pasting requirement text into a chat window. Read-only by default;
-an opt-in write mode (`MCP_WRITES_ENABLED`) additionally exposes
-`create_requirement`/`update_requirement` so requirement *content* can be
-authored by AI. See docs/mcp-server.md for the full design writeup, the
-"Write mode" section, and client setup guides (Claude Code, VS Code
-Copilot Chat, Microsoft Copilot Studio, and generic HTTP clients).
+A Model Context Protocol (MCP) server exposing ReqTrackManager to an AI assistant through tools. Read-only by
+default; the opt-in write mode (`MCP_WRITES_ENABLED`) adds tools that author content. See docs/mcp-server.md for
+the design, the "Write mode" section and client setup.
 
 Responsibilities:
-- Exposes a small set of tools (list/get organisations, projects, and
-  requirements; when write mode is on, create/edit requirement content
-  too) backed entirely by the existing REST API — this module contains no
-  direct database access and no business logic of its own.
-- Enforces authentication and authorization by *forwarding* the caller's
-  own ReqTrackManager bearer token to the backend on every call, rather
-  than authenticating as some shared service account. This is the module's
-  one deliberate design decision, not incidental: the backend's existing,
-  already-tested RBAC does 100% of the access-control work, so a caller
-  using this server can never see or change anything they couldn't already
-  see or change through the normal UI/API — there is no second, parallel
-  permission model to get wrong here. See `_forward_auth_header` and
-  docs/mcp-server.md's "Authentication model" section.
-- Never exposes a vote, a review-outcome record, or a `status` transition
-  through `update_requirement` (which still has no `status` parameter at
-  all — a content edit can never smuggle a status change through it,
-  regardless of the calling account's own role). Three narrower
-  approval-type actions — `approve_requirement`, `decide_change_request`,
-  `complete_requirement` — *are* exposed (write mode only), but each is
-  additionally gated, at the backend, on an explicit organisation **and**
-  project opt-in (`allow_ai_approvals` on both) that an admin/manager must
-  deliberately enable, acknowledging in the UI that an AI-made approval
-  isn't necessarily a deliberate, in-the-moment human decision. This
-  reopens what was originally a bright-line, no-exceptions exclusion (see
-  docs/decisions.md's original "MCP server write mode" entry) — narrower
-  than a plain RBAC check would give a PM-privileged caller, not wider: the
-  gate can only *restrict* what an already-authorized human's account could
-  do directly, never grant more. See docs/decisions.md's "AI approval via
-  MCP" entry for the full reasoning.
-- Registers module-contributed tools declaratively: a backend module (e.g. a future Compliance module) can declare
-  its own tools, which this server discovers by fetching `GET /api/v1/
-  system/modules/mcp-tools` (lazily, authenticated with whatever session's
-  token is on hand, cached in-process) and registers as plain proxy calls
-  through the same `_call_backend` helper every hand-written tool above
-  uses — no module code ever runs inside this process. See docs/modules.md's
-  "Module-contributed MCP tools" section and this file's own "Module-
-  contributed tools" section below.
+- Expose tools backed entirely by the REST API; there is no database access and no business logic here.
+- Register module-contributed tools declaratively: tools a backend module declares are fetched from
+  `GET /api/v1/system/modules/mcp-tools` (lazily, cached in-process) and registered as proxy calls through
+  `_call_backend`, so no module code runs in this process (docs/modules.md, "Module-contributed MCP tools").
 
-Design decision — pass-through auth, not a service account: an earlier
-design considered giving this server its own fixed backend credential
-(logging in once as a dedicated "integration" user). Rejected because it
-would mean every caller of this MCP server sees exactly what that one
-service account can see, project-by-project access from real project
-memberships and RBAC — the opposite of this project's whole multi-tenant,
-per-user access model, and a much larger blast radius if the MCP server's
-own credential ever leaked (rather than one caller's own already-scoped
-token).
+Design decisions:
+- Pass-through authentication: the caller's own bearer token is forwarded to the backend on every call (see
+  `_forward_auth_header`), never a shared service account. The backend's RBAC does all access control, so a caller
+  can never see or change more than through the UI/API, and a leaked server credential cannot widen access.
+- `update_requirement` has no `status` parameter, so a content edit cannot change status. The approval-type tools
+  (`approve_requirement`, `decide_change_request`, `complete_requirement`) exist in write mode only and are gated at
+  the backend by an explicit organisation and project opt-in (`allow_ai_approvals`); the gate only restricts what
+  the account could already do (docs/decisions.md, "AI approval via MCP").
 
-External dependencies: `fastmcp` (the MCP server framework), `httpx` (the
-same async HTTP client used to talk to the backend API that the rest of
-this project already uses in its seed scripts).
+External dependencies: `fastmcp` (the MCP server framework) and `httpx` (the async HTTP client).
 """
 
 from __future__ import annotations
@@ -91,13 +50,9 @@ from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 logger = logging.getLogger(__name__)
 
 REQTRACK_API_URL = os.environ.get("REQTRACK_API_URL", "http://backend:8000").rstrip("/")
-# Distinct from REQTRACK_API_URL above: that one is this server's own
-# server-to-server address for the backend (typically a Compose-internal
-# hostname like http://backend:8000, unreachable from a user's own
-# browser). This one is what gets embedded into HTML/JS actually sent to a
-# browser (the SSO button's target) — it must be the backend's
-# externally-reachable address, matching the backend's own
-# PUBLIC_BACKEND_URL setting.
+# Distinct from REQTRACK_API_URL (a server-to-server address, often a Compose-internal host): this one is embedded in
+# HTML/JS sent to a browser (the SSO button's target), so it must be the backend's externally reachable address
+# (the backend's PUBLIC_BACKEND_URL).
 REQTRACK_PUBLIC_API_URL = os.environ.get("REQTRACK_PUBLIC_API_URL", "http://localhost:8000").rstrip("/")
 _HTTP_TIMEOUT = 30.0
 
@@ -112,11 +67,8 @@ def _env_flag(name: str, *, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-# Off by default: a deployment operator must explicitly opt in before this
-# server can change any data at all — see docs/mcp-server.md's "Write mode"
-# section and docs/decisions.md's "MCP server write mode" entry for why this
-# is a deliberate, narrow capability (requirement content only, never an
-# approval-type action) rather than a general write API.
+# Off by default: the operator must opt in before this server can change data (docs/mcp-server.md, "Write mode";
+# docs/decisions.md, "MCP server write mode"). Requirement content only, never an approval-type action.
 MCP_WRITES_ENABLED = _env_flag("MCP_WRITES_ENABLED")
 
 _READ_ONLY_INSTRUCTIONS = (
@@ -186,11 +138,7 @@ def _forward_auth_header() -> dict[str, str]:
             calling the backend, so it's left to `_call_backend` to surface
             the backend's own 401 response instead of duplicating that check.
     """
-    # include_all=True is required: get_http_headers() excludes
-    # Authorization (and a few other sensitive headers) by default, on the
-    # reasonable assumption that most tools shouldn't see it — but relaying
-    # it onward is this server's entire purpose, so it's deliberately opted
-    # back in here, in this one function, rather than everywhere.
+    # include_all=True: get_http_headers() excludes Authorization by default, and relaying it is this server's purpose.
     headers = get_http_headers(include_all=True)
     auth_header = headers.get("authorization")
     if not auth_header:
@@ -419,14 +367,9 @@ async def _call_backend(
             failure reaching the backend at all.
     """
     headers = _forward_auth_header()
-    # Self-identifies every request this server makes as MCP-originated —
-    # not a secret or an authentication mechanism (see
-    # app.deps.get_request_channel's docstring on the backend for why a
-    # plain, spoofable header is sufficient here): it only ever lets the
-    # backend *narrow* what an approval-type action can do (the AI-approval
-    # org+project gate, docs/decisions.md's "AI approval via MCP" entry),
-    # never widen it, so there's no privilege-escalation risk in a client
-    # bypassing this server and calling the backend directly with or
+    # Marks every request as MCP-originated. It is not authentication (a spoofable header is enough, see
+    # app.deps.get_request_channel): it only lets the backend narrow what an approval-type action can do (the AI-approval
+    # gate), never widen it, so a client calling the backend directly gains nothing by omitting it.
     # without this header.
     headers["X-Reqtrack-Client"] = "mcp-server"
     clean_params = {k: v for k, v in (params or {}).items() if v is not None}
@@ -1978,19 +1921,10 @@ async def check_report_snippet(
 
 # --- Write mode (MCP_WRITES_ENABLED) ----------------------------------------
 #
-# Registered only when the deployment operator has explicitly opted in.
-# When write mode is off, none of these tools exist at all — an MCP client
-# never even sees them listed, rather than seeing them fail at call time.
-# create_requirement/update_requirement are requirement *content* only:
-# neither has a `status` parameter, so a status transition can never be
-# requested through them, regardless of the calling account's own role.
-# approve_requirement/decide_change_request/complete_requirement (below)
-# *are* approval-type actions — each carries its own separate, live
-# organisation+project opt-in check on top of this env-level gate, since
-# write mode alone is not considered sufficient authorization for those
-# three. See this module's docstring and docs/decisions.md's "MCP server
-# write mode" / "AI approval via MCP" entries for the full reasoning.
-
+# Registered only when the operator opts in; with write mode off these tools are not listed at all. create_requirement
+# and update_requirement carry content only (no `status` parameter). approve_requirement, decide_change_request and
+# complete_requirement are approval-type actions with their own organisation+project opt-in check on top of this
+# env-level gate (docs/decisions.md, "MCP server write mode" and "AI approval via MCP").
 if MCP_WRITES_ENABLED:
 
     @mcp.tool
@@ -2162,10 +2096,7 @@ if MCP_WRITES_ENABLED:
             "review_date": review_date if review_date is not None else current["review_date"],
             "review_lead_days": review_lead_days if review_lead_days is not None else current["review_lead_days"],
             "reviewer": _require_principal(reviewer, "reviewer") or current["reviewer"],
-            # Deliberately no "status" key — see this tool's own docstring
-            # and the module docstring: this server never sends a status
-            # transition, by construction, regardless of what the caller's
-            # account could do directly via the API.
+            # Deliberately no "status" key: this server never sends a status transition (see the module docstring).
         }
         if keywords is not None:
             # Omitted leaves the tags alone; a stale copy of them sent back would remove tags added since the read.
@@ -2253,12 +2184,9 @@ if MCP_WRITES_ENABLED:
 
     # --- Project structure (components and categories) ---------------------
     #
-    # Each is a thin call to the existing endpoint, so the project-manage
-    # permission, the duplicate-prefix checks, the audit events and the
-    # category-under-its-component rule apply unchanged. A requirement cannot
-    # be created without a component and a category, so these let an agent
-    # structure a new project. Deleting is limited to an empty item; moving
-    # requirements to another category is done with `update_requirement`.
+    # Each is a thin call to the existing endpoint, so the project-manage permission, duplicate-prefix checks, audit
+    # events and category-under-component rule apply unchanged. A requirement needs a component and a category, so these
+    # let an agent structure a new project. Deleting is limited to an empty item; `update_requirement` moves requirements.
 
     @mcp.tool
     async def create_component(project_id: str | None = None, *, name: str, prefix: str | None = None) -> dict:
@@ -2456,19 +2384,11 @@ if MCP_WRITES_ENABLED:
 
     # --- Approval-type tools (AI approval via MCP) --------------------------
     #
-    # Unlike create_requirement/update_requirement above, each of these
-    # three performs an approval-type action — reopening what was
-    # originally a bright-line, no-exceptions exclusion (see this module's
-    # docstring and docs/decisions.md's original "MCP server write mode"
-    # entry). Each is additionally gated at the backend on an explicit
-    # organisation AND project opt-in (`allow_ai_approvals` on both — see
-    # docs/decisions.md's "AI approval via MCP" entry), checked fresh on
-    # every call rather than at tool-registration time, since that setting
-    # can change at any time and is scoped per-project. A 403 here always
-    # means either that gate is off, or the caller's own account lacks the
-    # role the UI would also require (project manager) — this server
-    # cannot tell those apart itself; the backend's own error message
-    # (surfaced verbatim by `_call_backend`) says which.
+    # Unlike create_requirement/update_requirement, each of these three performs an approval-type action (docs/decisions.md,
+    # "AI approval via MCP"). Each is gated at the backend on an organisation AND project opt-in (`allow_ai_approvals`
+    # on both), checked on every call because the setting is per project and can change at any time. A 403 means the gate
+    # is off or the caller lacks the project-manager role; the backend's message (surfaced verbatim by `_call_backend`)
+    # says which.
 
     @mcp.tool
     async def approve_requirement(project_id: str | None = None, *, requirement_id: str, comment: str = "") -> dict:
@@ -3257,24 +3177,14 @@ if MCP_WRITES_ENABLED:
 
 # --- Module-contributed tools ----------
 #
-# A module (e.g. a future Compliance module) can declare its own MCP tools
-# declaratively — see docs/modules.md's "Module-contributed MCP tools"
-# section for the full design writeup. This server never runs a module's
-# own code: every declarative tool is a plain proxy call through the same
-# `_call_backend` helper every hand-written tool above already uses, built
-# from a manifest this server fetches from the backend's own
-# `GET /api/v1/system/modules/mcp-tools`. That manifest has already been
-# through the backend's own mechanical verification (module-key name
-# prefixing, path-prefix enforcement, `mutates` derived from HTTP method,
-# approval-action exclusion sourced from the resolved route's own metadata)
-# — this server trusts it exactly as much as it trusts any other backend
-# response, no more.
+# A module declares its own MCP tools declaratively (docs/modules.md, "Module-contributed MCP tools"). This server
+# never runs module code: each tool is a proxy call through `_call_backend`, built from the manifest it fetches from
+# `GET /api/v1/system/modules/mcp-tools`. The backend has already verified that manifest (name prefixing, path-prefix
+# enforcement, `mutates` derived from the HTTP method, approval actions excluded), and this server trusts it as it
+# trusts any backend response.
 #
-# The manifest is fetched **lazily and authenticated**, never at an
-# unauthenticated process-boot call: whichever connecting session's own
-# already-presented bearer token first triggers a refresh within
-# `MODULE_TOOLS_REFRESH_SECONDS` is used, and the result is cached
-# in-process and reused across every session until the next refresh.
+# The manifest is fetched lazily and authenticated, never at an unauthenticated boot: the first session's bearer token
+# that triggers a refresh within `MODULE_TOOLS_REFRESH_SECONDS` is used, and the result is cached in-process.
 
 MODULE_TOOLS_MANIFEST_PATH = "/api/v1/system/modules/mcp-tools"
 MODULE_TOOLS_REFRESH_SECONDS = float(os.environ.get("MODULE_TOOLS_REFRESH_SECONDS", "600"))
@@ -3335,12 +3245,8 @@ class _DeclarativeModuleTool(Tool):
                     raise ValueError(f"Missing required argument {param.name!r} for tool {self.name!r}.")
                 continue
             if param.location == "path":
-                # URL-encoded, not trusted as a bare path segment — the same
-                # reasoning `_get_org_login_info` above already documents:
-                # this server has no way to know ahead of time which params
-                # are UUIDs and which aren't, so every path-location value is
-                # encoded regardless, closing off path-segment injection
-                # (e.g. a value containing "/" or "..") by construction.
+                # URL-encoded (as in `_get_org_login_info`): the parameters' types are unknown, so every path value is
+                # encoded to rule out path-segment injection (`/`, `..`).
                 path = path.replace("{" + param.name + "}", quote(str(value), safe=""))
             elif param.location == "query":
                 query[param.name] = value
@@ -3392,11 +3298,8 @@ def _parse_module_tool_manifest(entries: list[dict]) -> list[_ModuleToolSpec]:
 
 
 _module_tools_lock = asyncio.Lock()
-# `-inf` rather than `0.0`: `time.monotonic()` is relative to an arbitrary
-# reference point, not the epoch, and on some container runtimes reads
-# close to zero right after start — a `0.0` sentinel could then be *less*
-# than `MODULE_TOOLS_REFRESH_SECONDS` stale and wrongly skip the very first
-# refresh. `-inf` is always stale regardless of where the clock starts.
+# `-inf` rather than `0.0`: `time.monotonic()` has an arbitrary origin and can read near zero right after start, so a
+# `0.0` sentinel could skip the first refresh. `-inf` is always stale.
 _module_tools_last_refresh = float("-inf")
 _registered_module_tools: dict[str, _ModuleToolSpec] = {}
 
@@ -3830,17 +3733,8 @@ async def _get_org_login_info(slug: str) -> dict | None:
     Returns:
         The `OrgLoginInfoOut` dict, or `None` if no org has this slug.
     """
-    # URL-encoded so a crafted `?org=` value (e.g. containing `/`, `..`, or
-    # `?`) can never reshape which path or query string this request
-    # actually sends — a hardening-review finding: an unencoded slug could
-    # otherwise make httpx's own dot-segment normalization escape the
-    # intended `/orgs/by-slug/` prefix, or split the URL at an embedded `?`
-    # and land the hardcoded `/login-info` suffix in the query string
-    # instead of the path, reaching a different backend endpoint than
-    # intended (confirmed low-impact today: this call is always anonymous
-    # and every unauthenticated GET on the backend is already meant to be
-    # public — but encoding correctly here means that stops being an
-    # invariant this code silently depends on).
+    # URL-encoded so a crafted `?org=` value (`/`, `..`, `?`) cannot reshape the path or query string: an unencoded slug
+    # could escape the `/orgs/by-slug/` prefix through dot-segment normalisation or move `/login-info` into the query.
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         response = await client.get(f"{REQTRACK_API_URL}/api/v1/orgs/by-slug/{quote(slug, safe='')}/login-info")
     if response.status_code == 404:

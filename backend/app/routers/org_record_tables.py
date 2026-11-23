@@ -1,21 +1,20 @@
 """
 Module: routers.org_record_tables
 
-The generic table routes of the records an **organisation** owns (its Strategies, Future States, Guiding
-Principles, Personas, Stakeholders and Stakeholder Groups), one set for every such type:
+The generic table routes of the records an organisation owns (Strategies, Future States, Guiding
+Principles, Personas, Stakeholders, Stakeholder Groups), one set for every such type, under
+`/api/v1/orgs/{organization_id}/`:
+- `records/{record_type}/columns`: the type's columns and import rules.
+- `records/{record_type}/export`: the organisation's own records as CSV, with the list's filters.
+- `records/{record_type}/import`: create and update the organisation's own records from an exported CSV;
+  a preview unless `dry_run=false`.
+- `reports/record-list`: the same table as a PDF, Word or CSV document.
 
-- `GET  /api/v1/orgs/{organization_id}/records/{record_type}/columns`: the type's columns and import rules.
-- `GET  /api/v1/orgs/{organization_id}/records/{record_type}/export`: the organisation's own records as CSV, with
-  the organisation list's filters.
-- `POST /api/v1/orgs/{organization_id}/records/{record_type}/import`: create and update the organisation's own
-  records from the CSV an export writes; a preview unless `dry_run=false`.
-- `GET  /api/v1/orgs/{organization_id}/reports/record-list`: the same table as a PDF, Word or CSV document.
-
-Access: a member of the organisation with the type's module (and the sub-component its organisation list needs)
-on there, answered 404 otherwise. An import additionally needs what the organisation endpoints need to create
-and update the type (`OrganizationRecordTable.can_create` / `can_update`). Which columns may leave or enter is the
-engine's one rule (`resolve_export_columns`), with the organisation-level `export_personal_data` grant. Nothing
-here knows a record type or module.
+Access: a member of the organisation with the type's module (and the sub-component its list needs) on;
+404 otherwise. An import also needs what the organisation endpoints need to create and update the type
+(`OrganizationRecordTable.can_create` / `can_update`). Which columns may leave or enter is the engine's one
+rule (`resolve_export_columns`), with the organisation-level `export_personal_data` grant. Nothing here
+knows a record type or module.
 """
 
 from __future__ import annotations

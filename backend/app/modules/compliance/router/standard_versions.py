@@ -44,24 +44,13 @@ router = APIRouter(tags=["compliance-org-standard-versions"])
 def _clone_requirement_tree(
     db: Session, *, source_version_id: UUID, new_version_id: UUID, creator_id: UUID
 ) -> None:
-    """Deep-copies `source_version_id`'s full `ComplianceRequirement` tree
-    (preserving parent/child structure via an old-id -> new-id remap) and
-    each requirement's `ComplianceRequiredAction`s into `new_version_id`.
+    """Deep-copies `source_version_id`'s `ComplianceRequirement` tree (parent and child structure through an old-id to
+    new-id remap) and each requirement's `ComplianceRequiredAction`s into `new_version_id`, for `create_standard_version`
+    with `clone_from_version_id`. Requirements are cloned from the roots down (`_clone_level`), so a child's remapped
+    parent id exists first.
 
-    Used by `create_standard_version` when `clone_from_version_id` is given
-    — see that endpoint's docstring for why this exists. Processes
-    requirements breadth-first from the roots down (`_clone_level`,
-    recursive), so a child is never cloned before its own remapped parent
-    id exists to point at.
-
-    Also stamps every new requirement's `cloned_from_requirement_id` at the
-    source requirement's own id (§27) — the durable lineage link
-    `service.py::diff_standard_versions` walks to tell an unchanged/
-    modified requirement apart from a genuinely added one; see `models.py`'s
-    cross-standard mapping design decisions for why this column was added and `models.py`'s
-    docstring on the pre-existing in-memory old-id -> new-id remap this
-    function already performed for parent/child structure, which persisting
-    `cloned_from_requirement_id` piggybacks on directly."""
+    Each new requirement's `cloned_from_requirement_id` is set to the source requirement's id (§27), the durable lineage
+    `service.diff_standard_versions` walks."""
     source_requirements = db.scalars(
         select(ComplianceRequirement)
         .where(ComplianceRequirement.standard_version_id == source_version_id)
@@ -118,19 +107,12 @@ def create_standard_version(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardVersionCreate,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
-    """Creates a new (always `DRAFT`) version of a standard (§4).
-    `version_number` is always the next sequential number for this
-    standard — never caller-supplied.
+    """Creates a new (always `DRAFT`) version of a standard (§4). `version_number` is the next sequential number, never
+    caller-supplied.
 
-    `clone_from_version_id`, when given, deep-copies that version's full
-    requirement tree and required actions into the new draft version. This
-    is a deliberate design decision beyond what the requirements
-    spell out: §4 requires that "changes to a standard should result
-    in a new version rather than modifying requirements historical
-    assessments depend upon," but without a way to version existing content
-    forward, every new version would have to be rebuilt from scratch,
-    defeating the point of versioning an evolving standard rather than
-    starting over each time."""
+    `clone_from_version_id` deep-copies that version's requirement tree and required actions into the new draft. §4
+    requires changes to produce a new version rather than modify content assessments depend upon, and without cloning
+    every version would be rebuilt from scratch."""
     standard = _get_standard_or_404(db, organization_id, standard_id)
 
     last_version_number = db.scalar(
@@ -199,20 +181,12 @@ def update_standard_version(
     request: Request,
     current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
-    """Updates a version's own `summary` — the version's
-    *current* standing, distinct from `change_note`. Unlike every other
-    field on this row, editable at **any** lifecycle stage (`DRAFT`/
-    `PUBLISHED`/`RETIRED` alike, never `_require_draft_version`-gated) —
-    the motivating example is marking an already-retired version's summary
-    to note it's deprecated (see `models.py`'s clarification design decisions).
+    """Updates a version's own `summary`, its current standing (distinct from `change_note`). Unlike other fields on the
+    row it is editable at any lifecycle stage (`DRAFT`, `PUBLISHED`, `RETIRED`), never `_require_draft_version`-gated.
 
-    RBAC is stage-dependent: a `standards_contributor` may call this while
-    the version is still `DRAFT` (this is the ordinary contributor-level
-    field-write `_require_standard_manage_or_contribute` already permits
-    everywhere else), but once the version is `PUBLISHED`/`RETIRED`, only
-    `standards_manager`-or-override may — checked explicitly here rather
-    than by depending on the stricter gate outright, since a contributor
-    must still pass for the `DRAFT` case."""
+    RBAC depends on the stage: a `standards_contributor` may call it while the version is `DRAFT`; once `PUBLISHED` or
+    `RETIRED` only `standards_manager` or an override may, checked explicitly because a contributor must still pass for
+    `DRAFT`."""
     _, version = _get_version_or_404(db, organization_id, standard_id, version_id)
     if version.status != ComplianceStandardVersionStatus.DRAFT:
         current_user = _require_standard_manage(request=request, current_user=current_user, db=db)

@@ -4,22 +4,18 @@ Module: services.report_running
 The running header and footer of a document report, as the renderers share them.
 
 Responsibilities:
-- `apply_default_bands`: give a layout's document a plain "Page n" footer wherever the layout's page style says nothing.
-- `cell_lines`, `band_visible` and `band_for_page`: the small rules every renderer applies the same way (the lines of a
-  cell, whether a band shows on a page, and which band a left-hand page gets when the margins mirror).
-- `read_marks` and `unmark`: a cell's `**bold**` and `*italic*` as marked stretches, and a part read back as (words or
-  field, bold, italic); `band_size_pt` and `band_line_cm`: the one default size and the line height that follows it.
+- `apply_default_bands` (a plain "Page n" footer wherever the page style says nothing); `cell_lines`, `band_visible`,
+  `band_for_page` (the rules every renderer applies alike); `read_marks` and `unmark` (a cell's `**bold**` and
+  `*italic*`); `band_size_pt` and `band_line_cm`.
 
 Design decisions:
-- A header or footer is an invisible three-column table (left, centre, right) in the page margin. The renderers draw it
-  in their own way (a canvas callback, a Word header part, an ODF master-page header, an HTML band); the content and the
-  rules are decided here once so PDF, Word, OpenDocument text and HTML cannot drift.
-- A custom layout is never forced to print the organisation's footer text, logo or cover page: it reads them as
-  `{{org.footer_text}}`, the `org_logo` image and `if org.include_cover_page` (`services.report_org_values`). The default
-  here is only the page number, and only where the page style (or the document's, which a style inherits) wrote no
-  footer. An explicit empty band is "print nothing" and is kept.
+- A band is an invisible three-column table in the page margin; each renderer draws it its own way (canvas callback,
+  Word header part, ODF master page, HTML band) while content and rules are decided here once.
+- A layout is never forced to print the organisation's footer text, logo or cover: it reads them as `{{org.footer_text}}`,
+  the `org_logo` image and `if org.include_cover_page` (`report_org_values`). The default is only the page number, and
+  only where no footer was written (the document's, for a style). An explicit empty band prints nothing.
 
-Dependencies: `services.report_model` (the neutral bands).
+Dependencies: `services.report_model`.
 """
 
 from __future__ import annotations

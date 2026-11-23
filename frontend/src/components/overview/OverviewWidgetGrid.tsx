@@ -1,28 +1,22 @@
 /**
  * Module: components/overview/OverviewWidgetGrid
  *
- * Draws the project overview's widgets in a 12-column grid, one cell per visible widget, in layout order, each as
- * wide as its width and at least as tall as its height. With `edit` the same grid is the editor: every widget
- * (hidden ones too, dimmed) gets a handle to drag it to a new place, a corner to resize it, and buttons for its
- * settings, hiding and removing, so the page is edited as it will look.
+ * Draws the project overview's widgets in a 12-column grid, one cell per visible widget, in layout order, each as wide as
+ * its width and at least as tall as its height. With `edit` the same grid is the editor: every widget (hidden ones too,
+ * dimmed) gets a handle to drag it, a corner to resize it, and buttons for settings, hiding and removing.
  *
  * Responsibilities:
- * - Turn each widget and its figure (`OverviewMetricResult`) into the right view: a metric tile, a gauge, a pie
- *   or bar chart, stage progress, record totals, the activity feed, the tiles enabled modules contribute, or a
- *   widget a module contributes itself.
+ * - Turn each widget and its figure (`OverviewMetricResult`) into the right view: a metric tile, a gauge, a pie or bar
+ *   chart, stage progress, record totals, the activity feed, module-contributed tiles, or a module's own widget.
  * - Show a notice, not a zero, for a figure the caller may not read, that timed out or failed.
- * - Link a tile or chart row to the list it summarises, only where a list shows exactly that figure.
+ * - Link a tile or chart row to its list only where a list shows exactly that figure.
  * - Mark a figure read beyond this project ("With children, 3 projects"), so a count is never mistaken for one project's.
  *
- * Design decisions:
- * - The grid is a flow with spans, not absolute positions, so it collapses to six columns on a medium screen and two on a
- *   phone with no second layout (`gridSpans`); dragging reorders the flow and the corner changes the spans.
- * - The grid never imports a module: module tiles and widgets come from the registry
- *   (`overviewWidgets`), so a module needs no edit here; a module's widget is as movable and resizable as any other.
- * - Default titles come from the string table for core metrics (so they follow the project's terminology) and
- *   from the server's metric label for any other (a module's, or a record type's plural name).
- * - Figures arrive in one batched request made by the page (`useOverviewMetrics`); the activity feed is the one
- *   widget that reads its own data, because it is a list of changes, not a figure.
+ * Design decisions: the grid is a flow with spans, not absolute positions, so it collapses to six columns on a medium
+ * screen and two on a phone with no second layout (`gridSpans`). It never imports a module: module tiles and widgets come
+ * from the registry (`overviewWidgets`). Default titles come from the string table for core metrics (following the
+ * project's terminology) and from the server's metric label otherwise. Figures arrive in one batched request made by the
+ * page (`useOverviewMetrics`); the activity feed reads its own data because it is a list of changes, not a figure.
  */
 import { GripVertical, Eye, EyeOff, MoveDiagonal2, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
@@ -118,8 +112,7 @@ function ActivityWidget({ projectId, title, limit }: { projectId: string; title:
 
 /**
  * A widget a module contributes, drawn by the module's own renderer. While editing, its name is shown above it, so a
- * widget that has nothing to show for this project (a module with no tile yet) is still a block that can be moved,
- * hidden or removed.
+ * widget with nothing to show for this project is still a block that can be moved, hidden or removed.
  */
 function ModuleWidget({
   widget, projectId, organizationId, projectScope, title, editingName,

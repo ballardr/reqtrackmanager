@@ -60,10 +60,9 @@ def _build_rich_project(client, admin_token, org_id):
         json={"name": "For CR modification", "component_id": component_id, "category_id": category_id},
         headers=auth_headers(admin_token),
     ).json()
-    # A modify change request can only target an already-locked requirement
-    # — approve it directly first,
-    # ahead of the whole-project stage approval further down (which would
-    # lock it too, but only after this change request needs to exist).
+    # A modify change request can only target an already-locked requirement,
+    # so approve it directly before the whole-project stage approval below
+    # (which would lock it too, but after this change request must exist).
     approve_resp = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{second_req['id']}/approve", headers=auth_headers(admin_token)
     )
@@ -115,11 +114,10 @@ def _build_rich_project(client, admin_token, org_id):
 
     _approve_current_stage(client, admin_token, project["id"])
 
-    # C-G-11 overlay marker: also mark `second_req` (still `approved` after
-    # the CR decision above) completed, so the export/import round trip has
-    # something real to carry over on `is_completed`/`completed_at`/
-    # `completed_by` — see the assertion in
-    # test_import_reconstructs_structure_and_full_history_in_the_same_org.
+    # C-G-11 overlay: mark `second_req` (`approved` after the CR decision above)
+    # completed so the round trip carries `is_completed`/`completed_at`/
+    # `completed_by` (asserted in
+    # test_import_reconstructs_structure_and_full_history_in_the_same_org).
     complete_resp = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{second_req['id']}/complete", headers=auth_headers(admin_token)
     )

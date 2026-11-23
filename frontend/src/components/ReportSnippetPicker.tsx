@@ -5,18 +5,15 @@
  * layout being edited, from the Blocks view and from the Text view.
  *
  * Responsibilities:
- * - List the snippets the scope offers with a search box and a category filter (the last category is remembered per
- *   person); a snippet for the other layout family is shown disabled with the reason, not hidden.
- * - Show the selected snippet: what it adds, the output formats it is true in, an outline of its blocks, and a form
- *   for its parameters (a library picture, a record type, a short text) built from the snippet's own schema with the
- *   shared field components.
- * - Say where it will land (the caller's stated place, or a choice between the places the caller offers) and ask the
- *   server to apply it to the draft tree; a refusal is shown with its reasons and the dialog stays open.
+ * - List the scope's snippets with search and a category filter (the last category is remembered per person); a snippet
+ *   for the other layout family is shown disabled with the reason.
+ * - Show the selected snippet: what it adds, its output formats, an outline of its blocks and a parameter form built
+ *   from its own schema with the shared field components.
+ * - Say where it will land and ask the server to apply it to the draft tree; a refusal is shown and the dialog stays open.
  *
  * Design decisions: the server builds and validates the result (`ReportLayoutApi.applySnippet`), so both views get the
- * same tree and the dialog holds no tree rules; the caller places the result in its own view. The fragment is drawn as
- * an outline of block names, not a rendered sample, because a sample would mean running a report. Selecting a snippet
- * and pressing Insert is one step even when it has no parameters, so nothing is inserted by a stray click.
+ * same tree; the caller places it. The fragment is an outline of block names, not a rendered sample (that would run a
+ * report). Insert is one explicit step even without parameters, so a stray click inserts nothing.
  */
 import { useEffect, useMemo, useState } from "react";
 
@@ -121,7 +118,7 @@ export function ReportSnippetPicker({
   }, [api]);
 
   const categories = useMemo(() => snippetCategories(snippets ?? []), [snippets]);
-  // A category the scope no longer offers (remembered from another layout) shows everything.
+  // A category the scope does not offer (remembered from another layout) shows everything.
   const category = categories.includes(remembered) ? remembered : "";
   const shown = useMemo(() => filterSnippets(snippets ?? [], search, category), [snippets, search, category]);
   const selected = snippets?.find((s) => s.key === selectedKey) ?? null;

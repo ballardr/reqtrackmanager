@@ -1,13 +1,11 @@
-"""Project persona visibility overrides (extended to Personas)
+"""Project persona visibility overrides
 
 Revision ID: 0063
 Revises: 0062
 Create Date: 2026-10-05
 
-Adds `project_persona_visibility`: a project's override-only record of whether
-one org Persona is hidden from it, the Persona counterpart of 0062's
-`project_stakeholder_visibility`. No row means "inherit from the nearest
-ancestor project, else visible".
+Adds `project_persona_visibility`, an override-only record of whether an org
+Persona is hidden from a project; no row inherits from the nearest ancestor.
 """
 
 from collections.abc import Sequence

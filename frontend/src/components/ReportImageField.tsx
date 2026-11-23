@@ -1,26 +1,24 @@
 /**
  * Module: components/ReportImageField
  *
- * The control behind an image block's `file` field: shows the chosen picture and opens the layout tier's image
- * library, where a person picks a picture, uploads one or deletes one of their own.
+ * The control behind an image block's `file` field: shows the chosen picture (thumbnail and name, or that it is no
+ * longer in the library) and opens the layout tier's image library, where a person picks, uploads or deletes one of
+ * their own pictures.
  *
- * Responsibilities:
- * - Show the chosen picture (thumbnail and name), or that it is no longer in the library.
- * - Offer the organisation's own logo as the picture (`ORG_LOGO_FILE`), which the run reads from the organisation and
- *   which is not a library picture.
- * - List the library in a dialog (search by name, tier, size, which layouts use each), upload with feedback, and
- *   delete an owned picture behind a confirmation that names the layouts using it.
- * - Show what a selected picture says about itself (pixel size, and for a photograph when it was taken, the camera,
- *   its description and where), because photographs are rarely named usefully.
- * - Narrow the list to unused pictures (not in any layout's current or older version) and delete several at once: a
- *   "Delete several…" mode marks owned pictures, with one confirmation that says how many are still in use.
- * - Say where an upload goes: an organisation image is visible to every member's layouts, a project image only to
- *   this project's.
+ * - Offers the organisation's own logo (`ORG_LOGO_FILE`), which the run reads from the organisation and which is
+ *   not a library picture.
+ * - Lists the library in a dialog (search by name, tier, size, which layouts use each), uploads with feedback and
+ *   deletes an owned picture behind a confirmation naming the layouts using it. A "Delete several..." mode marks
+ *   owned pictures for one confirmation that says how many are still in use; the list can narrow to unused ones (in
+ *   no layout's current or older version).
+ * - Shows what a selected picture says about itself (pixel size and, for a photograph, when, camera, description
+ *   and place), because photographs are rarely named usefully. It says where an upload goes: an organisation image
+ *   is visible to every member's layouts, a project image only to this project's.
  *
- * Design decisions: the library comes in as a prop (`ReportImageLibrary`) so stories stay off the network; the file is
- * judged by the server (its bytes decide the type), so the client only rejects a file over the size cap before sending.
- * Pictures are drawn by `PictureImage` on a checkerboard (switchable beside the large preview), so a white-on-transparent
- * logo is visible. Pictures are shown through `fileUrl`, whose own gate admits only people who may read the picture.
+ * The library is a prop (`ReportImageLibrary`) so stories stay off the network; the server judges the file (its
+ * bytes decide the type), so the client only rejects a file over the size cap. Pictures are drawn by `PictureImage`
+ * on a checkerboard (switchable beside the large preview) through `fileUrl`, whose gate admits only people who may
+ * read the picture.
  */
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";

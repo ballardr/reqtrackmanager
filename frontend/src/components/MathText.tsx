@@ -1,18 +1,13 @@
 /**
  * Module: components/MathText
  *
- * Shows text that may hold equations: `\( x \)` inline and `$$ x $$` as a block, drawn with KaTeX. It is used for the
+ * Shows text that may hold equations: `\( x \)` inline and `$$ x $$` as a block, drawn with KaTeX. Used for the
  * record fields a report layout also treats as math-capable (a requirement's description, reasoning and
- * clarification), so what a person reads on screen is what the report draws.
+ * clarification), so the screen matches the report.
  *
- * Responsibilities:
- * - Split the text (`utils/mathTex.splitMath`) and draw each equation, leaving every other character as text.
- * - Refuse what the report engine refuses (`utils/mathTex.texProblem`, from the backend's allow-list) and show it
- *   as written, so the screen and the report never disagree about which equations exist.
- *
- * Design decisions:
- * - Text goes in as React children, never as HTML; each equation is drawn by `MathEquation`, which shows one that
- *   may not or cannot be drawn as the author typed it, as the reports do.
+ * Splits the text (`utils/mathTex.splitMath`) and draws each equation with `MathEquation`, leaving every other
+ * character as text (React children, never HTML). It refuses what the report engine refuses
+ * (`utils/mathTex.texProblem`) and shows it as written.
  *
  * Dependencies: `components/MathEquation` (KaTeX), `utils/mathTex`.
  */

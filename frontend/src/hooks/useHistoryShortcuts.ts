@@ -4,16 +4,16 @@
  * The Undo and Redo keys for an editor that keeps its own edit history (the block diagram and state machine diagram editors).
  *
  * Responsibilities:
- * - Match the platform's keys: Undo is Cmd+Z on Apple devices and Ctrl+Z elsewhere; Redo is Cmd+Shift+Z on Apple devices and
- *   Ctrl+Shift+Z or Ctrl+Y elsewhere. The key is matched by the character it types, in either case, never by its position.
- * - Act only where the editor's history is meant: not while text is being typed (the field keeps its own undo), not while a
- *   dialog, menu or pop-over is open, and not when the editor cannot be edited.
+ * - Match the platform's keys: Undo is Cmd+Z on Apple devices and Ctrl+Z elsewhere; Redo is Cmd+Shift+Z on Apple
+ *   devices and Ctrl+Shift+Z or Ctrl+Y elsewhere, matched by the typed character in either case, not its position.
+ * - Act only where the editor's history is meant: not while text is typed (the field keeps its own undo), not while a
+ *   dialog, menu or pop-over is open, and not when the editor is read-only.
  *
  * Design decisions:
- * - One document listener in the capture phase, so the keys work when focus is on the canvas, the toolbar or nowhere in
- *   particular, and run before the graph canvas's own key handling (React Flow marks keys pressed on a node as handled).
- * - `preventDefault` is called only when a step was taken, so the browser keeps every key it was not asked to handle.
- * - The match and the blocking rule are plain exported functions so they are tested without a browser event.
+ * - One document listener in the capture phase, so the keys work wherever focus is and run before React Flow's key
+ *   handling (which marks keys pressed on a node as handled).
+ * - `preventDefault` is called only when a step was taken, so the browser keeps every other key.
+ * - The match and the blocking rule are exported functions, tested without a browser event.
  */
 import { useEffect } from "react";
 

@@ -4,30 +4,20 @@ Module: services.report_pdf_running
 Draws a document's running headers and footers on the pages of a ReportLab PDF.
 
 Responsibilities:
-- `RunningCanvas`: a canvas that keeps each finished page open until the document ends, so `{{pages}}` (the total) is
-  known when the header and footer are drawn, in one render pass, and so a picture behind or in front of the text is
-  drawn once the page's text is in place (`report_pdf_floating`).
-- `PageNote`: what a page records about itself while it is laid out (its style, side and whether it is the first page
-  of a section) for the canvas to draw later.
-- `band_room_cm` and `grow_margins_for_bands`: the margin a wrapped band needs, and the document with margins raised to it.
-- `draw_band`: one header or footer as an invisible three-column table in the page margin: left, centre and right
-  cells, each holding up to three lines of runs in the band's font, size and colour (bold and italic where marked),
-  and a logo at the start of one of them.
+- `RunningCanvas`: keeps each finished page open until the document ends, so `{{pages}}` is known in one pass and
+  pictures behind or in front of the text are drawn once the text is in place (`report_pdf_floating`).
+- `PageNote`: what a page records about itself (style, side, first page of a section) for later drawing.
+- `band_room_cm`, `grow_margins_for_bands` (the margin a wrapped band needs); `draw_band` (a three-column band in the
+  margin, up to three lines per cell in the band's font, size and colour, with an optional logo).
 
 Design decisions:
-- The band is drawn after the page's content, in the margin, never inside the text frame, so it cannot move the body. The
-  layout check cannot know how far a value will wrap, so `grow_margins_for_bands` raises a style's top and bottom margins
-  to what its wrapped band needs before the pages are laid out (a margin already large enough is kept).
+- A band is drawn after the content, in the margin, never inside the text frame, so it cannot move the body. The layout
+  check cannot know how far a value wraps, so `grow_margins_for_bands` raises a style's margins before layout.
 - Cell widths and vertical alignment come from `report_band_cells.resolve_band_cells` (shared with the other formats);
-  text is aligned left, centre or right in its cell and wrapped at spaces to the cell, so a long centre wraps while the
-  short sides keep their width. The row is as tall as its tallest cell and a cell's logo and text sit at its alignment.
-- A logo that cannot be decoded is left out: a bad picture never breaks a report.
+  a long centre wraps while short sides keep their width, and the row is as tall as its tallest cell.
+- A band with no font follows the document body font; an undecodable logo is left out.
 
-- A band with no font follows the document's body font (the family active for the whole render); one with a font draws
-  and measures in that family.
-
-Dependencies: ReportLab, `services.report_band_cells`, `services.report_fonts`, `services.report_image_layout`, `services.report_running`,
-`services.report_svg`.
+Dependencies: ReportLab, `report_band_cells`, `report_fonts`, `report_image_layout`, `report_running`, `report_svg`.
 """
 
 from __future__ import annotations

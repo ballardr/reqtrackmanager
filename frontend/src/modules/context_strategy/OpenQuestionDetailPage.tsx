@@ -1,59 +1,27 @@
 /**
  * Module: modules/context_strategy/OpenQuestionDetailPage
  *
- * A single Open Question's full detail — mirrors `PainPointDetailPage.tsx`'s overall
- * shape (full field display, branching lifecycle actions, attachments,
- * comments, relationships, owner assignment via a dedicated `PrincipalPicker`)
- * closely, since both artefacts share the same "project-scoped only,
- * branching lifecycle, no version table" backend shape. Two differences
- * driven directly by Open Question's own backend design:
+ * A single Open Question's full detail: fields, branching lifecycle actions, attachments, comments, relationships and
+ * owner assignment through a dedicated `RecordPrincipalField`. It mirrors `PainPointDetailPage.tsx`, since both are
+ * project-scoped only, with a branching lifecycle and no version table, with two differences:
  *
- * 1. **Two branch points, not one.** `Open -> Investigating -> {Withdrawn |
- *    Ready for Decision -> {Resolved | Withdrawn}}` (`enums.OpenQuestionStatus`'s
- *    own docstring) — `WITHDRAWN` is reachable from *both* `INVESTIGATING`
- *    and `READY_FOR_DECISION`, not only from one middle state the way Pain
- *    Point's `TRIAGED` is the sole branch point. Confirmation tiers follow
- *    `docs/ux-style-guide.md`'s confirmation-tier principle the same way
- *    every other artefact in this module applies it: `investigate` is a
- *    plain click (low-risk, single early-lifecycle step, mirrors Pain
- *    Point's `triage`/Strategy's `propose`); `mark-ready-for-decision`/
- *    `resolve` (positive/neutral progression) get a `ConfirmDialog` with an
- *    *optional* comment; `withdraw` (the one negative/terminal-branch
- *    action) gets a `ConfirmDialog` with a **mandatory** comment, matching
- *    backend enforcement exactly (`project_router.withdraw_project_open_
- *    question` 400s without one — the mandatory-comment-on-a-negative-
- *    outcome convention `reject_pain_point`/`mark_pain_point_duplicate`
- *    already established, applied here to the module's second branching
- *    lifecycle).
- * 2. **Two roles, not one, gate the lifecycle actions** (§9.4's
- * three-tier permission split — see `enums.py`'s own docstring):
- *    `open_question_owner` gates `investigate`/`mark-ready-for-decision`/
- *    `withdraw`/edit/archive; a *separate* `open_question_resolver` gates
- *    `resolve` alone. This page renders every action button unconditionally
- *    regardless of the caller's actual role — the same established
- *    convention `StrategyDetailPage.tsx`'s own docstring documents (every
- *    mutating control always renders, gated only by content-lock state, with
- *    a 403 surfacing as a toast) — so this two-role split needs no different
- *    frontend wiring than Pain Point's single-role gate did; only the
- *    backend distinguishes who can actually click "Resolve" successfully.
+ * 1. Two branch points: `Open -> Investigating -> {Withdrawn | Ready for Decision -> {Resolved | Withdrawn}}`
+ *    (`enums.OpenQuestionStatus`); `WITHDRAWN` is reachable from both `INVESTIGATING` and `READY_FOR_DECISION`.
+ *    Confirmation tiers follow `docs/ux-style-guide.md`: `investigate` is a plain click; `mark-ready-for-decision` and
+ *    `resolve` use a `ConfirmDialog` with an optional comment; `withdraw` uses one with a mandatory comment, matching
+ *    the backend (`project_router.withdraw_project_open_question` returns 400 without one).
+ * 2. Two roles gate the lifecycle: `open_question_owner` gates `investigate`, `mark-ready-for-decision`, `withdraw`,
+ *    edit and archive, and a separate `open_question_resolver` gates `resolve` alone. Every action button renders
+ *    whatever the caller's role (see `StrategyDetailPage.tsx`) and a 403 surfaces as a toast.
  *
- * **Evidence upload is open to any project member; only removal is
- * owner-gated (Decided by: Agent) — the same "no special frontend wiring
- * needed" finding `PainPointDetailPage.tsx`'s own docstring point 3 already
- * made.** Checked `upload_project_open_question_file`'s own RBAC first: it
- * depends only on `_require_open_question_view` (module-enabled + project
- * membership), not `require_open_question_manage_role`, matching §9.4's
- * "Add evidence" broad-creation capability; `is_locked` already excludes
- * only the two true terminal states (`RESOLVED`/`WITHDRAWN`), so
- * `FileAttachmentList`'s existing `disabled={openQuestion.is_locked}` wiring
- * is already exactly as open as the backend allows.
+ * Evidence upload is open to any project member and only removal is owner-gated:
+ * `upload_project_open_question_file` requires `_require_open_question_view` (module enabled plus project membership),
+ * not the manage role, and `is_locked` covers only the terminal states (`RESOLVED`, `WITHDRAWN`), so
+ * `FileAttachmentList`'s `disabled={openQuestion.is_locked}` is as open as the backend allows.
  *
- * **Owner assignment via a dedicated `RecordPrincipalField`, not an
- * `OpenQuestionFormModal` field** — see `types.ts`'s own docstring on
- * `OpenQuestionFieldValues` for why. The owner is a user, an organisation
- * group or a project group. This page loads this project's
- * organisation's user list once and calls `projectOpenQuestionApi.update`
- * directly with the current content fields plus the newly chosen `owner`.
+ * `owner` (a user, an organisation group or a project group) is assigned through `RecordPrincipalField`, not an
+ * `OpenQuestionFormModal` field (see `types.ts` `OpenQuestionFieldValues`). The page loads the project's organisation
+ * user list once and calls `projectOpenQuestionApi.update` with the current content fields plus the chosen `owner`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

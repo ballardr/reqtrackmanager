@@ -2,23 +2,20 @@
 Module: scripts.seed_notification_samples
 
 Gives one seeded person a notification for every target kind a notification can open (record, Delivery status, project,
-project members, organisation, organisation files, policy, report run, security preferences, server files, a message
-with no page, a project's Compliance page, a Compliance standard), so a demonstration or a test of the bell and the
-email link has one of each to open.
+project members, organisation, organisation files, policy, report run, security preferences, server files, a message with
+no page, a project's Compliance page, a Compliance standard), so the bell and the email link have one of each to open.
 
 Responsibilities:
-- `seed_notification_samples`: writes the rows for one user, pointing each at a real record of the seeded organisation
-  and project, and reports the kinds it could not seed because the dataset has no such record.
+- `seed_notification_samples`: writes the rows for one user, each pointing at a real record of the seeded organisation and
+  project, and reports kinds it could not seed because the dataset has no such record.
 
 Design decisions:
-- Rows are written directly (the API creates notifications only as a side effect of an event, and several kinds, a full
-  storage disk or a changed password, cannot be caused harmlessly in a seeded dataset). Each row carries the same
-  `type`, `entity_type` and `entity_id` the real event stores, so the browser resolves it as it would a real one.
-- A separate helper called after the seed, never inside a persona's own notifications, so a test that counts a persona's
-  notifications is not disturbed: the caller names a user dedicated to this.
+- Rows are written directly: the API creates notifications only as an event side effect and several kinds (a full disk, a
+  changed password) cannot be caused harmlessly. Each row carries the real `type`, `entity_type` and `entity_id`.
+- It is a separate helper called after the seed, for a user dedicated to it, so tests counting a persona's notifications
+  are undisturbed.
 
-External dependencies: the `app` package (database session, `Notification` and the records it points at); the script
-adds the backend directory to the import path as `demo_setup.py` does.
+Dependencies: the `app` package (session, `Notification`, pointed-at records); the backend directory is added to the import path.
 """
 
 from __future__ import annotations

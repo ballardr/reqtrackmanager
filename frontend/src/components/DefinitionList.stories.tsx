@@ -245,12 +245,8 @@ interface FlaggedItem {
 }
 
 /**
- * `renderExtra` (added for the Compliance Module's mapping-relationship-type
- * vocabulary — see
- * `frontend/src/modules/compliance/MappingTypesPanel.tsx`) — a per-row slot
- * for an attribute `DefinitionList`'s own text-only `fields` contract can't
- * express, rendered between the text field(s) and the reorder/delete
- * buttons.
+ * `renderExtra`: a per-row slot for an attribute the list's text-only `fields` cannot express (the Compliance
+ * mapping-relationship type's boolean), rendered between the text fields and the reorder/delete buttons.
  */
 export const WithRenderExtra: Story = {
   render: () => {

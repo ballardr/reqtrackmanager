@@ -1,44 +1,12 @@
 """
 Module: modules.product_feedback.reports
 
-Report data layer for Product Feedback: five reports, one `collect_*` function each, returning the core
-framework's `ReportResult`, plus the `REPORT_DEFINITIONS` that declare them to the registry. Result shapes, scope
-(`readable_projects`), PDF/CSV/Word rendering, routes, MCP tools and the catalogue live in
-`app.services.report_framework`, so this module is declarations and queries.
-
-Reports: F1 Demand ranking, F2 Unlinked requests, F3 Close the loop, F4 Triage ageing, F5 Problem demand.
-
-Design decisions (all Decided by: Agent unless stated):
-- Every report reads the module's own definitions, never a copy: demand is `demand.compute_demand`, the Pain Point
-  and Requirement counts are `relationships.compute_links` (a merged duplicate's links count for its canonical
-  request) and the open loop is `loop.open_loop_requests`' rule (`_open_loops` is the same test over many projects),
-  so a report and the request page never disagree.
-- The reports exist for the work that is still open: F1, F2 and F4 list unarchived requests in the statuses they are
-  about, a merged duplicate (status `Duplicate`) never appears (its demand and links are its canonical request's)
-  and an archived request never appears.
-- F1 ranks by weighted demand (the default) or by the chosen model's normalised score (`rank_by`), and says which
-  model it scored under. The score is derived exactly as the list derives it (`ratings.score_levels`). A project run
-  scores each project under its own scheme, so a model the project hides or does not define leaves its requests
-  *unscored*, listed after the scored ones and never as zero. An organisation-wide run scores every request under the
-  organisation's scheme, since a model a single project defined says nothing across projects.
-- The inbox (the organisation's own requests) has no project, so a project run never lists it. An organisation-wide run
-  lists it only when asked (`include_inbox`, F1 and F4): the organisation breakdown route calls a collector once per
-  project and must not repeat the inbox in each. An inbox request cannot be linked, so it has no demand and no Pain
-  Point; it is shown as "Inbox" rather than flagged as unlinked, and F2, F3 and F5 are about linked work and leave it out.
-- F3 names no one: a requester's name is a Stakeholder's personal data, which the request page shows only to a viewer
-  who can see the record and a record file carries only under the personal-data policy. The report gives the counts
-  and the channel mix and points to the request, whose close-the-loop panel names them for a viewer allowed to see them.
-- F4 measures the time since the request *entered its current status* (the start of its unbroken run in New or Under
-  review), not since its last edit, which would let any edit reset the clock.
-- F5 counts Pain Points of the project itself; a Pain Point of a related project is not listed (its record is not the
-  project's to name), and a Pain Point in a project where the person running the report cannot view Pain Points
-  (`ReportContext.can_view`, which fails closed when the viewer is unknown) is counted in a note, never named. A Pain
-  Point "has a Requirement" when a Requirement is linked to it directly, or realises a request that addresses it.
-- Ages are elapsed time between two instants (UTC), so no calendar day or time zone is involved.
-- Reports never include Restricted data and are not audit-logged (framework rule).
-
-Dependencies: `app.services.report_framework`, `app.modules.registry`, and this module's demand, links, loop, ratings
-and channel helpers.
+Report data layer: F1 Demand ranking, F2 Unlinked requests, F3 Close the loop,
+F4 Triage ageing, F5 Problem demand as `collect_*` functions returning
+`ReportResult`, plus `REPORT_DEFINITIONS`. Reports reuse `demand.compute_demand`,
+`relationships.compute_links` and `loop.open_loop_requests`; archived requests
+and duplicates never appear. F3 names no requesters (personal data); ages are
+UTC elapsed time.
 """
 
 from __future__ import annotations

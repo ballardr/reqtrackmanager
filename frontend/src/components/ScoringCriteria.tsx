@@ -1,15 +1,14 @@
 /**
  * Module: components/ScoringCriteria
  *
- * The "Criteria" block shared by the organisation `ScoringSchemeEditor` and the project `ProjectScoringSettings`
- * (generic scoring-matrix core), shown only for a scheme that takes custom criteria. It lists the axes and models the
- * tier can see with who defined each: ones the tier defined itself can be edited and deleted, every other one can only
- * be hidden here (and restored from the "Hidden" list), so a registered or inherited criterion is never destroyed.
- * Adding and editing go through `ScoringAxisFormModal` and `ScoringModelFormModal`.
+ * The "Criteria" block shared by the organisation `ScoringSchemeEditor` and the project `ProjectScoringSettings`, shown
+ * only for a scheme that takes custom criteria. It lists the axes and models the tier can see with who defined each: the
+ * tier's own can be edited and deleted, every other one can only be hidden (and restored from "Hidden"), so a registered
+ * or inherited criterion is never destroyed. Adding and editing use `ScoringAxisFormModal` and `ScoringModelFormModal`.
  *
  * The caller passes the tier's calls (`ScoringCriteriaCalls`) and receives each refreshed scheme through `onChange`;
- * every mutation reports its outcome through the shared toast, and a failure inside a dialog stays in the dialog.
- * Deleting an axis that scores use asks first and then drops those scores (`clear_scores`).
+ * every mutation toasts, and a failure inside a dialog stays there. Deleting an axis that has scores asks first and drops
+ * those scores (`clear_scores`).
  */
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";

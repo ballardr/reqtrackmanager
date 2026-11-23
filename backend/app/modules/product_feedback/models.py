@@ -1,34 +1,12 @@
 """
 Module: modules.product_feedback.models
 
-Product Feedback's data model:
-
-- `EnhancementRequest` — the identity row. One table with a `scope` discriminator and exactly
-  one of `organization_id` / `project_id` set (a CHECK constraint), so a request can sit in a
-  project or in the organisation's inbox. Holds only stable identity fields; every mutable
-  field lives on the version.
-- `EnhancementRequestVersion` — one point-in-time content snapshot (temporal shape copied from
-  `RiskVersion`). `status` lives here, so a lifecycle move is versioned like any other change.
-- `EnhancementRequestVersionScore` — one scoring level a version holds on one axis of the `enhancement_request`
-  scoring scheme (one row per axis, so a scheme axis added later needs no schema change).
-- `EnhancementRequestComment` / `EnhancementRequestCommentFile` / `EnhancementRequestFile` —
-  module-local comment-thread and attachment tables (the shared `services.module_attachments`
-  kit works over them).
-- `EnhancementRequestMerge` — the recorded history of merging a duplicate into a canonical request; what
-  makes a merge reversible and what demand is unioned over.
-- `EnhancementRequestInformed` — a record that one requester (a Stakeholder or Persona) has been told the outcome
-  of a delivered or declined request; what the close-the-loop list is built from.
-- `RequestChannelDefinition` / `ProjectRequestChannel` — the two-tier vocabulary (organisation base, project
-  overrides, additions and hidden defaults) a request's requesters' channels are chosen from (`vocabularies.py`).
-  A request's external references (a Jira epic, a ServiceNow ticket) are rows of the shared
-  `models.external_reference.ExternalReference`, not a table of this module.
-- `EnhancementRequestRequesterChannel` — how one requester asked (the channel per ask), matched to the current
-  requesters on read like `EnhancementRequestInformed`.
-- `ProjectFeedbackSettings` — one optional row per project holding who may submit. Absence
-  means the default policy (`SubmissionPolicy.MEMBERS`).
-
-`unique_code` comes from `services.sequences.generate_unique_code` with this module's own
-`"enhancement_request"` artefact-type string: numbered per owner (project or organisation).
+Product Feedback's data model: `EnhancementRequest` (identity row; project- or
+organisation-owned, one `scope` discriminator), `EnhancementRequestVersion`
+(temporal content, including status) with per-axis scores, module-local comment
+and file tables, `EnhancementRequestMerge`, `EnhancementRequestInformed`, the
+request channel vocabulary and per-requester channels, and `ProjectFeedbackSettings`
+(default policy `SubmissionPolicy.MEMBERS`). `unique_code` is numbered per owner.
 """
 
 from __future__ import annotations

@@ -4,10 +4,7 @@ import { expect, userEvent, within } from "storybook/test";
 
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 
-/** `AutoGrowTextarea` is a controlled component (`value`/`onChange`, no
- * internal state of its own) — this harness supplies the state a real
- * caller (e.g. `RequirementsPage`'s Reasoning/Description fields) would
- * own itself, so the story can drive it exactly the way a page does. */
+/** `AutoGrowTextarea` is controlled (`value`/`onChange`); this harness supplies the state a page would own. */
 function Harness(props: { placeholder?: string; maxVisibleLines?: number }) {
   const [value, setValue] = useState("");
   return <AutoGrowTextarea placeholder={props.placeholder} maxVisibleLines={props.maxVisibleLines} value={value} onChange={setValue} />;
@@ -47,11 +44,8 @@ export const GrowsToFitContentWithinTheCap: Story = {
   },
 };
 
-/** Capped "around 8 lines" by default; content past the
- * cap stops growing the element itself and scrolls internally instead of
- * pushing the rest of the form down. A small `maxVisibleLines` here (3)
- * keeps the story's own fixture short rather than typing 9+ real lines to
- * exercise the same behaviour. */
+/** Capped at about 8 lines by default; content past the cap scrolls internally. A small `maxVisibleLines` (3)
+ * keeps the fixture short. */
 export const CapsHeightAndScrollsInternallyPastMaxVisibleLines: Story = {
   args: { maxVisibleLines: 3 },
   play: async ({ canvasElement }) => {

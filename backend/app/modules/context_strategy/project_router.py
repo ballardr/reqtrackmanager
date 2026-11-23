@@ -1,97 +1,12 @@
 """
 Module: modules.context_strategy.project_router
 
-Context & Strategy's project-scoped API — CRUD, lifecycle transitions,
-comments, and file attachments for **project-scoped** Strategy records.
-Mounted at `/api/v1/projects/{project_id}/modules/context_strategy`.
-
-The same surface exists for **project-scoped** Future State records,
-at `/future-states`, gated by `require_project_subcomponent_enabled
-("context_strategy", "future_state")` and `_shared.require_future_state_
-manage_role`/`require_future_state_approve_permission` — exact structural
-mirror of the Strategy surface below, under distinct function names. A
-project-scoped Future State's file attachments resolve through this
-module's own `resolve_file_owner_project_id` hook (`module.py` ->
-`service.resolve_future_state_file_project_id`), the same as Strategy's.
-
-Pain Points live at `/pain-points`, plus their own two-tier type
-vocabulary's project-scoped half at `/pain-point-types` (the org-scoped half, `PainPointTypeDefinition` CRUD, lives in `router.py`
-instead, since Pain Point's *type vocabulary* has an org-level component
-even though the Pain Point *artefact* does not). Gated by `require_
-project_subcomponent_enabled("context_strategy", "pain_point")`
-(`_require_pain_point_view`) for reads/creation — deliberately **broader**
-than Strategy/Future State's own gate for one specific action: source
-overview §6.5 explicitly grants "Add evidence" to any project member, so
-(unlike `upload_project_strategy_file`, owner-gated) `upload_project_pain_
-point_file` uses `_require_pain_point_view` alone, no `pain_point_manager`
-role required — see that endpoint's own docstring. Direct content edits
-(`PUT`), archive, type-vocabulary CRUD, and the "decide"-tier lifecycle
-transitions (triage/reject/mark-duplicate/accept/address/close) are gated
-by `_shared.require_pain_point_manage_role`/`require_pain_point_decide_
-permission` — see those functions' own docstrings for the manage-vs-decide
-split (Pain Point has only one elevated role, unlike Strategy/Future
-State's owner+approver pair). A project-scoped Pain Point's file
-attachments resolve through this module's own `resolve_file_owner_
-project_id` hook (`module.py` -> `service.resolve_pain_point_file_
-project_id`) — there is no org-scoped Pain Point file branch to contrast
-with, since Pain Point itself has no org scope at all.
-
-RBAC: reads/creation are gated by `require_project_subcomponent_enabled
-("context_strategy", "strategy")` (`_require_view`) — any project member
-with the module *and* this sub-component enabled may browse and propose a
-Strategy ("project members (View + Propose)"). The sub-component tier sits
-on top of the whole-module check (see `docs/decisions.md`'s "Context & Strategy" entry's "Coordination note") — `require_project_
-subcomponent_enabled` still checks whole-module enablement first
-internally, so this is a strict narrowing, not a parallel/replacement
-check. Direct edits/archival require the
-`strategy_owner` module role (`_shared.require_manage_role`); approve/
-activate/supersede/retire require `strategy_approver` or an equivalent
-Fine-Grained Access Control permission grant (`_shared.
-require_approve_permission`). See `_shared.py` for the full composition
-rules (server admin / `ProjectRole.PROJECT_MANAGER` / direct grant /
-custom-role grant).
-
-A project-scoped Strategy's file attachments are ordinary project-
-authorized uploads, resolved via this module's own `resolve_file_owner_
-project_id` hook (`module.py` -> `service.resolve_strategy_file_project_id`)
-so the core `GET /api/v1/files/{id}` download endpoint can authorize them
-without importing this module directly — mirrors `modules.decisions.
-project_router.files`'s identical shape. See `router.py`'s own module
-docstring for the org-scoped sibling of this router (whose files instead
-use `is_org_resource=True`), and `_shared.py` for the helpers both share.
-
-The same surface exists for **project-scoped** Guiding Principle
-records, at `/guiding-principles`, gated by `require_project_subcomponent_
-enabled("context_strategy", "guiding_principle")` and `_shared.require_
-guiding_principle_manage_role`/`require_guiding_principle_approve_
-permission` — exact structural mirror of the Strategy/Future State
-surfaces above, minus the `submit-for-review` endpoint (`enums.
-GuidingPrincipleStatus` has no `UNDER_REVIEW` state). A project-scoped
-Guiding Principle's file attachments resolve through this module's own
-`resolve_file_owner_project_id` hook (`module.py` -> `service.resolve_
-guiding_principle_file_project_id`), the same as Strategy's/Future State's.
-
-Open Questions live at `/open-questions` — project-scoped only,
-like Pain Point (no org-scoped counterpart in `router.py` at all,
-unlike Pain Point's own org-scoped type-vocabulary half, since Open
-Question has no type vocabulary of its own). Gated by `require_project_
-subcomponent_enabled("context_strategy", "open_question")`
-(`_require_open_question_view`) for reads/creation — §9.4's broad-creation
-model (any project member may create/comment/add evidence/suggest
-resolution), the same posture as Pain Point's §6.5. Direct content edits
-(`PUT`), archive, and the "change status"-tier lifecycle transitions
-(`investigate`/`mark-ready-for-decision`/`withdraw`) are gated by `_shared.
-require_open_question_manage_role` (`open_question_owner`); the `resolve`
-transition alone is gated by a *separate* `_shared.require_open_question_
-resolve_permission` (`open_question_resolver` — §9.4's own "Decision Maker"
-tier, distinct from "Question Owner / Project Manager"; see `module.py`'s
-own docstring for why this is two roles, not Pain Point's one). `resolve`
-is deliberately a plain status transition, not the actual "Create Decision
-from Open Question" workflow (§9.5, a separate Decision Management workflow) — see `service.
-resolve_open_question`'s own docstring. A project-scoped Open Question's
-file attachments resolve through this module's own `resolve_file_owner_
-project_id` hook (`module.py` -> `service.resolve_open_question_file_
-project_id`) — no org-scoped file branch, same as Pain Point.
+Project-scoped API for Strategies, Future States, Pain Points (with the
+project half of the type vocabulary), Guiding Principles and Open Questions:
+CRUD, lifecycle transitions, comments and files, mounted at
+`/api/v1/projects/{project_id}/modules/context_strategy`. Edits need the
+owner/manager role, approvals the approver role or a permission grant; Pain
+Point evidence and Open Question creation are open to any member.
 """
 
 from __future__ import annotations
@@ -556,14 +471,10 @@ def approve_project_strategy(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Formally approves a Strategy (`UNDER_REVIEW` -> `APPROVED`). MCP-
-    reachable (`module.py`'s `mcp_tools`) — per the 2026-09-22
-    write-enabled-MCP decision (`docs/decisions.md`), reached through the
-    MCP server this additionally requires this project and its organisation
-    to both have explicitly enabled AI approval (`require_ai_approvals_
-    enabled`), mirroring `modules.decisions.project_router.workflow.
-    approve_decision_endpoint`'s own docstring/pattern exactly; a plain
-    UI/API call is unaffected by that flag either way."""
+    """Formally approves a Strategy (`UNDER_REVIEW` -> `APPROVED`). MCP-reachable
+    (`module.py`'s `mcp_tools`); through the MCP server it also requires the
+    project and its organisation to enable AI approval
+    (`require_ai_approvals_enabled`). A plain UI/API call is unaffected."""
     project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
@@ -1378,10 +1289,10 @@ def delete_project_pain_point_type_endpoint(
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
     """Deletes a project-local Pain Point type, or hides an organisation default
-    in this project (§6.2 "Remove types where no longer used"; restore with
-    `POST /pain-point-types/restore`). `type_ref_id` is an
-    `EffectivePainPointTypeOut.id`. Hiding keeps the project's row, so existing
-    Pain Points are unaffected. 409 while a project-local type is still in use."""
+    in this project (restore with `POST /pain-point-types/restore`).
+    `type_ref_id` is an `EffectivePainPointTypeOut.id`. Hiding keeps the
+    project's row, so existing Pain Points are unaffected. 409 while a
+    project-local type is still in use."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
@@ -2245,11 +2156,9 @@ def activate_project_guiding_principle(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Activates an approved Guiding Principle. MCP-reachable —
-    per the 2026-09-22 update, Guiding Principle's own
-    `require_ai_approvals_enabled`-gated actions are `activate`/`retire`,
-    not `approve` (see `service.py`'s relationships docstring for the
-    reasoning) — same gate pattern as `approve_project_strategy`."""
+    """Activates an approved Guiding Principle. MCP-reachable; Guiding
+    Principle's `require_ai_approvals_enabled`-gated actions are `activate`
+    and `retire`, not `approve` (it has no review step)."""
     project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
@@ -2931,13 +2840,8 @@ def unlink_project_open_question_file(
 
 
 # --- cross-artefact relationships -----------------------------------
-#
-# List + create relationship endpoints for all five project-scoped source
-# artefact types, plus supersession endpoints for the three that support
-# one (Strategy/Future State/Guiding Principle — Pain Point/Open Question
-# have no "supersedes" concept in their own lifecycles). See `service.py`'s
-# relationships docstring section for the overall design and why Decision is
-# not a valid `target_id` for any of these yet.
+# List and create endpoints for all five source types, and supersession
+# endpoints for the three that support it. See `service.py`.
 
 
 @router.get("/strategies/{strategy_id}/relationships", response_model=list[ContextStrategyLinkOut])

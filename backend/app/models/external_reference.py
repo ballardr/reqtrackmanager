@@ -4,22 +4,20 @@ Module: models.external_reference
 External references: pointers from any record to the same work in an outside tool (a Jira epic, a ServiceNow
 ticket, a customer's register), so a record can be found from either side.
 
-- `ExternalSystemDefinition`: the organisation's list of outside systems, ordered, each with an optional URL template.
-- `ProjectExternalSystem`: a project's view of that list (an override of an organisation entry, or an entry of its
-  own); an organisation entry a project hides is a `ProjectDefinitionSuppression` tombstone. Same shape as every typed
-  vocabulary (`services.type_vocabulary.TypeVocabulary`).
-- `ExternalReference`: one pointer from a record to an item in a system, keyed by the registered artefact type string
-  like tags and placements, so a new record type needs no code here.
+- `ExternalSystemDefinition`: the organisation's ordered list of outside systems, each with an optional URL template.
+- `ProjectExternalSystem`: a project's view of that list (an override of an organisation entry, or its own entry);
+  a hidden organisation entry is a `ProjectDefinitionSuppression` tombstone (as `services.type_vocabulary.TypeVocabulary`).
+- `ExternalReference`: one pointer from a record to an item in a system, keyed by the registered artefact type
+  string as tags and placements are, so a new record type needs no code here.
 
 Design decisions:
-- `artefact_type` is a plain registrable string validated by the service against the registry, never a closed enum a
-  module would have to hand-edit, and `artefact_id` has no foreign key (the record's owner calls
-  `services.external_references.forget_record_references` when it deletes the record for good). The owning project and
-  organisation are columns so a project or organisation delete removes the references with it.
-- Exactly one system column is set: an organisation-owned record (`project_id` null) uses the organisation's entry
-  directly, a project record uses the project's row for it (a CHECK ties the two together).
-- `url_template` holds `{key}` once; the link of a reference with no URL of its own is the template with the key
-  URL-encoded in (`services.external_references.link_for`). Only an `http` or `https` template is accepted.
+- `artefact_type` is a plain registrable string validated against the registry, not a closed enum, and
+  `artefact_id` has no foreign key (the record's owner calls `services.external_references.forget_record_references`
+  on permanent deletion). The owning project and organisation are columns so deleting either removes the references.
+- Exactly one system column is set: an organisation-owned record (`project_id` null) uses the organisation's entry,
+  a project record the project's row (a CHECK ties them).
+- `url_template` holds `{key}` once; a reference with no URL of its own links to the template with the key URL-encoded
+  (`services.external_references.link_for`). Only `http` or `https` templates are accepted.
 - `role` is optional: `origin` (the record came from that item) or `delivery` (it is built there).
 """
 

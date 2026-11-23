@@ -45,18 +45,10 @@ function mockVersionApis(versions: ComplianceStandardVersion[] = [version()]) {
 }
 
 /**
- * `StandardVersionsSection` — the "Versions" content of `StandardWorkspacePage
- * .tsx`, extracted from
- * `StandardsPanel.tsx`'s old `SidePanel`/`VersionWorkspace` drill-in.
- * `VersionWorkspace`'s own publish/retire/requirement-tree behaviour is
- * covered by `VersionWorkspace.stories.tsx`, not duplicated here.
- *
- * "Which version is open" lives in the URL
- * (`initialVersionId`, the real `StandardWorkspacePage.tsx`'s own
- * `:versionId?` route param) — `Harness` below stands in for that parent,
- * reading the same param straight out of a real router so a story can
- * exercise the full open/navigate/back round trip, not just call the
- * prop directly.
+ * `StandardVersionsSection` is the "Versions" content of `StandardWorkspacePage.tsx`. `VersionWorkspace`'s publish, retire and
+ * requirement-tree behaviour is covered by `VersionWorkspace.stories.tsx`. Which version is open lives in the URL
+ * (`initialVersionId`, the page's `:versionId?` route param); `Harness` stands in for that parent by reading the param from a
+ * real router, so a story exercises the open, navigate and back round trip.
  */
 function Harness(props: { orgId: string; standard: ComplianceStandard; actionTypes: ComplianceActionType[] }) {
   const { versionId } = useParams<{ versionId?: string }>();

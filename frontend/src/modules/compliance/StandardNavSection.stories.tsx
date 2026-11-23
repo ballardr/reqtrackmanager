@@ -30,17 +30,10 @@ function mockNavApis(versions: ComplianceStandardVersion[]) {
 }
 
 /**
- * The "Standard" left-nav section
- * — Overview/Details, Versions, History — registered via `module.ts`'s
- * `standaloneWorkspaces`, rendered by `Layout.tsx` as a sibling structural
- * pattern to its own "Project" section, never imported by `Layout.tsx`
- * directly.
- *
- * This is the app's first expandable nav-rail group: "Versions"
- * has a disclosure toggle that lists one link per version underneath.
- * Resolving `organization_id` and the version list are this component's
- * own fetches (`standaloneWorkspaces.render` only passes `entityId`/
- * `railCollapsed`), so every story here mocks those two `GET`s.
+ * The "Standard" left-nav section (Overview/Details, Versions, History), registered through `module.ts`'s
+ * `standaloneWorkspaces` and rendered by `Layout.tsx` as a sibling of its "Project" section without importing it. "Versions" is
+ * an expandable group with a disclosure toggle listing one link per version. The component fetches `organization_id` and the
+ * version list itself (`standaloneWorkspaces.render` passes only `entityId` and `railCollapsed`), so every story mocks those two `GET`s.
  */
 const meta: Meta<typeof StandardNavSection> = {
   title: "Modules/Compliance/StandardNavSection",
@@ -103,10 +96,8 @@ export const Collapsed: Story = {
   beforeEach: () => mockNavApis([version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" })]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Collapsed rows keep their accessible name but hide the visible text
-    // label (`.nav-label`, hidden via CSS in icon-only mode) — same
-    // convention every other `NavRailLink` follows. The expandable-versions
-    // toggle doesn't apply to a collapsed, icons-only rail at all.
+    // Collapsed rows keep their accessible name but hide the visible text label (`.nav-label`, hidden by CSS in icon-only mode),
+    // as every `NavRailLink` does; the expandable-versions toggle does not apply to a collapsed rail.
     await expect(canvas.getByRole("link", { name: "Overview" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Expand versions" })).not.toBeInTheDocument();
   },
@@ -114,10 +105,8 @@ export const Collapsed: Story = {
 
 // --- auto-expand, exact-match highlight, restyled toggle ----------
 
-/** 29a/29c — landing directly on a version's own route (not via an in-app
- * click) auto-expands the group and highlights only that version's row —
- * "Versions" itself stays unhighlighted now that its own link uses an
- * exact-path match. */
+/** Landing directly on a version's route (not by an in-app click) expands the group and highlights only that version's row;
+ * "Versions" itself is not highlighted because its link matches its exact path. */
 export const AutoExpandsOnDirectVersionRoute: Story = {
   decorators: [withRouter(`/standards/${STANDARD.id}/versions/ver-2`)],
   beforeEach: () => mockNavApis([
@@ -150,9 +139,8 @@ export const ManualCollapseOverridesRouteForcedExpand: Story = {
   },
 };
 
-/** 29d — the toggle no longer carries its own `.btn` border/background; it
- * and the "Versions" link now share one `.nav-link-row` hover/active
- * surface, while staying two separately focusable/clickable controls. */
+/** The toggle has no `.btn` border or background of its own: it and the "Versions" link share one `.nav-link-row` hover and
+ * active surface while staying two separately focusable controls. */
 export const ToggleSharesRowSurfaceWithLink: Story = {
   decorators: [withRouter(`/standards/${STANDARD.id}`)],
   beforeEach: () => mockNavApis([version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" })]),

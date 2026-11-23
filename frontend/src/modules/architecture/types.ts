@@ -556,7 +556,7 @@ export interface DiagramViewPort {
   connection_type_name: string | null;
 }
 
-/** A placed element as drawn. A `locked` node is one the viewer can no longer read (its code only). */
+/** A placed element as drawn. A `locked` node is one the viewer cannot read (its code only). */
 export interface DiagramViewNode {
   placement_id: string;
   element_id: string;

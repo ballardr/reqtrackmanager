@@ -2,22 +2,17 @@
  * Module: components/CsvImportWizard
  *
  * The import wizard of every record list (docs/ux-style-guide.md, "Pattern: list actions (export and import)"):
- * a picked CSV is mapped onto the record type's columns, previewed by the server, then applied.
+ * a picked CSV is mapped onto the type's columns, previewed by the server, then applied, in one `Modal` with the
+ * buttons pinned in the header (`FormActions`).
  *
- * Steps (one `Modal`, its Back/Cancel/primary buttons pinned in the header through `FormActions`):
- * 1. **Map.** The file is parsed in the browser and each of the type's importable columns is paired with one of
- *    the file's headers (guessed from the key or label), or, for a column with a closed list of values
- *    (`choices`), given one fixed value for every row. A column left unmapped is not sent, so an update leaves
- *    that field alone.
- * 2. **Preview.** The file is rebuilt in the server's own headers and sent as a dry run: the server runs every row
- *    through the type's own create/update path and rolls it back, so the creates, updates (before and after of
- *    each changed field) and row errors shown are what an apply would do.
- * 3. **Apply.** The same file is sent for real. A `Toast` reads "N created, N updated, N failed"; failed rows come
- *    back as an error CSV to fix and upload again.
+ * 1. Map: the browser parses the file and pairs each importable column with a file header (guessed) or, for a
+ *    column with `choices`, one fixed value; an unmapped column is not sent, so an update leaves it alone.
+ * 2. Preview: the file is rebuilt in the server's headers and sent as a dry run through the type's create/update
+ *    path (rolled back), so the creates, updates and row errors shown are what an apply would do.
+ * 3. Apply: the same file is sent for real; failed rows return as an error CSV.
  *
- * The wizard knows no record type: the columns, their hints and their accepted values come from
- * `GET .../records/{type}/columns`. The mapping/fixed-value choice is purely client-side; the server only ever
- * receives the canonical CSV an export writes. Dependencies: papaparse, `api/recordTables`, `utils/recordImport`.
+ * The wizard knows no record type: columns come from `GET .../records/{type}/columns`. Dependencies: papaparse,
+ * `api/recordTables`, `utils/recordImport`.
  */
 import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";

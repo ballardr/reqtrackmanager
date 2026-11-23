@@ -1,47 +1,29 @@
 """
 Module: services.report_run_jobs
 
-Background runs of custom reports: a run that is too big to answer inside a request is queued, produced by
-the leader process, stored for a limited time and announced with a notification.
+Background runs of custom reports: a run too big for a request is queued, produced by the leader process, stored for a
+limited time and announced with a notification.
 
 Responsibilities:
-- `enqueue`: records the request as a `queued` `GeneratedReport` row (the job) after checking it can be
-  produced and the requester has not queued too many.
-- `run_job` / `run_next`: claims a queued job, runs it as the requester with the background limits, renders
-  it, stores the file, fills in the provenance and notifies the requester (`ready` or `failed`).
-- `expire`: deletes stored files past their expiry (row kept as `expired`), reaps jobs stuck `running`, and
-  deletes provenance rows older than the platform retention.
-- `list_for`, `get_for`, `read_output`, `delete_output`: the requester's view of their own runs.
-- `requeue`: "generate again" for an expired or failed run: a fresh run of the stored request, as the requester now.
-- `run_job_loop`: the singleton loop that drives all of the above (started through the lifespan's
-  `start_singletons`, so exactly one process works the queue).
+- `enqueue` (a `queued` `GeneratedReport` row, after checking producibility and the requester's queue limit);
+  `run_job` / `run_next` (claim, run as the requester with background limits, render, store, record provenance, notify);
+  `expire`; `list_for`, `get_for`, `read_output`, `delete_output`; `requeue`; `run_job_loop` (the singleton loop,
+  started through the lifespan's `start_singletons`).
 
 Design decisions:
-- **The request is the row.** The layout version, format and parameters pinned at enqueue time are on the
-  `GeneratedReport` row, so a job runs the layout as it was when the person asked, even if it is edited in
-  the queue. Nothing about the layout's text is copied.
-- **Runs as the requester, re-checked at run time.** The job loads the requester and re-checks that they are
-  still active, still reach the project or organisation and the layout, and runs with their resolver, so a
-  report never contains more than they can read *now*. A requester who lost access gets a failure, not a file.
-- **Only the requester downloads, and only while the file exists.** Stored output is Confidential data at
-  rest; there is no organisation-wide listing. Download re-checks access (same checks as run time) and the
-  expiry, so an expired file is refused even if the expiry job has not yet reached it.
-- **One queue, one leader.** The loop claims rows with `FOR UPDATE SKIP LOCKED` and runs one job at a time in
-  a worker thread (evaluation and rendering are blocking). A job left `running` longer than its own deadline
-  (the leader died) is marked `failed`, never silently re-run.
-- **Retention is the organisation's, capped by the platform.** `effective_retention_days` takes the
-  organisation's setting or the platform default and never exceeds the platform ceiling. Expiry deletes the
-  object first and the row's file columns after, so a failed delete is retried on the next pass.
-- **Messages are safe to show.** A failure stores a fixed sentence per cause (limits, access, render), never
-  an exception string, because the row is readable by the requester and must not carry record content.
+- The request is the row: layout version, format and parameters are pinned at enqueue time, and no layout text is copied.
+- The job runs as the requester, re-checking at run time that they are active and reach the project, organisation and
+  layout, so a report never holds more than they can read now; a lost-access requester gets a failure, not a file.
+- Only the requester downloads, only while the file exists (Confidential at rest); download re-checks access and expiry.
+- One queue, one leader: `FOR UPDATE SKIP LOCKED`, one job at a time in a worker thread; a job `running` past its
+  deadline (leader died) is marked `failed`, never re-run.
+- Retention is the organisation's setting or platform default, capped by the platform ceiling; expiry deletes the
+  object first, then the row's file columns, so a failed delete is retried.
+- A failure stores a fixed sentence per cause, never an exception string. `requeue` is a new run of the layout or pack's
+  current version with the stored format, scope and variables, always through the queue, refused while the original is
+  waiting, running or downloadable.
 
-- **Generate again is a new run, never the old file.** `requeue` re-checks the requester and the report's reach, runs
-  the layout or pack's *current* version with the stored format, scope and variable values, and always goes through the
-  queue (so a large one is bounded like any other and the person is notified again). It is refused while the original
-  is still waiting, running or downloadable.
-
-Dependencies: `services.custom_report_run`, `services.files` (storage backend), `services.notifications`,
-`models.generated_report`.
+Dependencies: `custom_report_run`, `services.files`, `services.notifications`, `models.generated_report`.
 """
 
 from __future__ import annotations

@@ -1,43 +1,30 @@
 /**
  * Module: modules/context_strategy/ProjectPainPointsPage
  *
- * The Context & Strategy module's project-scoped Pain Point list route,
- * mounted at
- * `/projects/:projectId/modules/context_strategy/pain-points`, reached via
- * this module's third top-level nav-rail entry. Mirrors
- * `ProjectStrategiesPage.tsx`'s exact `DirectoryTable` + `FilterPanel` +
- * "New X" `Modal` shape — Pain Point is project-scoped only (§6), so unlike that page there is no org-scoped sibling panel.
+ * The project-scoped Pain Point list route, mounted at `/projects/:projectId/modules/context_strategy/pain-points`
+ * (the module's third top-level nav-rail entry). It has `ProjectStrategiesPage.tsx`'s `DirectoryTable`, `FilterPanel`
+ * and "New X" `Modal` shape; Pain Point is project-scoped only, so there is no organisation-scoped sibling panel.
  *
- * Per-persona scoring shows in the list: a Score column (the
- * roll-up under the model and persona roll-up picked in the gear on the
- * column header, "chosen when viewing") and a Blocker badge after the title
- * that stays visible whichever is chosen. The Score column is sortable, so
- * switching model re-ranks the list. Intentional limitations carry an
- * "Intentional" badge and can be hidden from the list via a filter.
+ * Per-persona scoring shows in the list: a sortable Score column (the roll-up under the model and persona roll-up
+ * chosen in the column header gear, so switching model re-ranks the list) and a Blocker badge after the title that
+ * stays visible whichever is chosen. Intentional limitations carry an "Intentional" badge and can be hidden with a
+ * filter.
  *
- * The list opens on open Pain Points only (the "Open only" filter is ticked
- * and stays visible). A link that names a slice (`status`, `scored`,
- * `blocker`, `intentional=only`) or says `open=0` starts with it off, so the
- * filters in the link are the ones applied and a link never lands on an empty
- * list.
+ * The list opens on open Pain Points only (the "Open only" filter is ticked and visible). A link that names a slice
+ * (`status`, `scored`, `blocker`, `intentional=only`) or says `open=0` starts with it off, so the link's filters are
+ * the ones applied and it never lands on an empty list.
  *
- * A person who may score (the manager tier) also gets a Grid view of the same rows and filters
- * (`RecordGrid`, "Pattern: bulk edit grid"): Type, Priority, the Intentional flag and the three score
- * levels as cells, saved one Pain Point at a time. A Pain Point scored per persona shows its score cells
- * locked, since one level cannot stand for several personas.
+ * A person who may score (the manager tier) also gets a Grid view of the same rows and filters (`RecordGrid`, "Pattern:
+ * bulk edit grid"): Type, Priority, the Intentional flag and the three score levels as cells, saved one Pain Point at a
+ * time. A Pain Point scored per persona shows its score cells locked, since one level cannot stand for several personas.
  *
- * Also loads this project's effective Pain Point type list
- * (`projectPainPointApi.listTypes`) once, up front — both the type filter
- * dropdown and `PainPointFormModal`'s own type picker need it, and loading
- * it here (rather than inside the modal) avoids a load flash every time the
- * "New Pain Point" modal opens.
+ * The effective Pain Point type list (`projectPainPointApi.listTypes`) is loaded once here, because the type filter and
+ * `PainPointFormModal`'s type picker both need it and loading it in the modal would flash on every open.
  *
- * Filters can be pre-set from the URL (a report figure links here, e.g.
- * `?open=1&blocker=1`): `status`, `priority`, `open=1|0` (still being worked; the default),
- * `intentional=hide|only`, `blocker=1`, `scored=yes|no`, and `model` /
- * `rollup` (the scoring the report ran with). They are the page's filter state (the URL is kept up to
- * date as they change), so the list comes back as it was left after a visit to a record; each is a
- * visible control in the filter panel, so it can be changed or cleared.
+ * Filters can be pre-set from the URL (a report figure links here, e.g. `?open=1&blocker=1`): `status`, `priority`,
+ * `open=1|0` (still being worked; the default), `intentional=hide|only`, `blocker=1`, `scored=yes|no`, and `model` /
+ * `rollup` (the scoring the report ran with). They are the page's filter state (the URL follows them), so the list
+ * returns as left after visiting a record; each is a visible control that can be changed or cleared.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

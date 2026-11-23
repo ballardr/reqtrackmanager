@@ -6,14 +6,13 @@ import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdm
 installCleanupHook();
 
 /**
- * Job to be done: a record that an organisation owns and every project shares (a Persona, a
- * Strategy, a Stakeholder Group...) has a short code like any other record, and that code names
- * the record unambiguously by carrying the organisation's code (`ACME-PER-001`), because a bare
- * `PER-001` could just as well be a project's own.
+ * Job to be done: a record an organisation owns and every project shares (a Persona, a Strategy, a Stakeholder
+ * Group...) has a short code that carries the organisation's code (`ACME-PER-001`), because a bare `PER-001` could
+ * equally be a project's own.
  *
- * Covers: the organisation-owned code in a project's lists and in the organisation's own detail
- * page, next to a project-owned record with the same bare code; and an organisation admin changing
- * the organisation code (with its confirmation) and every code following it.
+ * Covers: the organisation-owned code in a project's lists and in the organisation's detail page, next to a
+ * project-owned record with the same bare code; and an organisation admin changing the organisation code (with its
+ * confirmation) and every code following it.
  *
  * Each test builds its own organisation, so none depends on state left by another test.
  */

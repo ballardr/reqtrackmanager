@@ -11,32 +11,10 @@ import { defineConfig } from "vite";
 // same build artifact works across environments.
 const dirname = import.meta.dirname;
 
-// Tier C ("federated" / Module Federation) frontend modules — module
-// system follow-up, 2026-09-07 (see docs/decisions.md's "Module system
-// follow-up: Tier C (Module Federation)" entries and docs/modules.md's
-// "Tier C" section). The intended, documented design is for this host
-// build to declare a Module Federation host config here (e.g. `@originjs/
-// vite-plugin-federation`'s `federation({ name: "host", shared: ["react",
-// "react-dom"] })`, configured for *dynamic* remotes — a Tier C remote's
-// URL isn't known at this host's own build time, it arrives from the
-// backend's manifest endpoint at runtime). **That dependency is
-// deliberately not added to this file or package.json**: this repo's own
-// sandboxed build/test environment had no network access to the npm
-// registry to install, build, or verify it when Tier C was built (confirmed
-// directly — `npm view`/`npm install` both timed out against
-// registry.npmjs.org), and shipping a `vite.config.ts` importing a package
-// that isn't actually installed would break every frontend typecheck/lint/
-// build/test run, not just this feature, violating this repo's own
-// standing "leave the suite passing" rule. `frontend/src/modules/
-// federatedLoader.ts` instead implements, by hand, the same minimal
-// container contract a real Module Federation remote build produces
-// (`init(sharedScope)`/`get(exposedModuleName)`), using only native
-// dynamic `import()` — no new dependency, so nothing here needed to
-// change. See that file's own docstring for the full account, including
-// the documented upgrade path (a small, scoped change to that one file
-// only) once a deployment building this repo has normal npm registry
-// access and wants the real plugin's shared-dependency *version*
-// negotiation this hand-rolled substitute deliberately doesn't attempt.
+// Tier C ("federated") frontend modules declare no Module Federation host plugin here: remote URLs arrive from the
+// backend's manifest endpoint at runtime, and `frontend/src/modules/federatedLoader.ts` implements the container
+// contract (`init(sharedScope)`/`get(exposedModuleName)`) with native dynamic `import()`, so no federation package
+// is a dependency. It does not negotiate shared-dependency versions (see docs/modules.md, "Tier C").
 
 export default defineConfig({
   plugins: [react()],
@@ -48,15 +26,10 @@ export default defineConfig({
     host: true,
     port: 3000,
   },
-  // Runs each Storybook story as a Vitest browser test (real Chromium via
-  // Playwright), so `npm run test-storybook` catches stories that fail to
-  // render or fail their play functions/assertions — not just a visual
-  // component explorer with no automated check behind it.
+  // Runs each Storybook story as a Vitest browser test (real Chromium via Playwright), so
+  // `npm run test-storybook` fails a story that does not render or fails its play function.
   test: {
-    // Root-level, not per-project: Vitest's workspace ("projects") mode
-    // applies coverage/reporters globally across every project rather than
-    // letting each declare its own, even though there's currently only the
-    // one "storybook" project below.
+    // Root-level, not per-project: Vitest's workspace ("projects") mode applies reporters globally.
     reporters: ["default", "junit"],
     outputFile: { junit: "./vitest-report.xml" },
     coverage: {

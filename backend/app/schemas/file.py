@@ -49,26 +49,18 @@ class LinkResourceRequest(BaseModel):
 
 
 class ProjectFileOut(ProjectScopedRow):
-    """One file reachable from a project's requirements (`GET
-    /projects/{id}/files`) — a direct requirement attachment, a requirement
-    action attachment, or a file attached to a comment on one of the
-    project's requirements. Distinct from a bare `FileAssetOut` in that it
-    also carries the context needed to make sense of a flat, project-wide
-    list: which requirement/action/comment the file came from and who
-    uploaded it, so a caller isn't left with an array of filenames and no
-    way to tell where any of them came from.
+    """One file reachable from a project's requirements (`GET /projects/{id}/files`): a direct requirement
+    attachment, a requirement action attachment, or a file attached to a comment on one of the project's
+    requirements. Unlike a bare `FileAssetOut` it carries the context a flat, project-wide list needs: which
+    requirement, action or comment the file came from and who uploaded it.
 
-    `source` distinguishes the origin join-tables
-    (`requirement_attachment`/`action_attachment`/`comment_attachment`) and the project's report image library
-    (`report_image`, a picture attached to no record).
-    `requirement_id`/`requirement_unique_code`/`requirement_name` are set
-    for `requirement_attachment` and `comment_attachment` rows;
-    `action_id`/`action_unique_code`/`action_title` (and, redundantly,
-    `comment_id`) are set for `action_attachment`/`comment_attachment` rows
-    respectively. An action attachment carries no `requirement_id` — an
-    action may be linked to zero, one, or several requirements (via untyped
-    `ArtefactLink` rows), so it has no single owning requirement to
-    attribute the file to; it's attributed to the action itself instead.
+    `source` distinguishes the origin join tables (`requirement_attachment`/`action_attachment`/
+    `comment_attachment`) and the project's report image library (`report_image`, a picture attached to no
+    record). `requirement_id`/`requirement_unique_code`/`requirement_name` are set for `requirement_attachment`
+    and `comment_attachment` rows; `action_id`/`action_unique_code`/`action_title` (and `comment_id`) are set
+    for `action_attachment`/`comment_attachment` rows respectively. An action attachment carries no
+    `requirement_id`: an action may be linked to zero, one or several requirements (via untyped `ArtefactLink`
+    rows), so it has no single owning requirement and is attributed to the action.
     """
 
     file: FileAssetOut

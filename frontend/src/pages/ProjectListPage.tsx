@@ -87,11 +87,7 @@ function ManageUsersGear({ project, onOpen }: { project: UnjoinedProjectListItem
   );
 }
 
-/**
- * Project list view (U-E-03): active projects across all organisations the
- * user can access, with an archived filter (U-E-04), search, project
- * creation (C-G-02), and incremental "load more" pagination (U-P-06).
- */
+/** Project list view (U-E-03): active projects across the user's organisations, with an archived filter (U-E-04), search, creation (C-G-02) and "load more" pagination (U-P-06). */
 export function ProjectListPage() {
   const strings = useStrings();
   const navigate = useNavigate();
@@ -104,9 +100,7 @@ export function ProjectListPage() {
   const orgLabelCap = useOrgLabelCapitalized();
   const [projects, setProjects] = useState<ProjectListRow[] | null>(null);
   const [total, setTotal] = useState(0);
-  // Unfiltered mandatory-scope count — powers
-  // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
-  // is the filtered/searched count.
+  // Unfiltered mandatory-scope count, shown by `ResultCount` beside the filtered/searched `total`.
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
   // Filters live in the URL so the list comes back as it was left after a visit to a project.
   const [showArchived, setShowArchived] = useUrlFlag("archived");
@@ -147,10 +141,7 @@ export function ProjectListPage() {
   const [treeNodes, setTreeNodes] = useState<ProjectTreeNode[] | null>(null);
   const [chosenTreeOrgId, setTreeOrgId] = useState("");
 
-  // The tree option only appears when the caller's accessible project set
-  // actually contains a parent/child relationship — a tree mode with
-  // nothing to show a hierarchy for doesn't mean anything (see
-  // `ViewToggle`'s own `showTreeOption` docstring).
+  // The tree option appears only when the accessible set contains a parent/child relationship (`ViewToggle`'s `showTreeOption`).
   const hasHierarchy = allProjects.some((p) => p.parent_project_id || p.children.length > 0);
   const orgsWithHierarchy = orgs.filter((o) =>
     allProjects.some((p) => p.organization_id === o.id && (p.parent_project_id || p.children.length > 0))
@@ -173,11 +164,8 @@ export function ProjectListPage() {
     setShowNewForm(true);
   }
 
-  // "Add sub-project" from a project's own page (ProjectAdminPage) or a
-  // ProjectTree node navigates here with these query params rather than
-  // duplicating the create-project modal's logic on that page. Cleared
-  // immediately after opening so a later reload/back-navigation doesn't
-  // silently re-open the modal.
+  // "Add sub-project" from a project page or a ProjectTree node navigates here with these query parameters instead of duplicating
+  // the create modal there; they are cleared once the modal opens so a reload or Back does not reopen it.
   const deepLinkParentId = searchParams.get("parentProjectId");
   const deepLinkOrgId = searchParams.get("organizationId");
   useResetOnChange([deepLinkParentId, deepLinkOrgId], () => {
@@ -200,28 +188,18 @@ export function ProjectListPage() {
     if (roleFilter) params.set("role", roleFilter);
     if (stagePhaseKindFilter) params.set("stage_phase_kind", stagePhaseKindFilter);
     if (orgFilter) params.set("organization_id", orgFilter);
-    // Same `favorite_only` param `FavouritesPage.tsx` already uses server-side
-    // — filtering here rather than
-    // client-side keeps this consistent with every other filter on this
-    // page, all of which narrow the paginated result set itself rather
-    // than hiding already-loaded rows.
+    // The same `favorite_only` parameter as `FavouritesPage.tsx`, applied server-side like every other filter here.
     if (favoriteOnly) params.set("favorite_only", "true");
     if (showTemplates) params.set("include_templates", "true");
     if (includeUnjoined) params.set("include_unjoined", "true");
     return params;
   }
 
-  // Read through a ref so a reload started from an older render (a
-  // post-mutation `reload()` resuming after an `await`) still lists with the
-  // filters the user has set since — otherwise, as the newest request, it
-  // would overwrite their filtered results (found 2026-10-04 via the e2e
-  // suite). Declared before the reload effect so it's current there.
+  // Read through a ref so a reload resuming after an `await` in an older render still lists with the current filters instead
+  // of overwriting the filtered results. Declared before the reload effect.
   const listParamsRef = useLatest(listParams);
 
-  // Belt-and-suspenders request-sequencing guard, same reasoning/shape as
-  // `RequirementsPage.tsx`/`ChangeRequestsPage.tsx`'s identical guards
-  // — discards a response if a newer request
-  // has since been kicked off (e.g. rapid filter changes).
+  // Discards a response when a newer request has started (e.g. rapid filter changes).
   const beginLoad = useRequestSequence();
 
   async function loadProjects(offset: number, append: boolean) {
@@ -237,21 +215,16 @@ export function ProjectListPage() {
   async function reload() {
     setProjects(null);
     const [orgList, everyProject, templates] = await Promise.all([
-      // `mine=true`: a server admin otherwise sees every organisation in the
-      // deployment here (the plain `GET /orgs` directory-listing bypass,
-      // meant for the platform-level org directory) rather than just the
-      // ones they can actually create a project in or usefully filter by.
+      // `mine=true`: otherwise a server administrator sees every organisation (the platform directory) instead of the ones they can
+      // create a project in or filter by.
       api.get<Organization[]>("/api/v1/orgs?mine=true"),
       api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
       // The template picker reads its own list: the default list leaves templates out.
       api.get<ProjectListItem[]>("/api/v1/projects?archived=false&templates_only=true"),
       loadProjects(0, false),
     ]);
-    // A disabled org can't hold any (newly) visible projects (the list
-    // endpoint itself now excludes them) and can't accept new ones either
-    // (`rbac._require_org_active`) — filtered out here so it doesn't appear
-    // as a dead option in either the org filter or the "new project" org
-    // picker below.
+    // A disabled organisation holds no visible projects (the list endpoint excludes them) and accepts no new ones
+    // (`rbac._require_org_active`), so it is filtered out of the organisation filter and the new-project picker.
     const activeOrgs = orgList.filter((o) => o.is_active);
     setOrgs(activeOrgs);
     setAllProjects(everyProject);
@@ -261,10 +234,8 @@ export function ProjectListPage() {
 
   useLoadOnChange(reload, [showArchived, search, roleFilter, stagePhaseKindFilter, orgFilter, favoriteOnly, showTemplates, includeUnjoined]);
 
-  // C-E-04: pre-select the organisation's default template project (if
-  // one is configured) whenever the target org changes, rather than
-  // always starting from "None". The user can still pick a different
-  // template or explicitly choose "None (blank project)" before creating.
+  // C-E-04: pre-select the organisation's default template project (if configured) when the target organisation changes; the user
+  // can pick another or "None (blank project)".
   useResetOnChange([newOrgId], () => {
     const org = orgs.find((o) => o.id === newOrgId);
     setTemplateProjectId(org?.default_template_project_id ?? "");
@@ -330,9 +301,8 @@ export function ProjectListPage() {
   }
 
   /**
-   * Full-fidelity project bundle import (`services.project_export`): a distinct path from template cloning, since
-   * the bundle carries its own structure and history and may come from a different organisation entirely.
-   * An error is thrown to `BundleImportDialog`, which shows it.
+   * Full-fidelity project bundle import (`services.project_export`): separate from template cloning because the bundle carries
+   * its own structure and history and may come from another organisation. Errors are thrown to `BundleImportDialog`.
    */
   async function importProject(file: File, skipFiles: boolean, choices: ImportPeopleChoices) {
     const result = await api.postFile<ProjectImportResult>("/api/v1/projects/import", file, {
@@ -384,25 +354,15 @@ export function ProjectListPage() {
     }
   }
 
-  // No "exclude self" filter needed here, unlike ProjectAdminPage's own
-  // equivalent (which excludes the project currently being edited from its
-  // own parent-picker) — this is the *create* form, so the project being
-  // created doesn't exist yet and there's nothing to exclude. `parentProjectId`
-  // here is simply the currently-selected parent's id, not a "self" to avoid;
-  // filtering it out was a bug (copied from the edit-form pattern without
-  // adjusting for this different context) that made a pre-selected parent
-  // (e.g. via "Add sub-project") permanently unable to render as selected,
-  // since its own <option> never existed in the list at all.
-  // can_be_parent-gated (docs/decisions.md) — a project isn't eligible to
-  // be a parent until its own manager opts in; `p.id === parentProjectId`
-  // keeps a pre-filled selection (via "Add sub-project") selectable even
-  // in the edge case of a stale/manually-crafted URL.
+  // No "exclude self" filter, unlike ProjectAdminPage's edit form: the project being created does not exist yet, and
+  // `parentProjectId` is the selected parent, which must stay in the list to render as selected (e.g. from "Add sub-project").
+  // Gated by can_be_parent (docs/decisions.md): a project is a parent candidate only once its manager opts in; `p.id ===
+  // parentProjectId` keeps a pre-filled selection selectable even from a stale or crafted URL.
   const parentOptions = allProjects.filter(
     (p) => p.organization_id === newOrgId && !p.is_archived && (p.can_be_parent || p.id === parentProjectId),
   );
   const selectedParent = allProjects.find((p) => p.id === parentProjectId);
-  // Nothing eligible to pick — hide the field entirely rather than show a
-  // picker with only "None" in it (see ProjectAdminPage's identical rule).
+  // Nothing eligible to pick: hide the field (as ProjectAdminPage).
   const showParentField = parentOptions.length > 0 || parentProjectId !== "";
 
   return (
@@ -473,9 +433,7 @@ export function ProjectListPage() {
           </FilterPanel>
         }
       >
-        {/* Style guide "Pattern: modal dialog for entity create/rename" —
-            a brand-new entity opens in a Modal, not a permanently-visible
-            inline block that reflows the list underneath it. */}
+        {/* Style guide "Pattern: modal dialog for entity create/rename": a new entity opens in a Modal, not an inline block. */}
         {showNewForm && (
           <Modal title={strings.projects.newProject} onClose={closeNewForm} size="lg">
             {createFilesPrompt ? (

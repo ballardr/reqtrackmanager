@@ -3,16 +3,14 @@
  *
  * Decides which boxes of the graph canvas show their attach points because the pointer is near them.
  *
- * Responsibilities:
- * - Say, for a pointer position and a set of boxes in canvas units, which boxes are near: inside the box or within a margin
- *   of its edge. The margin is given in screen pixels and converted with the zoom, so it does not change as the person zooms.
- * - Treat a container (a frame that holds other boxes) as near only along its edge, so a pointer anywhere inside the frame
- *   does not show the frame's points.
+ * Responsibilities: say, for a pointer position and boxes in canvas units, which are near (inside the box or within a
+ * margin of its edge, given in screen pixels and converted with the zoom so it does not change as the person zooms); treat
+ * a container (a frame holding other boxes) as near only along its edge, so a pointer inside the frame does not show the
+ * frame's points.
  *
- * Design decisions:
- * - Pure and DOM-free: the canvas reads the result and sets an attribute on each box's element, so a pointer move never
- *   re-renders React. The margin is wider than the points' own hit area, so a point does not vanish under the pointer.
- * - Works on absolute canvas coordinates, the same as every other geometry in the canvas.
+ * Design decisions: pure and DOM-free (the canvas sets an attribute on each box's element, so a pointer move never
+ * re-renders React); the margin is wider than the points' own hit area, so a point does not vanish under the pointer; it
+ * works on absolute canvas coordinates like the rest of the canvas geometry.
  *
  * Dependencies: `graphAttachPoints` (the `BoxGeometry` shape).
  */

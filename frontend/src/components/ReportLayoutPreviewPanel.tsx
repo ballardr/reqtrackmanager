@@ -4,28 +4,24 @@
  * The designer's live preview: runs the draft text on the real records, as the signed-in person, and shows the
  * result without storing anything (`ReportLayoutApi.preview`).
  *
- * Responsibilities:
- * - Run on demand (a button), never on every keystroke: a run reads real data and has caps.
- * - Offer "Download preview" beside the run button: the draft as a real file in any format of its family
- *   (`ReportLayoutApi.downloadPreview`), named as a preview, with nothing stored. A draft too big to produce while the
- *   author waits says so; a preview is never queued.
- * - Show a document as the server's standalone HTML page in a fully sandboxed frame (no scripts, no same-origin
- *   access, a restrictive CSP inside the page), and a table layout as capped sheets with the real row counts.
- * - Offer the scope's options with the Reports page's own form: "include child projects" for a project, the
- *   projects to include for an organisation (`ReportParamsForm`).
- * - Show the draft's run-time variables as a form (`ReportVariablesForm`, options from the server) and send the chosen
- *   values; the form follows the draft's `@var` lines, so it is refreshed only when those change, and a variable with
+ * - Runs on demand (a button), never on every keystroke: a run reads real data and has caps. The result is dropped
+ *   when the text changes (`stale`) rather than shown against text it was not produced from.
+ * - "Download preview" beside the run button downloads the draft as a real file in any format of its family
+ *   (`ReportLayoutApi.downloadPreview`), named as a preview, with nothing stored. A draft too big to produce while
+ *   the author waits says so; a preview is never queued.
+ * - Shows a document as the server's standalone HTML page in a fully sandboxed frame (the `sandbox` attribute is
+ *   empty: no scripts, no same-origin access, no token or cookie, a restrictive CSP inside the page) and a table
+ *   layout as capped sheets with the real row counts.
+ * - Offers the scope's options with the Reports page's form (`ReportParamsForm`): "include child projects" for a
+ *   project, the projects to include for an organisation. The draft's run-time variables show as a form
+ *   (`ReportVariablesForm`, options from the server) refreshed only when its `@var` lines change; a variable with
  *   no default and no value holds the preview back.
- * - A draft that runs for one project (`oneproject` or `projecttree` on its `@layout` line) gets a single-choice, required
- *   project picker; the child-projects switch is offered unless it is `oneproject` (and, in an organisation, only for
- *   `projecttree`). The server enforces the same rule on every run.
- * - Surface the run's warnings, its counters and any refusal (over a limit, no projects) in words.
- * - Remember the chosen projects (and the child-projects switch) per viewer and layout, so the next preview opens on
- *   them (`utils/reportPreviewMemory`); a remembered project the caller can no longer choose is dropped.
- *
- * Design decisions: the frame's `sandbox` attribute is deliberately empty; the preview never receives a token,
- * cookie or script. The result is dropped when the text changes (`stale`) rather than shown against text it was
- * not produced from.
+ * - A draft that runs for one project (`oneproject` or `projecttree` on its `@layout` line) gets a single-choice,
+ *   required project picker; the child-projects switch is offered unless it is `oneproject` (and, in an
+ *   organisation, only for `projecttree`). The server enforces the same rule on every run.
+ * - Surfaces the run's warnings, counters and any refusal (over a limit, no projects) in words, and remembers the
+ *   chosen projects and child-projects switch per viewer and layout (`utils/reportPreviewMemory`); a remembered
+ *   project the caller can no longer choose is dropped.
  */
 import { useEffect, useMemo, useState } from "react";
 

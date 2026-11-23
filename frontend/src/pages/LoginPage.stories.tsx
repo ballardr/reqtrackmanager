@@ -28,25 +28,18 @@ function mockBrandingAndSignup(
   });
 }
 
-// Stable mock references reconfigured per-story via `beforeEach`, rather
-// than a fresh `fn()` per story's `decorators` array — Vitest browser mode
-// doesn't fully remount LoginPage between stories in this file, so a
-// per-story `withAuth(null, { login: fn()... })` closure could still be
-// showing a PREVIOUS story's stale resolved/rejected value by the time this
-// story's `play` runs. Reconfiguring the same reference in `beforeEach`
-// (the pattern already used for `api.get` throughout this codebase) avoids
-// that ordering hazard entirely.
+// Stable mock references are reconfigured per story in `beforeEach` instead of a fresh `fn()` in
+// `decorators`: Vitest browser mode does not fully remount LoginPage between stories, so a per-story
+// closure could still return the previous story's resolved or rejected value.
 const loginMock = fn();
 const verify2faMock = fn();
 
 const meta: Meta<typeof LoginPage> = {
   title: "Pages/LoginPage",
   component: LoginPage,
-  // No router decorator at the meta level: `ReauthMessage` below needs a
-  // MemoryRouter carrying route `state`, and story-level decorators
-  // compose WITH (not instead of) meta-level ones — two `<MemoryRouter>`s
-  // would nest, which React Router forbids. Each story that doesn't need
-  // special router state adds its own plain `withRouter("/login")` instead.
+  // No router decorator at the meta level: story decorators compose with meta ones, and `ReauthMessage`
+  // needs a MemoryRouter carrying route `state`; two nested routers are forbidden. Each other story adds
+  // its own `withRouter("/login")`.
   decorators: [withAuth(null, { login: loginMock, verify2fa: verify2faMock })],
 };
 export default meta;
@@ -154,8 +147,7 @@ export const InvalidCredentials: Story = {
   },
 };
 
-/** A 2FA-enrolled account's login returns a challenge token instead of a
- * session — the page switches to the code-entry form. */
+/** A 2FA-enrolled account's login returns a challenge token instead of a session; the page shows the code-entry form. */
 export const TwoFactorChallenge: Story = {
   decorators: [withRouter("/login")],
   beforeEach: () => {
@@ -178,9 +170,7 @@ const withReauthState: Decorator = (Story) => (
   </MemoryRouter>
 );
 
-/** Redirected here after a forced logout (expired token, password changed
- * elsewhere) — App.tsx passes a `message` via router state. `withAuth` is
- * already provided at the meta level; this only adds the router. */
+/** Arrival after a forced logout (expired token, password changed elsewhere): App.tsx passes a `message` in router state. */
 export const ReauthMessage: Story = {
   decorators: [withReauthState],
   beforeEach: () => mockBrandingAndSignup(),

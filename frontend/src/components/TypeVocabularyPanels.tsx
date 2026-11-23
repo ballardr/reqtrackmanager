@@ -1,39 +1,28 @@
 /**
  * Module: components/TypeVocabularyPanels
  *
- * The two-tier "type vocabulary" admin pair shared by every module artefact
- * with a configurable type list (Pain Point types, Persona types, later
- * Stakeholder types): an organisation tier (`OrgTypeVocabularyPanel`, a base
- * list every project sees) and a project tier (`ProjectTypeVocabularyPanel`,
- * rename/reorder/disable of org types plus project-only additions).
- * Extracted from the previously Pain-Point-specific panels so a second typed
- * artefact doesn't add a second hand-built copy (docs/ux-style-guide.md's
- * one-component-per-pattern rule); a module's panel is now a thin wrapper
- * supplying its noun, description and API adapter.
+ * The two-tier "type vocabulary" admin pair shared by every module artefact with a configurable type list (Pain Point
+ * types, Persona types, Stakeholder types): an organisation tier (`OrgTypeVocabularyPanel`, a base list every project
+ * sees) and a project tier (`ProjectTypeVocabularyPanel`, rename/reorder/disable of org types plus project-only
+ * additions). A module's panel is a thin wrapper supplying its noun, description and API adapter.
  *
- * Both reuse `DefinitionList` for rename/add/delete and `ToggleSwitch` (via
- * `renderExtra`) for the active/enabled flag. Delete never offers
- * `DefinitionList`'s reassign-on-409 flow: these backends block deletion of a
- * type still in use outright (one org type can be referenced by many
- * projects, so there is no single reassignment target), so a 409 is
- * re-thrown as a plain `Error` telling the admin to disable the type.
+ * Both reuse `DefinitionList` for rename/add/delete and `ToggleSwitch` (via `renderExtra`) for the active flag. Delete
+ * never offers `DefinitionList`'s reassign-on-409 flow: these backends block deletion of a type in use outright (one org
+ * type can be referenced by many projects, so there is no single reassignment target), so a 409 is re-thrown as a plain
+ * `Error` telling the admin to disable the type.
  *
- * The project tier's reorder is client-side: its API only sets a row's
- * `display_order`, so `onMove` swaps the two neighbours' values via two
- * override calls. Delete on a row backed by an organisation default hides it
- * in this project (Tier-1 confirm, the project's own override row is kept so
- * existing records are unaffected); "Add organisation defaults"
- * (`RestoreOrgDefaultsButton`) shows them again. Delete on a project-only type
- * deletes it, blocked while in use.
+ * The project tier's reorder is client-side: its API only sets a row's `display_order`, so `onMove` swaps the two
+ * neighbours' values through two override calls. Delete on a row backed by an organisation default hides it in this
+ * project (Tier-1 confirm; the project's own override row is kept so existing records are unaffected) and "Add
+ * organisation defaults" (`RestoreOrgDefaultsButton`) shows them again; delete on a project-only type deletes it, blocked
+ * while in use.
  *
- * A module whose types carry an explanation (`withDefinition`, Pain Points) gets a second, growing text field per row; its
- * value travels with the name, but is sent only when it changed, so renaming an organisation type in a project does not
- * silently copy the organisation's definition into that project as an override. A blank value clears.
+ * A module whose types carry an explanation (`withDefinition`, Pain Points) gets a second growing text field per row,
+ * sent only when it changed, so renaming an organisation type in a project does not copy the organisation's definition
+ * into that project as an override. A blank value clears.
  *
- * Gating is server-side (403 surfaces through `DefinitionList`'s error
- * handling), so both panels render their controls unconditionally. The `api`
- * adapter must be a stable reference (a module-level constant), since a change
- * of identity refetches.
+ * Gating is server-side (403 surfaces through `DefinitionList`'s error handling), so both panels render their controls
+ * unconditionally. The `api` adapter must be a stable reference (a module-level constant), since a change of identity refetches.
  */
 import { type ReactNode, useEffect, useState } from "react";
 

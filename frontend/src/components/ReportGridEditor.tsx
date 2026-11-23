@@ -1,21 +1,20 @@
 /**
  * Module: components/ReportGridEditor
  *
- * The editor for a custom table (`grid` block): a drawn grid of cells that are selected with the mouse or the keyboard, a
- * toolbar that merges, aligns and colours the selection, controls that add and remove rows and columns, and fields for the
+ * The editor for a custom table (`grid` block): a drawn grid of cells selected with the mouse or keyboard, a toolbar
+ * that merges, aligns and colours the selection, controls that add and remove rows and columns, and fields for the
  * selected cell's text, its row's height and its column's width, font and size.
  *
- * Responsibilities:
- * - Own the selection (anchor and focus positions, widened so a merged cell is never cut) and turn every toolbar action into
- *   one call of `utils/reportGrid`, reporting the result as a whole new `GridDraft`.
- * - Draw the grid as `role="grid"` with a named row and column for each cell, the span of a merged cell, a dashed marker on a
- *   blank cell and the colours the cascade gives each cell.
- * - Warn (never block) about a text and fill pair that is hard to read, and say why a refused action was refused.
+ * - Owns the selection (anchor and focus positions, widened so a merged cell is never cut) and turns every toolbar
+ *   action into one call of `utils/reportGrid`, reporting a whole new `GridDraft`.
+ * - Draws `role="grid"` with a named row and column per cell, the span of a merged cell, a dashed marker on a blank
+ *   cell and the colours the cascade gives each cell. One tab stop for the grid, the focused cell named by
+ *   `aria-activedescendant`, as a spreadsheet does.
+ * - Warns (never blocks) about a hard-to-read text and fill pair, and says why a refused action was refused.
  *
- * Design decisions: controlled, with no history of its own (the dialog around it keeps undo). The cell text is edited in a
- * field under the grid, not inside the drawn cell, so a merged cell has one obvious editing target and the block editor keeps
- * its "one editing place" rule. Colours go through the shared `ColourChoiceField`. One tab stop for the whole grid, with the
- * focused cell named by `aria-activedescendant`, as a spreadsheet does.
+ * Controlled, with no history (the dialog around it keeps undo). The cell text is edited in a field under the
+ * grid, so a merged cell has one editing target and the block editor keeps its "one editing place" rule. Colours go
+ * through the shared `ColourChoiceField`.
  */
 import {
   AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold,

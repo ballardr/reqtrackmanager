@@ -1,25 +1,24 @@
 """
 Module: services.policies
 
-Policies: written documents published by a server administrator (server policies) or, later, by an
-organisation's administrators, read on the Policies page.
+Policies: written documents published by a server administrator (server policies) or an organisation's
+administrators, read on the Policies page.
 
-Responsibilities:
-- Create, edit, publish, unpublish and delete a policy in one scope, audited.
-- Keep the two built-in slots (`privacy`, `data`) fixed: a slot cannot be renamed, duplicated or deleted.
-- Write an append-only version on every publication and resolve what a reader sees (the current version).
-- Serve the unauthenticated read of published server policies, throttled per client address.
+Responsibilities: create, edit, publish, unpublish and delete a policy in one scope, audited; keep the two
+built-in slots (`privacy`, `data`) fixed (not renamed, duplicated or deleted); write an append-only version on
+every publication and resolve what a reader sees (the current version); serve the unauthenticated read of
+published server policies, throttled per client address.
 
 Design decisions:
 - Scope is enforced here: every lookup takes the owning `organization_id` (NULL for a server policy), so a
   policy of another scope is a 404, not a 403, and its id is not confirmed.
-- Editing writes the working copy only; readers see `current_version`, so a text people may already have read
-  changes only when it is published again, as a new version with its date.
-- Unpublishing hides the policy from readers and keeps every version for audit.
+- Editing writes the working copy only; readers see `current_version`, so text people may have read changes
+  only when published again as a new, dated version.
+- Unpublishing hides the policy and keeps every version for audit.
 - Audit events carry the key, version, state and text length, never the title or body.
 - `effective_from` is a calendar date shown as chosen; `published_at` is a UTC instant; nothing is scheduled.
 
-External dependencies: `services.policy_body`, `services.audit`, `services.rate_limit`.
+Dependencies: `services.policy_body`, `services.audit`, `services.rate_limit`.
 """
 
 from __future__ import annotations

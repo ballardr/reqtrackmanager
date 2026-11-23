@@ -1,16 +1,12 @@
 /**
  * Module: modules/risk_management/RiskLifecycleControls
  *
- * The "Change status" transition button of a risk's detail page (Archive is an object
- * action in the record header's menu).
- * Change status opens a dialog offering exactly `risk.allowed_next_statuses`
- * (the backend's transition table, so the UI never duplicates it) with an
- * optional comment recorded on the new version. A refused move (an unmet guard
- * such as "needs a residual rating", or the Risk Acceptor role for Accepted)
- * shows the backend's message inside the dialog rather than closing it.
+ * The "Change status" transition button of a risk's detail page (Archive is an object action in the record header's
+ * menu). It opens a dialog offering exactly `risk.allowed_next_statuses` (the backend's transition table, so the UI
+ * never duplicates it) with an optional comment recorded on the new version. A refused move (an unmet guard such as
+ * "needs a residual rating", or the Risk Acceptor role for Accepted) shows the backend's message inside the dialog.
  *
- * The button always renders regardless of role; the backend enforces
- * `risk_manager` / `risk_acceptor`.
+ * The button always renders whatever the role; the backend enforces `risk_manager` / `risk_acceptor`.
  */
 import { useState } from "react";
 

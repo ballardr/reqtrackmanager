@@ -1,35 +1,22 @@
 /**
  * Module: components/ReportRunner
  *
- * Runs one catalogue report and shows it: the generated
- * parameter form, the on-screen result, and the downloads in every format the report offers. Everything
- * that is the same for every report lives here; only the result view varies,
- * and that is resolved generically (`getReportView`) so core never imports a
- * module's own view, falling back to `ReportViewer` for a report with none.
+ * Runs one catalogue report and shows it: the generated parameter form, the on-screen result, and the downloads in
+ * every format the report offers. The result view is resolved generically (`getReportView`) so core never imports a
+ * module's own view; `ReportViewer` is the fallback.
  *
  * Responsibilities:
- * - With `showResult` off (the record list's download dialog) only configure and download: nothing is run for
- *   the screen, so no result is fetched or shown.
- * - Own the run values (declared parameters, `include_children`) and re-run
- *   the report when they change (debounced, so typing in a text parameter
- *   does not fire a request per keystroke; the first run is immediate).
- * - Keep the previous result visible and marked busy while a re-run is in
- *   flight, and discard a response that a newer run has superseded.
- * - For an organisation-wide report, offer a "Project" picker (`project_id`)
- *   listing the catalogue entry's `projects`: exactly the ones the report
- *   accepts for this caller, so the picker never offers one that would fail.
- *   An organisation-wide custom report (run once per project) offers a
- *   "Projects" selector (`project_ids`) over the same list instead.
- * - A custom report that runs for one project (`run_scope` `one` or `one_and_children`) offers a single-choice, required
- *   "Project" picker instead and is held back until one is chosen; `one_and_children` also offers "Include child projects".
- * - For a custom report with run-time variables, show their form (`ReportVariablesForm`) and send the chosen values
- *   as the `variables` run value; a variable with no default and no value holds the run back until it has one, so
- *   the report is never produced for a choice the person has not made.
- * - Download through the shared `ReportFormatDownload` (a radio list of the report's formats and a Download button;
- *   a blocked report shows why beside the disabled button), with a toast on success or failure. The organisation's
- *   report look is the server's to apply, not chosen here. Downloads send
- *   the same values as the screen so a file never silently widens the view
- *   (style guide: "report export trigger").
+ * - With `showResult` off only configure and download: nothing is fetched for the screen.
+ * - Own the run values (declared parameters, `include_children`) and re-run when they change (debounced; the first
+ *   run is immediate), keeping the previous result visible and busy and discarding a superseded response.
+ * - Organisation-wide report: a "Project" picker (`project_id`) over the entry's `projects` (exactly those the caller
+ *   may run); a custom one run once per project offers a "Projects" selector (`project_ids`) instead.
+ * - A custom report with `run_scope` `one` or `one_and_children` needs one project chosen first; `one_and_children`
+ *   also offers "Include child projects".
+ * - Run-time variables use `ReportVariablesForm` and are sent as `variables`; a variable with no default and no value
+ *   holds the run back.
+ * - Download through `ReportFormatDownload` with the same values as the screen, so a file never widens the view; the
+ *   organisation's report look is applied by the server.
  *
  * Dependencies: `api/reports`, `modules/registry` (view lookup only).
  */

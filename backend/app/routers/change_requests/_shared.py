@@ -1,20 +1,11 @@
 """
 Module: routers.change_requests._shared
 
-Internal helper shared by four of this package's six bucket modules
-(`tasks`, `votes`, `comments`, `subscriptions`) — the change-request
-ownership-chain lookup that guards against an IDOR where a caller in one
-project could read/write a sub-resource of a change request belonging to a
-different project by supplying its id (role checks in each bucket only
-validate against `project_id`, not the change request's own). Not a
-router itself — no `@router` routes live here. `core.py`/`workflow.py`
-don't need this helper: they already load the `ChangeRequest` row
-themselves (via `db.get`/`db.scalar(...).with_for_update()`) as part of
-their own logic, so re-deriving it through this helper would be redundant.
-
-Split out of the former flat `routers/change_requests.py` as a pure
-code-organization refactor — see `routers/change_requests/__init__.py`'s
-module docstring for the package layout.
+Internal helper shared by `tasks`, `votes`, `comments` and `subscriptions`: the change-request
+ownership-chain lookup that guards against an IDOR where a caller in one project reads or writes a
+sub-resource of another project's change request by supplying its id (each bucket's role checks validate
+only against `project_id`). Not a router. `core.py` and `workflow.py` load the `ChangeRequest` row
+themselves, so they do not need it.
 """
 
 from uuid import UUID

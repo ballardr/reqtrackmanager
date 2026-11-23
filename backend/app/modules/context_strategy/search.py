@@ -1,22 +1,11 @@
 """
 Module: modules.context_strategy.search
 
-`ArtefactSearchProvider`s for the five Context & Strategy artefact types, so the global
-search finds Strategies, Future States, Pain Points, Guiding Principles and Open Questions
-by code, title, tags and the fields declared here.
-
-Responsibilities:
-- Declare, per type, the columns the search reads and the free-text fields it may match.
-
-Design decisions:
-- Opt-in fields: only the listed text columns are searchable; nothing else on these
-  tables is matched.
-- Strategies, Future States and Guiding Principles may be organisation-owned. An organisation-owned one is
-  not shown by any project, so it is gated the way its organisation-level list is: any member of the
-  organisation where the module's matching sub-component is on (`organization_subcomponent`), and it opens
-  at its organisation page.
-
-Dependencies: this module's models and labels; `services.search_core` (builders).
+`ArtefactSearchProvider`s for the five artefact types: the columns the search
+reads and the opt-in free-text fields it may match. An organisation-owned
+Strategy, Future State or Guiding Principle is gated like its organisation
+list (`organization_subcomponent`) and opens at its organisation page.
+Dependencies: this module's models and labels; `services.search_core`.
 """
 
 from __future__ import annotations

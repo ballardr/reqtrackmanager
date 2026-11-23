@@ -7,25 +7,23 @@ the backend never runs a PostScript interpreter, a PDF parser or a JavaScript en
 Responsibilities:
 - `POST /convert/eps`: Ghostscript (EPS to a one-page PDF cropped to the bounding box), then poppler's `pdftocairo`
   (PDF to SVG). `POST /convert/pdf`: `pdftocairo` on the first page.
-- `POST /diagram`: Mermaid text (JSON `{"source", "theme"}`) to an SVG, drawn by `diagram_worker.py` (the real Mermaid
-  library in an embedded JavaScript engine, no browser) with the same version, font and limits as the screen.
+- `POST /diagram`: Mermaid text (JSON `{"source", "theme"}`) to an SVG, drawn by `diagram_worker.py` with the same
+  version, font and limits as the screen.
 - `GET /health`: whether the tools and the diagram renderer are installed.
 - Confine each conversion: a private working directory, a cleared environment, no stdin, a wall-clock timeout, CPU,
   memory and output-size limits, and a cap on conversions at once.
 
 Design decisions:
-- **This container is the sandbox.** PostScript is a programming language, and Ghostscript has a long history of
-  `-dSAFER` bypasses, so the interpreter runs where a successful exploit finds nothing: no network (Compose puts it
-  only on an `internal` network that the backend shares), no secrets and no application code, a non-root user, a
-  read-only filesystem with a small `tmpfs`, no Linux capabilities. The limits in this file are a second layer.
-- **The output is untrusted.** The backend sanitises the SVG (`app.services.report_svg.sanitize_svg`) and decides
-  what is stored; this service only converts. The input is not trusted either: its type is checked here from its
-  bytes, never from the request.
-- **Stateless.** The HTTP service is standard library only; the image holds the two tools, the diagram renderer
-  (`requirements.txt`) and these files. Nothing is stored; no file name, diagram text or content is logged.
-- **A diagram is drawn in a process of its own** (`diagram_worker.py`), killed at the wall-clock limit: the embedded
-  JavaScript engine cannot be interrupted from inside, and some diagrams (a wide flowchart) run for minutes in it.
-  The reply is checked against the screen's element limit, so a diagram the screen refuses is refused here too.
+- **This container is the sandbox.** Ghostscript has a long history of `-dSAFER` bypasses, so the interpreter runs
+  where a successful exploit finds nothing: no network (Compose puts it only on an `internal` network shared with the
+  backend), no secrets, no application code, a non-root user, a read-only filesystem with a small `tmpfs`, no Linux
+  capabilities. The limits in this file are a second layer.
+- **Input and output are untrusted.** The backend sanitises the SVG (`app.services.report_svg.sanitize_svg`) and
+  decides what is stored; the input type is checked here from its bytes, never from the request.
+- **Stateless.** Standard library only; nothing is stored; no file name, diagram text or content is logged.
+- **A diagram is drawn in a process of its own**, killed at the wall-clock limit: the embedded JavaScript engine
+  cannot be interrupted from inside, and some diagrams (a wide flowchart) run for minutes. The reply is checked
+  against the screen's element limit.
 - The listener is dual-stack IPv6 (`::`), falling back to IPv4 where the host has no IPv6.
 
 Dependencies: the `gs` (Ghostscript) and `pdftocairo` (poppler-utils) executables, `mermaidx` (for the diagram worker

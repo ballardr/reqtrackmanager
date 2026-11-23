@@ -1,17 +1,13 @@
 /**
  * Module: pages/ServerSettingsGroups
  *
- * The small deployment-wide settings groups of Server Management: Server details, Platform branding, Public sign-up,
- * File uploads and Email. Each is one headed card; a group of fields has one Save (`SettingsForm`: unavailable until a
- * change, a toast on success, a failure beside the button), and the two pictures and the test email act at once.
- *
- * Responsibilities: read the current value, hold the edits, and send only this group's fields (the branding update is
- * partial, so Server details and Platform branding cannot overwrite each other). A change to branding or to the upload
- * switch tells the application shell to read the public settings again.
- *
- * Design decisions: an empty text field means "use the built-in value" (null on the server); the built-in value is
- * the placeholder. The platform pictures are platform-owned and removable (`BrandingImageField`), the same control as an
- * organisation's.
+ * The deployment-wide settings groups of Server Management: Server details,
+ * Platform branding, Public sign-up, File uploads and Email. Each is one headed
+ * card with one Save (`SettingsForm`); the two pictures and the test email act
+ * at once. Each group sends only its own fields (the branding update is
+ * partial) and a branding or upload-switch change makes the shell re-read the
+ * public settings. An empty text field means "use the built-in value" (null on
+ * the server), shown as the placeholder; platform pictures use `BrandingImageField`.
  */
 import { useState } from "react";
 

@@ -1,20 +1,15 @@
-"""Tests for the module system's two-tier frontend integration:
-`ModuleFrontendManifest`'s tier/frame_url
-validation, `get_frontend_manifest`'s allowlist-enforcement (a Tier B
-module's declared `frame_url` must resolve to an origin in `Settings.
-module_frame_allowed_origins`, or it is excluded and logged rather than
-trusted from the module's own declaration), the CSP `frame-src` header
-built from that same allowlist, Tier B `<ModuleFrame>` token minting/
-decoding (`app.security.create_module_frame_token`/`decode_module_frame_
-token`), and the module-frame-token scope enforcement `app.services.rbac.
-_enforce_module_frame_scope` adds to `require_org_module_enabled`/
-`require_project_module_enabled`/`require_module_role`.
+"""Tests for the module system's frontend integration tiers:
+`ModuleFrontendManifest`'s tier/frame_url validation, `get_frontend_manifest`'s
+allowlist enforcement (a Tier B module's `frame_url` must resolve to an origin in
+`Settings.module_frame_allowed_origins`, or it is excluded and logged), the CSP
+`frame-src` header built from that allowlist, Tier B `<ModuleFrame>` token
+minting/decoding (`app.security.create_module_frame_token`/`decode_module_frame_token`),
+and the scope enforcement `app.services.rbac._enforce_module_frame_scope` adds to
+`require_org_module_enabled`/`require_project_module_enabled`/`require_module_role`.
 
-Every test that registers a fixture module into the process-global
-`INSTALLED_MODULES` list follows `test_module_registry.py`'s own `fake_
-module` fixture convention: always tears down by removing it and rebuilding
-the registry cache, so this module-level mutable list never leaks state
-into another test regardless of execution order."""
+A test that registers a fixture module in the process-global `INSTALLED_MODULES`
+follows `test_module_registry.py`'s `fake_module` convention: it always removes the
+module and rebuilds the registry cache, so no state leaks between tests."""
 
 import uuid as uuid_lib
 from types import SimpleNamespace
@@ -300,14 +295,12 @@ def test_get_frontend_manifest_rejects_a_different_allowlisted_origin(remote_tie
 
 # --- Tier C ("federated" / Module Federation) validation ---------------------
 #
-# Module system follow-up, 2026-09-07: a third frontend integration kind for
-# a genuinely third-party, not-compiled-in, no-rebuild-required module (see
-# `ModuleFrontendManifest`'s own docstring). Two things need proving: (1) the
-# dataclass's own field validation (mirrors the existing tier="remote"/
-# "installed" tests above), and (2) `get_frontend_manifest`'s mechanical
-# enforcement that a "federated" manifest is only ever honoured for a module
-# discovered through the gated third-party pipeline — never a first-party
-# `INSTALLED_MODULES` entry, which has no legitimate reason to declare one.
+# The "federated" tier serves a third-party module that is neither compiled in nor
+# needs a rebuild (see `ModuleFrontendManifest`'s docstring). Tested: (1) the
+# dataclass's field validation (as for tier="remote"/"installed" above), and (2)
+# `get_frontend_manifest` honours a "federated" manifest only for a module found
+# through the gated third-party pipeline, never a first-party `INSTALLED_MODULES`
+# entry.
 
 
 def test_federated_tier_requires_remote_entry_url_and_exposed_module():

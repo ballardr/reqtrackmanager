@@ -1,39 +1,24 @@
 """
 Module: services.report_math
 
-Mathematics in reports: which TeX is accepted, where it is found in text, and how it is drawn for each output.
+Mathematics in reports: which TeX is accepted, where it is found in text and how it is drawn for each output.
 
 Responsibilities:
-- `tex_problem`: the command allow-list. TeX is untrusted input (a record field, a layout author), so only
-  commands, environments and characters named here ever reach a converter.
-- `split_math`: find `\\( ... \\)` (inline) and `$$ ... $$` (display) in text, honouring a per-character mask of
-  where a delimiter counts (authored text and math-capable record fields, never other record values).
-- `typeset`: TeX to a sanitised SVG with its size and baseline offset (PDF, HTML, and the picture Word falls back to).
-- `omml`: TeX to Word's native equation markup for the subset pinned by the golden test, else `None`.
-- `source_of`: an equation written out as the author typed it, which is what every output shows when it cannot
-  draw one.
+- `tex_problem` (the command allow-list), `split_math` (find `\\( ... \\)` and `$$ ... $$` where a per-character mask
+  allows), `typeset` (TeX to sanitised SVG with size and baseline), `omml` (Word's native markup for the tested subset,
+  else `None`), `source_of` (the author's text, shown when nothing can be drawn).
 
 Design decisions:
-- **Allow-list, not block-list.** `latex2mathml` is lenient (`\\href{http://x}{y}` became a link, `\\input` passed
-  through as text), so the check runs before any conversion and names what is allowed. The text of `\\text{}` is
-  limited to plain characters, so markup in a record cannot ride inside it.
-- **A bare `$` is never a delimiter**, so prices and shell snippets in record text are left alone; `\\(` and `$$`
-  are the only openers, and an opener with no closer is ordinary text.
-- **SVG is the one drawn form.** `ziamath` draws glyphs as paths (no font, no `<text>`), in plain SVG 1 mode
-  because `svglib` garbles its SVG 2 `symbol`/`use` output. Its output still goes through
-  `report_svg.sanitize_svg`, like every figure.
-- **Word gets native equations only for a tested subset.** `mathml2omml` output is unwrapped from its empty
-  `m:box` wrappers, a square root gets the `m:deg` Word requires, and anything using an element outside
-  `OMML_ELEMENTS` (accents, limits written under an operator, aligned equations) or a limit operator such as
-  `\\lim` is refused so the caller draws the picture instead. The subset was checked in LibreOffice (decisions log,
-  "PDF engine, math, ODF and tree bake-off") and opened in Word by a person.
-- **Failure degrades to source, never to an error**: a TeX parse failure, an unsupported construct or a converter
-  exception returns `None` and the renderer prints the author's own text.
-- `ziamath` keeps module-level font state, so typesetting is serialised by a lock; results are cached because a
-  layout repeats the same equation once per record.
+- Allow-list, not block-list: `latex2mathml` is lenient (`\\href`, `\\input`), so the check runs before conversion;
+  `\\text{}` is limited to plain characters.
+- A bare `$` is never a delimiter, and an opener with no closer is ordinary text.
+- SVG is the one drawn form (`ziamath` glyph paths in plain SVG 1 mode, which `svglib` reads), sanitised by
+  `report_svg.sanitize_svg`. Word gets native equations only when every element is in `OMML_ELEMENTS` and no limit
+  operator is used; the subset was checked in LibreOffice (docs/decisions.md, PDF engine, math, ODF and tree bake-off).
+- Failure degrades to source, never an error. `ziamath` keeps module-level font state, so typesetting holds a lock and
+  results are cached (a layout repeats an equation per record).
 
-Dependencies: `ziamath` (MIT, with the STIX Two Math font under the SIL OFL), `latex2mathml` and `mathml2omml`
-(MIT), `lxml`; `services.report_svg` (SVG sanitiser and rasteriser).
+Dependencies: `ziamath` (STIX Two Math, SIL OFL), `latex2mathml`, `mathml2omml`, `lxml`, `services.report_svg`.
 """
 
 from __future__ import annotations

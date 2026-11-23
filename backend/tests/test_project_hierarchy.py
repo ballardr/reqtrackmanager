@@ -233,11 +233,10 @@ def test_cannot_disable_inheritance_when_only_manager_is_inherited(client, admin
         client, admin_token, org_id, "CU08 Child", parent_project_id=parent["id"],
         role_inheritance_mode="mirror_all",
     )
-    # A manually-created project's creator becomes a manager via a direct
-    # PROJECT_MANAGER UserProjectRole (C-U-10, 2026-08-31 — no default group exists to remove them from any more) —
-    # revoke that direct role to leave child with zero *direct* managers of
-    # its own. admin_token remains an inherited manager of child throughout,
-    # via their own still-intact direct manager status on parent.
+    # A manually-created project's creator is a manager via a direct
+    # PROJECT_MANAGER UserProjectRole (C-U-10); revoking it leaves child with
+    # no direct managers of its own. admin_token remains an inherited manager
+    # of child through their direct manager role on parent.
     creator_id = _get_project_creator_id(client, admin_token)
     revoke = client.delete(
         f"/api/v1/projects/{child['id']}/roles/{creator_id}/project_manager",
@@ -388,10 +387,8 @@ def test_parent_manager_can_add_a_child_with_zero_access_to_it(client, admin_tok
 
 
 def test_member_source_can_be_any_same_org_project_not_just_a_child(client, admin_token, org_id):
-    """Generalization (docs/decisions.md): member-source is no longer
-    restricted to a direct child — any project in the same organisation is
-    a valid source, since the original parent/child-only restriction was
-    the actual limitation this generalization exists to remove."""
+    """Member-source is not restricted to a direct child (docs/decisions.md): any project
+    in the same organisation is a valid source."""
     receiving = create_project(client, admin_token, org_id, "MS Any-Project Receiving")
     unrelated = create_project(client, admin_token, org_id, "MS Any-Project Unrelated")
     resp = client.post(
@@ -430,10 +427,8 @@ def test_member_source_rejects_self_reference(client, admin_token, org_id):
 
 
 def test_member_source_survives_reparenting_within_same_org(client, admin_token, org_id):
-    """Reparenting no longer invalidates a member-source grant — the
-    generalized constraint (same organisation) is unaffected by structural
-    reparenting, unlike the original parent/child-only design. This is a
-    deliberate behavior change: see docs/decisions.md."""
+    """Reparenting does not invalidate a member-source grant: the constraint (same
+    organisation) is unaffected by structural reparenting (see docs/decisions.md)."""
     parent = create_project(client, admin_token, org_id, "MS Reparent Survives Parent", can_be_parent=True)
     other_parent = create_project(client, admin_token, org_id, "MS Reparent Survives Other Parent", can_be_parent=True)
     child = create_project(client, admin_token, org_id, "MS Reparent Survives Child", parent_project_id=parent["id"])
@@ -729,7 +724,7 @@ def test_get_project_redacts_parent_for_a_viewer_without_parent_access(client, a
     """GET /{project_id} is require_project_view-gated (any role), not
     manage-gated — a plain viewer of the child must not learn a hidden
     parent's identity just by fetching the project directly, the same rule
-    list_projects already applies (SOC2 review finding)."""
+    list_projects already applies (SOC 2 access control)."""
     parent = create_project(client, admin_token, org_id, "Redact Parent", can_be_parent=True)
     child = create_project(client, admin_token, org_id, "Redact Child", parent_project_id=parent["id"])
     viewer_id = create_org_user(client, admin_token, org_id, "redact_viewer@example.com", role="member")
@@ -749,20 +744,12 @@ def test_get_project_redacts_parent_for_a_viewer_without_parent_access(client, a
 
 
 def test_get_project_shows_true_parent_to_a_manager_with_no_independent_parent_access(client, admin_token, org_id):
-    """Regression test for a real bug found in this branch's own hardening
-    pass: `_project_out_with_redacted_parent` used to redact the parent for
-    *every* caller lacking independent view access to it, with no exemption
-    for a caller who manages the child itself — contradicting
-    `ProjectAdminPage.tsx`'s own documented assumption (and
-    docs/decisions.md's "Hierarchical projects" entry) that a project's own
-    manager always sees the true parent there, since they already hold the
-    highest authority over the relationship. A manager who happens to have
-    no role at all on the parent (a realistic, unremarkable case — managing
-    a child implies nothing about the parent) used to see a redacted
-    `parent_project_id: null` on the very form used to edit that
-    relationship, which — combined with that form always resending
-    `parent_project_id` on every save — silently detached the project from
-    its real parent on the next unrelated settings save."""
+    """`_project_out_with_redacted_parent` exempts a caller who manages the child:
+    a project's manager always sees the true parent (`ProjectAdminPage.tsx`;
+    docs/decisions.md's "Hierarchical projects" entry), having the highest authority
+    over the relationship. A manager with no role on the parent would otherwise see
+    `parent_project_id: null` on the form that edits the relationship, which resends
+    `parent_project_id` on every save and would detach the project from its parent."""
     parent = create_project(client, admin_token, org_id, "Manager Redact Parent", can_be_parent=True)
     child = create_project(client, admin_token, org_id, "Manager Redact Child", parent_project_id=parent["id"])
     manager_id = create_org_user(client, admin_token, org_id, "redact_child_manager@example.com", role="member")
@@ -804,8 +791,8 @@ def test_member_source_listed_sibling_does_not_leak_via_mirror_all(client, admin
 
 def test_inherited_manager_receives_change_request_notification(client, admin_token, org_id):
     """A PROJECT_MANAGER who holds that role purely via forward inheritance
-    must still be notified of change-request events, per decision 5 (SOC2
-    review finding on get_project_users_by_role)."""
+    must still be notified of change-request events, per decision 5
+    (`get_project_users_by_role`)."""
     parent = create_project(client, admin_token, org_id, "Notify Parent", can_be_parent=True)
     inherited_pm = create_org_user(client, admin_token, org_id, "notify_inherited_pm@example.com", role="member")
     assert _assign_role(client, admin_token, parent["id"], inherited_pm, "project_manager").status_code == 204
@@ -886,11 +873,9 @@ def test_materialize_converts_inherited_access_to_direct_and_survives_disabling_
 # --- Per-user materialize (docs/decisions.md) --------------------------------------------------------
 #
 # `POST /{project_id}/materialize-inherited-access/{user_id}` is the per-row
-# counterpart to the bulk endpoint above: same rank logic, idempotency, and
-# audit action (`inherited_access_materialized`), just filtered to one
-# user's own provenance entries. These tests pin its own behaviour rather
-# than re-deriving the bulk endpoint's, since
-# this reuses (not rebuilds) the bulk logic.
+# counterpart to the bulk endpoint above: same rank logic, idempotency and
+# audit action (`inherited_access_materialized`), filtered to one user's
+# provenance entries. The tests pin its own behaviour; it reuses the bulk logic.
 
 
 def test_materialize_for_user_converts_only_that_users_inherited_access(client, admin_token, org_id):
@@ -1088,29 +1073,18 @@ def test_materialize_for_user_requires_manage_not_just_view(client, admin_token,
     assert resp.status_code == 403
 
 
-# --- Org-admin hierarchy-visibility bypass (2026-09) -----------------------------------------------------------------
+# --- Org-admin hierarchy-visibility bypass -----------------------------------------------------------------
 #
-# `_project_out_with_redacted_parent`'s own manager/org-admin exemption
-# (`can_manage_project_settings`, which already checks `is_org_admin`) was
-# already correct going into this work — the actual gap was narrower and in
-# two different places: (1) `list_projects`/`get_project_ancestors`/
-# `get_project_children` populated parent/ancestor/children fields strictly
-# from `_accessible_project_ids`, with no org-admin OR-condition at all; and
-# (2) `get_project`/`get_project_ancestors`/`get_project_children` were
-# gated by `require_project_view`, which requires a genuine effective role
-# on the project_id in the URL itself (not just org-admin status) — so an
-# org admin with zero role on a project couldn't even reach the endpoint to
-# find out `_project_out_with_redacted_parent`'s exemption existed. Verified
-# empirically before fixing: a throwaway probe test against this exact
-# scenario returned 403 "Not a member of this project." on all three
-# endpoints prior to this change. Fixed by switching those three endpoints'
-# dependency to `require_project_view_or_manage` (the same dependency
-# `list_project_groups` already uses for identical "structure, not content"
-# reasoning) and adding an explicit `is_org_admin(...)` OR-condition at each
-# of the three internal accessible-set checks — never a change to what
-# `_accessible_project_ids` itself returns. See docs/decisions.md's "Project
-# hierarchy on Project Overview" entry for the full identify/verify/
-# remediate writeup.
+# `_project_out_with_redacted_parent` exempts managers and org admins
+# (`can_manage_project_settings` checks `is_org_admin`). An org admin with no
+# role on a project must still reach it: `get_project`/`get_project_ancestors`/
+# `get_project_children` use `require_project_view_or_manage` (as
+# `list_project_groups` does, for "structure, not content"), because
+# `require_project_view` requires an effective role on the project itself. The
+# parent/ancestor/children fields of `list_projects`/`get_project_ancestors`/
+# `get_project_children` add an explicit `is_org_admin(...)` OR-condition to
+# `_accessible_project_ids`, whose own result is unchanged. See docs/decisions.md's
+# "Project hierarchy on Project Overview" entry.
 
 
 def test_org_admin_sees_true_parent_children_and_ancestors_with_zero_project_role(client, admin_token, org_id):

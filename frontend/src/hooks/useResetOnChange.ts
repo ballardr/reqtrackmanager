@@ -1,17 +1,13 @@
 /**
  * Module: hooks/useResetOnChange
  *
- * Runs `reset` (typically a few state setters) in the render in which the
- * listed values changed, so the new render already shows the reset state.
- * The alternative, an effect that calls the setters, paints one render with
- * stale state first and then renders again (the cascading render the
- * `react-hooks/set-state-in-effect` rule exists to catch); setting state
- * during render of the same component, guarded by a change check, is the
- * pattern React documents for "adjusting state when a prop changes".
+ * Runs `reset` (typically a few state setters) in the render in which the listed values changed, so the new
+ * render already shows the reset state. An effect calling the setters would paint stale state first and render
+ * again (the cascading render `react-hooks/set-state-in-effect` catches); setting state during render, guarded by a
+ * change check, is React's documented "adjusting state when a prop changes" pattern.
  *
- * Does nothing on the first render unless `runOnMount` is set (state already
- * holds its initial value); with it, `reset` also runs in the first render, for
- * state that must be derived from the starting values (a deep link in the URL).
+ * Does nothing on the first render unless `runOnMount` is set; then `reset` also runs in the first render, for
+ * state derived from the starting values (a deep link in the URL).
  */
 import { useState } from "react";
 

@@ -1,26 +1,13 @@
 /**
  * Module: components/AddToGroupControl
  *
- * Small anchored quick-pick — "add this org member to one of this
- * organisation's groups" — from the member's own row (docs/decisions.md): previously
- * reachable only from the *group's* own `SidePanel` (a member picker
- * scoped to that one group), never from the user's own row on
- * `OrgAdminPage.tsx`'s Users table. Pure UI reachability fix — no new
- * backend endpoint; `onAdd` is the caller's own existing `addGroupMember`
- * handler (`POST /orgs/{orgId}/groups/{groupId}/members`), unchanged.
+ * Anchored quick-pick on a member's own row (`OrgAdminPage.tsx` Users table): "add this org member to one of the
+ * organisation's groups". `onAdd` is the caller's `addGroupMember` handler
+ * (`POST /orgs/{orgId}/groups/{groupId}/members`).
  *
- * A one-field "pick an existing group" action fits `Popover` (style guide
- * "Pattern: create panels, popovers, and one door for bulk" — Popover
- * reserved for a quick action on something that already exists, not a
- * `Modal`, which this repo reserves for creating a new entity), so this
- * reuses `Popover` directly rather than a bespoke inline dropdown, the
- * same anchored-quick-pick shape `ProjectAdminPage.tsx`'s own group
- * `SidePanel` nesting controls already use.
- *
- * Renders nothing at all when the user is already a member of every group
- * in the organisation (nothing left to add them to) — same "hide rather
- * than show an empty/useless control" treatment `ProjectMembersTable`'s
- * own per-row Actions column gives a member with no eligible action.
+ * A one-field pick of an existing group fits `Popover` (style guide "Pattern: create panels, popovers, and one door
+ * for bulk": a Popover is for a quick action on something that exists, a `Modal` for creating an entity).
+ * Renders nothing when the user is already in every group of the organisation.
  */
 import { UserPlus } from "lucide-react";
 import { useRef, useState } from "react";

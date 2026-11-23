@@ -6,20 +6,14 @@ import { useStrings } from "../context/TerminologyContext";
 const MAX_INLINE_CHILDREN = 3;
 
 /**
- * "Child of: <link>" / "Parent of: <link>, <link>, ..." labels for a
- * project list/tile row — shared between `ProjectListPage`/`FavouritesPage`
- * (each passing a full `ProjectListItem`, which structurally satisfies
- * `ProjectHierarchySummary`) and `ProjectOverviewPage` (which has no
- * `ProjectListItem` of its own and builds a `ProjectHierarchySummary`
- * directly from its `Project` GET response plus a `GET /{id}/children`
- * call) rather than duplicated per page.
+ * "Child of: <link>" / "Parent of: <link>, <link>, ..." labels for a project list or tile row, shared by
+ * `ProjectListPage`/`FavouritesPage` (a full `ProjectListItem`, which satisfies `ProjectHierarchySummary`) and
+ * `ProjectOverviewPage` (which builds a `ProjectHierarchySummary` from its `Project` response and
+ * `GET /{id}/children`).
  *
- * Both fields are already visibility-boundary-filtered server-side
- * (`parent_project_name`/`children` — see docs/decisions.md):
- * `parent_project_name` is only ever present when the caller can view that
- * parent, and `children` only ever lists children the caller can view, with
- * no count of any hidden ones. This component just renders what it's
- * given — no client-side filtering needed or possible.
+ * Both fields are filtered at the visibility boundary on the server (docs/decisions.md): `parent_project_name` is
+ * present only when the caller can view that parent, and `children` lists only viewable children, with no count of
+ * hidden ones. This component renders what it is given and filters nothing.
  */
 export function ProjectHierarchyLabels({ project }: { project: ProjectHierarchySummary }) {
   const strings = useStrings();

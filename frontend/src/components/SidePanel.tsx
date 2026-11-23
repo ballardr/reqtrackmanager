@@ -7,16 +7,12 @@ import { DialogFrame } from "./DialogHeader";
 import { useDialogGuard } from "./useDialogGuard";
 
 /**
- * A right-anchored sliding-in panel for a multi-field create/edit flow —
- * the "layer, not a page reflow" half of style guide Principle 3
- * (`docs/ux-style-guide.md`, "Pattern: create panels, popovers, and one
- * door for bulk"), for content too field-heavy for `Popover`. Structurally
- * the same dialog chrome as `Modal` — portalled to `document.body`,
- * Escape and the close button close it (asking first when a form in it has
- * unsaved changes, and a backdrop click closes it only when it holds no form; see `useDialogGuard.tsx`), focus is
- * trapped and restored (see `dialogA11y.ts`) — but anchored to the right edge and full-height instead
- * of centred, so the page underneath stays visible and in place rather
- * than being replaced.
+ * A right-anchored sliding-in panel for a multi-field create/edit flow: the "layer, not a page reflow" half of style
+ * guide Principle 3 (`docs/ux-style-guide.md`, "Pattern: create panels, popovers, and one door for bulk"), for content
+ * too field-heavy for `Popover`. It has the same dialog chrome as `Modal` (portalled to `document.body`; Escape and the
+ * close button close it, asking first when a form in it has unsaved changes, and a backdrop click closes it only when it
+ * holds no form, see `useDialogGuard.tsx`; focus is trapped and restored, see `dialogA11y.ts`) but is anchored to the
+ * right edge at full height, so the page underneath stays visible and in place.
  */
 export function SidePanel({
   title,

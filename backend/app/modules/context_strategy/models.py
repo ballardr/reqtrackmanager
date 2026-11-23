@@ -3,152 +3,60 @@ Module: modules.context_strategy.models
 
 Context & Strategy's data model.
 
-Strategy (organisation & project scope):
+Strategy (organisation and project scope):
+- `Strategy` is the identity row: one table with a `scope` discriminator and exactly one of `organization_id` and
+  `project_id` set (so a Portfolio or Programme scope can be added without redesign). It holds stable identity fields
+  (scope, owner, creator, archival flag); every content field lives on `StrategyVersion`, as `Requirement` and
+  `RequirementVersion`.
+- `StrategyVersion` is a point-in-time snapshot (`valid_from`, `valid_to`, `version_number` as `RequirementVersion`).
+  `status` (`enums.StrategyStatus`) lives here, because a lifecycle transition is a content change that creates a new
+  version (`service.apply_new_version`); this differs from Decision Management, whose `Decision.status` is on the
+  identity row, because Strategy needs the fuller temporal model.
+- `StrategyComment`, `StrategyCommentFile` and `StrategyFile` are module-local comment and attachment tables, as
+  `app.modules.decisions.models`: the core `ReviewComment`, `CommentFile` and `ReviewTargetType` machinery has never
+  been extended by a module and a comment targets one `Strategy`, so no polymorphic target is needed (**Decided by:
+  Agent**; see `__init__.py` and `docs/decisions.md`).
 
-- `Strategy` — the identity row: one table with a `scope`
-  discriminator and exactly one of `organization_id`/`project_id` set,
-  rather than two separate org/project tables, so a future Portfolio/
-  Programme scope can be added later without a redesign. Holds only
-  stable identity fields (scope, owning org/project, creator, archival
-  flag) — every mutable/content field lives on `StrategyVersion`, exactly
-  mirroring `models.requirement.Requirement`/`RequirementVersion`'s split
-  (a full version-history table, not an audit-log-only model).
-- `StrategyVersion` — one point-in-time content snapshot, temporal shape
-  (`valid_from`/`valid_to`/`version_number`) copied directly from
-  `RequirementVersion`. `status` (`enums.StrategyStatus`) lives here, not
-  on `Strategy` itself — a lifecycle transition is a content change like
-  any other, so it creates a new version the same way editing
-  `objective`/`rationale`/etc. does (see `service.apply_new_version`),
-  exactly mirroring how `RequirementVersion.status` changes via
-  `services.requirements.apply_new_version` rather than a separate
-  identity-row column. This is a deliberate divergence from Decision
-  Management's own shape (`Decision.status` lives on the identity row,
-  transitions recorded only via the audit log) — the fuller temporal model is
-  required for Strategy, not Decision's lighter one.
-- `StrategyComment` / `StrategyCommentFile` / `StrategyFile` — this
-  module's own module-local comment-thread and attachment tables,
-  mirroring `app.modules.decisions.models`' identical `DecisionComment`/
-  `DecisionCommentFile`/`DecisionFile` shape and reasoning: the core
-  `ReviewComment`/`CommentFile`/`ReviewTargetType` machinery has never
-  been extended by any module (Decision Management deliberately declined
-  to, for the same reason), and a Strategy comment/attachment only ever
-  targets one `Strategy` — no polymorphic target is needed. **Decided by:
-  Agent** — a deliberate deviation from the original brief, which asked for
-  a new `ReviewTargetType.STRATEGY` member; see this module's own package
-  docstring (`__init__.py`) for the full reasoning, and `docs/decisions.md`
-  for the account flagged back to the user.
+Future State has `FutureState`, `FutureStateVersion`, `FutureStateComment`, `FutureStateCommentFile` and `FutureStateFile`,
+a structural mirror for the standalone artefact. `FutureStateVersion` has no `priority` or `time_horizon` and adds
+`target_date`, `outcomes`, `success_measures`, `constraints` and `assumptions` (§7).
 
-Future State has `FutureState`/`FutureStateVersion`/`FutureStateComment`/
-`FutureStateCommentFile`/`FutureStateFile` — an exact structural mirror of
-the five classes above, for the standalone Future State artefact (a separate, first-class artefact, not fields folded onto `Strategy`).
-`FutureStateVersion`'s own field set differs from `StrategyVersion`'s (no
-`priority`/`time_horizon`; adds `target_date`, `outcomes`,
-`success_measures`, `constraints`, `assumptions` per §7),
-but every structural decision — identity/version split, module-local
-comments/files, the CHECK-constraint scope pattern — repeats identically,
-so see the `Strategy`/`StrategyVersion` docstrings above rather than
-duplicating the reasoning here.
+Pain Points have a different shape from the identity-plus-version split:
+- `PainPointTypeDefinition`: the organisation-scoped base type vocabulary, as `RequirementLinkTypeDefinition` and
+  `ActionTypeDefinition`.
+- `ProjectPainPointType`: project-scoped, either an override of one organisation type (`org_type_id` set; a `NULL`
+  `name_override` or `display_order_override` means "unchanged") or a project-local type (`org_type_id` NULL, so
+  `name_override` is required by the table's CHECK). A project's effective list is every active organisation type (its
+  override taking precedence) plus every project-local row, resolved by `service.resolve_effective_pain_point_types`,
+  never stored.
+- `PainPoint`: the artefact, with no `PainPointVersion` (see `enums.PainPointStatus`): fields are updated in place
+  (`service.update_pain_point`) and changes are recorded with `services.audit.log_event`. `pain_point_type_id` is a NOT
+  NULL FK to `ProjectPainPointType.id`, never to `PainPointTypeDefinition`, so one target resolves the type whether it
+  is organisation-backed, overridden or project-local (`service.get_or_create_project_pain_point_type`). It is
+  project-scoped only (§6 describes no organisation-level Pain Point; only the type vocabulary has an organisation tier).
+- `PainPointComment`, `PainPointCommentFile` and `PainPointFile`: module-local tables mirroring the Strategy set.
 
-Pain Points have six classes with a genuinely different shape from Strategy/
-Future State's identity+version split, not a further structural mirror:
+Guiding Principles have `GuidingPrinciple`, `GuidingPrincipleVersion`, `GuidingPrincipleComment`,
+`GuidingPrincipleCommentFile` and `GuidingPrincipleFile`, mirroring Strategy (identity and version split, `scope`, full
+version history) with a smaller field set (§8.3: `name`, `principle_statement`, `rationale`, `priority`, `owner_id`; no
+`type`) and a shorter lifecycle (`enums.GuidingPrincipleStatus`). `owner_id` is on `GuidingPrincipleVersion`, because
+every mutable field is versioned (unlike `PainPoint.owner_id`).
 
-- `PainPointTypeDefinition` — org-scoped base type vocabulary (the
-  two-tier design), same shape as `RequirementLinkTypeDefinition`/
-  `models.action_type.ActionTypeDefinition` (name, `sort_order`-equivalent
-  `display_order`, org admin managed).
-- `ProjectPainPointType` — project-scoped, either an override of one org
-  type (`org_type_id` set, `name_override`/`display_order_override`
-  nullable — `NULL` means "unchanged from the org default") or a fully
-  project-local type (`org_type_id` NULL, in which case `name_override`
-  is the type's only name and is therefore required — see the table's own
-  CHECK constraint). A project's *effective* type list is every active org
-  type (its own row's override, if any, taking precedence) plus every
-  project-local row — resolved by `service.resolve_effective_pain_point_types`,
-  never a stored/materialized view.
-- `PainPoint` — the artefact itself. **No identity+version split** and
-  **no `PainPointVersion` table** — no version table is
-  required (see `enums.PainPointStatus`'s own docstring for the full
-  reasoning), so every mutable field lives directly on this one row,
-  updated in place (`service.update_pain_point`), with every change
-  recorded only via `services.audit.log_event` (a plain audit trail, not a
-  content snapshot). `pain_point_type_id` is a NOT NULL FK to
-  `ProjectPainPointType.id`, never directly to `PainPointTypeDefinition`
-  — every Pain Point's type is resolved through the project-scoped table
-  so a single FK target always resolves the type regardless of whether it
-  is org-backed-with-no-override, org-backed-with-an-override, or fully
-  project-local (see `service.get_or_create_project_pain_point_type`).
-  Pain Point is **project-scoped only** — no `scope`/`organization_id`
-  discriminator the way Strategy/Future State have one (§6 describes no organisation-level Pain Point; only its *type*
-  vocabulary has an org-level component, via `PainPointTypeDefinition`
-  above).
-- `PainPointComment` / `PainPointCommentFile` / `PainPointFile` — this
-  module's own module-local comment-thread and attachment tables, exact
-  structural mirror of `StrategyComment`/`StrategyCommentFile`/
-  `StrategyFile` (module-local tables, not a `ReviewTargetType`
-  member — see this module's own `__init__.py` docstring for the full
-  reasoning, repeated identically for Pain Point).
+Open Questions have `OpenQuestion`, `OpenQuestionComment`, `OpenQuestionCommentFile` and `OpenQuestionFile`, shaped like
+Pain Point:
+- No `OpenQuestionVersion` (**Decided by: Agent**): full version history was scoped to Strategy, Future State and Guiding
+  Principle, and an Open Question is an investigatory tracking record like a Pain Point in triage. Fields are updated in
+  place (`service.update_open_question`) and changes are audited.
+- Project-scoped only, with no `scope` or `organization_id` (**Decided by: Agent**): §9 describes no organisation-level
+  Open Question, and §9.5's "Create Decision from Open Question" resolves into `app.modules.decisions.models.Decision`,
+  which is project-scoped only (see `docs/decisions.md`).
+- `question`, `context` and `evidence` are `Text` (§9.2); the natural primary field doubles as the display title, as
+  `GuidingPrinciple.name` does.
 
-Guiding Principles have `GuidingPrinciple`/`GuidingPrincipleVersion`/
-`GuidingPrincipleComment`/`GuidingPrincipleCommentFile`/
-`GuidingPrincipleFile` — a structural mirror of `Strategy`/`StrategyVersion`
-and friends (identity+version split, org/project `scope` discriminator,
-module-local comments/files, and the full version-history requirement
-applied here too), with a smaller field set (§8.3: `name`,
-`principle_statement`, `rationale`, `priority`, `owner_id` — no `type`
-field, no `time_horizon`/`expected_outcomes`/`constraints`/`measures_of_
-success`) and a **shorter** `status` lifecycle (`enums.GuidingPrincipleStatus`
-— see that enum's own docstring for the full reconciliation of source
-overview §8's scope text against its six actual members). `owner_id` lives
-on `GuidingPrincipleVersion`, not the identity row — every mutable field on
-this artefact is versioned, unlike `PainPoint.owner_id`
-(no version table at all).
-
-Open Questions have `OpenQuestion`/`OpenQuestionComment`/`OpenQuestionCommentFile`/
-`OpenQuestionFile` — back to Pain Point's shape, not Strategy/
-Future State/Guiding Principle's identity+version split:
-
-- **No `OpenQuestionVersion` table (Decided by: Agent).** The full
-  version-history requirement was scoped explicitly to Strategy, Future
-  State and Guiding Principle; Open Question was
-  never named there, the same absence-of-instruction reasoning
-  `enums.PainPointStatus`'s own docstring already used to skip a version
-  table for Pain Point. An Open Question is an operational, investigatory
-  tracking record — closer in kind to a Pain Point moving through triage
-  than to a Strategy/Guiding Principle's formally-reviewed governance
-  content — so every mutable field lives directly on this one row, updated
-  in place (`service.update_open_question`), with every change recorded
-  only via `services.audit.log_event`.
-- **Project-scoped only, no `scope`/`organization_id` discriminator
-  (Decided by: Agent).** Source overview §9 never discusses an
-  organisation-level Open Question at all (unlike Strategy/Future State/
-  Guiding Principle, whose org/project duality was resolved
-  explicitly by name) — the strongest single signal is §9.5's own "Create
-  Decision from Open Question" workflow: `Decision` (`app.modules.decisions.
-  models.Decision`) is itself project-scoped only, with no organisation-
-  level counterpart at all, so an org-scoped Open Question would have no
-  valid resolution path into a Decision in the first place. This is
-  reinforced by §9.1's own framing ("what's blocking this decision") and by
-  Pain Point's precedent as this module's other project-scoped-only
-  artefact. See `docs/decisions.md` for the
-  full reasoning.
-- `OpenQuestion.question`/`context`/`evidence` are `Text`, not `String`
-  (§9.2's own field names — no separate `title` the way
-  Strategy/Future State needed one, mirroring `GuidingPrinciple.name`'s own
-  precedent that the artefact's natural primary field doubles as its
-  display title when the source text already gives one).
-- `OpenQuestionComment`/`OpenQuestionCommentFile`/`OpenQuestionFile` — this
-  module's own module-local comment-thread and attachment tables, exact
-  structural mirror of `PainPointComment`/`PainPointCommentFile`/
-  `PainPointFile` (module-local tables, not a `ReviewTargetType`
-  member).
-
-Reporting adds `PainPoint.is_intentional` and
-`PainPointScore` — the ratings of a Pain Point for one target (a persona, or the
-General row when the target is null), held one `PainPointScoreAxis` row per
-scoring axis so a custom criterion needs no schema change.
-`target_type`/`target_id` are a plain validated pair, never an FK into the
-owning module's table (Context & Strategy cannot import Stakeholders & Personas); the level ids
-are FKs into core's generic `scoring_levels`.
+Reporting adds `PainPoint.is_intentional` and `PainPointScore`: the ratings of a Pain Point for one target (a persona, or
+the General row when the target is null), held as one `PainPointScoreAxis` row per scoring axis so a custom criterion
+needs no schema change. `target_type` and `target_id` are a validated pair, never an FK into the owning module's table
+(Context & Strategy cannot import Stakeholders & Personas); the level ids are FKs into core's `scoring_levels`.
 """
 
 from __future__ import annotations
@@ -270,10 +178,8 @@ class StrategyVersion(UUIDPKMixin, Base):
     __tablename__ = "strategy_versions"
     __table_args__ = (
         UniqueConstraint("strategy_id", "version_number"),
-        # Partial index backing `service.get_current_version`'s `valid_to IS
-        # NULL` lookup — mirrors `ArtefactLink`'s own partial-index
-        # convention (`models.relationship`) rather than a plain full-column
-        # index that would also cover every historical (non-current) row.
+        # Partial index backing `service.get_current_version`'s `valid_to IS NULL` lookup, as `ArtefactLink`'s partial
+        # index (`models.relationship`), so it does not cover historical rows.
         Index(
             "ix_strategy_versions_current", "strategy_id", unique=False, postgresql_where=sa_text("valid_to IS NULL")
         ),
@@ -637,7 +543,7 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
             directly to `PainPointTypeDefinition` (see module docstring).
         title / description: Core identifying content.
         source: Free-text provenance (e.g. "Support ticket #481",
-            "Customer interview", "Ops incident report") — distinct from
+            "Customer interview", "Operations incident record") — distinct from
             `pain_point_type_id`'s fixed Market/User/Operator-style
             vocabulary.
         impact: Free-text description of the problem's effect.

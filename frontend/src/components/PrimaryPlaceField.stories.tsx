@@ -18,8 +18,8 @@ function Host({ categoryId = "" }: { categoryId?: string }) {
 }
 
 /**
- * The one component and category a requirement belongs to, chosen together from the project's tree: each component is a
- * heading and a category is the choice, so the pair cannot disagree.
+ * The one component and category a requirement belongs to, chosen together from the project's tree: each component
+ * is a heading and a category is the choice, so the pair cannot disagree.
  */
 const meta: Meta<typeof Host> = { title: "Components/PrimaryPlaceField", component: Host };
 export default meta;

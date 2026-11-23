@@ -1,16 +1,11 @@
-"""Regression tests for two hardening-review findings in `routers/ws.py`:
+"""Regression tests for the two session checks in `routers/ws.py`:
 
-- `token_version` wasn't checked at all, so a password change or 2FA
-  disable — this system's "primary technical incident-containment tool"
-  (access-control-policy.md) — did not actually revoke access to the
-  WebSocket live-updates surface, contradicting docs/decisions.md's own
-  (corrected) claim that this had already been fixed.
-- `Organization.is_active` wasn't checked at all either (a later pass,
-  alongside the organisation disable/hard-delete feature), so disabling an
-  organisation — documented to lock out *everyone*, including its own
-  admins, at every org/project-scoped surface — had no effect on this one
-  surface: a member could still open a brand-new WebSocket connection to a
-  disabled org's project and stream live updates indefinitely.
+- `token_version` is checked, so a password change or 2FA disable (the system's
+  "primary technical incident-containment tool", access-control-policy.md) revokes
+  access to the WebSocket live-updates surface.
+- `Organization.is_active` is checked, so disabling an organisation, which locks out
+  everyone including its admins at every org/project-scoped surface, also refuses a
+  new WebSocket connection to that org's project.
 
 See `_user_session_still_valid` and the handshake check in `routers/ws.py`.
 """

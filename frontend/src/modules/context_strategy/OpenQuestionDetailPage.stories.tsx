@@ -60,11 +60,7 @@ function mockDetailApis(current: OpenQuestion) {
   });
 }
 
-/**
- * A real routed page — stories go through `withRouter`/`withAuth` rather
- * than passing props directly, mirroring `PainPointDetailPage.stories.tsx`'s
- * own identical convention.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props, as in `PainPointDetailPage.stories.tsx`. */
 const meta: Meta<typeof OpenQuestionDetailPage> = {
   title: "Modules/ContextStrategy/OpenQuestionDetailPage",
   component: OpenQuestionDetailPage,

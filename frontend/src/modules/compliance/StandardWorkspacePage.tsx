@@ -1,57 +1,21 @@
 /**
  * Module: modules/compliance/StandardWorkspacePage
  *
- * The per-standard workspace at `/standards/:standardId[/versions|/history]`
- * — the drill-down a row on
- * `StandardListPage.tsx` opens into. Structurally a sibling to a project's
- * own workspace (`Layout.tsx`'s "Standard" nav-rail section, rendered only
- * while a `standardId` is present in the URL — the same trigger pattern the
- * "Project" section already uses), not nested inside it: Overview/Details,
- * Versions (the existing `VersionWorkspace`, reused as-is via
- * `StandardVersionsSection`), and History.
- *
- * No org id is in this page's own URL — it resolves one first, via the new
- * `GET /api/v1/compliance/standards/{standard_id}` (`global_router.py`,
- * mirroring exactly how a project's own id resolves to its org today), then
- * threads that `organization_id` through to every existing org-scoped
- * nested call unchanged (versions, requirements, history, action types).
- *
- * Section switching uses a real route (`:section?`, defaulting to
- * "overview"), the same "a real URL, not client-only state" convention
- * `ProjectAdminPage.tsx`'s own `:group?` already establishes for its
- * `ResourceMenu` — here expressed as `NavRailLink`s instead, since a single
- * Standard is a project-like *entity*, not a fixed set of settings screens
- * (see docs/ux-style-guide.md's new "Pattern: project-like drill-down
- * entities" section for why this gets a nav-rail section while Action
- * Types/Mapping Types, a fixed pair of org-wide screens, get a
- * `ResourceMenu` instead on `ComplianceSettingsPage.tsx`).
- *
- * `StandardApplicabilityPanel` is in
- * the Overview section — the "applies to all projects by default,
- * except..." toggle and exclusion-list editor, Compliance-Manager-only.
- * The *default, primary* way a project acquires a standard (Project-
- * Manager self-service assignment) has no surface here at all — it lives
- * entirely on `ProjectCompliancePage.tsx`, since it's a project-scoped
- * action, not a standard-governance one.
- *
- * Standard-level import/export: an "Export" action sits, with Archive, in the record header menu beside
- * Edit — downloads this standard's own portable JSON document
- * (`complianceApi.exportStandard` + `downloadBlob`, the same shape
- * `OrgComplianceWidgets.tsx`'s report downloads already use), for backup
- * or transfer into a different organisation/deployment via
- * `StandardListPage.tsx`'s "Import standard" entry point.
- *
- * The Overview has a
- * `.grid.grid-metrics` row of `MetricTile`s (versions/requirements/
- * projects/compliant counts — the same clickable-stat-tile convention
- * `ProjectOverviewPage.tsx`/`OrgOverviewPage.tsx` already established), and
- * adds a `"projects"` section (`StandardProjectsPanel.tsx`) the "Projects"/
- * "Compliant" tiles link into. It also threads an optional `versionId`
- * route param down to `StandardVersionsSection`/`VersionWorkspace` so
- * `StandardNavSection.tsx`'s new expandable Versions group — and the
- * "Requirements" tile here, which links straight at this standard's
- * current (latest published, else latest draft) version — can open a
- * specific version directly instead of always landing on the version list.
+ * The per-standard workspace at `/standards/:standardId[/versions|/history]`, opened from a row of `StandardListPage.tsx`. It is
+ * a sibling of a project's workspace (`Layout.tsx`'s "Standard" nav-rail section, rendered while a `standardId` is in the URL):
+ * Overview/Details, Versions (`StandardVersionsSection` reusing `VersionWorkspace`) and History.
+ * - The URL has no organisation id, so the page resolves it through `GET /api/v1/compliance/standards/{standard_id}`
+ *   (`global_router.py`) and threads `organization_id` to the organisation-scoped calls (versions, requirements, history, action types).
+ * - Sections use a real route (`:section?`, default "overview"), as `ProjectAdminPage.tsx`'s `:group?`, expressed as `NavRailLink`s
+ *   because a Standard is a project-like entity, not a fixed set of settings screens (docs/ux-style-guide.md, "Pattern: project-like
+ *   drill-down entities"; `ComplianceSettingsPage.tsx` uses a `ResourceMenu` for those).
+ * - `StandardApplicabilityPanel` (the "applies to all projects by default, except..." toggle and exclusions, Compliance-Manager-only)
+ *   is in Overview. A Project Manager's self-service assignment lives on `ProjectCompliancePage.tsx`, being project-scoped.
+ * - "Export" sits with Archive in the record header menu and downloads the standard's portable JSON (`complianceApi.exportStandard`
+ *   + `downloadBlob`) for backup or transfer through `StandardListPage.tsx`'s "Import standard".
+ * - The Overview `.grid.grid-metrics` row of `MetricTile`s (versions, requirements, projects, compliant) links into a `"projects"`
+ *   section (`StandardProjectsPanel.tsx`); an optional `versionId` route param reaches `StandardVersionsSection`/`VersionWorkspace`,
+ *   so `StandardNavSection.tsx`'s Versions group and the "Requirements" tile (the current version) open a version directly.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -91,12 +55,8 @@ import { MarkdownView } from "../../components/MarkdownView";
 
 type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
 
-/** The version an Overview click-through should land on: the latest
- * published version, or (nothing published yet) the latest version overall
- * — mirrors `service.py::get_latest_published_version`'s own fallback-free
- * "published only" semantics for the *primary* case, but a brand-new
- * standard with only a draft still needs somewhere for the "Requirements"
- * tile to point. */
+/** The version an Overview click-through lands on: the latest published version or, with none published, the latest version
+ * overall, so a standard with only a draft still gives the "Requirements" tile a target. */
 function currentVersion(versions: ComplianceStandardVersion[]): ComplianceStandardVersion | null {
   if (versions.length === 0) return null;
   const published = versions.filter((v) => v.status === "published");
@@ -160,12 +120,9 @@ export function StandardWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [standard?.organization_id]);
 
-  // Overview stats: version count, this standard's own slice of
-  // §20 project-compliance status (projects/compliant tiles), and the
-  // current version's requirement count (fetched once the version list
-  // resolves which version counts as "current" — a second, small request
-  // rather than a new backend field, since `listRequirements` already
-  // exists and is cheap for the tile's purposes).
+  // Overview stats: the version count, this standard's slice of §20 status (projects and compliant tiles) and the current version's
+  // requirement count, fetched once the version list identifies the current version (`listRequirements` already exists and is
+  // cheap, so no new backend field is needed).
   useResetOnChange([standard?.organization_id, standard?.id], () => {
     setVersions(null);
     setRequirementCount(null);

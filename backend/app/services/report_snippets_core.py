@@ -1,29 +1,23 @@
 """
 Module: services.report_snippets_core
 
-The platform's built-in report snippets: fragments of a document layout that the designer inserts by copying their
-blocks (`modules.registry.ReportSnippet`). A module adds snippets about its own records through
-`ModuleDefinition.report_snippets`; this file holds only what needs no module.
+The platform's built-in report snippets: fragments of a document layout the designer inserts by copying their blocks
+(`modules.registry.ReportSnippet`). A module adds its own through `ModuleDefinition.report_snippets`.
 
 Responsibilities:
-- Declare the built-in set (`CORE_REPORT_SNIPPETS`): a cover page, a logo at the top right of the first page, record
-  images, document details, document review and control, approvals and a landscape table section.
-- `_place_logo`: size and place the logo for the page it goes on (the one layout-aware snippet).
+- `CORE_REPORT_SNIPPETS`: a cover page, a top-right logo, record images, document details, review and control,
+  approvals and a landscape table section; `_place_logo` sizes and places the logo for its page.
 
 Design decisions:
-- **Every snippet is true in the formats it lists.** The logo is an image in front of the text anchored to the page
-  corner, which PDF, Word and OpenDocument text print where it is set; the browser preview has no pages and measures
-  from where the block sits, so HTML is not listed for it.
-- **Document details, review and control, and approvals are custom tables (`grid` blocks)**: black label cells with white
-  bold text, merged title rows, and blank cells with a set row height to write in by hand. They use only the reserved colour
-  words `black` and `white`, so they apply into a layout with no colour scheme and carry no name a layout might lack. The
-  values that exist at run time (title, project, organisation, version, date) are placeholders, so the table fills itself in;
-  nothing names who runs the report, so the people boxes are left blank.
-- **A cover page is a section in its own page style with an empty header and footer**, so the document's running
-  text does not print on it, and the report returns to its own style on a new page after it.
-- **No placeholder picture.** The logo asks for an image; an empty value is refused when applied.
+- Every snippet is true in the formats it lists: the logo is an image in front of the text anchored to the page corner
+  (PDF, Word, OpenDocument); the browser preview has no pages, so HTML is not listed for it.
+- Details, review and approvals are `grid` tables with black label cells, merged title rows and blank cells with a set
+  height, using only the reserved colours `black` and `white` so they apply to a layout with no scheme; run-time values are
+  placeholders, and nobody is named in the people boxes.
+- A cover page is a section in its own page style with an empty header and footer, returning to the document's style after.
+- No placeholder picture: an empty logo value is refused on apply.
 
-Dependencies: `services.report_starter_blocks` (block builders), `modules.registry` (the snippet types).
+Dependencies: `report_starter_blocks`, `modules.registry`.
 """
 
 from __future__ import annotations

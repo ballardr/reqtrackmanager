@@ -1,22 +1,18 @@
 """Tests for link and action locking on approved requirements:
 
-1. `unlink_action` (`DELETE .../actions/{action_id}`) previously had no lock
-   check at all, an asymmetry with the already-gated add side
-   (`test_requirement_action_change_requests.py`). It's now gated the same
-   way, unconditionally across every project, via a new `REMOVE_ACTION`
-   change request kind.
+1. `unlink_action` (`DELETE .../actions/{action_id}`) is lock-gated like the add
+   side (`test_requirement_action_change_requests.py`), unconditionally across
+   every project, through the `REMOVE_ACTION` change request kind.
 
-2. A project (or an org-wide force, minus a per-project exemption) can now
-   opt into requiring the same change-request-only-once-locked treatment
-   for `RequirementLink` add/remove, via `ADD_LINK`/`REMOVE_LINK` change
-   requests. Links stay ungated by default (`RequirementLink`'s own model
-   docstring) — this is a deliberately narrower, opt-in sibling of the
-   action gate, not a blanket extension of C-G-12's lock to every field.
+2. A project (or an org-wide force, minus a per-project exemption) can opt into
+   requiring a change request once locked for `RequirementLink` add/remove, via
+   `ADD_LINK`/`REMOVE_LINK` change requests. Links are ungated by default
+   (`RequirementLink`'s model docstring); this is a narrower, opt-in sibling of
+   the action gate, not an extension of C-G-12's lock to every field.
 
-See `services.requirements.requires_change_request_for_links` for the
-formula this file's formula tests pin, and `routers.change_requests
-.decide_change_request`'s REMOVE_ACTION/ADD_LINK/REMOVE_LINK branches for
-the apply-on-approval behaviour.
+See `services.requirements.requires_change_request_for_links` for the formula
+the formula tests pin, and `routers.change_requests.decide_change_request`'s
+REMOVE_ACTION/ADD_LINK/REMOVE_LINK branches for apply-on-approval.
 """
 
 from sqlalchemy import select

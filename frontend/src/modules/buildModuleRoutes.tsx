@@ -5,23 +5,13 @@ import { ModuleFrame } from "../components/ModuleFrame";
 import { getInstalledModule } from "./registry";
 
 /**
- * Builds one `<Route>` per currently-enabled module, to be spread directly into `<Routes>`'s children in
- * `App.tsx` — React Router's `createRoutesFromChildren` only recognises
- * literal `<Route>`/`<Fragment>` elements in that tree, so this returns a
- * plain array of `<Route>` elements rather than a rendered wrapper
- * component (which `<Routes>` would not see into). A Tier A ("installed")
- * module contributes its own registered routes (`registry.ts`); a Tier B
- * ("remote") one gets a generic `<ModuleFrame>` route at the `nav_path` its
- * backend `ModuleFrontendManifest` declares. A module with no frontend
- * manifest at all (nothing declared, or a Tier B `frame_url` the
- * deployment's allowlist rejected) contributes nothing here, mirroring
- * `Layout.tsx`'s identical nav-side omission.
- *
- * Split out of `App.tsx` itself (which only exports the `App` component)
- * to keep Fast Refresh working there — a file mixing component and
- * non-component exports breaks it (react-refresh/only-export-components),
- * the same reasoning `context/ProjectContextValue.ts` already documents
- * for its own split from `TerminologyContext.tsx`.
+ * Builds one `<Route>` per enabled module, to be spread into `<Routes>`' children in `App.tsx`. It returns a plain array of
+ * literal `<Route>` elements because React Router's `createRoutesFromChildren` does not see into a wrapper component. A Tier A
+ * ("installed") module contributes its registered routes (`registry.ts`); a Tier B ("remote") one gets a generic `<ModuleFrame>`
+ * route at the `nav_path` its backend `ModuleFrontendManifest` declares. A module with no frontend manifest (nothing declared,
+ * or a Tier B `frame_url` the deployment's allowlist rejected) contributes nothing, as in `Layout.tsx`'s nav.
+ * It lives outside `App.tsx` so that file exports only a component, which Fast Refresh requires
+ * (react-refresh/only-export-components).
  */
 export function buildModuleRoutes(enabledModules: ModuleNavEntry[], projectId: string | null) {
   return enabledModules.flatMap((moduleEntry) => {
@@ -30,9 +20,7 @@ export function buildModuleRoutes(enabledModules: ModuleNavEntry[], projectId: s
     if (manifest.tier === "installed") {
       const installed = getInstalledModule(moduleEntry.module_key);
       if (!installed) return [];
-      // `routes` is optional (module system follow-up, 2026-09-07) — a
-      // module contributing only `orgAdminSections` and no project-scoped
-      // UI declares none.
+      // `routes` is optional: a module contributing only `orgAdminSections` declares none.
       return (installed.routes ?? []).map((route) => (
         <Route key={`${moduleEntry.module_key}:${route.path}`} path={route.path} element={route.element} />
       ));

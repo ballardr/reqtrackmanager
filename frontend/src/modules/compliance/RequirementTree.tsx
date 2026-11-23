@@ -1,49 +1,20 @@
 /**
  * Module: modules/compliance/RequirementTree
  *
- * The requirement-hierarchy editor for one `ComplianceStandardVersion` (§5)
- * — a client-side-assembled tree (see `api.ts::buildRequirementTree`) over
- * the backend's flat, depth-first-ordered `GET .../requirements` list, with
- * each requirement's required actions (§6) nested underneath, lazily
- * fetched on first expand.
- *
- * Mutations (add/edit/delete/move a requirement or required action) are
- * disabled whenever `isDraft` is false — mirrors the backend's own
- * "published version's requirements become immutable" rule (§4,
- * `router.py::_require_draft_version`) so a 409 from a stale client state
- * is the exception, not the everyday path; the UI simply doesn't offer the
- * controls once a version stops being a draft, rather than letting a click
- * round-trip into an error toast.
- *
- * Follows this repo's established tree-editor shape (`ProjectTree.tsx`):
- * presentational recursion, expand/collapse via local component state
- * (`expandedIds`), no shared "generic tree" component extracted — a
- * requirement/required-action tree with per-node CRUD + mappings is
- * specific enough to this module that following `ProjectTree`'s pattern
- * (not its component) is the right level of reuse, matching how
- * `ProjectTree` itself is not shared beyond project hierarchy either.
- *
- * A `ViewToggle` switches between
- * this tree (the authoring/reordering view, hierarchy
- * intact) and a flat list view for scanning/searching a large
- * standard, with a `FilterPanel` (search text, mandatory-only, action
- * type) that applies to the list view only — filtering the flat list
- * before the tree is built would silently hide a matching child whose
- * ancestor didn't match, so the tree itself stays deliberately unfiltered,
- * matching the "the tree is for authoring, the list is for
- * scanning" framing. Clicking a list-view row opens a `SidePanel` detail
- * view (`RequirementDetailPanel` below) with `AutoGrowTextarea` fields for
- * description/reasoning, the same component `RequirementsPage.tsx`'s own
- * detail editing already uses, editable only while `isDraft`.
- *
- * A "Clarify" action (tree and list/detail view alike) is
- * shown once `isPublished` is true (mutually exclusive with `isDraft`'s own
- * edit/delete/move controls — a requirement is either freely editable, on
- * a draft version, or only clarifiable, on a published one; never both) —
- * opens `RequirementClarifyModal`, a mandatory-note-gated sibling of the
- * ordinary edit form. A clarified requirement shows a small `.badge` next
- * to its name (tree, list, and detail panel) with the clarification count
- * and, on hover/click, its most recent clarification note.
+ * The requirement-hierarchy editor for one `ComplianceStandardVersion` (§5): a client-side-assembled tree
+ * (`api.ts::buildRequirementTree`) over the backend's flat, depth-first `GET .../requirements` list, with each requirement's
+ * required actions (§6) nested underneath and fetched on first expand.
+ * - Mutations (add, edit, delete, move) are offered only while `isDraft`, mirroring the backend's rule that a published
+ *   version's requirements are immutable (§4, `router.py::_require_draft_version`), so a 409 is the exception.
+ * - It follows `ProjectTree.tsx`'s tree-editor shape (presentational recursion, local `expandedIds`) without extracting a
+ *   generic tree component: per-node CRUD plus mappings is specific to this module.
+ * - A `ViewToggle` switches between the tree (authoring and reordering, hierarchy intact) and a flat list for scanning a large
+ *   standard, with a `FilterPanel` (search text, mandatory-only, action type) applying to the list only: filtering before the
+ *   tree is built would hide a matching child whose ancestor did not match. A list row opens `RequirementDetailPanel`, a
+ *   `SidePanel` with `AutoGrowTextarea` fields (as `RequirementsPage.tsx`), editable only while `isDraft`.
+ * - "Clarify" (tree, list and detail) is offered once `isPublished`, exclusive with the `isDraft` controls, and opens
+ *   `RequirementClarifyModal`, a mandatory-note-gated sibling of the edit form. A clarified requirement shows a small `.badge`
+ *   with the clarification count and, on hover or click, the latest note.
  */
 import { ArrowDown, ArrowUp, Link2, MessageSquareText, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -77,19 +48,14 @@ interface Props {
   standardId: string;
   versionId: string;
   isDraft: boolean;
-  /** Whether the owning version is `published` (as opposed to
-   * `draft` or `retired`), the one status the "Clarify" action is offered
-   * on (mirrors `clarify_requirement`'s own backend 409 on any other
-   * status). */
+  /** Whether the owning version is `published` (not `draft` or `retired`), the one status the "Clarify" action is offered on
+   * (the backend's `clarify_requirement` returns 409 on any other). */
   isPublished: boolean;
   actionTypes: ComplianceActionType[];
 }
 
-/** A small `.badge` marking a requirement clarified at least once —
- * shown in the tree, list, and detail views alike. The note is
- * surfaced via the native `title` tooltip on hover/click, mirroring how
- * this codebase already surfaces secondary detail without a second
- * control (e.g. this same file's own `title="View mappings"` buttons). */
+/** A small `.badge` marking a requirement clarified at least once, shown in the tree, list and detail views. The note is
+ * surfaced through the native `title` tooltip, as with this file's `title="View mappings"` buttons. */
 function ClarificationBadge({ requirement }: { requirement: ComplianceRequirement }) {
   if (requirement.clarification_count === 0) return null;
   const times = requirement.clarification_count === 1 ? "1 time" : `${requirement.clarification_count} times`;
@@ -265,11 +231,8 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
     }
   }
 
-  // List view's search/mandatory/action-type filters all need every
-  // requirement's required actions loaded, not just the (lazily-expanded)
-  // ones the tree view has fetched so far — fetch whatever's missing once
-  // the list view is active, rather than a new "all actions for this
-  // version" backend endpoint the tree view has never needed.
+  // The list view's search, mandatory and action-type filters need every requirement's required actions, not only those the tree
+  // has lazily fetched, so the missing ones are fetched once the list view is active.
   useEffect(() => {
     if (viewMode !== "list" || !requirements) return;
     const missing = requirements.filter((r) => !actionsByRequirement[r.id]);
@@ -531,11 +494,8 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
               showToast("Requirement updated.");
               const updated = await complianceApi.listRequirements(orgId, standardId, versionId);
               setRequirements(updated);
-              // Functional update, not a blind overwrite: if the panel was
-              // already closed (or switched to a different requirement)
-              // while this save's own round trip was still in flight, this
-              // must not reopen it — a real race a fast Save-then-Close
-              // hit in practice.
+              // A functional update: if the panel was closed (or switched to another requirement) while this save was in
+              // flight, it must not reopen (a fast Save-then-Close hits this race).
               setDetailRequirement((current) =>
                 current?.id === detailRequirement.id ? updated.find((r) => r.id === detailRequirement.id) ?? null : current
               );
@@ -600,15 +560,10 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
 }
 
 /**
- * The list view's "open full detail" panel — a `SidePanel`
- * reusing `AutoGrowTextarea` for description/reasoning, the same field
- * component `RequirementsPage.tsx`'s own detail editing already uses.
- * Reference/name/description/reasoning are editable while `isDraft`
- * (mirrors `RequirementFormModal`'s own draft-only editability); required
- * actions are shown read-only here — the tree view's existing expand-row
- * add/edit/delete/move controls remain the one place that manages them,
- * rather than this panel duplicating that whole CRUD surface a second
- * time.
+ * The list view's "open full detail" `SidePanel`, reusing `AutoGrowTextarea` for description and reasoning as
+ * `RequirementsPage.tsx` does. Reference, name, description and reasoning are editable while `isDraft` (as in
+ * `RequirementFormModal`); required actions are read-only here, because the tree view's expand-row controls are the one place
+ * that manages them.
  */
 function RequirementDetailPanel({
   requirement,
@@ -762,10 +717,8 @@ function RequiredActionFormModal({
   onSave: (values: { action_type_id: string; name: string; description: string; is_mandatory: boolean }) => void;
 }) {
   const [actionTypeId, setActionTypeId] = useState(initial?.action_type_id ?? actionTypes[0]?.id ?? "");
-  // The types may arrive after this form opens (the page loads them in
-  // parallel); adopt the first one then, or Save stays disabled for good
-  // (found 2026-10-04 via the e2e suite under load). React's "adjust state
-  // during render" pattern — converges in one extra render.
+  // The types may arrive after this form opens (the page loads them in parallel); adopt the first one then, or Save stays
+  // disabled. This is React's "adjust state during render" pattern and converges in one extra render.
   if (actionTypeId === "" && actionTypes[0]) setActionTypeId(actionTypes[0].id);
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -799,15 +752,11 @@ function RequiredActionFormModal({
 }
 
 /**
- * The "Clarify" action — a narrower, mandatory-note-gated sibling of
- * `RequirementFormModal`, for a requirement on a **published** version.
- * Pre-fills the same reference/name/description/reasoning fields (a
- * clarification is a correction/elaboration to this requirement's own
- * wording, not a different action), but requires `clarificationNote`
- * before Save enables — the backend 400s without one for the same reason
- * (see `router.py::clarify_requirement`'s own docstring: there is no
- * reliable way to detect "non-substantive" from the fields alone, so the
- * note is what makes the distinction accountable).
+ * The "Clarify" action, a narrower mandatory-note-gated sibling of `RequirementFormModal` for a requirement on a **published**
+ * version. It pre-fills the same reference, name, description and reasoning fields (a clarification elaborates the
+ * requirement's own wording) but requires `clarificationNote` before Save enables; the backend returns 400 without one, because
+ * non-substantive changes cannot be detected from the fields, so the note makes the distinction accountable
+ * (`router.py::clarify_requirement`).
  */
 function RequirementClarifyModal({
   requirement,

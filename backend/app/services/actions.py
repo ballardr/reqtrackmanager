@@ -1,19 +1,12 @@
 """
 Module: services.actions
 
-Core business logic for requirement actions: unique identifier generation,
-mirroring `services.requirements`'s `generate_unique_code`/sequence-counter
-pattern exactly (same per-project monotonic counter idea, `Project.
-next_action_seq` instead of `next_requirement_seq`), the outcome-transition
-stamping rule (`completed_at`/`completed_by` set the moment
-`outcome_status` first moves away from PENDING), and the
-`get_requirement_action_in_project` IDOR-guard helper (mirrors
-`routers.requirements._get_requirement_in_project`) and `action_to_out`,
-the API-response builder. All three live here rather than as router-private
-functions because they're needed by two routers — `routers.actions` (the
-action's own CRUD) and `routers.requirements` (the requirement<->action
-linking endpoints) — and this codebase has no precedent for one router
-importing a private helper from another.
+Core business logic for requirement actions: unique code generation (a per-project monotonic counter,
+`Project.next_action_seq`, as for requirements), the outcome-transition stamping rule (`completed_at` and
+`completed_by` are set when `outcome_status` first leaves PENDING), the `get_requirement_action_in_project`
+IDOR-guard helper (as `routers.requirements._get_requirement_in_project`) and `action_to_out`, the response
+builder. They live here because two routers need them: `routers.actions` (the action's CRUD) and
+`routers.requirements` (the requirement-to-action linking endpoints).
 """
 
 from __future__ import annotations
@@ -43,11 +36,10 @@ from app.services.rbac import lock_project_for_update
 
 def _next_sequence(project: Project) -> int:
     """Returns the next action sequence number for `project`, advancing the
-    counter so it is never reused (mirrors `services.requirements.
-    _next_sequence`), including for archived actions.
+    counter so it is never reused, including for archived actions.
 
-    Locks the project row and re-reads the counter first, for the same
-    concurrent-create race (2026-10-05)."""
+    Locks the project row and re-reads the counter first so concurrent
+    creates cannot take the same number."""
     db = object_session(project)
     if db is None:
         raise RuntimeError("The project is not attached to a session.")

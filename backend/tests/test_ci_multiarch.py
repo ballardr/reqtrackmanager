@@ -3,9 +3,9 @@ Pins the multi-architecture image pipeline in ci.yml: every production image is 
 native runner of that architecture, the arm64 image is smoke tested and scanned before its digest is pushed, and
 the tags are assembled into one manifest list only after every leg has passed.
 
-Why: an arm64 image that builds but does not start (or that is silently left out of the manifest) is a
-user-facing failure for people self-hosting on Raspberry Pi, and none of it shows in the amd64-only test suites.
-A workflow edit that drops a leg, an image or a gate would leave the pipeline green, so a test fails instead.
+Why: an arm64 image that builds but does not start (or is left out of the manifest) breaks self-hosting on
+Raspberry Pi and does not show in the amd64-only suites; a workflow edit dropping a leg, image or gate would leave
+the pipeline green, so this test fails instead.
 
 Skipped when the repository root is not visible (the backend container mounts only backend/).
 """

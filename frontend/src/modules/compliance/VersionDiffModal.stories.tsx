@@ -85,12 +85,9 @@ export const RendersAllFiveDiffCategories: Story = {
     await expect(body.getByText("Removed (1)")).toBeInTheDocument();
     await expect(body.getByText("A.4.2 — Legacy asset register")).toBeInTheDocument();
 
-    // Each of these list items also carries a trailing `<span>` (changed
-    // fields / carry-forward eligibility / re-mapping note) as a separate
-    // text node inside the same `<li>`, so the `<li>`'s own full text is
-    // longer than just the requirement name — match it as a substring via
-    // regex rather than `getByText`'s default exact-string-per-element
-    // match, which would find no element at all.
+    // Each list item also carries a trailing `<span>` (changed fields, carry-forward eligibility or re-mapping note) as a separate
+    // text node, so the item's full text is longer than the requirement name; match it as a substring by regex, because
+    // `getByText`'s default exact match would find no element.
     await expect(body.getByText("Modified (1)")).toBeInTheDocument();
     await expect(body.getByText(/A\.5\.1 — Access control policy/)).toBeInTheDocument();
     await expect(body.getByText("(changed: name, description)")).toBeInTheDocument();

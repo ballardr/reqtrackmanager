@@ -47,10 +47,8 @@ export const Disabled: Story = {
   },
 };
 
-/** `showTrigger={false}` mounts only the (still hidden) input — used by
- * `CsvImportWizard` when a split-button elsewhere opens the file picker
- * itself via a forwarded ref, rather than rendering its own visible
- * trigger a second time on the same screen. */
+/** `showTrigger={false}` mounts only the hidden input, for `CsvImportWizard` when a split button elsewhere opens
+ * the file picker through a forwarded ref. */
 export const HiddenTriggerStillMountsInput: Story = {
   args: { children: <><Paperclip size={14} /> Attach a file</>, showTrigger: false },
   play: async ({ canvasElement }) => {

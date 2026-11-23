@@ -1,52 +1,25 @@
 /**
  * Module: modules/context_strategy/GuidingPrincipleDetailPage
  *
- * A single Guiding Principle's full detail — mirrors `StrategyDetailPage.tsx`'s exact
- * shape (full field display, current lifecycle status, version history,
- * comments, attachments, relationships, every lifecycle action), adjusted
- * for two genuine differences in Guiding Principle's own backend design:
+ * A single Guiding Principle's full detail: fields, lifecycle status, versions, comments, attachments, relationships
+ * and every lifecycle action. It mirrors `StrategyDetailPage.tsx` with two differences:
  *
- * 1. **A shorter, six-state lifecycle with no `under_review` step.**
- *    `Draft -> Proposed -> Approved -> Active -> Superseded/Retired` — from
- *    `Proposed`, this page offers `Approve` (optional comment) and
- *    `Send back` (mandatory comment, this module's "reject"-equivalent)
- *    directly, with no intervening `Submit for review` step
- *    `StrategyDetailPage.tsx` needs for its own seven-state lifecycle.
- * 2. **A dedicated `RecordPrincipalField` for `owner`, not a
- *    `GuidingPrincipleFormModal` field (Decided by: Agent).** The backend
- *    versions `owner` as a plain content field on the same full-replace
- *    `PUT` every other field uses (`schemas.GuidingPrincipleUpdate`,
- *    structurally closer to `FutureStateFieldValues.target_date` than to
- *    Pain Point's genuinely separate "assign owner" surface) — but this
- * frontend still reuses `components/RecordDetailParts`'
- *    `RecordPrincipalField` (a user, an organisation group and, on a project
- *    principle, a project group), mirroring `PainPointDetailPage.tsx`'s
- *    identical choice, for the same reasons: assigning a person or team is a
- *    distinct, higher-frequency action with its own search-first UX, better
- *    served by a dedicated control than buried inside a multi-field
- *    content-edit modal. `assignOwner` below calls
- *    `scopedApi.update` with the Guiding Principle's own current content
- *    fields plus the newly chosen `owner`, the same full-replace pattern
- *    `PainPointDetailPage.tsx`'s own `assignOwner` already establishes —
- *    this exercises the exact "explicit owner-assign-then-clear" behaviour
- * the backend test suite pins.
+ * 1. A six-state lifecycle with no `under_review` step: `Draft -> Proposed -> Approved -> Active -> Superseded/Retired`.
+ *    From `Proposed` the page offers `Approve` (optional comment) and `Send back` (mandatory comment) directly.
+ * 2. `owner` is assigned through `RecordPrincipalField` (a user, an organisation group and, on a project principle, a
+ *    project group), not a `GuidingPrincipleFormModal` field, as in `PainPointDetailPage.tsx`: assigning a person or
+ *    team is a frequent action that suits a search-first control. The backend versions `owner` as a content field on
+ *    the full-replace `PUT`, so `assignOwner` calls `scopedApi.update` with the current content fields plus the new
+ *    `owner`.
  *
- * **Scope-aware** (same as `StrategyDetailPage.tsx`): reads
- * whichever of `projectId`/`organizationId` its current route supplies.
- * Unlike `PainPointDetailPage.tsx` (project-scoped only), an org-scoped
- * Guiding Principle has no *project* to fetch for its own organisation id —
- * `organizationId` is used directly for the owner picker's org-user list in
- * that case, and a project fetch (for its `organization_id`) is only needed
- * in the project-scoped case.
+ * Scope-aware (as `StrategyDetailPage.tsx`): reads whichever of `projectId`/`organizationId` the route supplies. An
+ * organisation-scoped principle uses `organizationId` directly for the owner picker; a project-scoped one fetches its
+ * project to obtain `organization_id`.
  *
- * Every mutating control always renders regardless of the caller's actual
- * role (same posture `StrategyDetailPage.tsx` establishes) — the backend
- * enforces `guiding_principle_owner`/`guiding_principle_approver` (or their
- * org-scoped equivalents) and a 403 surfaces as a toast. Edit/archive/
- * file-attach controls specifically for *content* are hidden once
- * `guidingPrinciple.is_locked` (locked at `APPROVED` and beyond — one state
- * earlier than Strategy/Future State's `UNDER_REVIEW`, per `service.
- * GUIDING_PRINCIPLE_LOCKED_STATUSES`).
+ * Mutating controls always render whatever the caller's role; the backend enforces `guiding_principle_owner` /
+ * `guiding_principle_approver` (or the organisation equivalents) and a 403 surfaces as a toast. Content edit, archive
+ * and file-attach controls are hidden once `guidingPrinciple.is_locked` (from `APPROVED`, one state earlier than
+ * Strategy and Future State; `service.GUIDING_PRINCIPLE_LOCKED_STATUSES`).
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -82,11 +55,7 @@ import { DetailCard } from "../../components/DetailCard";
 import { orgResourcesPath } from "../orgResources";
 import { ORG_GUIDING_PRINCIPLES_SECTION_KEY } from "./orgResourceKeys";
 
-/** Every lifecycle action this page can offer, keyed by the action itself —
- * same generic confirm-dialog-copy pattern as `StrategyDetailPage.tsx`'s own
- * `TransitionAction`/`TRANSITION_COPY`, minus `approve`'s Strategy-only
- * "Under Review" framing (Guiding Principle moves `Proposed -> Approved`
- * directly, no intervening review state). */
+/** Every lifecycle action this page offers; keys the confirm-dialog copy as in `StrategyDetailPage.tsx`, with `approve` going straight from Proposed to Approved. */
 type TransitionAction = "approve" | "activate" | "supersede" | "retire";
 
 const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; confirmLabel: string }> = {
@@ -149,10 +118,8 @@ export function GuidingPrincipleDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeId, guidingPrincipleId]);
 
-  // The owner picker needs an organisation's own user list — a project-scoped
-  // Guiding Principle has no `organization_id` route param, so its owning
-  // project is fetched once to resolve one (mirrors `PainPointDetailPage.tsx`'s
-  // identical lookup); an org-scoped Guiding Principle already has it.
+  // The owner picker needs the organisation's user list; a project-scoped principle fetches its project once to
+  // resolve `organization_id`, as `PainPointDetailPage.tsx` does.
   useEffect(() => {
     if (organizationId || !projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((p) => setOwnerOrgId(p.organization_id));

@@ -1,24 +1,12 @@
-"""Tests for Context & Strategy's Pain Point backend API
-— the real HTTP endpoints (`router.py`'s org-scoped Pain Point type CRUD,
-`project_router.py`'s project-scoped Pain Point/type-override surface),
-through the `client` fixture, mirroring `test_context_strategy_future_
-state_api.py`'s own "go through the real API" convention. A new sibling
-file rather than appending to either existing one (Decided by: Agent,
-following the same precedent: one file per
-artefact type reads more cleanly than a single ever-growing combined file).
+"""
+Tests for the Pain Point API through the real HTTP endpoints (`router.py`
+org-scoped type CRUD, `project_router.py` Pain Points and type overrides).
 
-Covers: Pain Point create/get (project-scoped only — no org-scoped Pain
-Point resource), the broad-creation permission model (any project member,
-§6.5), the two-tier type vocabulary (org `PainPointTypeDefinition` CRUD via
-`router.py`, project `ProjectPainPointType` overrides/local types via
-`project_router.py`, and the merged effective-list resolution), the
-branching lifecycle (`Submitted -> Triaged -> {Rejected | Duplicate |
-Accepted -> Addressed -> Closed}`, all three post-Triaged branches),
-manager-only actions 403ing for a plain member, a Fine-Grained Access
-Control custom-role permission grant satisfying the decide gate,
-disabled-module/sub-component 404s, cross-project isolation, and
-comments/direct file attachments (including the deliberately-broad
-"any member may add evidence" file-upload gate).
+Covers create/get (project-scoped only), broad creation (any project member),
+the two-tier type vocabulary and its merged effective list, the branching
+lifecycle, manager-only actions returning 403 for a member, a permission grant
+satisfying the decide gate, disabled module/sub-component 404s, cross-project
+isolation, comments and attachments (any member may add evidence).
 """
 
 from __future__ import annotations

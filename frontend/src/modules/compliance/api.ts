@@ -1,59 +1,18 @@
 /**
  * Module: modules/compliance/api
  *
- * Thin request functions for the Compliance Module's org-router endpoints
- * (`backend/app/modules/compliance/router.py`, mounted at
- * `/api/v1/orgs/{organization_id}/modules/compliance`) that the
- * org-level management UI calls: standards CRUD, standard-version
- * CRUD/publish/retire (incl. cloning), the requirement tree, required
- * actions, the two extensible vocabularies (action types, mapping
- * relationship types), cross-standard requirement mappings, and the
- * version-diff endpoint (§27) — plus the
- * project-router endpoints (`project_router.py`, mounted at
- * `/api/v1/projects/{project_id}/modules/compliance`) the Project
- * Compliance View needs: assignment viewing, per-requirement applicability/
- * assessment/approval, required-action assessments, evidence CRUD/
- * linkage/files, and scheduled reviews. Standard-to-project *assignment
- * itself* (`POST .../projects/{project_id}/project-compliance`) stays on
- * the org router per `router.py`'s own "assigning is a Compliance Manager
- * decision" design even though the calling UI is
- * project-scoped — see the "Assignment (org router)" section below.
- *
- * This codebase has no general "one API file per feature" convention —
- * every other page calls `api.get/post/...` directly inline
- * (`frontend/src/api/client.ts`). A dedicated file is used here purely
- * because of this module's sheer endpoint count (70+) — every function below
- * is a direct, uninteresting pass-through to `api.*`, kept together so
- * `ComplianceAdminPanel.tsx`/`ProjectCompliancePage.tsx` and their children
- * read as UI logic, not fetch plumbing. Deliberately NOT a generic
- * per-module convention this repo now expects elsewhere.
- *
- * The "Compliance Standards" first-class, cross-org, project-like
- * nav entity adds the two global (no org/project id in the path) endpoints
- * at the top of this file — `getNavVisibility`/`getStandardById` — plus
- * `getStandardHistory` (an org-router addition, `router.py`'s new
- * `GET .../standards/{id}/history`, mirroring `getRequirementHistory`'s
- * existing shape) for the new `/standards/:standardId` workspace's
- * "History" section.
- *
- * Standard-level import/export: `exportStandard`/
- * `importStandard` — `exportStandard` returns a `Blob` (`api.getForBlob`,
- * the same shape `OrgComplianceWidgets.tsx`'s report downloads already
- * use) rather than parsed JSON, since the caller only ever hands it
- * straight to `downloadBlob`; `importStandard` uploads via `api.postFile`,
- * the same helper `ProjectListPage.tsx`'s own project-bundle import uses.
- *
- * `downloadOrgComplianceReport`/`downloadProjectComplianceReport`
- * use the same `api.getForBlob` + `downloadBlob` shape as `exportStandard`
- * above, for the compliance-report endpoints themselves,
- * scoped by an optional `ComplianceReportFilters` so a report export
- * triggered from an already-filtered panel (`OrgComplianceStandardsPanel.tsx`,
- * `OrgComplianceOutstandingPanel.tsx`, `OutstandingPanel.tsx`) downloads
- * only what that panel currently shows.
- *
- * Endpoints intentionally NOT covered here:
- * the project-scoped version-migration action (§27, `migrate-version`) —
- * deliberately not built into the UI, a flagged scope trim.
+ * Thin request functions for the Compliance module. Org-router endpoints (`backend/app/modules/compliance/router.py`, mounted at
+ * `/api/v1/orgs/{organization_id}/modules/compliance`): standards, versions (publish, retire, clone), the requirement tree,
+ * required actions, the two extensible vocabularies (action types, mapping relationship types), requirement mappings, the
+ * version diff (§27), standard export and import, and assigning a standard to a project (a Compliance Manager decision, so it
+ * stays on the org router though the calling UI is project-scoped). Project-router endpoints (`project_router.py`, mounted at
+ * `/api/v1/projects/{project_id}/modules/compliance`): assignments, per-requirement applicability, assessment and approval,
+ * required-action assessments, evidence and its files, and scheduled reviews. The global endpoints (`getNavVisibility`,
+ * `getStandardById`) carry no org or project id.
+ * Every function is a pass-through to `api.*`, in one file because of the endpoint count (70+), so the pages read as UI logic.
+ * Blob downloads (`exportStandard`, the report downloads) use `api.getForBlob` for `downloadBlob`; the report downloads take
+ * `ComplianceReportFilters` so an export from a filtered panel contains only what the panel shows; `importStandard` uses
+ * `api.postFile`. The project-scoped version migration (§27, `migrate-version`) has no wrapper.
  */
 import { api, ApiError } from "../../api/client";
 import type { ProjectScope } from "../../api/projectScope";
@@ -103,12 +62,9 @@ function projectBase(projectId: string): string {
 
 // --- global (no org/project id in the path) endpoints -----------------
 //
-// Mounted via `ModuleDefinition.get_global_router` (`backend/app/modules/
-// compliance/global_router.py`) at the bare `/api/v1/compliance` prefix —
-// neither endpoint has a single org/project id of its own to key a path
-// off (`nav-visibility` aggregates across every org the caller belongs to;
-// `getStandardById` resolves a standard's owning org from its own id,
-// mirroring how a project's own id already resolves to its org).
+// Mounted through `ModuleDefinition.get_global_router` (`backend/app/modules/compliance/global_router.py`) at `/api/v1/compliance`.
+// `nav-visibility` aggregates across every organisation the caller belongs to and `getStandardById` resolves a standard's
+// owning organisation from its own id, so neither has an org or project id to key a path.
 
 /** `status_organization_ids`: the organisations where the caller may read the organisation-wide status views. */
 export interface ComplianceNavVisibility {
@@ -164,17 +120,11 @@ export async function listMyActiveOrganizations(): Promise<Organization[]> {
 }
 
 /**
- * No cross-org backend listing endpoint exists for standards — every
- * compliance route requires `organization_id` in the path (by design) — so this fans `listStandards` out across every org the caller
- * belongs to in parallel. An org whose call 404s (module disabled there)
- * is dropped silently, matching the 404-not-403 "not entitled/disabled
- * looks the same as not present" posture every other compliance endpoint
- * already gives; a non-404 failure is also dropped (logged, not surfaced)
- * rather than failing the whole caller over one org's own hiccup.
- *
- * Shared by `StandardListPage.tsx` (the cross-org standards directory) and
- * `StandardWorkspacePage.tsx`'s `EntitySwitcher` loader, which
- * both need this exact fan-out rather than duplicating it.
+ * Lists standards across every organisation the caller belongs to, fanning `listStandards` out in parallel because every
+ * compliance route needs `organization_id` in the path. An organisation whose call returns 404 (module disabled there) is
+ * dropped silently, as every compliance endpoint treats not-entitled and not-present alike; any other failure is logged
+ * and dropped so one organisation's error does not fail the caller.
+ * Shared by `StandardListPage.tsx` and `StandardWorkspacePage.tsx`'s `EntitySwitcher` loader.
  */
 export async function listStandardsAcrossMyOrgs(
   includeArchived = false
@@ -236,10 +186,8 @@ export function getStandardHistory(orgId: string, standardId: string): Promise<C
 
 // --- standard workspace Overview stats --------------------------------
 
-/** This standard's own slice of `listOrgProjectComplianceStatus` — the
- * exact same `ProjectComplianceStatus` rows, narrowed server-side to this
- * one standard, backing the Overview's "Projects"/"Compliant" stat tiles
- * and their filtered drill-down list (`StandardProjectsPanel.tsx`). */
+/** This standard's slice of `listOrgProjectComplianceStatus`: the same `ProjectComplianceStatus` rows narrowed server-side to
+ * one standard, backing the Overview's "Projects" and "Compliant" tiles and their drill-down list (`StandardProjectsPanel.tsx`). */
 export function getStandardProjectSummary(orgId: string, standardId: string): Promise<ProjectComplianceStatus[]> {
   return api.get(`${base(orgId)}/standards/${standardId}/project-summary`);
 }
@@ -252,12 +200,9 @@ export function exportStandard(orgId: string, standardId: string): Promise<Blob>
 
 // --- scoped compliance report export -----------------------------------
 
-/** The Standard/Standard version/Sub-section (+ Project, at org scope)
- * filters a report export narrows to — the same filter dimensions
- * `OrgComplianceStandardsPanel.tsx`, `OrgComplianceOutstandingPanel.tsx`,
- * and `OutstandingPanel.tsx` already hold as client-side filter state,
- * passed through as query params so "Export" always means
- * "export what this panel is currently showing," not "export everything." */
+/** The Standard, Standard version and Sub-section (and Project, at organisation scope) filters a report export narrows to: the
+ * dimensions `OrgComplianceStandardsPanel.tsx`, `OrgComplianceOutstandingPanel.tsx` and `OutstandingPanel.tsx` hold as filter
+ * state, passed as query parameters so Export means what the panel currently shows. */
 export interface ComplianceReportFilters {
   projectId?: string;
   standardId?: string;
@@ -281,22 +226,15 @@ function reportQueryString(kind: ComplianceReportKind, filters: ComplianceReport
   return `?${params.toString()}`;
 }
 
-/** `GET .../orgs/{id}/modules/compliance/reports?format={pdf,docx,odt,html,csv,xlsx,ods}`, scoped
- * by `filters` — the org-wide report `OrgComplianceWidgets.tsx`'s own
- * unfiltered "Download PDF/CSV report" already calls unscoped; this is the
- * filtered counterpart `OrgComplianceStandardsPanel.tsx`/
- * `OrgComplianceOutstandingPanel.tsx`'s own Export triggers use. Merged
- * from two separate `/reports/pdf`/`/reports/csv` GETs into one endpoint
- * taking `format` as a query param (2026-09-22, see docs/decisions.md). */
+/** `GET .../orgs/{id}/modules/compliance/reports?format={pdf,docx,odt,html,csv,xlsx,ods}`, scoped by `filters`: the report
+ * `OrgComplianceWidgets.tsx` downloads unscoped, filtered for the Export triggers of `OrgComplianceStandardsPanel.tsx` and
+ * `OrgComplianceOutstandingPanel.tsx`. One endpoint takes `format` as a query parameter. */
 export function downloadOrgComplianceReport(orgId: string, kind: ComplianceReportKind, filters: ComplianceReportFilters = {}): Promise<Blob> {
   return api.getForBlob(`${base(orgId)}/reports${reportQueryString(kind, filters)}`);
 }
 
-/** `GET .../projects/{id}/modules/compliance/reports?format={pdf,docx,odt,html,csv,xlsx,ods}`,
- * scoped by `filters` — the filtered counterpart to
- * `ProjectCompliancePage.tsx`'s own unfiltered whole-project report
- * download, used by `OutstandingPanel.tsx`'s Export trigger. Same
- * 2026-09-22 merge as `downloadOrgComplianceReport` above. */
+/** `GET .../projects/{id}/modules/compliance/reports?format={pdf,docx,odt,html,csv,xlsx,ods}`, scoped by `filters`: the
+ * filtered counterpart of `ProjectCompliancePage.tsx`'s whole-project report download, used by `OutstandingPanel.tsx`'s Export. */
 export function downloadProjectComplianceReport(
   projectId: string, kind: ComplianceReportKind, filters: Omit<ComplianceReportFilters, "projectId"> = {}
 ): Promise<Blob> {
@@ -583,10 +521,8 @@ export function getStandardVersionDiff(
 
 // --- Org Compliance View + Dashboard (§22, §23) -------------------------
 //
-// Org-wide aggregations across every project in the organisation, all
-// `_require_manage`-gated on the backend (§26 — notes for why this is manage-, not view-, gated despite
-// §22's own looser-sounding "Compliance Managers and authorised users"
-// text).
+// Org-wide aggregations across every project in the organisation, all `_require_manage`-gated on the backend (§26), manage- and
+// not view-gated despite §22's looser "Compliance Managers and authorised users" text.
 
 export function listOrgProjectComplianceStatus(orgId: string, includeArchived = false): Promise<ProjectComplianceStatus[]> {
   return api.get(`${base(orgId)}/project-compliance?include_archived=${includeArchived}`);
@@ -627,15 +563,9 @@ export function listOutstandingRequiredActions(projectId: string): Promise<Outst
 // --- Client-side tree assembly ----------------------------------------------------
 
 /**
- * Builds a parent/child tree from the backend's flat, depth-first-ordered
- * `GET .../requirements` list (`parent_requirement_id` populated on each
- * row) — there is no nested-tree endpoint (confirmed against
- * `router.py::_flatten_requirements_dfs`; see this module's own research
- * notes notes). Mirrors that
- * backend algorithm: group by `parent_requirement_id`, each group already
- * arrives `sort_order`-ordered courtesy of the backend's own DFS emission,
- * so no client-side re-sort is needed — this just re-nests the already-
- * correctly-ordered flat list.
+ * Builds a parent/child tree from the backend's flat, depth-first `GET .../requirements` list (`parent_requirement_id` on each
+ * row), since no nested-tree endpoint exists (`router.py::_flatten_requirements_dfs`). Each parent group already arrives
+ * `sort_order`-ordered from the backend's depth-first emission, so it only re-nests the list and does no re-sort.
  */
 export function buildRequirementTree(flat: ComplianceRequirement[]): ComplianceRequirementNode[] {
   const byParent = new Map<string | null, ComplianceRequirement[]>();
@@ -656,21 +586,12 @@ export function buildRequirementTree(flat: ComplianceRequirement[]): ComplianceR
 }
 
 /**
- * Resolves the top-level ancestor (the requirement whose own
- * `parent_requirement_id` is `null`) of `requirementId` within
- * `requirementsById` — the "sub-section" filter concept. There is no
- * dedicated "section" field anywhere in the data model (a standard's
- * hierarchy is purely `parent_requirement_id`-based, the same flat listing
- * `buildRequirementTree` above nests), so a requirement's section is just
- * its outermost ancestor, e.g. "Clause 4" of ISO 27001. Reused by both
- * `OrgComplianceOutstandingPanel` and `OutstandingPanel` rather than each
- * re-deriving it.
+ * Resolves the top-level ancestor (the requirement whose `parent_requirement_id` is `null`) of `requirementId` within
+ * `requirementsById`: the "sub-section" filter concept, e.g. "Clause 4" of ISO 27001. The data model has no "section" field, so
+ * a requirement's section is its outermost ancestor. Used by `OrgComplianceOutstandingPanel` and `OutstandingPanel`.
  *
- * Returns `null` if `requirementId` isn't in `requirementsById` at all
- * (the caller hasn't fetched that requirement's own standard version's
- * tree) or if a broken `parent_requirement_id` chain is hit — a "no
- * section resolved" outcome should never throw, only leave that row out of
- * every sub-section bucket.
+ * Returns `null` when `requirementId` is not in `requirementsById` (that requirement's version tree has not been fetched) or
+ * when a `parent_requirement_id` chain is broken; it never throws, so such a row is left out of every sub-section bucket.
  */
 export function findTopLevelAncestor(
   requirementsById: Map<string, ComplianceRequirement>,
@@ -690,18 +611,11 @@ export function findTopLevelAncestor(
 }
 
 /**
- * Resolves the `standard_id` that owns a given `standard_version_id` —
- * needed because every org-router requirement-tree endpoint is nested
- * under `/standards/{standard_id}/versions/{version_id}/...` (no
- * standalone "get version by id alone" endpoint exists, confirmed against
- * `router.py`), while `ProjectCompliance` only stores `standard_version_id`.
- * For an *active* assignment the caller already has this for free via
- * `ProjectComplianceStatusOut.standard_id` (`getProjectComplianceStatus`);
- * this fallback is for an *archived* one, which `GET .../status` excludes
- * by design (see that endpoint's own docstring) — a client-side join over
- * this organisation's (typically small) standard/version catalogue rather
- * than a new backend endpoint for what should be a rare path (viewing an
- * archived assignment's own requirement tree).
+ * Resolves the `standard_id` that owns a `standard_version_id`. Every org-router requirement-tree endpoint is nested under
+ * `/standards/{standard_id}/versions/{version_id}/...` with no endpoint to get a version by id alone, while `ProjectCompliance`
+ * stores only `standard_version_id`. An active assignment has it in `ProjectComplianceStatusOut.standard_id`
+ * (`getProjectComplianceStatus`); this fallback serves an archived assignment, which `GET .../status` excludes, by a client-side
+ * join over the organisation's (typically small) standard and version catalogue.
  */
 export async function resolveStandardIdForVersion(orgId: string, standardVersionId: string): Promise<string | null> {
   const standards = await listStandards(orgId, true);
@@ -714,12 +628,9 @@ export async function resolveStandardIdForVersion(orgId: string, standardVersion
 
 // --- Assignment ---------------------------------------------------
 //
-// Two endpoints, same payload shape, different callers/routers:
-// the project-scoped one (below) is the *default, primary* path, usable
-// by a plain Project Manager with no `compliance_officer` grant; this org-
-// scoped one (Compliance-Manager-only) remains
-// the secondary/administrative path, for a Compliance Manager assigning on
-// a project's behalf or in bulk.
+// Two endpoints with one payload shape and different callers: the project-scoped one (below) is the primary path, usable by a
+// plain Project Manager with no `compliance_officer` grant; this org-scoped one (Compliance-Manager-only) is the administrative
+// path, for assigning on a project's behalf or in bulk.
 
 export function createProjectCompliance(
   orgId: string, projectId: string,
@@ -728,10 +639,8 @@ export function createProjectCompliance(
   return api.post(`${base(orgId)}/projects/${projectId}/project-compliance`, payload);
 }
 
-/** The default, primary assignment path — project-scoped,
- * `_require_officer`-gated (`compliance_officer` grant OR
- * `ProjectRole.PROJECT_MANAGER`) — used by `ProjectCompliancePage.tsx`'s
- * own "Assign standard" flow. */
+/** The primary assignment path: project-scoped and `_require_officer`-gated (`compliance_officer` grant or
+ * `ProjectRole.PROJECT_MANAGER`), used by `ProjectCompliancePage.tsx`'s "Assign standard" flow. */
 export function createProjectComplianceAsProjectManager(
   projectId: string,
   payload: { standard_id: string; standard_version_id: string; target_compliance_date?: string | null }

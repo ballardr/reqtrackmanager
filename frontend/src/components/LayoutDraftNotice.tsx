@@ -1,13 +1,11 @@
 /**
  * Module: components/LayoutDraftNotice
  *
- * The line that says a layout has unpublished work: who wrote the shared draft, when, and which version it began from,
- * with Discard draft. The designer shows it on opening a layout that has a draft and History shows it as the Draft row
- * above the published versions, so the two are never confused.
- *
- * Responsibilities: word the draft's author, time and base version; say plainly when versions were published since the
- * draft began (publishing then follows the server's version-conflict rule); offer Discard draft and, where the caller
- * supports it, Show saved version. It stores nothing: the caller confirms and carries out each action.
+ * The line saying a layout has unpublished work: who wrote the shared draft, when, which version it began from,
+ * with Discard draft. The designer shows it on opening a layout with a draft and History shows it as the Draft row
+ * above the published versions. It says plainly when versions were published since the draft began (publishing
+ * then follows the server's version-conflict rule) and offers Show saved version where the caller supports it. It
+ * stores nothing: the caller confirms and carries out each action.
  */
 import type { ReportLayoutDraftSummary } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";

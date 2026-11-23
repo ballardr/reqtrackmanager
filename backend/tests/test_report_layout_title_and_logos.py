@@ -5,7 +5,7 @@ A custom layout's document prints a title only through a block of its own, and t
 pictures as the downloads (PDF, Word, OpenDocument):
 
 - `ReportDocument.show_title` off prints no title or cover in any of the four formats, while the layout's name stays
-  the file's metadata title; on (a built-in report) it prints as before.
+  the file's metadata title; on (a built-in report) the title prints.
 - An evaluated layout's document has `show_title` off.
 - A picture laid over the page is placed in the HTML view as a share of the page's width, so a narrow preview pane
   does not push a page-anchored logo off its edge.

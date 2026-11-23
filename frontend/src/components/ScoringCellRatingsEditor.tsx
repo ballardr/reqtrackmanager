@@ -1,17 +1,13 @@
 /**
  * Module: components/ScoringCellRatingsEditor
  *
- * Edits one two-axis scoring model's explicit per-cell ratings (generic
- * scoring-matrix core) at org or project level: the
- * matrix itself (`ScoringMatrixChart` in edit mode) with a band picker in
- * each cell. A pinned cell overrides the threshold bands for that cell only,
- * which is what lets a matrix be non-monotonic in the product of its levels'
- * weights. A cell left on "Thresholds" keeps the band its score earns.
+ * Edits one two-axis scoring model's explicit per-cell ratings at organisation or project level: the matrix
+ * (`ScoringMatrixChart` in edit mode) with a band picker in each cell. A pinned cell overrides the threshold bands for
+ * that cell only, so a matrix can be non-monotonic in the product of its levels' weights; a cell on "Thresholds" keeps
+ * the band its score earns.
  *
- * Edits are batched behind one Save (like `ScoringBandsEditor`); override
- * visibility follows the style guide's "platform default vs. override"
- * pattern via `OverridePill`. Cells can only use bands that are already
- * saved, so band edits are saved first.
+ * Edits are batched behind one Save (like `ScoringBandsEditor`); override visibility uses `OverridePill`. Cells can only
+ * use bands already saved, so band edits are saved first.
  */
 import { useState } from "react";
 

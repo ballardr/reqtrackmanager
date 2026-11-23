@@ -17,24 +17,21 @@ import { REQUEST_STATUS_LABEL } from "./types";
 /**
  * Module: modules/product_feedback/module
  *
- * The Product Feedback module's frontend registration — the frontend mirror of `backend/app/modules/
- * product_feedback/module.py`'s `MODULE_DEFINITION`, same single-`moduleDefinition`-export convention every other
- * Tier A module uses. `frontend/src/modules/registry.ts` auto-discovers this file.
+ * The Product Feedback module's frontend registration, the mirror of `backend/app/modules/product_feedback/module.py`'s
+ * `MODULE_DEFINITION`. `frontend/src/modules/registry.ts` discovers this file.
  *
  * `artefactPaths` / `orgArtefactPaths` / `artefactListPaths`: where a request, an inbox request and the project's
  * request list live, so links, notifications and search hits resolve without core naming this module.
  *
  * `routes`: the project list and detail pages, gated on the project's enabled modules like every Tier A route.
  * `globalRoutes`: the detail page of an inbox request at its organisation path. An organisation-owned record has no
- * single project whose enabled-modules list could gate the route (the same reasoning as an organisation Strategy),
- * and `RequestDetailPage` is one scope-aware component serving both paths.
+ * single project whose enabled modules could gate the route, and `RequestDetailPage` is one scope-aware component
+ * serving both paths.
  *
  * `orgResourceSections`: the inbox, as day-to-day content on Org Resources rather than configuration.
  * `orgAdminSections` / `projectAdminSections`: the scoring configuration, through core's shared scoring editors (the
  * module only names its scheme key), the project's submission setting, and the two classified lists (external systems,
  * request channels) through the shared type vocabulary panels.
- *
- * `artefactInactiveStatuses`: a declined or duplicate request is greyed out in shared lists.
  */
 const REQUEST_SCORING_SCHEME = "enhancement_request";
 

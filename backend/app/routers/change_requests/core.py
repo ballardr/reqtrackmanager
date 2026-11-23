@@ -1,19 +1,11 @@
 """
 Module: routers.change_requests.core
 
-Change request creation and read paths (introduction, C-G-03, C-G-12):
-drafting a change request (against an existing requirement, or proposing a
-new one, an action add/remove, or a link add/remove), listing/fetching one,
-and its per-entity activity timeline. Also home for `_to_out`/`_latest_version`
-(imported by `workflow.py`, the only other bucket that needs them),
-and `OPEN_CR_STATUSES`
-(imported by `votes.py`) — each used by exactly one sibling bucket besides
-this one, so kept here rather than promoted to `_shared.py` (see that
-module's own docstring for the "used by 3+ buckets" threshold).
-
-Split out of the former flat `routers/change_requests.py` as a pure
-code-organization refactor — see `routers/change_requests/__init__.py`'s
-module docstring for the package layout.
+Change request creation and read paths (C-G-03, C-G-12): drafting a change request (against an existing
+requirement, or proposing a new one, an action add/remove or a link add/remove), listing/fetching one and
+its activity timeline. Also holds `_to_out`/`_latest_version` (used by `workflow.py`) and
+`OPEN_CR_STATUSES` (used by `votes.py`), each used by one sibling, so not promoted to `_shared.py`
+(which holds helpers used by three or more).
 """
 
 from __future__ import annotations
@@ -219,13 +211,9 @@ def create_change_request(
         requirement = db.get(Requirement, payload.requirement_id)
         if requirement is None or requirement.project_id != project_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
-        # Requirement-status guard:
-        # a change request exists to gate edits once direct editing is
-        # locked (`LOCKED_STATUSES = {APPROVED}`, services/requirements.py)
-        # — a draft or reviewed requirement isn't locked, so it should be
-        # edited directly (routers/requirements.py::update_requirement), not
-        # through a change request. Extends that existing precedent rather
-        # than inventing a new one.
+        # Requirement-status guard: a change request gates edits once direct editing is locked
+        # (`LOCKED_STATUSES = {APPROVED}`, services/requirements.py); a draft or reviewed requirement is
+        # edited directly (routers/requirements.py::update_requirement).
         if not is_locked(get_current_version(db, requirement.id)):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -247,11 +235,9 @@ def create_change_request(
                 status.HTTP_400_BAD_REQUEST, "proposed_attachment_file_ids is required since 'attachments' is listed in changed_fields."
             )
     elif payload.kind == ChangeRequestKind.ADD_ACTION:
-        # Item 514 — mirrors MODIFY_REQUIREMENT's own guard above: adding an
-        # action is only routed through a change request once the target
-        # requirement is locked; while it's still draft/reviewed, add it
-        # directly (routers/requirements.py::create_and_link_action/
-        # link_action), which now reject the direct path once locked.
+        # Mirrors MODIFY_REQUIREMENT's guard above: an action is added through a change request only once
+        # the requirement is locked; before that the direct path applies
+        # (routers/requirements.py::create_and_link_action/link_action) and rejects it once locked.
         if payload.requirement_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "requirement_id is required to add an action.")
         requirement = db.get(Requirement, payload.requirement_id)
@@ -292,11 +278,8 @@ def create_change_request(
                     status.HTTP_400_BAD_REQUEST, "proposed_action_type_id must be an action type defined in this project."
                 )
     elif payload.kind == ChangeRequestKind.REMOVE_ACTION:
-        # Mirrors ADD_ACTION's own guard
-        # above, and is unconditional (no project/org opt-in): removing an
-        # already-linked action from a locked requirement always requires a
-        # change request, closing the asymmetry `unlink_action` used to have
-        # with the (already-gated) add side.
+        # Mirrors ADD_ACTION's guard above and is unconditional (no project/org opt-in): removing a linked
+        # action from a locked requirement always requires a change request, as `unlink_action` enforces.
         if payload.requirement_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "requirement_id is required to remove an action.")
         requirement = db.get(Requirement, payload.requirement_id)
@@ -317,12 +300,9 @@ def create_change_request(
         if existing is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is not linked to this requirement.")
     elif payload.kind in (ChangeRequestKind.ADD_LINK, ChangeRequestKind.REMOVE_LINK):
-        # A project/org opt-in sibling of
-        # ADD_ACTION/REMOVE_ACTION above: only reachable once
-        # `services.requirements.requires_change_request_for_links` is true
-        # for this project (links otherwise stay ungated — see
-        # `models.relationship.ArtefactLink`'s model docstring), *and* the
-        # target requirement is locked.
+        # Opt-in sibling of ADD_ACTION/REMOVE_ACTION: reachable only when
+        # `services.requirements.requires_change_request_for_links` is true for this project (links are
+        # otherwise ungated, see `models.relationship.ArtefactLink`) and the target requirement is locked.
         if payload.requirement_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "requirement_id is required to change a link.")
         requirement = db.get(Requirement, payload.requirement_id)
@@ -359,20 +339,11 @@ def create_change_request(
         # brand-new requirement can never be without.
         if payload.proposed_name is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_name is required for a new requirement.")
-        # proposed_target_stage_id may be omitted — approval defaults it to
-        # the project's earliest stage, same as a direct create
-        # (routers/requirements.py::create_requirement_endpoint).
-        # Hardening-review finding: proposed_component_id/proposed_category_id
-        # for a new_requirement change request were never validated against
-        # project_id at all — unlike the direct-create path
-        # (create_requirement_endpoint), which checks component.project_id/
-        # category.project_id explicitly. There's no update endpoint for a
-        # change request's proposed_* fields (they're write-once, set only
-        # here at creation — confirmed via schemas/change_request.py), so
-        # this is the one place this ever needs checking; decide_change_request
-        # only re-checked `is None`, not project membership, so an
-        # unvalidated cross-project reference would have sailed through
-        # approval unchanged and been baked into a real Requirement row.
+        # proposed_target_stage_id may be omitted; approval defaults it to the project's earliest stage,
+        # as a direct create does (routers/requirements.py::create_requirement_endpoint).
+        # proposed_component_id/proposed_category_id are validated against project_id here, as in the
+        # direct-create path: they are write-once (set only at creation), and approval only checks
+        # `is None`, so an unvalidated cross-project reference would be baked into a real Requirement row.
         component = None
         if payload.proposed_component_id is not None:
             component = db.get(ProjectComponent, payload.proposed_component_id)
@@ -395,24 +366,17 @@ def create_change_request(
     _validate_proposed_links(db, project, payload, creator_id=payload.creator_id or current_user.id)
 
     if payload.proposed_attachment_file_ids:
-        # Same cross-org isolation check report images use
-        # (services/report_document.py::resolve_report_images) — an attachment
-        # proposed here must already be an org shared resource belonging to
-        # this project's own organisation, not an arbitrary file id from
-        # anywhere else in the system.
+        # Same cross-org isolation check as report images (services/report_document.py::resolve_report_images):
+        # a proposed attachment must be an org shared resource of this project's own organisation.
         for file_id in payload.proposed_attachment_file_ids:
             asset = db.get(FileAsset, file_id)
             if asset is None or asset.organization_id != project.organization_id or not asset.is_org_resource:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid proposed attachment file id: {file_id}.")
 
-    # Validated against the *requirement* entity kind, not change_request: these
-    # values represent proposed custom-attribute values for the requirement
-    # being created/modified (mirroring proposed_name/proposed_reasoning),
-    # copied onto the requirement's version on approval. A separate
-    # `CustomFieldEntityKind.CHANGE_REQUEST` kind exists in the data model for
-    # attributes describing the change request itself (e.g. "urgency"); v1
-    # doesn't yet have a workflow step that consumes those, so none are
-    # collected here — see docs/decisions.md.
+    # Validated against the requirement entity kind, not change_request: these are proposed custom-attribute
+    # values for the requirement being created or modified, copied onto its version on approval. The
+    # `CustomFieldEntityKind.CHANGE_REQUEST` kind (attributes of the change request itself) has no consuming
+    # workflow step, so none are collected here (see docs/decisions.md).
     custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, payload.custom_fields)
 
     creator_id = current_user.id
@@ -497,46 +461,29 @@ def list_change_requests(
     project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Lists change requests, with optional status/target-version filters.
-    `tag`/`tag_mode` narrow to change requests carrying those tags.
-    `limit`/`offset` (U-P-06) are optional pagination — see `list_requirements`
-    for the same pattern.
+    """Lists change requests, with optional status/target-version filters. `tag`/`tag_mode` narrow to
+    change requests carrying those tags. `limit`/`offset` (U-P-06) paginate, as `list_requirements`.
 
-    `active_only` filters to the three non-terminal
-    statuses (`draft`/`submitted`/`in_review`) in one round trip, so the
-    frontend's default view doesn't have to request every status and then
-    hide `approved`/`rejected`/`withdrawn` rows client-side — with the
-    list backend-paginated (`limit`/`offset`), a client-only filter would
-    silently filter just the current page rather than the true result
-    set. Ignored when `cr_status` is also given — an explicit single
-    status is more specific than "any active status" and wins.
+    `active_only` filters to the non-terminal statuses (`draft`/`submitted`/`in_review`) server-side, so a
+    paginated page is not filtered client-side. Ignored when `cr_status` is given (a single status is more
+    specific).
 
-    `sort` optionally sorts by `proposed_name` (`title`), `unique_code` (`code`; by prefix and then
-    number, so `CR-2` precedes `CR-10`), `status`, `created_at` (`created`) or `updated_at`
-    (`modified`), `order` picks `asc` (default) or `desc`. Omitting `sort`
-    keeps the existing default (creation/query) order unchanged. Rows with
-    no `proposed_name` (a MODIFY_REQUIREMENT change request that didn't
-    touch the name — the list view falls back to the requirement's own
-    name for display, see `crTitle()` in `ChangeRequestsPage.tsx`) sort as
-    if empty, since sorting by the raw column can't resolve that per-row
-    fallback without an extra join.
+    `sort` sorts by `proposed_name` (`title`), `unique_code` (`code`; by prefix then number, so `CR-2`
+    precedes `CR-10`), `status`, `created_at` (`created`) or `updated_at` (`modified`); `order` picks `asc`
+    (default) or `desc`. Without `sort`, rows are newest first. Rows with no `proposed_name` (the list
+    view falls back to the requirement's name, see `crTitle()` in `ChangeRequestsPage.tsx`) sort as empty,
+    since the raw column cannot resolve that fallback without an extra join.
 
-    Without `sort`, rows are newest first.
+    `search` is a case-insensitive substring match against what the list shows: the request's code, the
+    proposed name, the reason, and the target requirement's current name and code (looked up in one
+    batched query).
 
-    `search` (2026-10-04) is a case-insensitive substring match against
-    what the list shows and what a user would type: the request's code, the
-    proposed name, the reason, and the target requirement's current name and code (the list
-    falls back to the requirement's name when there's no proposed name). The
-    requirement names are looked up in one batched query.
+    `X-Total-Unfiltered-Count` reports the count within only the mandatory project scope, before
+    `cr_status`/`active_only`/`target_stage_id` narrow it; unlike `X-Total-Count` it does not change
+    with those filters.
 
-    `X-Total-Unfiltered-Count` is a second response header reporting the
-    count within only the mandatory project scope (change requests have no
-    archived-visibility concept), before `cr_status`/`active_only`/
-    `target_stage_id` narrow it further — unlike `X-Total-Count`, it does
-    not change when the caller applies a status/target-version filter.
-
-    `project_scope` adds the change requests of the related projects the caller can open, each
-    row labelled with `from_project_*` (see `list_requirements`).
+    `project_scope` adds the change requests of the related projects the caller can open, each row
+    labelled with `from_project_*` (see `list_requirements`).
     """
     unfiltered = 0
 

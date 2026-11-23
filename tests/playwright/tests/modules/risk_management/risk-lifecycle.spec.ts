@@ -8,13 +8,10 @@ import { openAddLinkDialog } from "../linksPanel";
 installCleanupHook();
 
 /**
- * Job to be done: exit
- * criteria — Playwright e2e coverage of the Risk Management UI
- * (`frontend/src/modules/risk_management/`) against a real backend: record and
- * rate a risk and move it through its lifecycle with a version history; tell a
- * *linked* treatment from an *effective* one; record a review and clear an
- * overdue flag; read the configured matrix and narrow the register by a cell;
- * and reach the organisation's Risk type vocabulary.
+ * Job to be done: Playwright e2e coverage of the Risk Management UI (`frontend/src/modules/risk_management/`)
+ * against a real backend: record and rate a risk and move it through its lifecycle with a version history; tell
+ * a *linked* treatment from an *effective* one; record a review and clear an overdue flag; read the configured
+ * matrix and narrow the register by a cell; and reach the organisation's Risk type vocabulary.
  *
  * Each test builds its own disposable org (see `./helpers.ts`), so none depends
  * on seeded state or on another test having run.

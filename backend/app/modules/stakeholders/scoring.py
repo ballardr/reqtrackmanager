@@ -1,23 +1,16 @@
 """
 Module: modules.stakeholders.scoring
 
-Stakeholders & Personas' registration into core's generic scoring-matrix
-mechanism (`services.scoring`): the `stakeholder`
-scheme, rating each Stakeholder on Influence and Interest, which drives the
-power/interest grid and the suggested engagement cadence (`service.
-suggest_cadence`).
+Registers the `stakeholder` scheme into core's generic scoring-matrix mechanism (`services.scoring`):
+each Stakeholder is rated on Influence and Interest, which drives the power/interest grid and the
+suggested engagement cadence (`service.suggest_cadence`).
 
 Design decisions:
-- One model, Influence × Interest, with three levels per axis (Low, Medium,
-  High — the user-confirmed defaults; org-editable). The scheme's bands
-  are a rough priority read-out, not the grid itself: the grid quadrant comes
-  from each axis's level position (`service.grid_quadrant`).
-- Org-level configuration is gated by the `stakeholder_type_admin` role (plus
-  org admins), the same people who manage the Stakeholder type vocabulary
-  (Decided by: Agent, mirroring Pain Points).
-- Only a Stakeholder's *current* version references a level that the usage
-  hooks manage; historic versions are cleared by the FK's `ON DELETE SET
-  NULL`, so deleting a level never rewrites history (Decided by: Agent).
+- One model, Influence × Interest, three levels per axis (Low, Medium, High; org-editable). The bands are
+  a rough priority read-out; the grid quadrant comes from each axis's level position (`service.grid_quadrant`).
+- Org-level configuration needs `stakeholder_type_admin` (or org admin), as for the Stakeholder type vocabulary.
+- Only a Stakeholder's current version references a level; historic versions are cleared by the FK's
+  `ON DELETE SET NULL`, so deleting a level never rewrites history.
 """
 
 from __future__ import annotations

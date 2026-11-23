@@ -1,14 +1,12 @@
 /**
  * Module: components/RequirementReportPanel
  *
- * The requirement report's configuration and generation surface (R-F-01 PDF, Word,
- * OpenDocument text and HTML, R-F-02 the flat table as CSV, Excel and OpenDocument spreadsheet), shown in the Reports dialog beside the catalogue reports in the same picker. It
- * carries a chapter-per-component/continuous layout choice and organisation shared resource sections
- * (R-G-04). Branding is never chosen here: a download uses the organisation's default template. Narrowing
- * the requirements (R-G-03) is done on the requirements list, whose Export and Download report carry the
- * list's filters. An introduction, chapters or appendices are written in a report layout (the
- * "Requirements by Component" starter), not here. It has its own request model
- * (`POST /projects/{id}/reports`), which is why it is not a catalogue entry.
+ * The requirement report's configuration and generation surface (R-F-01 PDF, Word, OpenDocument text and HTML; R-F-02
+ * the flat table as CSV, Excel and OpenDocument spreadsheet), shown in the Reports dialog beside the catalogue reports.
+ * It carries a chapter-per-component or continuous layout choice and organisation shared resource sections (R-G-04).
+ * Branding is never chosen here: a download uses the organisation's default template. Narrowing (R-G-03) is done on the
+ * requirements list, whose Export and Download report carry its filters; introductions, chapters and appendices are
+ * written in a report layout. It has its own request model (`POST /projects/{id}/reports`), so it is not a catalogue entry.
  */
 import { useEffect, useState } from "react";
 

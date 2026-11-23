@@ -1,9 +1,9 @@
 /**
  * Module: modules/product_feedback/RequestColumnChooser
  *
- * The Columns control of the request lists (the project list and the organisation inbox): the shared `ColumnChooser`
- * over the optional columns (status, demand and Pain Points on the project tier, owner, created, last updated and one score column per scoring model),
- * bound to the choice `useRequestListFilters` keeps per person. Code and title are always on.
+ * The Columns control of the request lists (project list and organisation inbox): the shared `ColumnChooser` over the
+ * optional columns (status, demand and Pain Points on the project tier, owner, created, last updated and one score
+ * column per scoring model), bound to the choice `useRequestListFilters` keeps per person. Code and title are always on.
  */
 import type { ScoringScheme } from "../../api/scoring";
 import { ColumnChooser } from "../../components/ColumnChooser";

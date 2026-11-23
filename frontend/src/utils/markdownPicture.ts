@@ -1,19 +1,16 @@
 /**
  * Module: utils/markdownPicture
  *
- * The one way a picture is written in, and read from, a record's Markdown text: `![alt](attachment:<file id> "caption")`,
- * where the file is an attachment of the same record.
- *
- * Responsibilities:
- * - Write a picture (`pictureMarkdown`), escaping what would end the alternative text or the caption early.
- * - Recognise a picture's address (`attachmentFileId`) and read a picture from its start in a text (`PICTURE_START`), for
- *   the reader, the editors and the round-trip checks to agree on one form.
- *
- * Design decisions:
- * - A picture is never an outside address: the address is `attachment:` and the file's id, so opening a record makes no
- *   request to another site, and the file's own access rules (and confidential mark) decide who sees it.
- * - Only the lower-case canonical id is a picture's address, as on the server (`services.markdown_text`).
- * - The alternative text and the caption are one line; a line break is written as a space.
+ * The one way a picture is written in, and read from, a record's Markdown text:
+ * `![alt](attachment:<file id> "caption")`, where the file is an attachment of
+ * the same record. `pictureMarkdown` writes it (escaping what would end the
+ * alternative text or caption early); `attachmentFileId` and `PICTURE_START`
+ * recognise it, so the reader, the editors and the round-trip checks agree.
+ * Design: a picture is never an outside address, so opening a record makes no
+ * request to another site and the file's own access rules (and confidential
+ * mark) decide who sees it. Only the lower-case canonical id is an address, as
+ * on the server (`services.markdown_text`). Alternative text and caption are one
+ * line; a line break is written as a space.
  */
 
 /** The address scheme of a picture that is an attachment of the record. */

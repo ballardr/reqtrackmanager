@@ -1,27 +1,19 @@
 """
 Module: services.report_font_parts
 
-Writes the font declarations Word and OpenDocument need for an administrator-provided family, and optionally embeds its
-font files, into a finished `.docx` or `.odt`.
+Writes the font declarations Word and OpenDocument need for an administrator-provided family, and optionally embeds
+its font files, into a finished `.docx` or `.odt`.
 
 Responsibilities:
-- `embed_in_docx`: add each extra family to `word/fontTable.xml` (alternate name, family kind, pitch) and, when asked, the
-  obfuscated `.odttf` parts, their relationships, the content type and `w:embedTrueTypeFonts` in `word/settings.xml`.
-- `embed_in_odt`: add a `style:font-face` per extra family to `content.xml` and `styles.xml` and, when asked, the
-  `Fonts/` entries, their `svg:font-face-src` and manifest rows.
-- `fallback_name`: the common font Word and OpenDocument fall back to for a generic family.
+- `embed_in_docx` (`fontTable.xml`, obfuscated `.odttf` parts, relationships, content type, `w:embedTrueTypeFonts`),
+  `embed_in_odt` (`style:font-face`, `Fonts/` entries, manifest rows) and `fallback_name`.
 
 Design decisions:
-- These work on finished files, so a renderer needs no knowledge of embedding: it names the family, and the layout setting
-  decides whether this runs with `embed=True`.
-- Only extra families are touched. The four bundled families are named for Arial, Times New Roman, Courier New and
-  DejaVu Sans, which the spike found need no embedding to wrap the same.
-- Only faces the family really has a file for and the document uses are embedded, whole: subsetting needs a font library
-  the project does not ship, so the file grows by the faces' size (the layout setting's help says so). A face whose
-  licence forbids embedding never reaches here (the directory scan refuses it).
-- The `.odttf` obfuscation key is derived from the family key and style, so the same document always gives the same bytes.
-- Element order follows the Word schema (`w:font` children, and `w:embedTrueTypeFonts` among the settings), as Word is
-  stricter about it than LibreOffice.
+- Works on finished files, so renderers only name the family; the layout's embed setting decides `embed=True`.
+- Only extra families are touched (bundled ones are named for metric-compatible Arial, Times New Roman, Courier New and
+  DejaVu Sans). Only faces the family has a file for and the document uses are embedded, whole (no subsetting library).
+- The `.odttf` obfuscation key derives from the family key and style, so output is deterministic.
+- Element order follows the Word schema, which Word enforces more strictly than LibreOffice.
 
 Dependencies: lxml, `report_fonts`.
 """

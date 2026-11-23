@@ -3,32 +3,26 @@ Module: services.credential_reset
 
 The one place a native account's password is reset without knowing the old one.
 
-Responsibilities:
-- Issue and redeem single-use, expiring reset links (`issue_token`, `redeem_token`); only a hash of
-  the secret is stored.
-- Email a link (`send_reset_email`) for the "forgot password" flow, an administrator's "send reset
-  link" action and the command line.
-- Apply a forced credential reset to a group of accounts (`force_reset`): end every session, revoke
-  personal access tokens, mark the password as needing replacement, optionally clear 2FA enrolment.
-- Choose the accounts a forced reset or a link batch covers (`resolve_scope`).
-- Remove spent and expired token rows after a week (`purge_spent_tokens`, run daily by the scheduler).
+Responsibilities: issue and redeem single-use, expiring reset links (`issue_token`, `redeem_token`; only a
+hash is stored); email a link (`send_reset_email`) for forgotten passwords, the administrator action and the
+command line; apply a forced reset to a group (`force_reset`: end every session, revoke personal access
+tokens, require a new password, optionally clear 2FA enrolment); choose the accounts (`resolve_scope`); remove
+spent and expired tokens after a week (`purge_spent_tokens`, daily).
 
 Design decisions:
-- The credential epoch is `User.token_version`: every reset increments it, which already rejects any
-  session issued before (`deps._resolve_user_from_token`, the WebSocket re-check).
-- A reset link never signs the person in and never touches 2FA: choosing a new password proves
-  control of the mailbox only, and the second factor is still asked at the next sign-in.
-- An administrator sending a link never sees it. It goes to the account's own address, so an
-  administrator cannot use the feature to take over an account. The command line prints a link only
-  to the operator's terminal, because its authority is shell and database access to the deployment.
-- Redemption is one `UPDATE ... WHERE used_at IS NULL AND expires_at > now` so two simultaneous uses
-  cannot both succeed.
-- Neither the raw secret, a hash nor a link is ever logged, audited or returned from an HTTP API.
-- An SSO-only account has no local credential: it is listed, never silently skipped, and a forced
-  reset still ends its sessions.
+- The credential epoch is `User.token_version`: each reset increments it, which rejects earlier sessions
+  (`deps._resolve_user_from_token`, the WebSocket re-check).
+- A reset link never signs the person in or touches 2FA: a new password proves control of the mailbox only.
+- An administrator never sees the link; it goes to the account's own address, so the feature cannot take over
+  an account. The command line prints a link only to the operator's terminal, whose authority is shell and
+  database access.
+- Redemption is one `UPDATE ... WHERE used_at IS NULL AND expires_at > now`, so two simultaneous uses cannot
+  both succeed.
+- The raw secret, its hash and a link are never logged, audited or returned from an HTTP API.
+- An SSO-only account has no local credential: it is listed, never silently skipped, and a forced reset still
+  ends its sessions.
 
-Dependencies: `security` (hashing), `services.email` and `email_templates`, `services.audit`,
-`services.pats` (token revocation), `auth_backends.native` (the shared sso-only rule).
+Dependencies: `security`, `services.email`, `email_templates`, `audit`, `pats`, `auth_backends.native`.
 """
 
 from __future__ import annotations

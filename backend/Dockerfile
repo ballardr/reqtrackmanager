@@ -2,12 +2,9 @@
 # (base plus the profilers, for developers) and `backend`, the last stage and so the default target, which is the API image every existing build produces.
 FROM python:3.15-slim AS base
 
-# Build identity (GET /api/v1/system/version, app/version.py): supplied via
-# --build-arg by the docker-build CI job, which already computes a
-# GitVersion SemVer and knows the commit SHA for image tagging but
-# previously had no way to surface either from inside a running container.
-# Defaults keep a plain local `docker build` (no --build-arg) working, just
-# reporting placeholder values instead of failing.
+# Build identity (GET /api/v1/system/version, app/version.py) is supplied through --build-arg by the
+# docker-build CI job, which holds the GitVersion SemVer and the commit SHA. The defaults keep a plain
+# local `docker build` working, reporting placeholder values.
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
@@ -32,13 +29,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY . .
 
-# Hardening review: ran as root with no reason to. /app/data/files is
-# created ahead of the local-storage volume mount below so a fresh named
-# volume inherits the right ownership from the image (Docker copies the
-# mount point's existing content/permissions into a brand-new named volume
-# on first use) — an *existing* volume from a previous root-owned run will
-# still be root-owned and need a one-time `chown` after upgrading, same as
-# this project's other pre-release "reset and reseed" upgrade path.
+# The application runs as a non-root user. /app/data/files is created before the local-storage volume
+# mount so a fresh named volume inherits its ownership from the image (Docker copies the mount point's
+# permissions into a new named volume on first use); a volume created by a root-owned image keeps root
+# ownership and needs a one-time `chown`.
 RUN useradd --system --create-home --home-dir /home/app app \
     && mkdir -p /app/data/files /demo/state /demo/status \
     && chmod +x /app/docker-entrypoint.sh \

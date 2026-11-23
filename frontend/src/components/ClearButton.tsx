@@ -1,18 +1,15 @@
 /**
  * Module: components/ClearButton
  *
- * The one control that empties a value or removes one item: a compact icon "X" drawn directly
- * after the value it acts on (an owner badge, a chip, a colour, a picture, a filter). It is part
- * of the thing it controls, not a toolbar button, so it takes no text, no border and no `btn`
- * height; the glyph is 14px and the clickable area is extended past the visible box (see
- * `.clear-button`) so it stays a usable touch target.
+ * The one control that empties a value or removes one item: a compact icon "X" directly after the value it acts on
+ * (an owner badge, a chip, a colour, a filter). It takes no text, border or `btn` height; the glyph is 14px and the
+ * clickable area extends past the visible box (`.clear-button`) as a touch target.
  *
- * Its accessible name and tooltip are the same text and must name the field or item
- * ("Clear: Owner", "Remove sort key 2"). A caller renders it only while there is something to
- * clear, never disabled-empty. Clearing many things at once is a button or a menu row, not this
+ * Its accessible name and tooltip are the same text and name the field or item ("Clear: Owner"). A caller renders
+ * it only while there is something to clear. Clearing many things is a button or menu row, not this
  * (docs/ux-style-guide.md, "Pattern: clear control").
  *
- * Dependencies: `Tooltip` for the hover and focus text (a native `title` is not used).
+ * Dependencies: `Tooltip` (a native `title` is not used).
  */
 import { X } from "lucide-react";
 

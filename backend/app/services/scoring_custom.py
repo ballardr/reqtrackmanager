@@ -1,39 +1,25 @@
 """
 Module: services.scoring_custom
 
-Organisation- and project-defined scoring criteria, on top of the registered ones (`services.scoring`).
-
-A scheme that sets `ScoringSchemeDefinition.allow_custom_criteria` has registered axes and models (the module's
-own) and may also have axes and models an organisation, or one project, defined for itself. This module resolves
-which of them apply where, and writes them.
+Organisation- and project-defined scoring criteria on top of the registered ones (`services.scoring`), for schemes that set
+`ScoringSchemeDefinition.allow_custom_criteria`.
 
 Responsibilities:
-- `resolve_criteria` / `effective_scheme`: the scheme as it applies to an organisation or a project, as a plain
-  `ScoringSchemeDefinition` with the custom axes and models added and the hidden ones left out, so every other
-  function in `services.scoring` (levels, bands, enabled models, score maths) works on it unchanged.
-- Create, edit and delete a custom axis (with its levels) and a custom model (a product with divisors and
-  exponents, or a weighted sum), at either tier.
-- Hide and restore a registered or inherited criterion.
-- Carry the definitions in a bundle (`export_definitions` / `import_definitions`).
+- `resolve_criteria` / `effective_scheme`: the scheme as it applies to an organisation or project (custom axes and
+  models added, hidden ones left out), so `services.scoring` works on it unchanged.
+- Create, edit and delete a custom axis (with levels) and model (product with divisors and exponents, or weighted sum);
+  hide and restore a registered or inherited criterion; carry definitions in a bundle (`export_definitions` / `import_definitions`).
 
 Design decisions:
-- A project's criteria are an additive layer, not a replacement: the effective set is the registered criteria, the
-  organisation's, then those of every project down the chain to the one asked about, minus what is hidden. A
-  project that adds one axis keeps the rest (**Decided by: User**).
-- A registered criterion can be hidden (by the organisation for itself, by a project with a
-  `ProjectDefinitionSuppression` tombstone) but never edited away or deleted; a custom one is fully editable
-  (**Decided by: User**). A hidden criterion stops being offered; scores already stored on it are kept and ignored.
-  A tombstone applies to its own project only, like every other hidden default.
-- Keys are generated (`c_...`, `m_...`) and unique per organisation and scheme across every tier, so a stored
-  level, band or score names a criterion without saying which project owns it.
-- A model is available only where every axis it uses is. Hiding or deleting an axis a model needs is refused for a
-  deletion and quietly drops the model for a hide.
-- Deleting an axis that scores use needs `clear_scores`: levels cannot be reassigned to a different axis, so the
-  choice is to drop those levels' scores (**Decided by: Agent**).
-- Levels of a custom axis are ordinary `ScoringLevel` rows; a project-owned axis's levels carry the project so
-  they go with it.
+- Project criteria are an additive layer: registered, organisation's, then each project down the chain, minus hidden
+  (**Decided by: User**). A registered criterion can be hidden (organisation, or a project tombstone, for that project
+  only) but not deleted; a custom one is editable (**Decided by: User**). Stored scores on a hidden one are kept and ignored.
+- Keys (`c_...`, `m_...`) are unique per organisation and scheme across tiers. A model is available only where every axis
+  it uses is: deleting such an axis is refused, hiding quietly drops the model.
+- Deleting an axis that scores use needs `clear_scores`, since levels cannot move to another axis (**Decided by: Agent**).
+- A custom axis's levels are ordinary `ScoringLevel` rows; a project-owned axis's levels carry the project.
 
-All writers add to the session and audit-log via `services.audit.log_event`; callers commit.
+Writers add to the session and audit via `services.audit.log_event`; callers commit.
 """
 
 from __future__ import annotations

@@ -1,16 +1,15 @@
 /**
  * Module: components/overview/OrgDashboardView
  *
- * One dashboard page of an organisation, drawn through the same grid the project overview uses, with its
- * figures read in one batched request. An organisation administrator gets a "Customise" action (in the page's title
- * row, through `PageActions`) that turns the page into the shared overview editor.
+ * One dashboard page of an organisation, drawn through the grid the project overview uses, with its figures read in one
+ * batched request. An organisation administrator gets a "Customise" action (in the title row, through `PageActions`) that
+ * turns the page into the shared overview editor.
  *
- * Responsibilities:
- * - Load the page and its layout, and answer 404 as "not found" (a page the person may not see reads the same).
- * - Show the grid, a notice while figures are scoped to what the person can open, and the editor on request.
+ * Responsibilities: load the page and its layout, answering 404 as "not found" (a page the person may not see reads the
+ * same); show the grid, a notice while figures are scoped to what the person can open, and the editor on request.
  *
- * Design decisions: the page reads the figures the person may see, so the same dashboard shows different counts to
- * different members; the server decides what a figure counts, never this view.
+ * Design decision: the page reads the figures the person may see, so members can see different counts; the server decides
+ * what a figure counts.
  */
 import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useState } from "react";

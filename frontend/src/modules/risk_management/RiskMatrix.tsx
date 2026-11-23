@@ -1,14 +1,11 @@
 /**
  * Module: modules/risk_management/RiskMatrix
  *
- * The project's configured Likelihood × Consequence grid with the register's
- * risks plotted in their cells (a Risk Management UI without a visible matrix
- * loses most of its communicative value). A thin adapter over the
- * shared `ScoringMatrixChart`: it picks the scheme's two-axis model, so cell
- * colours follow the organisation's bands and per-cell ratings, and plots each
- * risk by its inherent levels, its residual levels, or both (a point per rating,
- * named in its tooltip). Risks with no level on either axis are not plotted; the
- * caller lists how many.
+ * The project's configured Likelihood x Consequence grid with the register's risks plotted in their cells. A thin
+ * adapter over the shared `ScoringMatrixChart`: it picks the scheme's two-axis model, so cell colours follow the
+ * organisation's bands and per-cell ratings, and plots each risk by its inherent levels, its residual levels, or both
+ * (a point per rating, named in its tooltip). Risks with no level on either axis are not plotted; the caller lists
+ * how many.
  */
 import type { ScoringScheme } from "../../api/scoring";
 import { ScoringMatrixChart } from "../../components/ScoringMatrixChart";

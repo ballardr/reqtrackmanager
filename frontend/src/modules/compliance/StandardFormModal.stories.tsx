@@ -17,9 +17,8 @@ function standard(overrides: Partial<ComplianceStandard> = {}): ComplianceStanda
 }
 
 /**
- * `StandardFormModal` — extracted from `StandardsPanel.tsx` so both `StandardListPage.tsx` (create, with an
- * optional multi-org picker) and `StandardWorkspacePage.tsx` (edit, single
- * fixed org) share one dialog rather than each keeping its own copy.
+ * `StandardFormModal` is the one dialog shared by `StandardListPage.tsx` (create, with an optional multi-organisation picker)
+ * and `StandardWorkspacePage.tsx` (edit, a single fixed organisation).
  */
 const meta: Meta<typeof StandardFormModal> = {
   title: "Modules/Compliance/StandardFormModal",

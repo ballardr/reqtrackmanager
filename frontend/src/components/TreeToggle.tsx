@@ -1,17 +1,16 @@
 /**
  * Module: components/TreeToggle
  *
- * The one expand/collapse chevron of every tree and nested list (`TreeView`, `FolderTreeList`,
- * `RequirementTree`): a plain disclosure control, not a bordered button, because it sits inside a
- * row that is itself the choice or the link. It stays a real `<button>` with an accessible name and
- * a 1.75rem hit area so it can be touched and reached by keyboard.
+ * The one expand/collapse chevron of every tree and nested list (`TreeView`, `FolderTreeList`, `RequirementTree`): a
+ * plain disclosure control, not a bordered button, because it sits inside a row that is itself the choice or the link.
+ * It stays a real `<button>` with an accessible name and a 1.75rem hit area for touch and keyboard.
  *
- * Presentational: the caller owns the expanded state. `TreeChevron` is the bare glyph for a toggle
- * that carries a label of its own (a folder's icon and name in `FolderTreeList`), so the glyph,
- * size and direction are the same everywhere; `TreeToggleGap` holds the same width for a leaf.
+ * Presentational: the caller owns the expanded state. `TreeChevron` is the bare glyph for a toggle that carries a label of
+ * its own (a folder's icon and name), so glyph, size and direction are the same everywhere; `TreeToggleGap` holds the
+ * same width for a leaf.
  *
- * The tooltip ("Collapse Acme") is the shared `Tooltip`, never a native `title`; a transient picker, where the row's
- * name is beside the chevron and the list must not be covered, turns it off (`tooltip={false}`).
+ * The tooltip ("Collapse Acme") is the shared `Tooltip`, never a native `title`; a transient picker, where the row's name
+ * is beside the chevron and the list must not be covered, turns it off (`tooltip={false}`).
  *
  * Depends on lucide-react and `Tooltip`; styles are `.tree-toggle` and `.tree-toggle-gap` in `styles/theme.css`.
  */

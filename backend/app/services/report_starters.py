@@ -1,45 +1,27 @@
 """
 Module: services.report_starters
 
-Starter report layouts: ready-made document layouts an organisation starts from.
+Starter report layouts: ready-made layouts an organisation starts from.
 
 Responsibilities:
-- Declare the starters (`STARTERS`): a Business Requirements Document, an Engineering Specification, a
-  Review Package and Requirements by Component. A starter holds the parts about core records and its own words; every other part is contributed
-  by the module whose records it shows (`ModuleDefinition.report_starter_sections`) and merged in by `order`.
-- Declare the Project Workbook, the one table-family starter: a sheet per reportable record type holding its core
-  detail, generated from the report field registry (`workbook_tree`).
-- `missing_starter_names`: which starters an organisation lacks (the UI offers adding only when one does).
-- `add_starter_layouts`: write the starters an organisation does not yet have as ordinary organisation layouts.
+- `STARTERS`: a Business Requirements Document, Engineering Specification, Review Package and Requirements by Component
+  (core parts plus module-contributed parts merged by `order`) and the Project Workbook (`workbook_tree`), generated from
+  the field registry as a sheet per reportable record type.
+- `missing_starter_names`; `add_starter_layouts` (writes missing starters as ordinary organisation layouts).
 
 Design decisions:
-- **A starter is a normal organisation layout once written.** It is editable, versioned, hideable and
-  deletable like any other, so an organisation adapts it instead of cloning it first. The platform's copy is the
-  code below; an organisation's copy never changes behind its back.
-- **Written by name, never overwritten.** A starter whose name the organisation already uses (its own layout, or
-  an earlier copy it edited) is skipped, so adding starters again is safe and loses no edits. A later release's
-  improved starter reaches an organisation only if it removes or renames its copy first.
-- **Seeded at organisation creation, and on request for an existing organisation.** An upgrade seeds nothing by
-  itself (the same rule as module defaults), so an organisation that already exists asks for them
-  (`POST .../report-layouts/starters`).
-- **No module is named here.** Naming another module's record types or reports in a core file would be a per-module
-  hand-edit; the module registers its own parts, and a new module with something to say adds a part without a core
-  change. The core wraps each part in `{"module": key}` (an `if` test, `services.report_layout_tree`), so a
-  project where that module is off omits the part: no heading, no "none recorded" line that would be false.
-- **The workbook is derived from the registry, not listed.** One `sheet` per reportable record type, columns from its
-  core fields (`ReportField.core`, plus code, title, status and tags), each module's sheets wrapped in an `if` on that
-  module like the document starters' parts, so a new module's type appears with no edit here and a project where the
-  module is off has no sheet. A module that declares a type declares its core fields; a test fails for a type without one.
-- **A document starter's headings use the colour name `primary`, and it carries no scheme of its own.** `primary` is one
-  of the built-in Branding names (the organisation's report accent), so a starter prints in the accent with no scheme anywhere
-  and follows the organisation's scheme the moment it names `primary`. Tables already take the accent for their header row.
-  The body font is not set, so a starter keeps each format's own text face.
-- **No link types and no project vocabulary.** A starter names none, so it runs in any project and organisation.
-- Prose is the author's to edit: each section opens with a line saying what it is derived from, because a
-  generated document is a derived output (never the source of truth) and a reader should know where to look.
+- Once written a starter is a normal layout (editable, versioned, hideable); it is written by name, never overwritten,
+  so adding again loses no edits. Starters are seeded at organisation creation and on request for an existing
+  organisation (`POST .../report-layouts/starters`); an upgrade seeds nothing.
+- No module is named here: modules register parts through `ModuleDefinition.report_starter_sections`, and each is wrapped
+  in a `{"module": key}` `if`, so a project where the module is off has no empty heading or false "none recorded" line.
+- The workbook takes columns from `ReportField.core` plus code, title, status and tags; each module's sheets are wrapped
+  in an `if` on that module, and a test fails for a type with no core fields.
+- Headings use the built-in colour `primary` (the report accent) with no scheme, so they follow the organisation's scheme;
+  the body font is unset. A starter names no link types or vocabulary, so it runs anywhere.
+- Each section opens with a line saying what it derives from, since a generated document is never the source of truth.
 
-Dependencies: `modules.registry` (starter sections), `services.report_layouts` (creating a layout),
-`services.report_starter_blocks` (block builders).
+Dependencies: `modules.registry`, `report_layouts`, `report_starter_blocks`.
 """
 
 from __future__ import annotations

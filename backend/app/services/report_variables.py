@@ -1,33 +1,24 @@
 """
 Module: services.report_variables
 
-Run-time variables of a custom report layout: typed values the person supplies when running or downloading
-a report, which narrow what it shows without a copy of the layout per scope.
+Run-time variables of a custom report layout: typed values supplied when running a report that narrow what it shows
+without a copy of the layout per scope.
 
 Responsibilities:
-- Define the vocabulary a layout's `variables` list is written in (`VARIABLE_TYPES`, the caps) and how a
-  reference (`{"var": "<name>"}`) is told from a literal (`is_reference`).
-- Say which field kinds and widget parameter types a variable of each type fits (`FIELD_KINDS`,
-  `PARAM_TYPES`), so the tree validator can reject a mismatch when the layout is saved.
-- Turn supplied values into checked, typed ones (`resolve_values`): defaults, the `today` default of a date,
-  shape (one value or a list), type and the explicit options of an enum.
-- Substitute the values into a copy of the tree (`bind_variables`) so the evaluator only ever sees literals,
-  and print them for `{{var.name}}` text (`variable_text`).
-- Offer a variable's options from its source field's value domain (`variable_options`) and flag a value that
-  is no longer one of them (`stale_value_warnings`).
+- The vocabulary (`VARIABLE_TYPES`, caps), `is_reference` (`{"var": "<name>"}` versus a literal), and which field kinds
+  and widget parameter types each type fits (`FIELD_KINDS`, `PARAM_TYPES`) so a mismatch is rejected at save.
+- `resolve_values` (defaults, the `today` default of a date, shape, type, enum options); `bind_variables` (substitute into
+  a copy of the tree); `variable_text`; `variable_options` and `stale_value_warnings`.
 
 Design decisions:
-- **A value is a typed literal, never markup and never an expression.** Substitution replaces a reference
-  with the checked literal before evaluation; `{{var.name}}` is filled by the evaluator's single-pass
-  placeholder fill like any record value, so a value that contains `{{record.title}}` or `# heading` stays text.
-- **Variables narrow, they do not authorise.** Nothing here widens what the caller can read; the traversal
-  layer's resolver still decides every record.
-- **Options are advice, except an enum's own list.** A source field's domain only warns about a value outside
-  it (a field with no domain takes free input), because the list can change between saving a set of values
-  and running it; an enum variable's explicit `options` are the layout's own contract and are enforced.
-- Values are configuration: they are stored with the run and are never written to a log line.
+- A value is a typed literal, never markup or an expression: substitution happens before evaluation, and `{{var.name}}`
+  is filled by the single-pass placeholder fill, so a value containing `{{record.title}}` stays text.
+- Variables narrow, they do not authorise: the traversal resolver still decides every record.
+- Options are advice except an enum's own list: a source field's domain only warns (it can change between saving and
+  running), while an enum's explicit `options` are enforced.
+- Values are configuration: stored with the run, never written to a log line.
 
-Dependencies: `services.report_fields` (value domains).
+Dependencies: `services.report_fields`.
 """
 
 from __future__ import annotations

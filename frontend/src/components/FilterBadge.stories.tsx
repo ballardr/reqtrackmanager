@@ -32,10 +32,8 @@ export const Active: Story = {
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { args: { active: true }, globals: { theme: "dark" } };
 
-// Status colour (Pattern: status colour,
-// docs/ux-style-guide.md). One story per BadgeTone so every tone stays
-// visually reviewable, and each keeps its own play-check that `tone`
-// doesn't disturb the click behaviour the plain-badge stories above cover.
+// Status colour (Pattern: status colour, docs/ux-style-guide.md). One story per BadgeTone keeps every tone
+// reviewable, each with a play-check that `tone` leaves the click behaviour of the plain-badge stories unchanged.
 export const ToneMuted: Story = {
   args: { tone: "muted", children: "Draft" },
   play: async ({ canvasElement, args }) => {

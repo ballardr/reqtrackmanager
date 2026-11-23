@@ -19,18 +19,11 @@ const PROJECT_ID = "proj-1";
 const ORG_ID = "org-1";
 
 /**
- * §21's "make it easy... to determine what remains outstanding" — the
- * four cross-assignment listings (Non-Compliant, Pending Approval,
- * Outstanding Required Actions, and Reviews Due/Overdue)
- * gathered in one read-only view. Acting on a row happens via the
- * Standards tab (`ApplicabilityTree`/`ReviewsPanel`), not here.
- *
- * The Standard/Standard version/Sub-section filters additionally
- * fetch `listStandardVersions`/`listRequirements` once a standard is
- * picked — `versions`/`requirementsByVersion` let a story supply that data
- * only when it needs the filters to actually resolve something (most
- * stories below never select a standard, so those two endpoints stay
- * unmocked/unused for them).
+ * §21's "what remains outstanding": the four cross-assignment listings (Non-Compliant, Pending Approval, Outstanding Required
+ * Actions, Reviews Due/Overdue) in one read-only view; acting on a row happens on the Standards tab (`ApplicabilityTree`,
+ * `ReviewsPanel`). The Standard, Standard version and Sub-section filters fetch `listStandardVersions` and `listRequirements`
+ * once a standard is picked, so `versions` and `requirementsByVersion` let a story supply data only when it needs them
+ * (most stories never select a standard, leaving those endpoints unmocked).
  */
 function mockApis(
   nonCompliant: NonCompliantRequirement[],
@@ -125,11 +118,9 @@ const REQUIREMENTS_VER_1: ComplianceRequirement[] = [
   { id: "req-2", standard_version_id: "ver-1", parent_requirement_id: "sec-5", reference: "A.5.16", name: "Identity management", sort_order: 1, ...REQUIREMENT_DEFAULTS },
 ];
 
-/** Selecting "ISO-27001" surfaces a "Standard version" and
- * "Sub-section" filter; both `req-1`/`req-2` (behind every row below) sit
- * under "Annex A.5," so filtering to "Clause 4" (which has no requirements
- * of its own here) narrows the three requirement-scoped sections to
- * "None." while the standard/version-only Reviews section is unaffected. */
+/** Selecting "ISO-27001" shows a "Standard version" and "Sub-section" filter. `req-1` and `req-2` sit under "Annex A.5", so
+ * "Clause 4" (no requirements of its own here) narrows the three requirement-scoped sections to "None" while the
+ * standard-and-version-only Reviews section is unaffected. */
 export const FilteredByStandardAndSubSection: Story = {
   beforeEach: () => mockApis(NON_COMPLIANT, PENDING, OUTSTANDING_ACTIONS, REVIEWS_DUE, [VER_1], { "ver-1": REQUIREMENTS_VER_1 }),
   play: async ({ canvasElement }) => {

@@ -3,15 +3,11 @@
  *
  * The name and identifier prefix of a component or category: one field group for the Structure page's create and
  * edit form and for the first-component and first-category form of the requirement create dialog, so a field added
- * later reaches both.
+ * to one reaches both.
  *
- * Responsibilities:
- * - Show the two required fields with their help.
- * - Fill the prefix from the server's suggestion for the name while the person has not typed one, and stop following
- *   it once they do (a typed prefix is never overwritten). Clearing the prefix resumes following.
- *
- * Design decisions: the rule is the server's (`usePrefixSuggestion`); the fields only display its answer. The group
- * is controlled: the caller owns the values and decides when they are valid.
+ * Shows the two required fields with their help and fills the prefix from the server's suggestion for the name
+ * (`usePrefixSuggestion`) until the person types one; a typed prefix is never overwritten and clearing it resumes
+ * following. The group is controlled: the caller owns the values and decides when they are valid.
  */
 import { useEffect, useState } from "react";
 
@@ -54,7 +50,7 @@ export function NameAndPrefixFields({
   const suggestion = usePrefixSuggestion(
     api, projectId, following ? { kind, name: value.name, componentId, ignore } : null,
   );
-  // Apply an answer only for the name now typed; an answer for an earlier name is stale.
+  // Apply an answer only for the name now typed; an answer for another name is stale.
   const answered = following && suggestion !== null && suggestion.name === value.name ? suggestion.prefix : null;
   useEffect(() => {
     if (answered !== null && answered !== value.prefix) onChange({ name: value.name, prefix: answered });

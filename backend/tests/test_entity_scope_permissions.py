@@ -1,24 +1,17 @@
-"""Tests for Fine-Grained Access Control entity scopes: the generic
-module-owned entity-scope registry (`EntityScopeDefinition`,
-`get_all_registered_entity_scopes`), `CustomRoleDefinition.scope`'s
-widened validation, `UserCustomRoleGrant`/`GroupCustomRoleGrant.
-scope_entity_id`, `get_effective_permissions`/`require_permission`'s new
-`entity_scope`/`entity_id` parameters, and the `GET /orgs/{id}/entity-scopes`
-endpoint.
+"""Tests for Fine-Grained Access Control entity scopes: the module-owned
+entity-scope registry (`EntityScopeDefinition`, `get_all_registered_entity_scopes`),
+`CustomRoleDefinition.scope` validation, `UserCustomRoleGrant`/`GroupCustomRoleGrant`
+`scope_entity_id`, the `entity_scope`/`entity_id` parameters of
+`get_effective_permissions`/`require_permission`, and `GET /orgs/{id}/entity-scopes`.
 
-Covers, in order: the registry mechanism itself (via a fixture module,
-isolated from any real module), a module-role entity-scoped grant's
-`permissions` composing only when `entity_scope`/`entity_id` are given (and
-never leaking into a plain org/project check — the same exclusion
-`_module_role_pairs_for_scope` already had), the identical shape for a
-custom-role entity-scoped grant (including a leak the implementation has to guard against explicitly, since `scope_entity_id` and
-`project_id` are both `NULL` for different reasons), tenant isolation across
-the grant endpoints, and `require_permission`'s own `entity_scope` handling.
-Compliance's real `"standard"` scope (registered in `app.modules.compliance.
-module`) is used for the HTTP-level API tests, since it's the first real
-consumer of this scope; the lower-level resolution-engine
-tests use an isolated fixture module instead, mirroring `test_effective_
-permissions.py`'s own `fake_module` fixture one tier up.
+Covers: the registry (through an isolated fixture module), a module-role entity-scoped
+grant's `permissions` composing only when `entity_scope`/`entity_id` are given (never
+leaking into a plain org/project check), the same shape for a custom-role grant
+(`scope_entity_id` and `project_id` are both `NULL` for different reasons), tenant
+isolation across the grant endpoints, and `require_permission`'s `entity_scope`
+handling. The HTTP-level tests use Compliance's `"standard"` scope
+(`app.modules.compliance.module`); the resolution-engine tests use the fixture module,
+as `test_effective_permissions.py`'s `fake_module` does.
 """
 
 from __future__ import annotations
@@ -50,15 +43,12 @@ from tests.conftest import auth_headers, create_org_admin_in, create_org_user, l
 FAKE_MODULE_KEY = "fake_entity_scope_test_module"
 FAKE_ROLE_KEY = "fake_entity_scope_test_role"
 # `CustomRoleDefinition.scope`/`ModuleRoleDefinitionRow.scope` are both
-# `String(20)` (a pre-existing, system-wide constraint on scope strings,
-# unrelated to entity scopes) — kept within that bound like every real
-# registered scope (e.g. compliance's `"standard"`).
+# `String(20)`, so a scope key stays within that bound like every registered
+# scope (e.g. compliance's `"standard"`).
 FAKE_SCOPE_KEY = "fake_test_scope"
 
-# Keyed by fake entity id -> owning organisation id, mutated per-test by the
-# `fake_entity_scope_module` fixture's caller — lets the fixture's
-# `resolve_organization_id`/`list_entities` behave like a real module-owned
-# table without needing one.
+# Fake entity id -> owning organisation id, set per test; backs the fixture's
+# `resolve_organization_id`/`list_entities` without a real module-owned table.
 _fake_entities: dict[uuid_lib.UUID, uuid_lib.UUID] = {}
 
 
@@ -212,10 +202,9 @@ def test_custom_role_entity_scope_grant_composes_only_with_entity_scope_given(cl
         )
         assert permission in held_entity
 
-        # This is the regression the implementation has to
-        # guard against explicitly: `scope_entity_id` and `project_id` are
-        # both NULL on this row for different reasons, so a plain org-scope
-        # resolution must not misidentify it as an org-scoped grant.
+        # `scope_entity_id` and `project_id` are both NULL on this row for
+        # different reasons, so a plain org-scope resolution must not treat it
+        # as an org-scoped grant.
         held_plain_org = get_effective_permissions(db, uuid_lib.UUID(grantee_id), organization_id=uuid_lib.UUID(org["id"]))
         assert permission not in held_plain_org
 

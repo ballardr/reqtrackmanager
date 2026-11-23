@@ -4,16 +4,12 @@ import { loginAs, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
- * Job to be done: post-publish clarification edits to a requirement, and a standard
- * version's always-editable `summary` field.
+ * Job to be done: post-publish clarification edits to a requirement, and a standard version's always-editable
+ * `summary` field.
  *
- * `orgAdminAlphaBeta` is used for the same reason
- * `compliance-standards-management.spec.ts` uses it: `require_module_role
- * ("compliance", "standards_manager")` composes with `OrgRole.ORG_ADMIN` by
- * design, so no dedicated `standards_manager` persona/grant is needed for
- * this spec's own "manager can" coverage. Every fixture is dynamically
- * named with a per-run timestamp suffix, per this repo's standing test-
- * idempotency rule.
+ * `orgAdminAlphaBeta` is used as in `compliance-standards-management.spec.ts`:
+ * `require_module_role("compliance", "standards_manager")` composes with `OrgRole.ORG_ADMIN`, so no dedicated
+ * `standards_manager` persona is needed. Every fixture is named with a per-run timestamp suffix.
  */
 test.describe("Compliance Module: post-publish clarification + version summary", () => {
   test("clarify a requirement on a published version, and edit the version summary at every lifecycle stage", async ({ page }) => {

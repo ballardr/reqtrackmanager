@@ -431,7 +431,7 @@ def test_delete_category_requires_manage_role(client, admin_token, org_id):
 
 def test_create_component_rejects_duplicate_prefix(client, admin_token, org_id):
     """A repeated component prefix is a clean 400, the same as on rename —
-    not an unhandled unique-constraint 500 (2026-10-04)."""
+    not an unhandled unique-constraint 500."""
     project = create_project(client, admin_token, org_id, name="Duplicate Prefix Project")
     url = f"/api/v1/projects/{project['id']}/components"
     first = client.post(url, json={"name": "Software", "prefix": "SW"}, headers=auth_headers(admin_token))

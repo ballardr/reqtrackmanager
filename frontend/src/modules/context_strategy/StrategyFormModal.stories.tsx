@@ -5,12 +5,7 @@ import { StrategyFormModal } from "./StrategyFormModal";
 import { requiredCaptions } from "../../testing/requiredMarkers";
 import type { Strategy } from "./types";
 
-/**
- * `StrategyFormModal` renders via `Modal`, which portals to `document.body`
- * — every assertion here queries `within(document.body)`, mirroring
- * `modules/decisions/DecisionFormModal.stories.tsx`'s own identical
- * convention.
- */
+/** `Modal` portals to `document.body`, so every assertion queries `within(document.body)`, as in `modules/decisions/DecisionFormModal.stories.tsx`. */
 const meta: Meta<typeof StrategyFormModal> = {
   title: "Modules/ContextStrategy/StrategyFormModal",
   component: StrategyFormModal,

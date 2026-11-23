@@ -1,12 +1,10 @@
 /**
  * Module: components/InlineStructureForm
  *
- * The small form a project manager uses inside a create dialog to add the first component, or the first category under
- * a component, when the project has none yet and a record cannot be created without one. It is the Structure page's
- * field group (`NameAndPrefixFields`) with its own Add button, so the prefix is suggested from the name the same way.
- *
- * Responsibilities: create the one node through `StructureApi` and report it; show the server's refusal beside the
- * button. It makes no other change to the tree.
+ * The small form inside a create dialog for adding the first component, or the first category under a component,
+ * when the project has none and a record cannot be created without one. It is the Structure page's field group
+ * (`NameAndPrefixFields`, so the prefix is suggested the same way) with its own Add button. It creates the one node
+ * through `StructureApi`, reports it, shows the server's refusal beside the button and changes nothing else.
  */
 import { Plus } from "lucide-react";
 import { useState } from "react";

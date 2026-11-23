@@ -52,11 +52,9 @@ function actionAssessment(overrides: Partial<ComplianceRequiredActionAssessment>
 }
 
 /**
- * The per-requirement assessment `SidePanel` — §9 applicability, §10/§16
- * assessment, §6 required actions, §13 evidence linkage, and §12 approval/
- * sign-off, all for one requirement. Each section's own mandatory-
- * justification UI convenience (disabling Save until filled) is exercised
- * alongside the underlying API call each control makes.
+ * The per-requirement assessment `SidePanel`: §9 applicability, §10/§16 assessment, §6 required actions, §13 evidence linkage
+ * and §12 approval, for one requirement. The mandatory-justification convenience of each section (Save disabled until filled)
+ * is exercised alongside the API call each control makes.
  */
 function mockApis(pcrRow: ProjectComplianceRequirement, assessments: ComplianceRequiredActionAssessment[] = [actionAssessment()]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -97,11 +95,8 @@ function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEviden
   };
 }
 
-/** The Evidence section's "link existing" `<select>` alongside its
- * new "Upload new evidence" create-and-link-and-attach flow. Distinct from
- * `mockApis` above since it needs to track evidence state (linked vs.
- * library-only) across requests, the same way `EvidencePanel.stories.tsx`'s
- * own `mockApis` does for its create flow. */
+/** The Evidence section's "link existing" `<select>` beside its "Upload new evidence" create-link-and-attach flow. It tracks
+ * evidence state (linked versus library-only) across requests, as `EvidencePanel.stories.tsx`'s `mockApis` does for its create flow. */
 function mockEvidenceApis(pcrRow: ProjectComplianceRequirement) {
   let library: ComplianceEvidence[] = [evidence()];
   let linked: ComplianceEvidence[] = [];
@@ -237,10 +232,8 @@ export const RejectRequiresDecisionNote: Story = {
   },
 };
 
-/** The required action's assignee
- * field is `AssigneePicker` (a `UserAutocomplete`, not a plain unfiltered
- * `<select>`) — searching narrows the org's users and picking one saves via
- * the same `updateRequiredActionAssessment` PATCH the old `<select>` used. */
+/** The required action's assignee field is `AssigneePicker` (a `UserAutocomplete`): searching narrows the organisation's users
+ * and picking one saves through `updateRequiredActionAssessment`. */
 export const RequiredActionAssigneeSearchAndAssign: Story = {
   beforeEach: () => mockApis(pcr()),
   args: { pcr: pcr(), orgUsers: ORG_USERS },
@@ -304,13 +297,9 @@ export const RequiredActionGroupAssigneeIsNamed: Story = {
   },
 };
 
-/** The Evidence section's two paths
- * side by side — linking an already-existing library item via the
- * "Link existing evidence" `<select>`, and the new "Upload new evidence"
- * flow, which creates a fresh `Evidence` record (`EvidencePanel.tsx`'s own
- * reused `EvidenceFormModal`), auto-links it to this assessment with no
- * separate manual link step, then attaches a file to it via the same
- * `FileAttachmentList` mechanism `EvidencePanel.tsx` itself uses. */
+/** The Evidence section's two paths side by side: linking an existing library item through "Link existing evidence", and
+ * "Upload new evidence", which creates an `Evidence` record (`EvidenceFormModal`), links it to this assessment with no separate
+ * step, then attaches a file through `FileAttachmentList` as `EvidencePanel.tsx` does. */
 export const EvidenceLinkExistingAndUploadNew: Story = {
   beforeEach: () => mockEvidenceApis(pcr()),
   args: { pcr: pcr() },
@@ -362,12 +351,8 @@ export const EvidenceLinkExistingAndUploadNew: Story = {
   },
 };
 
-/** `EvidenceFormModal`'s create form
- * itself now stages a file before save, so attaching one there uploads it in
- * the same step and skips the old follow-up "Attach files to..." modal
- * entirely — a user who already attached a file at creation isn't asked
- * again, unlike `EvidenceLinkExistingAndUploadNew` above (no file staged),
- * which still falls back to that modal. */
+/** `EvidenceFormModal`'s create form stages a file before save, so attaching one there uploads it in the same step and skips the
+ * follow-up "Attach files" modal; `EvidenceLinkExistingAndUploadNew` (no file staged) still shows that modal. */
 export const EvidenceUploadNewWithFileSkipsFollowUpModal: Story = {
   beforeEach: () => mockEvidenceApis(pcr()),
   args: { pcr: pcr() },

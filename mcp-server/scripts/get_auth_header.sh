@@ -2,21 +2,13 @@
 # Logs in to ReqTrackManager and prints a fresh MCP connection header as
 # JSON on stdout: {"Authorization": "Bearer <access_token>"}.
 #
-# Written for Claude Code's `headersHelper` mechanism (see docs/mcp-server.md
-# and https://code.claude.com/docs/en/mcp#use-dynamic-headers-for-custom-
-# authentication): Claude Code runs this command fresh on every connection
-# and reconnect, and automatically re-runs it and retries once if a tool
-# call comes back 401/403 — which solves this app's access tokens being
-# short-lived (12h by default) without needing a separate long-lived token
-# mechanism. Point a Claude Code `.mcp.json` entry's `headersHelper` at this
-# script instead of hardcoding a token that will eventually expire.
+# For Claude Code's `headersHelper` mechanism (docs/mcp-server.md): Claude Code runs this on every connection and
+# reconnect, and re-runs it once if a tool call returns 401/403, so the short-lived access token (12h by default)
+# is refreshed without a long-lived token. Point a `.mcp.json` entry's `headersHelper` at this script.
 #
-# Requires a NATIVE (non-SSO) account with 2FA disabled — this script does
-# a single non-interactive password login, which can't complete a 2FA
-# challenge or an OIDC redirect flow. Create a dedicated account for this
-# purpose if you don't want to use a real person's credentials here (its
-# access is scoped by its own real ReqTrackManager role, same as any other
-# account — see docs/mcp-server.md's "Authentication model" section).
+# Requires a native (non-SSO) account with 2FA disabled: this is one non-interactive password login, which cannot
+# complete a 2FA challenge or an OIDC redirect. Use a dedicated account if a person's credentials should not be used;
+# its access is scoped by its own role (docs/mcp-server.md, "Authentication model").
 #
 # Required environment variables:
 #   REQTRACK_EMAIL    - the account's email

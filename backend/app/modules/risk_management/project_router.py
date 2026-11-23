@@ -1,20 +1,12 @@
 """
 Module: modules.risk_management.project_router
 
-Project-scoped Risk API, mounted at
-`/api/v1/projects/{project_id}/modules/risk_management`: Risk
-CRUD/archive/versions/comments/files and the project's Risk type vocabulary
-(effective list plus rename/reorder/disable/add).
-
-RBAC: sub-component enablement and project membership to view; any project member
-may propose (create) a risk; `_shared.require_risk_manage` (project Risk Manager
-role or FGAC grant) to edit, archive, attach evidence or change the project's
-types. The lifecycle `transition` endpoint needs the Risk Manager role, except a
-move to `ACCEPTED`, which needs the Risk Acceptor role and (via MCP) the
-org+project AI-approval gate. Relationships are made through the generic artefact
-link endpoints; this router lists a risk's treatment links and records the verdict
-on each (`treatment.py`): the risk's owner (a user, or a member of its owner group) or a Risk Manager
-may assess, and likewise record a periodic review (`reviews.py`). A risk's files resolve through `service.resolve_risk_file_project_id`.
+Project-scoped Risk API at `/api/v1/projects/{project_id}/modules/risk_management`:
+CRUD, archive, versions, comments, files, the project Risk type vocabulary, the
+treatment verdict (`treatment.py`) and reviews (`reviews.py`). Any member may
+propose; `_shared.require_risk_manage` gates edits; a move to `ACCEPTED` needs the
+Risk Acceptor role (and the AI-approval gate via MCP). Files resolve through
+`service.resolve_risk_file_project_id`.
 """
 
 from __future__ import annotations

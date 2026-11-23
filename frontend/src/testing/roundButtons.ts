@@ -1,14 +1,13 @@
 /**
  * Module: testing/roundButtons
  *
- * The shared "is every round icon button a circle?" assertion. A round button is `.btn-round` (style
- * guide "Pattern: button sizes"): `border-radius: 50%` only draws a circle when the rendered box is
- * square, and a base `.btn` rule (such as its `min-height`) once made the collapse toggles tall ovals
- * without any rule naming them. This reads the rendered box and radius of every `.btn-round` and
- * returns what is wrong, so Storybook play functions and Playwright specs fail on a regression.
- *
- * Self-contained on purpose (no imports, helpers inside the function) so Playwright can ship it into
- * the page with `page.evaluate`, the same as `iconSizeGeometry`.
+ * The shared "is every round icon button a circle?" assertion. A round button is
+ * `.btn-round` (style guide "Pattern: button sizes"); `border-radius: 50%` draws
+ * a circle only when the rendered box is square, which a base `.btn` rule (such
+ * as `min-height`) can break. This reads the box and radius of every `.btn-round`
+ * and returns what is wrong, for Storybook play functions and Playwright specs.
+ * Self-contained (no imports, helpers inside the function) so Playwright can
+ * ship it with `page.evaluate`, like `iconSizeGeometry`.
  */
 
 /** One `.btn-round` as drawn: its box and the computed corner radius. */

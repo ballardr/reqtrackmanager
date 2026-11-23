@@ -1,21 +1,15 @@
 /**
  * Module: pages/ServerReportFontsTab
  *
- * The "Report fonts" group of Server Management: the fonts report authors can choose, and the extra families the
- * server administrator provides from the mounted font directory.
- *
- * Responsibilities:
- * - List the four bundled families and each provided family with its real faces and the name Word and OpenDocument are told.
- * - Per provided family: offer it to authors or hide it, and set its name for Word and OpenDocument and its generic fallback.
- * - Rescan the directory, and say which files were skipped and why.
- *
- * Design decisions:
- * - Rows are the shared `ItemRowList` with the gear (`SettingsPopoverButton`) for the rarely used settings, as for columns.
- * - Every change saves at once and ends in a toast; the Word name is typed text, so it has its own Save. Hiding is
- *   reversible, so it needs no confirmation (style guide, tier 1).
- * - What the page is and how PDF and Word differ is in the heading's `(?)` help; only the licence responsibility stays
- *   visible, beside Rescan, because it is needed before a font is provided.
- * - Bundled families are listed for completeness and carry no controls: they are always offered and are not configurable.
+ * The "Report fonts" group of Server Management: the fonts report authors can
+ * choose and the extra families the server administrator provides from the
+ * mounted font directory.
+ * Responsibilities: list the four bundled families and each provided family
+ * (faces, Word/OpenDocument name); per provided family, offer or hide it and set
+ * its Word name and generic fallback; rescan and report skipped files and why.
+ * Design: rows are the shared `ItemRowList` with a gear for rare settings; every
+ * change saves at once with a toast (the Word name has its own Save); hiding is
+ * reversible so needs no confirmation. Bundled families carry no controls.
  */
 import { useEffect, useState } from "react";
 

@@ -1,34 +1,24 @@
 """
 Module: modules.stakeholders.relationships
 
-The remaining overview §10.5 relationships a Stakeholder or Persona has with
-other artefacts, as one declarative table of `RelationshipKind`s over
-the platform's polymorphic `ArtefactLink`. "Represents Persona" and "Has need"
-shipped earlier with their own endpoints; this covers the rest.
+The overview §10.5 relationships a Stakeholder or Persona has with other artefacts, as one declarative
+table of `RelationshipKind`s over the platform's polymorphic `ArtefactLink`.
 
 Responsibilities:
-- Declare each kind: its org link-type names, which holder kinds (Stakeholder,
-  Persona) may use it, and which target artefact types it points at.
-- Resolve a target without importing the module that owns it: `requirement` is
-  core, every other type goes through `registry.get_artefact_summary` (so Pain
-  Points and Decisions stay Context & Strategy's and Decision Management's own).
-- Create/list/delete links, enforcing that a target belongs to the same project
-  as the request and that a kind's holder/target types are respected.
+- Declare each kind: its org link-type names, the holder kinds that may use it and its target artefact types.
+- Resolve a target without importing the owning module: `requirement` is core, every other type goes
+  through `registry.get_artefact_summary`.
+- Create, list and delete links, enforcing that a target belongs to the request's project.
 
 Design decisions:
-- A kind whose target types no installed module provides (Design/System
-  Element, until the engineering-design module exists) is *declared but unavailable*: it is listed
-  with `available=False` and creating it is a 409. When the owning module later
-  registers an `artefact_summary_provider` for that type it goes live with no
-  change here — the reservation costs nothing.
-- Links live in `ArtefactLink` with one org `RequirementLinkTypeDefinition` per
-  kind, created on first use (the helper "Represents"/"Has need" use), so
-  nothing is seeded and a renamed or deleted default is harmless.
-- Listing is always per project: a holder can be org-wide, so only targets in
-  the requesting project are shown, never another project's.
+- A kind whose target types no installed module provides is declared but unavailable: listed with
+  `available=False`, and creating it is a 409. It goes live when an owning module registers a summary
+  provider for the type.
+- Links use one org `RequirementLinkTypeDefinition` per kind, created on first use, so nothing is seeded
+  and a renamed or deleted default is harmless.
+- Listing is per project: a holder can be org-wide, so only targets in the requesting project are shown.
 
-Dependencies: `services.relationships` (link storage), `modules.registry`
-(summary providers), core `Requirement`.
+Dependencies: `services.relationships`, `modules.registry`, core `Requirement`.
 """
 
 from __future__ import annotations

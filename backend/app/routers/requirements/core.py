@@ -263,45 +263,34 @@ def list_requirements(
     project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01)
-    and filter-panel query params (status/completed/target version/comments/watched).
+    """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01) and filter-panel query
+    params (status/completed/target version/comments/watched).
 
-    `target_stage_from_id`/`target_stage_to_id` keep the requirements whose target stage lies between
-    two stages by the stages' order (either may be omitted); `target_stage_id` is the single-stage
-    form and may be combined with them.
+    `target_stage_from_id`/`target_stage_to_id` keep the requirements whose target stage lies between two
+    stages by the stages' order (either may be omitted); `target_stage_id` is the single-stage form and may be
+    combined with them.
 
-    `is_completed` filters on the `Requirement.is_completed` overlay marker
-    (C-G-11) independently of `status` — completion is no longer a
-    `RequirementStatus` value, so it's its own boolean query param rather
-    than a `status` option, matching the frontend's separate "Completed"
-    `FilterCheckbox` alongside the status `<select>`.
+    `is_completed` filters on the `Requirement.is_completed` overlay marker (C-G-11) independently of `status`,
+    since completion is not a `RequirementStatus` value.
 
-    `limit`/`offset` (U-P-06) are optional: omitting both returns every
-    matching requirement, unchanged from before pagination existed (C-G-05:
-    no artificial limit is ever imposed unless the caller asks for a page).
-    When `limit` is given, the total match count (before slicing) is
-    returned in the `X-Total-Count` response header so a client can tell
-    whether more pages remain.
+    `limit`/`offset` (U-P-06) are optional: omitting both returns every matching requirement (C-G-05: no
+    artificial limit unless the caller asks for a page). When `limit` is given, the total match count (before
+    slicing) is returned in the `X-Total-Count` response header.
 
-    `sort` optionally overrides the default component/category/manual-
-    order sort below with a single-column sort by `unique_code` (`code`), `name` (`title`),
-    `status`, `created_at` (`created`) or `updated_at` (`modified`); `order` picks `asc` (default)
-    or `desc`. A code orders by its prefix and then its number (`REQ-2` before `REQ-10`).
-    Omitting `sort` leaves the existing default ordering completely
-    unchanged, so this is additive, not a breaking change to callers that
-    don't ask for it.
+    `sort` overrides the default component/category/manual-order sort with a single-column sort by
+    `unique_code` (`code`), `name` (`title`), `status`, `created_at` (`created`) or `updated_at` (`modified`);
+    `order` picks `asc` (default) or `desc`. A code orders by its prefix and then its number (`REQ-2` before
+    `REQ-10`). Without `sort` the default ordering applies.
 
-    `X-Total-Unfiltered-Count` is a second response header reporting the
-    count within only the mandatory project + default archived-visibility
-    scope, before component/category/search/status/completed/stage/comments/
-    watched filters below narrow it further — unlike `X-Total-Count`, it does not
-    change when the caller adds a filter or search term, so the frontend
-    can show "12 matching · 57 total" instead of just a bare filtered count.
+    `X-Total-Unfiltered-Count` is the count within only the mandatory project + default archived-visibility
+    scope, before the component/category/search/status/completed/stage/comments/watched filters narrow it;
+    unlike `X-Total-Count` it does not change with a filter or search term, so the frontend can show
+    "12 matching · 57 total".
 
-    `project_scope` (`parents`/`children`/`both`) adds the requirements of the related projects
-    the caller can open (`services.project_scope`); rows from another project carry
-    `from_project_*`, the counts above cover every project listed, and project-local filters
-    (component, category, target stage) only match rows of the project they belong to.
+    `project_scope` (`parents`/`children`/`both`) adds the requirements of the related projects the caller can
+    open (`services.project_scope`); rows from another project carry `from_project_*`, the counts above cover
+    every project listed, and project-local filters (component, category, target stage) match only rows of
+    their own project.
     """
     unfiltered = 0
 
@@ -379,24 +368,15 @@ def update_requirement(
     at that point, changes must go through a change request instead."""
     _require_edit_role(db, current_user, project_id)
     if payload.status == RequirementStatus.APPROVED:
-        # C-U-03's clarification is explicit that approving a requirement is
-        # a *Project Manager* capability layered on top of, not shared
-        # with, what administrators/stakeholders can do ("Project Managers
-        # can also provide approvals for change requests and approval of
-        # project requirements") — the same distinction
-        # decide_change_request already enforces for CR approval
-        # specifically ("C-U-03: project manager only"), which this direct-
-        # edit path had not mirrored: any of the three CAN_EDIT_ROLES
-        # (including a plain Stakeholder) could otherwise set
-        # status="approved" here and become the requirement's own
-        # approval_authority, self-approving and locking it.
+        # C-U-03 makes approving a requirement a Project Manager capability, not shared with
+        # administrators or stakeholders ("Project Managers can also provide approvals for change requests and
+        # approval of project requirements"), as `decide_change_request` enforces for change requests. Without
+        # this check any of the CAN_EDIT_ROLES (including a plain Stakeholder) could set status="approved"
+        # here, become the requirement's approval_authority, and self-approve and lock it.
         if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
-    # The previous reject-COMPLETED-in-payload guard that lived here is now
-    # moot: `COMPLETED` isn't a valid `RequirementStatus` value at all
-    # (C-G-11 — completion is `Requirement.is_completed`, an overlay marker,
-    # not a lifecycle status), so Pydantic/enum validation rejects it on the
-    # way in before this handler ever runs, with no special case needed.
+    # `COMPLETED` is not a `RequirementStatus` value (C-G-11: completion is the `Requirement.is_completed`
+    # overlay marker), so enum validation rejects it before this handler runs.
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")

@@ -4,18 +4,12 @@ Revision ID: 0003
 Revises: 0002
 Create Date: 2026-08-10
 
-Adds `ReportTemplate.chapters_per_component` (whether a PDF report chapters
-by component or renders continuously — see `services/reports.py`) and
-`Project.default_report_template_id` (pre-selected on the report generation
-page, see `docs/decisions.md`'s "PDF reports: intro/template defaults,
+Adds `ReportTemplate.chapters_per_component` (a PDF report chapters by component or renders
+continuously; see `services/reports.py`) and `Project.default_report_template_id` (pre-selected on the
+report generation page; see docs/decisions.md's "PDF reports: intro/template defaults,
 continuous-layout toggle" entry).
 
-`IF NOT EXISTS`/`IF EXISTS` throughout for the same reason 0002 uses it: on
-a brand-new database, 0001's `create_all()` already creates these columns
-against the current model classes, so a plain `ADD COLUMN` would fail there
-with "already exists"; on an already-migrated database from before this
-revision, they're genuinely missing. `IF NOT EXISTS` converges to the same
-end state either way.
+`IF NOT EXISTS`/`IF EXISTS` throughout, for the reason given in 0002.
 """
 
 from collections.abc import Sequence

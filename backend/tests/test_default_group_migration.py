@@ -1,37 +1,17 @@
 """Tests for the default-project-group data migration
-(`alembic/versions/0019_remove_default_project_groups.py`): for every pre-existing `is_default=True` `ProjectGroup`,
-its direct user members are materialized into direct `UserProjectRole`
-grants (idempotently, with the group's own role), and the group is then
-either deleted (plain direct members only) or demoted to an ordinary group
-(composition beyond plain direct members — a cross-project member-source
-reference, in the case exercised here, or a nested org group).
+(`alembic/versions/0019_remove_default_project_groups.py`): for every `is_default=True` `ProjectGroup`, its direct
+user members become direct `UserProjectRole` grants (idempotently, with the group's own role), and the group is
+then deleted (plain direct members only) or demoted to an ordinary group (composition beyond plain direct members:
+a cross-project member-source reference or a nested org group).
 
-Runs the *real* migration, not a reimplementation of its logic: downgrades
-the live test database to revision 0018 (re-adding `project_groups.
-is_default`), seeds pre-migration-shaped rows directly via raw SQL against
-that shape (the project/user setup itself goes through the normal API —
-only the `is_default` group rows need raw SQL, since that column no longer
-exists on the `ProjectGroup` model to insert through the ORM/API at all),
-then upgrades back to head — which runs 0019's actual conversion SQL — and
-asserts against the result via the ordinary API. Always upgrades back to
-head before returning, even on failure, so the shared session-scoped test
-database (`conftest.py`'s `_schema` fixture) is left in the state every
-other test in this suite expects (matching `Base.metadata`, per
-`test_schema_migrations_match_models.py`).
+Runs the real migration: downgrades the test database to revision 0018 (re-adding `project_groups.is_default`),
+seeds `is_default` group rows with raw SQL (the column is not on the `ProjectGroup` model), upgrades to head and
+asserts through the API. It always upgrades back to head, even on failure, so the shared session-scoped database
+(`conftest.py`'s `_schema` fixture) matches `Base.metadata` (see `test_schema_migrations_match_models.py`).
 
-The project/user setup must happen *before* entering the downgraded window,
-not inside it — a regression found while implementing the members/
-groups directory rework (docs/decisions.md): `create_project`'s own
-manager-assignment fallback (`_ensure_project_has_a_manager`) unconditionally
-calls `get_effective_project_managers`, which (at head)
-queries the new `project_group_roles` table — a table that doesn't exist
-yet at revision 0018 (or anywhere below 0022). These two tests used to call
-`create_project` *inside* the downgraded window without issue, since 0018's
-own schema still had everything `create_project` needed at the time this
-file was written; the own new table broke that assumption. See
-`test_project_group_role_migration.py`'s module docstring for the identical
-issue found there first, and the same `contextmanager`-based fix applied
-here.
+Project and user setup happens before the downgraded window: `create_project` calls
+`get_effective_project_managers`, which queries `project_group_roles`, a table absent below revision 0022. The same
+`contextmanager` structure is used in `test_project_group_role_migration.py`.
 """
 
 import uuid
@@ -138,10 +118,8 @@ def test_default_group_with_extra_composition_materializes_members_and_survives_
     groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token)).json()
     reloaded = next((g for g in groups if g["id"] == str(group_id)), None)
     assert reloaded is not None, "a group with extra composition must survive the migration, not be deleted"
-    # the members/groups directory rework (docs/decisions.md):
-    # `role` was replaced by `roles` on `ProjectGroupOut` — the migrated
-    # group's pre-existing role now survives as exactly one grant in that
-    # list, backfilled by 0022 immediately after 0019's own conversion runs.
+    # `ProjectGroupOut` exposes `roles`; the migrated group's role is exactly
+    # one grant in that list, backfilled by 0022 after 0019's conversion.
     assert reloaded["roles"] == ["project_manager"]
     assert "role" not in reloaded
     assert "is_default" not in reloaded
@@ -153,7 +131,6 @@ def test_default_group_with_extra_composition_materializes_members_and_survives_
         "the group's direct member must also hold a direct PROJECT_MANAGER grant after migration"
     )
 
-    # C-U-08: manager coverage preserved exactly — solo_manager was the
-    # project's only manager (via this group) before the migration and
-    # remains one afterward (now via their new direct grant, still backed
-    # by the surviving group too), never zero.
+    # C-U-08: manager coverage is preserved. solo_manager, the project's only
+    # manager (via this group), remains one through the new direct grant and
+    # the surviving group, never zero.

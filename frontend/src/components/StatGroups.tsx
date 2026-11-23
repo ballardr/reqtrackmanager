@@ -1,27 +1,18 @@
 /**
  * Module: components/StatGroups
  *
- * The standard way to show many figures at once: a responsive grid of small
- * cards, one per group (typically one per source: a report, an entity, a
- * module), each with a heading and measure-name / value rows. Born in the
- * Context & Strategy summary report, where 25 figures from nine reports could
- * not be shown as a flat row of tiles.
+ * The standard way to show many figures at once: a responsive grid of small cards, one per group (typically one per
+ * source: a report, an entity, a module), each with a heading and measure-name / value rows.
  *
- * Anatomy of a card: the group title; a "Needs attention · n" badge (or "No
- * gaps") when any of its figures is a `gap`; then one row per figure, with the
- * measure name on the left and the value right-aligned. A `gap` figure that is
- * non-zero shows its value in a warning pill with screen-reader text ("needs
- * attention"); a zero gap is muted; plain figures stay as ordinary text.
+ * Anatomy of a card: the group title; a "Needs attention · n" badge (or "No gaps") when any figure is a `gap`; then one
+ * row per figure, measure name left and value right-aligned. A non-zero `gap` value shows in a warning pill with
+ * screen-reader text ("needs attention"); a zero gap is muted; plain figures stay ordinary text. A figure with `to` or
+ * `onActivate` makes its whole row interactive (see `StatFigureLabel`).
  *
- * Use it instead of `StatBar` when there are more than 8 figures, labels run
- * past about 28 characters, or the figures come from several sources and
- * deserve a heading. Use `MetricTile` instead when each figure must link to a
- * filtered list. Columns are `repeat(auto-fill, minmax(min(100%, 17rem), 1fr))`
- * with no media queries, so it also works in a narrow pane; cards in a grid
- * row stretch to equal height, and labels wrap rather than truncate. See
- * A figure with `to` (a page) or `onActivate` (an in-place action) makes its whole row
- * interactive (stretched control on the label; see `StatFigureLabel`).
- * See docs/ux-style-guide.md ("Stat blocks") and `testing/statBlockGeometry.ts`.
+ * Use it instead of `StatBar` for more than 8 figures, labels past about 28 characters, or figures from several sources;
+ * use `MetricTile` when each figure must link to a filtered list. Columns are
+ * `repeat(auto-fill, minmax(min(100%, 17rem), 1fr))` with no media queries, cards stretch to equal height and labels
+ * wrap. See docs/ux-style-guide.md ("Stat blocks") and `testing/statBlockGeometry.ts`.
  */
 import { needsAttention } from "../utils/needsAttention";
 import type { StatBarItem } from "./StatBar";

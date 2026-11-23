@@ -2,16 +2,14 @@
  * Module: components/ReportsDialog
  *
  * The one place reports are chosen and downloaded for a project or an organisation: a dialog opened from the
- * "Reports" menu on the project and organisation overviews (`ReportsMenuButton`). It has two views: the report
- * picker with the chosen report below it (`ReportCatalogue`), and the person's background reports.
+ * "Reports" menu on the overviews (`ReportsMenuButton`) with the report picker and the chosen report below it
+ * (`ReportCatalogue`).
  *
- * Responsibilities:
- * - Load the scope's report catalogue and report packs when the dialog opens, so an overview that never opens it
- *   costs no extra request, and offer them (with the requirement report for a project) in the one picker.
+ * Responsibilities: load the scope's report catalogue and report packs when the dialog opens (an overview that never
+ * opens it costs no request) and offer them, with the requirement report for a project, in the one picker.
  *
- * Design decisions: nothing here names a module or a report; the catalogue says what exists. The chosen report is
- * the `report` search parameter and a figure's target section the `section` parameter (read by `ReportCatalogue`),
- * so a link can open the dialog on one report.
+ * Design decisions: nothing here names a module or a report. The chosen report is the `report` search parameter and a
+ * figure's target section the `section` parameter (read by `ReportCatalogue`), so a link can open one report.
  *
  * Dependencies: `ReportCatalogue`, `useReportCatalogue`, `useReportPackEntries`, `Modal`.
  */

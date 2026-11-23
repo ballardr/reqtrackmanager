@@ -7,7 +7,7 @@ Create Date: 2026-11-14
 Generic comments on records of any registered artefact type that opts in (`ModuleDefinition.record_comments`), keyed by
 the artefact type string and the record id as tags and placements are. A pin places one thread on a record's drawing
 (a free spot, a box or a line) and holds its resolved state; a comment with no pin is an ordinary comment on the record.
-Nothing is backfilled: no record has comments in these tables yet. Guarded so a database built from the current models
+Nothing is backfilled: these tables are new. Guarded so a database built from the current models
 passes.
 """
 

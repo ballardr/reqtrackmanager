@@ -1,18 +1,15 @@
 /**
  * Module: components/DeliveryTimeline
  *
- * The timeline view of the delivery plan: one horizontal bar per stage or component track on a shared date axis, with a
- * marker for today. The table beside it (`ComponentTracksList`, `StagePlanTable`) is the accessible alternative and says
- * the same things in words.
+ * The timeline view of the delivery plan: one horizontal bar per stage or component track on a shared date axis
+ * with a marker for today. The table beside it (`ComponentTracksList`, `StagePlanTable`) is the accessible
+ * alternative.
  *
- * Responsibilities:
- * - Position each row's expected range as an outlined bar, fill it by progress (workflow phases completed), and draw the
- *   recorded actual range as a thin solid line beneath it; a row with no dates shows "No dates set" and no bar.
- * - Draw month ticks and today across the rows from `utils/deliveryPlan.timelineBounds`.
- * - Name each row for assistive technology in one sentence (phase, progress, dates, overdue); the bars are decorative.
- *
- * Design decisions: plain CSS positioning, no chart library; an overdue row carries a text badge and an icon as well as
- * the colour, so colour is never the only cue. Nothing is inferred for a row without dates.
+ * - Each row's expected range is an outlined bar filled by progress (workflow phases completed), with the recorded
+ *   actual range as a thin solid line beneath; a row with no dates shows "No dates set" and no bar (nothing is
+ *   inferred). Month ticks and today come from `utils/deliveryPlan.timelineBounds`.
+ * - Each row has a one-sentence accessible name (phase, progress, dates, overdue); the bars are decorative. Plain
+ *   CSS positioning, no chart library; an overdue row carries a text badge and icon, so colour is never the only cue.
  */
 import { TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";

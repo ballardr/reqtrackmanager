@@ -1,15 +1,13 @@
 /**
  * Module: pages/NotificationOpenPage
  *
- * `/notifications/:notificationId`, the one address every notification link opens: the bell, the notification list and the
- * email (the daily digest links each item to it too). It loads the notification, marks it read and navigates to the page
- * its type declares (`resolveNotificationTarget`). When no page applies, or the person's access to the subject has ended,
- * it shows the full message instead, so a click never ends on an empty error.
+ * `/notifications/:notificationId`, the one address every notification link opens (bell, list, email and
+ * digest). It loads the notification, marks it read and navigates to the page its type declares
+ * (`resolveNotificationTarget`); when no page applies or access has ended it shows the full message.
  *
- * Design decisions: the target is resolved in the browser with the same function for every surface, so a module's page
- * addresses are never copied onto the server and an email link cannot drift from the bell. Navigation replaces this
- * page in the history, so Back returns to where the person was, not to a redirect. Signing in first is the ordinary
- * protected-route flow, which returns the person here afterwards.
+ * Design decisions: the browser resolves the target with one function for every surface, so module page
+ * addresses are not copied onto the server and an email link cannot drift from the bell. Navigation
+ * replaces this page in the history so Back skips the redirect; sign-in is the protected-route flow.
  */
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

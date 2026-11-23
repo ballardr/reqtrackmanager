@@ -10,17 +10,16 @@ Responsibilities:
 - Leave health, metrics and WebSocket traffic alone.
 
 Design decisions:
-- Why a limit exists: a request takes a database connection in its first dependency and keeps it until the handler
-  and the session cleanup have run, and each of those steps needs a thread from a fixed pool. With more requests in
-  flight than connections, every thread ends up waiting for a connection that is held by a request waiting for a
-  thread; nothing moves until the pool's 30-second timeout, and new arrivals refill it. The load test showed a single
-  worker serving nothing at 96 simulated users. Admitting no more requests than there are connections means an
-  admitted request never waits for one.
-- The default limit is the pool's capacity (`db_pool_size + db_max_overflow`). It is below the thread limit, so a
-  thread is always available as well. Raising it above the pool only makes sense together with the pool.
-- Pure ASGI (not `BaseHTTPMiddleware`) so the wait costs a coroutine, not a thread, and the slot is released when the
-  response finishes or the client goes away.
-- A slot is held while a request body is still arriving; the reverse proxy in front buffers bodies, which is one more
+- A request takes a database connection in its first dependency and keeps it until the handler and session
+  cleanup have run, and each step needs a thread from a fixed pool. With more requests in flight than
+  connections, every thread waits for a connection held by a request waiting for a thread, and nothing moves
+  until the pool's 30-second timeout (a load test showed one worker serving nothing at 96 simulated users).
+  Admitting no more requests than connections means an admitted request never waits for one.
+- The default limit is the pool's capacity (`db_pool_size + db_max_overflow`), below the thread limit so a
+  thread is always available. Raise it only together with the pool.
+- Pure ASGI (not `BaseHTTPMiddleware`) so the wait costs a coroutine, not a thread, and the slot is released
+  when the response finishes or the client goes away.
+- A slot is held while a request body is still arriving; the reverse proxy in front buffers bodies, one more
   reason not to expose the backend directly.
 
 Dependencies: `config`, `metrics`.

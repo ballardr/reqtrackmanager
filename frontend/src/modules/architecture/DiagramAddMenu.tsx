@@ -5,9 +5,9 @@
  * domains' order, and a type in no domain under "New element"; choosing one creates an element
  * at the next free place, dragging one onto the canvas creates it where it is dropped), then "Add existing elements" and
  * "Add note". On a diagram of an element's inside, a last group "Outside this element" lists the connections that cross the
- * element's boundary, each drawn as a boundary box. Dragging is only one way in: every entry is a menu item, so the menu is usable from the keyboard.
- * For a person who may manage the project's types, a last entry (a gear) leads to the Element Types settings, so a type
- * that is missing can be added without hunting for the page.
+ * element's boundary, each drawn as a boundary box. Dragging is only one way in: every entry is a menu item, so the
+ * menu is usable from the keyboard. For a person who may manage the project's types, a last entry (a gear) leads to
+ * the Element Types settings.
  */
 import { MenuButton } from "../../components/MenuButton";
 import { addMenuItems, type OuterConnectionChoice } from "./diagramAddItems";

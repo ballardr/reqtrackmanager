@@ -76,18 +76,10 @@ def get_due_reviews_for_user(db: Session, user_id: UUID) -> list[tuple[Requireme
     due/overdue, across every project (C-R-09/C-R-10). A review assigned to a
     group the user belongs to counts as theirs: any one member may record it.
 
-    Unlike `get_due_reviews_for_project`, this spans every project the
-    caller has any role on rather than one specific `project_id`, so its
-    router (`routers/reviews.py`) has no single id to gate behind
-    `require_project_view`/`require_org_role` (whose `_require_org_active`
-    check would otherwise cover this for free) — a hardening-review finding:
-    this query joined straight from `Requirement` to `RequirementVersion`
-    with no `Project`/`Organization` involved at all, so a requirement in a
-    since-disabled organisation kept appearing in a reviewer's due list
-    indefinitely, the one org/project-scoped read in the app that wasn't
-    wired to the disable gate. Joining `Project`/`Organization` here and
-    filtering on `is_active` closes that gap directly, since there's no
-    dependency factory to lean on.
+    Unlike `get_due_reviews_for_project`, this spans every project the caller has a role on, so its router
+    (`routers/reviews.py`) has no single id to gate behind `require_project_view`/`require_org_role` (whose
+    `_require_org_active` check would otherwise apply). The query therefore joins `Project`/`Organization` and
+    filters on `is_active`, so a requirement in a disabled organisation never appears in a due list.
     """
     project_group_ids = _project_group_ids_with_due_reviews(db, user_id)
     mine = principal_filter_clause(db, user_id, RequirementVersion.reviewer_type, RequirementVersion.reviewer_id)

@@ -1,15 +1,14 @@
 /**
  * Module: pages/ResetPasswordPage
  *
- * Signed-out page a password-reset link opens (`/reset-password#token=...`): the person chooses a new
- * password (`POST /auth/reset-password`).
- *
- * Responsibilities: read the link's secret from the URL fragment and remove it from the address bar at once,
- * collect and confirm the new password, and send the person to the sign-in page with a confirmation.
- *
- * Design decisions: the secret is in the fragment, which browsers never send to a server, so it stays out of
- * access logs and referrers; it is held in component state only after being cleared from the URL. The page
- * does not sign the person in: they sign in with the new password (and second factor, if enrolled).
+ * Signed-out page a password-reset link opens (`/reset-password#token=...`);
+ * the person chooses a new password (`POST /auth/reset-password`).
+ * Responsibilities: read the secret from the URL fragment and remove it from
+ * the address bar at once, collect and confirm the password, then send the
+ * person to sign-in with a confirmation.
+ * Design: the fragment is never sent to a server, so the secret stays out of
+ * access logs and referrers; it is held in state only after being cleared from
+ * the URL. The page does not sign the person in.
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";

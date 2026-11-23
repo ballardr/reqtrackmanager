@@ -1,23 +1,13 @@
 /**
  * Module: modules/compliance/StandardImportModal
  *
- * The "Import standard" dialog —
- * uploads a single standard's export document (`GET .../standards/{id}/
- * export`, `StandardWorkspacePage.tsx`'s "Export" action) into an
- * organisation, always as a brand-new, `DRAFT`-only standard (§4/§31 — see
- * `app.modules.compliance.export.import_standard_data`'s own docstring for
- * why). Reached from `StandardListPage.tsx`'s "New standard"
- * `SplitButtonTrigger` alternative, mirroring `StandardFormModal.tsx`'s
- * "org picker as the dialog's first field, hidden entirely when there's
- * only one candidate" shape exactly.
- *
- * Reference-collision handling: the backend 409s (with a human-readable
- * message) when the uploaded document's `reference` already exists in the
- * chosen organisation, without writing anything — this dialog then offers
- * "Skip" or "Import as a copy" and retries with that `resolution`, rather
- * than a separate preview step (the whole-org bundle's own `import/preview`
- * + `import/merge` two-step is overkill here: a single standard has only
- * ever one possible collision to resolve, its own reference).
+ * The "Import standard" dialog: uploads one standard's export document (`GET .../standards/{id}/export`, `StandardWorkspacePage.tsx`'s
+ * "Export") into an organisation as a new `DRAFT`-only standard (§4/§31; see `app.modules.compliance.export.import_standard_data`).
+ * It is an alternative of `StandardListPage.tsx`'s "New standard" `SplitButtonTrigger` and, like `StandardFormModal.tsx`, shows an
+ * organisation picker first only with more than one candidate.
+ * Reference collision: the backend returns 409 with a readable message, writing nothing, when the document's `reference` already
+ * exists in the organisation; the dialog then offers "Skip" or "Import as a copy" and retries with that `resolution`. A single
+ * standard has only one possible collision, so the whole-organisation bundle's two-step preview and merge is not used.
  */
 import { useState } from "react";
 

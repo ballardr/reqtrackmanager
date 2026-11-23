@@ -1,27 +1,22 @@
 /**
  * Module: modules/risk_management/ProjectRisksPage
  *
- * The project's risk register, mounted at `/projects/:projectId/modules/
- * risk_management/risks` (`module.ts`, reached from the "Risks" nav-rail
- * entry) —
+ * The project's risk register, mounted at `/projects/:projectId/modules/risk_management/risks` (`module.ts`, the
+ * "Risks" nav-rail entry).
  *
  * Two views over the same filtered set, switched with `Tabs`:
- * - *Register*: a `DirectoryTable` (code opens the detail page) with inherent
- *   and residual rating, status, owner and next-review columns, plus a
- *   `FilterPanel` (search, status, type, "review overdue", "no effective
- *   treatment yet", archived).
- * - *Matrix*: the configured Likelihood × Consequence grid with the risks
- *   plotted by inherent or residual rating (`RiskMatrix`). Clicking a cell
- *   narrows the register to that cell and returns to it.
+ * - *Register*: a `DirectoryTable` (code opens the detail page) with inherent and residual rating, status, owner and
+ *   next-review columns, plus a `FilterPanel` (search, status, type, "review overdue", "no effective treatment yet",
+ *   archived).
+ * - *Matrix*: the configured Likelihood x Consequence grid with the risks plotted by inherent or residual rating
+ *   (`RiskMatrix`). Clicking a cell narrows the register to that cell and returns to it.
  *
- * The register opens on open risks only (the "Open only" filter is ticked and
- * stays visible); a link with a valid `status`, or `open=0`, starts with it
- * off (`hooks/useOpenOnly.ts`). The view, matrix cell and filters are kept in
- * the URL (`hooks/useUrlFilter.ts`), so the register comes back as it was left.
+ * The register opens on open risks only (the "Open only" filter is ticked and visible); a link with a valid `status`,
+ * or `open=0`, starts with it off (`hooks/useOpenOnly.ts`). The view, matrix cell and filters are kept in the URL
+ * (`hooks/useUrlFilter.ts`), so the register returns as left.
  *
- * Status and type render through their label maps; the rating is derived by the
- * backend. The project, org users, types, scheme and risks are fetched here
- * (no `ProjectContext` provider, as `ProjectDecisionsPage` does).
+ * Status and type render through their label maps; the backend derives the rating. The project, organisation users,
+ * types, scheme and risks are fetched here (no `ProjectContext` provider, as `ProjectDecisionsPage`).
  */
 import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useMemo, useState } from "react";

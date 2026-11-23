@@ -1,16 +1,12 @@
 """Tests for groups on core fields (users and groups on parity), through the real HTTP endpoints.
 
-A change request task's assignee (a member of an assigned group may mark
-the task done, a non-member or removed member may not; project bundle round trip; the
-`0083` migration).
+A change request task's assignee (a member of an assigned group may mark the task done, a non-member or removed
+member may not; project bundle round trip; the `0083` migration).
 
-A requirement action's assignee and a change
-request's proposed action assignee — each principal kind on create, update,
-clear and list; validation (a foreign organisation's group or user, another
-project's group, an unknown id — the assignee was not validated at all before);
-a proposal carried through approval into the new action; deleting a group that
-is assigned actions (usage counts, blocked, reassigned, cleared, open proposals
-rewritten and decided ones left as history); and the real `0082` migration.
+A requirement action's assignee and a change request's proposed action assignee: each principal kind on create,
+update, clear and list; validation (a foreign organisation's group or user, another project's group, an unknown id);
+a proposal carried through approval into the new action; deleting a group that is assigned actions (usage counts,
+blocked, reassigned, cleared, open proposals rewritten and decided ones left as history); and the `0082` migration.
 """
 
 from __future__ import annotations

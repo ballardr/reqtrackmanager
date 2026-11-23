@@ -1,16 +1,11 @@
 """
 Module: modules.stakeholders._research_shared
 
-Handler bodies behind the research-extras routes (`research_project_router.py`):
-session prompts, anonymous participants and findings of an Engagement
-The routes are gated by the
-`research_extras` sub-component, so a project that has it off still has the full
-engagement log.
-
-RBAC and tenancy are the engagement's (`_engagement_shared`): every write needs
-`require_engagement_manage`, and an item is only reachable through an engagement
-of the request's project. Audit events carry ids only, since prompts, labels and
-findings can quote participants.
+Handler bodies behind the research-extras routes: session prompts, anonymous
+participants and findings of an Engagement, gated by the `research_extras`
+sub-component. RBAC and tenancy are the engagement's (`require_engagement_manage`;
+items are reachable only through an engagement of the project). Audit events
+carry ids only, since the text can quote participants.
 """
 
 from __future__ import annotations

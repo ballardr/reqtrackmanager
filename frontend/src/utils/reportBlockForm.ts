@@ -2,13 +2,12 @@
  * Module: utils/reportBlockForm
  *
  * How a block's form is arranged, read from the block type's schema.
- *
- * Responsibilities: `arrangeBlockFields` splits a type's fields into the always-visible basic part and its collapsible
- * groups (in the schema's order); `blockGroupKey` names the key a group's open/closed choice is remembered under.
- *
- * Design decisions: arrangement only, nothing here changes what is stored. A type that declares no groups is flat. A
- * field that names a group the schema does not declare lands in an "Other" group, so a field the server adds is never
- * lost to a client that does not know its group.
+ * `arrangeBlockFields` splits a type's fields into the always-visible basic part
+ * and its collapsible groups (schema order); `blockGroupKey` names the key a
+ * group's open/closed choice is remembered under.
+ * Design: arrangement only; nothing here changes what is stored. A type with no
+ * groups is flat. A field naming an undeclared group lands in an "Other" group,
+ * so a field the server adds is never lost to a client that does not know it.
  */
 import type { BlockField, BlockGroup, BlockType } from "../api/reportLayouts";
 

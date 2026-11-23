@@ -15,11 +15,9 @@ function pcr(overrides: Partial<ProjectComplianceRequirement> = {}): ProjectComp
 }
 
 /**
- * §9's own explicit, non-optional UI requirement: "The UI must clearly
- * distinguish: Explicitly set applicability, Applicability inherited from a
- * parent, An overridden inherited value." These three stories are the
- * concrete proof each state gets a genuinely distinct visual treatment, not
- * just a different label string — see this component's own docstring.
+ * The three applicability states (explicit, inherited from a parent, an overridden inherited value) must be clearly
+ * distinguished. These stories show each state has its own visual treatment, not only a different label (see the component's
+ * docstring).
  */
 const meta: Meta<typeof ApplicabilityBadge> = {
   title: "Modules/Compliance/ApplicabilityBadge",

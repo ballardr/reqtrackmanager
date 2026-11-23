@@ -1,26 +1,12 @@
 /**
  * Module: pages/OrgResourcesPage
  *
- * "Org Resources" (`/orgs/:orgId/resources/:group?/:section?`): the records and content an organisation owns and
- * shares with its projects, as a `ResourceMenu` of sections. Organisation Settings holds configuration and the
- * Organisation Overview holds computed figures; this page holds what people open to work in.
- *
- * Responsibilities:
- * - Build the menu from `orgResourceSections` of the installed modules enabled for the organisation
- *   (`collectOrgResourceSections`), so a disabled module, or a sub-component that is off, is not offered, followed by
- *   the two sections core owns: Reports (layouts, packs, snippets, configuration) and Tags (the shared vocabulary).
- * - Resolve the address with the shared admin-menu rules (`resolveAdminSection`): grouped sections, a bare group
- *   redirecting to its first section, an unknown address returning to the page. Redirects keep the query string and
- *   hash, because a section's own filters live in the URL.
- * - Provide the title row (organisation name, switcher, a section's own actions through `PageActions`, a link to
- *   Organisation Settings).
- *
- * Design decisions: the page decides nothing about access. Each section's endpoints enforce their permission, so a
- * section a person may not use shows the error its endpoint returns. Core never imports a module: sections arrive
- * through the registry only; the core sections (`CORE_ORG_RESOURCE_GROUP_KEYS`) are the only ones named here.
- *
- * Dependencies: `GET /orgs/{id}` and `GET /orgs/{id}/enabled-modules` (readable by every member, so the page works for
- * a person who is not an administrator).
+ * "Org Resources" (`/orgs/:orgId/resources/:group?/:section?`): the records and content an organisation owns and shares with its projects,
+ * as a `ResourceMenu`. Menu: the enabled modules' `orgResourceSections` (`collectOrgResourceSections`), then the core Reports and Tags sections.
+ * Address: `resolveAdminSection` (groups, bare group redirect, unknown address returns to the page; redirects keep query string and hash).
+ * Title row: organisation name, switcher, `PageActions`, a link to Organisation Settings.
+ * Design: each section's endpoints enforce access; core never imports a module (only `CORE_ORG_RESOURCE_GROUP_KEYS` are named).
+ * Dependencies: `GET /orgs/{id}` and `GET /orgs/{id}/enabled-modules` (readable by every member).
  */
 import { useState } from "react";
 import { Settings } from "lucide-react";

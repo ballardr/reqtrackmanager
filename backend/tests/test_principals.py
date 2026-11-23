@@ -8,9 +8,9 @@ labels, notification fan-out, deleting a group that still owns records (block,
 reassign, clear, history rows), cross-organisation rejection and bundle
 round-tripping.
 
-No module adopts the mechanism yet, so the tests use their own table on a
-private metadata (never in the app schema or its migrations) and register it
-as a core `PrincipalReference` for the duration of each test.
+The tests use their own table on a private metadata (never in the app schema or
+its migrations) and register it as a core `PrincipalReference` for the duration of
+each test.
 """
 
 from __future__ import annotations

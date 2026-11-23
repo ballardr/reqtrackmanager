@@ -4,31 +4,21 @@ Module: services.report_pack_definition
 The definition a report pack is stored in, and its validation.
 
 Responsibilities:
-- Define the vocabulary: a root object with `schema_version`, optional `variables` (declared exactly as a
-  layout's, `services.report_variables`), an optional `file_name` (the zip's default name, a
-  `{{placeholder}}` template: `services.report_file_names`) and `entries`.
-- `validate_definition` / `assert_valid`: check a definition before it is stored, listing every problem.
-- `definition_hash`: SHA-256 of the canonical JSON, for change detection and provenance.
-
-Entries (at most `MAX_ENTRIES`):
-- Layout entry: `{"kind": "layout", "name": "<layout name>", "tier": "organization" | "project" (optional),
-  "format": "pdf", "filename": "overview" (optional, a file name template), "variables": {"categories": ["A"]} (optional)}`. The layout is
-  named, never identified by id, so a pack is portable in a bundle; `tier` pins which owner's layout of that name is
-  meant, and left out means the nearest one the scope reaches.
-- Module report entry: `{"kind": "report", "module_key": "risk", "report": "r1", "format": "pdf", "filename": ...,
-  "params": {...}}`, a report a module declares (`ReportDefinition.key`).
+- The vocabulary: `schema_version`, optional `variables` (declared as a layout's, `report_variables`), optional
+  `file_name` (a `{{placeholder}}` template, `report_file_names`) and `entries` (at most `MAX_ENTRIES`).
+- A layout entry `{"kind": "layout", "name", "tier"?, "format", "filename"?, "variables"?}` names its layout, never by id,
+  so a pack is portable; `tier` pins which owner's layout is meant, else the nearest. A module report entry
+  `{"kind": "report", "module_key", "report", "format", "filename"?, "params"?}`.
+- `validate_definition` / `assert_valid` (every problem listed), `definition_hash` (SHA-256 of canonical JSON).
 
 Design decisions:
-- **Pack variables are the ones entries take by name.** A layout entry receives the pack variable of the same name,
-  type and list-ness, or the value it fixes itself; this is resolved when the pack runs (a layout's variables are not
-  known when the pack is saved, and a layout can change after).
-- **Checks that need the registry happen here; checks that need a layout happen at run.** Whether a layout of that
-  name exists, offers that format and takes those variables depends on the scope the pack runs in, so a mismatch
-  makes that entry "not available" in the manifest rather than making the pack unsavable.
-- The text of a fixed value and a filename is configuration, not markup; nothing here is parsed as an expression.
+- A layout entry receives the pack variable of the same name, type and list-ness, or the value it fixes itself,
+  resolved when the pack runs (a layout's variables are unknown at save time).
+- Checks needing the registry happen here; checks needing a layout happen at run, so a layout that is missing or does
+  not offer the format makes that entry "not available" in the manifest instead of making the pack unsavable.
+- Fixed values and filenames are configuration, never parsed as expressions.
 
-Dependencies: `services.report_layout_tree` (the variable declaration checks), `services.report_variables`,
-`services.report_widgets`, `services.report_render`.
+Dependencies: `report_layout_tree`, `report_variables`, `report_widgets`, `report_render`.
 """
 
 from __future__ import annotations

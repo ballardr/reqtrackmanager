@@ -3,24 +3,15 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
 
 /**
- * Job to be done: `AddMembersModal` (frontend/src/components/AddMembersModal.tsx)
- * replaced two near-identical bespoke "pick one person, submit immediately,
- * close the modal" flows (`ManageProjectUsersModal`'s add-member
- * step, `ProjectAdminPage.tsx`'s own Members-section add-member modal) with
- * a staged multi-add: pick several people/groups, set each one's own role,
- * then commit them all with a single button press instead of one full
- * round trip per person. This spec covers that staged commit end to end
- * against the real backend (`ProjectAdminPage.tsx`'s own instance, which
- * has no batch backend endpoint to call — see the component's own module
- * docstring — so committing fires one `POST` per staged row from one user
- * action), plus the partial-failure path the style guide's "Pattern: bulk
- * operations on a list" requires: one failing row must stay visible with
- * its own error, not silently vanish alongside the rows that succeeded.
+ * Job to be done: `AddMembersModal` (frontend/src/components/AddMembersModal.tsx) is a staged multi-add: pick several
+ * people/groups, set each one's role, then commit them all with a single button press. This spec covers that staged
+ * commit end to end against the real backend (`ProjectAdminPage.tsx`'s instance has no batch endpoint, so committing
+ * fires one `POST` per staged row from one user action), plus the partial-failure path the style guide's "Pattern:
+ * bulk operations on a list" requires: one failing row stays visible with its own error rather than vanishing
+ * alongside the rows that succeeded.
  *
- * Persona: OrgAdminAlphaBeta (org admin of Beta, so can manage a fresh
- * throwaway Beta project's membership). Uses a brand-new project and a
- * brand-new org group per test (not a shared seeded fixture) so this can
- * run standalone or repeated without depending on another spec's state.
+ * Persona: OrgAdminAlphaBeta (org admin of Beta, so can manage a fresh throwaway Beta project's membership). Uses a
+ * new project and a new org group per test, so it runs standalone or repeated without depending on another spec.
  */
 test.describe("staged multi-add member flow", () => {
   test("staging two entries with different roles and committing once grants both in a single action", async ({ page }) => {

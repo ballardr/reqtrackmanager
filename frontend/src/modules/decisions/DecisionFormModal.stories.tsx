@@ -50,12 +50,7 @@ function mockDirectory() {
   });
 }
 
-/**
- * `DecisionFormModal` renders via `Modal`, which portals to `document.body`
- * (`createPortal`) — every assertion here queries `within(document.body)`,
- * not `canvasElement`, mirroring `modules/compliance/StandardFormModal
- * .stories.tsx`'s own identical convention for the same reason.
- */
+/** `Modal` portals to `document.body`, so every assertion queries `within(document.body)`, as in `modules/compliance/StandardFormModal.stories.tsx`. */
 const meta: Meta<typeof DecisionFormModal> = {
   title: "Modules/Decisions/DecisionFormModal",
   component: DecisionFormModal,
@@ -197,9 +192,7 @@ export const EditExisting: Story = {
   },
 };
 
-/** The page loads decision types in parallel, so the form can open before
- * they arrive; it must adopt the first type once they do, or Save stays
- * disabled for good (regression, 2026-10-04). */
+/** The page loads decision types in parallel, so the form can open before they arrive; it must adopt the first type then, or Save stays disabled. */
 export const TypesArriveAfterOpening: Story = {
   render: (args) => {
     function Harness() {

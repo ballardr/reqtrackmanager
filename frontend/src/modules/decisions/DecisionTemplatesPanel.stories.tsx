@@ -65,12 +65,9 @@ export const EmptyState: Story = {
   },
 };
 
-// `New decision template`/`Delete "..."` both open a `Modal`/`ConfirmDialog`,
-// which portal to `document.body` (`createPortal`) — so the button that
-// opens them is queried from `canvas` (still inside this panel's own DOM
-// subtree), but everything inside the dialog itself is queried from
-// `within(document.body)` instead, mirroring `DecisionFormModal.stories
-// .tsx`'s own convention.
+// `New decision template` and `Delete "..."` open a `Modal` / `ConfirmDialog` that portal to `document.body`: the
+// opening button is queried from `canvas` and everything inside the dialog from `within(document.body)`, as in
+// `DecisionFormModal.stories.tsx`.
 export const CreateTemplate: Story = {
   beforeEach: () => mockTemplateApis([]),
   play: async ({ canvasElement }) => {
@@ -89,10 +86,8 @@ export const CreateTemplate: Story = {
   },
 };
 
-// Row actions (Edit, Delete) are a per-row `ActionMenu` (style guide's
-// "Pattern: action menu" table addendum, 2026-09-22) — the kebab trigger
-// lives in the panel's own DOM subtree, the revealed menu and the
-// `ConfirmDialog` it opens both portal to `document.body`.
+// Row actions (Edit, Delete) are a per-row `ActionMenu` (style guide "Pattern: action menu"): the kebab trigger is in
+// the panel's DOM subtree, while the revealed menu and the `ConfirmDialog` portal to `document.body`.
 export const DeleteTemplate: Story = {
   beforeEach: () => mockTemplateApis([template()]),
   play: async ({ canvasElement }) => {

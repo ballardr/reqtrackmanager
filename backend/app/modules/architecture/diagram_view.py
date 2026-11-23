@@ -4,29 +4,30 @@ Module: modules.architecture.diagram_view
 Builds the resolved view of a diagram: the nodes, lines, toggles and notes a client draws and the server SVG renders.
 
 Responsibilities:
-- Load a diagram's placements, notes, toggles, the project's connections and every element involved in bulk, so the
-  number of statements does not grow with the size of the diagram.
-- Apply visibility: an element the viewer cannot read becomes a locked node (its code only) and is never matched by a
-  toggle or bridged through.
-- Evaluate each toggle's state (the saved default unless the request overrides it), find its members (manual members
-  plus what its rule matches) and hand the plain ids to `diagram_resolver.resolve`.
+- Load a diagram's placements, notes, toggles, the project's connections and every element involved in bulk, so
+  the number of statements does not grow with the diagram.
+- Apply visibility: an element the viewer cannot read becomes a locked node (its code only) and is never matched
+  by a toggle or bridged through.
+- Evaluate each toggle's state (the saved default unless the request overrides it), find its members (manual
+  members plus what its rule matches) and hand the plain ids to `diagram_resolver.resolve`.
 - Shape the answer for the API (`DiagramView`); a line's label comes from `diagram_edge_label`.
 
 Design decisions:
-- **The viewer's project's connections only.** A connection belongs to the project that created it, so a diagram draws
+- Only the viewer's project's connections: a connection belongs to the project that created it, so a diagram draws
   that project's connections, even where an end is an element another owner shares.
-- **Boundary boxes are drawn from the stored boxes that are still outer.** Each is a placed element with no parent for the
-  resolver, so a realising connection reaches it; a box whose outside element the viewer cannot read is locked.
-- **A connection with a route of its own is a line of its own** (`ArchitectureDiagramAnchor.connection_id`): the stored
-  routes are handed to the resolver, which takes such a connection out of its merged line, and the line says which
-  connections can be routed this way (`routable_connection_ids`) and which one it is drawn for (`route_connection_id`).
-- **Retired and archived connections are left out** (retired only unless `include_retired`), as the lists' "Open only".
-  A retired or archived *element* stays drawn, flagged by its status, since a diagram is a view of what was placed.
-- **Rules are evaluated over every element the diagram involves** (placed elements and connection ends), so a transit
-  element that is not itself placed can still be switched off and bridged through.
-- **Nothing here reads a name the viewer may not see:** a locked node carries its code only, a connection to it comes
-  from `records.connection_outs`, which blanks the locked end, and a symbol is offered only if `visible_symbol_ids`
-  allows it.
+- Boundary boxes are drawn from the stored boxes that are still outer. Each is a placed element with no parent for
+  the resolver, so a realising connection reaches it; a box whose outside element the viewer cannot read is locked.
+- A connection with a route of its own is a line of its own (`ArchitectureDiagramAnchor.connection_id`): the
+  stored routes go to the resolver, which takes such a connection out of its merged line; the line reports which
+  connections can be routed this way (`routable_connection_ids`) and which one it is drawn for
+  (`route_connection_id`).
+- Retired (unless `include_retired`) and archived connections are left out, as the lists' "Open only". A retired
+  or archived element stays drawn, flagged by its status, since a diagram is a view of what was placed.
+- Rules are evaluated over every element the diagram involves (placed elements and connection ends), so a transit
+  element that is not placed can still be switched off and bridged through.
+- Nothing here reads a name the viewer may not see: a locked node carries its code only, a connection to it comes
+  from `records.connection_outs` (which blanks the locked end) and a symbol is offered only if
+  `visible_symbol_ids` allows it.
 
 Dependencies: `diagram_resolver`, `diagrams`, `records`, `visibility`, `symbols`; core `services.tags`.
 """

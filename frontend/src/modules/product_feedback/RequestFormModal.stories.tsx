@@ -67,7 +67,7 @@ export const CreateRequiresATitleAndSendsTheChosenLevels: Story = {
   },
 };
 
-/** The derived Demand criterion names the level worked out from the requesters and can be overridden. */
+/** The derived Demand criterion names the level calculated from the requesters and can be overridden. */
 export const DerivedAxisShowsTheWorkedOutLevelAndCanBeOverridden: Story = {
   args: { initial: buildRequest() },
   play: async ({ args }) => {

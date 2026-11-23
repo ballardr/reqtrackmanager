@@ -4,26 +4,20 @@ Module: services.report_pack_bundle
 Report packs, their saved variable sets and per-project overrides in the project and organisation export bundles.
 
 Responsibilities:
-- Export a project's own packs (every version, with their sets), the inherited packs it hides, the sets it added to
-  inherited packs and the overrides it holds; export an organisation's own packs with their sets.
-- Import them: validate every definition again, number versions afresh, re-apply hides, added sets and overrides by name.
+- Export a project's own packs (every version, with sets), the inherited packs it hides, the sets it added and its
+  overrides; export an organisation's packs with their sets.
+- Import: validate every definition again, number versions afresh, re-apply hides, added sets and overrides by name.
 
 Design decisions:
-- **A bundle is untrusted input.** Each version is validated against this deployment (`report_packs.create_pack` /
-  `save_version`): a version that fails is dropped with a warning, and a pack with no valid version is skipped.
-  Versions are renumbered 1..n so history stays gap-free. A set whose values no longer fit the imported pack is
-  skipped with a warning (never stored half-valid).
-- **Everything travels by name.** A pack is named; a hide, an added set and an override name the inherited pack (and
-  the set) they apply to, resolved against the target project's inherited packs after the organisation's packs are
-  imported (organisation bundle) or against the organisation it joins (project bundle). A name with nothing to apply
-  to is reported, not guessed. An override travels in the *project's* section (it is that project's data), a set saved
-  with an organisation pack in the organisation's.
-- **Authors and times are not restored**, as for layouts: the importer becomes the author; the version comment travels.
-- **A taken name is never overwritten** (organisation merge): the pack imports as "<name> (imported)", or is skipped
-  with a warning when that is also taken.
-- Variable values are configuration and travel as written; they are not logged.
+- A bundle is untrusted input: a version failing validation is dropped with a warning, a pack with no valid version is
+  skipped, and a set whose values no longer fit is skipped (never stored half-valid). Versions renumber 1..n.
+- Everything travels by name, resolved against the target's inherited packs after the organisation's packs import; an
+  unmatched name is reported. An override travels in the project's section, an organisation pack's set in the organisation's.
+- Authors and times are not restored (the importer is the author); the version comment travels.
+- A taken name is never overwritten: "<name> (imported)", or skipped with a warning. Variable values travel as
+  configuration and are not logged.
 
-Dependencies: `services.report_packs`, `services.report_pack_sets`, `services.report_pack_scope`, `services.bundle_common`.
+Dependencies: `report_packs`, `report_pack_sets`, `report_pack_scope`, `bundle_common`.
 """
 
 from __future__ import annotations

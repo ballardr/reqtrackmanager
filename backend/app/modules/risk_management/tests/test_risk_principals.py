@@ -1,17 +1,11 @@
-"""Tests for groups as Risk owners (users and groups on parity, Risk "5b" —
-).
+"""
+Tests for groups as Risk owners.
 
-Covers: each principal kind on create/update/clear with the group's display
-fields; the owner on every version so history shows who owned each one;
-validation (a foreign organisation's group or user, another project's group, an
-unknown id); the owner gate (a member of an owner group may assess a treatment
-and record a review, a non-member or a removed member may not); the review
-sweep and change-detection notifications reaching every group member, and the
-Risk Managers fallback for a group with nobody to notify; deleting a group that
-owns risks (usage counts only current versions, blocked, reassigned, cleared, the
-audit event names the risk, older versions keep a deleted group); the register
-report printing the owner with its kind; bundle export/import round trip and
-fallbacks; and the migration backfilling existing rows to `user`.
+Covers each principal kind on create/update/clear, the owner on every version,
+validation (foreign or wrong-scope groups and users), the owner gate (a member
+of an owner group may assess and review), notifications reaching every group
+member with the Risk Managers fallback, deleting a group that owns risks,
+report output, bundle round trip and the migration backfilling to `user`.
 """
 
 from __future__ import annotations

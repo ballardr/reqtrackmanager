@@ -19,7 +19,7 @@ async function chooseType(page: Page, dialog: Locator, name: string, search: str
 /**
  * Job to be done: an engineer who draws many SPI links sets "SPI mode 0" once on the connection type, so a new connection of
  * that type starts with it (and can still be given another protocol), and a diagram with Connection detail on writes it beside
- * the line without each connection being filled in by hand.
+ * the line without each connection being filled in manually.
  *
  * Disposable org, admin and project via `setUpOrg` with System Architecture on; the two elements are created through the API
  * (not what is under test), the type default, the connections and the edit through the UI.

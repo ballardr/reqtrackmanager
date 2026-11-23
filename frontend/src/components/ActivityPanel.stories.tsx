@@ -164,11 +164,8 @@ export const WithLinksToRelatedEntities: Story = {
   },
 };
 
-/** `bare` — skips the outer `.card`
- * and "Activity" heading for a caller that supplies its own, e.g.
- * `RequirementDetailPage`'s merged History/Activity card, whose heading
- * switches between "Version history" and "Activity" rather than always
- * reading "Activity". */
+/** `bare` skips the outer `.card` and "Activity" heading for a caller that supplies its own, such as
+ * `RequirementDetailPage`'s merged History/Activity card. */
 export const Bare: Story = {
   args: {
     bare: true,

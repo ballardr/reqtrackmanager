@@ -1,15 +1,10 @@
 /**
  * Module: components/DefinitionAddModal
  *
- * The create dialog of a `DefinitionList`: one labelled field per column of the list, opened by the list's Add
- * button so the list itself shows no empty inputs (docs/ux-style-guide.md, "Pattern: creation controls on demand").
- *
- * Responsibilities:
- * - Collect the values of the list's fields and hand them to the list's `onAdd`; a refusal stays in the dialog
- *   beside Save so the person can correct it, and the dialog closes only once the item exists.
- * - Mark the fields the list requires with `*` (a field is required unless it is `optional`).
- *
- * The caller's `onAdd` shows the success toast, so the dialog does not add a second one.
+ * The create dialog of a `DefinitionList`: one labelled field per column, opened by the list's Add button so the
+ * list shows no empty inputs (docs/ux-style-guide.md, "Pattern: creation controls on demand"). It hands the typed
+ * values to the list's `onAdd`; a refusal stays in the dialog beside Save and the dialog closes only once the item
+ * exists. Required fields (every field unless `optional`) carry `*`. The caller's `onAdd` shows the success toast.
  */
 import { useState } from "react";
 

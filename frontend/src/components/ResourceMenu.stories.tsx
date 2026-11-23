@@ -73,10 +73,8 @@ export const OnlyActiveGroupHasAriaCurrent: Story = {
   },
 };
 
-/** Vertical arrow-key navigation (`ArrowUp`/`ArrowDown`, plus `Home`/`End`)
- * — modelled on Tabs.tsx's own automatic-activation keyboard pattern, just
- * adapted from internal state to real routing: moving focus with an arrow
- * key also navigates, wrapping past the last item back to the first. */
+/** Vertical arrow-key navigation (`ArrowUp`/`ArrowDown`, plus `Home`/`End`), modelled on Tabs.tsx's automatic
+ * activation but driving real routing: moving focus with an arrow key also navigates, wrapping past the last item. */
 export const ArrowKeysNavigateAndActivate: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -103,12 +101,8 @@ export const ArrowKeysNavigateAndActivate: Story = {
   },
 };
 
-/** The `title`/`subtitle` (the entity actually being administered) render
- * once, above the menu+content grid, and — unlike the per-group content
- * panels — stay in the document across a group switch, since they're not
- * part of any one group's own content. Regression coverage for the org/
- * project admin pages having no visible indication of which org/project
- * was being edited. */
+/** The `title`/`subtitle` (the entity being administered) render once above the menu and content grid and stay in the
+ * document across a group switch, since they belong to no one group's content. */
 export const ShowsTitleAndSubtitle: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -121,10 +115,8 @@ export const ShowsTitleAndSubtitle: Story = {
   },
 };
 
-/** `titleAdornment` renders inline with the `<h1>` (e.g. an
- * `EntitySwitcher` chevron) for a consumer whose title is rendered by
- * `ResourceMenu` itself rather than a bespoke `<h1>` of its own. Omitted by
- * every other story above, confirming it changes nothing when absent. */
+/** `titleAdornment` renders inline with the `<h1>` (e.g. an `EntitySwitcher` chevron) for a consumer whose title is
+ * rendered by `ResourceMenu` itself. Every other story omits it, confirming it changes nothing when absent. */
 function TitleAdornmentDemo() {
   const { group } = useParams<{ group?: string }>();
   const active = GROUPS.find((g) => g.key === group)?.key ?? "overview";
@@ -156,11 +148,8 @@ export const RendersTitleAdornment: Story = {
 export const LightTheme: Story = { ...ClickSwitchesGroup, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ClickSwitchesGroup, globals: { theme: "dark" } };
 
-/** `groups.length <= 1` skips the menu strip (`<nav>`/`<ul>` of
- * group links) entirely and renders `children` directly, rather than
- * showing a single link that's always already active. Covers both the
- * one-group case (a caller with only its own always-present group, e.g.
- * `OrgOverviewPage.tsx` with no module contributing a section) and the
+/** `groups.length <= 1` skips the menu strip (`<nav>`/`<ul>` of group links) and renders `children` directly, since a
+ * single link would always be active. Covers the one-group case (`OrgOverviewPage.tsx` with no module section) and the
  * zero-group case. */
 const SINGLE_GROUP: ResourceMenuGroupDef<"only"> = { key: "only", label: "Only group", href: "/single/only" };
 
@@ -232,21 +221,15 @@ export const ShowsMenuChromeWithManyGroups: Story = {
   },
 };
 
-/** Below `MOBILE_BREAKPOINT_PX` the vertical link list is replaced with a
- * single `<select>` (platform-review-2026-09: Org Admin's up to-10-group
- * list was forcing a scroll past the whole menu on a phone-width viewport
- * before reaching the selected group's own content). Regression coverage
- * for the dropdown itself existing, carrying the right options, and still
- * driving real navigation (not just client-only state) the same way the
- * link list does. */
+/** Below `MOBILE_BREAKPOINT_PX` the vertical link list is replaced with a single `<select>`, so a long group list does
+ * not push the selected group's content below the fold on a phone. Covers the dropdown existing, carrying the right
+ * options and driving real navigation (not client-only state) like the link list. */
 export const CollapsesToDropdownOnNarrowViewport: Story = {
   play: async ({ canvasElement }) => {
     await page.viewport(400, 800);
     const canvas = within(canvasElement);
-    // The `matchMedia` "change" listener that flips `useNarrowViewport`'s
-    // state fires asynchronously relative to `page.viewport()` resolving
-    // (see FilterPanel.stories.tsx's `MobileCollapsedByDefault`), so the
-    // link list -> select swap may not be reflected in the DOM the instant
+    // The `matchMedia` "change" listener behind `useNarrowViewport` fires after `page.viewport()` resolves
+    // (see FilterPanel.stories.tsx's `MobileCollapsedByDefault`), so the link list to select swap is awaited.
     // control returns here.
     const select = await waitFor(() => canvas.getByRole("combobox", { name: "Demo sections" }));
     await expect(canvas.queryByRole("navigation")).not.toBeInTheDocument();

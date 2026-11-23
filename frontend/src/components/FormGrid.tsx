@@ -1,11 +1,9 @@
 /**
  * Module: components/FormGrid
  *
- * The grid every form and detail page lays its fields out in (docs/ux-style-guide.md, "Pattern:
- * compact forms and add-on-demand"): short fields (a channel and a date, a checkbox and a date) sit
- * side by side in equal columns, and wrap to a single column when the space is narrow. A long field (a
- * text area, a title) spans the whole row with `FormGridFull`. Fields that are not in a pair still
- * belong in the grid, so the page keeps one left edge and one rhythm.
+ * The grid every form and detail page lays its fields out in (docs/ux-style-guide.md, "Pattern: compact forms and
+ * add-on-demand"): short fields sit side by side in equal columns and wrap to one column when narrow; a long field
+ * spans the row with `FormGridFull`. Fields not in a pair still belong in the grid, for one left edge and rhythm.
  */
 import type { ReactNode } from "react";
 
@@ -38,9 +36,8 @@ export function FormGridFull({ children }: { children: ReactNode }) {
 }
 
 /**
- * A full-width rule that separates one group of fields from the next, for example the field the others
- * depend on from the fields beneath it. Decorative (hidden from assistive technology); the grouping
- * must also be clear from the order of the fields. Spans the whole row inside a `FormGrid`.
+ * A full-width rule separating one group of fields from the next. Decorative (hidden from assistive technology),
+ * so the grouping must also be clear from field order.
  */
 export function FormDivider() {
   return <hr className="form-divider" aria-hidden="true" />;

@@ -1,22 +1,16 @@
 """
 Module: services.record_counts
 
-The project overview's "total records" figure: how many records of each registered artefact type a
-project holds, for the types the caller may read.
+The project overview's "total records" figure: records per registered artefact type, for types the caller may read.
 
 Responsibilities:
-- Count each type through its `RecordTableProvider` (`count`, else the rows of its default list), so a
-  new type appears in the overview without an edit to the router.
-- Apply the overview's project scope (`ProjectScope.total`), the module gate and the type's `view`
-  permission, so a count never includes a type or a project the list itself would not show.
+- Count each type through its `RecordTableProvider` (`count`, else its default list rows), so a new type appears
+  without a router edit; apply the overview's project scope, the module gate and the `view` permission.
 
 Design decisions:
-- A type the caller cannot read, or whose module is off for the project, is omitted, never shown as 0:
-  a count of something the caller cannot open would reveal that it exists.
-- Only records a person authored in the project count (`RecordTableProvider.in_overview`) and only the
-  project's own: an organisation-owned record belongs to no project, and rows derived from an assigned
-  standard describe the standard, not the work.
-- Types with no records are left out; the total is the sum of the types returned.
+- A type the caller cannot read, or whose module is off, is omitted rather than shown as 0, which would reveal it.
+- Only records authored in the project count (`RecordTableProvider.in_overview`); organisation-owned records and
+  rows derived from an assigned standard do not. Types with no records are left out.
 
 Dependencies: `modules.registry`, `services.project_scope`, `services.rbac`, `services.permissions`.
 """

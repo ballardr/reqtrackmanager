@@ -1,13 +1,11 @@
-"""Tests for groups as Decision owners and decision makers (users and groups
-on parity).
+"""
+Tests for groups as Decision owners and decision makers.
 
-Covers: each principal kind on create and update, cross-organisation and
-cross-project rejection, the owner gate for a direct owner / org-group member /
-nested-group member / project-group member / non-member / removed member (and
-that a group confers no approval right), the owner and decision-maker filters
-including "mine", deleting a group that owns Decisions (blocked, then
-reassigned, optional maker cleared), the D1/D2/D3 reports naming a group, and
-the migration backfill of existing rows to `user`.
+Covers each principal kind on create and update, cross-organisation and
+cross-project rejection, the owner gate (direct, org-group, nested-group,
+project-group, non-member, removed member; a group confers no approval right),
+owner and decision-maker filters including "mine", deleting a group that owns
+Decisions, the D1/D2/D3 reports naming a group and the migration backfill to `user`.
 """
 
 from __future__ import annotations

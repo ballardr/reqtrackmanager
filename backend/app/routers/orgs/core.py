@@ -1,16 +1,10 @@
 """
 Module: routers.orgs.core
 
-Organisation lifecycle: creation, import/export/merge of an organisation's
-full bundle, the server-admin self-join escalation, disable/enable/delete,
-listing/getting/renaming, and the overview-stats/projects-summary read
-endpoints. Also home for the shared `_now()` helper (used by this bucket's
-`disable_organization`/`enable_organization` and by
-`routers.orgs.membership.deactivate_org_user`).
-
-Split out of the former flat `routers/orgs.py` as a pure code-organization
-refactor — see `routers/orgs/__init__.py`'s module docstring for the
-package layout.
+Organisation lifecycle: creation, import/export/merge of an organisation's full bundle, the server-admin
+self-join escalation, disable/enable/delete, listing/getting/renaming and the overview-stats/projects-summary
+read endpoints. Also holds the shared `_now()` helper (used by `disable_organization`/`enable_organization`
+and `routers.orgs.membership.deactivate_org_user`).
 """
 
 from __future__ import annotations
@@ -103,15 +97,11 @@ def create_organization(
     seed_link_types(db, org.id)
     seed_stage_workflow(db, org.id)
     seed_custom_role_presets(db, org.id)
-    # Generic module-contributed org-creation seeding (e.g. Compliance's
-    # `seed_compliance_action_types`, or a module's opt-in `org_creation_
-    # choices`, e.g. Decision Management's ADR template packs) — this core
-    # router never imports a specific module; see `ModuleDefinition.
-    # on_org_created`'s own docstring for why org-creation time, not a
-    # module-enable hook, is where this has to run. `module_choice_keys`
-    # of `None` (the field's default) falls back to every module's
-    # `default_selected` choice — see `run_on_org_created_hooks`'s own
-    # docstring.
+    # Generic module-contributed org-creation seeding (e.g. Compliance's `seed_compliance_action_types`, or a
+    # module's opt-in `org_creation_choices` such as Decision Management's ADR template packs); this core
+    # router never imports a specific module (see `ModuleDefinition.on_org_created` for why it runs at
+    # creation time). `module_choice_keys` of `None` falls back to every module's `default_selected` choice
+    # (`run_on_org_created_hooks`).
     selected_keys = None if payload.module_choice_keys is None else frozenset(payload.module_choice_keys)
     run_on_org_created_hooks(db, org.id, selected_keys)
     add_starter_layouts(db, org.id, actor_id=None)
@@ -130,21 +120,11 @@ async def import_organization(
     current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
     db: Session = Depends(get_db),
 ):
-    """Creates a brand-new organisation from an uploaded organisation export
-    bundle (`GET /{organization_id}/export` — see `services.org_export`'s
-    module docstring for the full bundle contents and the security
-    decisions behind what is/isn't carried over: secrets are never
-    included, and SSO is always left disabled post-import).
+    """Creates a brand-new organisation from an uploaded organisation export bundle (`GET
+    /{organization_id}/export`; see `services.org_export` for the bundle contents and what is excluded:
+    secrets are never included and SSO is left disabled after import).
 
-    Platform subscription manager or server administrator, matching plain
-    organisation creation (`POST /orgs`) — creating an organisation is a
-    platform-level action either way.
-
-    Registered before `POST /{organization_id}/join-as-admin` (in this file's
-    declaration order) purely for readability grouping with `POST ""`; it
-    doesn't need static-route-ordering protection like `/import` in
-    `routers/projects.py` does, since no bare `POST /{organization_id}`
-    route exists here to collide with.
+    Platform subscription manager or server administrator, as plain organisation creation (`POST /orgs`).
 
     The bundle's files are imported whenever they can be stored. While uploads are disabled the call is refused
     (403 `uploads_disabled`, with the file count and size) unless `skip_files` is set, which imports without them.
@@ -161,18 +141,13 @@ def export_organization(
     organization_id: UUID,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
-    """Exports this organisation's full settings, membership, report
-    templates, and every project's structure/history as a self-describing
-    zip bundle (see `services.org_export`'s module docstring) — directly
-    re-importable via `POST /orgs/import` to stand up a brand-new
-    organisation, for backup, offboarding, or migration to a different
-    deployment.
+    """Exports this organisation's settings, membership, report templates and every project's
+    structure/history as a self-describing zip bundle (see `services.org_export`), re-importable via
+    `POST /orgs/import` for backup, offboarding or migration to another deployment.
 
-    `require_org_role(ORG_ADMIN)` — deliberately no server-admin bypass
-    (I-M-05: org-scoped content isn't accessible just by being server
-    admin). An operator who needs to back up an org they don't belong to
-    uses the existing `POST /{organization_id}/join-as-admin` self-service
-    escalation first, rather than this endpoint adding a new bypass.
+    `require_org_role(ORG_ADMIN)` with no server-admin bypass (I-M-05: org-scoped content is not accessible
+    just by being server admin); an operator backing up an organisation they do not belong to first uses
+    `POST /{organization_id}/join-as-admin`.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -195,19 +170,14 @@ async def preview_organization_merge(
     organization_id: UUID, file: UploadFile = File(...),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
-    """Previews merging an uploaded organisation export bundle into this
-    *existing* organisation — the first step of `POST
-    .../import/merge` (see `services.org_export.merge_org_bundle`'s
-    docstring for how this differs from `POST /orgs/import`, which always
-    creates a brand-new organisation instead). Reports every project/report
-    template in the bundle that collides by name with something this
-    organisation already has, without writing anything; an empty list means
-    the bundle can be merged in with no resolutions needed.
+    """Previews merging an uploaded organisation export bundle into this existing organisation, the first
+    step of `POST .../import/merge` (`services.org_export.merge_org_bundle` describes how it differs from
+    `POST /orgs/import`, which creates a new organisation). Reports every project and report template in
+    the bundle that collides by name with one this organisation has, writing nothing; an empty list means the
+    bundle can be merged with no resolutions.
 
-    `require_org_role(ORG_ADMIN)` — same bar as `export_organization`
-    above, deliberately no server-admin bypass (I-M-05): merging into an
-    existing organisation's real, live data is exactly the kind of
-    org-scoped content access that carve-out doesn't extend to.
+    `require_org_role(ORG_ADMIN)` as `export_organization`, with no server-admin bypass (I-M-05): merging into
+    live organisation data is org-scoped content access the carve-out does not extend to.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -222,16 +192,13 @@ async def merge_organization_bundle(
     organization_id: UUID, file: UploadFile = File(...), resolutions: str = Form("{}"), skip_files: bool = Form(False),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
-    """Merges an uploaded organisation export bundle's users, groups,
-    projects, and report templates into this *existing* organisation (see
-    `services.org_export.merge_org_bundle`'s docstring for exactly what is
-    and isn't touched, and why). `resolutions` is a JSON object mapping
-    each conflict `POST .../import/preview` reported to how it should be
-    handled — see `services.org_export.detect_merge_conflicts`'s and
-    `merge_org_bundle`'s docstrings for the exact id/value shapes.
+    """Merges an uploaded organisation export bundle's users, groups, projects and report templates into this
+    existing organisation (see `services.org_export.merge_org_bundle` for what is and is not touched).
+    `resolutions` is a JSON object mapping each conflict `POST .../import/preview` reported to how it is
+    handled (see `detect_merge_conflicts` and `merge_org_bundle` for the id/value shapes).
 
-    Same `ORG_ADMIN`-only, no-server-admin-bypass authorization as
-    `preview_organization_merge` above. Files follow the same rule as `POST /import` (`skip_files`).
+    Same `ORG_ADMIN`-only, no-server-admin-bypass authorisation as `preview_organization_merge`. Files follow
+    the rule of `POST /import` (`skip_files`).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -256,28 +223,17 @@ def join_organization_as_admin(
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
-    """Lets a server admin grant *themselves* `org_admin` in an organisation
-    they don't currently belong to (I-M-05's carve-out, made a general,
-    repeatable in-app action rather than only a one-time deployment-startup
-    behaviour — see `server_admin_create_org`/`services/bootstrap.py`).
+    """Lets a server admin grant themselves `org_admin` in an organisation they do not belong to (I-M-05's
+    carve-out, a repeatable in-app action; see `server_admin_create_org` and `services/bootstrap.py`).
 
-    Needed for self-hosting deployments where the server admin *is* the
-    only person running the system and also wants to use their own single
-    organisation, not just stand up other people's — `assign_org_role`
-    can't help here since it itself requires the caller to already be an
-    org admin of the target org, which is exactly the chicken-and-egg this
-    closes.
+    Needed for self-hosting where the server admin is the only operator and uses their own organisation;
+    `assign_org_role` cannot help because it requires the caller to already be an org admin of the target.
 
-    Deliberately narrow: self-targeting only, and always the `ORG_ADMIN`
-    role. This is not a general "server admin can grant any role to any
-    user in any organisation" capability (which would meaningfully broaden
-    I-M-05's carve-out beyond what's needed) — it only ever lets the
-    platform's single most-trusted actor take on ordinary membership in one
-    specific org, for themselves.
+    Deliberately narrow: self-targeting only and always the `ORG_ADMIN` role, not a general "server admin
+    can grant any role to any user in any organisation" capability, which would broaden I-M-05's carve-out.
 
     Raises:
-        HTTPException: 404 if the organisation doesn't exist; 400 if the
-            caller is already an admin of it.
+        HTTPException: 404 if the organisation doesn't exist; 400 if the caller is already an admin of it.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -366,32 +322,21 @@ def delete_organization(
     current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_REMOVAL_AUTHORITY)),
     db: Session = Depends(get_db),
 ):
-    """Permanently deletes an organisation and everything it owns: every
-    project, requirement (with full version history), change request,
-    group, report template, custom field definition, uploaded file (removed
-    from actual storage, not just its database row), and any Personal
-    Access Token's reach into this org. Irreversible — unlike
-    `disable_organization` above, there is no archive/undo. Subscription
-    removal authority or server administrator (I-M-05: tenancy management,
-    not organisation content access); a Platform subscription manager is
-    refused.
+    """Permanently deletes an organisation and everything it owns: every project, requirement (with version
+    history), change request, group, report template, custom field definition, uploaded file (removed from
+    storage, not just its database row) and any Personal Access Token's reach into this org. Irreversible,
+    unlike `disable_organization`. Subscription removal authority or server administrator (I-M-05: tenancy
+    management, not organisation content access); a Platform subscription manager is refused.
 
-    Requires `payload.confirm_name` to exactly match the organisation's
-    current name — the same "type the name to confirm" pattern used for
-    other irreversible actions elsewhere, so a stray click alone is never
-    enough to trigger something this destructive.
+    Requires `payload.confirm_name` to exactly match the organisation's name (type-the-name confirmation),
+    so a stray click is never enough.
 
-    Users who were members lose their role in this org (and become
-    "orphaned" if this was their only one, per the existing access-review
-    tooling) but are never themselves deleted — deletion only ever removes
-    what this organisation *owns*, never accounts. The audit trail survives
-    too: matching `AuditEvent` rows lose their `organization_id` link
-    (`ondelete="SET NULL"`) but the rows themselves, including this
-    deletion's own log entry, are kept.
+    Members lose their role in this org (and become orphaned if it was their only one) but are never deleted:
+    only what the organisation owns is removed. The audit trail survives: matching `AuditEvent` rows lose
+    their `organization_id` link (`ondelete="SET NULL"`) but are kept, including this deletion's own entry.
 
     Raises:
-        HTTPException: 404 if the organisation doesn't exist; 400 if
-            `confirm_name` doesn't match.
+        HTTPException: 404 if the organisation doesn't exist; 400 if `confirm_name` doesn't match.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -439,19 +384,13 @@ def list_organizations(
 ):
     """Lists organisations. Server admins see all; other users see only orgs they belong to.
 
-    This one server-admin bypass is kept deliberately (unlike every other
-    org-scoped endpoint, see I-M-05 in rbac.py): `OrganizationOut` is thin
-    directory metadata (id/name/logo/created_at), not "data within the
-    organisation", and the server admin needs to see an org exists at all in
-    order to complete the one capability I-M-05 actually grants them —
-    creating that organisation's initial user.
+    This server-admin bypass is deliberate (unlike other org-scoped endpoints, see I-M-05 in rbac.py):
+    `OrganizationOut` is thin directory metadata (id/name/logo/created_at), not data within the
+    organisation, and the server admin must see an organisation exists to create its initial user.
 
-    `mine=true` opts out of that bypass and always returns only the
-    caller's own memberships, regardless of server-admin status — for a
-    caller that needs "organisations I can actually act within" (e.g. the
-    project list's org filter and its "new project" org picker), where the
-    full server-wide directory would let a server admin with no real
-    membership anywhere pick an organisation they hold no role in at all.
+    `mine=true` opts out of the bypass and returns only the caller's own memberships, for callers needing
+    "organisations I can act within" (the project list's org filter and "new project" picker), where the
+    server-wide directory would let a server admin pick an organisation they hold no role in.
     """
     allowed_orgs = db.info.get("pat_allowed_org_ids")  # a Personal Access Token lists only its own organisations
     if not mine and _sees_every_organization(db, current_user):
@@ -523,38 +462,22 @@ def get_org_overview_stats(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
     db: Session = Depends(get_db),
 ):
-    """The "Organisation Overview" page's stats header: project count, requirement count, org member count,
+    """The "Organisation Overview" page's stats header: project count, requirement count, org member count
     and total uploaded file size.
 
-    Gated the same way `list_org_users` is (`ORG_ADMIN`/`PROJECT_CREATOR`/
-    `MEMBER` — i.e. any real role in this org) rather than
-    `require_org_admin_or_server_admin`: I-M-05 is explicit that the server
-    admin role "does not give access to data within organisations," and
-    `require_org_admin_or_server_admin`'s own docstring restricts that
-    dependency to the one documented carve-out (creating an org's initial
-    user) — a server admin with no genuine role in this org still gets 403
-    here, same as anyone else. `is_full_org_total` below only ever applies
-    *after* that gate has already been passed.
+    Gated as `list_org_users` is (`ORG_ADMIN`/`PROJECT_CREATOR`/`MEMBER`, any real role in this org) rather
+    than `require_org_admin_or_server_admin`: I-M-05 says the server admin role does not give access to data
+    within organisations, so a server admin with no genuine role here gets 403. `is_full_org_total` applies
+    only after that gate.
 
-    Per `docs/decisions.md`'s "Compliance module, human review follow-ups"
-    entry ("a user can't see the number of all projects if they themselves
-    can't see them all... an org admin is the exception and should see the
-    raw proper totals"): an org admin, or a server admin who already holds
-    some role in this org, sees the organisation's real, unfiltered totals;
-    everyone else sees counts scoped to `_accessible_project_ids` (the same
-    visibility computation `GET /projects` uses — direct/group/org-wide
-    roles plus hierarchical inheritance). Member count is never scoped —
-    `list_org_users`'s own permission already lets any caller who reaches
-    this endpoint at all see the full member directory, so scoping it
-    further here would only invent a restriction nothing else enforces.
+    An org admin, or a server admin who holds some role in this org, sees the real unfiltered totals (see
+    docs/decisions.md's "Compliance module, human review follow-ups" entry); everyone else sees counts
+    scoped to `_accessible_project_ids` (the visibility `GET /projects` uses). Member count is never scoped:
+    `list_org_users` already lets any caller who reaches this endpoint see the full member directory.
 
-    Project and requirement counts cover *active* items only — archived
-    projects, and archived requirements, are excluded — matching the
-    project and requirement lists these figures summarise (both hide
-    archived items by default). Total file size still includes archived
-    projects' files: they still occupy storage. (2026-10-04, Decided by:
-    Agent — previously archived projects were counted, so a member's
-    "Projects" figure disagreed with their own project list.)
+    Project and requirement counts cover active items only (archived projects and requirements are excluded),
+    matching the lists these figures summarise, which hide archived items by default. Total file size still
+    includes archived projects' files, which still occupy storage.
     """
     return org_overview_stats(db, current_user, organization_id)
 

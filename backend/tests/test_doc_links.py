@@ -1,10 +1,10 @@
 """
 Pins scripts/check_doc_links.py: every documentation reference in the repository
-must resolve, so moving or renaming a doc (for example archiving a closed plan
-under docs/plans/completed/) cannot leave dangling references.
+must resolve, so moving or renaming a doc (for example archiving a closed plan)
+cannot leave dangling references.
 
 Skipped when the repository root is not visible (the backend container mounts
-only backend/); CI's `docs` job and the pre-commit hook run the script directly.
+only backend/).
 """
 
 import importlib.util
@@ -61,7 +61,7 @@ def test_source_files_may_not_name_plan_documents(tmp_path, monkeypatch):
 
 
 def test_source_files_may_not_cite_plan_phases(tmp_path, monkeypatch):
-    """A "Phase 7" tag in a comment is reported, including one wrapped across a comment line break."""
+    """A plan-phase tag in a comment is reported, including one wrapped across a comment line break."""
     (tmp_path / "docs" / "plans").mkdir(parents=True)
     (tmp_path / "a.py").write_text("# Added in Phase 7.\n")
     (tmp_path / "b.py").write_text("# Added in Phase\n# 3b of the work.\n")

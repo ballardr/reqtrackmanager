@@ -1,25 +1,11 @@
 """
 Module: modules.context_strategy.summaries
 
-`ArtefactSummaryProvider`s for the five Context & Strategy artefact types, so
-core (the artefact link graph) and other modules can label, status-badge and
-visibility-check these records as link targets without importing the models.
-
-Responsibilities:
-- Build an `ArtefactSummary` (label, status, archived flag, owner) per record.
-- Offer a one-query batch lookup scoped to a viewing project
-  (`get_many_in_project`) for the link graph.
-
-Design decisions:
-- A project sees only records its own project owns. Org-scoped Strategies,
-  Future States and Guiding Principles have no per-project visibility rule, so
-  they are never offered as a project's link targets (their `project_id` is
-  `None`).
-- Strategy, Future State and Guiding Principle keep their content in versions;
-  the current version (`valid_to IS NULL`) supplies label and status.
-
-Dependencies: this module's own models only; `modules.registry` for the
-summary dataclasses.
+`ArtefactSummaryProvider`s for the five artefact types: an `ArtefactSummary`
+(label, status, archived flag, owner) per record and a one-query batch lookup
+(`get_many_in_project`) for the link graph. A project sees only its own
+records (organisation-scoped ones are never link targets); versioned types take
+label and status from the current version (`valid_to IS NULL`).
 """
 
 from __future__ import annotations

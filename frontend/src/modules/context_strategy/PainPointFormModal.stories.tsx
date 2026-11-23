@@ -15,11 +15,7 @@ const TYPES: EffectivePainPointType[] = [
   { id: "type-operator", name: "Operator", display_order: 2, is_enabled: true, source: "org", definition: null },
 ];
 
-/**
- * `PainPointFormModal` renders via `Modal`, which portals to `document.body`
- * — every assertion here queries `within(document.body)`, mirroring
- * `StrategyFormModal.stories.tsx`'s own identical convention.
- */
+/** `Modal` portals to `document.body`, so every assertion queries `within(document.body)`, as in `StrategyFormModal.stories.tsx`. */
 const meta: Meta<typeof PainPointFormModal> = {
   title: "Modules/ContextStrategy/PainPointFormModal",
   component: PainPointFormModal,

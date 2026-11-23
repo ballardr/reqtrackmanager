@@ -1,25 +1,15 @@
 /**
  * Module: modules/context_strategy/PainPointFormModal
  *
- * Create/edit dialog for a Pain Point's content fields — mirrors `StrategyFormModal.tsx`'s
- * "shared by create and edit, distinguished by whether `initial` is passed"
- * convention.
+ * Create/edit dialog for a Pain Point's content fields. Shared by create and edit (edit when `initial` is passed), as
+ * `StrategyFormModal.tsx` is. `PainPointFieldValues` is the same in both modes (no `change_note`: no version table).
  *
- * **No create/edit field-set asymmetry, unlike `StrategyFormModal`'s
- * `change_note` (Decided by: Agent).** Pain Point has no version table, so there is no "explain what changed"
- * concept to add in edit mode — `PainPointFieldValues` is identical for both
- * calls.
+ * A create form also offers the scoring criteria (General, then personas that differ) through `PainPointScoreFields`,
+ * the grid the detail page's scoring panel uses, so a Pain Point need not be reopened to be scored. It appears only
+ * when the caller may score (the `scoring` prop); an existing record is scored in its panel.
  *
- * **Scoring at creation (Decided by: Agent).** A create form also offers the scoring criteria
- * (General, then personas that differ) through `PainPointScoreFields`, the grid the detail page's scoring panel uses, so a
- * Pain Point need not be reopened to be scored. It appears only when the caller may score (the
- * `scoring` prop); an existing record is scored in its panel, not in this form.
- *
- * **`owner` is deliberately not a field here (Decided by: Agent).**
- * Source overview §6.5 places "Assign owner" on the manager tier as its own
- * distinct capability, not part of the create/edit content form — see
- * `types.ts`'s own docstring on `PainPointFieldValues`. `PainPointDetailPage.tsx`
- * assigns it directly via its own `PrincipalPicker` control instead.
+ * `owner` is not a field: assignment is a manager-tier capability apart from the content form (see `types.ts`
+ * `PainPointFieldValues`), done through `PainPointDetailPage.tsx`'s `PrincipalPicker`.
  */
 import { useState } from "react";
 
@@ -61,10 +51,7 @@ export function PainPointFormModal({
   /** The project the Pain Point is created in; with it a create form offers the quick-link field
    * (persona first). Ignored when editing: an existing record's links live in its Links panel. */
   projectId?: string;
-  /** This project's effective Pain Point type list (`projectPainPointApi.
-   * listTypes`) — only enabled types are offered, plus `initial`'s own
-   * current type even if it has since been disabled (so editing an existing
-   * Pain Point never silently drops its own type from the picker). */
+  /** The project's effective Pain Point type list (`projectPainPointApi.listTypes`): only enabled types, plus `initial`'s own type even if disabled, so editing never drops it from the picker. */
   types: EffectivePainPointType[];
   /** Create only: the scoring scheme and the personas on offer, passed only when the caller may
    * score (a Pain Point manager). Without it the form has no scoring section, since scoring is a

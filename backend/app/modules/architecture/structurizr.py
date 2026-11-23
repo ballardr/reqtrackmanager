@@ -1,32 +1,26 @@
 """
 Module: modules.architecture.structurizr
 
-Structurizr DSL export: a project's elements, relationships and diagrams as one `workspace`, for the Structurizr tools.
-Export only; the module does not read the format (JSON interchange is the round trip, see `interchange`).
+Structurizr DSL export: a project's elements, relationships and diagrams as one `workspace`. Export only (JSON
+interchange, see `interchange`, is the round trip). `render_workspace` returns the DSL text as the caller may read it,
+optionally for one diagram with toggle states named in the request.
 
-Responsibilities:
-- `render_workspace`: the DSL text for a project as the caller may read it, optionally for one diagram and with toggle
-  states named in the request.
-
-Design decisions (all Decided by: Agent, the format being fixed by Decided by: User):
-- **Levels follow the element tree.** An element with no parent is a `softwareSystem`, its children are `container`s and
-  everything deeper a `component` (the model has three levels; a deeper
-  element is attached to the second-level element it sits under and keeps its own code, so nothing is dropped).
-- **A relationship is one connection.** Its description is the connection's name (else its type), its technology the
-  protocol; the code, type, direction and ports are properties. A two-way connection is one relationship with a
-  `direction` property, because the format has no two-way relationship. A connection between an element and one of its
-  own descendants is not written (Structurizr forbids it) and is counted in the header comment.
-- **One view per diagram, drawn from the resolved view** (`diagram_view.build_view`, so toggles, bridging and roll-up are
-  the screen's). The view type follows the elements shown: all top-level gives a `systemLandscape`; all siblings under
-  one system a `container` view; all siblings under one container a `component` view; a mixed diagram a
-  `systemLandscape` of the systems that contain its elements, with a comment saying so. Layout is automatic: box
-  positions are not carried.
-- **Nothing the caller cannot read, and no hidden element, is named.** Only elements the project owns that are not
-  archived, retired or rejected are written; a connection to another owner's element is counted, not written, and a
-  box a toggle hides is left out of its view.
-- **Text is quoted and cleaned.** Every string is one line, with quotes and backslashes escaped and control characters
-  removed, so a name cannot start a new statement. Identifiers are derived from codes, never from names.
-- Deterministic: records are written in code order.
+Design decisions (**Decided by: Agent**, the format being fixed by **Decided by: User**):
+- Levels follow the element tree: no parent is a `softwareSystem`, its children are `container`s, everything deeper a
+  `component` (a deeper element attaches to its second-level ancestor and keeps its own code, so nothing is dropped).
+- A relationship is one connection: description is the connection's name (else its type), technology the protocol; code,
+  type, direction and ports are properties, a two-way connection being one relationship with a `direction` property. A
+  connection between an element and its own descendant is not written (Structurizr forbids it) and is counted in the
+  header comment.
+- One view per diagram, from the resolved view (`diagram_view.build_view`: toggles, bridging, roll-up). The view type
+  follows the elements shown: all top-level a `systemLandscape`; siblings under one system a `container` view; under one
+  container a `component` view; a mixed diagram a `systemLandscape` of the containing systems, with a comment. Layout is
+  automatic.
+- Nothing the caller cannot read, and no hidden element, is named: only elements the project owns that are not archived,
+  retired or rejected are written; a connection to another owner's element is counted, not written; a toggled-off box
+  is left out of its view.
+- Every string is one line with quotes and backslashes escaped and control characters removed, so a name cannot start a
+  new statement; identifiers derive from codes, never names. Records are written in code order (deterministic).
 
 Dependencies: `diagram_view`, `report_support`, this module's models and labels.
 """

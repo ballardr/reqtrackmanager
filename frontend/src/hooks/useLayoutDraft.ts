@@ -5,20 +5,18 @@
  * numbered versions): what the server holds, when to write the editor's tree into it, and how a publish goes through it.
  *
  * Responsibilities:
- * - Remember the tree the server last confirmed (the draft's, else the saved version's) and its `revision`, so the
- *   editor knows whether it has changes the server does not hold (`pending`).
- * - With `autosave` on, write the tree once editing pauses (`delayMs`); with it off, write only when {@link LayoutDraftSession.saveNow}
- *   is called. Writes run one after another, each with the revision the last one returned, so the editor never conflicts with itself.
- * - Report why nothing was written: the draft moved on under another editor (`conflict`, autosave pauses until
- *   {@link LayoutDraftSession.keepMine} or a fresh {@link LayoutDraftSession.start}), the network or server failed (`failure`, retried
- *   on the next change), or the editor's content cannot be a tree yet (`unreadable`, shown by the status line).
- * - Publish: write what is pending, then publish the draft as the next version with the revision just written. A draft
- *   begun on an older version is refused by the server; {@link LayoutDraftSession.rebase} is the author's explicit choice to keep
- *   their content on the newer version, written with the new base.
+ * - Remember the tree the server last confirmed and its `revision`, so the editor knows whether it has changes the
+ *   server does not hold (`pending`).
+ * - With `autosave` on, write the tree once editing pauses (`delayMs`); with it off, write only on
+ *   {@link LayoutDraftSession.saveNow}. Writes run one after another, each with the revision the last returned.
+ * - Report why nothing was written: another editor moved the draft (`conflict`; autosave pauses until
+ *   {@link LayoutDraftSession.keepMine} or a fresh {@link LayoutDraftSession.start}), a network or server failure
+ *   (`failure`, retried on the next change), or content that cannot be a tree yet (`unreadable`).
+ * - Publish: write what is pending, then publish the draft as the next version. A draft begun on an older version is
+ *   refused by the server; {@link LayoutDraftSession.rebase} keeps the author's content on the newer version.
  *
- * Design decisions: the hook never reads or checks a tree; the server validates on publish and a draft may be invalid, so an
- * invalid tree is still written. A version conflict (a version published since the draft began) is handed to
- * `onVersionConflict` so the designer keeps one banner for it.
+ * Design decisions: the hook never checks a tree; the server validates on publish and a draft may be invalid, so an
+ * invalid tree is still written. A version conflict is handed to `onVersionConflict` so the designer keeps one banner.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 

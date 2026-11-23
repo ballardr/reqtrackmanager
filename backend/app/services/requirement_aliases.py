@@ -4,35 +4,24 @@ Module: services.requirement_aliases
 Requirement aliases: placing one requirement in further components and categories, each with a code of its own.
 
 Responsibilities:
-- Resolve whether new aliases are allowed (`resolve_mode`: the project, its nearest ancestor project that sets one,
-  then the organisation) and store the setting (`set_mode`).
-- Read a requirement's aliases, singly or for a page in one query (`aliases_for_requirements`), and count a
-  project's (`alias_count`).
-- Add, retire and promote an alias (`set_aliases`, `retire_alias`, `promote_alias`), issuing each alias code from the
-  project's one requirement counter inside the same transaction.
-- Find a requirement by any of its codes, primary or alias, retired ones included (`find_by_code`).
-- Make an alias independent (`make_independent`): a new draft requirement that takes over the alias code, with the
-  original's links, comments, tags and attachments copied under the same rules a person would meet making them.
+- `resolve_mode` (project, nearest ancestor that sets one, then organisation) and `set_mode`; read aliases singly or for
+  a page (`aliases_for_requirements`); `alias_count`; `set_aliases`, `retire_alias`, `promote_alias` (each alias code
+  comes from the project's one requirement counter in the same transaction); `find_by_code` (primary, alias or retired).
+- `make_independent`: a new draft requirement taking over the alias code, with the original's links, comments, tags and
+  attachments copied under the rules a person would meet.
 
 Design decisions:
-- An alias names the same requirement: content, versions, approval, comments, links and attachments are one set.
-  The alias is its own table (`models.requirement_alias`) rather than a row of `artefact_placements` because it
-  carries a code. The primary pair stays on the requirement; `services.placements.pairs_for_records` presents
-  primary then aliases as one view for every placement reader.
-- A requirement is always placed under a category, so an alias pair needs a category and is never the primary pair.
-- Adding an alias is metadata like a tag (an approved requirement's lock does not apply); promoting one moves the
-  primary pair and so follows the requirement's own edit lock.
-- The setting only stops new aliases. Existing ones keep resolving and are listed, and can be made independent one
-  by one or in bulk, so a project moves to one code per record on purpose, never by a switch removing them.
-- Promotion swaps the primary and alias pairs and their codes, so every code still matches the prefixes of the pair
-  it names and no code is lost.
-- Make independent copies links through `create_link_for_artefact`, so the approved-link lock and the
-  organisation's change-request setting apply to the other end exactly as in the Links panel; a link refused is
-  reported, never forced through. Copied comments keep their author and time, with a marker, and are never
-  attributed to the person who made the copy.
+- An alias names the same requirement (one set of content, versions, approval, comments, links, attachments); it is its
+  own table (`models.requirement_alias`) because it carries a code, and `services.placements.pairs_for_records` presents
+  primary then aliases as one view.
+- A requirement is always under a category, so an alias pair needs one and is never the primary pair. Adding an alias is
+  metadata like a tag (the approval lock does not apply); promoting moves the primary pair, swapping pairs and codes.
+- The setting only stops new aliases; existing ones keep resolving and can be made independent singly or in bulk.
+- Links are copied through `create_link_for_artefact`, so the approved-link lock and change-request setting apply and a
+  refused link is reported. Copied comments keep their author and time with a marker.
 
-External dependencies: `models.requirement_alias`, `services.placements`, `services.requirements`,
-`services.link_authoring`, `services.audit`, `services.project_hierarchy`.
+Dependencies: `models.requirement_alias`, `services.placements`, `services.requirements`, `services.link_authoring`,
+`services.audit`, `services.project_hierarchy`.
 """
 
 from __future__ import annotations

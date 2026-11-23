@@ -66,17 +66,12 @@ def list_notifications(
 ):
     """Lists the caller's notifications, newest first.
 
-    `limit`/`offset` (U-P-06) are optional — omitting both preserves the
-    original unbounded-fetch behaviour the dropdown bell still relies on.
-    The dedicated notifications page passes both, plus `search` (matches
-    title or body), for lazy-loaded browsing back through notification
-    history without pulling the whole list up front. When `limit` is
-    given, the total match count is returned in `X-Total-Count`, same
-    convention as `list_requirements`.
+    `limit`/`offset` (U-P-06) are optional; omitting both returns everything (as the bell dropdown does). The
+    notifications page passes both, plus `search` (matches title or body). When `limit` is given the total
+    match count is returned in `X-Total-Count`, as `list_requirements`.
 
-    Types the caller has opted out of in-app (`NotificationPreference.
-    ui_enabled` false) are excluded at query time; the rows are still
-    recorded (see `services.notifications.notify`).
+    Types the caller has opted out of in-app (`NotificationPreference.ui_enabled` false) are excluded at
+    query time; the rows are still recorded (see `services.notifications.notify`).
     """
     ui_opted_out = select(NotificationPreference.type).where(
         NotificationPreference.user_id == current_user.id, NotificationPreference.ui_enabled.is_(False)
@@ -175,29 +170,17 @@ def set_preference(
 
 @router.get("/unsubscribe", response_class=HTMLResponse, include_in_schema=False)
 def unsubscribe(token: str, db: Session = Depends(get_db)):
-    """Public, unauthenticated landing page for the "manage your email
-    preferences" link in every outgoing email's footer
-    (`services/notifications.py::_unsubscribe_url`,
-    `security.create_email_unsubscribe_token`).
+    """Public, unauthenticated landing page for the "manage your email preferences" link in every outgoing
+    email's footer (`services/notifications.py::_unsubscribe_url`, `security.create_email_unsubscribe_token`).
 
-    Deliberately narrow: the token can only ever set
-    `User.email_digest_mode = DigestMode.NONE` — the exact same field a
-    logged-in user can already set themselves from the Preferences page
-    (`PUT /auth/me`), so a one-click unsubscribe and "the login
-    preferences" are provably the same state, not a parallel flag. No
-    other account state is reachable through this endpoint. This is a
-    deliberate, narrow exception to normal authenticated-request handling
-    (mirroring the "shared UI chrome" carve-out documented in
-    `docs/soc2/policies/access-control-policy.md`'s Authorization section)
-    rather than a gap: an unauthenticated recipient clicking a link in
-    their mail client has no session to present, so the alternative would
-    be no one-click unsubscribe at all.
+    Deliberately narrow: the token can only set `User.email_digest_mode = DigestMode.NONE`, the field a
+    logged-in user sets from the Preferences page (`PUT /auth/me`), so a one-click unsubscribe is the same
+    state, not a parallel flag, and no other account state is reachable. This is a narrow exception to
+    authenticated-request handling (as the "shared UI chrome" carve-out in
+    `docs/soc2/policies/access-control-policy.md`): a recipient clicking a mail link has no session.
 
-    Every use — successful or a rejected/expired/tampered token — writes
-    an audit trail entry (`services/audit.py::log_event`) per
-    `docs/soc2/policies/system-operations-monitoring-and-logging-policy.md`,
-    so misuse or an unexpectedly-invalid link is visible without needing to
-    reconstruct it from anything else.
+    Every use, successful or a rejected, expired or tampered token, writes an audit entry
+    (`services/audit.py::log_event`) per `docs/soc2/policies/system-operations-monitoring-and-logging-policy.md`.
     """
     user_id_str = decode_email_unsubscribe_token(token)
     user: User | None = None

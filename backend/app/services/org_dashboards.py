@@ -3,25 +3,23 @@ Module: services.org_dashboards
 
 An organisation's dashboard pages: the widget pages on its overview, who may see each, and who may change them.
 
-Responsibilities:
-- List, read, create, rename, reorder, restrict, lay out and delete pages, with one visibility rule
-  (`can_view`) used by the list, the page read and the metrics request, so a restricted page cannot be fetched or its
-  figures requested by URL.
-- Validate a page's layout with the shared widget rules (`overview_widgets.WidgetRules`) against the organisation
-  catalogue (`org_dashboard_metrics`) and the organisation widgets modules contribute.
-- Provide the built-in first page ("Overview"), which exists before anyone stores it and is stored on the first edit.
+Responsibilities: list, read, create, rename, reorder, restrict, lay out and delete pages, with one visibility
+rule (`can_view`) used by the list, the page read and the metrics request, so a restricted page cannot be
+fetched or its figures requested by URL; validate a layout with the shared widget rules
+(`overview_widgets.WidgetRules`) against the organisation catalogue (`org_dashboard_metrics`) and the
+organisation widgets modules contribute; provide the built-in first page ("Overview"), stored on its first edit.
 
 Design decisions:
 - An organisation administrator always sees and changes every page. A page with no viewer rows is shown to every
-  member; otherwise only to the viewers (a user, or an organisation group by effective membership) and administrators.
-- A page the caller may not see is a 404, never a 403, so its existence is not revealed.
-- A viewer must be a member or a group of this organisation (`principals.validate_principal`; a project group cannot
-  name an organisation page), so a foreign group is refused.
-- The viewer reference is mandatory (`principals.CORE_PRINCIPAL_REFERENCES`): deleting a group that restricts a page
-  needs a replacement, so removing a group never widens who may see a page.
+  member; otherwise only to its viewers (a user, or an organisation group by effective membership) and
+  administrators.
+- A page the caller may not see is a 404, never a 403.
+- A viewer must be a member or group of this organisation (`principals.validate_principal`; a project group
+  cannot name an organisation page). The reference is mandatory (`principals.CORE_PRINCIPAL_REFERENCES`):
+  deleting a restricting group needs a replacement, so it never widens who may see a page.
 - Every change is audited with counts and names only, never widget content.
-- A bundle carries the pages with their viewers by email or group name. An import never widens a page: a viewer
-  that cannot be matched stands as the importing user, so a restricted page stays restricted.
+- A bundle carries pages with viewers by email or group name. An unmatched viewer becomes the importing user, so
+  a restricted page stays restricted.
 """
 
 from __future__ import annotations

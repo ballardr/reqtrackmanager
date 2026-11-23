@@ -1,28 +1,12 @@
 """
 Module: modules.stakeholders.engagements
 
-Business logic for Engagements, the contact log, and the research extras.
-
-Responsibilities:
-- Engagement create/update (a single row, no version history) and the retention
-  read-out (`retention_due`).
-- Participants: Stakeholders, personas covered and an audience group, all
-  `ArtefactLink`s from the engagement. A group is expanded to its members by the
-  caller and recorded as a snapshot, so an engagement keeps saying who it
-  involved after membership changes.
-- Outcome links: an engagement or finding "raised" Pain Points, Needs and Open
-  Questions, or "answered" Open Questions.
-- Research extras: session prompts, anonymous participants, findings.
-- `last_engaged_by_stakeholder`, the derived "last engaged" S4 staleness reads.
-- `erase_engagement`, the hard delete of an engagement, its participant data and
-  its files.
-
-Design decisions:
-- Link types are created per organisation on first use (`service.get_or_create_link_type`),
-  like the other Stakeholder relationships, and declared in `LINK_TYPE_SEEDS`.
-- Everything here raises `ValueError` for a rule violation; callers translate it to HTTP.
-- "Last engaged" counts only engagements dated today (the caller's day, see `services.client_date`) or earlier, and only this
-  project's, so a shared org Stakeholder never leaks another project's contact history.
+Business logic for Engagements (the contact log) and research extras: create/
+update (one row, no versions), `retention_due`, participants and an audience
+group snapshot (`ArtefactLink`s), outcome links, prompts, anonymous participants,
+findings, `last_engaged_by_stakeholder` and `erase_engagement`. Link types are
+created per organisation on first use; violations raise `ValueError`; "last
+engaged" counts this project's engagements dated on or before the caller's day.
 """
 
 from __future__ import annotations

@@ -1,7 +1,8 @@
 /**
  * Module: modules/architecture/ProjectConnectionsPage
  *
- * The project's connections, the Connections tab of `SystemArchitecturePage` (`/projects/:projectId/modules/architecture?tab=connections`; `chrome` is the page's tab strip): a `DirectoryTable` (code
+ * The project's connections, the Connections tab of `SystemArchitecturePage`
+ * (`/projects/:projectId/modules/architecture?tab=connections`; `chrome` is the page's tab strip): a `DirectoryTable` (code
  * opens the detail page) with the type, both ends, protocol and status, and a `FilterPanel` (search, status, connection
  * type, element at either end, "Open only", scope, tags, archived). An end the viewer cannot read shows only its code. The list
  * opens on open connections (`useOpenOnly`) and keeps its filters in the URL. Create uses `ConnectionFormModal`, the form the

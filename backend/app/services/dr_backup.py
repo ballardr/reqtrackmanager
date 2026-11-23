@@ -4,28 +4,24 @@ Module: services.dr_backup
 The backup run: one command that produces a self-describing, encrypted, verified backup set, copies it to
 every configured destination and applies retention.
 
-Responsibilities:
-- Read the tool's configuration (`BackupConfig`, `BACKUP_*` environment variables).
-- Take the database dump and the statistics in one Postgres snapshot, then mirror the object store
-  (dump first, so every dumped row finds its object), archive local files when that backend is in use, and
-  optionally encrypt the operator's `.env` to an age recipient.
-- Write the manifest, store the set as a restic snapshot, copy it to each destination, prune, and run a
-  sampled integrity check.
-- Refuse a concurrent run, and always leave a `status.json` and a Prometheus textfile saying what happened.
+Responsibilities: read the configuration (`BackupConfig`, `BACKUP_*` variables); take the database dump and
+statistics in one Postgres snapshot, then mirror the object store (dump first, so every dumped row finds its
+object), archive local files when that backend is used, and optionally encrypt the operator's `.env` to an age
+recipient; write the manifest, store the set as a restic snapshot, copy it to each destination, prune, and run
+a sampled integrity check; refuse a concurrent run and always leave a `status.json` and a Prometheus textfile.
 
 Design decisions:
-- A run is all-or-nothing for the primary repository: any failure before the snapshot exists aborts with a
-  non-zero exit. A destination that fails after the snapshot exists is recorded per destination and still
-  fails the run's exit status: an off-site copy that silently did not happen is the failure to avoid.
-- The staged set (which holds an unencrypted dump) is removed whether the run succeeds or fails.
-- `BACKUP_SECRETS_MODE=none` never reads the operator's `.env`; `config` mode refuses to run without a
-  readable one and an age recipient, so a set is never silently missing the key it advertises.
-- `status.json` and the metrics file never contain a secret, a key, a row value or a storage key; errors
-  are redacted before they are stored.
-- Every instant is UTC.
+- All-or-nothing for the primary repository: a failure before the snapshot exists aborts non-zero. A
+  destination failing afterwards is recorded per destination and still fails the exit status, because a
+  silently missing off-site copy is the failure to avoid.
+- The staged set (an unencrypted dump) is removed whether the run succeeds or fails.
+- `BACKUP_SECRETS_MODE=none` never reads `.env`; `config` mode refuses to run without a readable one and an
+  age recipient, so a set never silently lacks the key it advertises.
+- `status.json` and the metrics never contain a secret, key, row value or storage key; errors are redacted.
+  Every instant is UTC.
 
-Dependencies: SQLAlchemy and psycopg2 (database), boto3 (object store), `pg_dump` 16, `restic` and `age`
-binaries, `services.dr_stats`, `services.dr_manifest`, `services.dr_restic`, `services.dr_object_mirror`.
+Dependencies: SQLAlchemy, psycopg2, boto3, `pg_dump` 16, `restic` and `age`, `services.dr_stats`, `dr_manifest`,
+`dr_restic`, `dr_object_mirror`.
 """
 
 from __future__ import annotations

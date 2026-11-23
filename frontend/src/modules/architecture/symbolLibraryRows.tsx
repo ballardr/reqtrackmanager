@@ -1,10 +1,8 @@
 /**
  * Module: modules/architecture/symbolLibraryRows
  *
- * What one symbol of the library page is drawn with in both views (the table and the tiles), so the two cannot drift: the
- * Used by control and the badges that say whose a symbol is. The row's actions are in `symbolLibraryActions`.
- *
- * Responsibilities:
+ * What one symbol of the library page is drawn with in both views (table and tiles), so the two cannot drift. The row's
+ * actions are in `symbolLibraryActions`.
  * - `UsedBy`: the owners' names when one or two, else "N records", opening the usage dialog; nothing used is a dash.
  * - `SymbolBadges`: Built-in and the tier (the organisation's, or inherited from a parent project) beside a name.
  */

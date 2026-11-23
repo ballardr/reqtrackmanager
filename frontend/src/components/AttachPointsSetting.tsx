@@ -1,8 +1,8 @@
 /**
  * Module: components/AttachPointsSetting
  *
- * The "Always show attach points" row of a canvas editor's settings: a switch and its captioned help. It is the one control
- * behind the shared preference (`hooks/useAttachPointVisibility`), so every editor words it the same way.
+ * The "Always show attach points" row of a canvas editor's settings: a switch and its help, the one control behind
+ * the shared preference (`hooks/useAttachPointVisibility`).
  */
 import { useStrings } from "../context/TerminologyContext";
 import { FieldCaption } from "./FieldHelp";

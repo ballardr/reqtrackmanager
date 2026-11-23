@@ -2,24 +2,21 @@
  * Module: components/ReportPicker
  *
  * The Reports page's report chooser: a button showing the current report that opens a dialog to find another by
- * search, by type (reports, sheets, packs), by folder or from the person's favourites.
+ * search, by type (reports, sheets, packs), by folder or from the person's favourites. A dialog rather than a native
+ * `<select>`, because a tree, search and stars do not fit one.
  *
- * Responsibilities:
- * - List every offered report in a tree of folders (`utils/reportFolders`), nested up to three levels, with a
- *   Favourites folder first; search and the type filter open every folder that still holds a match.
- * - Star and unstar a report (the star is on the right of its row): favourites are kept per person in their
- *   `ui_preferences` bag (`report_favourites`, by the report's stable placement key), so they follow the person across
- *   browsers.
- * - Remember which folders were open, per person and per picker (`report_picker_folders`, keyed by the `pickerId` each
- *   host passes), so reopening shows the same folders open; a picker opens fully collapsed the first time.
- * - Report the choice through `onSelect`; the host (`ReportCatalogue`) keeps the selection in the URL.
+ * - Lists every offered report in a tree of folders (`utils/reportFolders`), nested up to three levels, with a
+ *   Favourites folder first; search and the type filter open every folder that holds a match.
+ * - Stars and unstars a report (the star is on the right of its row): favourites are kept per person in their
+ *   `ui_preferences` bag (`report_favourites`, by the report's stable placement key), so they follow the person.
+ * - Remembers which folders were open, per person and per picker (`report_picker_folders`, keyed by the `pickerId`
+ *   each host passes); a picker opens fully collapsed the first time. While a filter is active everything is open
+ *   and that state is never written, so clearing the search returns to the person's own layout. Folder ids derive
+ *   from folder paths, so an id saved for a folder that no longer exists is harmless; the list is capped.
+ * - Reports the choice through `onSelect`; the host (`ReportCatalogue`) keeps the selection in the URL.
  *
- * `ReportPickerPanel` is the same search, filter and folder list (`FolderTreeList`, a file manager's list view) without the dialog, for another dialog to embed.
- *
- * Design decisions: a dialog rather than a native `<select>` because a tree, search and stars do not fit one; the
- * saved expansion state is overridden (everything open) only while a filter is active and is never written then, so
- * clearing the search returns to the person's own layout. Folder ids are derived from folder paths, so an id saved for
- * a folder that no longer exists is harmless; the list is capped. Pure presentation over already-loaded items.
+ * `ReportPickerPanel` is the same search, filter and folder list (`FolderTreeList`) without the dialog, for another
+ * dialog to embed. Presentation over already-loaded items.
  *
  * Dependencies: `Modal`, `FolderTreeList`, `useUiPreference`.
  */

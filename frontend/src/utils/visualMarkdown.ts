@@ -5,26 +5,21 @@
  * from changing a text it cannot hold.
  *
  * Responsibilities:
- * - Build the editor's extension set: paragraphs, headings, lists, quotations, emphasis, links, code, tables, a
- *   horizontal rule and a picture of the record's own attachment, with Markdown as the stored format (`@tiptap/markdown`).
- * - Correct the three places where the editor's Markdown writer changes meaning: a paragraph that starts like a
- *   block (`1.`, `#`, `-`, `>`), a code block whose text contains a fence, and an empty paragraph.
- * - Compare two Markdown texts by what the reader (`utils/markdownIt`) makes of them, so a round trip through the
- *   editor can be shown not to have changed the content (`findVisualBlocker`).
+ * - Build the editor's extension set with Markdown as the stored format (`@tiptap/markdown`).
+ * - Correct the places where the editor's Markdown writer changes meaning: a paragraph that starts like a block
+ *   (`1.`, `#`, `-`, `>`), a code block whose text contains a fence, and an empty paragraph.
+ * - Compare two texts by what the reader (`utils/markdownIt`) makes of them, so a round trip can be shown not to have
+ *   changed the content (`findVisualBlocker`).
  *
  * Design decisions:
- * - The stored value is Markdown source, written by the editor only after a person edits. Opening a text never
- *   writes it back, and a text the editor cannot reproduce (HTML, an image with an outside address, a footnote, a task
- *   list, mathematics, two adjacent lists with different markers) is reported as a blocker so the field stays in Write
- *   view. A picture of an attachment (`utils/visualImageNode`) is an indivisible node, so it is not a blocker.
- * - TipTap's paste rules for bold, italic, strike-through and code are off: they would format `**text**` the moment it
- *   is pasted, leaving the conversion offer (`VisualMarkdownEditor`) nothing to convert and no way to keep the text
- *   as typed. Typing `**text**` still formats through the input rules.
- * - "Equal" means the reader's tokens are equal, not the characters: `_a_` and `*a*`, `*` and `-` markers and a
- *   hard or soft line break all read the same, so a text is not blocked for a cosmetic difference.
- * - In a field that holds mathematics, an equation is an indivisible node (`utils/visualMathNode`) the writer never
- *   escapes, so such a text opens visually. In any other field mathematics is blocked outright, because the writer
- *   would escape the underscores a formula needs.
+ * - Opening a text never writes it back; a text the editor cannot reproduce (HTML, an outside image, a footnote, a task
+ *   list, mathematics outside a maths field, adjacent lists with different markers) is a blocker, so the field stays
+ *   in Write view. An attachment picture (`utils/visualImageNode`) is an atom, not a blocker.
+ * - TipTap's paste rules for bold, italic, strike-through and code are off: they would format `**text**` on paste and
+ *   leave the conversion offer nothing to convert. Typing `**text**` still formats through the input rules.
+ * - "Equal" means equal reader tokens, so `_a_` and `*a*`, `*` and `-` markers and hard or soft breaks do not block.
+ * - In a maths field an equation is an atom (`utils/visualMathNode`) the writer never escapes; elsewhere mathematics is
+ *   blocked, because the writer would escape the underscores a formula needs.
  *
  * Dependencies: TipTap (MIT), `utils/markdownIt`.
  */

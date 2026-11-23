@@ -1,48 +1,15 @@
 /**
  * Module: components/EntitySwitcher
  *
- * The generic "entity quick-switch" chevron — a small `ChevronDown` button that sits next to an entity's
- * name in a page's own `<h1>` and opens a `Popover` listing every sibling
- * instance of the same entity type the current user can reach, as plain
- * links to the equivalent page for that instance.
+ * The generic "entity quick-switch" chevron: a small `ChevronDown` button beside an entity's name in a page's own
+ * `<h1>` opening a `Popover` of every sibling instance of the entity type the user can reach, as links to the
+ * equivalent page. It is not a persistent "current entity" context or tenant switcher (`docs/ux-style-guide.md`
+ * Principle 9): it appears on a page already scoped by its URL and picking a sibling is an ordinary navigation.
  *
- * This is deliberately *not* a persistent "current entity" context or an
- * Azure/Entra-style tenant switcher — `docs/ux-style-guide.md` Principle 9
- * explicitly rejects that shape for org-level navigation, because this
- * app's content deliberately pools across every org a user belongs to.
- * This component only ever appears on a page already scoped to one
- * specific entity instance by its own URL; picking a sibling just
- * navigates to that sibling's equivalent page, the same as any other link
- * — it introduces no ambient state and changes nothing about how any other
- * page renders. See the style guide's Principle 9 note for the fuller
- * distinction.
- *
- * Parameterized only by the current entity's id and a `loadOptions` loader
- * returning every candidate sibling (including, harmlessly, the current
- * entity itself — filtered out below) — no module- or entity-specific
- * logic lives in this file, so a caller wires up whatever "list of
- * siblings I can reach" fetch makes sense for its own entity type
- * (`GET /orgs?mine=true`, `GET /projects?archived=false`, the compliance
- * module's own cross-org standards fan-out, etc.) rather than this
- * component knowing about any of them.
- *
- * The trigger renders nothing at all while the sibling list is loading or
- * turns out empty — a chevron that opens onto an empty popover, or that
- * flashes in and back out once loading resolves, is worse than no
- * affordance. Once there are more than a handful of siblings, a lightweight
- * substring filter appears above the list, reusing `UserAutocomplete`'s own
- * "lowercase/trim the query, filter on it, hide everything when empty"
- * idiom (not the component itself — this list has no user/group-selection
- * semantics) rather than inventing a second filtering convention.
- *
- * The trigger uses its own borderless `.entity-switcher-trigger`
- * class (`theme.css`), not the generic `.btn` — `.btn`'s own border/
- * background gave the bare chevron a separately bordered-chip look next to
- * the entity name rather than reading as part of it, the same defect class
- * already fixed once for `StandardNavSection.tsx`'s disclosure toggle
- * (`.nav-link-row-toggle`). Fixed here at the source so every
- * consuming page (Org Overview, Project Overview, Project Admin, the
- * Standard workspace, Org Admin) gets it in one change.
+ * It takes the current id and a `loadOptions` loader returning every candidate sibling (the current one is
+ * filtered out), so no entity-specific logic lives here. The trigger renders nothing while loading or when the
+ * list is empty; beyond a handful of siblings a substring filter appears. The trigger uses the borderless
+ * `.entity-switcher-trigger` class (`theme.css`), not `.btn`, so the chevron reads as part of the name.
  */
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -98,10 +65,8 @@ export function EntitySwitcher({
         if (!cancelled) setSiblings(options.filter((o) => o.id !== currentId));
       })
       .catch(() => {
-        // A failed sibling-list fetch is equivalent to "nothing to switch
-        // to" — this is a small, secondary navigation affordance, not
-        // core page content, so it disappears quietly rather than
-        // breaking (or ever error-toasting) the page it sits on.
+        // A failed sibling-list fetch reads as "nothing to switch to": this secondary affordance disappears
+        // quietly rather than breaking or error-toasting the page.
         if (!cancelled) setSiblings([]);
       });
     return () => {

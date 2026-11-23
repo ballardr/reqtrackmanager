@@ -4,13 +4,11 @@ import { loginAs, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
- * Job to be done: — three fixes to
- * `StandardNavSection.tsx`'s expandable "Versions" nav-rail group.
+ * Job to be done: the expandable "Versions" nav-rail group of `StandardNavSection.tsx`.
  *
- * `orgAdminAlphaBeta` is used for the same reason
- * `compliance-standards-management.spec.ts` uses it: `require_module_role
- * ("compliance", "standards_manager")` composes with `OrgRole.ORG_ADMIN` by
- * design, so no dedicated `standards_manager` persona/grant is needed here.
+ * `orgAdminAlphaBeta` is used as in `compliance-standards-management.spec.ts`:
+ * `require_module_role("compliance", "standards_manager")` composes with `OrgRole.ORG_ADMIN`, so no dedicated
+ * `standards_manager` persona is needed.
  */
 test.describe("Compliance Module: Standard workspace version nav", () => {
   test("landing directly on a version's URL auto-expands the nav with only that version's row active", async ({ page }) => {

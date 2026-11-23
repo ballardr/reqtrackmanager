@@ -1,12 +1,11 @@
 /**
  * Module: components/FormFields
  *
- * The labelled controls every create/edit form is built from (docs/ux-style-guide.md, "Pattern:
- * compact forms and add-on-demand"): a single-line input, a multi-line textarea, a date input and a
- * checkbox, each with a visible label that is also the accessible name (principle 13) and an optional
- * hint underneath (`InlineTextInput` is the caption-less form for an inline row). Lay them out in a `FormGrid`; pick from a list with `LabeledSelect` and people with
- * `PrincipalFormField`. Every field takes `help` (a `(?)` button revealing what the field means,
- * `FieldHelp`) or, for a self-explanatory field, `helpNotNeeded`.
+ * The labelled controls every create/edit form is built from (docs/ux-style-guide.md, "Pattern: compact forms and
+ * add-on-demand"): a single-line input, a multi-line textarea, a date input and a checkbox, each with a visible
+ * label that is also the accessible name (principle 13) and an optional hint (`InlineTextInput` is the
+ * caption-less form for an inline row). Lay them out in a `FormGrid`; use `LabeledSelect` for lists and
+ * `PrincipalFormField` for people. Every field takes `help` (`FieldHelp`) or, if self-explanatory, `helpNotNeeded`.
  */
 import { useId, useState } from "react";
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";

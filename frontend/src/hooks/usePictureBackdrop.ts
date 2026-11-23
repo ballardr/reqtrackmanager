@@ -9,7 +9,7 @@ const PREFERENCE_KEY = "picture_backdrop";
 /**
  * Reads and writes the person's picture backdrop, one display preference read by every `PictureImage`.
  *
- * Returns: the current backdrop (a stale or hand-edited stored value falls back to the checkerboard) and its setter.
+ * Returns: the current backdrop (an unrecognised stored value falls back to the checkerboard) and its setter.
  */
 export function usePictureBackdrop(): [PictureBackdrop, (backdrop: PictureBackdrop) => void] {
   const [stored, setStored] = useUiPreference<string>(PREFERENCE_KEY, "checkerboard");

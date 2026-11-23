@@ -266,7 +266,7 @@ def test_two_types_cannot_share_a_prefix_in_one_scope(world):
     assert "open question" in clash.json()["detail"].lower()
     assert _put(world, f"{_org(world)}/{PAIN}", "XYZ").status_code == 200
     assert _put(world, f"{_org(world)}/open_question", "XYZ").status_code == 400
-    # Freed by the change above: pain point no longer uses PP.
+    # PP is free once the pain point prefix changes to XYZ.
     assert _put(world, f"{_org(world)}/open_question", "PP").status_code == 200
     assert _put(world, f"{_proj(project)}/{PAIN}", "PP").status_code == 400
 

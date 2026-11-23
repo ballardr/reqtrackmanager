@@ -4,10 +4,9 @@ Revision ID: 0204
 Revises: 0203
 Create Date: 2026-11-19
 
-Every row of `enhancement_request_external_refs` becomes an `external_references` row for the
-`enhancement_request` type with the same id, system, key, link, role, author and times (the owner columns come from
-the request), and the old table is dropped. The systems tables are shared already and are not touched. The downgrade
-recreates the old table and copies the Product Feedback rows back (a missing role reads as `delivery`).
+Each `enhancement_request_external_refs` row becomes an `external_references`
+row for the `enhancement_request` type and the old table is dropped; the
+downgrade copies the rows back (a missing role reads as `delivery`).
 """
 
 from collections.abc import Sequence

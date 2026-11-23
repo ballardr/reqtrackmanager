@@ -2096,7 +2096,7 @@ function actionNames(panel: ReturnType<typeof within>): string[] {
   return [...group.querySelectorAll("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent ?? "");
 }
 
-/** A box's Selection card offers every action as an icon button with the same name as before, none as a text button. */
+/** A box's Selection card offers every action as an icon button named for the action, none as a text button. */
 export const ABoxSelectionOffersEveryActionAsAnIconButton: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -2111,7 +2111,7 @@ export const ABoxSelectionOffersEveryActionAsAnIconButton: Story = {
   },
 };
 
-/** The tooltip of "Open inside as diagram" keeps the explanation the text button used to carry. */
+/** The icon button "Open inside as diagram" explains itself in its tooltip. */
 export const TheOpenInsideIconExplainsItselfInItsTooltip: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

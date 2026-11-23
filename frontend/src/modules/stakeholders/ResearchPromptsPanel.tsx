@@ -1,13 +1,11 @@
 /**
  * Module: modules/stakeholders/ResearchPromptsPanel
  *
- * Research extras: an engagement's ordered session prompts (the questions
- * planned for an interview or focus group) with the response notes taken against
- * each. Add a prompt from a (+) popover, edit its text and notes in a `Modal` (principle 3),
- * reorder with up/down, and delete behind a tier-1 confirm. "Session prompts" is
- * the name used throughout so they are not confused with Open Questions.
- * Response notes can quote participants, so they are removed with the
- * engagement. Every change toasts; the list reloads from the server's order.
+ * Research extras: an engagement's ordered session prompts (the questions planned for an interview or focus group)
+ * with the response notes taken against each. Add a prompt from a (+) popover, edit its text and notes in a `Modal`
+ * (principle 3), reorder with up/down, and delete behind a tier-1 confirm. "Session prompts" is the name used
+ * throughout so they are not confused with Open Questions. Response notes can quote participants, so they are removed
+ * with the engagement. Every change toasts; the list reloads from the server's order.
  */
 import { ArrowDown, ArrowUp, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";

@@ -1,22 +1,12 @@
 /**
  * Module: modules/compliance/ComplianceSettingsPage
  *
- * Org-level compliance settings at `/standards/settings/:orgId`
- * — the two extensible
- * vocabularies (`ActionTypesPanel`, `MappingTypesPanel`) that used to be
- * tabs inside `ComplianceAdminPanel.tsx` (now deleted, fully superseded),
- * re-hosted as their own routed page.
- *
- * Internal navigation between the two groups uses `ResourceMenu`
- * (`frontend/src/components/ResourceMenu.tsx`) — this codebase's
- * established "one page, persistent side menu of a handful of named
- * sections" pattern, already used by `ProjectAdminPage.tsx`/
- * `OrgAdminPage.tsx`/`ServerManagementPage.tsx` — not `Tabs` and not a
- * nav-rail section: a nav-rail section (`Layout.tsx`'s "Standard" section)
- * is reserved for an actual project-like *entity* (a single Standard), not
- * a fixed pair of org-wide settings screens. See docs/ux-style-guide.md's
- * new "Pattern: project-like drill-down entities" section for the full
- * reasoning behind this split.
+ * Org-level compliance settings at `/standards/settings/:orgId`: the two extensible vocabularies (`ActionTypesPanel`,
+ * `MappingTypesPanel`) and the standards management group. Internal navigation uses `ResourceMenu`, the "one page,
+ * persistent side menu of a few named sections" pattern of `ProjectAdminPage.tsx`, `OrgAdminPage.tsx` and
+ * `ServerManagementPage.tsx`, not `Tabs` and not a nav-rail section: a nav-rail section (`Layout.tsx`'s "Standard") is for a
+ * project-like entity (a single Standard), not a fixed set of org-wide settings screens (docs/ux-style-guide.md,
+ * "Pattern: project-like drill-down entities").
  */
 import { useState } from "react";
 import { useParams } from "react-router-dom";

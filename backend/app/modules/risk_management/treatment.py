@@ -1,36 +1,12 @@
 """
 Module: modules.risk_management.treatment
 
-Risk-to-engineering relationships and the "linked to" versus "effectively
-treats" distinction.
-
-Responsibilities:
-- Say which `ArtefactLink`s are *treatment links* of a risk (the families below).
-- List a risk's treatment links with the far end resolved and authorised, each
-  with its `RiskTreatmentAssessment` (none means `proposed`).
-- Record an assessment, and count the effective ones (the `Mitigated` guard and
-  the "treated" flag on `RiskOut`).
-
-Design decisions:
-- Relationships are made, listed and removed through the generic link system
-  (`routers.artefact_links`, link-type seeds), not a Risk-specific endpoint:
-  any artefact can already link to a risk, and a second authoring path would
-  need its own copy of the tenancy, nesting and change-request rules. This
-  module adds only the one thing the generic link cannot hold, the verdict.
-- Two families count as treatment, because only they assert that something
-  reduces the risk: "Mitigates" (a requirement, design or other artefact
-  mitigates the risk; the risk is the link's target) and "Treated by" (the risk
-  is treated by an action; the risk is the link's source). "Verified by",
-  "Impacts", "Addressed by" and "Related to" describe the risk without
-  asserting treatment, so they carry no verdict. Decided by: Agent.
-- A link in the opposite direction to its family ("this risk mitigates that
-  requirement") is not a treatment link: the type's meaning would be inverted.
-- Visibility reuses `ArtefactResolver`, the link graph's rule, so this listing
-  can never show a far end the caller could not open elsewhere. The effective
-  count is a server-side fact and ignores the caller.
-
-Dependencies: `services.relationships`, `services.link_graph` (resolver),
-`services.link_types`, this module's models.
+Treatment links and the "linked to" versus "effectively treats" distinction:
+which `ArtefactLink`s are treatment links, listing them with the far end
+authorised (`ArtefactResolver`) and its `RiskTreatmentAssessment` (none means
+`proposed`), recording a verdict and counting effective ones. Links are
+authored through the generic link system; only "Mitigates" (risk is the target)
+and "Treated by" (risk is the source) count as treatment.
 """
 
 from __future__ import annotations

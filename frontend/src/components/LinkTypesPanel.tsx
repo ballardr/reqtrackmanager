@@ -63,20 +63,17 @@ interface PanelData {
 
 /**
  * The link types of one scope: the vocabulary (names for both directions,
- * direction of flow, and which kinds of record each may join) and, on a second
- * tab, which link types each artefact type may use.
+ * direction of flow, permitted record kinds) and, on a second tab, which link
+ * types each artefact type may use.
  *
  * Organisation scope edits the organisation-wide set and holds the switch that
- * forbids projects from customising. Project scope shows what the project can
- * reach, the organisation's and its parents' types (read-only, each with a
- * Hide/Show toggle), above the project's own types (editable, same row as the
- * organisation's). While the organisation has locked customisation the project
- * view is read-only. One component for both scopes, so there is no second copy.
+ * forbids project customisation. Project scope shows inherited types read-only
+ * (each with a Hide/Show toggle) above the project's own editable types; it is
+ * read-only while the organisation locks customisation.
  *
  * Owns its data and every mutation, each confirmed with a Toast. Deleting a type
- * that is in use opens `DeleteInUseDialog` with usage counts, replacements
- * assessed for fit, a Tier-2 delete-the-links option and, for a type other
- * projects use, the option to keep it for them.
+ * in use opens `DeleteInUseDialog` (usage counts, replacements, delete-the-links
+ * option and, for a type other projects use, keeping it for them).
  */
 export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
   const strings = useStrings();

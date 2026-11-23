@@ -2,30 +2,19 @@
  * Module: components/ReportSetupPanel
  *
  * Report setup for an organisation or a project (Org Resources → Reports, Project Admin → Report setup): one
- * folder list of every report the scope can arrange, in the shape of the Reports chooser. Custom layouts, report packs
- * and the reports modules and the platform provide are rows of one tree (`FolderTreeList`), each with the actions that
- * apply to it.
+ * folder list (`FolderTreeList`) of every report the scope can arrange (custom layouts, report packs, module and
+ * platform reports), each row with the actions that apply to it.
  *
  * Responsibilities:
- * - Merge the placement, layout, pack and folder lists (`utils/reportSetupRows`) into one typed row model and show it
- *   as folders and rows, with search and type, status and (in a project) source filters.
- * - Row actions by type: open the designer or pack editor, edit details, duplicate (`ReportDuplicateDialog`), move to a folder, delete an own
- *   layout or pack; hide a shared layout or pack in a project (and show it again), hide or show a module report, reset
- *   a folder or visibility override back to what the tiers above set.
- * - Folder rows: New folder inside, Rename and Delete (a folder the scope owns); a New menu creates a layout, a pack, a layout from a built-in starter or
- *   a folder; an organisation adds the starter layouts; a project restores hidden layouts and packs in one go.
- * - Export layouts and packs as a `.zip` file (a row's menu, or "Export as file…" with tick boxes) and import one (New →
- *   "Import from file…"), in a project and in the organisation (`ReportFileExportDialog`, `ReportFileImportDialog`).
- * - In a project, copy reports to another project: "Copy to another project…" turns on tick boxes (a folder's box covers
- *   what is in it) and a row's menu copies that one report; both open `ReportCopyDialog`.
- * - Follow the confirmation tiers: delete is Tier 2 (type the name); hiding and deleting a folder are Tier 1. Every
- *   change ends in a toast.
+ * - Merge the placement, layout, pack and folder lists (`utils/reportSetupRows`) into one typed row model, with search
+ *   and type, status and (in a project) source filters.
+ * - Row and folder actions by type: open, edit details, duplicate, move, delete, hide or show, reset an override, file
+ *   export and import, and (in a project) copy to another project. Delete is Tier 2 and hiding Tier 1; every change toasts.
  *
- * Design decisions: a client-side merge of lists the server already authorises row by row (a 403 shows the load
- * failure; the panel does not guess permissions). Moving an owned layout or pack edits its own folder, moving any
- * other report sets a placement, so the same "Move to folder" works on every row. The open folders are remembered per
- * person and per scope; a search or filter opens every folder that still holds a match and hides empty folders, and
- * does not overwrite the remembered layout.
+ * Design decisions: a client-side merge of lists the server already authorises row by row (a 403 shows the load failure).
+ * Moving an owned layout or pack edits its folder, moving any other report sets a placement, so "Move to folder" works on
+ * every row. Open folders are remembered per person and scope; a search or filter opens folders holding a match without
+ * overwriting that memory.
  */
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";

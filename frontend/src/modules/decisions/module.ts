@@ -11,47 +11,27 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
 /**
  * Module: modules/decisions/module
  *
- * The Decision Management module's frontend registration — the frontend mirror of `backend/app/modules/decisions/
- * module.py`'s `MODULE_DEFINITION`, same single-`moduleDefinition`-export
- * convention every other Tier A module uses. `frontend/src/modules/
- * registry.ts` auto-discovers this file; no hand-edit to that file is
- * needed.
+ * The Decision Management module's frontend registration, the mirror of `backend/app/modules/decisions/module.py`'s
+ * `MODULE_DEFINITION`. `frontend/src/modules/registry.ts` discovers this file.
  *
- * `routes`: `ProjectDecisionsPage` (the list) and `DecisionDetailPage` (a
- * single Decision's full management/context view) — `path`
- * matches the `nav_path` `module.py`'s own `frontend_manifest` declares
- * (with React Router's `:projectId`/`:decisionId` syntax standing in for
- * the backend's `"{project_id}"`/`"{decision_id}"` placeholders).
- * `ProjectDecisionsPage`'s own list opens a minimal `DecisionQuickViewPanel`
- * `SidePanel` on row click (not a route of its own — it renders inline from
- * that page), whose "View full details" link is what reaches
- * `DecisionDetailPage`. See that page's own docstring and `docs/ux-style-
- * guide.md`'s "Pattern: entity detail panel" checklist for why the
- * original single-route, `SidePanel`-only shape (`DecisionDetailPanel`,
- * removed) was replaced.
+ * `routes`: `ProjectDecisionsPage` (the list) and `DecisionDetailPage` (a Decision's full management and context
+ * view); `path` matches the `nav_path` in `module.py`'s `frontend_manifest`, with React Router's
+ * `:projectId`/`:decisionId` standing in for the backend's `"{project_id}"`/`"{decision_id}"`. The list opens a
+ * `DecisionQuickViewPanel` `SidePanel` on row click (rendered inline, not a route), and its "View full details" link
+ * reaches `DecisionDetailPage` (`docs/ux-style-guide.md` "Pattern: entity detail panel").
  *
- * `projectAdminSections`: `DecisionTypesPanel`, this project's
- * Decision Type vocabulary — moved off `ProjectDecisionsPage.tsx`'s own tab
- * bar to sit alongside the project's other definition-table settings
- * (Action Types, Custom Fields) on `ProjectAdminPage.tsx`, matching where
- * Action Types themselves already live, per explicit user direction.
+ * `projectAdminSections`: `DecisionTypesPanel`, the project's Decision Type vocabulary, beside the other
+ * definition-table settings (Action Types, Custom Fields) on `ProjectAdminPage.tsx`.
  *
- * `orgResourceSections`: `DecisionTemplatesPanel`, the org-scoped Decision Template library new decisions start from,
- * on Org Resources (authored content projects share, not configuration).
+ * `orgResourceSections`: `DecisionTemplatesPanel`, the organisation-scoped Decision Template library new decisions
+ * start from, on Org Resources (authored content projects share, not configuration).
  *
- * `entityAccentColor`: intentionally **not** set. This module still
- * doesn't add a `requirementDetailSections` contribution (a requirement's
- * Decision links are shown by the shared Links panel instead), so there is no
- * cross-module mixed list this module's own entity kind would ever need to be
- * told apart in — nothing would read `useEntityAccentColor("decisions")` yet.
- * Add it alongside whichever change does add such a list, not speculatively now.
+ * `entityAccentColor` is not set: with no `requirementDetailSections` contribution (a requirement's Decision links are
+ * shown by the shared Links panel) there is no cross-module mixed list in which this kind must be told apart, so
+ * nothing would read `useEntityAccentColor("decisions")`. Add it with the change that adds such a list.
  *
- * No `globalNavItems`/`standaloneWorkspaces`/`globalRoutes`/
- * `overviewWidgets`/`orgResourceSections` — Decision Management has no
- * cross-org standalone entity (a Decision only ever exists inside a
- * project, unlike Compliance's own Standards), and nothing
- * calls for a project-overview summary tile or an Org Resources
- * surface of its own.
+ * There is no `globalNavItems`, `standaloneWorkspaces`, `globalRoutes` or `overviewWidgets`: a Decision exists only
+ * inside a project, and nothing calls for a project-overview tile.
  */
 export const moduleDefinition: TierAModuleDefinition = {
   key: "decisions",

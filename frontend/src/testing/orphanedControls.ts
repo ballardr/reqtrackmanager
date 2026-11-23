@@ -1,25 +1,19 @@
 /**
  * Module: testing/orphanedControls
  *
- * The shared "do controls and pills stay where they belong?" assertion. Text
- * that sits beside a control can push that control onto a new line when the
- * text is long (a 200-character title drops its Delete button below it), and a
- * pill whose label wraps changes height and breaks the row it is in. A short
- * story or a tidy demo record never shows either. This reads real layout and
- * returns what is wrong, so Storybook play functions and Playwright specs fail
- * instead of someone spotting it in a screenshot.
+ * The shared "do controls and pills stay where they belong?" assertion. Long
+ * text beside a control can push it onto a new line (a long title drops its
+ * Delete button below it), and a pill whose label wraps changes the row's
+ * height. This reads real layout and returns what is wrong, for Storybook play
+ * functions and Playwright specs.
+ * Self-contained (no imports, helpers inside each function) so Playwright can
+ * ship it with `page.evaluate`; the same rules apply in Storybook and e2e.
  *
- * Self-contained on purpose (no imports, helpers inside each function) so
- * Playwright can ship it into the page with `page.evaluate`, and the same
- * rules therefore apply in Storybook (real Chromium) and in the e2e suite.
- *
- * Rules (a container or ancestor with `data-wrap-ok` opts out; toolbars and
- * filter bars that are meant to wrap use it, or the plain `.row` they already
- * are not checked unless a control ends up alone at the start of a line):
+ * Rules (a container or ancestor with `data-wrap-ok` opts out):
  * - a `.btn` or `.badge` must not be the first item on a second or later line
- *   of its flex container, unless the line before it is made only of controls
- *   and pills (a toolbar of buttons wrapping at a narrow width is fine; text
- *   dropping its trailing control is not);
+ *   of its flex container, unless the line before it holds only controls and
+ *   pills (a toolbar of buttons wrapping is fine; text dropping its trailing
+ *   control is not);
  * - a `.badge` narrower than its maximum width must be a single line;
  * - a `.badge` must never exceed two lines.
  */

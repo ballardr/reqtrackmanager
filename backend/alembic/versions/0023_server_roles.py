@@ -4,15 +4,12 @@ Revision ID: 0023
 Revises: 0022
 Create Date: 2026-09-04
 
-Foundation for the modular feature system: a new `server_roles` table (`app.models.server_role.
-UserServerRole`) granting a user a server-tier role beyond the existing
-`User.is_server_admin` boolean, plus `server_settings.
-default_module_entitlement_policy` for the entitlement resolution.
+Foundation for the modular feature system: a `server_roles` table (`app.models.server_role.UserServerRole`)
+granting a user a server-tier role beyond the `User.is_server_admin` boolean, and
+`server_settings.default_module_entitlement_policy` for entitlement resolution.
 
-`User.is_server_admin` is left completely untouched — this migration adds
-new, additive columns/tables only, no backfill of existing data into the
-new table (see `ServerRole`'s docstring for why `SERVER_ADMIN`-equivalent
-power deliberately stays exclusively on that boolean).
+`User.is_server_admin` is unchanged and no existing data is backfilled into the new table: server-admin
+power stays on that boolean (see `ServerRole`'s docstring).
 """
 
 from collections.abc import Sequence

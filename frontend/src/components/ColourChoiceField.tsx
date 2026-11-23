@@ -1,20 +1,15 @@
 /**
  * Module: components/ColourChoiceField
  *
- * The one control for choosing a colour in a report layout: a button showing the current colour (a swatch and its name, never
- * colour alone) that opens a popover with the branding colour first, then the layout's own scheme, the organisation's, the
- * standard four, white, black and (where the field allows it) no colour, then a custom colour.
+ * The one control for choosing a colour in a report layout: a button showing the current colour (swatch and name,
+ * never colour alone) that opens a popover with the branding colour, the layout's scheme, the organisation's, the
+ * standard four, white, black, optionally no colour, then a custom colour.
  *
- * Responsibilities:
- * - Report a colour word: a hex colour, a reserved word (`accent`, `white` ...) or a scheme name. A name is kept as a name,
- *   so a change to the scheme changes everything that uses it.
- * - Show each choice's actual colour, resolved the way the server resolves it (`utils/reportColours`).
- * - `ColourChoiceList` is the list on its own, for a place that already is a popover (a scheme entry's settings), so popovers
- *   never nest.
- *
- * Design decisions: one control for every colour setting (the shape block's fill and outline, a scheme entry's colour, and the
- * custom-table cell colours later), instead of a hex box copied per form. A custom colour reuses `HexColourInput`, the pair
- * `ColorField` is built on. Changes apply as they are made, so choosing a line closes the popover.
+ * - Reports a colour word: a hex colour, a reserved word (`accent`, `white` ...) or a scheme name. A name stays a
+ *   name, so a scheme change reaches everything that uses it.
+ * - Shows each choice's colour as the server resolves it (`utils/reportColours`). A custom colour reuses
+ *   `HexColourInput`. Changes apply as made, so choosing a line closes the popover.
+ * - `ColourChoiceList` is the list alone, for a place already inside a popover, so popovers never nest.
  */
 import { useId, useRef, useState } from "react";
 

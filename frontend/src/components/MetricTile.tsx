@@ -1,14 +1,10 @@
 import { Link } from "react-router-dom";
 
 /**
- * One clickable metric tile in a `.grid.grid-metrics` grid (`ProjectOverviewPage.tsx`
- * — U-P-05) — a big number/percentage plus a label, linking through to
- * whatever list view the number summarises. Extracted (module boundary
- * cleanup, 2026-09-08) from `ProjectOverviewPage.tsx`'s own inline `.map`
- * over its built-in tiles so a module contributing its own tiles
- * (a `TierAModuleDefinition.overviewWidgets` entry, e.g. Compliance's
- * per-standard status tiles) renders pixel-identical ones without
- * duplicating the markup/style in a second place. `to` is omitted for a figure with no list to open.
+ * One clickable metric tile in a `.grid.grid-metrics` grid: a big number or percentage plus a label, linking to the
+ * list the number summarises. Shared by `ProjectOverviewPage.tsx` and by module-contributed tiles
+ * (`TierAModuleDefinition.overviewWidgets`) so both render identically. `to` is omitted for a figure with no list
+ * to open.
  */
 export function MetricTile({ label, value, to }: { label: string; value: string | number; to?: string | null }) {
   const body = (
