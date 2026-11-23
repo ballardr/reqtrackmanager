@@ -4099,7 +4099,7 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .picture-backdrop[data-backdrop="light"] { background: #ffffff; }
 .picture-backdrop[data-backdrop="dark"] { background: #1c222c; }
 .file-thumb { width: 2.5rem; height: 2.5rem; flex: none; object-fit: contain; border-radius: var(--radius-sm, 4px); }
-.file-thumb--icon { display: inline-flex; align-items: center; justify-content: center; color: var(--color-text-muted, inherit); background: var(--color-surface-alt); }
+.file-thumb--icon { display: inline-flex; align-items: center; justify-content: center; color: var(--color-text-muted, inherit); }
 .report-image-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--space-3); max-height: 50vh; overflow-y: auto; }
 .report-image-card { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); min-width: 0; }
 .report-image-card[data-selected] { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }

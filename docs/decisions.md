@@ -19992,6 +19992,20 @@ Raised on Organisation Settings, Connection Types: "Add connection type" above t
 
 **Review (identify → verify → remediate).** Presentation only: no new input path, no request or authorization change, nothing logged, no secret, no tenant boundary touched. The restore request is the same and still scoped to the project by the server. Nothing to remediate.
 
+## Platform review 2026-11-19, Phase 57: a file-type icon is drawn bare (2026-11-23)
+
+**Decided by: User** (no background behind a type icon, 2026-11-23); **Decided by: Agent** (the audit outcome below).
+
+Raised on the organisation Files page: every non-picture row drew its icon on a filled square (`.file-thumb--icon` set `background: var(--color-surface-alt)`), visual weight on every row of a long list for a glyph that needs none. The fill is useful only behind a picture, where a transparent or single-colour image needs a backdrop.
+
+- **Fix.** `.file-thumb--icon` no longer sets a background; the box keeps the picture's size (2.5rem square) so names line up with and without a picture, and the icon keeps the muted text colour. A picture that cannot be read falls back to the same bare icon. The picture's own backdrop (`.picture-backdrop`, the person's chosen checkerboard, light or dark) is untouched. The muted colour is a theme token, so light and dark themes follow it; the row's hover and selected states are drawn on the row and show through the bare icon.
+- **Audit of other file lists.** `FileThumbnail` is the one component that draws a file's type icon, used by `FilesTable` (organisation, project and platform Files pages) and `OrgResourcesTable`. No other list draws its own tile: record attachments (`FileAttachmentList`), comment attachments (`CommentThread`, `ArtefactCommentsSection`) and the Compliance evidence form use a small `Paperclip` glyph inline with the file name or on an Attach button, with no tile; the Report image and Picture picker grids draw pictures through `PictureImage` and so keep the backdrop. Nothing needed moving.
+- **Not done (offered to the user).** Distinct glyphs by kind (document, spreadsheet, archive, drawing) in place of the one icon; the request did not ask for them.
+- **No stored value, endpoint, permission, audit, retention, tenant, logging, bundle or seed change**; a stylesheet rule only, so there is no backend test or seed script change. The website documents no file-icon appearance, so it needs no update.
+- **Tests.** Storybook (`FileThumbnail`): a type icon has no background colour or image and is square (light and dark themes, and the fallback for an unreadable picture), and a picture keeps its backdrop image; the new stories were watched failing against the earlier rule. Playwright: `file-type-icon-bare.spec.ts` checks a project Files row's icon has no background.
+
+**Review (identify → verify → remediate).** Presentation only: no input path, request or authorization change, nothing logged. Nothing to remediate.
+
 ## Minimal example stack (2026-11-23)
 
 **Decided by: User** (a separate example stack of the application's own services only, containing `db`, `storage`, `backend`, `frontend`, `mcp-server` and `converter`, with a self-contained file and an `.env.example`); **Decided by: Agent** (the details below).

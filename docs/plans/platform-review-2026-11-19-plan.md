@@ -1,6 +1,6 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 56 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 58 came from the review of 2026-11-23; 50 to 56 are done and 57 and 58 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 57 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 58 came from the review of 2026-11-23; 50 to 57 are done and 58 is not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
@@ -66,7 +66,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 54 | Clear control: a compact X | The control that empties an owner or similar field is one compact icon button after the value, not a text button; one shared component and a style guide pattern | [x] |
 | 55 | Dead session: redirect to sign-in | A request refused for an invalid or expired token ends the session and returns the person to the sign-in page instead of leaving a spinner | [x] |
 | 56 | Architecture types: one Add button, at the top | The two add buttons on Element Types and Connection Types become one at the top that opens the full form | [x] |
-| 57 | Files pages: no background behind a type icon | A file-type icon is drawn bare; only a picture keeps its backdrop | [ ] |
+| 57 | Files pages: no background behind a type icon | A file-type icon is drawn bare; only a picture keeps its backdrop | [x] |
 | 58 | Service users in the one Users list | Add user offers New service user; service users are managed from the Users list, not a separate section | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 57 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
@@ -825,6 +825,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Other file lists** (list the result in the phase's As built): confirm no other list draws its own tile behind a file icon: the record attachment lists (`FileAttachmentList`, the comment attachments), the Report images and Picture picker grids, and the Compliance evidence list; each is moved onto `FileThumbnail` if it has its own copy (the shared-component rule), and the same rule applies.
 - Optional, for the user: the type icon is the same for every non-picture file; distinct glyphs by kind (document, spreadsheet, archive, drawing) would make a bare icon more useful; not part of the request, so only if the user says so.
 - Tests: Storybook for `FileThumbnail` (a picture on each backdrop, a PDF, a failed picture) asserting the type icon has a transparent background and the picture does not, in light and dark; the Files page stories; one Playwright check that a Files row's icon has no background colour.
+
+- As built (**Decided by: User** for the bare icon, **Decided by: Agent** for the rest): `.file-thumb--icon` lost its `background`; the box keeps its 2.5rem square and muted colour, so rows still line up, and the unreadable-picture fallback is the same bare icon. The picture backdrop is untouched. Audit: `FileThumbnail` is the only component drawing a file's type icon (`FilesTable`, `OrgResourcesTable`); record and comment attachments and the evidence form use an inline `Paperclip` with no tile, and the picture grids use `PictureImage`; nothing needed moving. The optional distinct glyphs by kind were not built (for the user to say). Specs: three new `FileThumbnail` stories (bare icon in light and dark, a picture keeping its backdrop; shown failing on the old rule) and `file-type-icon-bare.spec.ts`. See `docs/decisions.md`.
 
 ### Phase 58 — Service users: one Users list, created from the Add user menu
 
