@@ -178,10 +178,13 @@ export const SortByNameRefetchesWithSortParams: Story = {
       expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "descending")
     );
 
+    // A header never resets the sort (the default is a choice in the Sort by and Order fields): a third click is ascending again.
     await userEvent.click(canvas.getByRole("button", { name: "Name" }));
-    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.not.stringContaining("sort=")));
     await waitFor(() =>
-      expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "none")
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=name&order=asc"))
+    );
+    await waitFor(() =>
+      expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "ascending")
     );
   },
 };

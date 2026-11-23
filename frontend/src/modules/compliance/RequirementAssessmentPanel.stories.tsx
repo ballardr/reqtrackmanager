@@ -267,7 +267,7 @@ export const RequiredActionUnassign: Story = {
     void canvasElement;
     const body = within(document.body);
     await expect(body.getByText("Alex Morgan")).toBeInTheDocument();
-    await userEvent.click(body.getByRole("button", { name: /Unassign: Assignee for Complete access review/ }));
+    await userEvent.click(body.getByRole("button", { name: /Clear: Assignee for Complete access review/ }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance/${PC_ID}/requirements/pcr-1/required-action-assessments/aa-1`,
       { assignee: null, due_date: null, notes: "" }

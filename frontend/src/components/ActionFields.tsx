@@ -76,7 +76,7 @@ export function ActionFields({
         <PrincipalFormField helpNotNeeded
           label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
           value={values.assignee} display={assigneeDisplay} onChange={(next) => set("assignee", next)}
-          ariaLabel={strings.actions.assignee} placeholder={strings.reviews.unassigned}
+          ariaLabel={strings.actions.assignee}
         />
       )}
       <DateField helpNotNeeded label={strings.actions.dueDate} value={values.dueDate} onChange={(next) => set("dueDate", next)} disabled={disabled} />

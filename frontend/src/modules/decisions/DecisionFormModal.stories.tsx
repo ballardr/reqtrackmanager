@@ -154,7 +154,7 @@ export const ChoosesAProjectGroupDecisionMaker: Story = {
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
       expect.objectContaining({ decision_maker: { type: "project_group", id: "pgroup-1" } }), [], []
     ));
-    await userEvent.click(body.getByRole("button", { name: "Unassign: Decision maker" }));
+    await userEvent.click(body.getByRole("button", { name: "Clear: Decision maker" }));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ decision_maker: null }), [], []));
   },

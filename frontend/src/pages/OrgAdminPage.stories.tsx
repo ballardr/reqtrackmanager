@@ -1182,7 +1182,7 @@ export const OrganisationDetailsSavesOnlyTheChangedCompanyField: Story = {
     await expect(company).toHaveValue("");
     // With no logo of its own the platform logo is shown under a muted caption, and there is nothing to remove.
     await expect(canvas.getByText("Platform default")).toBeVisible();
-    await expect(canvas.queryByRole("button", { name: "Remove" })).toBeNull();
+    await expect(canvas.queryByRole("button", { name: /^Remove/ })).toBeNull();
     await expect(company).toHaveAttribute("placeholder", "Platform Co");
     await expect(canvas.getByLabelText("Postal address")).toHaveAttribute("placeholder", "1 Platform Way");
     await userEvent.type(company, "Acme Pty Ltd");
@@ -1279,7 +1279,7 @@ export const BrandingSectionPlatformValueIsThePlaceholder: Story = {
     await expect(canvas.queryByText("Custom")).toBeNull();
     await expect(canvas.queryByRole("button", { name: "Reset to platform default" })).toBeNull();
     // With no login background of its own there is nothing to remove.
-    await expect(canvas.queryByRole("button", { name: "Remove" })).toBeNull();
+    await expect(canvas.queryByRole("button", { name: /^Remove/ })).toBeNull();
 
     // Emptying a field and saving sends null, which is the platform value again.
     const header = canvas.getByLabelText(/^Header title/);
@@ -1305,15 +1305,15 @@ export const LogoAndLoginBackgroundRemove: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Organisation details" }));
-    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Remove" })).toHaveLength(1));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: /^Remove/ })).toHaveLength(1));
     await expect(canvas.queryByText("Custom")).toBeNull();
-    await userEvent.click(canvas.getByRole("button", { name: "Remove" }));
+    await userEvent.click(canvas.getByRole("button", { name: /^Remove/ }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding-image?kind=logo`));
     await expect(within(document.body).getByText("Logo removed.")).toBeInTheDocument();
 
     await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
-    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Remove" })).toHaveLength(1));
-    await userEvent.click(canvas.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: /^Remove/ })).toHaveLength(1));
+    await userEvent.click(canvas.getByRole("button", { name: /^Remove/ }));
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding-image?kind=login_background`)
     );

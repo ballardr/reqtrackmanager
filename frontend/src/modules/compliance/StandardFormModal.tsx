@@ -173,7 +173,6 @@ export function StandardFormModal({
               display={savedPrincipalDisplay(owner, initial.owner)}
               onChange={setOwner}
               ariaLabel="Standard owner"
-              placeholder="Select an owner…"
             />
           )}
           {!initial && (

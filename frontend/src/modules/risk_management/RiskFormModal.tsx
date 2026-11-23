@@ -141,8 +141,6 @@ export function RiskFormModal({
             display={savedPrincipalDisplay(values.owner, initial?.owner)}
             onChange={(next) => set("owner", next)}
             ariaLabel="Owner"
-            placeholder="Search users and groups…"
-            clearLabel="Clear"
           />
           {levelGroup("inherent", "Inherent")}
           {levelGroup("residual", "Residual")}

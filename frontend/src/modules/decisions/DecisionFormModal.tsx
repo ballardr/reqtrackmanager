@@ -152,7 +152,6 @@ export function DecisionFormModal({
             display={savedPrincipalDisplay(decisionMaker, initial?.decision_maker)}
             onChange={setDecisionMaker}
             ariaLabel="Decision maker"
-            placeholder="Search users and groups…"
           />
           <PrincipalFormField help={DECISIONS_HELP.decisionOwner} required
             label="Owner"
@@ -163,8 +162,6 @@ export function DecisionFormModal({
             display={savedPrincipalDisplay(owner, initial?.owner)}
             onChange={setOwner}
             ariaLabel="Owner"
-            placeholder="Select an owner…"
-            clearLabel="Clear"
           />
           {PROMPT_TO_FIELD.map((f) => (
             <FormGridFull key={f.fieldKey}>

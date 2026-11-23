@@ -32,7 +32,7 @@ export const Default: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("img", { name: "Preview of the logo band" })).toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument();
     await expect(canvas.queryByText(/hard to see/)).not.toBeInTheDocument();
   },
 };
@@ -52,9 +52,9 @@ export const RemoveReturnsToDefault: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvasElement.querySelector<HTMLElement>(".logo-band")?.style.background).toBe("rgb(122, 31, 61)");
-    await userEvent.click(canvas.getByRole("button", { name: "Remove" }));
+    await userEvent.click(canvas.getByRole("button", { name: /^Remove/ }));
     await expect(canvasElement.querySelector<HTMLElement>(".logo-band")?.style.background).toBe("rgb(20, 22, 28)");
-    await expect(canvas.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument();
   },
 };
 
@@ -83,7 +83,7 @@ export const TitleColourChosenAndRemoved: Story = {
     const canvas = within(canvasElement);
     const band = canvasElement.querySelector<HTMLElement>(".logo-band");
     await expect(band?.style.color).toBe("rgb(255, 204, 0)");
-    const removes = canvas.getAllByRole("button", { name: "Remove" });
+    const removes = canvas.getAllByRole("button", { name: /^Remove/ });
     await userEvent.click(removes[removes.length - 1]); // the title colour's, which follows the band's
     await expect(band?.style.color).toBe("rgb(255, 255, 255)");
   },

@@ -15,6 +15,8 @@
  * component needs no code here. A sort heading is typed, because a table's columns are only known when the
  * report runs (the server reports a heading that matches none at run time).
  */
+import { X } from "lucide-react";
+
 import type { ReportWidget } from "../api/reportLayouts";
 import type { ReportRunValues } from "../api/reports";
 import { useStrings } from "../context/TerminologyContext";
@@ -109,7 +111,9 @@ export function WidgetSortField({
             label={text.descending} ariaLabel={`${text.widgetColumn(i + 1)}: ${text.descending}`} checked={key.descending === true} disabled={disabled}
             onChange={(on) => set(value.map((k, j) => (j === i ? { column: k.column, ...(on ? { descending: true } : {}) } : k)))}
           />
-          {!disabled && <button type="button" className="btn btn-sm" onClick={() => set(value.filter((_, j) => j !== i))}>{text.removeSort(i + 1)}</button>}
+          {!disabled && <button type="button" className="btn btn-sm btn-icon" aria-label={text.removeSort(i + 1)} title={text.removeSort(i + 1)} onClick={() => set(value.filter((_, j) => j !== i))}>
+              <X size={14} aria-hidden="true" />
+            </button>}
         </span>
       ))}
       {!disabled && value.length < MAX_SORT_KEYS && (

@@ -335,7 +335,7 @@ export function ChangeRequestCreateModal({
             orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
             value={proposed.reviewer} display={savedPrincipalDisplay(proposed.reviewer, selectedRequirement?.reviewer)}
             onChange={(reviewer) => setProposed((p) => ({ ...p, reviewer }))}
-            ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
+            ariaLabel={strings.requirements.reviewer}
           />
         );
       case "custom_fields":

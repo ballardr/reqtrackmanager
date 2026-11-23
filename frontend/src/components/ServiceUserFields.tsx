@@ -51,7 +51,7 @@ export function ServiceUserFields({
           orgUsers={[]} organizationId={organizationId} kinds={["user", "org_group"]}
           value={draft.responsible} display={draft.responsible && responsibleDisplay && responsibleDisplay.id === draft.responsible.id ? responsibleDisplay : undefined}
           onChange={(responsible) => onChange({ responsible })}
-          ariaLabel={text.responsibleAria} placeholder={text.responsiblePlaceholder} clearLabel={strings.common.remove}
+          ariaLabel={text.responsibleAria}
         />
       </FormGridFull>
     </FormGrid>

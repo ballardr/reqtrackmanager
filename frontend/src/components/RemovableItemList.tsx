@@ -8,10 +8,10 @@
  * (docs/ux-style-guide.md "confirmation, in two tiers") and does the removal. A long list is
  * capped by `CappedList`.
  */
-import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { CappedList } from "./CappedList";
+import { ClearButton } from "./ClearButton";
 
 export interface RemovableItem {
   id: string;
@@ -51,9 +51,7 @@ export function RemovableItemList({
             <li key={item.id} className="removable-item">
               {item.content}
               {onRemove && item.removable !== false && (
-                <button type="button" className="removable-item__remove" aria-label={item.removeLabel} title={item.removeLabel} onClick={() => onRemove(item.id)}>
-                  <X size={12} aria-hidden="true" />
-                </button>
+                <ClearButton label={item.removeLabel} onClick={() => onRemove(item.id)} />
               )}
             </li>
           ))}

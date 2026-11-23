@@ -4,13 +4,15 @@ import type { Principal, PrincipalType } from "../api/types";
 import { PRINCIPAL_TYPE_LABEL } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { Badge } from "./Badge";
+import { CellText } from "./CellText";
 import { ServiceBadge } from "./ServiceBadge";
 
 const ICON: Record<PrincipalType, typeof User> = { user: User, org_group: Users, project_group: FolderKanban };
 
 /**
  * How a record shows who owns it: a user's name, or a group's name with its kind and how many people
- * it stands for, so an owner group is never mistaken for one person. The one rendering for every
+ * it stands for, so an owner group is never mistaken for one person. The label is one line cut with an
+ * ellipsis (`CellText`) so a long name never changes the shape of the row it sits in. The one rendering for every
  * owner/assignee/reviewer field (`PrincipalPicker` shows it for the current value).
  *
  * @param principal The resolved principal from the API (`PrincipalOut`).
@@ -30,9 +32,9 @@ export function PrincipalBadge({ principal, placeholder = "Unassigned" }: { prin
           ? null
           : `${principal.member_count} ${principal.member_count === 1 ? "member" : "members"}`;
   return (
-    <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }} title={detail ? `${kind}: ${principal.label}` : kind}>
-      <Icon size={14} aria-hidden="true" />
-      <span>{principal.label}</span>
+    <span className="row" style={{ gap: "var(--space-2)", alignItems: "center", flexWrap: "nowrap", minWidth: 0 }} title={detail ? `${kind}: ${principal.label}` : kind}>
+      <Icon size={14} aria-hidden="true" style={{ flex: "none" }} />
+      <CellText>{principal.label}</CellText>
       {principal.imported && <Badge tone="warning">{strings.importPeople.importedBadge}</Badge>}
       {principal.service && <ServiceBadge />}
       {principal.type !== "user" && <Badge tone="muted">{detail ? `${kind} · ${detail}` : kind}</Badge>}

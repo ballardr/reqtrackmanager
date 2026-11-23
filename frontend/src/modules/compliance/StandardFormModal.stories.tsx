@@ -104,7 +104,7 @@ export const EditModeRequiresAnOwner: Story = {
   args: { initial: standard(), orgId: "org-1" },
   play: async () => {
     const body = within(document.body);
-    await userEvent.click(body.getByRole("button", { name: "Unassign: Standard owner" }));
+    await userEvent.click(body.getByRole("button", { name: "Clear: Standard owner" }));
     await expect(body.getByRole("button", { name: "Save" })).toBeDisabled();
   },
 };

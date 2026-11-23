@@ -11,8 +11,10 @@
 import { useId, useState } from "react";
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
+import { t } from "../i18n/strings";
 import { normaliseHexColour } from "../utils/color";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { ClearButton } from "./ClearButton";
 import { FieldCaption, FieldHelp, FieldShell, RequiredMark } from "./FieldHelp";
 import { HexColourInput } from "./HexColourInput";
 import { MarkdownEditor } from "./MarkdownEditor";
@@ -244,7 +246,7 @@ export function CheckboxField({
  * @param emptyLabel Adds a "no colour" button with this text; choosing it reports `""`.
  */
 export function ColorField({
-  label, value, onChange, hint, ariaLabel, help, presets, emptyLabel, required,
+  label, value, onChange, hint, ariaLabel, help, presets, emptyLabel, required, onClear, clearLabel,
 }: FieldHelpProps & {
   label: string;
   value: string;
@@ -253,6 +255,10 @@ export function ColorField({
   ariaLabel?: string;
   presets?: ReadonlyArray<{ name: string; hex: string }>;
   emptyLabel?: string;
+  /** Adds a compact clear X after the colour while the caller has a value of its own to remove. */
+  onClear?: () => void;
+  /** Accessible name and tooltip of the clear X; defaults to "Clear: <label>". */
+  clearLabel?: string;
 }) {
   const id = useId();
   const name = ariaLabel ?? label;
@@ -260,6 +266,7 @@ export function ColorField({
     <FieldShell label={label} controlId={id} help={help} hint={hint} required={required}>
       <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <HexColourInput id={id} value={value} onChange={onChange} name={name} />
+        {onClear && <ClearButton label={clearLabel ?? `${t().common.clear}: ${label}`} onClick={onClear} />}
         {presets?.map((preset) => (
           <button
             key={preset.hex} type="button" className="colour-swatch" aria-label={preset.name} title={preset.name}

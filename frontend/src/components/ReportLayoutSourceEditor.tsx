@@ -14,6 +14,8 @@
  * so the server's check, not a client list, says whether a name exists. A sheet's join has no "all records" mode
  * (`joinMode`): it can only follow a link from an earlier name.
  */
+import { X } from "lucide-react";
+
 import type { BlockCatalogue, ReportFieldCatalogue } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import { nameOption, type NameInScope } from "../utils/reportLayoutTree";
@@ -156,8 +158,8 @@ export function ReportLayoutSourceEditor({
                   onChange={(on) => change({ sort: sort.map((k, j) => (j === i ? { field: k.field, ...(on ? { descending: true } : {}) } : k)) })}
                 />
                 {!disabled && (
-                  <button type="button" className="btn btn-sm" aria-label={text.removeSort(i + 1)} onClick={() => change({ sort: sort.filter((_, j) => j !== i) })}>
-                    {text.removeSort(i + 1)}
+                  <button type="button" className="btn btn-sm btn-icon" aria-label={text.removeSort(i + 1)} title={text.removeSort(i + 1)} onClick={() => change({ sort: sort.filter((_, j) => j !== i) })}>
+                    <X size={14} aria-hidden="true" />
                   </button>
                 )}
               </span>

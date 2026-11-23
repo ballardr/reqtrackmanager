@@ -72,7 +72,7 @@ export function ElementFields({
       <PrincipalFormField
         help={ARCHITECTURE_HELP.elementOwner} label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
         value={values.owner} display={savedPrincipalDisplay(values.owner, saved?.owner)}
-        onChange={(next) => onChange("owner", next)} ariaLabel="Owner" placeholder="Search users and groups…" clearLabel="Clear"
+        onChange={(next) => onChange("owner", next)} ariaLabel="Owner"
       />
       <SymbolPicker
         help={ARCHITECTURE_HELP.elementSymbol} label="Symbol" symbols={symbols} value={values.symbol_id}

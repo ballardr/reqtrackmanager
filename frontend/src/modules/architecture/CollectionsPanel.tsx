@@ -173,7 +173,7 @@ function CollectionCard({
             <PrincipalPicker
               orgUsers={orgUsers} organizationId={organizationId} projectId={scope.kind === "project" ? scope.projectId : undefined}
               value={grantGroup} onChange={setGrantGroup} kinds={["org_group", "project_group"]}
-              ariaLabel={`Group to share ${collection.name} with`} placeholder="Search groups…" clearLabel="Clear"
+              ariaLabel={`Group to share ${collection.name} with`}
             />
           )}
           <button

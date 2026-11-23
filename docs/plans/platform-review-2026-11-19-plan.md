@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 53 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 58 came from the review of 2026-11-23; 50 to 52 are done and 53 to 58 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 54 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 58 came from the review of 2026-11-23; 50 to 54 are done and 55 to 58 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-53 / 63 phases complete.
+54 / 63 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -63,7 +63,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 51 | Tree selector: the panel opens at its field | The panel of a picker (Additional components, Component and category) opens under the field's left edge, never at the far end of a full-width field | [x] |
 | 52 | Sort on every record list | A Sort by and Order control in each record list's filter panel (code, title, created, modified, ascending or descending), one shared mechanism for every registered type; a decision gate first | [x] |
 | 53 | Record header: one add control for tags, components and references | The three separate (+) buttons become one (+) with a menu naming what it adds, in one row with the chips | [x] |
-| 54 | Clear control: a compact X | The control that empties an owner or similar field is one compact icon button after the value, not a text button; one shared component and a style guide pattern | [ ] |
+| 54 | Clear control: a compact X | The control that empties an owner or similar field is one compact icon button after the value, not a text button; one shared component and a style guide pattern | [x] |
 | 55 | Dead session: redirect to sign-in | A request refused for an invalid or expired token ends the session and returns the person to the sign-in page instead of leaving a spinner | [ ] |
 | 56 | Architecture types: one Add button, at the top | The two add buttons on Element Types and Connection Types become one at the top that opens the full form | [ ] |
 | 57 | Files pages: no background behind a type icon | A file-type icon is drawn bare; only a picture keeps its backdrop | [ ] |
@@ -792,6 +792,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Audit the similar fields** (list the result in the phase's As built): every control that empties a single value: pickers (`PrincipalPicker` callers, the one-choice `TreeSelect` clear row, which is a row in an open list and stays a row), date and time fields, colour choice ("no colour"), file and image fields, filter fields, the report layout block fields, and any `className="btn"` whose text is Clear, Unassign, None or Remove beside a field. A bulk action over a selection ("Clear marks") is not this control and stays a button. Move each onto `ClearButton`.
 - **Style guide:** a "Pattern: clear control" next to the removable chip rules: a control that empties one field is a compact icon X after the value, never a text button; it has an accessible name that includes the field and a tooltip; it is absent while the field is empty; removing one item from a list is the chip's own X; clearing many things at once is a button or a menu row. The "Not buttons" rule on removable chips is updated to point to it.
 - Tests: Storybook for the picker with and without a value in both forms (the X is 14px, the row is one line and the same height when a value is set or cleared, the search box says the search prompt and not "Unassigned", the tooltip shows on hover and focus), and two pickers side by side in a two-column form with their boxes level, a story of every audited field, the accessible name; Playwright on a requirement's Owner: set it, clear it with the X, reload.
+
+- As built (**Decided by: User** for the compact X and the style guide rule, **Decided by: Agent** for the rest): `ClearButton` (`components/ClearButton.tsx`, `.clear-button`) is the one control, used by `PrincipalPicker` in both forms (the `compact` copy is gone), `RemovableItemList`, the watcher chips, `ColorField` (`onClear`, for the Logo band colours), `BrandingImageField` and the Overview widget filter. `PrincipalPicker`'s default form is badge, X and search on one line; `PrincipalBadge` shows its label with `CellText` so a long name cannot wrap and squeeze the search box (the new story found it). Deviation from the plan's cause (b): the badge never received the caller's `placeholder`; the search box did, so `placeholder` is replaced by `emptyLabel` (the badge's empty text) and a prompt derived from the kinds, and every caller was changed; the default clear name is `Clear: <field>` (was `Unassign:`). The audit list and the boundary (row actions in repeating input rows, chip-owned X, record deletions and bulk actions stay as they are) are in `docs/decisions.md` and the style guide's "Pattern: clear control". Not moved: the repeating-row remove buttons, with the reason recorded.
 
 ### Phase 55 — Dead session: redirect to sign-in
 

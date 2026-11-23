@@ -46,18 +46,14 @@ export function LogoBandField({
   const hardToRead = contrastRatio(band, text) < READABLE_TEXT_CONTRAST;
   return (
     <div className="stack">
-      <ColorField help={strings.help.logoBand} label={strings.logoBand.label} value={band} onChange={onChange} />
-      {value && (
-        <div className="row">
-          <button type="button" className="btn btn-sm" onClick={() => onChange("")}>{strings.common.remove}</button>
-        </div>
-      )}
-      <ColorField help={strings.help.logoBandText} label={strings.logoBand.textLabel} value={text} onChange={onTextChange} />
-      {textValue && (
-        <div className="row">
-          <button type="button" className="btn btn-sm" onClick={() => onTextChange("")}>{strings.common.remove}</button>
-        </div>
-      )}
+      <ColorField
+        help={strings.help.logoBand} label={strings.logoBand.label} value={band} onChange={onChange}
+        onClear={value ? () => onChange("") : undefined} clearLabel={`${strings.common.remove}: ${strings.logoBand.label}`}
+      />
+      <ColorField
+        help={strings.help.logoBandText} label={strings.logoBand.textLabel} value={text} onChange={onTextChange}
+        onClear={textValue ? () => onTextChange("") : undefined} clearLabel={`${strings.common.remove}: ${strings.logoBand.textLabel}`}
+      />
       <LogoBand colorHex={band} textColorHex={text} logoFileId={logoFileId} title={title} label={strings.logoBand.previewLabel} />
       {light && <InlineMessage tone="warning">{strings.logoBand.lightWarning}</InlineMessage>}
       {hardToRead && <InlineMessage tone="warning">{strings.logoBand.textWarning}</InlineMessage>}

@@ -82,7 +82,7 @@ export function RequestFields({
       <PrincipalFormField
         help={PRODUCT_FEEDBACK_HELP.requestOwner} label="Owner" orgUsers={orgUsers} organizationId={organizationId}
         projectId={projectId} value={draft.owner} display={savedPrincipalDisplay(draft.owner, savedOwner)}
-        onChange={(next) => set("owner", next)} ariaLabel="Request owner" placeholder="Search users and groups…"
+        onChange={(next) => set("owner", next)} ariaLabel="Request owner"
         clearLabel="Clear" kinds={projectId ? undefined : ["user", "org_group"]}
       />
       {beside}

@@ -3418,10 +3418,18 @@ td:has(> .disclosure-toggle) {
   font-size: 0.9rem;
 }
 
-.removable-item__remove {
+/* The compact X that empties a value or removes an item (`ClearButton`). The ::after widens the
+   clickable area to a touch target without adding to the layout box. */
+.clear-button-wrap {
+  flex: none;
+}
+
+.clear-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   background: none;
   border: none;
   border-radius: var(--radius-pill);
@@ -3430,9 +3438,20 @@ td:has(> .disclosure-toggle) {
   cursor: pointer;
 }
 
-.removable-item__remove:hover,
-.removable-item__remove:focus-visible {
+.clear-button::after {
+  content: "";
+  position: absolute;
+  inset: -0.3rem;
+}
+
+.clear-button:hover,
+.clear-button:focus-visible {
   color: var(--color-danger);
+}
+
+.clear-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Clamp text to two lines (e.g. `ModuleSettingsList`'s descriptions). */

@@ -16,13 +16,13 @@
  * - Provider-specific filters (a status, say) are free name and value rows limited to the names the type's list
  *   takes; the server refuses any other.
  */
-import { X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import type { Category, Component, OverviewCatalogue, OverviewScope, OverviewWidget } from "../../api/types";
 import { recordPlacementsApi } from "../../api/placements";
 import { useStrings } from "../../context/TerminologyContext";
 import { isScopedType, OVERVIEW_COLUMNS, OVERVIEW_MAX_ROWS } from "../../utils/overviewWidgets";
+import { ClearButton } from "../ClearButton";
 import { CommaListField } from "../CommaListField";
 import { FieldShell } from "../FieldHelp";
 import { TextAreaField, TextField } from "../FormFields";
@@ -208,9 +208,7 @@ export function OverviewWidgetSettings({
                     helpNotNeeded label={name} value={(filters[name] ?? []).join(", ")}
                     onChange={(v) => setFilter(name, v.split(",").map((p) => p.trim()).filter(Boolean))}
                   />
-                  <button type="button" className="btn btn-icon" aria-label={t.removeFilter(name)} onClick={() => setFilter(name, [])}>
-                    <X />
-                  </button>
+                  <ClearButton label={t.removeFilter(name)} onClick={() => setFilter(name, [])} />
                 </div>
               ))}
               {addableNames.length > 0 && (

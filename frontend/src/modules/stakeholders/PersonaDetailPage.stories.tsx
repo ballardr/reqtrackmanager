@@ -304,7 +304,7 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
     await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Unassign: Persona owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Clear: Persona owner" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}`, { owner: null }));
   },
 };

@@ -155,7 +155,7 @@ test.describe("Compliance Module: project compliance view", () => {
     await assigneeSearch.fill("Member AlphaBeta");
     await page.getByRole("option", { name: new RegExp(PERSONAS.memberAlphaBeta.name) }).click();
     await expect(page.getByText(new RegExp(PERSONAS.memberAlphaBeta.name))).toBeVisible();
-    await page.getByRole("button", { name: `Unassign: Assignee for ${requiredActionName}` }).click();
+    await page.getByRole("button", { name: `Clear: Assignee for ${requiredActionName}` }).click();
     await expect(page.getByText(new RegExp(PERSONAS.memberAlphaBeta.name))).toHaveCount(0);
 
     await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Compliant" });

@@ -13,6 +13,7 @@ import { Upload } from "lucide-react";
 
 import { fileUrl } from "../api/client";
 import { t } from "../i18n/strings";
+import { ClearButton } from "./ClearButton";
 import { InlineMessage } from "./InlineMessage";
 import { UploadField } from "./FormFields";
 import { PictureImage } from "./PictureImage";
@@ -57,7 +58,7 @@ export function BrandingImageField({
       {fileId ? (
         <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
           <PictureImage src={fileUrl(fileId)} style={{ height, maxWidth: "100%" }} />
-          <button type="button" className="btn" onClick={onRemove} disabled={busy}>{strings.common.remove}</button>
+          <ClearButton label={`${strings.common.remove}: ${label}`} onClick={onRemove} disabled={busy} />
         </div>
       ) : platformFileId ? (
         <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>

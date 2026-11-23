@@ -540,7 +540,6 @@ export function ChangeRequestDetailPage() {
             <PrincipalFormField helpNotNeeded
               label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
               value={newTaskAssignee} onChange={setNewTaskAssignee} ariaLabel={`${strings.changeRequests.newTask} ${strings.actions.assignee}`}
-              placeholder={strings.reviews.unassigned}
             />
             <button className="btn" onClick={addTask}>
               {strings.changeRequests.newTask}

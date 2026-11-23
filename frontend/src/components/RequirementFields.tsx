@@ -95,14 +95,14 @@ export function RequirementFields({
         projectId={projectId} value={values.reviewer}
         display={saved ? savedPrincipalDisplay(values.reviewer, saved.reviewer) : undefined}
         onChange={(reviewer) => set("reviewer", reviewer)}
-        ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
+        ariaLabel={strings.requirements.reviewer}
       />
       <PrincipalFormField help={strings.help.requirementOwner} required={ownerRequired}
         label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId}
         projectId={projectId} value={values.owner}
         display={saved ? savedPrincipalDisplay(values.owner, saved.owner) : undefined}
         onChange={(owner) => set("owner", owner)}
-        ariaLabel={strings.requirements.owner} placeholder={ownerPlaceholder ?? strings.reviews.unassigned} clearLabel="Clear"
+        ariaLabel={strings.requirements.owner} emptyLabel={ownerPlaceholder}
       />
     </>
   );

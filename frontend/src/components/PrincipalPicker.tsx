@@ -2,12 +2,14 @@
  * Module: components/PrincipalPicker
  *
  * The one control for a field that names "who": a user, an organisation group or a project group
- * (users and groups on parity —). It shows the current
- * value (a `PrincipalBadge`, or "Unassigned"), an Unassign action while one is set, and a
- * `UserAutocomplete` search that also matches groups, each option tagged with its kind, all on one line
- * (they wrap only when the space is narrow). It replaces
- * the user-only `AssigneePicker`; a field that cannot name a group yet passes `kinds={["user"]}`
- * and makes no group requests.
+ * (users and groups on parity). It shows the current value (a `PrincipalBadge`, or the empty text),
+ * a compact `ClearButton` X straight after it while one is set, and a `UserAutocomplete` search that
+ * also matches groups, each option tagged with its kind, all on one line: the badge and the X keep
+ * their size and the search takes the remaining width, so the row is the same height whether or not
+ * a value is set. The search box says what it does ("Search users and groups…", from the kinds the
+ * field allows); `emptyLabel` is what an empty value is called ("Unassigned", or "Defaults to you").
+ * It replaces the user-only `AssigneePicker`; a field that cannot name a group yet passes
+ * `kinds={["user"]}` and makes no group requests.
  *
  * Group lists come from `usePrincipalDirectory`; user search is `UserAutocomplete`'s (server-side
  * when `organizationId` is given). The current value's label is resolved from whatever is loaded,
@@ -15,19 +17,36 @@
  * cannot list).
  *
  * `compact` collapses the always-open search box into a (+) button (a pencil once someone is
- * assigned) that opens it in a `Popover`, and turns "Unassign" into an "x": one short line per
- * field, for detail pages with several (docs/ux-style-guide.md, "Pattern: compact forms and
- * add-on-demand").
+ * assigned) that opens it in a `Popover`: one short line per field, for detail pages with several
+ * (docs/ux-style-guide.md, "Pattern: compact forms and add-on-demand"). The clear control is the
+ * same X in both forms ("Pattern: clear control").
  */
-import { Pencil, X } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import type { OrgGroup, OrgUser, Principal, PrincipalRef, PrincipalType, ProjectGroup } from "../api/types";
 import { usePrincipalDirectory } from "../hooks/usePrincipalDirectory";
+import { t } from "../i18n/strings";
 import { AddPopoverButton } from "./AddPopoverButton";
+import { ClearButton } from "./ClearButton";
 import { PrincipalBadge } from "./PrincipalBadge";
 import { UserAutocomplete } from "./UserAutocomplete";
 
+const strings = t();
+
 const ALL_KINDS: readonly PrincipalType[] = ["user", "org_group", "project_group"];
+
+/**
+ * The search box's prompt for the kinds a field allows.
+ *
+ * @param kinds The principal kinds the field may name.
+ * @returns "Search users…", "Search groups…" or "Search users and groups…".
+ */
+function principalSearchPrompt(kinds: readonly PrincipalType[]): string {
+  const users = kinds.includes("user");
+  const groups = kinds.includes("org_group") || kinds.includes("project_group");
+  if (users && groups) return strings.common.searchUsersAndGroups;
+  return groups ? strings.common.searchGroups : strings.common.searchUsers;
+}
 
 export function PrincipalPicker({
   orgUsers,
@@ -37,9 +56,9 @@ export function PrincipalPicker({
   display,
   onChange,
   ariaLabel,
-  placeholder = "Assign to…",
+  emptyLabel = strings.common.unassigned,
   kinds = ALL_KINDS,
-  clearLabel = "Unassign",
+  clearLabel = strings.common.clear,
   compact = false,
 }: {
   orgUsers: OrgUser[];
@@ -50,14 +69,15 @@ export function PrincipalPicker({
   value: PrincipalRef | null | undefined;
   /** The record's own resolved view of `value`; preferred over looking it up. */
   display?: Principal | null;
-  /** Called with the picked principal, or null when unassigned. */
+  /** Called with the picked principal, or null when cleared. */
   onChange: (principal: PrincipalRef | null) => void;
-  /** Accessible name for the search input; distinct per instance (e.g. one per list row). */
+  /** Accessible name for the search input and the clear control; distinct per instance (e.g. one per list row). */
   ariaLabel: string;
-  placeholder?: string;
+  /** What an empty value is called (shown in place of the badge), e.g. "Defaults to you". */
+  emptyLabel?: string;
   /** The principal kinds this field may name. */
   kinds?: readonly PrincipalType[];
-  /** Text of the action that empties the field (a replacement picker says "Clear"). */
+  /** The clear control's accessible name and tooltip, followed by the field name ("Clear: Owner"). */
   clearLabel?: string;
   /** Show the value with a (+)/pencil button instead of an always-open search box. */
   compact?: boolean;
@@ -67,34 +87,27 @@ export function PrincipalPicker({
   const search = (afterSelect: () => void) => (
     <PrincipalSearch
       orgUsers={orgUsers} organizationId={organizationId} projectId={projectId} kinds={kinds}
-      orgGroups={orgGroups} projectGroups={projectGroups} placeholder={placeholder} ariaLabel={ariaLabel}
+      orgGroups={orgGroups} projectGroups={projectGroups} ariaLabel={ariaLabel}
       onPick={(ref) => { onChange(ref); afterSelect(); }}
     />
   );
+  const clear = value && <ClearButton label={`${clearLabel}: ${ariaLabel}`} onClick={() => onChange(null)} />;
   if (compact) {
     return (
       <div className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
-        <PrincipalBadge principal={shown} />
+        <PrincipalBadge principal={shown} placeholder={emptyLabel} />
         <AddPopoverButton label={`${value ? "Change" : "Assign"}: ${ariaLabel}`} icon={value ? Pencil : undefined}>
           {(close) => search(close)}
         </AddPopoverButton>
-        {value && (
-          <button type="button" className="removable-item__remove" onClick={() => onChange(null)} aria-label={`${clearLabel}: ${ariaLabel}`} title={clearLabel}>
-            <X size={14} aria-hidden="true" />
-          </button>
-        )}
+        {clear}
       </div>
     );
   }
   return (
-    <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
-      <PrincipalBadge principal={shown} />
-      {value && (
-        <button type="button" className="btn" onClick={() => onChange(null)} aria-label={`${clearLabel}: ${ariaLabel}`}>
-          {clearLabel}
-        </button>
-      )}
-      <div style={{ flex: "1 1 12rem", minWidth: 0 }}>{search(() => {})}</div>
+    <div className="row" style={{ gap: "var(--space-2)", alignItems: "center", flexWrap: "nowrap" }}>
+      <PrincipalBadge principal={shown} placeholder={emptyLabel} />
+      {clear}
+      <div style={{ flex: "1 1 8rem", minWidth: 0 }}>{search(() => {})}</div>
     </div>
   );
 }
@@ -109,7 +122,7 @@ export function PrincipalPicker({
  * @param onPick Called with the chosen principal.
  */
 export function PrincipalSearch({
-  orgUsers, organizationId, projectId, kinds = ALL_KINDS, orgGroups, projectGroups, placeholder = "Assign to…", ariaLabel, onPick,
+  orgUsers, organizationId, projectId, kinds = ALL_KINDS, orgGroups, projectGroups, placeholder, ariaLabel, onPick,
 }: {
   orgUsers: OrgUser[];
   organizationId?: string;
@@ -126,7 +139,7 @@ export function PrincipalSearch({
       users={kinds.includes("user") ? orgUsers : []}
       organizationId={kinds.includes("user") ? organizationId : undefined}
       projectId={projectId}
-      placeholder={placeholder}
+      placeholder={placeholder ?? principalSearchPrompt(kinds)}
       ariaLabel={ariaLabel}
       onSelect={(id) => onPick({ type: "user", id })}
       groups={kinds.includes("org_group") ? orgGroups : undefined}

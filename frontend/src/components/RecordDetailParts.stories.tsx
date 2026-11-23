@@ -79,7 +79,7 @@ export const PrincipalFieldEditableUnassignsAGroup: Story = {
   ),
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Platform team")).toBeInTheDocument();
-    await userEvent.click(within(canvasElement).getByRole("button", { name: /Unassign/ }));
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /Clear/ }));
     await expect(onUnassign).toHaveBeenCalledWith(null);
   },
 };

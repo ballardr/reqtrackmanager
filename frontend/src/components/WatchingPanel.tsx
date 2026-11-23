@@ -10,16 +10,14 @@
  * watchers as chips with a remove button each, and one (+) button that opens the picker in a popover, so
  * a record nobody watches costs one line. `useWatchingTab` (hooks/useWatchingTab) builds the tab.
  */
-import { X } from "lucide-react";
-
 import type { Principal } from "../api/types";
 import type { Watchers } from "../hooks/useWatchers";
 import { t } from "../i18n/strings";
 import { AddPopoverButton } from "./AddPopoverButton";
+import { ClearButton } from "./ClearButton";
 import { FieldCaption } from "./FieldHelp";
 import { PrincipalBadge } from "./PrincipalBadge";
 import { PrincipalPicker } from "./PrincipalPicker";
-import { Tooltip } from "./Tooltip";
 
 const strings = t();
 
@@ -54,7 +52,7 @@ export function WatchingPanel({
               <PrincipalPicker
                 orgUsers={[]} organizationId={organizationId} projectId={projectId} value={null}
                 onChange={(principal) => { void state.add(principal); close(); }}
-                ariaLabel={strings.watchers.add} placeholder={strings.watchers.searchPlaceholder}
+                ariaLabel={strings.watchers.add}
               />
             )}
           </AddPopoverButton>
@@ -71,11 +69,7 @@ function WatcherChip({ watcher, onRemove }: { watcher: Principal; onRemove?: () 
     <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
       <PrincipalBadge principal={watcher} />
       {onRemove && (
-        <Tooltip label={label}>
-          <button type="button" className="btn btn-sm btn-icon" onClick={onRemove} aria-label={label}>
-            <X size={14} aria-hidden="true" />
-          </button>
-        </Tooltip>
+        <ClearButton label={label} onClick={onRemove} />
       )}
     </span>
   );

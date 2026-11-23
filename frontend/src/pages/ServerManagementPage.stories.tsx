@@ -562,10 +562,10 @@ export const ServerDetailsRemoveLogo: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Server details" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "Remove" }));
+    await userEvent.click(await canvas.findByRole("button", { name: /^Remove/ }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/v1/system/branding/image?kind=logo"));
     await expect(await within(document.body).findByText("Logo removed.")).toBeInTheDocument();
-    await waitFor(() => expect(canvas.queryByRole("button", { name: "Remove" })).toBeNull());
+    await waitFor(() => expect(canvas.queryByRole("button", { name: /^Remove/ })).toBeNull());
   },
 };
 

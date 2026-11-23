@@ -1030,7 +1030,7 @@ export const CreateActionAssigneeUnassign: Story = {
     await userEvent.type(panel.getByRole("combobox", { name: "Assignee" }), "jamie");
     await userEvent.click(await panel.findByText("Jamie Lee"));
     await expect(panel.getByText("Jamie Lee (jamie.lee@example.com)")).toBeInTheDocument();
-    await userEvent.click(panel.getByRole("button", { name: "Unassign: Assignee" }));
+    await userEvent.click(panel.getByRole("button", { name: "Clear: Assignee" }));
     await expect(panel.getByText("Unassigned")).toBeInTheDocument();
   },
 };
