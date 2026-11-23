@@ -36,7 +36,7 @@ test("one (+) in the record header adds a tag, a component and an external refer
   const tag = `Pilot ${suffix}`;
   const key = `PROJ-${suffix}`;
   const group = page.locator("header.record-header").getByRole("group", { name: "Tags, components and references" });
-  const addButton = page.getByRole("button", { name: "Add tag, component or reference" });
+  const addButton = page.getByRole("button", { name: "Add tag, component or external reference" });
 
   await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
 
@@ -44,7 +44,7 @@ test("one (+) in the record header adds a tag, a component and an external refer
     await expect(addButton).toHaveCount(1);
     await expect(page.getByRole("button", { name: /^Add (tag|external reference)$/ })).toHaveCount(0);
     await addButton.click();
-    const menu = page.getByRole("menu", { name: "Add tag, component or reference" });
+    const menu = page.getByRole("menu", { name: "Add tag, component or external reference" });
     await expect(menu.getByRole("menuitem")).toHaveText(["Add tag", "Add component or category", "Add external reference"]);
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);

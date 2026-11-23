@@ -3547,7 +3547,15 @@ const en = {
     label: "Tags",
     /** The record header's one chip row (tags, components, references) and its one add menu. */
     groupLabel: "Tags, components and references",
-    addMenuLabel: "Add tag, {component} or reference",
+    /**
+     * Name of the (+) menu trigger for the rows the menu holds, in the menu's order: one row names itself ("Add tag"),
+     * several name their nouns ("Add tag, component or external reference").
+     */
+    addMenuLabel: (rows: ReadonlyArray<"tag" | "place" | "reference">) => {
+      if (rows.length === 1) return { tag: "Add tag", place: "Add {component} or {category}", reference: "Add external reference" }[rows[0]];
+      const nouns = rows.map((row) => ({ tag: "tag", place: "{component}", reference: "external reference" })[row]);
+      return `Add ${nouns.slice(0, -1).join(", ")} or ${nouns[nouns.length - 1]}`;
+    },
     addPlace: "Add {component} or {category}",
     placeKind: "{Component} or {category}",
     none: "No tags",

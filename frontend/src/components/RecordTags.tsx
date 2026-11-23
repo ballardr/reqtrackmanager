@@ -3,8 +3,8 @@
  *
  * The labels of one existing record, in its header or a side panel: one row of chips (each tag, each place in the
  * component tree, each external reference) followed by one (+) button whose menu names what it adds: Add tag, Add
- * component or category, Add external reference. Every page that shows a record's tags shows components and
- * references the same way.
+ * component or category, Add external reference. The (+) is named after the rows the menu holds ("Add tag or
+ * external reference"). Every page that shows a record's tags shows components and references the same way.
  *
  * - Reads the three sets through `useRecordLabels` and draws them as tags, components, references, each chip with
  *   its own remove (and, for a reference, edit) control for someone who may change it.
@@ -87,12 +87,17 @@ export function RecordTags({
   if (chipCount === 0 && !canTag && !canPlace && !canReference) return null;
 
   const text = strings.tags;
-  const candidates: Array<ActionMenuItem | false> = [
-    canTag && { label: text.addTag, key: "tag", onSelect: () => setAdding("tag") },
-    canPlace && { label: text.addPlace, key: "place", onSelect: () => setAdding("place") },
-    canReference && { label: strings.references.addLabel, key: "reference", onSelect: () => { setError(null); setEditing("new"); } },
+  const candidates: Array<{ kind: "tag" | "place" | "reference"; item: ActionMenuItem } | false> = [
+    canTag && { kind: "tag", item: { label: text.addTag, key: "tag", onSelect: () => setAdding("tag") } },
+    canPlace && { kind: "place", item: { label: text.addPlace, key: "place", onSelect: () => setAdding("place") } },
+    canReference && {
+      kind: "reference",
+      item: { label: strings.references.addLabel, key: "reference", onSelect: () => { setError(null); setEditing("new"); } },
+    },
   ];
-  const items = candidates.filter((item): item is ActionMenuItem => !!item);
+  const rows = candidates.filter((row) => !!row);
+  const items = rows.map((row) => row.item);
+  const menuLabel = text.addMenuLabel(rows.map((row) => row.kind));
 
   async function saveReference(draft: Parameters<typeof referenceSet.save>[1]) {
     if (editing === null) return;
@@ -135,7 +140,7 @@ export function RecordTags({
         ))}
         {items.length > 0 && (
           <span ref={addRef} style={{ display: "inline-flex" }}>
-            <ActionMenu triggerLabel={text.addMenuLabel} icon={<Plus size={14} aria-hidden="true" />} size="sm" items={items} />
+            <ActionMenu triggerLabel={menuLabel} icon={<Plus size={14} aria-hidden="true" />} size="sm" items={items} />
           </span>
         )}
       </div>

@@ -721,6 +721,12 @@ export async function chooseRecordAction(page: Page, recordLabel: string, item: 
 }
 
 /**
+ * The name of a record's (+) menu: "Add " and the nouns of the rows it holds ("Add tag or external reference", "Add
+ * tag, component or external reference"), or the one row's own name.
+ */
+export const RECORD_ADD_NAME = /^Add .*(tag|component|external reference)/;
+
+/**
  * Opens a record's one (+) menu (tags, components, external references) and chooses a row.
  *
  * Args:
@@ -731,8 +737,8 @@ export async function chooseRecordAction(page: Page, recordLabel: string, item: 
 export async function chooseRecordAddition(
   page: Page, row: string, scope: Locator = page.locator("header.record-header"),
 ): Promise<void> {
-  await scope.getByRole("button", { name: "Add tag, component or reference" }).click();
-  await page.getByRole("menu", { name: "Add tag, component or reference" }).getByRole("menuitem", { name: row, exact: true }).click();
+  await scope.getByRole("button", { name: RECORD_ADD_NAME }).click();
+  await page.getByRole("menu", { name: RECORD_ADD_NAME }).getByRole("menuitem", { name: row, exact: true }).click();
 }
 
 /**

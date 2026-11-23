@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { chooseRecordAddition, installCleanupHook } from "../e2e-workflows/helpers";
+import { chooseRecordAddition, installCleanupHook, RECORD_ADD_NAME } from "../e2e-workflows/helpers";
 import { API_BASE_URL, openNew, openPeople, setUpOrg } from "../modules/stakeholders/helpers";
 
 /**
@@ -56,7 +56,7 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
 
   await test.step("a tag is added from the record's header and survives a reload", async () => {
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${tagged.id}`);
-    const plus = page.getByRole("button", { name: "Add tag, component or reference" });
+    const plus = page.getByRole("button", { name: RECORD_ADD_NAME });
     await chooseRecordAddition(page, "Add tag");
     const box = page.getByRole("combobox", { name: "Tags" });
     await box.fill(tagName);

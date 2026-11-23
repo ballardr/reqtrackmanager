@@ -28,7 +28,7 @@ export default meta;
 
 type Story = StoryObj<typeof RecordTags>;
 
-const ADD = "Add tag, component or reference";
+const ADD = "Add tag, component or external reference";
 
 /** The three kinds in one row, in the order tags, components, references, the (+) after the last chip. */
 export const OneRowHoldsEveryKindAndTheAddControl: Story = {
@@ -268,7 +268,7 @@ export const OnlyTheRowsThePersonMayUseAreInTheMenu: Story = {
     placementsApi: buildPlacementsApi(buildRecordPlacements({ can_edit: false })),
   },
   play: async ({ canvasElement }) => {
-    await userEvent.click(await within(canvasElement).findByRole("button", { name: ADD }));
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Add external reference" }));
     const menu = within(await within(document.body).findByRole("menu"));
     await expect(menu.getAllByRole("menuitem")).toHaveLength(1);
     await expect(menu.getByRole("menuitem", { name: "Add external reference" })).toBeEnabled();
@@ -279,11 +279,45 @@ export const OnlyTheRowsThePersonMayUseAreInTheMenu: Story = {
 export const NoReferenceRowWhenThereIsNoSystem: Story = {
   args: { referencesApi: buildReferencesApi(buildRecordReferences({ systems: [] })) },
   play: async ({ canvasElement }) => {
-    await userEvent.click(await within(canvasElement).findByRole("button", { name: ADD }));
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Add tag or component" }));
     const menu = within(await within(document.body).findByRole("menu"));
     await expect(menu.queryByRole("menuitem", { name: "Add external reference" })).not.toBeInTheDocument();
     await expect(menu.getAllByRole("menuitem")).toHaveLength(2);
   },
+};
+
+/** The (+) is named after exactly the rows its menu holds: every combination, in the menu's order. */
+const NO_TAGS = { api: buildRecordTagsApi(buildRecordTags({ can_edit: false })) };
+const NO_PLACES = { placementsApi: buildPlacementsApi(buildRecordPlacements({ can_edit: false })) };
+const NO_REFERENCES = { referencesApi: buildReferencesApi(buildRecordReferences({ can_edit: false })) };
+
+async function expectNameToMatchMenu(canvasElement: HTMLElement, name: string, rows: string[]): Promise<void> {
+  const plus = await within(canvasElement).findByRole("button", { name });
+  await userEvent.click(plus);
+  const menu = within(await within(document.body).findByRole("menu", { name }));
+  await expect(menu.getAllByRole("menuitem").map((item) => item.textContent?.trim())).toEqual(rows);
+}
+
+export const TheAddControlNamesTheTagRowAlone: Story = {
+  args: { ...NO_PLACES, ...NO_REFERENCES },
+  play: ({ canvasElement }) => expectNameToMatchMenu(canvasElement, "Add tag", ["Add tag"]),
+};
+
+export const TheAddControlNamesTheComponentRowAlone: Story = {
+  args: { ...NO_TAGS, ...NO_REFERENCES },
+  play: ({ canvasElement }) => expectNameToMatchMenu(canvasElement, "Add component or category", ["Add component or category"]),
+};
+
+export const TheAddControlNamesTagAndComponent: Story = {
+  args: { ...NO_REFERENCES },
+  play: ({ canvasElement }) => expectNameToMatchMenu(canvasElement, "Add tag or component", ["Add tag", "Add component or category"]),
+};
+
+export const TheAddControlNamesComponentAndReference: Story = {
+  args: { ...NO_TAGS },
+  play: ({ canvasElement }) => expectNameToMatchMenu(
+    canvasElement, "Add component or external reference", ["Add component or category", "Add external reference"],
+  ),
 };
 
 /** A record that keeps its own component (or a type left out with `components={false}`) has no component row or chips. */
@@ -291,7 +325,7 @@ export const NoComponentRowForARecordThatKeepsItsOwn: Story = {
   args: { placementsApi: buildPlacementsApi(buildRecordPlacements({ managed_on_record: true })) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: ADD }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Add tag or external reference" }));
     await expect(within(document.body).queryByRole("menuitem", { name: "Add component or category" })).not.toBeInTheDocument();
     await expect(canvas.queryByText("Hardware / Cooling")).not.toBeInTheDocument();
   },
@@ -337,7 +371,7 @@ export const ReferencesSwitchedOffLeaveTheOtherKinds: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("Safety")).toBeInTheDocument();
-    await userEvent.click(await canvas.findByRole("button", { name: ADD }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Add tag or component" }));
     await expect(within(document.body).queryByRole("menuitem", { name: "Add external reference" })).not.toBeInTheDocument();
   },
 };

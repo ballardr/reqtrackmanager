@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { chooseRecordAddition, createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
+import { chooseRecordAddition, createDisposableProject, installCleanupHook, loginAs, PERSONAS, RECORD_ADD_NAME } from "./helpers";
 
 // Archives this file's disposable projects after each test (see createDisposableProject).
 installCleanupHook();
@@ -60,7 +60,11 @@ test.describe("components on every record", () => {
       const header = page.locator(".record-header");
       await chooseRecordAddition(page, "Add component or category");
       await page.getByRole("dialog", { name: "Add component or category" }).getByRole("button", { name: "Components and categories" }).click();
-      await page.getByRole("checkbox", { name: "Software / Performance" }).check();
+      // The chip shows before the change is saved, so wait for the save before the reload reads it back.
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/placements") && r.request().method() === "PUT" && r.ok()),
+        page.getByRole("checkbox", { name: "Software / Performance" }).check(),
+      ]);
       await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
       const places = header.getByRole("group", { name: "Tags, components and references" });
@@ -98,7 +102,9 @@ test.describe("components on every record", () => {
     await expect(page.locator(".record-header")).toBeVisible();
     // The record header's (+) menu offers no place row: the requirement's own place is its component, and its further
     // places are the category-only picker of its Components card, below the header.
-    await page.getByRole("button", { name: "Add tag, component or reference" }).click();
+    const plus = page.getByRole("button", { name: RECORD_ADD_NAME });
+    await expect(plus).toHaveAccessibleName(/^Add tag( or external reference)?$/);
+    await plus.click();
     await expect(page.getByRole("menuitem", { name: "Add tag" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Add component or category" })).toHaveCount(0);
     await page.keyboard.press("Escape");

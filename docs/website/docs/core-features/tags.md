@@ -10,9 +10,9 @@ A requirement's **keywords** are its tags: the same labels, the same list.
 
 ## Tagging a record
 
-Open a record. Under its title, after its status and version, is one row holding the record's tags, components and external references, followed by a single small **+** button, if you may tag that kind of record (the same people who may edit it; a decision or a risk needs the **Manage** permission on it, see [Role Management](role-management.md)).
+Open a record. Under its title, after its status and version, is one row holding the record's tags, components and external references, followed by a single small **+** button, if you may tag that kind of record (the same people who may edit it; a decision or a risk needs the **Manage** permission on it, see [Role Management](role-management.md)). The menu lists only what you can add: a requirement has no component row, because its components are set in its own **Component** field and on its **Components** card.
 
-- Select the **+** ("Add tag, component or reference") and choose **Add tag** to open a small box. Type to see the project's tags and pick one, or press **Enter** (or type a comma) to add what you typed. The box stays open after each tag, so you can add several in one go; select **Done**, press **Escape** or click elsewhere to close it. Remove a tag with the **×** on its chip.
+- Select the **+** (its name lists what the menu offers, for example "Add tag or external reference") and choose **Add tag** to open a small box. Type to see the project's tags and pick one, or press **Enter** (or type a comma) to add what you typed. The box stays open after each tag, so you can add several in one go; select **Done**, press **Escape** or click elsewhere to close it. Remove a tag with the **×** on its chip.
 - A create form has its own **+** on the **Tags** line.
 - A change is saved at once, and appears in the record's **Activity** tab ("Alex added the tag Safety").
 - Tags are not part of a record's content, so you can tag an approved requirement without a change request.
