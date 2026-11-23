@@ -615,7 +615,7 @@ export function RequirementDetailPage() {
           archiveAction.item,
         ]}
         lifecycle={{
-          steps: lifecycleSteps(["draft", "reviewed", "approved", "completed"], { ...REQUIREMENT_STATUS_LABEL, completed: strings.requirements.completedBadge }, {
+          steps: lifecycleSteps(requirement.status === "reviewed" ? ["draft", "reviewed", "approved", "completed"] : ["draft", "approved", "completed"], { ...REQUIREMENT_STATUS_LABEL, completed: strings.requirements.completedBadge }, {
             descriptions: strings.requirements.stateDescription,
             locked: { approved: strings.requirements.lockedReason, completed: strings.requirements.lockedReason },
           }),

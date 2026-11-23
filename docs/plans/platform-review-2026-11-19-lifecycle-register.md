@@ -8,7 +8,7 @@ Part of [the platform review plan](platform-review-2026-11-19-plan.md). Every re
 
 | Type | Main path | Off-path (one end step while current) | Promote (next forward move) | Actions-menu rows | Locked states | Dialog kept behind Promote |
 |------|-----------|----------------------------------------|-----------------------------|-------------------|---------------|----------------------------|
-| Requirement | Draft, Reviewed, Approved, Completed | Archived | Draft or Reviewed to Approved (project managers; others see a padlock); Approved to Completed | Revert completion | Approved, Completed | Approval comment |
+| Requirement | Draft, Approved, Completed (Reviewed is shown only while a requirement holds that status; nothing in the product sets it) | Archived | Draft or Reviewed to Approved (project managers; others see a padlock); Approved to Completed | Revert completion | Approved, Completed | Approval comment |
 | Change request | Draft, Submitted, In review, Approved | Rejected, Withdrawn | Draft to Submitted; Submitted or In review to Approved (project managers; others see a padlock) | Approve and clear completion (a completed target), Reject, Withdraw | none | Link-merge dialog when links are proposed |
 | Strategy, Future state | Draft, Proposed, Under review, Approved, Active | Superseded, Retired | Each step to the next | Send back, Supersede, Retire | Approved, Active, off-path | Comment on Approved and Active |
 | Guiding principle | Draft, Proposed, Approved, Active | Superseded, Retired | Each step to the next | Send back, Supersede, Retire | Approved, Active, off-path | Comment on Approved and Active |

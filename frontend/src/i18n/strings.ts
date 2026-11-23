@@ -335,8 +335,8 @@ const en = {
     stateDescription: {
       draft: "Being written. It can be edited directly.",
       reviewed: "A reviewer has recorded an outcome. It can still be edited directly.",
-      approved: "Approved by a project manager. Changes need a {changeRequest}.",
-      completed: "The work is done. Changes need a {changeRequest}.",
+      approved: "Approved by a project manager. Changes are made through the {changeRequest} process.",
+      completed: "The work is done. Changes are made through the {changeRequest} process.",
       archived: "Moved out of the active list. Its history and links are kept.",
     },
     archive: "Archive",
@@ -3571,6 +3571,8 @@ const en = {
     locked: "Locked",
     /** Name of the forward move (the popover's button and the first row of the actions menu). */
     promoteTo: (label: string) => `Promote to ${label}`,
+    /** The Promote popover's first line: what pressing the button does. */
+    promoteExplain: (from: string, to: string) => `Moves this record from ${from} to ${to}.`,
     /** Name of the next step's button, which opens the Promote popover. */
     nextStep: (label: string) => `Next step: ${label}`,
     /** The padlock on the next step for a person who may not promote. */

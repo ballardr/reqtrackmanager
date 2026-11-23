@@ -32,6 +32,9 @@ export const NextStepOpensPromote: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Draft");
     await userEvent.click(canvas.getByRole("button", { name: "Next step: Reviewed" }));
+    // The popover says what the button does, then what the target state means.
+    await expect(await within(document.body).findByText("Moves this record from Draft to Reviewed.")).toBeInTheDocument();
+    await expect(within(document.body).getByText(/^Reviewed: A reviewer has recorded an outcome/)).toBeInTheDocument();
     await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Reviewed" }));
     await expect(args.promote?.onPromote).toHaveBeenCalled();
   },

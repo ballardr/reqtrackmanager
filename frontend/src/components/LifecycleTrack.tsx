@@ -128,7 +128,8 @@ function Steps({ steps, current, offPath, promote, interactive }: LifecycleTrack
             {canPress && open && (
               <Popover anchorRef={targetRef} onClose={() => setOpen(false)} title={strings.lifecycle.promoteTo(step.label)} fit>
                 <div className="stack" style={{ gap: "var(--space-3)" }}>
-                  {step.description && <p className="text-muted" style={{ margin: 0 }}>{step.description}</p>}
+                  <p style={{ margin: 0 }}>{strings.lifecycle.promoteExplain(drawn.find((d) => d.state === "current")?.step.label ?? "", step.label)}</p>
+                  {step.description && <p className="text-muted" style={{ margin: 0 }}>{`${step.label}: ${step.description}`}</p>}
                   <div className="row" style={{ justifyContent: "flex-end" }}>
                     <button type="button" className="btn btn-primary" onClick={() => { setOpen(false); promote.onPromote?.(); }}>
                       {strings.lifecycle.promoteTo(step.label)}

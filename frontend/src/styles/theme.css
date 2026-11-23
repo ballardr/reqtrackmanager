@@ -4513,6 +4513,8 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .lifecycle-track__popover {
   --lifecycle-height: 2.25rem; /* the medium button's height, so the track sits level with the header's buttons */
   --lifecycle-point: 0.7rem;
+  --lifecycle-dx: 1.2px; /* horizontal width of the border on a diagonal edge: 1px across the edge, as on the top and bottom lines */
+  --lifecycle-edge: var(--color-border); /* the card border */
   --lifecycle-tint: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
 }
 .lifecycle-track { display: flex; align-items: center; width: 100%; min-width: 0; }
@@ -4529,12 +4531,16 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   flex: 1 0 auto;
   height: var(--lifecycle-height);
   margin-left: calc(var(--lifecycle-point) * -1 + 4px);
-  background: var(--color-border);
+  background: var(--lifecycle-edge);
   clip-path: polygon(0 0, calc(100% - var(--lifecycle-point)) 0, 100% 50%, calc(100% - var(--lifecycle-point)) 100%, 0 100%, var(--lifecycle-point) 50%);
 }
 .lifecycle-step--first { margin-left: 0; clip-path: polygon(0 0, calc(100% - var(--lifecycle-point)) 0, 100% 50%, calc(100% - var(--lifecycle-point)) 100%, 0 100%); }
 .lifecycle-step--last { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, var(--lifecycle-point) 50%); }
-.lifecycle-step--first.lifecycle-step--last { clip-path: none; border-radius: var(--radius-md); }
+.lifecycle-step--first.lifecycle-step--last { clip-path: none; }
+/* The flat ends take the cards' corner radius; the fill's radius is one border width smaller so the edge stays 1px. */
+.lifecycle-step--first { border-radius: var(--radius-lg) 0 0 var(--radius-lg); }
+.lifecycle-step--last { border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
+.lifecycle-step--first.lifecycle-step--last { border-radius: var(--radius-lg); }
 .lifecycle-step--done { --lifecycle-fill: var(--lifecycle-tint); --lifecycle-text: var(--color-text); }
 .lifecycle-step--current { --lifecycle-fill: var(--color-primary); --lifecycle-text: var(--color-primary-contrast); background: var(--color-primary); font-weight: 600; }
 .lifecycle-step--current.lifecycle-step--branch { --lifecycle-fill: var(--color-danger); background: var(--color-danger); }
@@ -4556,7 +4562,23 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 }
 .lifecycle-step--first .lifecycle-step__control { padding-left: var(--space-4); }
 .lifecycle-step--last .lifecycle-step__control { padding-right: var(--space-4); }
-.lifecycle-step__fill { position: absolute; inset: 1px; background: var(--lifecycle-fill); clip-path: inherit; }
+/* The fill is the step's shape pulled in by the border width on every edge, diagonals included, so the dark edge runs
+   unbroken round the chevron. The four x positions are the inner corners of the notch (left) and the point (right). */
+.lifecycle-step__fill {
+  --fill-left-top: calc(var(--lifecycle-dx) - 0.4px);
+  --fill-left-tip: calc(var(--lifecycle-point) + var(--lifecycle-dx) - 1px);
+  --fill-right-top: calc(100% - var(--lifecycle-point) - var(--lifecycle-dx) + 1.6px);
+  --fill-right-tip: calc(100% + 1px - var(--lifecycle-dx));
+  position: absolute;
+  inset: 1px;
+  background: var(--lifecycle-fill);
+  clip-path: polygon(var(--fill-left-top) 0, var(--fill-right-top) 0, var(--fill-right-tip) 50%, var(--fill-right-top) 100%, var(--fill-left-top) 100%, var(--fill-left-tip) 50%);
+}
+.lifecycle-step--first .lifecycle-step__fill { --fill-left-top: 0px; --fill-left-tip: 0px; }
+.lifecycle-step--last .lifecycle-step__fill { --fill-right-top: 100%; --fill-right-tip: 100%; }
+.lifecycle-step--first .lifecycle-step__fill { border-radius: calc(var(--radius-lg) - 1px) 0 0 calc(var(--radius-lg) - 1px); }
+.lifecycle-step--last .lifecycle-step__fill { border-radius: 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0; }
+.lifecycle-step--first.lifecycle-step--last .lifecycle-step__fill { border-radius: calc(var(--radius-lg) - 1px); }
 .lifecycle-step__content { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .lifecycle-step__label { display: inline-flex; min-width: 0; max-width: 14rem; }
 .lifecycle-step__lock { display: inline-flex; color: inherit; }

@@ -225,6 +225,30 @@ export const ManagerCanApproveDraftRequirement: Story = {
   },
 };
 
+/** The track is Draft, Approved, Completed: no product action sets Reviewed, so that step appears only while a requirement holds the status. */
+export const TrackShowsReviewedOnlyForAReviewedRequirement: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { status: "draft" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("button", { name: "Next step: Approved" });
+    await expect(within(canvasElement.querySelector<HTMLElement>(".lifecycle-track__steps")!).queryByText("Reviewed")).not.toBeInTheDocument();
+  },
+};
+
+/** A requirement that already holds Reviewed shows that step, current, and can still be promoted to Approved. */
+export const ReviewedRequirementShowsItsStep: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { status: "reviewed" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("button", { name: "Next step: Approved" });
+    await expect(currentLifecycleStep(canvasElement)).toBe("Reviewed");
+  },
+};
+
 /** The approval comment is optional: confirming with the box empty sends no comment. */
 export const ManagerApprovesWithoutAComment: Story = {
   beforeEach: () => {

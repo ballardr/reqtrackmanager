@@ -56,7 +56,7 @@ test.describe("lifecycle track", () => {
 
     await test.step("at a narrow window the track collapses to the current step and its position", async () => {
       await page.setViewportSize({ width: 380, height: 800 });
-      await expect(page.getByRole("button", { name: /^Step 3 of 4/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Step 2 of 3/ })).toBeVisible();
       await page.setViewportSize({ width: 1280, height: 800 });
     });
   });
