@@ -479,6 +479,7 @@ def _find_org_element(db: Session, organization: Organization, code: str) -> Arc
 
 
 ELEMENT_TABLE = RecordTableProvider(
+    title_column="name",
     label="Elements",
     columns=_element_columns,
     list_records=_list_elements,
@@ -626,6 +627,7 @@ def _find_connection(db: Session, project: Project, code: str) -> ArchitectureCo
 
 
 CONNECTION_TABLE = RecordTableProvider(
+    title_column="name",
     label="Connections",
     columns=_connection_columns,
     list_records=_list_connections,
@@ -714,6 +716,7 @@ NOT_IMPORTABLE: dict[str, str] = {
 }
 
 DIAGRAM_TABLE = RecordTableProvider(
+    title_column="name",
     label="Diagrams",
     columns=_diagram_columns,
     list_records=_list_diagrams,
@@ -870,6 +873,7 @@ NOT_IMPORTABLE.update({
 })
 
 STATE_MACHINE_TABLE = RecordTableProvider(
+    title_column="name",
     label="State machine diagrams",
     columns=_machine_columns,
     list_records=_list_machines,
@@ -883,6 +887,7 @@ STATE_MACHINE_TABLE = RecordTableProvider(
 )
 
 STATE_TABLE = RecordTableProvider(
+    title_column="name",
     label="States",
     columns=_state_columns,
     list_records=_list_states,

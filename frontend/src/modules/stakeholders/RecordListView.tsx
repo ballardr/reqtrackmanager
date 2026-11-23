@@ -44,15 +44,15 @@ import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListActions, ListActionsMenu } from "../../components/ListActions";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { TagFilterField } from "../../components/TagFilterField";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import type { TagFilterState } from "../../hooks/useTagFilter";
-import { useSortState } from "../../hooks/useTableSort";
-import { useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
-import { sortRows, type SortValue } from "../../utils/sortRows";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows, TIME_SORT_VALUES, type SortValue } from "../../utils/sortRows";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
@@ -102,6 +102,9 @@ export interface ListedRecord {
   /** Set only by project endpoints, for an org record: whether the project hides it. */
   project_hidden?: boolean | null;
   hidden_source?: HiddenSource | null;
+  /** When the record was created and last changed, for the Created and Modified sorts. */
+  created_at?: string;
+  updated_at?: string;
   /** Set only on a row of a related project in a widened list. */
   from_project_id?: string | null;
   from_project_name?: string | null;
@@ -208,6 +211,7 @@ export function RecordListView<R extends ListedRecord, V>({
   const [typeFilter, setTypeFilter] = useUrlText("type", !!page);
   // The sort follows the filters: in the URL on a list page, local when embedded.
   const sortValues: Record<string, (record: R) => SortValue> = {
+    ...TIME_SORT_VALUES,
     name: (r) => r.name,
     code: (r) => r.unique_code,
     type: (r) => typeName?.(r) ?? null,
@@ -215,10 +219,7 @@ export function RecordListView<R extends ListedRecord, V>({
     status: (r) => (r.status && statusLabel ? statusLabel[r.status] : null),
   };
   for (const column of [...columnsBeforeType, ...columnsAfterScope]) if (column.sortValue) sortValues[column.key] = column.sortValue;
-  const [urlSort, setUrlSort] = useUrlSort<string>(Object.keys(sortValues));
-  const localSort = useSortState();
-  const sort = page ? urlSort : localSort.sort;
-  const onSort = (key: string) => (page ? setUrlSort((current) => cycleSort(current, key)) : localSort.onSort(key));
+  const listSort = useListSort(sectionKey, Object.keys(sortValues), "code", !page);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const canCreate = !!onCreate && !!renderCreateModal;
@@ -239,6 +240,7 @@ export function RecordListView<R extends ListedRecord, V>({
     if (search) params.set("search", search);
     if (includeArchived) params.set("include_archived", "true");
     if (includeHidden) params.set("include_hidden", "true");
+    addSortParams(params, listSort.sort);
     return addSharedListFilters(params, tagFilter?.filter, projectScope).toString();
   }
 
@@ -327,6 +329,7 @@ export function RecordListView<R extends ListedRecord, V>({
           {extraFilters}
           {projectScope && <ProjectScopeFilter scope={projectScope} />}
           {tagFilter && <TagFilterField projectId={tagFilter.projectId} filter={tagFilter.filter} />}
+          <SortField list={listSort} columns={columns} titleKey="name" />
           {onIncludeArchivedChange && (
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
           )}
@@ -339,9 +342,9 @@ export function RecordListView<R extends ListedRecord, V>({
         <DirectoryTable
           ariaLabel={ariaLabel}
           columns={columns}
-          rows={sortRows(filtered, sort, sortValues)}
-          sort={sort}
-          onSort={onSort}
+          rows={sortRows(filtered, listSort.sort, sortValues)}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(r) => r.id}
           placements={tagFilter && placementType ? { projectId: tagFilter.projectId, artefactType: placementType, rowId: (r) => r.id } : undefined}
           onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}

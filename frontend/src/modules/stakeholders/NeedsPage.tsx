@@ -12,9 +12,10 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
 import { Spinner } from "../../components/Spinner";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useProjectEnabledModules } from "../../hooks/useProjectEnabledModules";
 import { useProjectScope } from "../../hooks/useProjectScope";
@@ -34,9 +35,9 @@ const NOT_AVAILABLE =
 export function NeedsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitLinks = useCommitQuickLinks(projectId ?? "", "stakeholder_need");
   const commitTags = useCommitTags(projectId ?? "", "stakeholder_need");
+  const announceCreated = useCreatedToast(projectId ?? "", "stakeholder_need");
   const { modules, loaded } = useProjectEnabledModules(projectId ?? null);
   const disabled = modules.find((m) => m.module_key === MODULE_KEY)?.disabled_sub_components ?? [];
   const hasNeeds = needsEnabled(disabled);
@@ -85,7 +86,7 @@ export function NeedsPage() {
       const created = await projectNeedApi.create(projectId!, values);
       await commitLinks(created.id, quickLinks);
       await commitTags(created.id, tags);
-      showToast("Stakeholder Need created.");
+      announceCreated("Stakeholder Need", created);
       setCreating(false);
       setRefreshKey((k) => k + 1);
     } catch (err) {

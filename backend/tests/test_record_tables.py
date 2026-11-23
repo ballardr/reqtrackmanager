@@ -379,8 +379,10 @@ def test_the_export_respects_the_lists_filters_and_refuses_one_it_cannot_honour(
     assert [r["name"] for r in _rows(_export(world, project, search="alpha"))] == ["Alpha one"]
     assert _export(world, project, status="draft").headers["x-record-count"] == "2"
     assert _export(world, project, status="approved").headers["x-record-count"] == "0"
-    refused = _export(world, project, sort="name")
-    assert refused.status_code == 422 and "sort" in refused.json()["detail"]
+    refused = _export(world, project, colour="red")
+    assert refused.status_code == 422 and "colour" in refused.json()["detail"]
+    # `sort` and `order` are the list's order, not a filter: the export honours them (tests/test_list_sort.py).
+    assert [r["name"] for r in _rows(_export(world, project, sort="title", order="desc"))] == ["Beta two", "Alpha one"]
     assert _export(world, project, status="bogus").status_code == 422
 
 
@@ -680,7 +682,7 @@ def test_the_change_request_export_takes_the_lists_filters_and_agrees_with_the_l
     assert exported(active_only="true") == {open_one["unique_code"], modify["unique_code"]}
     assert exported(cr_status="withdrawn") == {gone["unique_code"]}
     assert _export(world, project, CR, cr_status="bogus").status_code == 422
-    assert _export(world, project, CR, sort="status").status_code == 422
+    assert _export(world, project, CR, colour="red").status_code == 422
 
 
 def test_the_change_request_export_takes_the_tag_filter(world):

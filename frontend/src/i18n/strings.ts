@@ -310,6 +310,8 @@ const en = {
     projectActivity: "{Project} activity",
   },
   requirements: {
+    sortComponentOrder: "Component and category",
+    sortComponentOrderHelp: "Component and category: by component, then category, then the project's own order. This order has no direction.",
     title: "{Requirements}",
     recordLabel: "{Requirement}",
     newRequirement: "New {requirement}",
@@ -472,6 +474,7 @@ const en = {
   },
   changeRequests: {
     title: "{ChangeRequests}",
+    recordLabel: "{ChangeRequest}",
     // Matches proposed name, reason, and the target requirement's name/ID.
     search: "Search by name, reason or {requirement} ID",
     newChangeRequest: "New {changeRequest}",
@@ -5046,6 +5049,28 @@ const en = {
     importFailed: "Could not import the file.",
   },
   // Filter-panel captions shared by several lists; a caption used on one list alone stays with its list.
+  createdToast: {
+    created: "created",
+    open: (code: string) => (code ? `Open ${code}` : "Open"),
+    text: (noun: string, code: string, verb: string) => (code ? `${noun} ${code} ${verb}.` : `${noun} ${verb}.`),
+  },
+  sort: {
+    sortBy: "Sort by",
+    order: "Order",
+    ascending: "Ascending",
+    descending: "Descending",
+    created: "Created",
+    modified: "Modified",
+    reset: "Reset to default order",
+    sortByIntro: "How the list is ordered. Your choice is remembered for this list.",
+    code: "{label}: the record's code, numbers by value (REQ-2 before REQ-10).",
+    text: "{label}: alphabetical, ignoring case.",
+    createdHelp: "{label}: when the record was created.",
+    modifiedHelp: "{label}: when the record was last changed, including a new version.",
+    column: "{label}: the value in that column.",
+    orderHelp: "Ascending: A to Z, lowest, earliest or oldest first.\nDescending: Z to A, highest, latest or newest first.",
+    defaultNote: "The default order is {label}, ascending.",
+  },
   filters: {
     status: "Status",
     priority: "Priority",

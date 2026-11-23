@@ -58,7 +58,7 @@ test.describe("System Architecture: a connection type's default protocol", () =>
       await chooseType(page, dialog, typeName, "sensor bus");
       await expect(dialog.getByLabel("Protocol", { exact: true })).toHaveValue("SPI mode 0");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
       await expect(page.locator("tr", { hasText: `Gateway ${suffix}` }).getByText("SPI mode 0", { exact: true })).toBeVisible();
     });
 

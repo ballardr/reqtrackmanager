@@ -2082,6 +2082,13 @@ class RecordTableProvider:
         in_overview: Whether the type is a record a person authored in the project and so counts in the overview's
             total. `False` for rows derived from something else (a project's assessment of each clause of an
             assigned standard, the standard's own clauses): a count of them describes the standard, not the work.
+        title_column: The key of the column the **Title** sort uses (`"name"`, `"question"`); the column whose text
+            names the record in the list. Every type's list offers Code, Title, Created and Modified
+            (`services.list_sort`); the other keys are the type's own columns, ordered by their cell text.
+        sort_keys: `{key: (prepared, record) -> text, number, instant or None}`: a key the default reading cannot
+            give. The defaults are the code (`code_of`), the record's `created_at` and `updated_at`, and any column
+            by its cell text; a type whose rows are not plain records (a row assembled from several tables) supplies
+            `created` and `modified` here.
     """
 
     label: str
@@ -2104,6 +2111,8 @@ class RecordTableProvider:
     read_only_reason: Callable[[Any, Any], str | None] | None = None
     count: Callable[[Session, Any, uuid.UUID], int] | None = None
     in_overview: bool = True
+    title_column: str = "title"
+    sort_keys: Mapping[str, Callable[[Any, Any], Any]] = field(default_factory=dict, compare=False)
 
 
 @dataclass(frozen=True)
@@ -2612,6 +2621,9 @@ class ReportDefinition:
             `ReportSection.key` the collector gives them. Declare every table whose key is fixed; a table whose
             key depends on the data is not embeddable. Every report also offers `figures` (its headline figures)
             and `notes` (its caveats) without declaring them.
+        record_order: How the report orders the records it lists, `"code"` (default) or `"title"`, ascending, never the
+            order a list on screen was sorted to. The collector reads it through `ReportContext.order_records`. A table
+            that is a ranking on purpose (highest score first) keeps its ranking and is marked `# ranked:` in the collector.
     """
 
     key: str
@@ -2630,6 +2642,7 @@ class ReportDefinition:
     cell_tones: Mapping[str, Mapping[str, str]] = field(default_factory=dict, compare=False)
     usual_widths: Mapping[str, str] = field(default_factory=dict, compare=False)
     parts: tuple[ReportPartDefinition, ...] = field(default=())
+    record_order: Literal["code", "title"] = "code"
 
 
 @dataclass(frozen=True)

@@ -62,8 +62,12 @@ def test_a_track_sized_by_its_content_is_reported(tmp_path):
 
 
 def test_bounded_and_repeating_tracks_pass(tmp_path):
-    """Fixed widths, `fr` shares, clamped `minmax` and `auto-fit`/`auto-fill` repeats are not content tracks; `overflow: auto` on the same line is not a track."""
-    css = ".x { grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); overflow-y: auto; }\n.y { grid-template-columns: minmax(0, 2fr) 6rem; }\n"
+    """Fixed widths, `fr` shares, clamped `minmax` and `auto-fit`/`auto-fill` repeats are not content tracks; `overflow: auto`
+    on the same line is not a track."""
+    css = (
+        ".x { grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); overflow-y: auto; }\n"
+        ".y { grid-template-columns: minmax(0, 2fr) 6rem; }\n"
+    )
     assert _scan(tmp_path, "a.css", css) == []
 
 

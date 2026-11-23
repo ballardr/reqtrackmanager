@@ -186,7 +186,7 @@ export const ExportCarriesTheListsFilters: Story = {
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
     await waitFor(() =>
-      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/compliance_evidence/export?search=IPX&include_archived=true`),
+      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/compliance_evidence/export?search=IPX&include_archived=true&sort=code&order=asc`),
     );
   },
 };

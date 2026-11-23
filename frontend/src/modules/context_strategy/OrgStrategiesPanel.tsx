@@ -21,15 +21,17 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { STRATEGY_SORT_VALUES } from "./contextStrategySort";
+import { STRATEGY_SORT_KEYS, STRATEGY_SORT_VALUES } from "./contextStrategySort";
 import { orgStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useTableSort } from "../../hooks/useTableSort";
-import { filterString } from "../../utils/listFilterParams";
+import { useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows } from "../../utils/sortRows";
+import { filterStringWithSort } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
 
@@ -59,11 +61,12 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reloadStrategies, [orgId, includeArchived]);
 
-  const table = useTableSort(strategies ?? NONE, STRATEGY_SORT_VALUES);
+  const listSort = useListSort("org_strategies", STRATEGY_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(strategies ?? NONE, listSort.sort, STRATEGY_SORT_VALUES);
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategies === null) return <Spinner />;
 
-  const filtered = table.rows.filter((s) => {
+  const filtered = sortedRows.filter((s) => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (priorityFilter && s.priority !== priorityFilter) return false;
     if (search && !`${s.unique_code} ${s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
@@ -88,7 +91,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
           New Strategy
         </button>
         <ListActions
-          organizationId={orgId} recordType="strategy" filters={filterString({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived })} onImported={reloadStrategies}
+          organizationId={orgId} recordType="strategy" filters={filterStringWithSort({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived }, listSort.sort)} onImported={reloadStrategies}
         />
       </div>
       <div className="side-grid">
@@ -96,8 +99,8 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
           ariaLabel="Organisation Strategy"
           columns={columns}
           rows={filtered}
-          sort={table.sort}
-          onSort={table.onSort}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(s) => s.id}
           onRowClick={(s) => navigate(`/orgs/${orgId}/modules/context_strategy/strategies/${s.id}`)}
           emptyState={<p className="text-muted">No organisation-scoped Strategy recorded yet.</p>}
@@ -120,6 +123,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
             allLabel="All priorities"
             options={labelOptions(STRATEGY_PRIORITY_LABEL)}
           />
+          <SortField list={listSort} columns={columns} titleKey="title" />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

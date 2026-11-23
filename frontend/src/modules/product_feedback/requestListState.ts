@@ -31,7 +31,8 @@ import type { ScoringScheme } from "../../api/scoring";
 import { useColumnChoice } from "../../hooks/useColumnChoice";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { isDerivedAxis } from "./requestLevels";
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABEL } from "./types";
 import type { EnhancementRequest, RequestStatus } from "./types";
@@ -42,7 +43,7 @@ const SCORED_FILTERS = ["unscored", "scored"] as const;
 export const ANY_CRITERION = "any";
 /** The Status dropdown's two non-status choices. */
 export type StatusChoice = RequestStatus | "open" | "all";
-export const REQUEST_SORT_KEYS = ["code", "title", "status", "owner", "demand", "score", "created", "updated", "pain_points"] as const;
+export const REQUEST_SORT_KEYS = ["code", "title", "status", "owner", "demand", "score", "created", "modified", "pain_points"] as const;
 const PAIN_POINT_FILTERS = ["none", "some"] as const;
 
 /** The models a list shows until the person chooses: the scheme's enabled models, else its default. */
@@ -75,7 +76,7 @@ export function useRequestListFilters(
   const [missingAxis, setMissingAxis] = useUrlText("missing");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const [openOnly, setOpenOnly] = useOpenOnly(initial, STATUSES);
-  const [sort, setSort] = useUrlSort<string>(REQUEST_SORT_KEYS);
+  const listSort = useListSort(`product_feedback_requests_${list}`, REQUEST_SORT_KEYS, "code");
   const statusChoice: StatusChoice = status || (openOnly ? "open" : "all");
   /** Picks a Status dropdown entry: a single status turns the open-statuses default off, as it would hide it. */
   const setStatusChoice = (choice: StatusChoice) => {
@@ -126,12 +127,12 @@ export function useRequestListFilters(
     if (missingAxis) params.set("missing_axis", missingAxis);
     if (painPoints) params.set("pain_points", painPoints);
     if (requestedModels.length > 0) params.set("scoring_model", requestedModels.join(","));
-    return params;
+    return addSortParams(params, listSort.sort);
   }
 
   return {
     search, setSearch, status, statusChoice, setStatusChoice, scored, setScored, painPoints, setPainPoints, painPointsAvailable, missingAxis, setMissingAxis,
-    includeArchived, setIncludeArchived, openOnly, sort, setSort, models, requestedModels, primary, columns, columnIds,
+    includeArchived, setIncludeArchived, openOnly, listSort, models, requestedModels, primary, columns, columnIds,
     isUnscored, matches, filterParams,
   };
 }
@@ -140,8 +141,8 @@ export type RequestListFilters = ReturnType<typeof useRequestListFilters>;
 
 /** The score a request sorts by: the primary model's normalised score; a request with no value (unscored, no owner) sorts last either way. */
 export function sortRequests(rows: EnhancementRequest[], filters: RequestListFilters): EnhancementRequest[] {
-  const { sort, primary } = filters;
-  if (!sort) return rows;
+  const { listSort, primary } = filters;
+  const sort = listSort.sort;
   const value = (r: EnhancementRequest): number | string | null => {
     if (sort.key === "code") return r.unique_code;
     if (sort.key === "title") return r.title;
@@ -149,7 +150,7 @@ export function sortRequests(rows: EnhancementRequest[], filters: RequestListFil
     if (sort.key === "owner") return r.owner?.label ?? null;
     if (sort.key === "demand") return r.weighted_demand;
     if (sort.key === "created") return Date.parse(r.created_at);
-    if (sort.key === "updated") return Date.parse(r.updated_at);
+    if (sort.key === "modified") return Date.parse(r.updated_at);
     if (sort.key === "pain_points") return r.pain_point_count;
     return primary ? r.scores[primary]?.normalised ?? null : null;
   };

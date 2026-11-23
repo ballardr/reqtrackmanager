@@ -507,6 +507,7 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
     decided_by: null,
     decision_note: "",
     created_at: "2026-02-01T09:00:00Z",
+    updated_at: "2026-02-01T09:00:00Z",
     is_subscribed: false,
     comment_count: 0,
     requires_approval: true,

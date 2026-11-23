@@ -116,7 +116,7 @@ test.describe("action/link change-request locking", () => {
       await expect(confirmButton).toBeEnabled();
       unlinkActionCrId = await createsChangeRequest(() => confirmButton.click());
       await expect(dialog).not.toBeVisible();
-      await expect(page.getByText("Change request created")).toBeVisible();
+      await expect(page.getByText(/Change request( \S+-\d+)? created/)).toBeVisible();
       // Not removed yet — only once the change request is approved.
       await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
     });
@@ -145,7 +145,7 @@ test.describe("action/link change-request locking", () => {
       await expect(confirmButton).toBeEnabled();
       removeLinkCrId = await createsChangeRequest(() => confirmButton.click());
       await expect(dialog).not.toBeVisible();
-      await expect(page.getByText("Change request created")).toBeVisible();
+      await expect(page.getByText(/Change request( \S+-\d+)? created/)).toBeVisible();
       // Not removed yet — the link is still there.
       await expect(page.getByRole("link", { name: reqBName })).toBeVisible();
     });
@@ -179,7 +179,7 @@ test.describe("action/link change-request locking", () => {
       await expect(addButton).toBeEnabled();
       addLinkCrId = await createsChangeRequest(() => addButton.click());
       await expect(modal).not.toBeVisible();
-      await expect(page.getByText("Change request created")).toBeVisible();
+      await expect(page.getByText(/Change request( \S+-\d+)? created/)).toBeVisible();
       // Not added yet — no link to reqC shows up.
       await expect(page.getByRole("link", { name: reqCName })).toHaveCount(0);
     });

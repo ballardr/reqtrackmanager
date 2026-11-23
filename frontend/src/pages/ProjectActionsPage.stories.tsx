@@ -79,7 +79,7 @@ export const ExportAndImportAreOnTheTitleRow: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement_action/export"));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement_action/export?sort=unique_code&order=asc"));
   },
 };
 
@@ -140,7 +140,7 @@ export const StaleResponseIsIgnored: Story = {
 export const CreateAssignedToAGroup: Story = {
   beforeEach: () => {
     mockProjectActionsApis();
-    spyOn(api, "post").mockResolvedValue({ id: "action-new" } as never);
+    spyOn(api, "post").mockResolvedValue({ id: "action-new", unique_code: "ACT-007" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -164,7 +164,7 @@ export const CreateAssignedToAGroup: Story = {
 export const CreateNewAction: Story = {
   beforeEach: () => {
     mockProjectActionsApis();
-    spyOn(api, "post").mockResolvedValue({ id: "action-new" } as never);
+    spyOn(api, "post").mockResolvedValue({ id: "action-new", unique_code: "ACT-007" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -182,7 +182,8 @@ export const CreateNewAction: Story = {
     // Principle 7 — every mutation ends with feedback. This page
     // got real interaction-model work
     // without picking up Toast, so create still just silently re-rendered.
-    await expect(within(document.body).getByText("Action created")).toBeInTheDocument();
+    await expect(within(document.body).getByText("Action ACT-007 created.")).toBeInTheDocument();
+    await expect(within(document.body).getByRole("button", { name: "Open ACT-007" })).toBeInTheDocument();
   },
 };
 

@@ -19,14 +19,17 @@ import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { SortableHeader } from "../components/SortableHeader";
-import { cycleSort } from "../components/sortState";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { SortField } from "../components/SortField";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../hooks/useListSort";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
+import { sortRows, TIME_SORT_VALUES, type SortValue } from "../utils/sortRows";
 import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
-import { toErrorMessage, useToast } from "../context/ToastContext";
+import { toErrorMessage } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../hooks/useCommitTags";
+import { useCreatedToast } from "../hooks/useCreatedToast";
 import { useProjectScope } from "../hooks/useProjectScope";
 import { placementsText } from "../api/placements";
 import { usePagePlacements } from "../hooks/usePagePlacements";
@@ -44,10 +47,18 @@ import { addSharedListFilters } from "../utils/listFilterParams";
 
 const strings = t();
 
+/** What each sortable column and time key orders by; an outcome by the label a person reads, a missing due date last. */
+const ACTION_SORT_VALUES: Record<string, (action: RequirementAction) => SortValue> = {
+  ...TIME_SORT_VALUES,
+  unique_code: (a) => a.unique_code,
+  title: (a) => a.title,
+  outcome_status: (a) => REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status],
+  due_date: (a) => a.due_date,
+};
+
 const OUTCOME_OPTIONS: RequirementActionOutcome[] = ["pending", "completed", "failed"];
 
-const ACTION_SORT_KEYS = ["unique_code", "title", "outcome_status", "due_date"] as const;
-type ActionSortKey = (typeof ACTION_SORT_KEYS)[number];
+const ACTION_SORT_KEYS = ["unique_code", "title", "outcome_status", "due_date", ...TIME_SORT_KEYS] as const;
 
 /**
  * Project-wide list of requirement actions (review/test/etc.) — a
@@ -60,9 +71,9 @@ type ActionSortKey = (typeof ACTION_SORT_KEYS)[number];
  */
 export function ProjectActionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement_action");
   const commitTags = useCommitTags(projectId ?? "", "requirement_action");
+  const announceCreated = useCreatedToast(projectId ?? "", "requirement_action");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [actions, setActions] = useState<RequirementAction[] | null>(null);
@@ -73,12 +84,9 @@ export function ProjectActionsPage() {
   const [outcomeFilter, setOutcomeFilter] = useUrlChoice("outcome", Object.keys(REQUIREMENT_ACTION_OUTCOME_LABEL) as RequirementActionOutcome[]);
   const [typeFilter, setTypeFilter] = useUrlText("type");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  // Column-header sorting — this list has no
-  // backend pagination at all (`routers/actions.py::list_actions` always
-  // returns every match), so sorting the already-loaded array client-side
-  // is safe: unlike `RequirementsPage`/`ChangeRequestsPage`, there's no
-  // partially-loaded page to misrepresent by sorting only what's visible.
-  const [sort, setSort] = useUrlSort(ACTION_SORT_KEYS);
+  // This list has no backend pagination at all (`routers/actions.py::list_actions` always returns every match), so
+  // the already-loaded array is ordered client-side; the same sort goes to the export (`addSortParams`).
+  const listSort = useListSort("actions", ACTION_SORT_KEYS, "unique_code");
 
   const [showNewForm, setShowNewForm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -91,6 +99,11 @@ export function ProjectActionsPage() {
     if (includeArchived) params.set("include_archived", "true");
     addSharedListFilters(params, tagFilter, projectScope);
     return params;
+  }
+
+  /** The list's filters and its sort, for the Export. */
+  function exportParams(): URLSearchParams {
+    return addSortParams(filterParams(), listSort.sort);
   }
 
   function listParams(): string {
@@ -143,7 +156,7 @@ export function ProjectActionsPage() {
       const created = await api.post<RequirementAction>(`/api/v1/projects/${projectId}/actions`, values);
       setShowNewForm(false);
       reload();
-      showToast(strings.actions.created);
+      announceCreated(strings.actions.recordLabel, created);
       await commitQuickLinks(created.id, quickLinks);
       await commitTags(created.id, tags);
     } catch (err) {
@@ -151,24 +164,18 @@ export function ProjectActionsPage() {
     }
   }
 
-  function compareActions(a: RequirementAction, b: RequirementAction, key: ActionSortKey): number {
-    if (key === "due_date") {
-      // Nulls (no due date set) always sort last, in either direction.
-      if (a.due_date === b.due_date) return 0;
-      if (a.due_date === null) return 1;
-      if (b.due_date === null) return -1;
-      return a.due_date < b.due_date ? -1 : 1;
-    }
-    const av = a[key].toLowerCase();
-    const bv = b[key].toLowerCase();
-    return av < bv ? -1 : av > bv ? 1 : 0;
-  }
+  const sortedActions = useMemo(
+    () => (actions ? sortRows(actions, listSort.sort, ACTION_SORT_VALUES) : actions),
+    [actions, listSort.sort],
+  );
 
-  const sortedActions = useMemo(() => {
-    if (!actions || !sort) return actions;
-    const sorted = [...actions].sort((a, b) => compareActions(a, b, sort.key));
-    return sort.direction === "desc" ? sorted.reverse() : sorted;
-  }, [actions, sort]);
+  /** The columns the table can be ordered by, for the Sort by choices. */
+  const sortColumns = [
+    { key: "unique_code", label: strings.actions.uniqueCode, sortable: true },
+    { key: "title", label: strings.actions.name, sortable: true },
+    { key: "outcome_status", label: strings.actions.outcome, sortable: true },
+    { key: "due_date", label: strings.actions.dueDate, sortable: true },
+  ];
 
   const placed = usePagePlacements(projectId, "requirement_action", (actions ?? []).map((a) => a.id));
   const showPlaces = Object.keys(placed).length > 0;
@@ -188,7 +195,7 @@ export function ProjectActionsPage() {
             <Plus /> {strings.actions.newAction}
           </button>
         }
-        records={{ projectId: projectId ?? "", recordType: "requirement_action", filters: filterParams().toString(), onImported: reload }}
+        records={{ projectId: projectId ?? "", recordType: "requirement_action", filters: exportParams().toString(), onImported: reload }}
         filter={
           <FilterPanel sectionKey="projectActionsFilters">
             <FilterSelect
@@ -207,6 +214,7 @@ export function ProjectActionsPage() {
             />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={sortColumns} codeKey="unique_code" />
             <FilterCheckbox label={strings.actions.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -227,22 +235,22 @@ export function ProjectActionsPage() {
                   <thead>
                     <tr>
                       <SortableHeader
-                        label={strings.actions.uniqueCode} sortKey="unique_code" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        label={strings.actions.uniqueCode} sortKey="unique_code" sort={listSort.sort}
+                        onSort={listSort.onHeaderSort}
                       />
                       <SortableHeader
-                        label={strings.actions.name} sortKey="title" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        label={strings.actions.name} sortKey="title" sort={listSort.sort}
+                        onSort={listSort.onHeaderSort}
                       />
                       <th>{strings.actions.actionType}</th>
                       <SortableHeader
-                        label={strings.actions.outcome} sortKey="outcome_status" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        label={strings.actions.outcome} sortKey="outcome_status" sort={listSort.sort}
+                        onSort={listSort.onHeaderSort}
                       />
                       <th>{strings.actions.assignee}</th>
                       <SortableHeader
-                        label={strings.actions.dueDate} sortKey="due_date" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        label={strings.actions.dueDate} sortKey="due_date" sort={listSort.sort}
+                        onSort={listSort.onHeaderSort}
                       />
                       {showPlaces && <th>{strings.placements.label}</th>}
                       {showReferences && <th>{strings.references.column}</th>}

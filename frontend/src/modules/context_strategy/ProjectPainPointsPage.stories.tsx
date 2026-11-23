@@ -139,6 +139,27 @@ export const ShowsScoresAndBlockerAndSorts: Story = {
   },
 };
 
+/** Title, Code, Type, Priority and Status sort like Score, and Sort by offers the same columns with Created and Modified. */
+export const EveryColumnSortsAndSortByOffersThem: Story = {
+  beforeEach: () =>
+    mockPageApis([
+      painPoint({ id: "pp-b", title: "Beta problem" }),
+      painPoint({ id: "pp-a", title: "Alpha problem" }),
+    ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Beta problem")).toBeInTheDocument());
+    const sortBy = canvas.getByRole("combobox", { name: "Sort by" });
+    await expect(within(sortBy).getAllByRole("option").map((o) => o.textContent)).toEqual(
+      ["Title", "Code", "Type", "Priority", "Status", "Score", "Created", "Modified"],
+    );
+    await userEvent.click(canvas.getByRole("button", { name: "Title" }));
+    await expect(sortBy).toHaveValue("title");
+    const titles = () => canvas.getAllByRole("button", { name: /problem/ }).map((b) => b.textContent);
+    await waitFor(() => expect(titles()).toEqual(["Alpha problem", "Beta problem"]));
+  },
+};
+
 /** The gear on the Score column holds the model switcher; it refetches the roll-up and does not sort. */
 export const ScoreSettingsGearRefetchesScores: Story = {
   beforeEach: () => mockPageApis([painPoint()]),
@@ -324,7 +345,7 @@ export const ExportCarriesThePageFilters: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/pain_point/export?status=triaged&search=pric&hide_intentional=true"));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/pain_point/export?status=triaged&search=pric&hide_intentional=true&sort=code&order=asc"));
   },
 };
 

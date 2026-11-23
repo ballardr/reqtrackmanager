@@ -579,13 +579,17 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
     open_count = scored = 0
     for group in groups:
         fixable = [i for i in group.items if not i.is_intentional]
-        ranked = sorted((i for i in fixable if i.score is not None), key=lambda i: (-(i.score or 0), i.title.lower()))
+        ranked = sorted(  # ranked: the highest score first
+            (i for i in fixable if i.score is not None), key=lambda i: (-(i.score or 0), i.title.lower()),
+        )
         for n, item in enumerate(ranked, start=1):
             item.rank = n
         ranking_items += ranked
         unscored_items += [i for i in fixable if i.score is None]
         blocker_items += [i for i in fixable if i.is_blocker]
-        intentional_items += sorted((i for i in group.items if i.is_intentional), key=lambda i: (-(i.score or 0), i.title.lower()))
+        intentional_items += sorted(  # ranked: the highest score first
+            (i for i in group.items if i.is_intentional), key=lambda i: (-(i.score or 0), i.title.lower()),
+        )
         for i in group.items:
             breakdown += [
                 [i.model_key, i.label, i.project_name, p.persona, label(SCORE_TARGET_STATUS_LABEL, p.target_status),
@@ -706,7 +710,7 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
                "Persona severity", "Score (0–100)", "Band", "Assessment", "Tags"]
     rows, churn_rows = [], []
     for group in groups:
-        for i in sorted(group.items, key=lambda i: (-(i.score or 0), i.title.lower())):
+        for i in sorted(group.items, key=lambda i: (-(i.score or 0), i.title.lower())):  # ranked: the highest score first
             persona_severity = "; ".join(f"{p.persona}: {p.severity}" for p in i.personas if p.severity) or "Not scored"
             row = [
                 i.model_key, i.label, i.project_name, i.status_label, "", "", persona_severity, _fmt_score(i.score),
@@ -816,14 +820,16 @@ def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
                 parent_of.setdefault(s.id, other)
     children_of: dict[uuid.UUID, list[CascadeNode]] = defaultdict(list)
     tree: list[CascadeNode] = []
-    for s in sorted(project_strategies, key=lambda s: versions[s.id].title.lower()):
+    for s in req.order_records(project_strategies, code=lambda s: s.unique_code, title=lambda s: versions[s.id].title):
         node = strategy_node(s)
         if s.id in parent_of:
             children_of[parent_of[s.id]].append(node)
         else:
             tree.append(node)
     org_nodes: list[CascadeNode] = []
-    for org_id in sorted(children_of, key=lambda i: versions[i].title.lower()):
+    for org_id in req.order_records(
+        list(children_of), code=lambda i: org_strategies[i].unique_code, title=lambda i: versions[i].title,
+    ):
         node = strategy_node(org_strategies[org_id])
         node.children = children_of[org_id] + node.children
         org_nodes.append(node)
@@ -1058,7 +1064,7 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
         )
         for q in questions
     ]
-    items.sort(key=lambda i: (_PRIORITY_ORDER.get(i.priority, 9), i.due_date or date.max, i.question.lower()))
+    items.sort(key=lambda i: (_PRIORITY_ORDER.get(i.priority, 9), i.due_date or date.max, i.question.lower()))  # ranked: priority, then due date
 
     def row(i: OpenQuestionRow) -> list[str]:
         return [
@@ -1125,7 +1131,7 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
             "has_success_measures": bool(v.success_measures.strip()),
             "days_to_target": (v.target_date - req.today).days if v.target_date else None,
         })
-    items.sort(key=lambda i: (i["target_date"] is None, i["target_date"] or date.max, i["title"].lower()))
+    items.sort(key=lambda i: (i["target_date"] is None, i["target_date"] or date.max, i["title"].lower()))  # ranked: the nearest target date first
 
     def row(i: dict[str, Any]) -> list[str]:
         return [
@@ -1216,7 +1222,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
             "priority": v.priority.value, "owner": owners(v),
             "decisions": decisions, "requirements": reqs, "applied": decisions + reqs > 0,
         })
-    items.sort(key=lambda i: (-(i["decisions"] + i["requirements"]), i["name"].lower()))
+    items.sort(key=lambda i: (-(i["decisions"] + i["requirements"]), i["name"].lower()))  # ranked: the most applied first
 
     def row(i: dict[str, Any]) -> list[str]:
         return [

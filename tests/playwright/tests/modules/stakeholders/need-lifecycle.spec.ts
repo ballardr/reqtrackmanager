@@ -32,7 +32,7 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     await dialog.getByLabel("Need", { exact: true }).fill("Find out what is wrong without a laptop.");
     await dialog.getByLabel("Rationale").fill("Each delay costs an hour.");
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText("Stakeholder Need created.")).toBeVisible();
+    await expect(page.getByText(/Stakeholder Need( \S+-\d+)? created\./)).toBeVisible();
 
     // --- The list renders the label-mapped status.
     const row = page.locator("tr", { hasText: name });

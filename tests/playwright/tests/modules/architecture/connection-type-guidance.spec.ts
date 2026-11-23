@@ -75,7 +75,7 @@ test.describe("System Architecture: soft guidance for connection types", () => {
       await expect(dialog.getByRole("status")).toContainText("REST API is in Software");
       await expect(dialog.getByRole("status")).toContainText("The connection can still be saved.");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
       await expect(page.locator("tr", { hasText: names[1] }).getByText("REST API", { exact: true })).toBeVisible();
     });
   });

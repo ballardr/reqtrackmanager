@@ -51,7 +51,7 @@ test.describe("requirement action change requests", () => {
       await expect(createButton).toBeEnabled();
       await createButton.click();
 
-      await expect(page.getByText("Change request created")).toBeVisible();
+      await expect(page.getByText(/Change request( \S+-\d+)? created/)).toBeVisible();
       await expect(dialog).not.toBeVisible();
       await expect(page.getByText("No actions linked yet.")).toBeVisible();
       await expect(page.getByRole("link", { name: actionTitle })).toHaveCount(0);

@@ -168,7 +168,7 @@ test.describe("change requests: proposed links", () => {
       expect(await linksOf(page.request, world, target)).toEqual([]);
       await form.getByLabel("Reason for change").fill("Trace both related requirements");
       await form.getByRole("button", { name: "Create" }).click();
-      await expect(page.getByText("Change request created")).toBeVisible();
+      await expect(page.getByText(/Change request( \S+-\d+)? created/)).toBeVisible();
     });
 
     const crs: { id: string; proposed_link_count: number }[] = await (
@@ -320,7 +320,7 @@ test.describe("change requests: proposed links", () => {
     await expect(form.getByText(/Existing requirement/)).toBeVisible();
     await form.getByLabel("Reason for change").fill("A new requirement that builds on the existing one");
     await form.getByRole("button", { name: "Create" }).click();
-    await expect(page.getByText("Change request created")).toBeVisible();
+    await expect(page.getByText(/Change request( \S+-\d+)? created/)).toBeVisible();
 
     const crs: { id: string; kind: string; proposed_link_count: number }[] = await (
       await page.request.get(`${apiBaseUrl}/api/v1/projects/${world.projectId}/change-requests`, { headers: world.headers })

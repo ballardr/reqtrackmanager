@@ -234,6 +234,7 @@ def apply_persona_new_version(
     be cleared; absent keys are carried forward."""
     now = datetime.now(UTC)
     current_version.valid_to = now
+    persona.updated_at = now  # a new version is a change to the record: its Modified time moves
     values = {f: getattr(current_version, f) for f in PERSONA_CONTENT_FIELDS}
     values.update({k: v for k, v in changes.items() if k in PERSONA_CONTENT_FIELDS})
     new_version = PersonaVersion(
@@ -605,6 +606,7 @@ def apply_stakeholder_new_version(
     carried forward."""
     now = datetime.now(UTC)
     current_version.valid_to = now
+    stakeholder.updated_at = now  # a new version is a change to the record: its Modified time moves
     values = {f: getattr(current_version, f) for f in STAKEHOLDER_CONTENT_FIELDS}
     values.update({k: v for k, v in changes.items() if k in STAKEHOLDER_CONTENT_FIELDS})
     new_version = StakeholderVersion(
@@ -1082,6 +1084,7 @@ def apply_need_new_version(
     even when `None`, so the owner can be cleared)."""
     now = datetime.now(UTC)
     current_version.valid_to = now
+    need.updated_at = now  # a new version is a change to the record: its Modified time moves
     values = {f: getattr(current_version, f) for f in NEED_CONTENT_FIELDS}
     values.update({k: v for k, v in changes.items() if k in NEED_CONTENT_FIELDS})
     new_version = StakeholderNeedVersion(

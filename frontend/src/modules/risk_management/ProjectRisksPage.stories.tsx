@@ -254,7 +254,7 @@ export const ExportCarriesTheRegistersFilters: Story = {
     await chooseExport(canvas, "CSV");
     await waitFor(() =>
       expect(api.getForBlob).toHaveBeenCalledWith(
-        `/api/v1/projects/${PROJECT_ID}/records/risk/export?status=mitigated&review_overdue=true`,
+        `/api/v1/projects/${PROJECT_ID}/records/risk/export?status=mitigated&review_overdue=true&sort=code&order=asc`,
       ),
     );
   },

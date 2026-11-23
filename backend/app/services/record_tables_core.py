@@ -542,6 +542,7 @@ def count_rows(db: Session, model: Any, project_id: uuid.UUID, *, live_only: boo
 
 
 REQUIREMENT_TABLE = RecordTableProvider(
+    title_column="name",
     label="Requirements",
     columns=_requirement_columns,
     list_records=_list_requirements,

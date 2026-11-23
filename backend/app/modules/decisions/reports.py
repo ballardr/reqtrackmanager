@@ -193,7 +193,7 @@ def _supersession(db: Session, req: ReportContext, decisions: list[Decision]) ->
 
 
 def _load(db: Session, projects: list[Project], *statuses: DecisionStatus, include_archived: bool = False) -> list[Decision]:
-    """Decisions of `projects`, optionally narrowed to `statuses`, oldest code first."""
+    """Decisions of `projects`, optionally narrowed to `statuses`, in no particular order (a report orders what it lists)."""
     if not projects:
         return []
     query = select(Decision).where(Decision.project_id.in_([p.id for p in projects]))
@@ -201,7 +201,7 @@ def _load(db: Session, projects: list[Project], *statuses: DecisionStatus, inclu
         query = query.where(Decision.is_archived.is_(False))
     if statuses:
         query = query.where(Decision.status.in_(statuses))
-    return list(db.scalars(query.order_by(Decision.unique_code)).all())
+    return list(db.scalars(query).all())
 
 
 # --- D1: Decision register ---------------------------------------------------------
@@ -244,7 +244,7 @@ def collect_decision_register(db: Session, req: ReportContext) -> ReportResult:
         and (date_from is None or (d.decision_date is not None and d.decision_date >= date_from))
         and (date_to is None or (d.decision_date is not None and d.decision_date <= date_to))
     ]
-    decisions.sort(key=lambda d: (names[d.project_id].lower(), d.unique_code))
+    decisions = req.order_records(decisions, code=lambda d: d.unique_code, title=lambda d: d.title, group=lambda d: names[d.project_id])
     people = _people(db, decisions)
     supersedes, superseded_by, codes = _supersession(db, req, decisions)
 
@@ -351,7 +351,7 @@ def collect_approval_ageing(db: Session, req: ReportContext) -> ReportResult:
     ]
     for e in entries:
         e["overdue"] = e["days"] > threshold
-    entries.sort(key=lambda e: (-e["days"], e["decision"].unique_code))
+    entries.sort(key=lambda e: (-e["days"], e["decision"].unique_code))  # ranked: the longest wait first
 
     tags = req.tag_text(db, DECISION_TYPE, [d.id for d in decisions])
 
@@ -412,7 +412,7 @@ def collect_decision_log(db: Session, req: ReportContext) -> ReportResult:
         d for d in _load(db, projects, *MADE_STATUSES)
         if d.decision_date is not None and date_from <= d.decision_date <= date_to
     ]
-    decisions.sort(key=lambda d: (d.decision_date, names[d.project_id].lower(), d.unique_code))
+    decisions.sort(key=lambda d: (d.decision_date, names[d.project_id].lower(), d.unique_code))  # ranked: a log reads oldest first
     type_names = _type_names(db, decisions)
     people = _people(db, decisions, owner=False)
     result = _result(req, "d3", "Decision log", eligible=len(projects), notes=[
@@ -486,7 +486,10 @@ def collect_rationale_coverage(db: Session, req: ReportContext) -> ReportResult:
     for link in relationships.get_links_to_many(db, ArtefactType.REQUIREMENT.value, req_ids):
         if link.source_type == DECISION_TYPE and link.source_id in decision_id_set:
             covered.add(link.target_id)
-    uncovered = [(r, v) for r, v in requirements if r.id not in covered]
+    uncovered = req.order_records(
+        [(r, v) for r, v in requirements if r.id not in covered],
+        code=lambda pair: pair[0].unique_code, title=lambda pair: pair[1].name, group=lambda pair: names[pair[0].project_id],
+    )
 
     decision_tags = req.tag_text(db, DECISION_TYPE, [d.id for d in bare])
     requirement_tags = req.tag_text(db, ArtefactType.REQUIREMENT.value, [r.id for r, _ in uncovered])
@@ -497,7 +500,7 @@ def collect_rationale_coverage(db: Session, req: ReportContext) -> ReportResult:
             [
                 [req.code(d.unique_code, d.project_id), d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
                  decision_status_label(d.status.value), decision_tags.get(d.id, "")]
-                for d in sorted(bare, key=lambda d: (names[d.project_id].lower(), d.unique_code))
+                for d in req.order_records(bare, code=lambda d: d.unique_code, title=lambda d: d.title, group=lambda d: names[d.project_id])
             ],
             gap=True,
         ),
@@ -532,7 +535,7 @@ def _readable_artefact(db: Session, artefact_type: str, artefact_id: uuid.UUID, 
 
 
 def _requirements(db: Session, project_ids: set[uuid.UUID]) -> list[tuple[Requirement, RequirementVersion]]:
-    """Non-archived Requirements (current version) of `project_ids`, by code."""
+    """Non-archived Requirements (current version) of `project_ids`, in no particular order (a report orders what it lists)."""
     if not project_ids:
         return []
     rows = db.execute(
@@ -542,7 +545,6 @@ def _requirements(db: Session, project_ids: set[uuid.UUID]) -> list[tuple[Requir
             Requirement.project_id.in_(project_ids), Requirement.is_archived.is_(False),
             RequirementVersion.valid_to.is_(None),
         )
-        .order_by(Requirement.unique_code)
     ).all()
     return [(r, v) for r, v in rows]
 

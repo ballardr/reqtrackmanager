@@ -21,7 +21,6 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
 import type { RecordListActions } from "../../components/ListActions";
-import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FieldHelp } from "../../components/FieldHelp";
 import { FilterBadge } from "../../components/FilterBadge";
@@ -41,7 +40,9 @@ import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { sortRows } from "../../utils/sortRows";
@@ -85,7 +86,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
   const [kindFilter, setKindFilter] = useUrlChoice("type", KINDS);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, STATUSES);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(DIAGRAM_SORT_KEYS);
+  const listSort = useListSort("diagrams", DIAGRAM_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -147,7 +148,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
     };
   }, [search, statusFilter, kindFilter, folders]);
   const filtered = useMemo(() => rows.filter((r) => matches(r, openOnly)), [rows, matches, openOnly]);
-  const sorted = useMemo(() => sortRows(filtered, sort, DIAGRAM_ROW_SORT_VALUES), [filtered, sort]);
+  const sorted = useMemo(() => sortRows(filtered, listSort.sort, DIAGRAM_ROW_SORT_VALUES), [filtered, listSort.sort]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -161,6 +162,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
     if (openOnly) params.set("open_only", "true");
     folders.addParams(params);
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -239,6 +241,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
             {folders.panel}
             <ProjectScopeFilter scope={projectScope} />
             <TagFilterField projectId={projectId} filter={tagFilter} />
+            <SortField list={listSort} columns={columns} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -251,7 +254,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
             selected: folders.selected, onChange: folders.setSelected, label: (r) => `Select ${r.source.unique_code}`,
             selectable: (r) => r.kind === "block" && r.source.project_id === projectId, allLabel: "Select all diagrams",
           }}
-          sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
+          sort={listSort.sort} onSort={listSort.onHeaderSort}
           placements={{ projectId, artefactType: (r) => DIAGRAM_KIND_ARTEFACT_TYPE[r.kind], rowId: (r) => r.id }}
           rowHref={(r) => diagramEditorPath(rowProjectId(r.source, projectId), r.kind, r.id)}
           emptyState={

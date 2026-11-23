@@ -21,15 +21,17 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { GUIDING_PRINCIPLE_SORT_VALUES } from "./contextStrategySort";
+import { GUIDING_PRINCIPLE_SORT_KEYS, GUIDING_PRINCIPLE_SORT_VALUES } from "./contextStrategySort";
 import { orgGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useTableSort } from "../../hooks/useTableSort";
-import { filterString } from "../../utils/listFilterParams";
+import { useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows } from "../../utils/sortRows";
+import { filterStringWithSort } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
 
@@ -59,11 +61,12 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reloadGuidingPrinciples, [orgId, includeArchived]);
 
-  const table = useTableSort(guidingPrinciples ?? NONE, GUIDING_PRINCIPLE_SORT_VALUES);
+  const listSort = useListSort("org_guiding_principles", GUIDING_PRINCIPLE_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(guidingPrinciples ?? NONE, listSort.sort, GUIDING_PRINCIPLE_SORT_VALUES);
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciples === null) return <Spinner />;
 
-  const filtered = table.rows.filter((g) => {
+  const filtered = sortedRows.filter((g) => {
     if (statusFilter && g.status !== statusFilter) return false;
     if (priorityFilter && g.priority !== priorityFilter) return false;
     if (search && !`${g.unique_code} ${g.name}`.toLowerCase().includes(search.toLowerCase())) return false;
@@ -88,7 +91,7 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
           New Guiding Principle
         </button>
         <ListActions
-          organizationId={orgId} recordType="guiding_principle" filters={filterString({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived })} onImported={reloadGuidingPrinciples}
+          organizationId={orgId} recordType="guiding_principle" filters={filterStringWithSort({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived }, listSort.sort)} onImported={reloadGuidingPrinciples}
         />
       </div>
       <div className="side-grid">
@@ -96,8 +99,8 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
           ariaLabel="Organisation Guiding Principles"
           columns={columns}
           rows={filtered}
-          sort={table.sort}
-          onSort={table.onSort}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(g) => g.id}
           onRowClick={(g) => navigate(`/orgs/${orgId}/modules/context_strategy/guiding-principles/${g.id}`)}
           emptyState={<p className="text-muted">No organisation-scoped Guiding Principle recorded yet.</p>}
@@ -120,6 +123,7 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
             allLabel="All priorities"
             options={labelOptions(GUIDING_PRINCIPLE_PRIORITY_LABEL)}
           />
+          <SortField list={listSort} columns={columns} titleKey="name" />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

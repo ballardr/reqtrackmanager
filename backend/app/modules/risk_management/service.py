@@ -173,6 +173,7 @@ def apply_new_version(
     `None`, so nullable fields can be cleared; absent keys are carried forward."""
     now = datetime.now(UTC)
     current_version.valid_to = now
+    risk.updated_at = now  # a new version is a change to the record: its Modified time moves
     values = {f: getattr(current_version, f) for f in RISK_CONTENT_FIELDS}
     values.update({k: v for k, v in changes.items() if k in RISK_CONTENT_FIELDS})
     new_version = RiskVersion(

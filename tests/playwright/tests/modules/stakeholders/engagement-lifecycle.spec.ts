@@ -57,7 +57,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await dialog.getByLabel("Notes").fill("Pat asked for the traceability export.");
     await dialog.getByLabel("Consent recorded").check();
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await expect(page.getByText(/Engagement( \S+-\d+)? logged\./)).toBeVisible();
     const row = page.locator("tr", { hasText: title });
     await expect(row.getByText("Workshop", { exact: true })).toBeVisible();
     await expect(row.getByText(today())).toBeVisible();
@@ -105,7 +105,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(first.getByText(/No Stakeholders exist in this project yet\./)).toBeVisible();
     await first.getByLabel("Engagement title").fill(emptyTitle);
     await first.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await expect(page.getByText(/Engagement( \S+-\d+)? logged\./)).toBeVisible();
     await page.getByRole("button", { name: emptyTitle }).click();
     await expect(page.getByText(/No Stakeholders exist in this project yet\./)).toBeVisible();
     await expect(page.getByRole("button", { name: "Add to Participants" })).toBeDisabled();
@@ -128,7 +128,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(dialog.getByRole("button", { name: `Remove ${patName}` })).toBeVisible();
     await expect(dialog.getByRole("button", { name: `Remove ${samName}` })).toBeVisible();
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await expect(page.getByText(/Engagement( \S+-\d+)? logged\./)).toBeVisible();
     await page.getByRole("button", { name: title }).click();
     // The participants list and the Links panel both name each person, so take the first.
     await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
@@ -168,7 +168,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(focus.getByLabel("Persona represented by Participant 1")).toBeVisible();
     await focus.getByLabel("Persona represented by Participant 1").selectOption({ index: 0 });
     await focus.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await expect(page.getByText(/Engagement( \S+-\d+)? logged\./)).toBeVisible();
     await page.getByRole("button", { name: groupTitle }).click();
     await expect(page.getByText("Participant 1")).toBeVisible();
     await expect(page.getByLabel("Persona represented by Participant 1")).toHaveCount(0);

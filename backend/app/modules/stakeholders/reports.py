@@ -343,7 +343,10 @@ def _load_stakeholder_rows(db: Session, req: ReportContext, projects: list[Proje
     owners = principal_labels(db, [principal_ref(r.version.owner_type, r.version.owner_id) for r in rows])
     for row in rows:
         row.owner = principal_text(label_of(owners, row.version.owner_type, row.version.owner_id))
-    rows.sort(key=lambda r: (r.branch_key if group_by else (0, ""), r.project.name.lower(), r.version.name.lower()))
+    rows = req.order_records(
+        rows, code=lambda r: r.stakeholder.unique_code, title=lambda r: r.version.name,
+        group=lambda r: (f"{r.branch_key[0]:08d} {r.branch_key[1]} " if group_by else "") + r.project.name,
+    )
     return rows
 
 
@@ -383,7 +386,8 @@ def collect_power_interest_grid(db: Session, req: ReportContext) -> ReportResult
     tags = req.tag_text(db, STAKEHOLDER_ARTEFACT_TYPE, [r.stakeholder.id for r in rows])
 
     def ordered(subset: list[StakeholderRow]) -> list[StakeholderRow]:
-        return sorted(subset, key=lambda r: (
+        return sorted(subset, key=lambda r: (  # ranked: the most influential, then the most interested, first
+
             r.branch_key if by_branch else (0, ""), -r.influence_weight, -r.interest_weight,
             r.project.name.lower(), r.version.name.lower(),
         ))
@@ -473,7 +477,7 @@ class PersonaRow:
 def _load_persona_rows(
     db: Session, req: ReportContext, projects: list[Project], *, since: date | None = None
 ) -> list[PersonaRow]:
-    """The current Personas of `projects` with their evidence, ordered by project then name.
+    """The current Personas of `projects` with their evidence, in the report's record order (`ReportContext.order_records`).
 
     Args:
         db: Database session.
@@ -538,7 +542,7 @@ def _load_persona_rows(
     owners = principal_labels(db, [principal_ref(r.version.owner_type, r.version.owner_id) for r in rows])
     for row in rows:
         row.owner = principal_text(label_of(owners, row.version.owner_type, row.version.owner_id))
-    rows.sort(key=lambda r: (r.project.name.lower(), r.version.name.lower()))
+    rows = req.order_records(rows, code=lambda r: r.persona.unique_code, title=lambda r: r.version.name, group=lambda r: r.project.name)
     return rows
 
 
@@ -651,8 +655,8 @@ def collect_need_coverage(db: Session, req: ReportContext) -> ReportResult:
             select(Requirement.id, Requirement.unique_code, Requirement.project_id, RequirementVersion.name, RequirementVersion.status)
             .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
             .where(Requirement.project_id == project.id, Requirement.is_archived.is_(False), RequirementVersion.valid_to.is_(None))
-            .order_by(Requirement.unique_code)
         ).all()
+        requirements = req.order_records(requirements, code=lambda r: r.unique_code, title=lambda r: r.name)
         requirement_ids = {r.id for r in requirements}
         need_to_requirement = _links(
             db, gives, source_type=NEED_ARTEFACT_TYPE, source_ids=need_ids, target_type="requirement", target_ids=requirement_ids,
@@ -678,7 +682,10 @@ def collect_need_coverage(db: Session, req: ReportContext) -> ReportResult:
         ):
             if sid in names[st]:
                 holders[need_id].append(names[st][sid])
-        active = [n for n in needs if n.id in versions and versions[n.id].status != NeedStatus.RETIRED]
+        active = [pair[0] for pair in req.order_records(
+            [(n, versions[n.id].name) for n in needs if n.id in versions and versions[n.id].status != NeedStatus.RETIRED],
+            code=lambda pair: pair[0].unique_code, title=lambda pair: pair[1],
+        )]
         need_tags = req.tag_text(db, NEED_ARTEFACT_TYPE, [n.id for n in active])
         requirement_tags = req.tag_text(db, "requirement", [r.id for r in requirements])
         need_total += len(active)
@@ -765,7 +772,7 @@ def collect_engagement_staleness(db: Session, req: ReportContext) -> ReportResul
             overdue.append((r, None, None))
         elif (req.today - last_engaged).days > interval:
             overdue.append((r, last_engaged, (req.today - last_engaged).days - interval))
-    overdue.sort(key=lambda t: (
+    overdue.sort(key=lambda t: (  # ranked: the most influential, then the longest overdue, first
         t[0].branch_key if by_branch else (0, ""), -t[0].influence_weight, -(t[2] if t[2] is not None else 10**6),
         t[0].version.name.lower(),
     ))
@@ -776,7 +783,7 @@ def collect_engagement_staleness(db: Session, req: ReportContext) -> ReportResul
     stakeholder_tags = req.tag_text(db, STAKEHOLDER_ARTEFACT_TYPE, [r.stakeholder.id for r in rows])
     persona_rows = _load_persona_rows(db, req, req.eligible(db, PERSONA_SUBCOMPONENT))
     cutoff = req.today - timedelta(days=months * _DAYS_PER_MONTH)
-    stale_personas = sorted(
+    stale_personas = sorted(  # ranked: the heaviest weighted Persona first
         (p for p in persona_rows if p.last_engaged is None or p.last_engaged < cutoff),
         key=lambda p: (-(p.weight or 0.0), p.version.name.lower()),
     )
@@ -861,6 +868,7 @@ def collect_engagement_yield(db: Session, req: ReportContext) -> ReportResult:
         query = select(Engagement).where(Engagement.project_id == project.id, Engagement.engagement_date <= req.today)
         if since is not None:
             query = query.where(Engagement.engagement_date >= since)
+        # ranked: the most recent engagement first (a log)
         found = list(db.scalars(query.order_by(Engagement.engagement_date.desc(), Engagement.created_at.desc())))
         engagements += [(e, project) for e in found]
         ids = [e.id for e in found]
@@ -946,7 +954,7 @@ def collect_engagement_yield(db: Session, req: ReportContext) -> ReportResult:
                     _record_code(req, r.persona), r.version.name, r.project.name, str(len(r.engagement_ids)), str(r.anonymous),
                     str(r.findings), persona_tags.get(r.persona.id, ""),
                 ]
-                for r in sorted(persona_rows, key=lambda r: (-len(r.engagement_ids), r.version.name.lower()))
+                for r in sorted(persona_rows, key=lambda r: (-len(r.engagement_ids), r.version.name.lower()))  # ranked: the most engaged first
             ],
             note="Engagements that cover the Persona or have an anonymous participant tagged with it.",
         ),

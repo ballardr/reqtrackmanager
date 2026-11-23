@@ -92,6 +92,7 @@ from app.modules.registry import (
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
 from app.services.downloads import file_response, filename_safe
+from app.services.list_sort import natural_key
 from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
 from app.services.project_hierarchy import get_descendant_project_ids
@@ -299,6 +300,8 @@ class ReportContext:
         today: The reference date (UTC; injectable for tests).
         viewer_id: The person the report is run for (`None` when not known). A collector that names another
             record the project's members may not all see asks `can_view`, which fails closed without it.
+        record_order: How the report orders the records it lists, `"code"` or `"title"` (the report definition's own
+            setting, `ReportDefinition.record_order`); read only through `order_records`.
     """
 
     module_key: str
@@ -309,6 +312,7 @@ class ReportContext:
     all_org_projects: bool = False
     today: date = field(default_factory=lambda: datetime.now(UTC).date())
     viewer_id: uuid.UUID | None = None
+    record_order: Literal["code", "title"] = "code"
     _enabled: dict[tuple[uuid.UUID, str], bool] = field(default_factory=dict, repr=False)
 
     @property
@@ -345,6 +349,31 @@ class ReportContext:
             owner.code if owner is not None else project_code,
             own_project_code=self.root_project.code if self.root_project is not None else None,
             enforced=self.organization.enforce_code_everywhere,
+        )
+
+    def order_records(
+        self, records: Sequence[Any], *, code: Callable[[Any], str], title: Callable[[Any], str],
+        group: Callable[[Any], str] | None = None,
+    ) -> list[Any]:
+        """`records` in the order this report lists records: by code or by title, ascending, with digit runs by value
+        (`REQ-2` before `REQ-10`) and case ignored. The one place a report collector orders a list of records; a table
+        that is a ranking on purpose (highest score first, longest overdue first) orders itself and says so in a
+        `# ranked:` comment (`tests/test_report_record_order.py`).
+
+        Args:
+            records: The records to list.
+            code: The record's code as the report prints it (the raw `unique_code` is fine: the order is the same).
+            title: The record's title or name.
+            group: The group a record is listed under (a project's name in an organisation-wide report), whose order
+                is the report's own; records are ordered within each group. `None` for an ungrouped list.
+
+        Returns:
+            A new list; records equal under the order keep the other of code and title as the tie-break.
+        """
+        primary, secondary = (code, title) if self.record_order == "code" else (title, code)
+        return sorted(
+            records,
+            key=lambda r: (natural_key(group(r)) if group is not None else (), natural_key(primary(r)), natural_key(secondary(r))),
         )
 
     def org_code(self, unique_code: str) -> str:
@@ -950,7 +979,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         params = validated_params(live, kw)
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=project, params=params,
-            viewer_id=kw["current_user"].id,
+            viewer_id=kw["current_user"].id, record_order=live.record_order,
             projects=readable_projects(
                 db, kw["current_user"], organization=organization, root_project=project,
                 include_children=kw["include_children"],
@@ -993,7 +1022,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=None, params=params,
             all_org_projects=live.org_scope == "all_org_projects",
-            projects=projects, viewer_id=current_user.id,
+            projects=projects, viewer_id=current_user.id, record_order=live.record_order,
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
         return _respond(
@@ -1037,6 +1066,7 @@ def _build_org_breakdown_route(module_key: str, definition: ReportDefinition) ->
             ctx = ReportContext(
                 module_key=module_key, organization=organization, root_project=None, params=params,
                 all_org_projects=live.org_scope == "all_org_projects", projects=[project], viewer_id=current_user.id,
+                record_order=live.record_order,
             )
             result = live.collector(db, ctx)
             if result.eligible_projects == 0:

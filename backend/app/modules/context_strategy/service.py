@@ -355,6 +355,7 @@ def apply_new_version(
     rather than a separate identity-row column)."""
     now = datetime.now(UTC)
     current_version.valid_to = now
+    strategy.updated_at = now  # a new version is a change to the record: its Modified time moves
 
     new_version = StrategyVersion(
         strategy_id=strategy.id,
@@ -674,6 +675,7 @@ def apply_future_state_new_version(
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    future_state.updated_at = now  # a new version is a change to the record: its Modified time moves
 
     new_version = FutureStateVersion(
         future_state_id=future_state.id,
@@ -1653,6 +1655,7 @@ def apply_guiding_principle_new_version(
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    guiding_principle.updated_at = now  # a new version is a change to the record: its Modified time moves
     owner_type, owner_id = (
         _owner_columns(owner) if owner_explicitly_set else (current_version.owner_type, current_version.owner_id)
     )

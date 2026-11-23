@@ -39,7 +39,7 @@ test.describe("Risk Management: groups as owners", () => {
     await dialog.getByRole("option", { name: new RegExp(boardName) }).click();
     await expect(dialog.getByText(/^Organisation group/)).toBeVisible();
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Risk created.")).toBeVisible();
+    await expect(page.getByText(/Risk( \S+-\d+)? created\./)).toBeVisible();
 
     // --- The register names each group with its kind, rather than a person's name.
     const boardRow = page.locator("tr", { hasText: title });

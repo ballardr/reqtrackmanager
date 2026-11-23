@@ -85,6 +85,21 @@ export const ListOfChangeRequests: Story = {
   },
 };
 
+/** The list opens by code ascending and Sort by offers Created and Modified; choosing Modified newest first is sent to the server. */
+export const SortFieldOrdersByModifiedNewestFirst: Story = {
+  beforeEach: () => mockChangeRequestsListApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
+    await expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=unique_code&order=asc"));
+    const sortBy = canvas.getByRole("combobox", { name: "Sort by" });
+    await expect(within(sortBy).getAllByRole("option").map((o) => o.textContent)).toEqual(["Code", "Name", "Status", "Created", "Modified"]);
+    await userEvent.selectOptions(sortBy, "modified");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Order" }), "desc");
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=modified&order=desc")));
+  },
+};
+
 /** The shared list actions: Export downloads the list with the page's filters (the default "Active" view); a change request has no Import. */
 export const ExportIsOnTheTitleRowAndThereIsNoImport: Story = {
   beforeEach: () => {
@@ -95,7 +110,7 @@ export const ExportIsOnTheTitleRowAndThereIsNoImport: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/change_request/export?active_only=true"));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/change_request/export?active_only=true&sort=unique_code&order=asc"));
     await expect(canvas.queryByText("Import")).not.toBeInTheDocument();
   },
 };
@@ -180,14 +195,14 @@ export const SortByCreatedRefetchesWithSortParams: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "List view" }));
     await userEvent.click(canvas.getByRole("button", { name: "Created" }));
     await waitFor(() =>
-      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created_at&order=asc"))
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created&order=asc"))
     );
     const th = canvas.getByRole("button", { name: "Created" }).closest("th");
     await expect(th).toHaveAttribute("aria-sort", "ascending");
 
     await userEvent.click(canvas.getByRole("button", { name: "Created" }));
     await waitFor(() =>
-      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created_at&order=desc"))
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created&order=desc"))
     );
   },
 };
@@ -207,7 +222,7 @@ export const SearchRefetchesWithSearchParam: Story = {
 export const SubmitCreatesChangeRequest: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis();
-    spyOn(api, "post").mockResolvedValue({ id: "cr-new" } as never);
+    spyOn(api, "post").mockResolvedValue({ id: "cr-new", unique_code: "CR-007" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -225,7 +240,7 @@ export const SubmitCreatesChangeRequest: Story = {
     );
     // Principle 7 — every mutation ends with feedback (sixth-pass audit:
     // this page previously just silently re-rendered the list).
-    await expect(within(document.body).getByText("Change request created")).toBeInTheDocument();
+    await expect(within(document.body).getByText("Change request CR-007 created.")).toBeInTheDocument();
     // The Modal closes itself on a successful create (`setShowForm(false)`).
     await expect(dialog).not.toBeInTheDocument();
   },
@@ -236,7 +251,7 @@ export const SubmitCreatesChangeRequest: Story = {
 export const ModifyRequestSendsItsProposedLinks: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis({ links: true });
-    spyOn(api, "post").mockResolvedValue({ id: "cr-new" } as never);
+    spyOn(api, "post").mockResolvedValue({ id: "cr-new", unique_code: "CR-007" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

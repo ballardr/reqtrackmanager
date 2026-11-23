@@ -41,6 +41,7 @@ from app.services import tags as tag_service
 from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
 from app.services.custom_fields import validate_custom_field_values
 from app.services.external_reference_surfaces import reference_clause
+from app.services.list_sort import apply_direction, code_order_columns, instant, text_order_column
 from app.services.lookups import present, project_or_404
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import lock_project_for_update, lock_row_for_update
@@ -272,6 +273,7 @@ def apply_new_version(
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    requirement.updated_at = now  # a new version is a change to the record: its Modified time moves
 
     new_version = RequirementVersion(
         requirement_id=requirement.id,
@@ -464,7 +466,8 @@ class ListRow:
     stage filter and the component/category order are applied in SQL instead of read back.
 
     Attributes:
-        id / project_id / unique_code / created_at: The identity row's values (`project_id` is the project asked for).
+        id / project_id / unique_code / created_at / updated_at: The identity row's values (`project_id` is the project
+            asked for).
         name / status / sort_order: The current version's values the list filters and orders by.
         from_project_id / from_project_name / from_project_code: Set by `ProjectScope.collect` on a row of
             another project.
@@ -474,6 +477,7 @@ class ListRow:
     project_id: UUID
     unique_code: str
     created_at: datetime
+    updated_at: datetime
     name: str
     status: RequirementStatus
     sort_order: int
@@ -540,26 +544,50 @@ def _stage_range(db: Session, project_id: UUID, filters: RequirementFilters) -> 
     return {s.id for s in ordered[low:high + 1]}
 
 
-LIST_SORT_COLUMNS = ("unique_code", "name", "status", "created_at")
-"""The columns `GET .../requirements?sort=` accepts."""
+LIST_SORT_COLUMNS = ("unique_code", "name", "status", "created_at", "updated_at")
+"""The columns `GET .../requirements?sort=` accepts, in the list's own names (`services.list_sort.KEY_ALIASES` also
+lets a caller write `code`, `title`, `created` and `modified`)."""
+
+#: The list's canonical sort keys (`services.list_sort`) in `LIST_SORT_COLUMNS`' names.
+_CANONICAL_TO_COLUMN = {"code": "unique_code", "title": "name", "created": "created_at", "modified": "updated_at"}
+
+
+def list_sort_column(sort: str | None) -> str | None:
+    """`sort` as one of `LIST_SORT_COLUMNS` (a canonical key such as `title` is translated), or `None` when it is neither."""
+    if sort is None:
+        return None
+    column = _CANONICAL_TO_COLUMN.get(sort, sort)
+    return column if column in LIST_SORT_COLUMNS else None
+
+
+def list_row_sort_value(row: ListRow, column: str) -> Any:
+    """The value a `ListRow` is ordered by for `column` (one of `LIST_SORT_COLUMNS`): the order a widened scope
+    applies in Python after joining several projects' rows, the same as the database's order for one project."""
+    if column == "status":
+        return row.status.value
+    if column in ("created_at", "updated_at"):
+        return instant(getattr(row, column))
+    return getattr(row, column)
 
 
 def _sql_order(sort: str | None, descending: bool) -> list:
     """The ORDER BY for a list: the project's component, category and manual order when `sort` is None, else one
     column. Text is ordered by its lower-cased bytes (`COLLATE "C"`, the same order as Python's `str.lower()`
-    comparison), never the database's locale, so the order does not depend on the server's collation. The
-    creation time and id break ties so a page is stable."""
+    comparison), never the database's locale, so the order does not depend on the server's collation, and a code by
+    its prefix and then its number (`REQ-2` before `REQ-10`). The creation time and id break ties so a page is stable."""
     keys: list[Any]
-    if sort is None:
+    column_key = list_sort_column(sort)
+    if column_key is None:
         keys = [ProjectComponent.sort_order, ProjectCategory.sort_order, RequirementVersion.sort_order]
     else:
-        column = {
-            "unique_code": func.lower(Requirement.unique_code).collate("C"),
-            "name": func.lower(RequirementVersion.name).collate("C"),
-            "status": cast(RequirementVersion.status, String).collate("C"),
-            "created_at": Requirement.created_at,
-        }[sort]
-        keys = [column.desc() if descending else column]
+        columns: Any = {
+            "unique_code": code_order_columns(Requirement.unique_code),
+            "name": [text_order_column(RequirementVersion.name)],
+            "status": [cast(RequirementVersion.status, String).collate("C")],
+            "created_at": [Requirement.created_at],
+            "updated_at": [Requirement.updated_at],
+        }[column_key]
+        keys = apply_direction(columns, descending)
     return [*keys, Requirement.created_at, Requirement.id]
 
 
@@ -661,7 +689,7 @@ def filter_requirement_rows(
         query = query.outerjoin(RequirementVersion, and_(
             RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
         ))
-        if sort is None:
+        if list_sort_column(sort) is None:
             query = query.join(ProjectComponent, ProjectComponent.id == Requirement.component_id).join(
                 ProjectCategory, ProjectCategory.id == Requirement.category_id,
             )
@@ -680,7 +708,7 @@ def filter_requirement_rows(
     # A keyword narrows in Python, so the page is cut after it; every other filter is already in the query.
     paged_in_sql = not filters.keyword
     query = joined(select(
-        Requirement.id, Requirement.unique_code, Requirement.created_at,
+        Requirement.id, Requirement.unique_code, Requirement.created_at, Requirement.updated_at,
         RequirementVersion.name, RequirementVersion.status, RequirementVersion.sort_order,
     )).order_by(*_sql_order(sort, descending))
     if paged_in_sql and limit is not None:

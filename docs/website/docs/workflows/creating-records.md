@@ -15,7 +15,7 @@ flowchart TD
     S --> R["The record exists; its tags and links are applied"]
 ```
 
-Reading the diagram: you fill in fields top to bottom, optionally tag and link the new record in the same visit, then save. The tags and links are applied just after the record is created, so the record and its relationships arrive together.
+Reading the diagram: you fill in fields top to bottom, optionally tag and link the new record in the same visit, then save. The tags and links are applied just after the record is created, so the record and its relationships arrive together. When it is saved, the confirmation names the record by its code (for example *Risk RSK-007 created*) with an **Open** button that names the code (*Open RSK-007*), so you can reach it even when the list's [sort or a filter](../core-features/search-filtering-and-view-mode.md#sorting-a-list) keeps it off the rows in view.
 
 ## Required fields
 

@@ -32,8 +32,9 @@ import {
 } from "../api/types";
 import { useOrgLabel, useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
-import { toErrorMessage, useToast } from "../context/ToastContext";
+import { toErrorMessage } from "../context/ToastContext";
 import { useCommitTags } from "../hooks/useCommitTags";
+import { useCreatedToast } from "../hooks/useCreatedToast";
 import { useRecordCode } from "../hooks/useRecordCode";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 import { CustomFieldsForm } from "./CustomFieldsForm";
@@ -82,8 +83,8 @@ export function ChangeRequestCreateModal({
 }) {
   const strings = useStrings();
   const recordCode = useRecordCode();
-  const { showToast } = useToast();
   const commitTags = useCommitTags(projectId, "change_request");
+  const announceCreated = useCreatedToast(projectId, "change_request");
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
 
@@ -249,7 +250,7 @@ export function ChangeRequestCreateModal({
           proposed_links: proposedLinksPayload(),
         });
       }
-      showToast(strings.changeRequests.created);
+      announceCreated(strings.changeRequests.recordLabel, created);
       await commitTags(created.id, tags);
       onCreated(created.id);
       onClose();

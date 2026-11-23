@@ -2065,6 +2065,7 @@ export interface ChangeRequest extends ProjectScopedRow {
   decided_by: string | null;
   decision_note: string;
   created_at: string;
+  updated_at: string;
   is_subscribed: boolean;
   comment_count: number;
   requires_approval: boolean;

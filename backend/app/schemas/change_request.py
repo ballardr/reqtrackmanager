@@ -176,6 +176,7 @@ class ChangeRequestOut(ProjectScopedRow):
     decided_by: UUID | None
     decision_note: str
     created_at: datetime
+    updated_at: datetime
     is_subscribed: bool = False
     # Derived list-view indicators (mock's card "badges"), computed at read time.
     comment_count: int = 0

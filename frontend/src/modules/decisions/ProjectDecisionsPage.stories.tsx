@@ -167,13 +167,35 @@ export const ExportCarriesThePageFilters: Story = {
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
     await waitFor(() =>
-      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/decision/export?search=postgres&mine=true&open_only=true`),
+      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/decision/export?search=postgres&mine=true&open_only=true&sort=unique_code&order=asc`),
     );
   },
 };
 
 export const LightTheme: Story = { ...ListsDecisions };
 export const DarkTheme: Story = { ...ListsDecisions, globals: { theme: "dark" } };
+
+/** Sort by offers Modified; choosing it with Descending puts the decision changed last at the top and goes to the Export. */
+export const SortFieldOrdersByModifiedAndTheExportFollows: Story = {
+  beforeEach: () => {
+    mockPageApis([
+      decision({ id: "decision-old", unique_code: "DEC-001", title: "Older decision", status: "draft", is_locked: false, updated_at: "2026-01-01T09:00:00Z" }),
+      decision({ id: "decision-new", unique_code: "DEC-002", title: "Newer decision", status: "draft", is_locked: false, updated_at: "2026-11-01T09:00:00Z" }),
+    ]);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code,title\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Decisions" });
+    const codes = () => within(table).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
+    await expect(codes()).toEqual(["DEC-001", "DEC-002"]);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Sort by" }), "modified");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Order" }), "desc");
+    await waitFor(() => expect(codes()).toEqual(["DEC-002", "DEC-001"]));
+    await chooseExport(canvas, "CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("sort=modified&order=desc")));
+  },
+};
 
 /** The Title header orders the decisions, ascending then descending. */
 export const TitleHeaderSortsTheDecisions: Story = {

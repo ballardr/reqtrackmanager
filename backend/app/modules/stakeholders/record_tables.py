@@ -430,6 +430,7 @@ def _may_manage_org_personas(db: Session, user: User, organization_id: uuid.UUID
 
 
 PERSONA_TABLE = RecordTableProvider(
+    title_column="name",
     label="Personas",
     columns=_persona_columns,
     list_records=_list_personas,
@@ -629,6 +630,7 @@ def _may_manage_org_stakeholders(db: Session, user: User, organization_id: uuid.
 
 
 STAKEHOLDER_TABLE = RecordTableProvider(
+    title_column="name",
     label="Stakeholders",
     columns=_stakeholder_columns,
     list_records=_list_stakeholders,
@@ -764,6 +766,7 @@ def _may_manage_org_groups(db: Session, user: User, organization_id: uuid.UUID) 
 
 
 GROUP_TABLE = RecordTableProvider(
+    title_column="name",
     label="Stakeholder groups",
     columns=_group_columns,
     list_records=_list_groups,
@@ -843,6 +846,7 @@ def _may_manage_needs(db: Session, user: User, project_id: uuid.UUID) -> bool:
 
 
 NEED_TABLE = RecordTableProvider(
+    title_column="name",
     label="Stakeholder needs",
     columns=_need_columns,
     list_records=_list_needs,

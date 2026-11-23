@@ -18,7 +18,6 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { rowProjectId } from "../../api/projectScope";
 import type { ActionMenuItem } from "../../components/ActionMenu";
 import { Badge } from "../../components/Badge";
-import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
@@ -38,7 +37,9 @@ import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { sortRows } from "../../utils/sortRows";
@@ -74,7 +75,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [sort, setSort] = useUrlSort<string>(ELEMENT_SORT_KEYS);
+  const listSort = useListSort("elements", ELEMENT_SORT_KEYS, "code");
 
   const [refreshKey, setRefreshKey] = useState(0);
   const folders = useFolderListControls({ projectId }, "element", "elements", () => setRefreshKey((k) => k + 1));
@@ -116,7 +117,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
   const rows = useMemo(() => [...(elements ?? []), ...shared], [elements, shared]);
   const filtered = useMemo(() => rows.filter((e) => matches(e, openOnly)), [rows, matches, openOnly]);
   const parentName = (e: ArchitectureElement) => rows.find((p) => p.id === e.parent_id)?.name ?? (e.parent_id ? "—" : "");
-  const sorted = sortRows(filtered, sort, elementSortValues(parentName));
+  const sorted = sortRows(filtered, listSort.sort, elementSortValues(parentName));
   const tree = useMemo(() => buildElementTree(filtered), [filtered]);
 
   if (!projectId) return null;
@@ -135,6 +136,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
     if (openOnly) params.set("open_only", "true");
     folders.addParams(params);
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -197,6 +199,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
             {folders.panel}
             <ProjectScopeFilter scope={projectScope} />
             <TagFilterField projectId={projectId} filter={tagFilter} />
+            <SortField list={listSort} columns={columns} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -217,7 +220,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
                 selected: folders.selected, onChange: folders.setSelected, label: (e) => `Select ${e.unique_code}`,
                 selectable: (e) => e.project_id === projectId, allLabel: "Select all elements",
               }}
-              sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
+              sort={listSort.sort} onSort={listSort.onHeaderSort}
               placements={{ projectId, artefactType: "architecture_element", rowId: (e) => e.id }}
               rowHref={rowHref} emptyState={emptyState}
             />

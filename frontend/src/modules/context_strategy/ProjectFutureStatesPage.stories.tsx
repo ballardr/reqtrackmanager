@@ -105,7 +105,7 @@ export const ExportCarriesThePageFilters: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/future_state/export?roadmap_only=true&target_passed_only=true"));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/future_state/export?roadmap_only=true&target_passed_only=true&sort=code&order=asc"));
   },
 };
 

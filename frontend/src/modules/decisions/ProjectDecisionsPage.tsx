@@ -42,11 +42,10 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionFormModal } from "./DecisionFormModal";
 import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
@@ -56,10 +55,13 @@ import { Badge } from "../../components/Badge";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
-import { sortRows } from "../../utils/sortRows";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows, TIME_SORT_VALUES } from "../../utils/sortRows";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -70,15 +72,15 @@ import { addSharedListFilters } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
 
-const DECISION_SORT_KEYS = ["unique_code", "title", "type", "status", "owner"] as const;
+const DECISION_SORT_KEYS = ["unique_code", "title", "type", "status", "owner", ...TIME_SORT_KEYS] as const;
 
 export function ProjectDecisionsPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "decision");
   const commitTags = useCommitTags(projectId ?? "", "decision");
+  const announceCreated = useCreatedToast(projectId ?? "", "decision");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -94,7 +96,7 @@ export function ProjectDecisionsPage() {
   const [decisionTypeFilter, setDecisionTypeFilter] = useUrlText("type");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const [ownedByMe, setOwnedByMe] = useUrlFlag("mine");
-  const [sort, setSort] = useUrlSort<string>(DECISION_SORT_KEYS);
+  const listSort = useListSort("decisions", DECISION_SORT_KEYS, "unique_code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -142,6 +144,7 @@ export function ProjectDecisionsPage() {
     if (ownedByMe) params.set("mine", "true");
     if (openOnly) params.set("open_only", "true");
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -153,7 +156,8 @@ export function ProjectDecisionsPage() {
   // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
   const emptyBecauseOfOpenOnly = openOnly && rows.length === 0 && decisions.length > 0;
   const typeName = (d: Decision) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? null;
-  const sorted = sortRows(rows, sort, {
+  const sorted = sortRows(rows, listSort.sort, {
+    ...TIME_SORT_VALUES,
     unique_code: (d) => d.unique_code,
     title: (d) => d.title,
     type: typeName,
@@ -211,6 +215,7 @@ export function ProjectDecisionsPage() {
             <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} codeKey="unique_code" />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -219,8 +224,8 @@ export function ProjectDecisionsPage() {
           ariaLabel="Decisions"
           columns={columns}
           rows={sorted}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(d) => d.id}
           placements={{ projectId, artefactType: "decision", rowId: (d) => d.id }}
           onRowClick={setSelected}
@@ -250,7 +255,7 @@ export function ProjectDecisionsPage() {
             setCreateError(null);
             try {
               const created = await decisionsApi.createDecision(projectId, values);
-              showToast("Decision created.");
+              announceCreated("Decision", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

@@ -925,11 +925,39 @@ flowchart TD
 
 *Why:* sorting only the rows currently loaded from a paginated list would silently misrepresent the true full-list order — "sorted by name, ascending" has to mean sorted across every match, not just the first page fetched so far. A list that already loads everything up front has no such risk, so a client-side sort is both correct and avoids an unnecessary round-trip. See [docs/plans/completed/ux-audit-2026-08.md](plans/completed/ux-audit-2026-08.md#table-sorting-manual-reorder-only) for which of the app's tables landed on which side of this split, and `docs/decisions.md` for the reasoning per table.
 
-**Rule (2026-11-13, Decided by: User).** Every `DirectoryTable` list makes its naturally ordered columns sortable and keeps the sort in the URL (`useUrlSort`); a panel embedded in another page keeps it local (`hooks/useTableSort.ts`) so it leaves the host page's parameters alone; a list that pages sorts on the server. A list without it is a defect, not a style choice; an exemption needs a reason in `docs/decisions.md`.
+**Rule (2026-11-13, Decided by: User).** Every `DirectoryTable` list makes its naturally ordered columns sortable and keeps the sort in the URL; a panel embedded in another page keeps it local so it leaves the host page's parameters alone; a list that pages sorts on the server. A list of records keeps its sort in `useListSort` and draws a `SortField` beside its filters (see [Pattern: list sort](#pattern-list-sort)); `useUrlSort` and `hooks/useTableSort.ts` remain for a table that is not a list of records. A list without it is a defect, not a style choice; an exemption needs a reason in `docs/decisions.md`.
 
 **Checked** by `scripts/check_sortable_columns.py` (pinned by `backend/tests/test_sortable_columns.py`): a file that renders a `DirectoryTable` with no `sortable` column fails (a table passing `onSort` counts, its columns being marked where they are built). `scripts/sortable_columns_baseline.json` is empty and a file can never join it; a table with no natural order (a fixed key-value table) is named with its reason in the script's `NO_NATURAL_ORDER`. A client-side sort uses `utils/sortRows` (text by locale and digit value, numbers numerically, an empty value last when ascending).
 
 Sortable columns are the obvious ones only — a name/title, a status, an ID/code, a created/modified date, a priority where one exists — never a column with no natural order (an actions column, a badge-only column). This used to note that Org Admin's Groups section and Project Admin's Groups tab were accordion-of-cards, not `<th>`-based columns, so this pattern simply didn't apply to them — both are real `DirectoryTable`s now (Phase B, 2026-08-31 follow-up UX batch), each with a sortable Name column and a Members count column that deliberately stays unsorted (no natural order for a bare count). Both list endpoints (`GET /orgs/{id}/groups`, `GET /projects/{id}/groups`) already page via `limit`/`offset`, so Name sort took the "backend `order` param, header click refetches" branch below rather than a client-side sort of only the loaded page — the same choice Org Admin's Users table made.
+
+## Pattern: list sort
+
+*(Platform review 2026-11-19, Phase 52, 2026-11-23.)*
+
+Every list of a registered record type puts a **Sort by** and an **Order** field in its filter panel, and its column headers and those fields are one state. The choices are the table's sortable columns, then **Created** and **Modified**; the order is **Code ascending** (numbers by value, `REQ-2` before `REQ-10`) until a person chooses another.
+
+```mermaid
+flowchart LR
+  URL["Address: sort, order"] --> E["Effective sort"]
+  PREF["Person's last choice for this list<br/>(ui_preferences list_sort_*)"] --> E
+  DEF["Default: Code, ascending"] --> E
+  E --> H["Column headers (arrow)"]
+  E --> F["Sort by and Order fields"]
+  E --> X["Export, bulk edit grid, record-list report"]
+```
+
+Read right to left in priority: the address wins (a shared link opens in its sender's order), then the person's last choice for that list, then the default. The effective sort is never empty, so the table always shows what orders it. A header click moves the fields and a field moves the headers: another column ascending, the same column descending, then the default. **Reset to default order** is drawn only while a sort is chosen.
+
+- **One mechanism.** `useListSort(listKey, keys, defaultKey, local?)` holds the state (`hooks/useListSort.ts`), `SortField` draws the fields (`components/SortField.tsx`), `TIME_SORT_VALUES` and `TIME_SORT_KEYS` give every list Created and Modified, and `sortRows` orders a list that holds its whole set in the browser. A paged list (Requirements, Change requests) sends `sort` and `order` to the server. A panel embedded in another page passes `local` so the sort leaves the host page's parameters alone.
+- **Modified** is the record's own last change, including a new version: every `apply_*_new_version` moves the record's `updated_at`.
+- **Export follows the sort.** The list's Export, bulk edit grid and record-list report receive `sort` and `order` (`addSortParams`) and order their rows with the same rule (`services/list_sort.py`); a key a type does not offer is ignored and the default applies.
+- **The Requirements list keeps its component and category order as its default** (requirement C-G-04). It is offered as the choice *Component and category*, has no direction, and sends the server no `sort`; every other choice is a column, ascending or descending.
+- **Only the code, title, created and modified keys are common.** The other choices are the table's own sortable columns; a list does not invent a sort key that no column shows.
+- **Exempt lists** have an order that is part of what they show: a standard's assessments in its clause order, a tree of groups the person arranges. They are named with the reason in `scripts/check_list_sort.py`, and a new list does not join them.
+- **After a create, the confirmation names the record by its code and offers *Open <code>*** (`useCreatedToast`), because the order or a filter may keep a new record off the visible rows.
+
+**Checked** by `scripts/check_list_sort.py` (pinned by `backend/tests/test_list_sort_check.py`): a file that draws a `FilterPanel` and the shared list Export without a `SortField` fails.
 
 ## Pattern: detail page with a links aside
 

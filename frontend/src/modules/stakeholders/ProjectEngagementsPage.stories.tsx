@@ -122,7 +122,7 @@ export const ExportCarriesTheFilters: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/engagement/export?retention_due=true&type=Email`));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/engagement/export?retention_due=true&type=Email&sort=code&order=asc`));
   },
 };
 
@@ -149,7 +149,7 @@ export const LogEngagementPostsAndToasts: Story = {
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`${BASE}/engagements`, expect.objectContaining({ title: "Kick-off call", channel: "call" })),
     );
-    await waitFor(() => expect(within(document.body).getByText("Engagement logged.")).toBeInTheDocument());
+    await waitFor(() => expect(within(document.body).getByText(/^Engagement .+ logged\.$/)).toBeInTheDocument());
   },
 };
 

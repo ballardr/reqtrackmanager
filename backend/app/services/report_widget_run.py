@@ -72,7 +72,7 @@ def widget_context(base: ReportContext, widget: WidgetInfo, params: dict[str, An
     return ReportContext(
         module_key=widget.module_key, organization=base.organization, projects=list(base.projects),
         root_project=base.root_project, params=params, all_org_projects=False, today=base.today,
-        viewer_id=base.viewer_id,
+        viewer_id=base.viewer_id, record_order=widget.definition.record_order,
     )
 
 

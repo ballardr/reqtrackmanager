@@ -186,6 +186,31 @@ export const SortByNameRefetchesWithSortParams: Story = {
   },
 };
 
+/**
+ * Sort by and Order in the filter panel: the list opens in the component and category order the requirements document
+ * sets (no direction, no `sort` sent); choosing Created, Descending puts the newest requirement first, sent to the
+ * server, and the column headers follow the same state.
+ */
+export const SortFieldPutsTheNewestRequirementFirst: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    const sortBy = canvas.getByRole("combobox", { name: "Sort by" });
+    const order = canvas.getByRole("combobox", { name: "Order" });
+    await expect(sortBy).toHaveValue("component");
+    await expect(order).toBeDisabled();
+    await expect(api.getPage).toHaveBeenLastCalledWith(expect.not.stringContaining("sort="));
+    await userEvent.selectOptions(sortBy, "created");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Order" }), "desc");
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created&order=desc")));
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Reset to default order" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.not.stringContaining("sort=")));
+    await expect(canvas.getByRole("combobox", { name: "Sort by" })).toHaveValue("component");
+  },
+};
+
 export const FilterByStatusBadge: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -458,7 +483,9 @@ export const CreateRequirementShowsToast: Story = {
         expect.objectContaining({ name: "Reset password via SMS" })
       )
     );
-    await expect(within(document.body).getByText("Requirement created")).toBeInTheDocument();
+    // The confirmation names the new record by its code and offers Open (hooks/useCreatedToast.ts).
+    await expect(within(document.body).getByText("Requirement AUTH-LOG-099 created.")).toBeInTheDocument();
+    await expect(within(document.body).getByRole("button", { name: "Open AUTH-LOG-099" })).toBeInTheDocument();
   },
 };
 

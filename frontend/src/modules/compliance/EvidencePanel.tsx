@@ -31,15 +31,19 @@ import { EvidenceFormModal } from "./EvidenceFormModals";
 import { COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL, type ComplianceEvidence } from "./types";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useTableSort } from "../../hooks/useTableSort";
-import type { SortValue } from "../../utils/sortRows";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows, TIME_SORT_VALUES, type SortValue } from "../../utils/sortRows";
 import { evidencePath } from "./paths";
 
 const NO_EVIDENCE: ComplianceEvidence[] = [];
 
 /** Sortable value of each sortable column; the same text the cell shows, so the order matches what is read. */
+const EVIDENCE_SORT_KEYS = ["title", "code", "issuing_organisation", "expiry_date", "validity", "status", ...TIME_SORT_KEYS] as const;
 const EVIDENCE_SORT_VALUES: Record<string, (e: ComplianceEvidence) => SortValue> = {
+  ...TIME_SORT_VALUES,
   title: (e) => e.title,
   code: (e) => e.unique_code,
   issuing_organisation: (e) => e.issuing_organisation,
@@ -57,6 +61,7 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId, "compliance_evidence");
   const commitTags = useCommitTags(projectId, "compliance_evidence");
+  const announceCreated = useCreatedToast(projectId, "compliance_evidence");
   const [evidence, setEvidence] = useState<ComplianceEvidence[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -79,14 +84,15 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (includeArchived) params.set("include_archived", "true");
-    return params;
+    return addSortParams(params, listSort.sort);
   }
 
-  const table = useTableSort(evidence ?? NO_EVIDENCE, EVIDENCE_SORT_VALUES);
+  const listSort = useListSort("compliance_evidence", EVIDENCE_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(evidence ?? NO_EVIDENCE, listSort.sort, EVIDENCE_SORT_VALUES);
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (evidence === null) return <Spinner />;
 
-  const filtered = table.rows
+  const filtered = sortedRows
     .filter((e) => includeArchived || !e.is_archived)
     .filter((e) => !search || `${e.unique_code} ${e.title}`.toLowerCase().includes(search.toLowerCase()));
 
@@ -112,8 +118,8 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
           ariaLabel="Compliance evidence"
           columns={columns}
           rows={filtered}
-          sort={table.sort}
-          onSort={table.onSort}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(e) => e.id}
           placements={{ projectId, artefactType: "compliance_evidence", rowId: (e) => e.id }}
           rowHref={(e) => evidencePath(projectId, e.id)}
@@ -123,6 +129,7 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
           sectionKey="compliance.evidence" total={evidence.length} matching={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder="Search evidence…" searchAriaLabel="Search evidence"
         >
+          <SortField list={listSort} columns={columns} titleKey="title" />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -137,7 +144,7 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
               for (const file of files) {
                 await complianceApi.uploadEvidenceAttachment(projectId, created.id, file);
               }
-              showToast(files.length > 0 ? "Evidence created and file(s) attached." : "Evidence created.");
+              announceCreated("Evidence", created, files.length > 0 ? "created and file(s) attached" : "created");
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

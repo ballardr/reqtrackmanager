@@ -67,7 +67,7 @@ test.describe("System Architecture: the connection type tree", () => {
       await selectOptionContaining(dialog.getByLabel("Target element"), sensor);
       await chooseType(page, dialog, "Serial bus", "serial");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
       await expect(page.locator("tr", { hasText: sensor }).getByText("Serial bus", { exact: true })).toBeVisible();
     });
 
@@ -88,7 +88,7 @@ test.describe("System Architecture: the connection type tree", () => {
       await selectOptionContaining(dialog.getByLabel("Target element"), flash);
       await chooseType(page, dialog, "SPI", "spi");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
     });
 
     await test.step("filtering on the group finds both, filtering on a member finds one", async () => {

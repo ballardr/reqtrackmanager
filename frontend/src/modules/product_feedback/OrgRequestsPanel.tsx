@@ -20,7 +20,7 @@ import { FilterPanel } from "../../components/FilterPanel";
 import { ListActions } from "../../components/ListActions";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
-import { cycleSort } from "../../components/sortState";
+import { SortField } from "../../components/SortField";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { orgRequestApi } from "./api";
@@ -101,8 +101,8 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
           ariaLabel="Request inbox"
           columns={columns}
           rows={sortRequests(filtered, filters)}
-          sort={filters.sort}
-          onSort={(key) => filters.setSort((current) => cycleSort(current, key))}
+          sort={filters.listSort.sort}
+          onSort={filters.listSort.onHeaderSort}
           rowKey={(r) => r.id}
           rowHref={(r) => `/orgs/${orgId}/modules/product_feedback/requests/${r.id}`}
           emptyState={<p className="text-muted">{requests.length > 0 ? "No requests match these filters." : "The inbox is empty."}</p>}
@@ -113,6 +113,7 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
           searchPlaceholder="Search the inbox…" searchAriaLabel="Search the request inbox"
         >
           <RequestFilterFields filters={filters} scheme={scheme} requests={requests} />
+          <SortField list={filters.listSort} columns={columns} titleKey="title" />
         </FilterPanel>
       </div>
 

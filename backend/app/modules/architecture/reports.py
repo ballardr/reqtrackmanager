@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureConnectionType, ArchitectureElement
 from app.modules.architecture.realisations import realisations_of
-from app.modules.architecture.report_support import chain_of, element_text
+from app.modules.architecture.report_support import chain_of, element_text, ordered_element_ids
 from app.modules.architecture.reports_allocation import DEFINITION as ALLOCATION_COVERAGE
 from app.modules.architecture.reports_drawing import DEFINITIONS as DRAWING_REPORTS
 from app.modules.architecture.reports_structure import DEFINITIONS as STRUCTURE_REPORTS
@@ -79,8 +79,9 @@ def collect_boundary_coverage(db: Session, req: ReportContext) -> ReportResult:
             select(ArchitectureConnection).where(
                 ArchitectureConnection.project_id == project.id, ArchitectureConnection.is_archived.is_(False),
                 ArchitectureConnection.status.not_in(INACTIVE_STATUSES),
-            ).order_by(ArchitectureConnection.unique_code)
+            )
         ))
+        connections = req.order_records(connections, code=lambda c: c.unique_code, title=lambda c: c.name)
         for_end = {e for c in connections for e in (c.source_element_id, c.target_element_id)} - set(elements)
         # An end that is another owner's element has no known parent chain here; it is its own root.
         parents.update({i: None for i in for_end})
@@ -101,7 +102,7 @@ def collect_boundary_coverage(db: Session, req: ReportContext) -> ReportResult:
                 if crossed in elements:
                     scopes.setdefault(crossed, []).append((c, c.source_element_id if crossed in source_chain else c.target_element_id))
         has_children = {e.parent_id for e in elements.values() if e.parent_id is not None}
-        for scope_id in sorted(scopes, key=lambda i: elements[i].unique_code):
+        for scope_id in ordered_element_ids(req, list(scopes), elements):
             scope = elements[scope_id]
             if wanted:
                 if wanted not in (scope.unique_code.casefold(), scope.name.casefold()):

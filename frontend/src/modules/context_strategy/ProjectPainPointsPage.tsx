@@ -54,8 +54,7 @@ import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import { SettingsPopoverButton } from "../../components/SettingsPopoverButton";
 import { Spinner } from "../../components/Spinner";
 import { ViewToggle, useViewMode } from "../../components/ViewToggle";
-import { cycleSort } from "../../components/sortState";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { projectPainPointApi } from "./api";
@@ -72,8 +71,13 @@ import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows } from "../../utils/sortRows";
+import { PAIN_POINT_SORT_KEYS, PAIN_POINT_SORT_VALUES } from "./contextStrategySort";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -88,15 +92,14 @@ const SCHEME_KEY = "pain_point";
 const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
 const INTENTIONAL_FILTERS = ["hide", "only"] as const;
 const SCORED_FILTERS = ["yes", "no"] as const;
-const SORT_KEYS = ["score"] as const;
 
 export function ProjectPainPointsPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "pain_point");
   const commitTags = useCommitTags(projectId ?? "", "pain_point");
+  const announceCreated = useCreatedToast(projectId ?? "", "pain_point");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   // Where the grid puts its Columns / Discard / Save controls: the row of the view toggle.
@@ -130,7 +133,7 @@ export function ProjectPainPointsPage() {
   const [rollupParam, setRollupParam] = useUrlChoice("rollup", Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]);
   const rollup = rollupParam || DEFAULT_ROLLUP;
   const [scoring, setScoring] = useState<PainPointScoringList | null>(null);
-  const [sort, setSort] = useUrlSort<string>(SORT_KEYS);
+  const listSort = useListSort("pain_points", PAIN_POINT_SORT_KEYS, "code");
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -192,6 +195,7 @@ export function ProjectPainPointsPage() {
       params.set("rollup", rollup);
     }
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -218,13 +222,13 @@ export function ProjectPainPointsPage() {
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && painPoints.some((p) => matches(p, false));
 
   // Unscored items always sort last, in either direction.
-  const rows = sort?.key === "score"
+  const rows = listSort.sort.key === "score"
     ? [...filtered].sort((a, b) => {
         const [x, y] = [scoreOf(a), scoreOf(b)];
         if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
-        return sort.direction === "asc" ? x - y : y - x;
+        return listSort.sort.direction === "asc" ? x - y : y - x;
       })
-    : filtered;
+    : sortRows(filtered, listSort.sort, PAIN_POINT_SORT_VALUES);
 
   // Scoring is the manager tier, and so is editing a Pain Point: the same grant opens the grid.
   const canScore = scoringTargets?.can_score === true;
@@ -234,7 +238,7 @@ export function ProjectPainPointsPage() {
 
   const columns: DirectoryColumn<PainPoint>[] = [
     {
-      key: "title", label: "Title",
+      key: "title", label: "Title", sortable: true,
       render: (p) => (
         <>
           {p.title}
@@ -244,11 +248,11 @@ export function ProjectPainPointsPage() {
         </>
       ),
     },
-    { key: "code", label: "Code", render: (p) => <RecordCode code={p.unique_code} ownerProjectCode={p.from_project_code} /> },
-    { key: "type", label: "Type", render: (p) => p.pain_point_type_name },
-    { key: "priority", label: "Priority", render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
+    { key: "code", label: "Code", sortable: true, render: (p) => <RecordCode code={p.unique_code} ownerProjectCode={p.from_project_code} /> },
+    { key: "type", label: "Type", sortable: true, render: (p) => p.pain_point_type_name },
+    { key: "priority", label: "Priority", sortable: true, render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (p) => <Badge tone={PAIN_POINT_STATUS_TONE[p.status]}>{PAIN_POINT_STATUS_LABEL[p.status]}</Badge>,
     },
     {
@@ -335,6 +339,7 @@ export function ProjectPainPointsPage() {
             />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -356,8 +361,8 @@ export function ProjectPainPointsPage() {
             ariaLabel="Pain Points"
             columns={columns}
             rows={rows}
-            sort={sort}
-            onSort={(key) => setSort((current) => cycleSort(current, key))}
+            sort={listSort.sort}
+            onSort={listSort.onHeaderSort}
             rowKey={(p) => p.id}
             placements={{ projectId, artefactType: "pain_point", rowId: (p) => p.id }}
             onRowClick={(p) => navigate(`/projects/${rowProjectId(p, projectId)}/modules/context_strategy/pain-points/${p.id}`)}
@@ -385,7 +390,7 @@ export function ProjectPainPointsPage() {
             setCreateError(null);
             try {
               const created = await projectPainPointApi.create(projectId, values);
-              showToast("Pain Point created.");
+              announceCreated("Pain Point", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

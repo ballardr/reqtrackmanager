@@ -34,6 +34,7 @@ from app.services.audit import log_event
 from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
+from app.services.list_sort import natural_key
 from app.services.lookups import get_or_404, project_or_404
 from app.services.placements import requirement_places
 from app.services.rbac import require_project_view
@@ -103,7 +104,7 @@ def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list
                 category_sort_order=category.sort_order if category else 0,
                 same_as=own_code if place.alias_id is not None else "",
             ))
-    rows.sort(key=lambda r: r.unique_code)
+    rows.sort(key=lambda r: natural_key(r.unique_code))  # code order: this report has no ReportContext
     return rows
 
 

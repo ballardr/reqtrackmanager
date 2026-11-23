@@ -19,10 +19,9 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { GUIDING_PRINCIPLE_SORT_KEYS, GUIDING_PRINCIPLE_SORT_VALUES } from "./contextStrategySort";
 import { projectGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
@@ -31,8 +30,11 @@ import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePri
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
@@ -48,9 +50,9 @@ export function ProjectGuidingPrinciplesPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "guiding_principle");
   const commitTags = useCommitTags(projectId ?? "", "guiding_principle");
+  const announceCreated = useCreatedToast(projectId ?? "", "guiding_principle");
   const [project, setProject] = useState<Project | null>(null);
   const [guidingPrinciples, setGuidingPrinciples] = useState<GuidingPrinciple[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export function ProjectGuidingPrinciplesPage() {
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(GUIDING_PRINCIPLE_STATUS_LABEL) as GuidingPrincipleStatus[]);
   const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(GUIDING_PRINCIPLE_PRIORITY_LABEL) as GuidingPrinciplePriority[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(GUIDING_PRINCIPLE_SORT_KEYS);
+  const listSort = useListSort("guiding_principles", GUIDING_PRINCIPLE_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -92,6 +94,7 @@ export function ProjectGuidingPrinciplesPage() {
     if (search) params.set("search", search);
     if (includeArchived) params.set("include_archived", "true");
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -148,6 +151,7 @@ export function ProjectGuidingPrinciplesPage() {
             />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} codeKey="code" titleKey="name" />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -155,9 +159,9 @@ export function ProjectGuidingPrinciplesPage() {
         <DirectoryTable
           ariaLabel="Guiding Principles"
           columns={columns}
-          rows={sortRows(filtered, sort, GUIDING_PRINCIPLE_SORT_VALUES)}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
+          rows={sortRows(filtered, listSort.sort, GUIDING_PRINCIPLE_SORT_VALUES)}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(g) => g.id}
           placements={{ projectId, artefactType: "guiding_principle", rowId: (g) => g.id }}
           onRowClick={(g) => navigate(`/projects/${rowProjectId(g, projectId)}/modules/context_strategy/guiding-principles/${g.id}`)}
@@ -175,7 +179,7 @@ export function ProjectGuidingPrinciplesPage() {
             setCreateError(null);
             try {
               const created = await projectGuidingPrincipleApi.create(projectId, values);
-              showToast("Guiding Principle created.");
+              announceCreated("Guiding Principle", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

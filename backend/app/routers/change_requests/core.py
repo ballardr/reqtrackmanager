@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -51,6 +52,7 @@ from app.services.change_request_links import ProposedLinkProblem, check_propose
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.list_sort import canonical_key, instant, order_records
 from app.services.lookups import project_or_404
 from app.services.principals import principal_columns, principal_out, validate_principal
 from app.services.project_scope import ProjectScope
@@ -116,7 +118,7 @@ def _to_out(
         reason=version.reason,
         custom_fields=version.custom_fields,
         submitted_at=cr.submitted_at, decided_at=cr.decided_at, decided_by=cr.decided_by,
-        decision_note=cr.decision_note, created_at=cr.created_at,
+        decision_note=cr.decision_note, created_at=cr.created_at, updated_at=cr.updated_at,
         is_subscribed=(
             cr.id in facts.subscribed if facts else engagement.is_subscribed(db, current_user_id, "change_request", cr.id)
         ),
@@ -464,6 +466,21 @@ def create_change_request(
     return _to_out(db, cr, version, current_user.id)
 
 
+def _sort_value(item: ChangeRequestOut, sort: str) -> Any:
+    """What the list is ordered by for `sort` (a canonical key or the list's own name): a change request with no
+    proposed name (a modification that did not touch it) has no title and sorts last."""
+    key = canonical_key(sort)
+    if key == "title" or sort == "proposed_name":
+        return item.proposed_name
+    if key == "code":
+        return item.unique_code
+    if key == "created":
+        return instant(item.created_at)
+    if key == "modified":
+        return instant(item.updated_at)
+    return item.status.value
+
+
 @router.get("", response_model=list[ChangeRequestOut])
 def list_change_requests(
     project_id: UUID,
@@ -472,7 +489,7 @@ def list_change_requests(
     active_only: bool = False,
     target_stage_id: UUID | None = None,
     search: str | None = None,
-    sort: str | None = Query(None, pattern="^(proposed_name|status|created_at)$"),
+    sort: str | None = Query(None, pattern="^(proposed_name|title|unique_code|code|status|created_at|created|updated_at|modified)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -494,8 +511,9 @@ def list_change_requests(
     set. Ignored when `cr_status` is also given — an explicit single
     status is more specific than "any active status" and wins.
 
-    `sort` optionally sorts by `proposed_name`, `status`, or
-    `created_at`, `order` picks `asc` (default) or `desc`. Omitting `sort`
+    `sort` optionally sorts by `proposed_name` (`title`), `unique_code` (`code`; by prefix and then
+    number, so `CR-2` precedes `CR-10`), `status`, `created_at` (`created`) or `updated_at`
+    (`modified`), `order` picks `asc` (default) or `desc`. Omitting `sort`
     keeps the existing default (creation/query) order unchanged. Rows with
     no `proposed_name` (a MODIFY_REQUIREMENT change request that didn't
     touch the name — the list view falls back to the requirement's own
@@ -535,12 +553,7 @@ def list_change_requests(
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:
-        def _sort_value(item: ChangeRequestOut):
-            value = getattr(item, sort)
-            if isinstance(value, str):
-                value = value.lower()
-            return value or ""
-        out.sort(key=_sort_value, reverse=(order == "desc"))
+        out = order_records(out, lambda item: _sort_value(item, sort), descending=order == "desc")
 
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:

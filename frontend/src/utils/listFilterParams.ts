@@ -9,6 +9,8 @@
  */
 import { appendReferenceParams } from "../api/externalReferences";
 import { appendPlacementParams } from "../api/placements";
+import type { SortState } from "../components/sortState";
+import { addSortParams } from "../hooks/useListSort";
 import type { ProjectScopeState } from "../hooks/useProjectScope";
 import type { TagFilterState } from "../hooks/useTagFilter";
 
@@ -27,6 +29,17 @@ export function addSharedListFilters(params: URLSearchParams, tagFilter?: TagFil
   if (tagFilter && tagFilter.tags.length > 0) params.set("tag_mode", tagFilter.mode);
   if (projectScope?.widened) params.set("project_scope", projectScope.scope);
   return params;
+}
+
+/**
+ * `filterString`'s result with the list's sort added, for a list whose Export takes the same order the screen shows.
+ *
+ * @param filters Filter name to its current value (see `filterString`).
+ * @param sort The sort in force (`useListSort`).
+ * @returns The query string without a leading `?`.
+ */
+export function filterStringWithSort(filters: Record<string, string | boolean | undefined>, sort: SortState): string {
+  return addSortParams(new URLSearchParams(filterString(filters)), sort).toString();
 }
 
 /**

@@ -395,7 +395,7 @@ export const PersonasOnlyOffersTheirOwnExportWithTheFilters: Story = {
     await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Status"), "draft");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/persona/export?status=draft`));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/persona/export?status=draft&sort=code&order=asc`));
   },
 };
 
@@ -414,7 +414,7 @@ export const SeveralKindsOfferAnExportEach: Story = {
     }
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV", "Stakeholders");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder/export`));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder/export?sort=code&order=asc`));
   },
 };
 

@@ -26,6 +26,28 @@ flowchart LR
     D["Open the list from the navigation"] --> E["Top of the list, default filters"]
 ```
 
+## Sorting a list
+
+Every record list has a **Sort by** and an **Order** field in its filter panel, and the column headers sort the same way. **Sort by** offers the table's sortable columns, then **Created** and **Modified**; **Modified** is when the record was last changed, including a new version. Hover or focus the field's **(?)** to read what each choice orders by. The order is **Code, ascending** until you choose another, with the numbers read by value (`REQ-2` before `REQ-10`).
+
+- Click a column heading to sort by it ascending, click it again for descending, and a third time to return to the default; the fields follow the headings, and the other way round.
+- **Reset to default order** appears in the panel while a sort is chosen.
+- The sort is part of the page address, so a copied link opens in the same order, and your last choice for each list is remembered with your account and applies when you open the list again with no sort in the address.
+- The list's **Export**, **Download report** and bulk edit grid follow the sort, like the filters.
+- The **Requirements** list is sorted by component, then category, then the project's own order unless you choose otherwise: that order is the choice **Component and category**, which has no direction. Choose **Created** with **Descending** to put the newest requirement at the top.
+- A new record can be found at once: after you create a record from a list, the confirmation names it by its code (for example *Decision DEC-004 created*) and its button (**Open DEC-004**) goes straight to it, even when the sort or a filter keeps it off the visible rows.
+
+```mermaid
+flowchart LR
+    A["Sort in the address"] --> D["Sort in force"]
+    B["Your last choice for this list"] --> D
+    C["Code, ascending"] --> D
+    D --> E["Column headings, Sort by and Order"]
+    D --> F["Export, Download report, bulk edit grid"]
+```
+
+Read left to right in priority: the address wins, then your remembered choice, then the default.
+
 ## Hiding the filter panel
 
 Every list page with a filter panel has a round collapse button in the panel's **Filters** header. Collapsing it gives the list the full width; a **Filters** button beside the **List actions** menu on the title row brings it back. Collapsing never clears a filter, and the panel opens again on your next visit.

@@ -34,6 +34,7 @@ from app.modules.registry import RecordTableProvider, artefact_type_module
 from app.routers.record_tables import columns_out, import_result_out
 from app.schemas.record_tables import ImportResultOut, RecordColumnsOut
 from app.services.downloads import file_response, filename_safe
+from app.services.list_sort import ListSort, list_sort
 from app.services.rbac import check_pat_scope, require_org_access_and_module_enabled
 from app.services.record_list_report import MAX_DOCUMENT_ROWS, REPORT_KEY, collect
 from app.services.record_policy import tag_decisions
@@ -98,7 +99,7 @@ def org_record_columns(
 
 @router.get("/records/{record_type}/export")
 def export_org_records(
-    organization_id: UUID, record_type: str, request: Request,
+    organization_id: UUID, record_type: str, request: Request, sort_by: ListSort = Depends(list_sort),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> Response:
     """The organisation's own records as a CSV that re-imports (`POST .../import`), narrowed by the list's filters.
@@ -111,7 +112,7 @@ def export_org_records(
     """
     organization, provider = authorise(db, current_user, request, organization_id, record_type)
     filters = split_org_params(provider, request.query_params.multi_items())
-    table = build_org_table(db, current_user, organization, record_type, provider, filters=filters)
+    table = build_org_table(db, current_user, organization, record_type, provider, filters=filters, sort=sort_by)
     audit_export(db, current_user, organization, record_type, table, "csv")
     stem = f"{filename_safe(organization.name, fallback='organisation')}-{filename_safe(provider.label.lower())}"
     headers = {
@@ -152,6 +153,7 @@ def org_record_list_report(
     organization_id: UUID, request: Request,
     record_type: str = Query(..., description="The record type to list, e.g. `strategy`."),
     format: ReportFormat = Query("pdf", description="pdf, docx, html, odt, csv, xlsx or ods."),
+    sort_by: ListSort = Depends(list_sort),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> Response:
     """The organisation's own records of `record_type` as a document or spreadsheet, with the list's filters.
@@ -166,7 +168,7 @@ def org_record_list_report(
     if format == "json":
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Use pdf, docx, html, odt, csv, xlsx or ods.")
     filters = split_org_params(provider, [(k, v) for k, v in request.query_params.multi_items() if k != "record_type"])
-    table = build_org_table(db, current_user, organization, record_type, provider, filters=filters)
+    table = build_org_table(db, current_user, organization, record_type, provider, filters=filters, sort=sort_by)
     if format in DOCUMENT_FORMATS and len(table.rows) > MAX_DOCUMENT_ROWS:
         raise HTTPException(
             status.HTTP_413_CONTENT_TOO_LARGE,

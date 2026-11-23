@@ -25,10 +25,9 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { FUTURE_STATE_SORT_KEYS, FUTURE_STATE_SORT_VALUES } from "./contextStrategySort";
 import { projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
@@ -37,8 +36,11 @@ import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./t
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
@@ -55,9 +57,9 @@ export function ProjectFutureStatesPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "future_state");
   const commitTags = useCommitTags(projectId ?? "", "future_state");
+  const announceCreated = useCreatedToast(projectId ?? "", "future_state");
   const [project, setProject] = useState<Project | null>(null);
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function ProjectFutureStatesPage() {
   const [search, setSearch] = useUrlText("q");
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(FUTURE_STATE_SORT_KEYS);
+  const listSort = useListSort("future_states", FUTURE_STATE_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [roadmapOnly, setRoadmapOnly] = useUrlFlag("roadmap");
@@ -103,6 +105,7 @@ export function ProjectFutureStatesPage() {
     if (targetPassedOnly) params.set("target_passed_only", "true");
     if (noMeasuresOnly) params.set("no_measures_only", "true");
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -158,6 +161,7 @@ export function ProjectFutureStatesPage() {
             <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} codeKey="code" titleKey="title" />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -165,9 +169,9 @@ export function ProjectFutureStatesPage() {
         <DirectoryTable
           ariaLabel="Future States"
           columns={columns}
-          rows={sortRows(filtered, sort, FUTURE_STATE_SORT_VALUES)}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
+          rows={sortRows(filtered, listSort.sort, FUTURE_STATE_SORT_VALUES)}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(fs) => fs.id}
           placements={{ projectId, artefactType: "future_state", rowId: (fs) => fs.id }}
           onRowClick={(fs) => navigate(`/projects/${rowProjectId(fs, projectId)}/modules/context_strategy/future-states/${fs.id}`)}
@@ -185,7 +189,7 @@ export function ProjectFutureStatesPage() {
             setCreateError(null);
             try {
               const created = await projectFutureStateApi.create(projectId, values);
-              showToast("Future State created.");
+              announceCreated("Future State", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

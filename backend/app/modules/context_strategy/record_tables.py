@@ -621,6 +621,7 @@ def _update_org_guiding_principle(ctx: RecordImportContext, guiding_principle: G
 
 
 GUIDING_PRINCIPLE_TABLE = RecordTableProvider(
+    title_column="name",
     label="Guiding principles",
     columns=_guiding_principle_columns,
     list_records=_list_guiding_principles,
@@ -952,6 +953,7 @@ def _find_open_question(db: Session, project: Project, code: str) -> OpenQuestio
 
 
 OPEN_QUESTION_TABLE = RecordTableProvider(
+    title_column="question",
     label="Open questions",
     columns=_open_question_columns,
     list_records=_list_open_questions,

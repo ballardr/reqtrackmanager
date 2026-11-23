@@ -144,6 +144,34 @@ export async function loginAs(page: Page, email: string, password: string = PASS
   }
   expect(status, `login as ${email}`).toBe(200);
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await forgetRememberedSorts(page);
+}
+
+/**
+ * A list remembers the sort a person last chose for it (`ui_preferences` key `list_sort_<list>`), and a persona is shared
+ * by many specs and runs, so a sort chosen by one spec would start the next one in another order. Signing in therefore
+ * removes every remembered sort; the page is reloaded only when one was removed. Best effort: a failure leaves the
+ * remembered sorts as they were and the spec proceeds.
+ */
+async function forgetRememberedSorts(page: Page): Promise<void> {
+  try {
+    const removed = await page.evaluate(async () => {
+      const token = localStorage.getItem("reqtrack_token");
+      if (!token) return false;
+      const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+      const me = await (await fetch("http://localhost:8000/api/v1/auth/me", { headers })).json();
+      const patch: Record<string, null> = {};
+      for (const key of Object.keys(me.ui_preferences ?? {})) if (key.startsWith("list_sort_")) patch[key] = null;
+      if (Object.keys(patch).length === 0) return false;
+      const resp = await fetch("http://localhost:8000/api/v1/auth/me/preferences", {
+        method: "PATCH", headers, body: JSON.stringify({ ui_preferences: patch }),
+      });
+      return resp.ok;
+    });
+    if (removed) await page.reload();
+  } catch {
+    // The page navigated or the call failed: nothing to forget, or nothing that can be.
+  }
 }
 
 export async function logout(page: Page): Promise<void> {

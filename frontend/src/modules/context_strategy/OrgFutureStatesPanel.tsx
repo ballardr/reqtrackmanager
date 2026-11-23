@@ -20,15 +20,17 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { FUTURE_STATE_SORT_VALUES } from "./contextStrategySort";
+import { FUTURE_STATE_SORT_KEYS, FUTURE_STATE_SORT_VALUES } from "./contextStrategySort";
 import { orgFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useTableSort } from "../../hooks/useTableSort";
-import { filterString } from "../../utils/listFilterParams";
+import { useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows } from "../../utils/sortRows";
+import { filterStringWithSort } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
 
@@ -57,11 +59,12 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reloadFutureStates, [orgId, includeArchived]);
 
-  const table = useTableSort(futureStates ?? NONE, FUTURE_STATE_SORT_VALUES);
+  const listSort = useListSort("org_future_states", FUTURE_STATE_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(futureStates ?? NONE, listSort.sort, FUTURE_STATE_SORT_VALUES);
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureStates === null) return <Spinner />;
 
-  const filtered = table.rows.filter((fs) => {
+  const filtered = sortedRows.filter((fs) => {
     if (statusFilter && fs.status !== statusFilter) return false;
     if (search && !`${fs.unique_code} ${fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -85,7 +88,7 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
           New Future State
         </button>
         <ListActions
-          organizationId={orgId} recordType="future_state" filters={filterString({ status: statusFilter, search, include_archived: includeArchived })} onImported={reloadFutureStates}
+          organizationId={orgId} recordType="future_state" filters={filterStringWithSort({ status: statusFilter, search, include_archived: includeArchived }, listSort.sort)} onImported={reloadFutureStates}
         />
       </div>
       <div className="side-grid">
@@ -93,8 +96,8 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
           ariaLabel="Organisation Future State"
           columns={columns}
           rows={filtered}
-          sort={table.sort}
-          onSort={table.onSort}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(fs) => fs.id}
           onRowClick={(fs) => navigate(`/orgs/${orgId}/modules/context_strategy/future-states/${fs.id}`)}
           emptyState={<p className="text-muted">No organisation-scoped Future State recorded yet.</p>}
@@ -110,6 +113,7 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
             allLabel="All statuses"
             options={labelOptions(FUTURE_STATE_STATUS_LABEL)}
           />
+          <SortField list={listSort} columns={columns} titleKey="title" />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

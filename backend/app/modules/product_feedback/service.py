@@ -228,6 +228,7 @@ def apply_new_version(
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    request.updated_at = now  # a new version is a change to the record: its Modified time moves
     values = {f: getattr(current_version, f) for f in (*REQUEST_CONTENT_FIELDS, "status")}
     values.update({k: v for k, v in changes.items() if k in (*REQUEST_CONTENT_FIELDS, "status")})
     levels = dict(version_levels(db, [current_version.id])[current_version.id])

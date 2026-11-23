@@ -80,6 +80,7 @@ from app.modules.registry import (
     get_artefact_summaries_in_project,
     is_org_module_subcomponent_enabled,
 )
+from app.services.list_sort import natural_key
 from app.services.principals import principal_labels, principal_ref, principal_text
 from app.services.report_framework import (
     ReportContext,
@@ -228,7 +229,9 @@ def _load_rows(
         for row in project_rows:
             row.demand = demand[row.request.id]
             row.links = links.get(row.request.id, NO_LINKS)
-    rows.sort(key=lambda r: (r.project_name.lower(), r.request.unique_code))
+    rows = ctx.order_records(
+        rows, code=lambda r: r.request.unique_code, title=lambda r: r.version.title, group=lambda r: r.project_name,
+    )
     return projects, rows, inbox
 
 
@@ -340,9 +343,9 @@ def collect_demand_ranking(db: Session, ctx: ReportContext) -> ReportResult:
         return score.normalised if score is not None else -1.0
 
     if rank_by == "score":
-        rows.sort(key=lambda r: (-normalised(r), -r.demand.weighted, r.project_name.lower(), r.request.unique_code))
+        rows.sort(key=lambda r: (-normalised(r), -r.demand.weighted, r.project_name.lower(), r.request.unique_code))  # ranked: score
     else:
-        rows.sort(key=lambda r: (-r.demand.weighted, -normalised(r), r.project_name.lower(), r.request.unique_code))
+        rows.sort(key=lambda r: (-r.demand.weighted, -normalised(r), r.project_name.lower(), r.request.unique_code))  # ranked: demand
     ranked_by = "score, then weighted demand" if rank_by == "score" else "weighted demand, then score"
     notes = [
         f"Open requests (New, Under review, Accepted), ranked by {ranked_by}. "
@@ -397,7 +400,7 @@ def collect_unlinked(db: Session, ctx: ReportContext) -> ReportResult:
     include_closed = bool(ctx.params.get("include_closed"))
     statuses = REQUEST_OPEN_STATUSES | (CLOSED_LISTED_STATUSES if include_closed else frozenset())
     projects, rows, _ = _load_rows(db, ctx, frozenset(statuses))
-    unlinked = sorted(
+    unlinked = sorted(  # ranked: the most demanded first
         (r for r in rows if not r.links.pain_point_ids),
         key=lambda r: (-r.demand.weighted, r.project_name.lower(), r.request.unique_code),
     )
@@ -470,7 +473,10 @@ def collect_close_the_loop(db: Session, ctx: ReportContext) -> ReportResult:
     """
     projects = ctx.eligible(db, REQUEST_SUBCOMPONENT_KEY)
     loops = _open_loops(db, ctx) if projects else []
-    loops.sort(key=lambda entry: (entry[0].project_name.lower(), entry[0].request.unique_code))
+    loops = ctx.order_records(
+        loops, code=lambda entry: entry[0].request.unique_code, title=lambda entry: entry[0].version.title,
+        group=lambda entry: entry[0].project_name,
+    )
     result = _result(ctx, "f3", "Close the loop", eligible=len(projects), notes=[
         "Delivered or declined requests with at least one requester not marked as told. Nothing is sent to anyone: "
         "a triager tells the person and ticks them off on the request page.",
@@ -541,7 +547,7 @@ def collect_triage_ageing(db: Session, ctx: ReportContext) -> ReportResult:
     since = _status_runs(db, rows)
     now = datetime.now(UTC)
     days = {r.request.id: (now - since.get(r.request.id, _utc(r.version.valid_from))).days for r in rows}
-    waiting = sorted(rows, key=lambda r: (-days[r.request.id], r.project_name.lower(), r.request.unique_code))
+    waiting = sorted(rows, key=lambda r: (-days[r.request.id], r.project_name.lower(), r.request.unique_code))  # ranked: the longest wait first
     late = [r for r in waiting if days[r.request.id] > threshold]
     notes = [
         f"Requests in New or Under review for more than {threshold} day(s). The clock starts when the request entered its "
@@ -645,7 +651,7 @@ def collect_problem_demand(db: Session, ctx: ReportContext) -> ReportResult:
         parties = {(q.artefact_type, q.id): q.effective_weight for r in requests for q in r.demand.requesters}
         return len(parties), round(sum(parties.values()), 4)
 
-    entries.sort(key=lambda e: (-len(e[4]), -people(e[4])[1], e[0].lower(), e[1]))
+    entries.sort(key=lambda e: (-len(e[4]), -people(e[4])[1], e[0].lower(), e[1]))  # ranked: the most requests first
     open_count = {e[3]: sum(r.version.status in REQUEST_OPEN_STATUSES for r in e[4]) for e in entries}
     columns = ["Pain Point", "Project", "Requests", "Open", "Requesters", "Weighted demand", "Requirement", "Asked for by"]
     table: list[list[str]] = []
@@ -655,7 +661,7 @@ def collect_problem_demand(db: Session, ctx: ReportContext) -> ReportResult:
         table.append([
             label, project_name, str(len(requests)), str(open_count[pain_point_id]), str(count), _weighted(weighted),
             "Yes" if has_requirement else "None yet",
-            "; ".join(sorted(_code(ctx, r) for r in requests)[:_NAMES_SHOWN])
+            "; ".join(sorted((_code(ctx, r) for r in requests), key=natural_key)[:_NAMES_SHOWN])
             + (f" +{len(requests) - _NAMES_SHOWN}" if len(requests) > _NAMES_SHOWN else ""),
         ])
         tones.append([None, None, None, None, None, None, None if has_requirement else "warning", None])

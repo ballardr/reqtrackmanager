@@ -23,7 +23,6 @@ import { usePageReferences } from "../hooks/usePageReferences";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { SortableHeader } from "../components/SortableHeader";
-import { cycleSort } from "../components/sortState";
 import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
 import { TileCard, TileGrid } from "../components/TileCard";
@@ -39,11 +38,13 @@ import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
 import { rowProjectId } from "../api/projectScope";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
-import { useUrlChoice, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { SortField } from "../components/SortField";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../hooks/useListSort";
+import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
 import { addSharedListFilters } from "../utils/listFilterParams";
 
 const PAGE_SIZE = 30;
-const SORT_KEYS = ["proposed_name", "status", "created_at"] as const;
+const SORT_KEYS = ["unique_code", "proposed_name", "status", ...TIME_SORT_KEYS] as const;
 
 const CR_STATUS_OPTIONS: ChangeRequestStatus[] = [
   "draft", "submitted", "in_review", "approved", "rejected", "withdrawn",
@@ -111,7 +112,7 @@ export function ChangeRequestsPage() {
   // Column-header sorting — backend `sort`/`order` param, same reasoning as `RequirementsPage.tsx`: this
   // list is backend-paginated (`PAGE_SIZE`/`LoadMoreButton`), so a client-side sort would only reorder the
   // currently-loaded page.
-  const [sort, setSort] = useUrlSort(SORT_KEYS);
+  const listSort = useListSort("change_requests", SORT_KEYS, "unique_code");
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
@@ -130,11 +131,7 @@ export function ChangeRequestsPage() {
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
     filterParams().forEach((value, key) => params.append(key, value));
-    if (sort) {
-      params.set("sort", sort.key);
-      params.set("order", sort.direction);
-    }
-    return params;
+    return addSortParams(params, listSort.sort);
   }
 
   // Read through a ref so a reload started from an older render (a
@@ -174,7 +171,7 @@ export function ChangeRequestsPage() {
     setStages(stgs);
   }
 
-  useLoadOnChange(reload, [projectId, statusFilter, targetStageFilter, sort, search, tagFilter.query, projectScope.scope]);
+  useLoadOnChange(reload, [projectId, statusFilter, targetStageFilter, listSort.sort, search, tagFilter.query, projectScope.scope]);
 
   // Deep-linked from a requirement's "Make change request" button
   // (?requirement=<id>) — pre-selects that requirement for a
@@ -197,6 +194,14 @@ export function ChangeRequestsPage() {
     }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkedRequirementId]);
+
+  /** The columns the table can be ordered by, for the Sort by choices. */
+  const sortColumns = [
+    { key: "unique_code", label: "Code", sortable: true },
+    { key: "proposed_name", label: "Name", sortable: true },
+    { key: "status", label: strings.changeRequests.status, sortable: true },
+    { key: "created", label: "Created", sortable: true },
+  ];
 
   function stageName(id: string | null) {
     return stages.find((s) => s.id === id)?.name ?? "—";
@@ -246,7 +251,7 @@ export function ChangeRequestsPage() {
             <Plus /> {strings.changeRequests.newChangeRequest}
           </button>
         }
-        records={{ projectId: projectId ?? "", recordType: "change_request", filters: filterParams().toString(), onImported: reload }}
+        records={{ projectId: projectId ?? "", recordType: "change_request", filters: addSortParams(filterParams(), listSort.sort).toString(), onImported: reload }}
         filter={
           <FilterPanel
             sectionKey="changeRequestsFilters"
@@ -271,6 +276,7 @@ export function ChangeRequestsPage() {
             />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={sortColumns} codeKey="unique_code" titleKey="proposed_name" />
           </FilterPanel>
         }
       >
@@ -294,20 +300,23 @@ export function ChangeRequestsPage() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Code</th>
                       <SortableHeader
-                        label="Name" sortKey="proposed_name" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        label="Code" sortKey="unique_code" sort={listSort.sort}
+                        onSort={listSort.onHeaderSort}
                       />
                       <SortableHeader
-                        label={strings.changeRequests.status} sortKey="status" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        label="Name" sortKey="proposed_name" sort={listSort.sort}
+                        onSort={listSort.onHeaderSort}
+                      />
+                      <SortableHeader
+                        label={strings.changeRequests.status} sortKey="status" sort={listSort.sort}
+                        onSort={listSort.onHeaderSort}
                       />
                       <th>Target</th>
                       <th>Level</th>
                       <SortableHeader
-                        label="Created" sortKey="created_at" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        label="Created" sortKey="created" sort={listSort.sort}
+                        onSort={listSort.onHeaderSort}
                       />
                       {showPlaces && <th>{strings.placements.label}</th>}
                       {showReferences && <th>{strings.references.column}</th>}

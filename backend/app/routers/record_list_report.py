@@ -24,6 +24,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.services.downloads import file_response, filename_safe
+from app.services.list_sort import ListSort, list_sort
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_view
 from app.services.record_list_report import MAX_DOCUMENT_ROWS, REPORT_KEY, available_types, collect, default_type
@@ -51,7 +52,7 @@ def record_list_report(
         None, description="The record type to list, e.g. `requirement`; default: Requirements, else the first the caller may list.",
     ),
     format: ReportFormat = Query("json", description="json (default), pdf, docx, html, odt, csv, xlsx or ods."),
-    tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(),
+    tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(), sort_by: ListSort = Depends(list_sort),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ) -> Response | ReportOut:
     """The list of `record_type` as a report, with the list's own filters.
@@ -74,6 +75,7 @@ def record_list_report(
     organization = db.get(Organization, project.organization_id)
     table = build_table(
         db, current_user, project, record_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
+        sort=sort_by,
     )
     if format in DOCUMENT_FORMATS and len(table.rows) > MAX_DOCUMENT_ROWS:
         raise HTTPException(

@@ -33,7 +33,7 @@ import { RecordGrid } from "../../components/RecordGrid";
 import { Spinner } from "../../components/Spinner";
 import { TagFilterField } from "../../components/TagFilterField";
 import { ViewToggle, useViewMode } from "../../components/ViewToggle";
-import { cycleSort } from "../../components/sortState";
+import { SortField } from "../../components/SortField";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
@@ -149,6 +149,7 @@ export function ProjectRequestsPage() {
             <RequestFilterFields filters={filters} scheme={scheme} requests={requests} />
             <ProjectScopeFilter scope={projectScope} />
             <TagFilterField projectId={projectId} filter={tagFilter} />
+            <SortField list={filters.listSort} columns={columns} titleKey="title" />
           </FilterPanel>
         }
       >
@@ -169,8 +170,8 @@ export function ProjectRequestsPage() {
             ariaLabel="Enhancement requests"
             columns={columns}
             rows={rows}
-            sort={filters.sort}
-            onSort={(key) => filters.setSort((current) => cycleSort(current, key))}
+            sort={filters.listSort.sort}
+            onSort={filters.listSort.onHeaderSort}
             rowKey={(r) => r.id}
             placements={{ projectId, artefactType: "enhancement_request", rowId: (r) => r.id }}
             rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/product_feedback/requests/${r.id}`}

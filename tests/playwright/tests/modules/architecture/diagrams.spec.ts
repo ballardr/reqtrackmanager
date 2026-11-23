@@ -356,7 +356,7 @@ test.describe("System Architecture: diagram editor", () => {
       await selectNode(page, gateway);
       const choose = page.getByRole("region", { name: "Selection" }).getByRole("combobox", { name: /Connect to/ });
       await choose.selectOption(await choose.locator("option", { hasText: orders }).getAttribute("value") ?? "");
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
       await expect(page.getByRole("dialog")).toHaveCount(0);
       // The new line is selected, with its fields in the card and the cursor in the name.
       const details = page.getByRole("group", { name: "Connection details" });

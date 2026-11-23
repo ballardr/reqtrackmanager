@@ -12,7 +12,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
-import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
@@ -25,7 +24,9 @@ import { TagFilterField } from "../../components/TagFilterField";
 import { toErrorMessage } from "../../context/ToastContext";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
-import { useUrlChoice, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { sortRows } from "../../utils/sortRows";
@@ -45,7 +46,7 @@ export function ProjectStatesList({ chrome, viewTabs }: { chrome?: ArchitectureL
   const { projectId = "" } = useParams<{ projectId: string }>();
   const [search, setSearch] = useUrlText("q");
   const [kindFilter, setKindFilter] = useUrlChoice("kind", KINDS);
-  const [sort, setSort] = useUrlSort<string>(STATE_SORT_KEYS);
+  const listSort = useListSort("states", STATE_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [states, setStates] = useState<ArchitectureState[] | null>(null);
@@ -67,7 +68,7 @@ export function ProjectStatesList({ chrome, viewTabs }: { chrome?: ArchitectureL
       && (!needle || `${s.unique_code} ${s.name} ${s.description} ${s.label} ${s.state_machine_diagram_code} ${s.state_machine_diagram_name}`.toLowerCase().includes(needle))
     ));
   }, [states, kindFilter, search]);
-  const sorted = useMemo(() => sortRows(filtered, sort, STATE_SORT_VALUES), [filtered, sort]);
+  const sorted = useMemo(() => sortRows(filtered, listSort.sort, STATE_SORT_VALUES), [filtered, listSort.sort]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -78,6 +79,7 @@ export function ProjectStatesList({ chrome, viewTabs }: { chrome?: ArchitectureL
     if (kindFilter) params.set("kind", kindFilter);
     if (search.trim()) params.set("search", search.trim());
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -105,13 +107,14 @@ export function ProjectStatesList({ chrome, viewTabs }: { chrome?: ArchitectureL
             />
             <ProjectScopeFilter scope={projectScope} />
             <TagFilterField projectId={projectId} filter={tagFilter} components={false} />
+            <SortField list={listSort} columns={columns} />
           </FilterPanel>
         }
       >
         {viewTabs}
         <DirectoryTable
           ariaLabel="States" columns={columns} rows={sorted} rowKey={(s) => s.id}
-          sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
+          sort={listSort.sort} onSort={listSort.onHeaderSort}
           rowHref={(s) => `/projects/${rowProjectId(s, projectId)}/modules/architecture/state-machine-diagrams/${s.state_machine_diagram_id}?state=${s.id}`}
           emptyState={<p className="text-muted">{states.length === 0 ? "No states drawn for this project yet." : "No states match these filters."}</p>}
         />

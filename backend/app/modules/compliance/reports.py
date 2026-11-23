@@ -220,7 +220,7 @@ def _ordered_requirements(requirements: list[ComplianceRequirement]) -> list[Com
     for r in requirements:
         by_parent.setdefault(r.parent_requirement_id, []).append(r)
     for siblings in by_parent.values():
-        siblings.sort(key=lambda r: (r.sort_order, r.name))
+        siblings.sort(key=lambda r: (r.sort_order, r.name))  # not-a-list: the standard's own clause order
 
     ordered: list[ComplianceRequirement] = []
 

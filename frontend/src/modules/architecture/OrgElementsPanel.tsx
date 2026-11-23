@@ -23,9 +23,11 @@ import { Badge } from "../../components/Badge";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { useTableSort } from "../../hooks/useTableSort";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows } from "../../utils/sortRows";
 import { connectionTypeApi, elementTypeApi, orgElementApi, orgSymbolUrl, symbolApi } from "./api";
-import { elementSortValues } from "./architectureSort";
+import { ELEMENT_SORT_KEYS, elementSortValues } from "./architectureSort";
 import { diffElementFields, elementCodeRecord, valuesFromElement } from "./architectureFields";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { ElementFormModal, type ElementCreateExtras } from "./ElementFormModal";
@@ -80,14 +82,16 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
     return () => { live = false; };
   }, [calls, orgId, showArchived, refresh]);
 
-  const table = useTableSort(elements ?? NO_ELEMENTS, ORG_ELEMENT_SORT_VALUES);
+  const listSort = useListSort("org_architecture_elements", ELEMENT_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(elements ?? NO_ELEMENTS, listSort.sort, ORG_ELEMENT_SORT_VALUES);
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (elements === null) return <Spinner />;
 
-  const shown = table.rows.filter((e) => folders.matches(e.folder_path));
+  const shown = sortedRows.filter((e) => folders.matches(e.folder_path));
   const exportFilters = new URLSearchParams();
   folders.addParams(exportFilters);
   if (showArchived) exportFilters.set("include_archived", "true");
+  addSortParams(exportFilters, listSort.sort);
 
   async function save(values: ElementFieldValues, extras: ElementCreateExtras) {
     setFormError(null);
@@ -180,12 +184,13 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
                 {folders.bar}
                 <DirectoryTable
                   ariaLabel="Organisation elements" columns={columns} rows={shown} rowKey={(e) => e.id}
-                  sort={table.sort} onSort={table.onSort}
+                  sort={listSort.sort} onSort={listSort.onHeaderSort}
                   selection={{ selected: folders.selected, onChange: folders.setSelected, label: (e) => `Select ${e.unique_code}`, allLabel: "Select all elements" }}
                       emptyState={<p className="text-muted">{elements.length === 0 ? "The organisation has no elements of its own yet." : "No elements match the chosen folder."}</p>}
                 />
               </div>
               <FilterPanel sectionKey="architecture.org-elements" total={shown.length}>
+                <SortField list={listSort} columns={columns} />
                 <FilterCheckbox label="Show archived" checked={showArchived} onChange={setShowArchived} />
                 {folders.panel}
               </FilterPanel>

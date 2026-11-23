@@ -55,7 +55,7 @@ test.describe("System Architecture: folders", () => {
       await dialog.getByRole("button", { name: "Folder", exact: true }).click();
       await page.getByRole("radio", { name: "Modules" }).click();
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Element created.")).toBeVisible();
+      await expect(page.getByText(/Element( \S+-\d+)? created\./)).toBeVisible();
     });
 
     await test.step("add an element with no folder, then narrow the list by folder", async () => {

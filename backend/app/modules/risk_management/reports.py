@@ -184,7 +184,7 @@ def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = Fals
             principal_text(owners.get((version.owner_type, version.owner_id))) if version.owner_id else "",
             effective.get(risk.id, 0), tags.get(risk.id, ""), contexts[risk.project_id],
         ))
-    rows.sort(key=lambda r: (r.project.name.lower(), r.risk.unique_code))
+    rows = req.order_records(rows, code=lambda r: r.risk.unique_code, title=lambda r: r.version.title, group=lambda r: r.project.name)
     return projects, rows
 
 
@@ -328,7 +328,8 @@ def _matrix_sections(exposed: list[RiskRow]) -> list[ReportSection]:
         consequence = sorted((lvl for lvl in ctx.levels_by_id.values() if lvl.axis_key == CONSEQUENCE_AXIS_KEY), key=lambda lvl: lvl.weight)
         if not likelihood or not consequence:
             continue
-        suffix = f" ({', '.join(sorted({m.project.name for m in members}))})" if len(grids) > 1 else ""
+        project_names = sorted({m.project.name for m in members})  # not-a-list: project names inside one heading
+        suffix = f" ({', '.join(project_names)})" if len(grids) > 1 else ""
         for basis in ("inherent", "residual"):
             placed = Counter(
                 (getattr(m.version, f"{basis}_likelihood_level_id"), getattr(m.version, f"{basis}_consequence_level_id")) for m in members
@@ -381,7 +382,7 @@ def collect_risk_exposure(db: Session, req: ReportContext) -> ReportResult:
     labels = [lbl for lbl in dict.fromkeys([*inherent, *residual]) if lbl != NOT_RATED]
     labels += [NOT_RATED] if NOT_RATED in inherent or NOT_RATED in residual else []
     unrated = [r for r in exposed if r.inherent is None]
-    ranked = sorted(
+    ranked = sorted(  # ranked: the highest residual rating first
         (r for r in exposed if r.residual is not None),
         key=lambda r: (-(r.residual.normalised if r.residual else 0.0), -(r.inherent.normalised if r.inherent else 0.0), r.risk.unique_code),
     )[:TOP_RESIDUAL_ROWS]
@@ -532,8 +533,10 @@ def collect_review_schedule(db: Session, req: ReportContext) -> ReportResult:
     projects, rows = _load_rows(db, req)
     reviewable = [r for r in rows if r.version.status in REVIEWABLE_STATUSES]
     last = _last_reviews(db, [r.risk.id for r in reviewable])
-    overdue = sorted((r for r in reviewable if _is_overdue(r, req.today)), key=lambda r: (r.version.review_date, r.risk.unique_code))
-    soon = sorted(
+    overdue = sorted(  # ranked: the longest overdue first
+        (r for r in reviewable if _is_overdue(r, req.today)), key=lambda r: (r.version.review_date, r.risk.unique_code),
+    )
+    soon = sorted(  # ranked: the nearest review date first
         (r for r in reviewable if r.version.review_date is not None
          and req.today <= r.version.review_date <= req.today + timedelta(days=horizon)),
         key=lambda r: (r.version.review_date, r.risk.unique_code),

@@ -7,7 +7,8 @@
  */
 import { useCallback, useState } from "react";
 
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { projectDiagramApi, projectStateMachineApi } from "./api";
@@ -20,7 +21,8 @@ import type { DiagramFieldValues, DiagramKind } from "./types";
  * @returns `error` (the last refusal, or null), `clearError`, and `create`, which the form's `onSave` calls.
  */
 export function useCreateDiagram(projectId: string, onCreated: (id: string, kind: DiagramKind) => void) {
-  const { showToast } = useToast();
+  const announceDiagram = useCreatedToast(projectId, "architecture_diagram");
+  const announceMachine = useCreatedToast(projectId, "architecture_state_machine_diagram");
   const commitQuickLinks = useCommitQuickLinks(projectId, "architecture_diagram");
   const commitTags = useCommitTags(projectId, "architecture_diagram");
   const commitMachineQuickLinks = useCommitQuickLinks(projectId, "architecture_state_machine_diagram");
@@ -31,20 +33,20 @@ export function useCreateDiagram(projectId: string, onCreated: (id: string, kind
     try {
       if (extras.kind === "state_machine") {
         const created = await projectStateMachineApi(projectId).create({ ...extras.stateMachine, activate: false });
-        showToast("State machine diagram created.");
+        announceMachine("State machine diagram", created);
         await commitMachineQuickLinks(created.id, extras.quickLinks);
         await commitMachineTags(created.id, extras.tags);
         onCreated(created.id, "state_machine");
         return;
       }
       const created = await projectDiagramApi(projectId).create({ ...values, activate: extras.activate, populate: extras.populate });
-      showToast("Diagram created.");
+      announceDiagram("Diagram", created);
       await commitQuickLinks(created.id, extras.quickLinks);
       await commitTags(created.id, extras.tags);
       onCreated(created.id, "block");
     } catch (err) {
       setError(toErrorMessage(err, "Could not create the diagram."));
     }
-  }, [projectId, showToast, commitQuickLinks, commitTags, commitMachineQuickLinks, commitMachineTags, onCreated]);
+  }, [projectId, announceDiagram, announceMachine, commitQuickLinks, commitTags, commitMachineQuickLinks, commitMachineTags, onCreated]);
   return { error, clearError: useCallback(() => setError(null), []), create };
 }

@@ -34,13 +34,12 @@ import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useAuth } from "../../context/AuthContext";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { riskApi } from "./api";
 import { countPlottable, type RiskMatrixBasis } from "./riskFields";
 import { RiskFormModal } from "./RiskFormModal";
@@ -52,10 +51,13 @@ import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
-import { sortRows, type SortValue } from "../../utils/sortRows";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows, TIME_SORT_VALUES, type SortValue } from "../../utils/sortRows";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -101,10 +103,11 @@ function inCell(risk: Risk, cell: CellFilter): boolean {
   return likelihood === cell.likelihoodLevelId && consequence === cell.consequenceLevelId;
 }
 
-const RISK_SORT_KEYS = ["code", "title", "type", "inherent", "residual", "status", "owner", "review"] as const;
+const RISK_SORT_KEYS = ["code", "title", "type", "inherent", "residual", "status", "owner", "review", ...TIME_SORT_KEYS] as const;
 
 /** Sortable value of each sortable column; a rating sorts by its normalised score, so the order follows severity. */
 const RISK_SORT_VALUES: Record<string, (risk: Risk) => SortValue> = {
+  ...TIME_SORT_VALUES,
   code: (r) => r.unique_code,
   title: (r) => r.title,
   type: (r) => r.risk_type_name,
@@ -119,9 +122,9 @@ export function ProjectRisksPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "risk");
   const commitTags = useCommitTags(projectId ?? "", "risk");
+  const announceCreated = useCreatedToast(projectId ?? "", "risk");
   const initial = useInitialSearchParams();
   const scheme = useRiskScheme(projectId);
   const [project, setProject] = useState<Project | null>(null);
@@ -148,7 +151,7 @@ export function ProjectRisksPage() {
   const [overdueOnly, setOverdueOnly] = useUrlFlag("overdue");
   const [untreatedOnly, setUntreatedOnly] = useUrlFlag("untreated");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(RISK_SORT_KEYS);
+  const listSort = useListSort("risks", RISK_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -198,6 +201,7 @@ export function ProjectRisksPage() {
     if (untreatedOnly) params.set("untreated", "true");
     if (cell) params.set("cell", formatCell(cell));
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -285,6 +289,7 @@ export function ProjectRisksPage() {
             <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -310,9 +315,9 @@ export function ProjectRisksPage() {
               <DirectoryTable
                 ariaLabel="Risks"
                 columns={columns}
-                rows={sortRows(filtered, sort, RISK_SORT_VALUES)}
-                sort={sort}
-                onSort={(key) => setSort((current) => cycleSort(current, key))}
+                rows={sortRows(filtered, listSort.sort, RISK_SORT_VALUES)}
+                sort={listSort.sort}
+                onSort={listSort.onHeaderSort}
                 rowKey={(r) => r.id}
                 placements={{ projectId, artefactType: "risk", rowId: (r) => r.id }}
                 rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
@@ -361,7 +366,7 @@ export function ProjectRisksPage() {
             setCreateError(null);
             try {
               const created = await riskApi.create(projectId, values);
-              showToast("Risk created.");
+              announceCreated("Risk", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

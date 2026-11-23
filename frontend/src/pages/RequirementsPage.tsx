@@ -34,7 +34,6 @@ import { BulkTagDialog } from "../components/BulkTagDialog";
 import { projectTagAdminApi } from "../api/tags";
 import { TagFilterField } from "../components/TagFilterField";
 import { SortableHeader } from "../components/SortableHeader";
-import { cycleSort } from "../components/sortState";
 import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
 import { TileCard, TileGrid } from "../components/TileCard";
@@ -55,7 +54,9 @@ import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
 import { rowProjectId } from "../api/projectScope";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { SortField } from "../components/SortField";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../hooks/useListSort";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
 import { addSharedListFilters } from "../utils/listFilterParams";
 import { InlineSelect } from "../components/LabeledSelect";
 
@@ -65,7 +66,12 @@ const PAGE_SIZE = 30;
 // independent overlay marker (`Requirement.is_completed`), filtered via its
 // own `FilterCheckbox` below rather than a status option.
 const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "archived"];
-const SORT_KEYS = ["unique_code", "name", "status"] as const;
+/**
+ * The sort keys of the list. `component` is the default order the requirements document sets (C-G-04: by component, then
+ * category, then the project's own order); it is the one choice with no direction, and the server is sent no `sort` for it.
+ */
+const COMPONENT_ORDER = "component";
+const SORT_KEYS = [COMPONENT_ORDER, "unique_code", "name", "status", ...TIME_SORT_KEYS] as const;
 
 /**
  * Requirement browser (C-G-04: sorted by component/category), with search
@@ -134,7 +140,9 @@ export function RequirementsPage() {
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   // The list is backend-paginated (`PAGE_SIZE`/`LoadMoreButton`), so sorting is a `sort`/`order` query
   // parameter the backend honours; sorting only the loaded rows would misrepresent the full-list order.
-  const [sort, setSort] = useUrlSort(SORT_KEYS);
+  const listSort = useListSort("requirements", SORT_KEYS, COMPONENT_ORDER);
+  // The component and category order has no column header: the headers show no arrow while it is in force.
+  const headerSort = listSort.sort.key === COMPONENT_ORDER ? null : listSort.sort;
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [showNewForm, setShowNewForm] = useState(false);
   const [viewMode, setViewMode] = useViewMode("requirements");
@@ -182,10 +190,7 @@ export function RequirementsPage() {
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
     filterParams().forEach((value, key) => params.append(key, value));
-    if (sort) {
-      params.set("sort", sort.key);
-      params.set("order", sort.direction);
-    }
+    if (headerSort) addSortParams(params, headerSort);
     return params;
   }
 
@@ -239,9 +244,17 @@ export function RequirementsPage() {
     setWorkflows(flows);
   }
 
+  /** The choices of the Sort by field: the default order, then each sortable column. */
+  const sortColumns = [
+    { key: COMPONENT_ORDER, label: strings.requirements.sortComponentOrder, sortable: true },
+    { key: "unique_code", label: "ID", sortable: true },
+    { key: "name", label: "Name", sortable: true },
+    { key: "status", label: strings.changeRequests.status, sortable: true },
+  ];
+
   useLoadOnChange(reload, [
     projectId, search, statusFilter, completedFilter, stageFrom, stageTo, phaseFilter,
-    hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query, projectScope.scope,
+    hasCommentsOnly, onlyWatched, includeArchived, listSort.sort, tagFilter.query, projectScope.scope,
   ]);
 
   // Deep-linked from the Project Overview page's "New requirement" button
@@ -439,7 +452,7 @@ export function RequirementsPage() {
             <Plus size={16} /> {strings.requirements.newRequirement}
           </button>
         }
-        records={{ projectId: projectId ?? "", recordType: "requirement", filters: filterParams().toString(), onImported: reload }}
+        records={{ projectId: projectId ?? "", recordType: "requirement", filters: (headerSort ? addSortParams(filterParams(), headerSort) : filterParams()).toString(), onImported: reload }}
         filter={
           <FilterPanel
             sectionKey="requirementsFilters"
@@ -483,6 +496,10 @@ export function RequirementsPage() {
                 select above rather than one of its options. */}
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField
+              list={listSort} columns={sortColumns} codeKey="unique_code" titleKey="name" fixedOrder={[COMPONENT_ORDER]}
+              describe={{ [COMPONENT_ORDER]: strings.requirements.sortComponentOrderHelp }}
+            />
             <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
             <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
             <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />
@@ -681,16 +698,16 @@ export function RequirementsPage() {
                         </th>
                       )}
                       <SortableHeader
-                        style={{ width: "9%" }} label="ID" sortKey="unique_code" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        style={{ width: "9%" }} label="ID" sortKey="unique_code" sort={headerSort}
+                        onSort={listSort.onHeaderSort}
                       />
                       <SortableHeader
-                        style={{ width: "38%" }} label="Name" sortKey="name" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        style={{ width: "38%" }} label="Name" sortKey="name" sort={headerSort}
+                        onSort={listSort.onHeaderSort}
                       />
                       <SortableHeader
-                        label={strings.changeRequests.status} sortKey="status" sort={sort}
-                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                        label={strings.changeRequests.status} sortKey="status" sort={headerSort}
+                        onSort={listSort.onHeaderSort}
                       />
                       <th>Target · level</th>
                       <th>Component · category</th>

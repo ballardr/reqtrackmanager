@@ -80,9 +80,13 @@ A layout can also use `{{project_code}}` and `{{project_description}}` (the proj
 
 Anything else in double braces is printed as written. Placeholders are plain text replacement, not a template language: the replaced value is shown as ordinary text and cannot add formatting.
 
+## How reports order records
+
+A report lists records by their **code**, ascending (digits by value, `REQ-2` before `REQ-10`), or by their **title** where the report says so, never in the order a list on screen was sorted to, so the same report reads the same for everyone. Within an organisation-wide report the records are ordered under each project. A table that is a ranking on purpose keeps its ranking: the Risk register's top residual risks (highest first), overdue reviews (longest overdue first), Pain Points by score, requests by demand and the Decision log (oldest first).
+
 ## Record list report
 
-For any other kind of record, the **Reports** picker offers **Record list**: choose a **Record type** (Requirements, Actions and every other list that has a table), optionally a **Tag**, and, on a project with parent or child projects, which **Projects** to include. The page shows the table, with the record's code first, and **Export** downloads it as a PDF, Word, HTML, OpenDocument or Excel file or as CSV. The same files are in each list's own **Export** menu, where they carry that list's current filters. A status or rating that is coloured on screen is coloured in the PDF and Word file too, and also written out in words. Columns holding personal data appear only when your organisation's policy and your role allow it, and the report says when some were left out. A document (PDF, Word, HTML or OpenDocument text) covers up to 5,000 records; for more, download a spreadsheet format or CSV, or narrow the filters.
+For any other kind of record, the **Reports** picker offers **Record list**: choose a **Record type** (Requirements, Actions and every other list that has a table), optionally a **Tag**, and, on a project with parent or child projects, which **Projects** to include. The page shows the table, with the record's code first, in the order of the list it came from (code ascending unless that list is sorted otherwise), and **Export** downloads it as a PDF, Word, HTML, OpenDocument or Excel file or as CSV. The same files are in each list's own **Export** menu, where they carry that list's current filters. A status or rating that is coloured on screen is coloured in the PDF and Word file too, and also written out in words. Columns holding personal data appear only when your organisation's policy and your role allow it, and the report says when some were left out. A document (PDF, Word, HTML or OpenDocument text) covers up to 5,000 records; for more, download a spreadsheet format or CSV, or narrow the filters.
 
 ## Custom reports
 

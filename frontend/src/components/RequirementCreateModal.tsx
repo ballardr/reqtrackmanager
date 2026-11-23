@@ -25,9 +25,10 @@ import { api } from "../api/client";
 import type { PlacementPair } from "../api/placements";
 import type { Category, Component, CustomFieldDefinition, FileAsset, ProjectStage, Requirement } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
-import { toErrorMessage, useToast } from "../context/ToastContext";
+import { toErrorMessage } from "../context/ToastContext";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../hooks/useCommitTags";
+import { useCreatedToast } from "../hooks/useCreatedToast";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
 import { useProjectPeople } from "../hooks/useProjectPeople";
@@ -64,9 +65,9 @@ export function RequirementCreateModal({
 }) {
   const strings = useStrings();
   const run = useMutation();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId, "requirement");
   const commitTags = useCommitTags(projectId, "requirement");
+  const announceCreated = useCreatedToast(projectId, "requirement");
   const { project, orgUsers } = useProjectPeople(projectId);
 
   const [components, setComponents] = useState<Component[]>([]);
@@ -137,7 +138,7 @@ export function RequirementCreateModal({
           .map((place) => ({ component_id: place.component_id, category_id: place.category_id })),
         custom_fields: customFieldValues,
       });
-      showToast(strings.requirements.created);
+      announceCreated(strings.requirements.recordLabel, requirement);
       await commitQuickLinks(requirement.id, quickLinks);
       await commitTags(requirement.id, tags);
       onCreated(requirement);

@@ -35,7 +35,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
       await dialog.getByLabel("Name", { exact: true }).fill(gateway);
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Element created.")).toBeVisible();
+      await expect(page.getByText(/Element( \S+-\d+)? created\./)).toBeVisible();
       await expect(page.locator("tr", { hasText: gateway }).getByText("Active", { exact: true })).toBeVisible();
     });
 
@@ -78,7 +78,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await selectOptionContaining(dialog.getByLabel("Target element"), orders);
       await dialog.getByLabel("Protocol").fill("HTTPS/1.1");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
       const row = page.locator("tr", { hasText: "HTTPS/1.1" });
       await expect(row.getByText(new RegExp(`${gateway} \\(HTTPS API\\)`))).toBeVisible();
       await expect(row.getByText(new RegExp(orders))).toBeVisible();
@@ -120,7 +120,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       let dialog = page.getByRole("dialog", { name: "New element" });
       await dialog.getByLabel("Name", { exact: true }).fill(parent);
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Element created.")).toBeVisible();
+      await expect(page.getByText(/Element( \S+-\d+)? created\./)).toBeVisible();
       await page.getByRole("button", { name: "New element" }).click();
       dialog = page.getByRole("dialog", { name: "New element" });
       await dialog.getByLabel("Name", { exact: true }).fill(child);

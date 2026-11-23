@@ -20,7 +20,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FilterCheckbox, FilterField } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { Spinner } from "../../components/Spinner";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { projectEngagementApi, projectPersonaApi, projectResearchApi, projectStakeholderApi, type EngagementListFilters } from "./api";
 import { EngagementFormModal } from "./EngagementFormModal";
 import { RecordListView } from "./RecordListView";
@@ -29,6 +29,7 @@ import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { rowProjectId } from "../../api/projectScope";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
@@ -45,9 +46,9 @@ export function ProjectEngagementsPage() {
   const [searchParams] = useSearchParams();
   const findingId = searchParams.get("finding");
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "engagement");
   const commitTags = useCommitTags(projectId ?? "", "engagement");
+  const announceCreated = useCreatedToast(projectId ?? "", "engagement");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [engagements, setEngagements] = useState<EngagementRow[] | null>(null);
@@ -161,7 +162,7 @@ export function ProjectEngagementsPage() {
         projectScope={projectScope}
         onCreate={async (values, quickLinks, tags) => {
           const created = await projectEngagementApi.create(projectId, values);
-          showToast("Engagement logged.");
+          announceCreated("Engagement", created, "logged");
           reload();
           await commitQuickLinks(created.id, quickLinks);
           await commitTags(created.id, tags);

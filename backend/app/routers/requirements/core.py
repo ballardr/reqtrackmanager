@@ -52,6 +52,7 @@ from app.services import requirement_aliases as alias_service
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.list_sort import order_records
 from app.services.lookups import project_or_404
 from app.services.placements import PlacementPair
 from app.services.principals import label_of, validate_principal
@@ -70,6 +71,8 @@ from app.services.requirements import (
     get_current_version,
     get_keywords,
     is_locked,
+    list_row_sort_value,
+    list_sort_column,
     prefetch_for_list,
     requirements_by_ids,
     unarchive_requirement,
@@ -253,7 +256,7 @@ def list_requirements(
     only_watched: bool | None = None,
     phase: str | None = Query(None, description="Only requirements whose governing phase (their component's track, else the stage's) has this name."),
     include_archived: bool = False,
-    sort: str | None = Query(None, pattern="^(unique_code|name|status|created_at)$"),
+    sort: str | None = Query(None, pattern="^(unique_code|code|name|title|status|created_at|created|updated_at|modified)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -281,8 +284,9 @@ def list_requirements(
     whether more pages remain.
 
     `sort` optionally overrides the default component/category/manual-
-    order sort below with a single-column sort by `unique_code`, `name`,
-    `status`, or `created_at`; `order` picks `asc` (default) or `desc`.
+    order sort below with a single-column sort by `unique_code` (`code`), `name` (`title`),
+    `status`, `created_at` (`created`) or `updated_at` (`modified`); `order` picks `asc` (default)
+    or `desc`. A code orders by its prefix and then its number (`REQ-2` before `REQ-10`).
     Omitting `sort` leaves the existing default ordering completely
     unchanged, so this is additive, not a breaking change to callers that
     don't ask for it.
@@ -330,11 +334,9 @@ def list_requirements(
 
     if not single:
         matching = len(rows)
-        if sort:
-            def _sort_value(row: ListRow):
-                value = getattr(row, sort)
-                return value.lower() if isinstance(value, str) else value
-            rows.sort(key=_sort_value, reverse=(order == "desc"))
+        column = list_sort_column(sort)
+        if column is not None:
+            rows = order_records(rows, lambda row: list_row_sort_value(row, column), descending=order == "desc")
         if limit is not None:
             rows = rows[offset:offset + limit]
     response.headers["X-Total-Count"] = str(matching)

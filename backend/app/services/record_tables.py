@@ -99,6 +99,7 @@ from app.services.external_reference_surfaces import (
     reference_column,
 )
 from app.services.link_graph import ArtefactResolver
+from app.services.list_sort import CODE_KEY, CREATED_KEY, MODIFIED_KEY, TITLE_KEY, ListSort, instant, natural_key, order_records
 from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
 from app.services.placements import PLACEMENT_COLUMN_KEY, apply_imported_placements, can_place, placement_column
@@ -121,6 +122,7 @@ PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.
 GENERIC_PARAMS = frozenset({
     "format", "project_scope", "tag", "tag_mode", "component_id", "category_id", "external_system", "external_key",
+    "sort", "order",
 })
 #: Further query parameters the record-list report takes (its own, never a provider's filter).
 REPORT_PARAMS = frozenset({"record_type"})
@@ -516,11 +518,68 @@ def _qualified(
     )
 
 
+def sort_value_reader(
+    provider: RecordTableProvider, columns: Sequence[RecordColumn], key: str | None,
+) -> Callable[[Any, Any], Any] | None:
+    """How to read the value a list is ordered by for `key`, or `None` when the list does not offer that key.
+
+    The type's own `sort_keys` win; otherwise `code` is the record's code, `created` and `modified` its `created_at` and
+    `updated_at`, `title` the provider's title column, and any other key a column of the table by its cell text (a
+    status by the label a person sees). A column the personal-data policy left out of `columns` cannot be sorted by,
+    so the order never reveals what the file omits.
+
+    Args:
+        provider: The type's table.
+        columns: The columns the caller may read.
+        key: The requested key (canonical; see `services.list_sort.canonical_key`).
+
+    Returns:
+        `(prepared, record) -> text, number or None`.
+    """
+    if key is None:
+        return None
+    if key in provider.sort_keys:
+        return provider.sort_keys[key]
+    if key == CODE_KEY:
+        return lambda _prepared, record: provider.code_of(record)
+    if key == CREATED_KEY:
+        return lambda _prepared, record: instant(getattr(record, "created_at", None))
+    if key == MODIFIED_KEY:
+        return lambda _prepared, record: instant(getattr(record, "updated_at", None))
+    column_key = provider.title_column if key == TITLE_KEY else key
+    column = next((c for c in columns if c.key == column_key), None)
+    return (lambda prepared, record: column.get(prepared, record)) if column is not None else None
+
+
+def sorted_records(
+    provider: RecordTableProvider, columns: Sequence[RecordColumn], prepared: Any, records: list[Any], sort: ListSort | None,
+) -> list[Any]:
+    """`records` in the order the list was asked for: the requested key, or **code ascending** when none is requested or
+    the type does not offer the key. A missing value sorts last ascending; equal values read by code, then record id.
+
+    Args:
+        provider: The type's table.
+        columns: The columns the caller may read.
+        prepared: The provider's `prepare` result handed to every column's `get`.
+        records: The rows, in any order.
+        sort: The requested sort, or `None`.
+    """
+    reader = sort_value_reader(provider, columns, sort.key if sort else None)
+    descending = bool(sort and sort.descending and reader is not None)
+    if reader is None:
+        reader = sort_value_reader(provider, columns, CODE_KEY)
+    assert reader is not None
+    return order_records(
+        records, lambda record: reader(prepared, record), descending=descending, id_of=provider.id_of,
+        tie_of=lambda record: natural_key(provider.code_of(record)),
+    )
+
+
 def build_table(
     db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider, *,
-    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope,
+    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope, sort: ListSort | None = None,
 ) -> RecordTable:
-    """Builds the table of `artefact_type` with the page's filters, tag filter and project scope.
+    """Builds the table of `artefact_type` with the page's filters, tag filter, project scope and sort.
 
     Args:
         db: Active session (read only).
@@ -531,6 +590,7 @@ def build_table(
         filters: The provider's own filters.
         tag_filter: The shared tag filter.
         project_scope: The shared nested-project scope.
+        sort: The list's sort (`services.list_sort`); code ascending when omitted or not offered by the type.
 
     Returns:
         The `RecordTable`; rows from a related project are labelled in a trailing `project` column.
@@ -549,6 +609,7 @@ def build_table(
 
     records = project_scope.collect(db, project, user.id, artefact_type, rows_for, gate=provider.gate, id_of=provider.id_of)
     prepared = provider.prepare(db, project, records) if provider.prepare is not None else None
+    records = sorted_records(provider, columns, prepared, records, sort)
     if shared:
         shared[1].expect(provider.id_of(record) for record in records)
     if refs_shared:
@@ -608,7 +669,7 @@ def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, s
         HTTPException: 422 for a parameter the organisation list cannot honour.
     """
     tier = org_tier(provider)
-    allowed = {"format"} | tier.filter_params
+    allowed = {"format", "sort", "order"} | tier.filter_params
     unknown = sorted({k for k, _ in query if k not in allowed})
     if unknown:
         raise HTTPException(
@@ -623,9 +684,9 @@ def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, s
 
 def build_org_table(
     db: Session, user: User, organization: Organization, artefact_type: str, provider: RecordTableProvider, *,
-    filters: RecordFilters,
+    filters: RecordFilters, sort: ListSort | None = None,
 ) -> RecordTable:
-    """Builds the table of the organisation's own records of one type with the organisation list's filters.
+    """Builds the table of the organisation's own records of one type with the organisation list's filters and sort.
 
     Args:
         db: Active session (read only).
@@ -634,6 +695,7 @@ def build_org_table(
         artefact_type: The record type.
         provider: The type's provider (it has an organisation tier).
         filters: The organisation tier's filters.
+        sort: The list's sort (`services.list_sort`); code ascending when omitted or not offered by the type.
 
     Returns:
         The `RecordTable`; every code is qualified by the organisation's code, as the organisation's records are
@@ -647,6 +709,7 @@ def build_org_table(
     )
     records = tier.list_records(db, user, organization, filters)
     prepared = tier.prepare(db, organization, records) if tier.prepare is not None else None
+    records = sorted_records(provider, columns, prepared, records, sort)
     if refs_shared:
         refs_shared[1].expect(provider.id_of(record) for record in records)
     header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
@@ -759,7 +822,7 @@ class RecordGrid:
 
 def build_grid(
     db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider, *,
-    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope,
+    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope, sort: ListSort | None = None,
 ) -> RecordGrid:
     """The rows and columns of the grid for a list, narrowed exactly as its export is.
 
@@ -772,6 +835,7 @@ def build_grid(
         filters: The provider's own filters.
         tag_filter: The shared tag filter.
         project_scope: The shared nested-project scope.
+        sort: The list's sort (`services.list_sort`), so the grid lists rows as the page does.
 
     Returns:
         The `RecordGrid`; `can_edit` is false (and the page offers no grid) for a type the caller cannot update or
@@ -779,6 +843,7 @@ def build_grid(
     """
     table = build_table(
         db, user, project, artefact_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
+        sort=sort,
     )
     keys = [c.key for c in table.kept]
     rows = [

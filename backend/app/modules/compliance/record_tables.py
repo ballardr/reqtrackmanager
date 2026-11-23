@@ -86,6 +86,7 @@ from app.modules.registry import (
 )
 from app.services import tags as tag_service
 from app.services.client_date import effective_today
+from app.services.list_sort import instant
 from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
@@ -392,6 +393,8 @@ def _never_found(db: Session, project: Project, code: str) -> None:
 
 
 ASSESSMENT_TABLE = RecordTableProvider(
+    title_column="requirement",
+    sort_keys={"created": lambda _prepared, row: instant(row.record.created_at), "modified": lambda _prepared, row: instant(row.record.updated_at)},
     label="Compliance assessments",
     columns=_assessment_columns,
     list_records=_list_assessments,
@@ -471,6 +474,8 @@ def _action_assessment_columns(db: Session, project: Project) -> list[RecordColu
 
 
 ACTION_ASSESSMENT_TABLE = RecordTableProvider(
+    title_column="required_action",
+    sort_keys={"created": lambda _prepared, row: instant(row.record.created_at), "modified": lambda _prepared, row: instant(row.record.updated_at)},
     label="Required action assessments",
     columns=_action_assessment_columns,
     list_records=_list_action_assessments,
@@ -546,6 +551,8 @@ def _requirement_columns(db: Session, scope: Any) -> list[RecordColumn]:
 
 
 REQUIREMENT_TABLE = RecordTableProvider(
+    title_column="requirement",
+    sort_keys={"created": lambda _prepared, row: instant(row.record.created_at), "modified": lambda _prepared, row: instant(row.record.updated_at)},
     label="Standard requirements",
     columns=_requirement_columns,
     list_records=_list_project_requirements,

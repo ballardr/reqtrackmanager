@@ -41,7 +41,7 @@ test.describe("Risk Management", () => {
     await dialog.getByLabel("Inherent likelihood").selectOption({ label: "Likely" });
     await dialog.getByLabel("Inherent consequence").selectOption({ label: "Major" });
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Risk created.")).toBeVisible();
+    await expect(page.getByText(/Risk( \S+-\d+)? created\./)).toBeVisible();
 
     // --- The register renders label-mapped status and the derived band (Likely x Major = 16 of 25).
     const row = page.locator("tr", { hasText: title });

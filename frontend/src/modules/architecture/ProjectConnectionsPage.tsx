@@ -11,7 +11,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
-import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
@@ -29,7 +28,9 @@ import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { useTagFilter } from "../../hooks/useTagFilter";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { sortRows } from "../../utils/sortRows";
@@ -61,7 +62,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
   const [statusFilter, setStatusFilter] = useUrlChoice("status", STATUSES);
   const [typeFilter, setTypeFilter] = useUrlText("type");
   const [elementFilter, setElementFilter] = useUrlText("element");
-  const [sort, setSort] = useUrlSort<string>(CONNECTION_SORT_KEYS);
+  const listSort = useListSort("connections", CONNECTION_SORT_KEYS, "code");
   const [openOnly, setOpenOnly] = useOpenOnly(initial, STATUSES);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
@@ -111,7 +112,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
     };
   }, [search, statusFilter, typeIds, elementFilter, folders]);
   const filtered = useMemo(() => (connections ?? []).filter((c) => matches(c, openOnly)), [connections, matches, openOnly]);
-  const sorted = useMemo(() => sortRows(filtered, sort, CONNECTION_SORT_VALUES), [filtered, sort]);
+  const sorted = useMemo(() => sortRows(filtered, listSort.sort, CONNECTION_SORT_VALUES), [filtered, listSort.sort]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -127,6 +128,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
     if (openOnly) params.set("open_only", "true");
     folders.addParams(params);
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -181,6 +183,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
             {folders.panel}
             <ProjectScopeFilter scope={projectScope} />
             <TagFilterField projectId={projectId} filter={tagFilter} />
+            <SortField list={listSort} columns={columns} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -192,7 +195,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
             selected: folders.selected, onChange: folders.setSelected, label: (c) => `Select ${c.unique_code}`,
             selectable: (c) => c.project_id === projectId, allLabel: "Select all connections",
           }}
-          sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
+          sort={listSort.sort} onSort={listSort.onHeaderSort}
           placements={{ projectId, artefactType: "architecture_connection", rowId: (c) => c.id }}
           rowHref={(c) => `/projects/${rowProjectId(c, projectId)}/modules/architecture/connections/${c.id}`}
           emptyState={
