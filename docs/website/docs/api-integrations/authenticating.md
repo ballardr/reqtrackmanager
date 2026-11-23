@@ -38,7 +38,7 @@ Paste the resulting `rtm_pat_...` value into any client config exactly where a s
 
 ### For an integration: a service user's token
 
-An unattended integration (an MCP agent, a build job) should not use a named person's token: it stops working when that person leaves and its actions are recorded under their name. Ask an organisation administrator for a **service user** instead. They issue its token from the organisation settings (**People → Service users → Issue token**), and you use it exactly like any personal access token. The service user needs roles on the projects it works with; its token is limited to its own organisation and can be narrowed to projects. See [Core Features → Personal access tokens: Service users](../core-features/personal-access-tokens.md#service-users).
+An unattended integration (an MCP agent, a build job) should not use a named person's token: it stops working when that person leaves and its actions are recorded under their name. Ask an organisation administrator for a **service user** instead. They issue its token from the organisation settings (**People → Users →** the service user's name **→ Issue token**), and you use it exactly like any personal access token. The service user needs roles on the projects it works with; its token is limited to its own organisation and can be narrowed to projects. See [Core Features → Personal access tokens: Service users](../core-features/personal-access-tokens.md#service-users).
 
 A sign-in that is repeated wrongly is delayed, and a script that calls the login endpoint should respect the `Retry-After` header on a 429 answer. Prefer a personal access token for anything unattended.
 

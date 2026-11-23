@@ -1,8 +1,8 @@
 # Developer profiling override. Merge over the normal stack (and, for the performance runner, over its isolated
 # override as well); it is NEVER part of the production compose path:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.profile.yml up -d --build backend
-#   PROFILE_MEMRAY=1 docker compose -f docker-compose.yml -f docker-compose.profile.yml up -d backend   # one worker under memray
+#   (from deployments/full)  docker compose -f docker-compose.yml -f ../../docker-compose.profile.yml up -d --build backend
+#   PROFILE_MEMRAY=1 docker compose -f docker-compose.yml -f ../../docker-compose.profile.yml up -d backend   # one worker under memray
 #
 # What it adds, and why each is safe to leave out of production:
 #   - the `profile` image target: the application plus memray and py-spy (a separate image name, so a build can never
@@ -16,7 +16,8 @@ services:
   backend:
     image: ${PERF_BACKEND_IMAGE:-${PROFILE_BACKEND_IMAGE:-reqtrack-profile-backend:dev}}
     build:
-      context: ./backend
+      # Relative to the base file's directory: deployments/full and tests/container are both two levels down.
+      context: ../../backend
       target: profile
     cap_add:
       - SYS_PTRACE

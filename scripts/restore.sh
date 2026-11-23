@@ -3,7 +3,7 @@
 # by scripts/backup.sh. Runs the restore tool in the `backup` image through the `restore` Compose profile; it
 # restores into a scratch database, checks it against the set's manifest and only then swaps it in.
 #
-# Usage (from the repo root, with the stack's .env in place; BACKUP_REPO_PASSWORD_FILE set as for backups):
+# Usage (the stack's .env is in deployments/full; run from any directory; BACKUP_REPO_PASSWORD_FILE set as for backups):
 #   ./scripts/restore.sh list [--repository R]
 #   ./scripts/restore.sh config --age-identity FILE --output PATH [--set ID] [--repository R]
 #       Decrypts the set's .env snapshot to PATH (mode 0600; refuses to overwrite). Needs only Docker, so it
@@ -20,7 +20,8 @@
 # 2 usage, 75 a backup or restore is already running.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# The Compose project lives in deployments/full, with its .env beside it.
+cd "$(dirname "$0")/../deployments/full"
 
 usage() {
   sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' >&2

@@ -338,7 +338,7 @@ def test_heap_summary_attributes_live_memory_to_the_first_frame_outside_the_impo
 
 # --- the profilers stay out of production ----------------------------------------------------------------
 
-_COMPOSE = _ROOT / "docker-compose.yml"
+_COMPOSE = _ROOT / "deployments" / "full" / "docker-compose.yml"
 _PROFILE_COMPOSE = _ROOT / "docker-compose.profile.yml"
 _DOCKERFILE = _BACKEND / "Dockerfile"
 _repo_files = pytest.mark.skipif(

@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 57 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 58 came from the review of 2026-11-23; 50 to 57 are done and 58 is not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 58 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 58 are done and 59 is not started; R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-55 / 63 phases complete.
+57 / 64 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -67,8 +67,9 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 55 | Dead session: redirect to sign-in | A request refused for an invalid or expired token ends the session and returns the person to the sign-in page instead of leaving a spinner | [x] |
 | 56 | Architecture types: one Add button, at the top | The two add buttons on Element Types and Connection Types become one at the top that opens the full form | [x] |
 | 57 | Files pages: no background behind a type icon | A file-type icon is drawn bare; only a picture keeps its backdrop | [x] |
-| 58 | Service users in the one Users list | Add user offers New service user; service users are managed from the Users list, not a separate section | [ ] |
-| R | Review checkpoint: all changes together | The user reviews phases 1 to 57 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
+| 58 | Service users in the one Users list | Add user offers New service user; service users are managed from the Users list, not a separate section | [x] |
+| 59 | Comments describe the code, not the conversation | Every comment and docstring states what the code does now; chat references, change history and excess commentary are removed, and a check keeps them out | [ ] |
+| R | Review checkpoint: all changes together | The user reviews phases 1 to 59 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
 | S | Security review | Dependabot, CodeQL, `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, image scan; identify → verify → remediate on touched areas | [ ] |
@@ -129,6 +130,7 @@ flowchart LR
     P56["56 One Add button on types"] --> R
     P57["57 Bare file type icon"] --> R
     P58["58 Service users in Users list"] --> R
+    P59["59 Comments describe the code"] --> R
     P3 --> R{"R Review"}
     P5 --> R
     P6 --> R
@@ -138,7 +140,7 @@ flowchart LR
     R --> D["D Register clean-up"] --> W["W Website"] --> S["S Security"] --> C["C Local CI"]
 ```
 
-Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks, and phases 28 to 58 thirty-one more (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
+Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks, and phases 28 to 59 thirty-two more (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
 
 ## Findings and objections
 
@@ -837,9 +839,22 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Check while there:** the row-level sort, export and import (the user record table) treat a service user consistently (no password column, no import creating one), the empty `.invalid` address is never shown, the access review's link to service users opens the Users list filtered to them, and the policy status view still lists them as not applicable.
 - Tests: Storybook for `AddUserMenu` (two and three rows) and `OrgAdminPage` (New service user opens the service user form; a service user row opens its detail, a person's row the person panel); a Playwright spec creating a service user from the Add user menu, seeing it in the Users list and issuing it a token; `docs/website/docs/core-features/personal-access-tokens.md` and `workflows/administering-an-organisation.md` updated to the menu row and the single list.
 
+### Phase 59 — Comments describe the code, not the conversation
+
+**Why:** raised 2026-11-23: comments in the repository narrate how the code got here (a request, a review finding, "previously", "now fixed") and repeat what the next line says. **Risk addressed:** comments that read as a story go stale the moment the story ends, mislead the next reader about what the code does today, and cost tokens on every read; a reference to a chat or a review means nothing to someone who was not in it. **Outcome:** every comment and docstring states what the code implements and why it is written that way, in the present tense, and nothing else.
+- **Rule** (also added to `CLAUDE.md`, **Decided by: User**): a comment describes the state the code implements. It never refers to a conversation, a request, a review, a bug report, a date it was raised or a person who asked; never narrates history (`previously`, `used to`, `no longer`, `now`, `was changed from`, `the fix for`, `after`, `originally`); and does not restate what the code already says. History belongs in `docs/decisions.md` and git. The file-level and function documentation CLAUDE.md requires stays: it is shortened to purpose, responsibilities, design decisions, dependencies, parameters, returns and raised errors, not removed.
+- **Scope:** every comment and docstring in `backend/`, `frontend/src/`, `mcp-server/`, `converter/`, `perf/`, `scripts/`, `tests/` (Playwright and pytest), stories, migrations, Compose files, workflows and config, except vendored, generated and third-party files and the demo data text in `backend/scripts/data/`.
+- **Decision gate** (**Decided by:** User, at the start of the phase): what counts as excessive. Recommended: a comment block over five lines needs a stated reason it cannot be shorter; a one-line why-comment is kept; a comment that paraphrases the next statement is removed; a docstring longer than the function it documents is reduced to the contract.
+- **Method:** (1) a detection script lists candidates by pattern: conversational and review wording (`the user`, `as discussed`, `per review`, `raised`, `asked`, `reported`, `you`, `we decided`), a date in a comment, history words, a comment block over the agreed length, and a comment whose words repeat the next line's identifiers; (2) each area is reviewed by reading, not by pattern alone, because the script finds candidates and cannot judge meaning; (3) rewrite to the present tense or remove; keep every non-obvious why (a workaround, an ordering requirement, a security reason, a measured number the code depends on); (4) do the areas in turn (backend core, each module, frontend components, pages, tests, scripts, Compose and workflows) and run each area's tests, type check and lint after it, since a comment edit beside code can break a line.
+- **Guard:** `scripts/check_comment_style.py` (CI `docs` job and `.githooks/pre-commit`, with `backend/tests/test_comment_style.py`) fails on the patterns a script can see (conversational and review wording, a dated comment, a plan or phase reference as `check_doc_links.py` already does) in source files; its baseline is empty when the phase closes. Length and redundancy are judged in review, not by the script.
+- Found while reading: a comment that records a defect still present is fixed or turned into a tracked finding in `docs/decisions.md`, per the fix-don't-defer rule, never left as a comment.
+- Tests: the script's own tests (a fixture file with each pattern, a clean file, a file with a comment the script must not flag), the full backend, frontend, Storybook and Playwright type checks and lint after each area, and no change in any behaviour test.
+
+- As built (**Decided by: User** for the one list, **Decided by: Agent** for the rest): `AddUserMenu` takes an optional `onNewServiceUser` and draws **New service user** (Server Management omits it); the Users table is the only list, a service user's name (`OrgUserNameCell`, the name as `CellText`) opens `ServiceUserDetailModal`, and `ServiceUsersPanel` with its section, table, filter and button is deleted. Its dialogs moved to `hooks/useServiceUserDialogs` (create, edit, detail; projects read on first use). The list endpoint gained `include_archived` (organisation administrators only) with an **Include archived** filter, `has_deliverable_email` (the generated address is never shown) and `service_flags` (the review flags, administrators only, so the review the separate table offered stays visible beside the Service label); Last login reads Not applicable for a service user. Deviation: the created confirmation is not `useCreatedToast` (it needs a record code and page, which a service user lacks); the Toast offers **Open <name>** for its dialog instead. Check while there: the Users list has no record table (no export or import to align), there is no access-review link to the former section (the **Service users only** filter is the route), and the policy status view still lists them as not applicable. Wording: the Add user tooltip lists each row and the New user password help points to New service user. Specs: backend list test, stories for `AddUserMenu`, `ServiceUserDetailModal` (token and lifecycle stories moved from the panel), `OrgUserNameCell` (with a `LongText` stress) and `OrgAdminPage`, and `service-users.spec.ts` changed to the menu path with Include archived; both website pages updated. See `docs/decisions.md`.
+
 ### Phase R — Review checkpoint: all changes together
 
-**Why:** fifty-eight phases across thirty-one tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
+**Why:** fifty-nine phases across thirty-two tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
 
 - The user reviews the running stack with every phase in place; each item raised becomes a numbered phase or is fixed in place; W starts only after the sign-off is recorded (**Decided by: User**).
 
@@ -852,7 +867,7 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Move what is durable out: any rule a later contributor needs to follow (the notification target kinds and the "no type lacks a target" guard, the Org Resources classification rule and `orgResourceSections`, the prefix rule and structure tree) is in `docs/modules.md`, `docs/ux-style-guide.md` or `docs/solution-architecture.md` as its owner, or is added there; the register then keeps only the per-row classification, with a link to that owner. Do not copy tables that the code already declares (a registry, a test inventory).
 - Overlap: where two registers or a register and the Org Resources "Behaviour to preserve" list describe the same rows (Compliance after phase 25), keep one and link to it.
 - References: rewrite any link whose wording or anchor changed; `docs/decisions.md` cites a register by its topic. Source files and `docs/soc2/` never cite a register or a phase (checked by `scripts/check_doc_links.py`).
-- Archive: the registers move with the plan. When the Status table reads 63/63, `git mv` the plan and every register to `docs/plans/completed/` together, rewrite each path (including the module 07 and Gitea plans and `docs/decisions.md`), run `python scripts/check_doc_links.py` to a pass, and update the memory index. This step runs once phases W, S and C are done, not inside this phase.
+- Archive: the registers move with the plan. When the Status table reads 64/64, `git mv` the plan and every register to `docs/plans/completed/` together, rewrite each path (including the module 07 and Gitea plans and `docs/decisions.md`), run `python scripts/check_doc_links.py` to a pass, and update the memory index. This step runs once phases W, S and C are done, not inside this phase.
 - Tests: `python scripts/check_doc_links.py` and `backend/tests/test_doc_links.py`; every Mermaid diagram touched renders.
 - Decided by: Agent (the scope of "clean-up"); revisit on the user's correction.
 
@@ -899,4 +914,4 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Phase 18 changes how every test runs:** a shared fixture, a template database or a shard boundary can hide an ordering assumption that a serial run never exposed; mitigated by the guardrails and the shuffled and repeated passes. It is also the one phase whose benefit comes from landing early, while the others only need it before R.
 - **No performance run is planned in the phases;** phase W reviews whether a new lookup on every create and a long-text render moved a measured number, and phase C does not run load scenarios (the project decided against performance tests in CI).
 
-When the table reads 63/63: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 64/64: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

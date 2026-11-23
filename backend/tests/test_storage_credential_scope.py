@@ -43,7 +43,7 @@ def _construct_merge_tag(loader: yaml.SafeLoader, node: yaml.Node):
 for _tag in ("!reset", "!override"):
     _ComposeLoader.add_constructor(_tag, _construct_merge_tag)
 
-COMPOSES = [ROOT / "docker-compose.yml", ROOT / "tests" / "container" / "docker-compose.yml"]
+COMPOSES = [ROOT / "deployments" / "full" / "docker-compose.yml", ROOT / "tests" / "container" / "docker-compose.yml"]
 
 
 def _client(access_key: str, secret_key: str):

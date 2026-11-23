@@ -867,6 +867,11 @@ class OrgUserOut(BaseModel):
     is_2fa_enabled: bool = False
     #: A service user (`services.service_users`): shown with a badge, and never a person to expect a sign-in from.
     is_service_account: bool = False
+    #: False for the generated `.invalid` address of a service user with none of its own, which a list must not show.
+    has_deliverable_email: bool = True
+    #: What the access review flags on a service user (`services.service_users.access_flags`); organisation
+    #: administrators only, empty for everyone else and for a person.
+    service_flags: list[Literal["no_responsible", "administrator"]] = []
     # This user's org-scoped module-contributed role
     # grants, filtered to currently-enabled modules only (see
     # `ModuleRoleGrantOut`'s docstring and `routers.orgs.list_org_users`'s

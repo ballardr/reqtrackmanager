@@ -3,7 +3,7 @@ import { defineConfig } from "@playwright/test";
 // Runs against the already-up dev/test stack (tests/container/docker-compose.yml
 // — frontend on :3000, backend on :8000) rather than starting its own
 // webServer, so it exercises a real containerized deployment end to end.
-// Never point this at the production stack (root docker-compose.yml).
+// Never point this at the production stack (deployments/full/docker-compose.yml).
 //
 // Two projects, not one, because a handful of specs mutate genuinely
 // deployment-wide state (ServerSettings.org_label_singular/plural,

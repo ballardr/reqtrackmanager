@@ -1,6 +1,7 @@
-# Production-oriented stack: db + storage + backend + frontend, plus an
-# optional observability profile. This is what a real deployment runs (see
-# docs/deployment.md) — it intentionally does NOT include MailHog (a
+# Full stack: the application (db, storage, backend, frontend, mcp-server) plus the optional profiles
+# (observability: Prometheus, Loki, Tempo, Alloy, Grafana; backup, restore, converter, docs). This is the
+# production-oriented reference (see docs/deployment.md); deployments/minimal is the application alone. Run it from
+# this directory (`cd deployments/full`), with its `.env` beside it. It intentionally does NOT include MailHog (a
 # dev/test-only SMTP catcher) or a test database. Local development and all
 # automated testing (backend pytest, Playwright) use the separate stack at
 # tests/container/docker-compose.yml instead, which is deliberately isolated
@@ -10,6 +11,10 @@
 # Before running this in production, override at minimum JWT_SECRET,
 # APP_SECRET_ENCRYPTION_KEY, SERVER_ADMIN_PASSWORD, STORAGE_SECRET_KEY, CORS_ORIGINS, and the
 # SMTP_* variables via a `.env` file — see docs/deployment.md.
+#
+# The Compose project is named `reqtrackmanager`, so volumes are `reqtrackmanager_reqtrack_*` wherever the repository
+# is cloned. An installation that ran from a repository directory with another name keeps its volumes by setting
+# COMPOSE_PROJECT_NAME to that directory's name in `.env` (docs/deployment.md, "Upgrading: the stack moved").
 #
 # backend/frontend/mcp-server each declare both `image:` and `build:`.
 # `image:` names the same picture .github/workflows/ci.yml pushes to
@@ -23,6 +28,8 @@
 # first release) falls back to, so this file is still fully self-contained
 # without ever touching ghcr.io. See docs/deployment.md's "Obtaining
 # container images" section.
+name: reqtrackmanager
+
 services:
   db:
     image: postgres:16-alpine
@@ -99,7 +106,7 @@ services:
     # Login verifies via bcrypt (cost 12, ~200 ms CPU), which parallelises across the container's cores.
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backend:${IMAGE_TAG:-latest}
     build:
-      context: ./backend
+      context: ../../backend
     # A worker keeps the memory of the heaviest request it has served (an organisation export, a bundle, a report):
     # about 0.8 GiB each on projects up to 1,000 requirements, 1.3 GiB at 5,000 and 2.4 GiB and more at 20,000. 5g fits
     # four to six workers on the first; raise it with the worker count and project size (formula in docs/deployment.md).
@@ -162,7 +169,7 @@ services:
       - converter
     volumes:
       # Extra report fonts (.ttf) the server administrator provides; read-only, so adding a font needs no rebuild.
-      - ${REPORT_FONTS_HOST_DIR:-./report-fonts}:/app/report-fonts:ro
+      - ${REPORT_FONTS_HOST_DIR:-../../report-fonts}:/app/report-fonts:ro
       # Only used if STORAGE_BACKEND=local is set (default is s3/storage
       # above). Named so it survives container recreation and so
       # scripts/backup.sh (I-M-04) can archive it alongside the database.
@@ -200,7 +207,7 @@ services:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-converter:${IMAGE_TAG:-latest}
     profiles: ["converter"]
     build:
-      context: ./converter
+      context: ../../converter
     networks:
       - converter
     read_only: true
@@ -232,7 +239,7 @@ services:
   backup:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backup:${IMAGE_TAG:-latest}
     build:
-      context: ./backend
+      context: ../../backend
       target: backup
     profiles: ["backup"]
     cap_drop: [ALL]
@@ -343,7 +350,7 @@ services:
   frontend:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}
     build:
-      context: ./frontend
+      context: ../../frontend
     # Static files behind nginx: about 11 MiB measured at idle.
     mem_limit: ${FRONTEND_MEM_LIMIT:-128m}
     environment:
@@ -390,7 +397,7 @@ services:
   mcp-server:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-mcp-server:${IMAGE_TAG:-latest}
     build:
-      context: ./mcp-server
+      context: ../../mcp-server
     # About 57 MiB measured at idle.
     mem_limit: ${MCP_MEM_LIMIT:-256m}
     environment:
@@ -427,7 +434,7 @@ services:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-docs:${IMAGE_TAG:-latest}
     profiles: ["docs"]
     build:
-      context: ./docs/website
+      context: ../../docs/website
       dockerfile: Dockerfile.prod
       args:
         DOCS_URL: ${DOCS_URL:-http://localhost:8200}
@@ -454,8 +461,8 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-remote-write-receiver
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./observability/alerts:/etc/prometheus/alerts:ro
+      - ../../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../observability/alerts:/etc/prometheus/alerts:ro
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:9090:9090"
 
@@ -471,7 +478,7 @@ services:
     profiles: ["observability"]
     command: -config.file=/etc/tempo/tempo.yaml
     volumes:
-      - ./observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - ../../observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3200:3200"
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4317:4317"
@@ -480,7 +487,7 @@ services:
     image: grafana/alloy:v1.4.3
     profiles: ["observability"]
     volumes:
-      - ./observability/alloy.river:/etc/alloy/config.alloy:ro
+      - ../../observability/alloy.river:/etc/alloy/config.alloy:ro
       # Backup and restore-test metric textfiles (read only).
       - ${BACKUP_STATUS_VOLUME:-reqtrack_backup_status}:/backup/status:ro
     command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
@@ -548,8 +555,8 @@ services:
       - -c
       - '[ -n "$$GF_SECURITY_ADMIN_PASSWORD" ] || { echo "Set GRAFANA_ADMIN_PASSWORD to use the observability profile." >&2; exit 1; }; exec /run.sh'
     volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3300:3000"
     depends_on:

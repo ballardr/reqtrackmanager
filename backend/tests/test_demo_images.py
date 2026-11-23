@@ -70,7 +70,7 @@ def test_the_base_file_for_developers_names_no_image_for_what_it_builds():
 
 
 def test_the_overlay_images_are_the_ones_the_production_file_names():
-    production = yaml.safe_load((ROOT / "docker-compose.yml").read_text())["services"]
+    production = yaml.safe_load((ROOT / "deployments" / "full" / "docker-compose.yml").read_text())["services"]
     overlay = _load(CONTAINER / "docker-compose.demo-images.yml")["services"]
     for name in SERVICES:
         assert overlay[name]["image"] == production[name]["image"], name

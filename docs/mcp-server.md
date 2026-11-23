@@ -2,7 +2,7 @@
 
 ReqTrackManager ships a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server — `mcp-server/` — that exposes requirements, change requests, notifications, and review schedules as tools an AI assistant can call directly, instead of a person copy-pasting content into a chat window. It runs as its own container, talks to the same REST API everything else uses, and is meant to be reachable by both local developer tools (Claude Code, VS Code Copilot Chat) and remote/hosted ones (Microsoft Copilot Studio) — see [Deploying it for remote clients](#deploying-it-for-remote-clients-copilot-studio-etc) below.
 
-Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, defaulting to `true` on both the bundled dev/test stack and the production `docker-compose.yml` at the repo root; set it to `false` to opt a deployment back into read-only-only — additionally lets an AI assistant *author* requirement content (create new requirements and edit unlocked ones) and, separately, perform an approval-type action once an org admin and a project manager/administrator have each explicitly enabled that for their own organisation/project. See [Write mode](#write-mode) below, and [docs/decisions.md](decisions.md)'s "MCP server write mode" and "AI approval via MCP" entries for the full design rationale, including why this is this project's deliberately-preferred way to let AI act on the system at all (rather than building a bespoke AI backend/model into the product itself).
+Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, defaulting to `true` on both the bundled dev/test stack and the production `deployments/full/docker-compose.yml`; set it to `false` to opt a deployment back into read-only-only — additionally lets an AI assistant *author* requirement content (create new requirements and edit unlocked ones) and, separately, perform an approval-type action once an org admin and a project manager/administrator have each explicitly enabled that for their own organisation/project. See [Write mode](#write-mode) below, and [docs/decisions.md](decisions.md)'s "MCP server write mode" and "AI approval via MCP" entries for the full design rationale, including why this is this project's deliberately-preferred way to let AI act on the system at all (rather than building a bespoke AI backend/model into the product itself).
 
 ## What it can do
 
@@ -86,7 +86,7 @@ A backend module can also contribute its own tools here, prefixed with that modu
 
 ## Write mode
 
-On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `docker-compose.yml` at the repo root both default it to `true`. When it's off, none of the write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
+On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `deployments/full/docker-compose.yml` both default it to `true`. When it's off, none of the write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
 
 **`create_requirement`/`update_requirement`: requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through either tool, regardless of what the calling account's own role could do directly via the API. Attempting to edit an already-approved (locked) requirement is rejected with a clear error telling the caller a change request is needed instead.
 
@@ -231,7 +231,7 @@ Consider creating a dedicated account for AI-assistant use rather than reusing a
 Part of both Compose stacks already — no extra step beyond the normal `docker compose up`:
 
 ```bash
-cd tests/container && docker compose up -d --build   # dev/test; also available in the root docker-compose.yml
+cd tests/container && docker compose up -d --build   # dev/test; also available in the root deployments/full/docker-compose.yml
 ```
 
 It listens on `:8100`, with the MCP endpoint at `http://localhost:8100/mcp` and a plain liveness check at `http://localhost:8100/health`. `REQTRACK_API_URL` (default `http://backend:8000`, the Compose-internal address) points it at the backend.

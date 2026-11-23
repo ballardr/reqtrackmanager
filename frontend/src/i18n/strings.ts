@@ -1355,6 +1355,7 @@ const en = {
     // than discovered by trial.
     inviteUser: "Invite user",
     newUserModalHint: "You set their password now. To let them choose their own, use Invite user instead.",
+    newUserServiceHint: "For an integration, use New service user, which has no password.",
     inviteUserModalHint: "They will get an email with a link to choose their own password and display name.",
     sendInvite: "Send invite",
     inviteSent: "Invite sent",
@@ -1503,6 +1504,7 @@ const en = {
     filterStale: "Stale (180+ days)",
     filterNo2fa: "No 2FA",
     filterServiceUsers: "Service users only",
+    filterIncludeArchived: "Include archived",
     filterNoProjectAccess: "No {project} access",
     filterClear: "Clear filters",
     // "Show invited" : pending, not-yet-
@@ -1765,6 +1767,9 @@ const en = {
     users: "Users",
     // Server Management → Users → "Add user".
     addUser: "Add user",
+    addUserMenuHelp: "Invite user: emails a link so the person chooses their own name and password.\nNew user: you create the account now and set its password.",
+    addUserMenuHelpWithService:
+      "Invite user: emails a link so the person chooses their own name and password.\nNew user: you create the account now and set its password.\nNew service user: an identity for an integration, with no password and no sign-in. An administrator issues its tokens.",
     addUserNoOrg: (org: string) => `No ${org}`,
     addUserNoOrgHint: (org: string) => `The account belongs to no ${org} yet; add it to one later.`,
     addUserInviteHint: "They get an email link to choose their own name and password. In an organisation they join as a member; change their role once they have signed up.",
@@ -4322,7 +4327,6 @@ const en = {
     flagNoResponsibleHint: "Nobody is named as responsible for this service user, so nobody is accountable for its access. Choose a user or group.",
     flagAdministrator: "Administrator rights",
     flagAdministratorHint: "This service user holds organisation administrator rights. Review that its tokens are narrowed by project and expiry.",
-    includeArchived: "Include archived",
     detailsTitle: (name: string) => `Service user: ${name}`,
     tokensHeading: "Tokens",
     noTokens: "No tokens have been issued.",

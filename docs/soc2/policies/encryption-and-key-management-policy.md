@@ -47,7 +47,7 @@ Covers encryption of data in transit, encryption of data at rest, and the handli
 
 ## Implementation in ReqTrackManager
 
-- **Fail-fast secret enforcement**: the production `docker-compose.yml` requires `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY` (or the earlier `STORAGE_ROOT_PASSWORD`), and `SMTP_HOST` to be set, refusing to start otherwise (see [deployment.md](../../deployment.md) §Production deployment).
+- **Fail-fast secret enforcement**: the production `deployments/full/docker-compose.yml` requires `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY` (or the earlier `STORAGE_ROOT_PASSWORD`), and `SMTP_HOST` to be set, refusing to start otherwise (see [deployment.md](../../deployment.md) §Production deployment).
 - **Password hashing**: `backend/app/security.py` (`_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")`).
 - **Application-layer secret encryption**: `backend/app/models/encrypted_type.py` (`EncryptedString`), applied to `Organization.oidc_client_secret`, `Organization.smtp_password`, and `User.totp_secret`; covered by `backend/tests/test_encrypted_type.py`, which confirms the raw database value is genuinely ciphertext, not just a formatting difference.
 - **Backup encryption and key probes**: `backend/app/services/dr_restic.py` (secrets scrubbed from any output), `dr_backup.py` (age-encrypted configuration snapshot, `BACKUP_SECRETS_MODE`), `dr_stats.py` (`decrypts_with_current_key` probe), `dr_restore.py` (`--clear-unreadable-secrets`, audited).

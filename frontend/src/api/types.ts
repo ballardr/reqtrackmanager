@@ -6,6 +6,7 @@
  */
 
 import type { ProjectScopedRow } from "./projectScope";
+import type { ServiceUserFlag } from "./serviceUsers";
 
 export type ProjectRole = "project_manager" | "project_administrator" | "stakeholder" | "member";
 export type OrgRole = "org_admin" | "project_creator" | "member";
@@ -1004,6 +1005,10 @@ export interface OrgUser {
   is_2fa_enabled: boolean;
   /** A service user: shown with a badge, with no sign-in and so no second factor. */
   is_service_account?: boolean;
+  /** False for a service user whose only address is the generated one, which a list does not show. */
+  has_deliverable_email?: boolean;
+  /** What the access review flags on a service user (administrators only); empty for a person. */
+  service_flags?: ServiceUserFlag[];
   /** This user's org-scoped module-contributed role grants, filtered to
    * currently-enabled modules only — a grant for
    * a since-disabled module is simply omitted, not a sign it was revoked. */

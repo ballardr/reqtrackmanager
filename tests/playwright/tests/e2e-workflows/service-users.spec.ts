@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS } from "./helpers";
+import { loginAs, PERSONAS } from "./helpers";
 
 /**
- * Job to be done: an organisation administrator gives an integration its own identity. The service user has no
- * password and no sign-in; the administrator issues a personal access token for it, which authenticates as the
+ * Job to be done: an organisation administrator gives an integration its own identity, created from the Add user
+ * menu and listed with every other account. The service user has no password and no sign-in; the administrator issues a personal access token for it, which authenticates as the
  * service user until it is revoked. The deep rules (closed sign-in paths, scope, expiry, audit) are covered by the
  * backend tests; this spec proves what only a browser and the API together can: the secret the dialog shows once is
  * a working credential, revoking it through the dialog kills it, the badge marks the account, and the account cannot
@@ -21,17 +21,19 @@ test("an administrator creates a service user, issues a token that works, revoke
   await page.goto("/orgs");
   await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
   await page.getByRole("link", { name: "Users", exact: true }).click();
-  await ensureExpanded(page, "Service users");
 
   await test.step("create the service user", async () => {
-    await page.getByRole("button", { name: "New service user" }).click();
+    await page.getByRole("button", { name: "Add user" }).click();
+    await page.getByRole("menuitem", { name: "New service user" }).click();
     const dialog = page.getByRole("dialog", { name: "New service user" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("textbox", { name: "Description" }).fill("Created by the end-to-end suite.");
     await dialog.getByRole("button", { name: "Create" }).click();
     await expect(page.getByText("Service user created.")).toBeVisible();
+    // The one Users list holds it, beside the people, marked Service.
     const row = page.getByRole("row", { name: new RegExp(name) });
     await expect(row.getByText("Service", { exact: true })).toBeVisible();
+    await expect(page.getByRole("table", { name: /^Service users$/ })).toHaveCount(0);
     // Nobody is named responsible, so the access review flags it.
     await expect(row.getByText("No responsible party")).toBeVisible();
   });
@@ -39,7 +41,7 @@ test("an administrator creates a service user, issues a token that works, revoke
   const detail = page.getByRole("dialog", { name: `Service user: ${name}` });
   let token = "";
   await test.step("issue a token and see its secret once", async () => {
-    await page.getByRole("button", { name: new RegExp(`^${name}`) }).click();
+    await page.getByRole("button", { name, exact: true }).click();
     await detail.getByRole("button", { name: "Issue token" }).click();
     const form = page.getByRole("dialog", { name: "Issue token" });
     await form.getByRole("textbox", { name: "Token name" }).fill("Playwright token");
@@ -85,5 +87,11 @@ test("an administrator creates a service user, issues a token that works, revoke
     await confirm.getByRole("button", { name: "Archive" }).click();
     await expect(page.getByText("Service user archived.")).toBeVisible();
     await expect(page.getByRole("row", { name: new RegExp(name) })).toHaveCount(0);
+  });
+
+  await test.step("an administrator can still find the archived account with Include archived", async () => {
+    await page.getByRole("checkbox", { name: "Include archived" }).check();
+    await expect(page.getByRole("row", { name: new RegExp(name) })).toContainText("Archived");
+    await page.getByRole("checkbox", { name: "Include archived" }).uncheck();
   });
 });

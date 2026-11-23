@@ -133,7 +133,11 @@ function mockOrgAdminApis(overrides: {
       if (overrides.advancedForbidden) throw new ApiError(403, "Forbidden");
       return overrides.advanced ?? advanced;
     }
-    if (path.includes("/service-users")) return overrides.serviceUsers ?? [];
+    if (path.includes("/service-users")) {
+      if (path.includes("/pats")) return [];
+      const known = overrides.serviceUsers ?? [];
+      return known.find((u) => path.endsWith(`/${u.user_id}`)) ?? known;
+    }
     if (path.includes("/pats")) return overrides.pats ?? [];
     // Fetched inside the same try/catch-403 block
     // as `/advanced-settings` above — must be mocked here or every story
@@ -308,25 +312,90 @@ export const UsersTableMarksServiceUsers: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
     const row = (await canvas.findByText("Build agent")).closest("tr") as HTMLElement;
-    await expect(within(row).getByText("Service")).toBeInTheDocument();
-    await expect(within(row).getByText("Not applicable")).toBeInTheDocument();
+    await expect(within(row).getByText("Service", { exact: true })).toBeInTheDocument();
+    // Two-factor and last sign-in both do not apply: it has no sign-in.
+    await expect(within(row).getAllByText("Not applicable")).toHaveLength(2);
     await userEvent.click(within(row).getByRole("button", { name: "Build agent's actions" }));
     await expect(within(document.body).queryByRole("menuitem", { name: /reset link/i })).not.toBeInTheDocument();
   },
 };
 
-/** The Users group holds the Service users section (collapsed until opened), which lists the organisation's service users. */
-export const ServiceUsersSectionOpensInTheUsersGroup: Story = {
+/** The service users are rows of the one Users list: no separate section, and a row carries its review flags. */
+export const ServiceUsersAreRowsOfTheUsersList: Story = {
   beforeEach: () => {
-    mockOrgAdminApis({ serviceUsers: [buildServiceUser()] });
+    mockOrgAdminApis({
+      users: [orgUser, { ...orgUser, user_id: "su-1", email: "svc-1@service.invalid", display_name: "Build agent", roles: ["member"], is_2fa_enabled: false, is_service_account: true, has_deliverable_email: false, service_flags: ["no_responsible"], last_login_at: null }],
+    });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "Service users section" }));
-    await expect(await canvas.findByRole("table", { name: "Service users" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "New service user" })).toBeInTheDocument();
+    const row = (await canvas.findByRole("button", { name: "Build agent" })).closest("tr") as HTMLElement;
+    await expect(within(row).getByText("No responsible party")).toBeInTheDocument();
+    // The generated address is never shown, and there is no sign-in to report.
+    await expect(within(row).queryByText(/service\.invalid/)).not.toBeInTheDocument();
+    await expect(within(row).getAllByText("Not applicable")).toHaveLength(2);
+    await expect(canvas.queryByRole("button", { name: "Service users section" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("table", { name: "Service users" })).not.toBeInTheDocument();
+    // A person's name is not a button; only a service user's row opens a dialog.
+    await expect(canvas.queryByRole("button", { name: "Alex Morgan" })).not.toBeInTheDocument();
+  },
+};
+
+/** A service user's row opens its own dialog (tokens, lifecycle), not the person's panel. */
+export const ServiceUserRowOpensItsDetail: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      users: [orgUser, { ...orgUser, user_id: "su-1", email: "svc-1@service.invalid", display_name: "Build agent", roles: ["member"], is_2fa_enabled: false, is_service_account: true, has_deliverable_email: false }],
+      serviceUsers: [buildServiceUser()],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Build agent" }));
+    const detail = within(await within(document.body).findByRole("dialog", { name: "Service user: Build agent" }));
+    await expect(await detail.findByRole("button", { name: "Issue token" })).toBeInTheDocument();
+    await expect(within(document.body).queryByRole("dialog", { name: /access/i })).not.toBeInTheDocument();
+  },
+};
+
+/** The Add user menu offers New service user, which opens the service user form and posts to the service-user endpoint. */
+export const AddUserMenuCreatesAServiceUser: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(buildServiceUser({ user_id: "su-9", name: "New job" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Add user" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "New service user" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "New service user" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "New job");
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/service-users`, { name: "New job", description: "", responsible: null }),
+    );
+    await expect(await within(document.body).findByText("Service user created.")).toBeInTheDocument();
+    await expect(within(document.body).getByRole("button", { name: "Open New job" })).toBeInTheDocument();
+  },
+};
+
+/** Include archived asks the server for archived accounts too (an archived service user is hidden otherwise). */
+export const IncludeArchivedFilterAsksForArchivedAccounts: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await userEvent.click(await canvas.findByRole("checkbox", { name: "Include archived" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenCalledWith(expect.stringContaining("include_archived=true")));
   },
 };
 
@@ -696,6 +765,7 @@ export const InviteUserOpensModalAndCreates: Story = {
     const addMenu = within(document.body).getByRole("menu", { name: "Add user" });
     await expect(within(addMenu).getByRole("menuitem", { name: "New user" })).toBeInTheDocument();
     await expect(within(addMenu).getByRole("menuitem", { name: "Invite user" })).toBeInTheDocument();
+    await expect(within(addMenu).getByRole("menuitem", { name: "New service user" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
 
     const body = within(document.body);

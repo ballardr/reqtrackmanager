@@ -418,6 +418,30 @@ def test_a_service_user_holds_ordinary_roles_and_the_access_review_flags_adminis
     assert {u["user_id"] for u in everyone} >= {uid, world["member_id"]}
 
 
+def test_the_users_list_hides_an_archived_service_user_until_an_administrator_asks_and_never_exposes_the_generated_address(client, world):
+    created = _create(client, world, name="Retired job")
+    uid = created["user_id"]
+    admin = auth_headers(world["admin"])
+    users_url = f"/api/v1/orgs/{world['org']}/users"
+    assert client.post(f"/api/v1/orgs/{world['org']}/users/{uid}/deactivate", headers=admin).status_code in (200, 204)
+    assert client.post(f"/api/v1/orgs/{world['org']}/users/{uid}/archive", headers=admin).status_code == 204
+
+    default = client.get(users_url, headers=admin).json()
+    assert uid not in {u["user_id"] for u in default}
+    everyone = client.get(users_url, params={"include_archived": "true"}, headers=admin).json()
+    row = next(u for u in everyone if u["user_id"] == uid)
+    assert row["is_archived"] is True and row["is_service_account"] is True
+    # The generated `.invalid` address is flagged so the list can leave it out; a person's address is deliverable.
+    assert row["has_deliverable_email"] is False
+    assert next(u for u in everyone if u["user_id"] == world["member_id"])["has_deliverable_email"] is True
+    # The access review's flags travel with the row, and only for a service user.
+    assert row["service_flags"] == ["no_responsible"]
+    assert next(u for u in everyone if u["user_id"] == world["member_id"])["service_flags"] == []
+    # Listing archived accounts is an access-review view, so a plain member may not ask for it.
+    member = client.get(users_url, params={"include_archived": "true"}, headers=auth_headers(world["member"]))
+    assert member.status_code == 403
+
+
 # --- policy and two-factor exemptions ----------------------------------------------------------------
 
 

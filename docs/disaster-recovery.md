@@ -2,6 +2,8 @@
 
 Whole-platform backup and restore for recovering a lost host, a corrupted volume or a bad deploy. This page is the runbook: what is covered, who holds which key, how to back up, schedule, restore and prove a restore, and what to do when a step fails.
 
+The stack, its `.env` and every `docker compose` command below live in `deployments/full/`; the scripts in `scripts/` locate it themselves and run from any directory.
+
 ## At a glance
 
 | | |
@@ -87,7 +89,7 @@ The primary repository defaults to a volume on the same host, which does not sur
 
 ## Configuration
 
-All variables are read by the `backup` service (see `docker-compose.yml`).
+All variables are read by the `backup` service (see `deployments/full/docker-compose.yml`).
 
 | Variable | Default | Meaning |
 |----------|---------|---------|

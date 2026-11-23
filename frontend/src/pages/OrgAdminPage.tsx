@@ -105,8 +105,9 @@ import { labelOptions } from "../utils/labelOptions";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
+import { OrgUserNameCell } from "../components/OrgUserNameCell";
 import { ServiceBadge } from "../components/ServiceBadge";
-import { ServiceUsersPanel } from "../components/ServiceUsersPanel";
+import { useServiceUserDialogs } from "../hooks/useServiceUserDialogs";
 import { CheckboxField, ColorField, FileField, TextField, ToggleField } from "../components/FormFields";
 import { LogoBandField } from "../components/LogoBandField";
 import { FieldHelp } from "../components/FieldHelp";
@@ -407,6 +408,7 @@ export function OrgAdminPage() {
   const [userFilterNo2fa, setUserFilterNo2fa] = useState(false);
   const [userFilterNoAccess, setUserFilterNoAccess] = useState(false);
   const [userFilterService, setUserFilterService] = useState(false);
+  const [userFilterArchived, setUserFilterArchived] = useState(false);
   const [userRoleFilter, setUserRoleFilter] = useState<OrgRole | "">("");
   // Pending (unaccepted) org-only invites, merged into the Users table as
   // `kind: "invited"` rows — fetched unpaginated (there are
@@ -505,11 +507,12 @@ export function OrgAdminPage() {
     no2fa: boolean;
     noAccess: boolean;
     service: boolean;
+    archived: boolean;
     role: OrgRole | "";
   }
 
   function currentUserFilters(): UserFilters {
-    return { stale: userFilterStale, no2fa: userFilterNo2fa, noAccess: userFilterNoAccess, service: userFilterService, role: userRoleFilter };
+    return { stale: userFilterStale, no2fa: userFilterNo2fa, noAccess: userFilterNoAccess, service: userFilterService, archived: userFilterArchived, role: userRoleFilter };
   }
 
   // Only the newest users/groups load applies its response: filter and
@@ -529,6 +532,7 @@ export function OrgAdminPage() {
         if (filters.no2fa) params.set("has_2fa", "false");
         if (filters.noAccess) params.set("has_project_access", "false");
         if (filters.service) params.set("is_service_account", "true");
+        if (filters.archived) params.set("include_archived", "true");
         if (filters.role) params.set("org_role", filters.role);
       }
       if (search) params.set("search", search);
@@ -721,6 +725,12 @@ export function OrgAdminPage() {
     }
   }
 
+  // Service users are rows of the one Users list; their create form and detail dialog open from it.
+  const serviceUserDialogs = useServiceUserDialogs({
+    organizationId: orgId ?? "",
+    onChanged: () => void loadUsers(currentUserFilters(), userSearch, 0, false),
+  });
+
   /** Applies a partial filter change (one `FilterCheckbox`/`FilterField` at
    * a time) on top of the other filters' current values, then reloads from
    * offset 0 — same "merge onto current state" shape every other partial-
@@ -731,6 +741,7 @@ export function OrgAdminPage() {
     setUserFilterNo2fa(merged.no2fa);
     setUserFilterNoAccess(merged.noAccess);
     setUserFilterService(merged.service);
+    setUserFilterArchived(merged.archived);
     setUserRoleFilter(merged.role);
     loadUsers(merged, userSearch, 0, false);
   }
@@ -1914,7 +1925,12 @@ export function OrgAdminPage() {
   const usersColumns: DirectoryColumn<UsersRow>[] = [
     {
       key: "email", label: strings.orgAdmin.email, sortable: true,
-      render: (row) => (row.kind === "user" ? row.user.email : row.invite.email),
+      render: (row) => {
+        if (row.kind === "invited") return row.invite.email;
+        // A service user with no address of its own has only a generated one, which is never shown.
+        if (row.user.has_deliverable_email === false) return <span className="text-muted">—</span>;
+        return row.user.email;
+      },
     },
     {
       // Repurposed for an invited row: there's no display name yet (the
@@ -1923,10 +1939,7 @@ export function OrgAdminPage() {
       key: "display_name", label: strings.orgAdmin.name, sortable: true,
       render: (row) =>
         row.kind === "user" ? (
-          <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
-            <span>{row.user.display_name}</span>
-            {row.user.is_service_account && <ServiceBadge />}
-          </span>
+          <OrgUserNameCell user={row.user} onOpenServiceUser={serviceUserDialogs.openDetail} />
         ) : (
           <span className="text-muted">{strings.orgAdmin.invitedBy(row.invite.invited_by_display_name)}</span>
         ),
@@ -2049,6 +2062,8 @@ export function OrgAdminPage() {
             </span>
           );
         }
+        // A service user has no sign-in; its last use is the token's, shown in its dialog.
+        if (row.user.is_service_account) return <span className="text-muted">{strings.serviceUsers.notApplicable}</span>;
         return row.user.last_login_at ? new Date(row.user.last_login_at).toLocaleDateString() : strings.orgAdmin.never;
       },
     },
@@ -2232,7 +2247,7 @@ export function OrgAdminPage() {
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.users" collapsible={false} title={strings.orgAdmin.users(orgLabelCap)}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-3)" }}>
-                <AddUserMenu onInvite={() => setInviteUserModalOpen(true)} onNewUser={() => setNewUserModalOpen(true)} />
+                <AddUserMenu onInvite={() => setInviteUserModalOpen(true)} onNewUser={() => setNewUserModalOpen(true)} onNewServiceUser={serviceUserDialogs.openCreate} />
                 {advanced?.auto_accept_email_domain && (
                   <button
                     className={`btn${outsideDomainUsers !== null ? " btn-primary" : ""}`}
@@ -2313,6 +2328,11 @@ export function OrgAdminPage() {
                     onChange={(checked) => applyUserFilters({ service: checked })}
                   />
                   <FilterCheckbox
+                    label={strings.orgAdmin.filterIncludeArchived}
+                    checked={userFilterArchived}
+                    onChange={(checked) => applyUserFilters({ archived: checked })}
+                  />
+                  <FilterCheckbox
                     label={strings.orgAdmin.filterShowInvited}
                     checked={showInvitedUsers}
                     onChange={setShowInvitedUsers}
@@ -2335,7 +2355,7 @@ export function OrgAdminPage() {
             {newUserModalOpen && (
               <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)} size="lg">
                 <div className="stack">
-                  <NewUserFields values={newUser} onChange={(patch) => setNewUser((prev) => ({ ...prev, ...patch }))} />
+                  <NewUserFields pointToServiceUser values={newUser} onChange={(patch) => setNewUser((prev) => ({ ...prev, ...patch }))} />
                   <FormActions
                     onCancel={() => setNewUserModalOpen(false)}
                     onSave={createUser}
@@ -2427,9 +2447,7 @@ export function OrgAdminPage() {
                 )}
               </SidePanel>
             )}
-            <CollapsibleSection sectionKey="orgAdmin.serviceUsers" title={strings.serviceUsers.heading} defaultCollapsed>
-              {orgId && <ServiceUsersPanel organizationId={orgId} />}
-            </CollapsibleSection>
+            {serviceUserDialogs.dialogs}
             <CollapsibleSection sectionKey="orgAdmin.importedPeople" title={strings.importPeople.panelTitle}>
               {orgId && <ImportedPeoplePanel orgId={orgId} />}
             </CollapsibleSection>

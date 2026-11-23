@@ -64,7 +64,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from perf.lib import bundle, catalog, compose, hostinfo, pgprofile, resources, sampler  # noqa: E402
 
-COMPOSE_FILES = (REPO_ROOT / "docker-compose.yml", REPO_ROOT / "perf" / "docker-compose.perf.yml")
+COMPOSE_FILES = (REPO_ROOT / "deployments" / "full" / "docker-compose.yml", REPO_ROOT / "perf" / "docker-compose.perf.yml")
 PROFILE_COMPOSE_FILE = REPO_ROOT / "docker-compose.profile.yml"
 PROFILE_IMAGE = "reqtrack-perf-backend:profile"
 PROFILING_MODES = ("none", "cpu", "heap")
@@ -511,7 +511,7 @@ class ProfileRun:
         worker_text = f"{caps.workers}, chosen from the budget" if caps.workers_auto else str(caps.workers)
         lines = [
             f"Plan for host label '{self.options.label}' ({self.options.mode} mode)",
-            f"  Compose project   : {compose.PROJECT} (files: docker-compose.yml + perf/docker-compose.perf.yml" + (" + docker-compose.profile.yml" if self.options.profiling != "none" else "") + "; no published ports)",
+            f"  Compose project   : {compose.PROJECT} (files: deployments/full/docker-compose.yml + perf/docker-compose.perf.yml" + (" + docker-compose.profile.yml" if self.options.profiling != "none" else "") + "; no published ports)",
             f"  Services          : db, storage, backend (workers={worker_text}), plus a load generator container per scenario",
             f"  Images            : {image_source}",
             f"  Database pool     : {self.options.db_pool_size if self.options.db_pool_size is not None else APP_DEFAULT_POOL_SIZE} + "

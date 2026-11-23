@@ -10,7 +10,7 @@ This description covers the ReqTrackManager application and its supporting infra
 
 ## 2. Infrastructure
 
-ReqTrackManager ships as a set of Docker containers, deployed via Docker Compose (`docker-compose.yml` at the repo root — see [deployment.md](../deployment.md) for the full guide). The application itself is infrastructure-agnostic: it does not assume a specific cloud provider, and the Company must state where it actually runs.
+ReqTrackManager ships as a set of Docker containers, deployed via Docker Compose (`deployments/full/docker-compose.yml` — see [deployment.md](../deployment.md) for the full guide). The application itself is infrastructure-agnostic: it does not assume a specific cloud provider, and the Company must state where it actually runs.
 
 | Component | Role |
 | --- | --- |

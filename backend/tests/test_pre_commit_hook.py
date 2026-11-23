@@ -69,7 +69,7 @@ DOCS = "do" + "cs/"
         (["perf/results/run.json"], ["perf-scrub --tracked"]),
         (["backend/requirements.txt"], ["doc-links --staged", "licences"]),
         (["backend/Dockerfile"], ["health-probes", "licences"]),
-        (["docker-compose.yml"], ["doc-links --staged", "health-probes"]),
+        (["deployments/full/docker-compose.yml"], ["doc-links --staged", "health-probes"]),
         ([".github/cla-signatories.json"], ["cla"]),
         (["CLA.md"], ["cla", "doc-links --staged"]),
         (["scripts/licence_policy.json"], ["licences"]),

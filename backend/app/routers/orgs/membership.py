@@ -29,6 +29,7 @@ from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, UserOrgRole
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
+from app.models.service_user import ServiceUserProfile
 from app.models.user import User
 from app.modules.registry import list_enabled_module_roles
 from app.routers.orgs.core import _now
@@ -50,7 +51,7 @@ from app.schemas.org import (
     UserAccessOut,
     UserAccessProject,
 )
-from app.services import credential_reset, engagement, invites
+from app.services import credential_reset, engagement, invites, service_users
 from app.services.audit import log_event
 from app.services.lookups import present
 from app.services.notifications import notify
@@ -124,6 +125,7 @@ def list_org_users(
     has_project_access: bool | None = None,
     is_active: bool | None = None,
     is_service_account: bool | None = None,
+    include_archived: bool = False,
     search: str | None = None,
     sort: str | None = Query(None, pattern="^(display_name|email|last_login_at)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
@@ -136,11 +138,12 @@ def list_org_users(
 
     Archived users are excluded (C-U-05: an archived user "no longer
     show[s] as users", though their past contributions stay attributed to
-    them elsewhere via the unaffected `creator_id`/`actor_id` foreign keys).
+    them elsewhere via the unaffected `creator_id`/`actor_id` foreign keys)
+    unless an org admin passes `include_archived`, which lists them too (an archived service user stays findable).
 
     The access-review filters (C-A-13) — `stale_since_days`,
     `never_logged_in`, `has_2fa`, `org_role`, `has_project_access`,
-    `is_active`, `is_service_account` — are org-admin only; a plain member/project-creator can
+    `is_active`, `is_service_account`, `include_archived` — are org-admin only; a plain member/project-creator can
     still call this endpoint unfiltered for the general member directory
     (existing behavior), but supplying any filter requires org-admin,
     scoped to *this* organisation via `organization_id` (not "an org admin
@@ -165,16 +168,17 @@ def list_org_users(
     filters_requested = any(
         v is not None
         for v in (stale_since_days, never_logged_in, has_2fa, org_role, has_project_access, is_active, is_service_account)
-    )
+    ) or include_archived
     is_admin = OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
     if filters_requested and not is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an organisation admin may use access-review filters.")
 
-    rows = db.execute(
-        select(User, UserOrgRole.role).join(UserOrgRole, UserOrgRole.user_id == User.id).where(
-            UserOrgRole.organization_id == organization_id, User.is_archived.is_(False)
-        )
-    ).all()
+    listed = select(User, UserOrgRole.role).join(UserOrgRole, UserOrgRole.user_id == User.id).where(
+        UserOrgRole.organization_id == organization_id
+    )
+    if not include_archived:
+        listed = listed.where(User.is_archived.is_(False))
+    rows = db.execute(listed).all()
     by_user: dict[UUID, OrgUserOut] = {}
     for user, role in rows:
         if user.id not in by_user:
@@ -193,8 +197,16 @@ def list_org_users(
                 last_login_at=user.last_login_at if is_admin else None,
                 is_2fa_enabled=user.is_2fa_enabled if is_admin else False,
                 is_service_account=user.is_service_account,
+                has_deliverable_email=service_users.can_receive_email(user),
             )
         by_user[user.id].roles.append(role)
+
+    # The access review's flags on each service user, for administrators only (like the sign-in data above).
+    service_ids = [uid for uid, out in by_user.items() if out.is_service_account]
+    if is_admin and service_ids:
+        for profile in db.scalars(select(ServiceUserProfile).where(ServiceUserProfile.user_id.in_(service_ids))):
+            out = by_user[profile.user_id]
+            out.service_flags = service_users.access_flags(profile, set(out.roles))
 
     # Attach each returned user's org-scoped
     # module-contributed role grants, filtered to currently-*enabled*

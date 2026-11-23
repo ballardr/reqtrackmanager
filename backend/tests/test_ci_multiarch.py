@@ -57,7 +57,7 @@ def test_arm64_legs_run_on_a_native_arm_runner(jobs):
 
 def test_the_matrix_covers_every_image_the_compose_stack_pulls():
     """A new `-<name>` image in docker-compose.yml must be added to the build matrix, or arm hosts cannot pull it."""
-    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    compose = (ROOT / "deployments" / "full" / "docker-compose.yml").read_text(encoding="utf-8")
     pulled = set(re.findall(r"GHCR_IMAGE_PREFIX:-[^}]+\}-([a-z-]+):", compose))
     assert pulled <= IMAGES, f"compose pulls images the build matrix does not publish: {pulled - IMAGES}"
 

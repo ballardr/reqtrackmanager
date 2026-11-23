@@ -25,7 +25,7 @@ The **Users** section lists every member, with access-review filters useful for 
 
 ### Service users
 
-The **Service users** section of the people settings lists the organisation's service users: accounts with no password and no sign-in that integrations use instead of a named person. Create one, name who is responsible for it, issue and revoke its tokens, and deactivate it when it is no longer needed. See [Personal access tokens: Service users](../core-features/personal-access-tokens.md#service-users). In the **Users** list a service user carries a **Service** label, and the access-review filters can show or hide service users.
+Service users are accounts with no password and no sign-in that integrations use instead of a named person. They are rows of the same **Users** list as the people, marked **Service**, with their access-review flags beside the label. Choose **Add user**, then **New service user**, to create one; click its name to open its dialog, where you name who is responsible for it, issue and revoke its tokens, and deactivate, reactivate or archive it. See [Personal access tokens: Service users](../core-features/personal-access-tokens.md#service-users). The access-review filters can show only service users, and **Include archived** lists archived accounts as well, which are hidden by default.
 
 ## Managing groups
 

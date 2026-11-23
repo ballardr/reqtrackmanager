@@ -4,11 +4,11 @@ sidebar_position: 3
 
 # Production deployment
 
-Production deployment uses the root `docker-compose.yml` and the same container images used for local development — the difference is entirely in configuration, and the compose file itself enforces the important parts of it: `docker compose up` fails immediately with a clear error naming the missing variable if any required secret isn't set, rather than silently starting with an insecure default.
+Production deployment uses the `deployments/full/docker-compose.yml` (run every `docker compose` command from `deployments/full/`) and the same container images used for local development — the difference is entirely in configuration, and the compose file itself enforces the important parts of it: `docker compose up` fails immediately with a clear error naming the missing variable if any required secret isn't set, rather than silently starting with an insecure default.
 
 ## Minimum `.env`
 
-Create a `.env` file next to `docker-compose.yml` (Docker Compose loads it automatically) and set at minimum:
+Create a `.env` file next to `deployments/full/docker-compose.yml` (Docker Compose loads it automatically) and set at minimum:
 
 ```bash
 # Secrets — generate strong random values, do not reuse the defaults
@@ -70,7 +70,7 @@ The container has no route to the outside network, no secrets, a read-only files
 
 ## Extra report fonts
 
-Reports offer four bundled fonts. To add a house typeface, copy its `.ttf` files into `report-fonts/` beside `docker-compose.yml` (or set `REPORT_FONTS_HOST_DIR` in `.env` to another host directory). It is mounted read-only into the backend, so adding a font needs no rebuild; every backend replica must see the same files, and the directory belongs in your configuration backups, since the database stores only the settings.
+Reports offer four bundled fonts. To add a house typeface, copy its `.ttf` files into `report-fonts/` beside `deployments/full/docker-compose.yml` (or set `REPORT_FONTS_HOST_DIR` in `.env` to another host directory). It is mounted read-only into the backend, so adding a font needs no rebuild; every backend replica must see the same files, and the directory belongs in your configuration backups, since the database stores only the settings.
 
 ```mermaid
 flowchart LR
@@ -91,12 +91,12 @@ Each image is tagged three ways:
 - **`<git sha>`** — the exact commit it was built from, for pinning to a specific build without needing a release version.
 - **a SemVer** (e.g. `1.4.0`) — computed automatically from the commit graph by [GitVersion](https://gitversion.net/): every merge to `main` is a release, so the version increments without anyone pushing a git tag by hand.
 
-`docker-compose.yml` declares both `image:` (pointing at these published tags) and `build:` (a local Dockerfile build) for `backend`/`frontend`/`mcp-server`, so:
+`deployments/full/docker-compose.yml` declares both `image:` (pointing at these published tags) and `build:` (a local Dockerfile build) for `backend`/`frontend`/`mcp-server`, so:
 
 - **First run, or `docker compose up --build -d`**: builds locally — nothing requires ever touching `ghcr.io`.
 - **To deploy an already-published image instead of building**: set `IMAGE_TAG` in your `.env` (a SemVer to pin a specific release, a commit SHA, or leave it unset/`latest` to track the newest `main` build), then `docker compose pull && docker compose up -d`. This is the faster path for upgrading an existing deployment — no build step, no source checkout needed on the host at all.
 
-If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `docker-compose.yml`.
+If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `deployments/full/docker-compose.yml`.
 
 **Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is baked into it at build time, so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's and the backend's version, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no build args (the default for both paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
 
@@ -126,7 +126,7 @@ flowchart LR
 
 Read left to right: CI publishes a docs image tagged with the same version as the app, you run it, and the backend tells the UI where it is.
 
-- The image is the same static site as the public one, served by unprivileged nginx on port 8080 (`docker-compose.yml` publishes it on 8200 under the `docs` profile). It is built for the root of its own host; to serve it under a sub-path such as `/docs/` behind your reverse proxy, set `DOCS_BASE_URL=/docs/` (and `DOCS_URL`) in your `.env` and build it with `docker compose --profile docs build docs`. The base path is baked in at build time, so a pulled image keeps its published `/`.
+- The image is the same static site as the public one, served by unprivileged nginx on port 8080 (`deployments/full/docker-compose.yml` publishes it on 8200 under the `docs` profile). It is built for the root of its own host; to serve it under a sub-path such as `/docs/` behind your reverse proxy, set `DOCS_BASE_URL=/docs/` (and `DOCS_URL`) in your `.env` and build it with `docker compose --profile docs build docs`. The base path is baked in at build time, so a pulled image keeps its published `/`.
 - `HELP_URL` must be reachable from users' browsers, not just from the backend.
 - No internal mirror and no wish for an external link? Set `HELP_ENABLED=false` to remove the Help link.
 
@@ -186,6 +186,15 @@ What is already in place: a single bucket-scoped identity, no published ports, a
 7. **Transport and rest.** Traffic between `backend` and `storage` is plain HTTP on the Compose network; if they are ever on different hosts, put TLS in front or use an external provider. Encrypt the `reqtrack_storage_data` volume at the host or disk level.
 8. **Do not publish storage ports** or remove the loopback flags (`-ip.bind=127.0.0.1`) from the `storage` command; the filer and master have no authentication.
 
+## Upgrading: the stack moved to `deployments/full`
+
+The compose file, its `.env` and every `docker compose` command moved from the repository root to `deployments/full/`. Move an existing installation as follows:
+
+1. Back up (`./scripts/dr-backup.sh`; see [Backup and disaster recovery](./backup-and-disaster-recovery.md)), then `git pull`. The root `docker-compose.yml` no longer exists.
+2. Move your `.env`, and any `docker-compose.override.yml`, `report-fonts` extras or `external-modules` directory you keep beside the compose file, into `deployments/full/`. Relative paths in an override resolve against `deployments/full/`.
+3. Keep your volumes: the Compose project is now always named `reqtrackmanager`, where it used to take the name of the directory the repository was cloned into. `docker volume ls | grep reqtrack_db_data` shows the prefix your data uses. If it is `reqtrackmanager_`, nothing is needed. If it is another name, put `COMPOSE_PROJECT_NAME=<that name>` in the moved `.env`. Starting under a different name creates empty volumes, so the application appears to have lost its data; the data is untouched, and stopping the stack and setting the name restores access.
+4. From `deployments/full/`, run `docker compose up -d`. The scripts in `scripts/` (backup, restore, restore test) locate the stack themselves and run from any directory.
+
 ## Upgrading to the bucket-scoped credential
 
 **No `.env` change is required.** An existing `.env` with `STORAGE_ROOT_PASSWORD` (and optionally `STORAGE_ROOT_USER`) keeps working: those values become the access key and secret. Tested by writing a file under the previous setup and reading it back with the same credential after upgrading. What changes is what that credential can do:
@@ -194,7 +203,7 @@ What is already in place: a single bucket-scoped identity, no published ports, a
 - The filer, master and volume ports are no longer reachable from other containers. Tooling that called `storage:8888` or `storage:9333` across the network must run inside the container instead.
 - `storage` can take up to 30 seconds to report healthy after a restart.
 
-Steps: back up (`./scripts/dr-backup.sh`, which covers the database and the stored files; see [Backup and disaster recovery](./backup-and-disaster-recovery.md)); **replace your `docker-compose.yml` with the new one** (`git pull`, or copy it; `docker compose pull` fetches images only, and the storage configuration lives in this file, so pulling alone leaves the old, unscoped setup running; re-apply any local edits you made to the file); then `docker compose pull && docker compose up -d`. This needs Docker Compose 2.23.1 or newer (`docker compose version`), for inline `configs`. Check that `docker compose ps` shows `storage` and `backend` healthy and that an existing attachment opens. Optionally rename `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` to `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
+Steps: back up (`./scripts/dr-backup.sh`, which covers the database and the stored files; see [Backup and disaster recovery](./backup-and-disaster-recovery.md)); **replace your `deployments/full/docker-compose.yml` with the new one** (`git pull`, or copy it; `docker compose pull` fetches images only, and the storage configuration lives in this file, so pulling alone leaves the old, unscoped setup running; re-apply any local edits you made to the file); then `docker compose pull && docker compose up -d`. This needs Docker Compose 2.23.1 or newer (`docker compose version`), for inline `configs`. Check that `docker compose ps` shows `storage` and `backend` healthy and that an existing attachment opens. Optionally rename `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` to `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
 
 | Symptom | Cause and fix |
 |---------|---------------|
@@ -203,7 +212,7 @@ Steps: back up (`./scripts/dr-backup.sh`, which covers the database and the stor
 | `storage` exits with `unmarshal error` in its log | A value contains a quote or backslash (fine before this release, not now); change it |
 | Uploads fail with `AccessDenied` | The bucket name differs from `STORAGE_S3_BUCKET`, or the credential in use is not the one `storage` was started with; run `docker compose up -d storage backend` |
 
-**Rolling back:** restore the previous `docker-compose.yml` and image tag and run `docker compose up -d`. Data is untouched and the same variables are read.
+**Rolling back:** restore the previous `deployments/full/docker-compose.yml` and image tag and run `docker compose up -d`. Data is untouched and the same variables are read.
 
 **Development and test stack (`tests/container`):** no `.env` change; run `docker compose up -d` there so `storage` and `backend` are recreated.
 

@@ -45,7 +45,7 @@ FAILURES=0
 random() { python3 -c 'import secrets; print(secrets.token_urlsafe(24))'; }
 
 source_compose() {
-  docker compose -p "$SOURCE" --env-file "$WORK/source.env" -f docker-compose.yml -f docker-compose.restore-test.yml --profile backup "$@"
+  docker compose -p "$SOURCE" --env-file "$WORK/source.env" -f deployments/full/docker-compose.yml -f deployments/full/docker-compose.restore-test.yml --profile backup "$@"
 }
 
 cleanup() {

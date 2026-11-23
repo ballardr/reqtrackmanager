@@ -28,7 +28,7 @@ _EMITTED = {  # metrics the dashboard may read, and who emits them
 
 
 def _compose() -> dict:
-    return yaml.safe_load((_ROOT / "docker-compose.yml").read_text())["services"]
+    return yaml.safe_load((_ROOT / "deployments" / "full" / "docker-compose.yml").read_text())["services"]
 
 
 def test_cadvisor_is_observability_only_read_only_and_unpublished():
@@ -50,8 +50,8 @@ def test_prometheus_scrapes_cadvisor_and_keeps_only_compose_services():
 
 def test_grafana_provisions_prometheus_and_the_dashboard_directory():
     grafana = _compose()["grafana"]
-    assert "./observability/grafana/provisioning:/etc/grafana/provisioning:ro" in grafana["volumes"]
-    assert "./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro" in grafana["volumes"]
+    assert "../../observability/grafana/provisioning:/etc/grafana/provisioning:ro" in grafana["volumes"]
+    assert "../../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro" in grafana["volumes"]
     datasource = yaml.safe_load((_OBS / "grafana/provisioning/datasources/prometheus.yml").read_text())["datasources"][0]
     assert datasource["uid"] == "prometheus" and datasource["url"] == "http://prometheus:9090"
     provider = yaml.safe_load((_OBS / "grafana/provisioning/dashboards/dashboards.yml").read_text())["providers"][0]

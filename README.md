@@ -85,7 +85,7 @@ Want to click through it yourself instead? [docs/development.md](docs/developmen
 
 ## Production deployment
 
-Production runs from the root [`docker-compose.yml`](docker-compose.yml): Postgres, the backend, the frontend, a bundled S3-compatible storage service, and the MCP server, plus an optional observability profile. It's deliberately strict rather than convenient — no MailHog, no baked-in secret defaults — and refuses to start (`docker compose up` fails fast with a clear error naming the missing variable) until you provide real values via a `.env` file next to the compose file. At minimum:
+Production runs from [`deployments/full/docker-compose.yml`](deployments/full/docker-compose.yml) (run every `docker compose` command from `deployments/full/`, with the `.env` beside it): Postgres, the backend, the frontend, a bundled S3-compatible storage service, and the MCP server, plus an optional observability profile. It's deliberately strict rather than convenient — no MailHog, no baked-in secret defaults — and refuses to start (`docker compose up` fails fast with a clear error naming the missing variable) until you provide real values via a `.env` file next to the compose file. At minimum:
 
 ```bash
 JWT_SECRET=<random 32+ byte secret>              # access token signing
@@ -100,6 +100,7 @@ SMTP_HOST=smtp.your-provider.example              # a real provider — MailHog 
 Then:
 
 ```bash
+cd deployments/full
 docker compose up --build -d
 ```
 
@@ -109,7 +110,7 @@ The full list of variables, defaults, and which are actually required is in [Con
 
 **Beyond the two obvious containers**, a full deployment brings a few more pieces together:
 
-- **The bundled storage service** ([SeaweedFS](https://github.com/seaweedfs/seaweedfs); see `docker-compose.yml`'s `storage` service) is the default file-storage backend (`STORAGE_BACKEND=s3`) — an S3-compatible object store so file attachments and shared resources work out of the box. Point `STORAGE_S3_ENDPOINT_URL` at real AWS S3 (or another S3-compatible provider) instead if you'd rather not self-host it, or set `STORAGE_BACKEND=local` to use the backend container's own filesystem (see [Storage backend](docs/deployment.md#storage-backend)).
+- **The bundled storage service** ([SeaweedFS](https://github.com/seaweedfs/seaweedfs); see `deployments/full/docker-compose.yml`'s `storage` service) is the default file-storage backend (`STORAGE_BACKEND=s3`) — an S3-compatible object store so file attachments and shared resources work out of the box. Point `STORAGE_S3_ENDPOINT_URL` at real AWS S3 (or another S3-compatible provider) instead if you'd rather not self-host it, or set `STORAGE_BACKEND=local` to use the backend container's own filesystem (see [Storage backend](docs/deployment.md#storage-backend)).
 - **OAuth/OIDC SSO** is per-organisation, not global: each organisation configures its own identity provider (issuer URL, client ID/secret) under its admin settings, so a single deployment can serve organisations with completely different IdPs — or none, staying on native email/password login. There's no bundled identity provider in the production stack; `tests/container/docker-compose.yml`'s Keycloak instance exists purely so SSO login can be tested end-to-end in dev/CI, and should never be pointed at from a real deployment.
 - **The converter** (`converter`, optional, off by default) converts uploaded EPS and PDF logos to SVG and draws Mermaid diagrams for reports, in an isolated container with no network and no secrets; without it, EPS and PDF are not offered and a diagram in a report prints as its source text. See [docs/deployment.md](docs/deployment.md#optional-logos-and-report-diagrams-the-converter).
 - **The MCP server** (`mcp-server`, port 8100) is optional but on by default in the compose file — it holds no credentials of its own and does no authorization itself, only forwarding whatever access token the calling AI assistant already has. Leave it running (nothing reaches it without a valid token) or stop the container if you don't want to expose it at all. See [docs/mcp-server.md](docs/mcp-server.md).
@@ -147,7 +148,7 @@ Size by how many people are **active at once** (assumed a third of the people wi
 | Up to 3,000 | about 1,000 | 6 | 12 | 16 GiB |
 | More than 5,000 | 1,700 or more | beyond one stack (not measured) | | |
 
-Projects of about 5,000 requirements need the next row up (about 40% fewer requests per second, 1.3 GiB per worker instead of 0.8). Every always-on service has a memory limit in `docker-compose.yml` (overridable from `.env`); the backend's is roughly 0.1 GiB + `BACKEND_WORKERS` × 0.8 GiB for projects up to 1,000 requirements (1.3 GiB per worker at 5,000, 2.4 GiB or more at 20,000), because a worker keeps the memory of the heaviest request it has served.
+Projects of about 5,000 requirements need the next row up (about 40% fewer requests per second, 1.3 GiB per worker instead of 0.8). Every always-on service has a memory limit in `deployments/full/docker-compose.yml` (overridable from `.env`); the backend's is roughly 0.1 GiB + `BACKEND_WORKERS` × 0.8 GiB for projects up to 1,000 requirements (1.3 GiB per worker at 5,000, 2.4 GiB or more at 20,000), because a worker keeps the memory of the heaviest request it has served.
 
 | Largest project | Backend, 4 workers (6 workers) | Database | Host RAM to plan for |
 |-----------------|--------------------------------|----------|----------------------|
@@ -177,7 +178,7 @@ A backup is one encrypted, deduplicated snapshot of the database, the stored fil
 
 ## Configuration
 
-Backend environment variables (set via `docker-compose.yml`, a `.env` file, or your process manager). The "Required in prod?" column reflects the root `docker-compose.yml`, which refuses to start without them (`tests/container/docker-compose.yml` fills in dev-friendly defaults for all of these):
+Backend environment variables (set via `deployments/full/docker-compose.yml`, a `.env` file, or your process manager). The "Required in prod?" column reflects the `deployments/full/docker-compose.yml`, which refuses to start without them (`tests/container/docker-compose.yml` fills in dev-friendly defaults for all of these):
 
 | Variable | Default | Required in prod? | Purpose |
 | --- | --- | --- | --- |
@@ -195,12 +196,12 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `CORS_ORIGINS` | `http://localhost:3000` | Recommended | Comma-separated allowed frontend origins |
 | `STORAGE_BACKEND` | `local` (Compose default: `s3`) | — | File storage backend: `local` (filesystem) or `s3` (S3-compatible), I-M-10 |
 | `STORAGE_LOCAL_DIR` | `./data/files` | — | Filesystem directory used by the `local` storage backend |
-| `STORAGE_S3_BUCKET` / `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_ACCESS_KEY` | see `docker-compose.yml` | — | Connection details for the `s3` storage backend |
+| `STORAGE_S3_BUCKET` / `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_ACCESS_KEY` | see `deployments/full/docker-compose.yml` | — | Connection details for the `s3` storage backend |
 | `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | `minioadmin` / — | **Yes** | The one S3 identity of the bundled storage service, limited to the application bucket; the backend uses the same pair. Earlier `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` still work. Hardening: [docs/deployment.md](docs/deployment.md#hardening-the-bundled-storage-further) |
 | `SMTP_HOST` | — | **Yes** | Outgoing SMTP host (C-N-03) — a real provider in production, MailHog in the dev/test stack |
 | `CREDENTIAL_RESET_TOKEN_MINUTES` | `60` | — | How long an emailed password-reset link works (5 to 1440 minutes) |
 | `EMAIL_DELIVERY` | `smtp` | — | `smtp` sends mail through the SMTP settings; `disabled` sends none at all (every send is refused before a connection is made), for a copy that must never reach real recipients, such as the disaster-recovery restore test |
-| `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `docker-compose.yml` | Recommended | Remaining SMTP connection details |
+| `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `deployments/full/docker-compose.yml` | Recommended | Remaining SMTP connection details |
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space (I-M-09, I-M-11) |
 | `DISK_USAGE_WARNING_THRESHOLD_PERCENT` | `90` | — | Disk usage monitor threshold for the `local` storage backend (I-M-11) |
 | `STORAGE_HEALTH_CHECK_ENABLED` / `STORAGE_HEALTH_CHECK_INTERVAL_SECONDS` | `true` / `300` | — | Periodic write probe of the file storage (alerts server admins when it stops accepting writes). Each probe is one write, read and delete, so set `false` (or raise the interval, minimum 60) to avoid request charges on a metered S3 provider |
@@ -223,9 +224,9 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `REPORT_OUTPUT_DEFAULT_RETENTION_DAYS` / `REPORT_OUTPUT_MAX_RETENTION_DAYS` | `7` / `30` | — | How long the stored file of a custom report prepared in the background is kept when the organisation has not set its own (Org Admin → Reports → Background reports), and the ceiling on any organisation's value. |
 | `REPORT_RUN_RECORD_RETENTION_DAYS` | `400` | — | How long the provenance record of a custom report run (identifiers and counts, no content) is kept. |
 | `HELP_ENABLED` / `HELP_URL` | `true` / the public docs site | — | The header Help link opens `HELP_URL` in a new tab; `HELP_ENABLED=false` removes the link (and `/help` shows "Help is not configured"). Point `HELP_URL` at an internally hosted copy for air-gapped installs — see [Hosting the documentation internally](docs/deployment.md#hosting-the-documentation-internally) |
-| `IMAGE_TAG` / `GHCR_IMAGE_PREFIX` | `latest` / `ghcr.io/ballardr/reqtrackmanager` | — | Which published container image tag `docker-compose.yml` pulls (a SemVer, a commit SHA, or `latest`) and from where — see [Obtaining container images](docs/deployment.md#obtaining-container-images) |
+| `IMAGE_TAG` / `GHCR_IMAGE_PREFIX` | `latest` / `ghcr.io/ballardr/reqtrackmanager` | — | Which published container image tag `deployments/full/docker-compose.yml` pulls (a SemVer, a commit SHA, or `latest`) and from where — see [Obtaining container images](docs/deployment.md#obtaining-container-images) |
 
-Frontend: `VITE_API_BASE_URL` (build-time, via `frontend/.env`) or the container-runtime equivalent `PUBLIC_API_BASE_URL` passed to `docker-compose.yml`, which is injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild. Set it to an **empty** value (not left unset) to make the frontend call the API via relative paths against its own origin, instead of an absolute URL — the setting behind same-origin subpath deployment described above; see [docs/deployment.md](docs/deployment.md#same-origin-subpath-deployment-avoiding-cors) for the full reverse-proxy recipe.
+Frontend: `VITE_API_BASE_URL` (build-time, via `frontend/.env`) or the container-runtime equivalent `PUBLIC_API_BASE_URL` passed to `deployments/full/docker-compose.yml`, which is injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild. Set it to an **empty** value (not left unset) to make the frontend call the API via relative paths against its own origin, instead of an absolute URL — the setting behind same-origin subpath deployment described above; see [docs/deployment.md](docs/deployment.md#same-origin-subpath-deployment-avoiding-cors) for the full reverse-proxy recipe.
 
 ## Architecture overview
 

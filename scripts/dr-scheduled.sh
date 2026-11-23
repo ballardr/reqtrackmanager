@@ -17,7 +17,7 @@
 #   RESTORE_TEST_ARGS           restore-test: extra options, e.g. `--repository sftp:backup@host:/srv/reqtrack`
 #                               to test the off-site copy (word-split, so no spaces inside a value)
 #   RESTORE_TEST_EXPECTED_INTERVAL_HOURS   how often it runs (default 168, weekly); the staleness alert follows it
-#   BACKUP_* / the rest of docker-compose.yml's backup settings, as for ./scripts/dr-backup.sh
+#   BACKUP_* / the rest of deployments/full/docker-compose.yml's backup settings, as for ./scripts/dr-backup.sh
 #
 # Exit status: that of the job (0 ok, 1 failed, 75 another backup or restore is running), 2 for a missing setting.
 set -euo pipefail

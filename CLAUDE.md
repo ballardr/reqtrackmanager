@@ -282,6 +282,14 @@ def calculate_total(items: list[Item]) -> Decimal:
 - The decisions log at [docs/decisions.md](docs/decisions.md) should be used to record architectural and implementation decisions.
 - Every new decision recorded from now on — in `docs/decisions.md`, in `docs/plans/completed/compliance-module-plan.md`'s "Open decisions" list and individual phase specs, or in any comparable plan/decisions doc added later — must say who made it: **Decided by: User** (an explicit instruction, or the user's answer to a clarifying question) or **Decided by: Agent** (the implementing session's own judgment call, absent explicit direction). This exists because a "settled" decision an agent made on its own is not the same weight as one the user actually gave, and a later session needs to know which is which before treating either as fixed — an agent decision can be revisited on its own judgment where a user decision needs the user's sign-off to change. This applies going forward only; do not spend effort retroactively re-tagging existing entries.
 
+## Code Comments Describe the Code
+
+- A comment or docstring states what the code implements and why it is written that way, in the present tense. It does not tell the story of how the code got there.
+- Never refer in a source comment to a conversation, a chat, a request, a review, a bug report, a date it was raised or the person who asked ("the user wanted", "as discussed", "found in review", "raised 2026-11-23"). The same applies to commit-style history ("previously", "used to", "no longer", "now", "was changed from", "the fix for"). History belongs in `docs/decisions.md` and git.
+- Do not restate what the next line says, and keep a block as short as the reason requires: one line for a simple why, more only for a non-obvious constraint (a workaround, an ordering requirement, a security reason, a measured number the code depends on). Remove a comment that adds nothing instead of adding a longer one.
+- The file-level and function documentation required above stays, written as purpose, responsibilities, design decisions, dependencies, parameters, returns and errors, not as a narrative.
+- Reason: a story comment goes stale when the story ends, misleads the next reader about today's behaviour, and means nothing to someone who was not in the conversation; short present-tense comments stay true as long as the code does.
+
 ## Plan Lifecycle
 
 - `docs/plans/` holds live plans; closed ones live in `docs/plans/completed/` so a reader can tell what is still in progress. See [docs/plans/README.md](docs/plans/README.md).

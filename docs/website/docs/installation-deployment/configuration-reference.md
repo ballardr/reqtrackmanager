@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Configuration reference
 
-Backend environment variables, set via `docker-compose.yml`, a `.env` file, or your process manager. The "Required in prod?" column reflects the root `docker-compose.yml`, which refuses to start without them — the dev/eval stack fills in dev-friendly defaults for all of these instead.
+Backend environment variables, set via `deployments/full/docker-compose.yml`, a `.env` file, or your process manager. The "Required in prod?" column reflects the `deployments/full/docker-compose.yml`, which refuses to start without them — the dev/eval stack fills in dev-friendly defaults for all of these instead.
 
 :::note
 This table is ported from the project [README](https://github.com/ballardr/reqtrackmanager#configuration) and kept in sync with it — if you're reading a copy of this site that's fallen behind, the README is the fallback source of truth.
@@ -36,11 +36,11 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `CORS_ORIGINS` | `http://localhost:3000` | Recommended | Comma-separated allowed frontend origins |
 | `STORAGE_BACKEND` | `local` (Compose default: `s3`) | — | File storage backend: `local` (filesystem) or `s3` (S3-compatible) |
 | `STORAGE_LOCAL_DIR` | `./data/files` | — | Filesystem directory used by the `local` storage backend |
-| `STORAGE_S3_BUCKET` / `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_ACCESS_KEY` | see `docker-compose.yml` | — | Connection details for the `s3` storage backend |
+| `STORAGE_S3_BUCKET` / `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_ACCESS_KEY` | see `deployments/full/docker-compose.yml` | — | Connection details for the `s3` storage backend |
 | `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | `minioadmin` / — | **Yes** | The one S3 identity of the bundled storage service, limited to the application bucket; the backend uses the same pair. Earlier `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` still work. See [Production deployment](./production-deployment.md#hardening-the-bundled-storage-further) |
 | `SMTP_HOST` | — | **Yes** | Outgoing SMTP host — a real provider in production, MailHog in the dev/eval stack |
 | `EMAIL_DELIVERY` | `smtp` | No | `smtp` sends mail through the SMTP settings; `disabled` sends none at all (every send is refused before a connection is made), for a copy of the platform that must never reach real recipients, such as a restore test |
-| `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `docker-compose.yml` | Recommended | Remaining SMTP connection details |
+| `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `deployments/full/docker-compose.yml` | Recommended | Remaining SMTP connection details |
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space |
 | `DISK_USAGE_WARNING_THRESHOLD_PERCENT` | `90` | — | Disk usage monitor threshold for the `local` storage backend |
 | `STORAGE_HEALTH_CHECK_ENABLED` / `STORAGE_HEALTH_CHECK_INTERVAL_SECONDS` | `true` / `300` | — | Periodic write probe of the file storage (alerts server admins when it stops accepting writes). Each probe is one write, read and delete, so set `false` (or raise the interval, minimum 60) to avoid request charges on a metered S3 provider |
@@ -68,7 +68,7 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `CREDENTIAL_RESET_SEND_RATE_LIMIT_BURST` / `CREDENTIAL_RESET_SEND_RATE_LIMIT_PER_MINUTE` | `20` / `30` | — | How fast one administrator may send reset links to other people, as a token bucket per administrator and per worker process. `0` for the burst turns it off |
 | `USER_CREATE_RATE_LIMIT_BURST` / `USER_CREATE_RATE_LIMIT_PER_MINUTE` | `20` / `30` | — | How fast one server admin may add users from Server Management → Add user (accounts and invites together): a token bucket per administrator, kept per backend worker process. Over it the request answers 429. `0` for the burst turns the limit off |
 | `HELP_ENABLED` / `HELP_URL` | `true` / the public docs site | — | The header Help link opens `HELP_URL` in a new tab; `HELP_ENABLED=false` removes the link (and `/help` shows "Help is not configured"). Point `HELP_URL` at an internally hosted copy for air-gapped installs — see [Hosting the documentation internally](./production-deployment.md#hosting-the-documentation-internally) |
-| `IMAGE_TAG` / `GHCR_IMAGE_PREFIX` | `latest` / `ghcr.io/ballardr/reqtrackmanager` | — | Which published container image tag `docker-compose.yml` pulls (a SemVer, a commit SHA, or `latest`) and from where — see [Obtaining container images](./production-deployment.md#obtaining-container-images) |
+| `IMAGE_TAG` / `GHCR_IMAGE_PREFIX` | `latest` / `ghcr.io/ballardr/reqtrackmanager` | — | Which published container image tag `deployments/full/docker-compose.yml` pulls (a SemVer, a commit SHA, or `latest`) and from where — see [Obtaining container images](./production-deployment.md#obtaining-container-images) |
 
 ## Backup variables
 
@@ -85,6 +85,6 @@ Read by the `backup`, `backup-scheduler` and `restore` services, not the applica
 
 ## Frontend configuration
 
-`VITE_API_BASE_URL` (build-time, via `frontend/.env`) or its container-runtime equivalent `PUBLIC_API_BASE_URL`, passed to `docker-compose.yml` and injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild.
+`VITE_API_BASE_URL` (build-time, via `frontend/.env`) or its container-runtime equivalent `PUBLIC_API_BASE_URL`, passed to `deployments/full/docker-compose.yml` and injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild.
 
 Set `PUBLIC_API_BASE_URL` to an **empty** value (not left unset) to make the frontend call the API via relative paths against its own origin, instead of an absolute URL — this is the setting behind same-origin subpath deployment, see [TLS, reverse proxy, and same-origin deployment](./tls-and-reverse-proxy.md#one-hostname-routed-by-path-avoiding-cors) for the full recipe.

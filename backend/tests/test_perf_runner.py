@@ -1234,7 +1234,7 @@ def _pg():
 def test_only_the_perf_stack_loads_pg_stat_statements():
     root = _PERF.parent
     assert "shared_preload_libraries=pg_stat_statements" in (_PERF / "docker-compose.perf.yml").read_text()
-    for name in ("docker-compose.yml", "docker-compose.profile.yml", "tests/container/docker-compose.yml"):
+    for name in ("deployments/full/docker-compose.yml", "docker-compose.profile.yml", "tests/container/docker-compose.yml"):
         assert "pg_stat_statements" not in (root / name).read_text(), f"{name} must not load the extension"
 
 

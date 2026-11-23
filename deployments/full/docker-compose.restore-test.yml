@@ -1,6 +1,6 @@
 # Override for an ISOLATED copy of the stack: the disaster-recovery restore-test (scripts/restore-test.sh) and
 # its self-check (scripts/restore-test-selfcheck.sh) run `docker compose -p <throwaway project> -f
-# docker-compose.yml -f docker-compose.restore-test.yml`. It makes the project unable to collide with, or
+# deployments/full/docker-compose.yml -f deployments/full/docker-compose.restore-test.yml`. It makes the project unable to collide with, or
 # reach, a running deployment:
 #   - no published ports (the checks run inside the containers), so nothing clashes with the real stack and
 #     nothing outside the host can reach the scratch copy;

@@ -603,7 +603,7 @@ jobs:
             -v "$PWD/../../perf:/perf:ro" \
             -v "$PWD/../../observability:/observability:ro" \
             -v "$PWD/../../.githooks:/.githooks:ro" \
-            -v "$PWD/../../docker-compose.yml:/docker-compose.yml:ro" \
+            -v "$PWD/../../deployments:/deployments:ro" \
             -v "$PWD/../../docker-compose.profile.yml:/docker-compose.profile.yml:ro" \
             -v "$PWD/../../tests/container/docker-compose.yml:/tests/container/docker-compose.yml:ro" \
             -e REQUIRE_DR_TOOLS=1 \

@@ -61,7 +61,7 @@ FAULTS = ("delete-row", "delete-object", "wrong-key", "corrupt-dump", "unmarked-
 KEY_MODES = ("correct", "wrong")
 EX_TEMPFAIL = 75
 REPOSITORY_VOLUME_KEY = "reqtrack_backup_repo"
-"""The repository volume's key in `docker-compose.yml`; a service mounts it by key, `name:` binds the real volume."""
+"""The repository volume's key in `deployments/full/docker-compose.yml`; a service mounts it by key, `name:` binds the real volume."""
 
 PASSTHROUGH_KEYS = (
     "APP_SECRET_ENCRYPTION_KEY",
@@ -157,7 +157,7 @@ class Options:
         login_email / login_password_file: An account whose sign-in is exercised.
         check_subset: Share of repository data the integrity check reads (`5%`, empty for structure only).
         timeout_seconds: Longest any one command may run.
-        compose_dir: The repository root (where the compose files are).
+        compose_dir: The directory holding the compose files (`deployments/full`).
     """
 
     repository: Optional[str] = None
@@ -179,7 +179,7 @@ class Options:
     login_password_file: Optional[Path] = None
     check_subset: str = "5%"
     timeout_seconds: float = 3600.0
-    compose_dir: Path = REPO_ROOT
+    compose_dir: Path = REPO_ROOT / "deployments" / "full"
 
 
 @dataclass

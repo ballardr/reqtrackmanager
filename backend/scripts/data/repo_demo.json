@@ -10751,7 +10751,7 @@
       "reference": "CC5.2",
       "name": "Selects and develops general controls over technology",
       "control": "Environment-variable-driven configuration with fail-fast validation in production; separate dev/test vs. production Compose stacks",
-      "evidence": "`backend/app/config.py`; `docker-compose.yml` (fails to start without required secrets); [deployment.md](../deployment.md)",
+      "evidence": "`backend/app/config.py`; `deployments/full/docker-compose.yml` (fails to start without required secrets); [deployment.md](../deployment.md)",
       "status": "compliant",
       "status_note": "",
       "policies": []
@@ -10853,7 +10853,7 @@
       "reference": "CC7.1",
       "name": "Detects and monitors for configuration changes and vulnerabilities that could introduce risk",
       "control": "Container health checks; optional Prometheus/Loki/Tempo/Grafana Alloy observability stack; disk-usage monitor with alerting",
-      "evidence": "`docker-compose.yml` health checks; `--profile observability`; [deployment.md](../deployment.md) §Observability",
+      "evidence": "`deployments/full/docker-compose.yml` health checks; `--profile observability`; [deployment.md](../deployment.md) §Observability",
       "status": "in_progress",
       "status_note": "Infrastructure/app monitoring exists; dependency and image vulnerability scanning runs in CI — see CC6.8",
       "policies": []

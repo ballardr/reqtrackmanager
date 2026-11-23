@@ -135,7 +135,7 @@ For a deployment with no module registered, this section has no visible effect â
 Part of both Compose stacks already â€” no extra step beyond the normal `docker compose up`:
 
 ```bash
-cd tests/container && docker compose up -d --build   # dev/test; also available in the root docker-compose.yml
+cd tests/container && docker compose up -d --build   # dev/test; also available in the root deployments/full/docker-compose.yml
 ```
 
 It listens on `:8100`, with the MCP endpoint at `http://localhost:8100/mcp` and a plain liveness check at `http://localhost:8100/health`. `REQTRACK_API_URL` (default `http://backend:8000`, the Compose-internal address) points it at the backend.

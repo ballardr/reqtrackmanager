@@ -9,8 +9,8 @@
 #
 # It is a starting point for a small installation or an evaluation on one host, and it keeps the production stack's
 # protections (strong-secret check, one-bucket storage identity, sandboxed converter). It is a separate file from the
-# root docker-compose.yml, which stays the reference for a full production deployment (backups, observability,
-# tuning); when the two disagree, the root file wins. See docs/deployment.md, "Minimal example stack".
+# deployments/full/docker-compose.yml, which is the reference for a full production deployment (backups,
+# observability, tuning); when the two disagree, the full stack file wins. See docs/deployment.md, "Minimal example stack".
 name: reqtrack-minimal
 
 services:

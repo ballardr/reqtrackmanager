@@ -1,7 +1,7 @@
 # Local development / test stack: db + storage + mailhog + backend + frontend.
 # This is the stack used to develop locally, to run the backend pytest suite,
 # and to run the Playwright end-to-end suite — it is NOT the production
-# stack (see the root docker-compose.yml for that). Keeping this stack
+# stack (see the deployments/full/docker-compose.yml for that). Keeping this stack
 # entirely separate, in its own Compose project (directory-derived project
 # name "container", distinct from the root project), means:
 #   - its Postgres database is always `reqtrack_test`, never the real `reqtrack`
@@ -254,7 +254,7 @@ services:
       context: ../../frontend
     environment:
       # No colon in ${PUBLIC_API_BASE_URL-...} — see the same note in the
-      # root docker-compose.yml; preserves an explicitly-empty value rather
+      # deployments/full/docker-compose.yml; preserves an explicitly-empty value rather
       # than treating it as unset.
       VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
       # Origins the Content-Security-Policy allows beyond this site (frontend/docker/env-config-entrypoint.sh):
@@ -268,7 +268,7 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
-    # See the root docker-compose.yml's frontend service for the full
+    # See the deployments/full/docker-compose.yml's frontend service for the full
     # explanation — Tier C (Module Federation) frontend module support,
     # module system follow-up, 2026-09-07. Uncomment to test a Tier C
     # module against this dev/test stack.
@@ -339,7 +339,7 @@ services:
       backend:
         condition: service_healthy
 
-  # See the root docker-compose.yml's mcp-server service for the full
+  # See the deployments/full/docker-compose.yml's mcp-server service for the full
   # explanation — same service, dev/test defaults.
   mcp-server:
     build:

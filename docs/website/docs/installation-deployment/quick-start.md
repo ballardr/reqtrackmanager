@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Quick start (local / evaluation)
 
-This is the fastest way to see ReqTrackManager running, whether you're evaluating the product or setting up to hack on this repo. It uses the dedicated dev/eval stack, **not** the production `docker-compose.yml` — see [Overview](./overview.md) for why the two are kept separate.
+This is the fastest way to see ReqTrackManager running, whether you're evaluating the product or setting up to hack on this repo. It uses the dedicated dev/eval stack, **not** the production `deployments/full/docker-compose.yml` — see [Overview](./overview.md) for why the two are kept separate.
 
 ```bash
 git clone <this-repo>

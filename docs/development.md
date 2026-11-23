@@ -4,7 +4,7 @@ This guide covers running ReqTrackManager locally to try it out or hack on it, p
 
 ## Quick start — local development / evaluation
 
-Use the dedicated dev/test stack, **not** the root `docker-compose.yml` (that one is production-oriented and requires real secrets — see [deployment.md](deployment.md)):
+Use the dedicated dev/test stack, **not** the `deployments/full/docker-compose.yml` (that one is production-oriented and requires real secrets — see [deployment.md](deployment.md)):
 
 ```bash
 cd tests/container
@@ -27,7 +27,7 @@ Once healthy:
 
 Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
 
-**Never point this stack at the internet, and never confuse it with the production stack** (`docker-compose.yml`, repo root) — see [deployment.md](deployment.md#two-separate-compose-stacks) for why they're kept deliberately separate.
+**Never point this stack at the internet, and never confuse it with the production stack** (`deployments/full/docker-compose.yml`) — see [deployment.md](deployment.md#two-separate-compose-stacks) for why they're kept deliberately separate.
 
 ### Demo data
 
@@ -215,7 +215,7 @@ After copying files into a running container with `docker compose cp`, correct t
 - **`image-scan`** — no `needs`, so it runs alongside the test jobs and fails within minutes rather than after the ~40 minute suites. Builds the production backend/frontend/mcp-server/converter/docs-site images (the docs image with a `/docs/` base path, smoke tested) and scans every image with [Trivy](https://trivy.dev): a HIGH or CRITICAL finding that has a fix fails the job. To reproduce, `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/aquasecurity/trivy:0.75.0 image --severity HIGH,CRITICAL --ignore-unfixed <image>`. A base-image finding is fixed by moving the base image or running `apk upgrade` in the Dockerfile, never an ignore file.
 - **`version`** — computes the [GitVersion](https://gitversion.net/) SemVer (`GitVersion.yml`, `mode: ContinuousDeployment` — see that file's own comment for why not `Mainline`, which GitVersion 6 removed) and the build date once, so every image leg tags and labels identically.
 - **`docker-build`** — gated on `frontend`, `backend-tests`, `e2e-suite`, `dependency-scan`, `licences`, `image-scan`, `restore-test`, `static-analysis`, `secret-scan` and `version` passing. A matrix of the six production images (`backend`, `backup`, `frontend`, `mcp-server`, `converter`, `docs`) × `amd64` and `arm64`, each leg on a native runner of its architecture (`ubuntu-latest`, `ubuntu-24.04-arm`) rather than under QEMU. Every leg builds on every run, pull requests included, so an architecture-specific build break fails the PR. The `arm64` legs also load the image and run [`scripts/smoke_test_image.sh`](../scripts/smoke_test_image.sh) (the backend starts against a throwaway PostgreSQL, runs migrations, logs in and lists projects; the others start and answer on their health/static endpoints) and the same Trivy gate as `image-scan`; only a leg that passes pushes its digest (untagged), and never on a pull request. An image that names no release (`mcp-server`, `converter`, `docs`: the `reuse` flag in the matrix) first checks whether `ghcr.io/<owner>/<repo>-<image>:src-<tree>` exists, where `<tree>` is the git tree of its build directory; if it does, the leg still builds, smoke tests and scans, but pushes nothing. Run the smoke test yourself on any Docker host with `scripts/smoke_test_image.sh backend <image> [expected-arch]`. Unit, backend and Playwright tests stay `amd64`-only; the smoke test is the `arm64` gate.
-- **`docker-publish`** — runs on `main` only, after every `docker-build` leg passed. Assembles each image's two digests into one multi-arch manifest list tagged with the SemVer, the commit SHA and `latest` (and, for a `reuse` image, `src-<tree>`; an unchanged `reuse` image has no digests and gets the same three tags on the image that already carries `src-<tree>`, so its digest does not change and a host pulls nothing new), pushes to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}`, and fails if either platform is missing from a result. See [deployment.md](deployment.md#obtaining-container-images) for how to point `docker-compose.yml` at a published image instead of building locally.
+- **`docker-publish`** — runs on `main` only, after every `docker-build` leg passed. Assembles each image's two digests into one multi-arch manifest list tagged with the SemVer, the commit SHA and `latest` (and, for a `reuse` image, `src-<tree>`; an unchanged `reuse` image has no digests and gets the same three tags on the image that already carries `src-<tree>`, so its digest does not change and a host pulls nothing new), pushes to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}`, and fails if either platform is missing from a result. See [deployment.md](deployment.md#obtaining-container-images) for how to point `deployments/full/docker-compose.yml` at a published image instead of building locally.
 
 ### Security scanning
 
