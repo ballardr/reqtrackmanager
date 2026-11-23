@@ -20065,3 +20065,13 @@ Raised while trying service users: in Organisation Settings, People, **Add user*
 - **Also fixed:** `record-components.spec.ts` reloaded before the optimistic placement was saved (a race, seen once under load); it now waits for the save.
 - **Docs:** the style guide's "Pattern: tags" and the website Tags page state that the label lists the rows present and that a requirement has no component row. The create forms need no change: `ComponentField` already draws nothing for a record that keeps its own component.
 - **Review (identify, verify, remediate):** presentation only; no authorisation, audit or data change. The permission gates (`can_edit`, systems present) are unchanged and stay server-enforced.
+
+### Phase 61 (platform review): the record code follows the title
+
+- **Cause (reproduced):** `RecordHeader` drew the title and the code as flex siblings (`nowrap`), so a title that wrapped filled the row and the code sat at the right end of its first line, near but not above the actions, in a place that changed with the title's length.
+- **Decision (Decided by: User):** the code follows the last word of the title, inline in the same flowing text (the style guide's "small muted suffix" is kept; no placement rule changed). The alternatives (an eyebrow line above the title, or the line under it) were not chosen.
+- **Fix (Decided by: Agent):** the title, its code and `titleAddon` are one inline run (`.record-header__title`); the heading is `display: inline` (still the `h1` or `h2`, so the accessible name excludes the code), the code is `nowrap` so a qualified code is never split, and `RecordCode` is unchanged. `RecordHeader` remains the only place that draws it; no page changed.
+- **Tests:** Storybook `LongTitle`, `LongUnbrokenTitle`, `LongTitleWithoutActions`, `LongCodeWithLongTitle`, `LongTitleWithSwitcher`, `LongTitleNarrow`, `LongTitleDark` and a `LongText` stress story assert the code is on the title's last line after its last word (or on the next line) using the title's per-line boxes, and fail against the earlier layout; Playwright `record-header-code.spec.ts` checks an action with a long title at 1280 and 420 pixels, and that the code is clear of the actions.
+- **Docs:** the style guide's record header pattern states the rule. No website change: the page's content and wording are unchanged.
+- **Review (identify, verify, remediate):** presentation only; no authorisation, audit, data, bundle, search or seed change.
+

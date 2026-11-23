@@ -6,6 +6,27 @@ import { Badge } from "./Badge";
 import { RecordHeader } from "./RecordHeader";
 import { ReturnLink } from "./ReturnLink";
 import { orphanedControlViolations } from "../testing/orphanedControls";
+import { STRESS_TEXT, expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
+
+/**
+ * Asserts the code follows the title: on the title's last line after its last word, or on the line below it. Never beside
+ * the actions on the first line of a title that wraps.
+ */
+async function expectCodeFollowsTitle(canvasElement: HTMLElement, code: string) {
+  const heading = canvasElement.querySelector<HTMLElement>(".record-header__heading")!;
+  const codeEl = within(canvasElement).getByText(code, { exact: false }).closest<HTMLElement>(".record-header__code")!;
+  const range = document.createRange();
+  range.selectNodeContents(heading);
+  const lines = Array.from(range.getClientRects());
+  const last = lines[lines.length - 1];
+  const c = codeEl.getBoundingClientRect();
+  const afterLastWord = c.top < last.bottom && c.bottom > last.top && c.left >= last.right - 1;
+  const onTheNextLine = c.top >= last.bottom - 1;
+  await expect(afterLastWord || onTheNextLine, `code at ${c.left},${c.top}; title ends ${last.right},${last.bottom}`).toBe(true);
+  const row = canvasElement.querySelector<HTMLElement>(".item-row")!;
+  await expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1);
+}
 
 const meta: Meta<typeof RecordHeader> = {
   title: "Components/RecordHeader",
@@ -98,11 +119,74 @@ export const NoPermissions: Story = {
   },
 };
 
-/** A very long title wraps inside its own box; Edit and the menu stay on the title row. */
+/** A very long title wraps inside its own box; Edit and the menu stay on the title row, and the code follows the title's last word. */
 export const LongTitle: Story = {
   args: { title: "An exceptionally long record title ".repeat(8) },
   play: async ({ canvasElement }) => {
     await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+  },
+};
+
+/** A long unbroken title breaks inside its box; the code stays after it. */
+export const LongUnbrokenTitle: Story = {
+  args: { title: STRESS_TEXT.word.repeat(3) },
+  play: async ({ canvasElement }) => {
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+  },
+};
+
+/** A title with no actions still carries the code after its last word. */
+export const LongTitleWithoutActions: Story = {
+  args: { title: "An exceptionally long record title ".repeat(8), onEdit: undefined, actions: [], transitions: undefined },
+  play: async ({ canvasElement }) => {
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+  },
+};
+
+/** A long project-qualified code stays whole and inside the row, after a long title. */
+export const LongCodeWithLongTitle: Story = {
+  args: { title: "An exceptionally long record title ".repeat(4), code: "REQ-000123", codeOwner: "ACME-ENGINEERING-PLATFORM" },
+  play: async ({ canvasElement }) => {
+    await expectCodeFollowsTitle(canvasElement, "ACME-ENGINEERING-PLATFORM-REQ-000123");
+  },
+};
+
+/** The code and a title switcher flow after the title, in that order. */
+export const LongTitleWithSwitcher: Story = {
+  args: { title: "An exceptionally long record title ".repeat(4), titleAddon: <button className="btn btn-icon" aria-label="Switch record">⇅</button> },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+    await expect(canvas.getByText("PER-001").compareDocumentPosition(canvas.getByRole("button", { name: "Switch record" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  },
+};
+
+/** A phone-width column: the title wraps over several lines and the code still follows it. */
+export const LongTitleNarrow: Story = {
+  args: { title: "An exceptionally long record title ".repeat(4) },
+  decorators: [(Story) => <div style={{ maxWidth: 320 }}><Story /></div>],
+  play: async ({ canvasElement }) => {
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+  },
+};
+
+export const LongTitleDark: Story = { ...LongTitle, globals: { theme: "dark" } };
+
+/** Short and long text at the same width: the actions keep their place and nothing leaves the row. */
+export const LongText: Story = {
+  render: (args) => (
+    <TextStress
+      width={640}
+      render={(long) => (
+        <RecordHeader {...args} title={stressText(long, "Ada Lovelace")} code={long ? STRESS_TEXT.code : "PER-001"} />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
   },
 };
 

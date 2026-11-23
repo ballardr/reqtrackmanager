@@ -3502,6 +3502,12 @@ td:has(> .disclosure-toggle) {
   border: 1px solid var(--color-border);
 }
 
+/* The title, its code and its switcher flow as one inline run (RecordHeader): the code follows the last word of a title that wraps. */
+.record-header__title { min-width: 0; }
+.record-header__heading { display: inline; margin: 0; }
+.record-header__code { font-size: 0.9rem; white-space: nowrap; }
+.record-header__addon { display: inline-block; vertical-align: baseline; }
+
 /* The line under a record's title (badges, version, `RecordTags`): when the record has none of them the line leaves no gap. */
 .record-header__line:empty { display: none; }
 

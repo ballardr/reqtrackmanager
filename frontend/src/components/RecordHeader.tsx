@@ -10,6 +10,8 @@
  * Design decisions (style guide "Pattern: record header and object actions"):
  * - Edit and the menu sit at the right edge of the title row in an `ItemRow`, so they never move or wrap under a
  *   long title.
+ * - The title, its code and `titleAddon` are one inline run: the code follows the title's last word and wraps with
+ *   it, so its place never depends on the title's length.
  * - *Object actions* (Archive/Restore, Delete permanently, Export, Subscribe) live in the menu, which renders even
  *   for a single action; *transitions* (Submit, Approve, Retire, Withdraw) stay visible beside the status because
  *   they depend on it.
@@ -117,13 +119,13 @@ export function RecordHeader({
           ) : undefined
         }
       >
-        <span className="row" style={{ gap: "0.6rem", alignItems: "baseline", flexWrap: "nowrap", minWidth: 0 }}>
-          <Heading style={{ margin: 0, minWidth: 0 }}>{title}</Heading>
+        <div className="record-header__title">
+          <Heading className="record-header__heading">{title}</Heading>
           {code && (
-            <span className="text-muted" style={{ fontSize: "0.9rem", flex: "none" }}><RecordCode code={code} ownerProjectCode={codeOwner} /></span>
+            <>{" "}<span className="record-header__code text-muted"><RecordCode code={code} ownerProjectCode={codeOwner} /></span></>
           )}
-          {titleAddon}
-        </span>
+          {titleAddon && <>{" "}<span className="record-header__addon">{titleAddon}</span></>}
+        </div>
       </ItemRow>
       {(badges || version !== undefined || tags) && (
         <div className="row record-header__line">
