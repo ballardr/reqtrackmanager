@@ -199,7 +199,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     await test.step("2FA now enabled, access is restored and the org-wide requirement can be turned back off, cleaning up for later specs", async () => {
       await page.goto("/projects");
       await page.getByText(projectName).click();
-      await expect(page.getByText(projectName)).toBeVisible();
+      await expect(page).toHaveURL(/\/projects\/[^/]+/);
 
       await page.goto("/orgs");
       await selectOrgAdminGroup(page, "Security");

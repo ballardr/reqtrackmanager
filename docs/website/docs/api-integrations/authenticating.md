@@ -21,6 +21,8 @@ There are two kinds of token, interchangeable everywhere this header is accepted
 
 A caller (the REST API, or `mcp-server` relaying the header on your behalf) doesn't need to know or care which kind it's holding — the backend's own RBAC does 100% of the access-control work either way, and neither token type is ever granted more access than the underlying account already has.
 
+When a token stops being accepted (it has expired, been revoked, or been replaced by a password change), the API answers `401` with `"code": "invalid_token"` (see [Error format](./rest-api-overview.md#error-format)). The web interface ends the session at the first such answer and returns to the sign-in page, then back to the page that was open once signed in again.
+
 ## The recommended way — a Personal Access Token
 
 From **Preferences → Personal Access Tokens**, create a token scoped to whichever organisation(s) (optionally narrowed to specific projects) it needs, and give it an expiry.

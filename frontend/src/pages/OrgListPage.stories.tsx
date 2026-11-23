@@ -53,6 +53,25 @@ export const MultipleOrganisations: Story = {
   },
 };
 
+/** A refused request shows what failed with Retry, not a spinner that never ends; Retry loads the list again. */
+export const FailedLoadOffersRetry: Story = {
+  decorators: [withRouter("/orgs")],
+  beforeEach: () => {
+    let calls = 0;
+    spyOn(api, "get").mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("The server is down.");
+      return [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })];
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The organisation list could not be loaded.");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await expect(await canvas.findByText("Beta Inc")).toBeInTheDocument();
+  },
+};
+
 const withOrgsAndAdminRoutes: Decorator = (Story) => (
   <MemoryRouter initialEntries={["/orgs"]}>
     <Routes>

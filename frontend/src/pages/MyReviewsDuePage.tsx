@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { RequirementDueForReview } from "../api/types";
+import { LoadFailed } from "../components/LoadFailed";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
@@ -20,6 +21,7 @@ export function MyReviewsDuePage() {
   const strings = useStrings();
   const [items, setItems] = useState<RequirementDueForReview[] | null>(null);
   const [total, setTotal] = useState(0);
+  const [failed, setFailed] = useState(false);
 
   async function load(offset: number, append: boolean) {
     const page = await api.getPage<RequirementDueForReview>(
@@ -29,8 +31,15 @@ export function MyReviewsDuePage() {
     setTotal(page.total);
   }
 
-  useLoadOnChange(() => load(0, false), []);
+  // The first page: a refused request shows the failure with Retry instead of leaving the spinner up.
+  function loadFirstPage() {
+    setFailed(false);
+    load(0, false).catch(() => setFailed(true));
+  }
 
+  useLoadOnChange(loadFirstPage, []);
+
+  if (failed) return <LoadFailed message={strings.requestFailure.loadFailed(strings.requestFailure.reviewsDue)} onRetry={loadFirstPage} />;
   if (!items) return <Spinner />;
 
   return (

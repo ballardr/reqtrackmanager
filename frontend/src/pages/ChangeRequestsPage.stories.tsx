@@ -115,6 +115,26 @@ export const ExportIsOnTheTitleRowAndThereIsNoImport: Story = {
   },
 };
 
+/** A refused read shows what failed with Retry, not a spinner that never ends; Retry reads the list again. */
+export const FailedLoadOffersRetry: Story = {
+  beforeEach: () => {
+    mockChangeRequestsListApis();
+    const answer = (api.getPage as unknown as { getMockImplementation: () => () => Promise<unknown> }).getMockImplementation();
+    let calls = 0;
+    spyOn(api, "getPage").mockImplementation((async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("The server is down.");
+      return answer?.();
+    }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The change request list could not be loaded.");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
+  },
+};
+
 export const EmptyState: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis();

@@ -7,6 +7,7 @@ import type { Organization, OrgDashboard, OrgOverviewStats } from "../api/types"
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { EntitySwitcher } from "../components/EntitySwitcher";
+import { LoadFailed } from "../components/LoadFailed";
 import { PageActionsProvider, PageActionsSlot } from "../components/PageActions";
 import { ReportsButton } from "../components/ReportsButton";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -56,6 +57,9 @@ export function OrgOverviewPage() {
   const [stats, setStats] = useState<OrgOverviewStats | null>(null);
   const [dashboards, setDashboards] = useState<OrgDashboard[] | null>(null);
   const [managing, setManaging] = useState(false);
+  // A refused read shows the failure with Retry (`attempt` loads the same organisation again).
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const reportCatalogue = useReportCatalogue("organization", orgId);
   const packScope = useMemo(() => (orgId ? { kind: "organization" as const, id: orgId } : undefined), [orgId]);
   const reportPacks = useReportPackEntries(packScope, orgId);
@@ -66,12 +70,24 @@ export function OrgOverviewPage() {
 
   useEffect(() => {
     if (!orgId) return;
-    api.get<Organization>(`/api/v1/orgs/${orgId}`).then(setOrg);
-    api.get<OrgOverviewStats>(`/api/v1/orgs/${orgId}/overview-stats`).then(setStats);
-  }, [orgId]);
-  useLoadOnChange(loadDashboards, [orgId]);
+    const refused = () => setFailed(true);
+    api.get<Organization>(`/api/v1/orgs/${orgId}`).then(setOrg, refused);
+    api.get<OrgOverviewStats>(`/api/v1/orgs/${orgId}/overview-stats`).then(setStats, refused);
+  }, [orgId, attempt]);
+  useLoadOnChange(() => loadDashboards().catch(() => setFailed(true)), [orgId, attempt]);
 
   if (!orgId) return null;
+  if (failed) {
+    return (
+      <LoadFailed
+        message={strings.requestFailure.loadFailed(strings.requestFailure.organisationOverview)}
+        onRetry={() => {
+          setFailed(false);
+          setAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
   if (!org || !stats || !dashboards || reportCatalogue.loading || reportPacks.loading) return <Spinner />;
 
   const hasReports = reportCatalogue.entries.length > 0 || reportPacks.entries.length > 0;

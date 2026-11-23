@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 54 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 58 came from the review of 2026-11-23; 50 to 54 are done and 55 to 58 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 55 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 58 came from the review of 2026-11-23; 50 to 55 are done and 56 to 58 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-54 / 63 phases complete.
+55 / 63 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -64,7 +64,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 52 | Sort on every record list | A Sort by and Order control in each record list's filter panel (code, title, created, modified, ascending or descending), one shared mechanism for every registered type; a decision gate first | [x] |
 | 53 | Record header: one add control for tags, components and references | The three separate (+) buttons become one (+) with a menu naming what it adds, in one row with the chips | [x] |
 | 54 | Clear control: a compact X | The control that empties an owner or similar field is one compact icon button after the value, not a text button; one shared component and a style guide pattern | [x] |
-| 55 | Dead session: redirect to sign-in | A request refused for an invalid or expired token ends the session and returns the person to the sign-in page instead of leaving a spinner | [ ] |
+| 55 | Dead session: redirect to sign-in | A request refused for an invalid or expired token ends the session and returns the person to the sign-in page instead of leaving a spinner | [x] |
 | 56 | Architecture types: one Add button, at the top | The two add buttons on Element Types and Connection Types become one at the top that opens the full form | [ ] |
 | 57 | Files pages: no background behind a type icon | A file-type icon is drawn bare; only a picture keeps its backdrop | [ ] |
 | 58 | Service users in the one Users list | Add user offers New service user; service users are managed from the Users list, not a separate section | [ ] |
@@ -804,6 +804,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **After the redirect:** the sign-in page returns the person to the page they were on (phase 1's return path stays; no extra message on the sign-in page, phase 41); in-flight requests from the dead session are abandoned, not retried; the media token timer is cleared; several requests failing at once cause one sign-out, not several. A session ended on purpose (sign out, a password change) keeps its own behaviour.
 - **Policy:** this touches session handling, so read `docs/soc2/policies/access-control-policy.md` and the control matrix, keep the rule that a dead token ends the session, and record the outcome in `docs/decisions.md` with the identify, verify, remediate review the change-management policy asks for (the marker must reveal nothing new to an unauthenticated caller: the same 401 text, no account or token detail, no difference between an expired, a revoked and a malformed token).
 - Tests: a backend test that the CORS `expose_headers` include `WWW-Authenticate` and that every dead-token response carries the marker and no other 401 does (a wrong current password and a bad two-factor code do not); a client unit test for each signal alone (header only, marker only, neither) and for several concurrent 401s signing out once; a Playwright spec in the cross-origin Compose stack (the only kind that can catch this): sign in, invalidate the token on the server (a password change from another session, bumping `token_version`), trigger any request from a list page and assert the redirect to sign-in without a reload, then sign in and land back on the same page.
+
+- As built (**Decided by: User** for the 120-second ceiling on reads, **Decided by: Agent** for the rest): the CORS `expose_headers` list now includes `WWW-Authenticate` (and `X-Projects-Truncated`, hidden by the same omission), and every dead-token 401 carries `code: invalid_token` in its body (`deps.InvalidTokenError`, one handler in `main.py`; the 401s raised elsewhere are not dead-token cases and a test lists them). `api/client.ts` ends the session on either signal, once, and only while the refused request's token is still the session's (`isDeadSessionResponse`, `endedSessionToken`); the media-token renewal discards a result for a session that changed. A plain GET and the paged filtered read end after 120 s with "The server is taking longer than expected to respond."; an unreachable server now fails with its own message. Stuck spinners: `LoadFailed` (message and Retry) on the organisation list, My reviews due, a project's reviews due, the organisation overview, the compliance status tabs, the project Files and Change requests lists, and `useUnhandledRequestFailures` (mounted in `App`) shows any failure nothing handled as one error toast with Reload; the other roughly 150 `Spinner` pages were not converted one by one (stated in `docs/decisions.md`, with the rule in the style guide). Two specs broken by earlier phases were fixed (`golden-path`, `org-security-controls`). Not done: the cross-origin spec was not run against the old build to watch it fail (the cause was measured in the plan instead). See `docs/decisions.md`, the access control policy (item 5), the website's REST API overview and Authenticating pages.
 
 ### Phase 56 — Architecture types: one Add button, at the top
 

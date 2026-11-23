@@ -5217,6 +5217,20 @@ const en = {
     openDiagram: (label: string) => `Open ${label}`,
     threadCount: (count: number) => `${count} ${count === 1 ? "comment" : "comments"}`,
   },
+  requestFailure: {
+    generic: "A request could not be completed.",
+    incomplete: "Part of this page may not have loaded.",
+    reload: "Reload",
+    retry: "Retry",
+    /** The line of a page whose data could not be loaded; `what` names it ("The organisation list"). */
+    loadFailed: (what: string) => `${what} could not be loaded.`,
+    organisations: "The organisation list",
+    files: "The file list",
+    changeRequests: "The change request list",
+    reviewsDue: "The reviews due",
+    organisationOverview: "The organisation overview",
+    complianceStatus: "The compliance status",
+  },
   common: {
     requiredLegend: "* required",
     clear: "Clear",

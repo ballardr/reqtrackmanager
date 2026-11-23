@@ -72,7 +72,8 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Boot in under 5 seconds");
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByText("SW-PERF-001")).toBeVisible();
+    // The confirmation and the list row both carry the code, so the row is found by its title.
+    await expect(page.getByRole("link", { name: "Boot in under 5 seconds" })).toBeVisible();
   });
 
   await test.step("approve stage locks the requirement", async () => {

@@ -37,6 +37,30 @@ export default meta;
 
 type Story = StoryObj<typeof ComplianceStatusPage>;
 
+/** The list of organisations could not be loaded: the failure and Retry, not a spinner that never ends. */
+export const FailedLoadOffersRetry: Story = {
+  args: { view: "by-standard" },
+  decorators: [withAuth(buildUser()), withRouter("/standards/by-standard")],
+  beforeEach: () => {
+    mockApis(["org-1", "org-2"]);
+    const answer = (api.get as unknown as { getMockImplementation: () => (path: string) => Promise<unknown> }).getMockImplementation();
+    let refused = false;
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/orgs?mine=true") && !refused) {
+        refused = true;
+        throw new Error("The server is down.");
+      }
+      return answer(path);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The compliance status could not be loaded.");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await expect(await canvas.findByLabelText("Organisation")).toBeInTheDocument();
+  },
+};
+
 /** A person who reads the status of two organisations gets the three tabs and an Organisation filter, set to all. */
 export const ByStandardWithOrganisationFilter: Story = {
   args: { view: "by-standard" },

@@ -7,8 +7,9 @@ import { AuthContext, type AuthContextValue, type LoginResult } from "./AuthCont
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { clearReturnTo, rememberReturnTo } from "../utils/returnTo";
 
-// Every other call through this client waits indefinitely (no timeout at
-// all) — login/2FA-verify are the deliberate exception. Both hit
+// An ordinary read has the client's default ceiling (`READ_TIMEOUT_MS`) and a
+// write waits indefinitely — login/2FA-verify are the deliberate exception,
+// with a ceiling of their own. Both hit
 // `verify_password` (bcrypt, cost factor 12, ~200ms of CPU-bound work per
 // call), which under concurrent login load (many users signing in around
 // the same time, e.g. shift start) legitimately queues behind other logins
@@ -90,9 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  // A 401 with `WWW-Authenticate` (client.ts's `AUTH_UNAUTHORIZED_EVENT`)
-  // means the session token itself is dead — expired, or invalidated by a
-  // password change/2FA change in another tab. Clearing `user` immediately
+  // `AUTH_UNAUTHORIZED_EVENT` (client.ts) means the session token is dead:
+  // expired, or invalidated by a password change/2FA change in another tab. Clearing `user` immediately
   // (rather than only on the next mount) is what makes `ProtectedRoutes`
   // (App.tsx) redirect to /login right away instead of leaving the page
   // rendered on stale data until a hard refresh forces a re-check.

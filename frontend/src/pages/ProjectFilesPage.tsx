@@ -23,6 +23,7 @@ import { FileFilterFields } from "../components/FileFilterFields";
 import { FilesTable } from "../components/FilesTable";
 import { FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
+import { LoadFailed } from "../components/LoadFailed";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
 import { Spinner } from "../components/Spinner";
@@ -46,6 +47,7 @@ export function ProjectFilesPage() {
   const filters = useFileFilters();
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const latestRequest = useRef(0);
+  const [failed, setFailed] = useState(false);
   const scopeQuery = projectScope.widened ? `&${projectScope.query}` : "";
 
   async function loadFiles(offset: number, append: boolean) {
@@ -62,7 +64,12 @@ export function ProjectFilesPage() {
 
   const filterKey = [projectId, projectScope.scope, ...filters.key];
   useResetOnChange(filterKey, () => setFiles(null));
-  useLoadOnChange(() => loadFiles(0, false), filterKey);
+  // The first page: a refused request shows the failure with Retry instead of leaving the spinner up.
+  function loadFirstPage() {
+    setFailed(false);
+    loadFiles(0, false).catch(() => setFailed(true));
+  }
+  useLoadOnChange(loadFirstPage, filterKey);
   useLoadOnChange(async () => {
     if (!projectId) return;
     setUploaders(await api.get<ProjectFileUploader[]>(`/api/v1/projects/${projectId}/files/uploaders?${projectScope.query}`));
@@ -86,7 +93,8 @@ export function ProjectFilesPage() {
         </FilterPanel>
       }
     >
-      {!files && <Spinner />}
+      {failed && <LoadFailed message={strings.requestFailure.loadFailed(strings.requestFailure.files)} onRetry={loadFirstPage} />}
+      {!files && !failed && <Spinner />}
       {files && files.length === 0 && <p className="text-muted">{filters.filtered ? strings.files.emptyFiltered : strings.files.empty}</p>}
       {files && files.length > 0 && <FilesTable files={files} projectId={projectId} />}
       {files && <LoadMoreButton loaded={files.length} total={total} onClick={() => loadFiles(files.length, true)} />}

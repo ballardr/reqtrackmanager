@@ -24,6 +24,7 @@ import { useTagFilter } from "../hooks/useTagFilter";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { SortableHeader } from "../components/SortableHeader";
 import { ReferencesCell } from "../components/ReferencesCell";
+import { LoadFailed } from "../components/LoadFailed";
 import { Spinner } from "../components/Spinner";
 import { TileCard, TileGrid } from "../components/TileCard";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
@@ -171,7 +172,13 @@ export function ChangeRequestsPage() {
     setStages(stgs);
   }
 
-  useLoadOnChange(reload, [projectId, statusFilter, targetStageFilter, listSort.sort, search, tagFilter.query, projectScope.scope]);
+  // A refused read shows the failure with Retry instead of leaving the spinner up; a later success clears it.
+  const [failed, setFailed] = useState(false);
+  function reloadShowingFailure() {
+    setFailed(false);
+    return reload().catch(() => setFailed(true));
+  }
+  useLoadOnChange(reloadShowingFailure, [projectId, statusFilter, targetStageFilter, listSort.sort, search, tagFilter.query, projectScope.scope]);
 
   // Deep-linked from a requirement's "Make change request" button
   // (?requirement=<id>) — pre-selects that requirement for a
@@ -293,7 +300,8 @@ export function ChangeRequestsPage() {
               <ViewToggle mode={viewMode} onChange={setViewMode} />
             </div>
 
-            {!crs && <Spinner />}
+            {failed && <LoadFailed message={strings.requestFailure.loadFailed(strings.requestFailure.changeRequests)} onRetry={() => void reloadShowingFailure()} />}
+            {!crs && !failed && <Spinner />}
             {crs && crs.length === 0 && <p className="text-muted">{strings.changeRequests.empty}</p>}
             {crs && crs.length > 0 && viewMode === "list" && (
               <div className="card" style={{ overflowX: "auto" }}>

@@ -26,7 +26,21 @@ from app.security import PAT_PREFIX, decode_access_token, decode_module_frame_to
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)
 settings = get_settings()
 
-_UNAUTHORIZED = HTTPException(
+INVALID_TOKEN_CODE = "invalid_token"
+
+
+class InvalidTokenError(HTTPException):
+    """A 401 for a credential that is missing, malformed, expired, revoked or superseded: the session is over.
+
+    The response body is `{"detail": <text>, "code": "invalid_token"}` (see `app.main`'s handler) and carries
+    `WWW-Authenticate: Bearer`. The client treats either signal as the end of the session, because a browser on
+    another origin cannot read a response header the server has not exposed, and a proxy may strip one. Every
+    cause answers identically, so the response never says whether a token expired, was revoked or never existed.
+    A 401 for a wrong password or a bad second-factor code is an ordinary `HTTPException` and carries neither.
+    """
+
+
+_UNAUTHORIZED = InvalidTokenError(
     status.HTTP_401_UNAUTHORIZED,
     "Could not validate credentials.",
     headers={"WWW-Authenticate": "Bearer"},

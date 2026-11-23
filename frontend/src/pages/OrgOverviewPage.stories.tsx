@@ -159,6 +159,18 @@ export const DashboardShowsTheHeadlineFigures: Story = {
 };
 
 /** The dashboards the person may see are menu entries, the built-in Overview first; another page keeps its own address. */
+/** A refused read shows what failed with Retry, not a spinner that never ends. */
+export const FailedLoadOffersRetry: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockRejectedValue(new Error("The server is down."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The organisation overview could not be loaded.");
+    await expect(canvas.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  },
+};
+
 export const ExtraDashboardPagesAreMenuEntries: Story = {
   beforeEach: () => mockOrgOverviewApis({ pages: [page(), page({ id: "page-2", name: "Risk board", is_default: false })] }),
   play: async ({ canvasElement }) => {

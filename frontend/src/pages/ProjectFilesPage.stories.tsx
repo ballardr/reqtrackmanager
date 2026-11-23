@@ -42,6 +42,24 @@ function mockServer(rows: ProjectFile[] | ((path: string, body: Record<string, u
   }) as never);
 }
 
+/** A refused search shows what failed with Retry, not a spinner that never ends; Retry searches again. */
+export const FailedLoadOffersRetry: Story = {
+  beforeEach: () => {
+    let searches = 0;
+    mockServer(() => {
+      searches += 1;
+      if (searches === 1) throw new Error("The server is down.");
+      return { items: [buildProjectFile({ file: asset("file-1", "spec.pdf", "application/pdf") })], total: 1 };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The file list could not be loaded.");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await expect(await canvas.findByText("spec.pdf")).toBeInTheDocument();
+  },
+};
+
 /** The list shows every source in one list, each with an "Origin" link back to where the file came from, and a preview beside each name. */
 export const MixedSources: Story = {
   beforeEach: () => {

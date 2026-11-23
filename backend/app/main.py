@@ -28,6 +28,7 @@ from app.body_limit import BodySizeLimitMiddleware
 from app.concurrency_limit import ConcurrencyLimitMiddleware
 from app.config import get_settings
 from app.database import SessionLocal, engine
+from app.deps import INVALID_TOKEN_CODE, InvalidTokenError
 from app.metrics import http_request_duration_seconds, http_requests_total, run_worker_gauge_loop
 from app.migrations import run_migrations
 from app.modules.registry import get_module_registry, sync_module_role_definitions
@@ -229,7 +230,17 @@ app.add_middleware(
     # `Content-Disposition` carries the server's chosen name for a generated file (a pack's zip is named by its
     # file-name template); a cross-origin browser hides it from JS unless exposed, and the download would fall back
     # to a client-side guess.
-    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count", "X-Can-Include-Unjoined", "Content-Disposition"],
+    # `WWW-Authenticate` is how the client tells a dead session (an invalid or expired token) from a business 401 such as a
+    # wrong current password; without it a cross-origin browser read `null`, judged every dead session an ordinary refusal
+    # and left the page on a spinner until a reload. `X-Projects-Truncated` marks a project list that was cut short.
+    expose_headers=[
+        "X-Total-Count",
+        "X-Total-Unfiltered-Count",
+        "X-Can-Include-Unjoined",
+        "X-Projects-Truncated",
+        "Content-Disposition",
+        "WWW-Authenticate",
+    ],
 )
 
 
@@ -266,6 +277,24 @@ async def redact_sensitive_validation_errors(request: Request, exc: RequestValid
             error["input"] = str(error["input"])
         errors.append(error)
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": jsonable_encoder(errors)})
+
+
+@app.exception_handler(InvalidTokenError)
+async def invalid_token_response(request: Request, exc: InvalidTokenError) -> JSONResponse:
+    """Answers a dead-token 401 with the usual `detail` text plus the stable `code` the client reads as "session over".
+
+    Args:
+        request: The refused request (unused; every cause answers identically).
+        exc: The shared invalid-token exception from `app.deps`.
+
+    Returns:
+        A 401 response with `WWW-Authenticate: Bearer` and the body `{"detail": ..., "code": "invalid_token"}`.
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "code": INVALID_TOKEN_CODE},
+        headers=exc.headers,
+    )
 
 
 @app.middleware("http")

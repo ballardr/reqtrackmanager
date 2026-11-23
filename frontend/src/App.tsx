@@ -6,6 +6,7 @@ import { Spinner } from "./components/Spinner";
 import { useAuth } from "./context/AuthContext";
 import { useFederatedModules } from "./hooks/useFederatedModules";
 import { useProjectEnabledModules } from "./hooks/useProjectEnabledModules";
+import { useUnhandledRequestFailures } from "./hooks/useUnhandledRequestFailures";
 import { rememberReturnTo } from "./utils/returnTo";
 import { buildModuleRoutes } from "./modules/buildModuleRoutes";
 import { installedModules } from "./modules/registry";
@@ -215,6 +216,7 @@ function ProtectedRoutes() {
 }
 
 export function App() {
+  useUnhandledRequestFailures();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

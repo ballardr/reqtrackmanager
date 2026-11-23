@@ -19,6 +19,7 @@ import { useState } from "react";
 
 import type { Organization } from "../../api/types";
 import { FilterSelect } from "../../components/FilterSelect";
+import { LoadFailed } from "../../components/LoadFailed";
 import { Spinner } from "../../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../../context/BrandingContext";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
@@ -31,6 +32,7 @@ import { useStandardsTabs } from "./StandardsTabs";
 import { useComplianceStatusOrganizations } from "./useComplianceNavVisibility";
 
 const strings = t().standardsPage;
+const failureStrings = t().requestFailure;
 
 /**
  * @param view The status tab to draw.
@@ -41,15 +43,25 @@ export function ComplianceStatusPage({ view }: { view: "by-standard" | "outstand
   const orgLabelPlural = useOrgLabelPlural();
   const { ids, loaded } = useComplianceStatusOrganizations();
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const [orgChoice, setOrgChoice] = useUrlChoice("org", ids);
   const { tabs, contentProps } = useStandardsTabs(view, orgChoice);
 
-  useLoadOnChange(async () => {
+  const loadOrganizations = async () => {
     if (!loaded) return;
-    const mine = await complianceApi.listMyActiveOrganizations();
-    setOrgs(mine.filter((o) => ids.includes(o.id)).sort((a, b) => a.name.localeCompare(b.name)));
-  }, [loaded, ids]);
+    setFailed(false);
+    try {
+      const mine = await complianceApi.listMyActiveOrganizations();
+      setOrgs(mine.filter((o) => ids.includes(o.id)).sort((a, b) => a.name.localeCompare(b.name)));
+    } catch {
+      setFailed(true);
+    }
+  };
+  useLoadOnChange(loadOrganizations, [loaded, ids]);
 
+  if (failed) {
+    return <LoadFailed message={failureStrings.loadFailed(failureStrings.complianceStatus)} onRetry={() => void loadOrganizations()} />;
+  }
   if (!loaded || orgs === null) return <Spinner />;
   if (orgs.length === 0) {
     return (

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useUrlSort, useUrlText } from "../hooks/useUrlFilter";
 import { sortRows } from "../utils/sortRows";
 import { cycleSort } from "../components/sortState";
@@ -11,6 +12,7 @@ import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
+import { LoadFailed } from "../components/LoadFailed";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
@@ -48,20 +50,24 @@ const strings = t();
  */
 export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview" | "resources" | "files" }) {
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
+  const [failed, setFailed] = useState(false);
   // The search lives in the URL so the list comes back as it was left after a visit to a record.
   const [search, setSearch] = useUrlText("q");
   const [sort, setSort] = useUrlSort<string>(["name"]);
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
 
-  useEffect(() => {
+  const load = useCallback(() => {
     // `mine=true`: this is the personal "orgs I belong to" list (nav rail's
     // "My organisations"), not the server-admin platform directory — a
     // server admin with no real membership anywhere must see it empty like
     // anyone else, per `orgs.py::list_organizations`'s doc comment.
-    api.get<Organization[]>("/api/v1/orgs?mine=true").then(setOrgs);
+    setFailed(false);
+    api.get<Organization[]>("/api/v1/orgs?mine=true").then(setOrgs, () => setFailed(true));
   }, []);
+  useLoadOnChange(load, []);
 
+  if (failed) return <LoadFailed message={strings.requestFailure.loadFailed(strings.requestFailure.organisations)} onRetry={load} />;
   if (!orgs) return <Spinner />;
 
   if (orgs.length === 1) {
