@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 62 done 2026-11-22 to 2026-11-24, 63 and 64 planned 2026-11-24; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 62 are done; phases 60 to 64 came from the review of 2026-11-24 (63 and 64 are planned, not started, because the user works them individually); R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 63 done 2026-11-22 to 2026-11-24, 64 planned 2026-11-24; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 63 are done; phases 60 to 64 came from the review of 2026-11-24 (64 is planned, not started, because the user works them individually); R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-62 / 69 phases complete.
+63 / 69 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -72,7 +72,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 60 | Record header: the add menu names only what it offers | The (+) tooltip and accessible name list the rows the menu really has (a requirement offers no component row) | [x] |
 | 61 | Record header: the code beside a long title | The record code keeps a place that follows the title, not a spot beside the action buttons; a long-title story guards it; a decision gate first; decided 2026-11-24: inline after the title's last word | [x] |
 | 62 | Lifecycle track and Promote button | A chevron-style track of a record's states (current in the primary colour, earlier steps tinted, later steps plain) and one Promote action, replacing the transition buttons and the Locked notice badge; a Storybook mock with three interaction variants, a state inventory and a decision gate first; decided 2026-11-24: every type, Promote on the next step and in the actions menu, full-width track, padlock on the next step without permission | [x] |
-| 63 | Files: click a picture for a larger preview | A picture's thumbnail opens a larger preview dialog on the Files pages | [ ] |
+| 63 | Files: click a picture for a larger preview | A picture's thumbnail opens a larger preview dialog on the Files pages | [x] |
 | 64 | Project overview activity: styled as the project history | The Project activity widget uses the History page's columns and row wording through one shared component | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 64 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
@@ -915,6 +915,8 @@ Five items from the user's review, each checked against the code (findings in ea
 - **Deliberately not included** (**Decided by:** Agent, revisit on request): stepping to the next or previous picture, zoom, and PDF preview.
 - **Check while there:** every other place that draws a file's picture beside its name (comment attachments, the record Attachments card, report images) uses `FileThumbnail`, so the preview applies to all; list any that draw their own and move them onto it (shared-component rule).
 - Tests: Storybook for the thumbnail and dialog (a PNG, an SVG with a transparent background in light and dark, a very wide, a very tall and a tiny picture, a failed load, a non-picture), and a `LongText` file name; Playwright on the Files page of a project: click the logo's thumbnail, see the larger picture, close with Escape and with the control, focus returns, and a non-picture shows no button.
+
+- As built (**Decided by: Agent**): `FileThumbnail` draws a picture as a button "Preview <file name>" (with a `Tooltip`, `aria-haspopup="dialog"`, the image inside has empty alt) that opens `components/ImagePreviewDialog.tsx` in the shared `Modal` (`size="lg"`): the `PictureImage` on the person's backdrop (`max-height: 65vh`, raster never upscaled, SVG filling the width at a fixed height), the file name as title, a Download link, Escape and the close control (focus returns through `Modal`), and an "unreadable" message if the picture fails inside the dialog. A non-picture or an unreadable thumbnail keeps the bare icon with no button. `FilesTable` and `OrgResourcesTable` already shared `FileThumbnail`, so both Files pages and Shared resources are covered; no other file list draws its own picture. Story fixture `testing/pictureFiles.tsx` (`withPictureFiles`, ids `pic-*`) makes stories load real pictures. Specs: Storybook for thumbnail, dialog, the project Files page and Shared resources; Playwright `file-picture-preview.spec.ts`. Website file attachments page and the style guide updated. See `docs/decisions.md`.
 
 ### Phase 64 — Project overview activity: styled as the project history
 

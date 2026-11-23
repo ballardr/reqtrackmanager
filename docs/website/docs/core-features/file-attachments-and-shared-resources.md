@@ -51,6 +51,8 @@ The filter panel on the right narrows the list; the filters are held in the addr
 - **Uploaded from** and **to** are calendar days in your own time zone, both included.
 - On a project with parent or child projects, the usual project scope filter widens the list; a row from another project says so and opens there.
 
+Select a picture's small preview to open it larger in a dialog. The dialog names the file, offers **Download**, and closes with **Escape** or the close button; focus returns to the preview. The same preview opens from the organisation's Files page and from its shared resources. A file that is not a picture shows an icon and has no preview.
+
 A picture you cannot read shows an icon in place of its preview. A *confidential* library picture is still listed for the project's members; the mark only stops a report from printing it.
 
 ## Organisation files

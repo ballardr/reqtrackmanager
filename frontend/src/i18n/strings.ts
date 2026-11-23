@@ -2426,6 +2426,11 @@ const en = {
     noMetadata: "This file records no camera details.",
     failed: "The details could not be read.",
   },
+  filePreview: {
+    open: (name: string) => `Preview ${name}`,
+    download: "Download",
+    unreadable: "The picture could not be loaded.",
+  },
   reportSnippets: {
     menuButton: "Snippets",
     insertButton: "Insert snippet",
