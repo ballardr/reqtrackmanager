@@ -3586,6 +3586,9 @@ td:has(> .disclosure-toggle) {
   border: 1px solid var(--color-border);
 }
 
+/* The line under a record's title (badges, version, `RecordTags`): when the record has none of them the line leaves no gap. */
+.record-header__line:empty { display: none; }
+
 /* A tag: the user's own colour (inline `--tag-colour`) marks the left edge; the label keeps the theme's text colour. */
 .tag-chip {
   border-left: 3px solid var(--tag-colour, var(--color-border));

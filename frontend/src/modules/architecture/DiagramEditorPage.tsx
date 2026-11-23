@@ -870,7 +870,7 @@ export function DiagramEditorPage() {
         title={<Tooltip label={scopeLabel} wrap>{diagram.name}</Tooltip>}
         titleAddon={<DiagramSwitcher kind="block" projectId={projectId} currentId={diagram.id} />}
         code={diagram.unique_code}
-        tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_diagram" artefactId={diagram.id} />}
+        tags={<RecordTags projectId={projectId} artefactType="architecture_diagram" artefactId={diagram.id} />}
         back={{ to: architectureTabPath(projectId, "diagrams"), label: "Diagrams" }}
         badges={
           <>

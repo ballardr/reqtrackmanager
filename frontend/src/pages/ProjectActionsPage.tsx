@@ -155,10 +155,15 @@ export function ProjectActionsPage() {
     try {
       const created = await api.post<RequirementAction>(`/api/v1/projects/${projectId}/actions`, values);
       setShowNewForm(false);
-      reload();
       announceCreated(strings.actions.recordLabel, created);
-      await commitQuickLinks(created.id, quickLinks);
-      await commitTags(created.id, tags);
+      // The list is read after the links, tags and places exist: its Components and External references columns read the
+      // page's rows once, so a read before they were applied showed the new row without them.
+      try {
+        await commitQuickLinks(created.id, quickLinks);
+        await commitTags(created.id, tags);
+      } finally {
+        reload();
+      }
     } catch (err) {
       setCreateError(toErrorMessage(err, strings.common.error));
     }

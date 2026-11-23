@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "./helpers";
+import { chooseRecordAddition, installCleanupHook } from "./helpers";
 import { API_BASE_URL, openNew, openPeople, setUpOrg } from "../modules/stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -28,11 +28,11 @@ test("add, edit and remove a reference, create with one, then filter the list by
   const key = `PROJ-${suffix}`;
   const link = `https://tracker.example/browse/${key}`;
   const changedKey = `PROJ-${suffix}-B`;
-  const groupName = "External references";
+  const groupName = "Tags, components and references";
 
   await test.step("a reference is added from the record's page and opens its item in a new tab", async () => {
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${referenced.id}`);
-    await page.getByRole("button", { name: "Add external reference" }).click();
+    await chooseRecordAddition(page, "Add external reference");
     const dialog = page.getByRole("dialog", { name: "Add an external reference" });
     await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
     await dialog.getByRole("combobox", { name: "System" }).selectOption({ label: "Jira" });
@@ -50,7 +50,7 @@ test("add, edit and remove a reference, create with one, then filter the list by
   });
 
   await test.step("a refused link is reported and nothing is added", async () => {
-    await page.getByRole("button", { name: "Add external reference" }).click();
+    await chooseRecordAddition(page, "Add external reference");
     const dialog = page.getByRole("dialog", { name: "Add an external reference" });
     await dialog.getByRole("combobox", { name: "System" }).selectOption({ label: "Jira" });
     await dialog.getByRole("textbox", { name: "Key" }).fill(`BAD-${suffix}`);

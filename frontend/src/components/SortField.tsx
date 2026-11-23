@@ -1,8 +1,7 @@
 /**
  * Module: components/SortField
  *
- * The **Sort by** and **Order** controls of a record list's filter panel, and the reset that returns to the default
- * order (docs/ux-style-guide.md, "Pattern: list sort"). One component for every list, so a person finds the sort in the
+ * The **Sort by** and **Order** controls of a record list's filter panel (docs/ux-style-guide.md, "Pattern: list sort"). One component for every list, so a person finds the sort in the
  * same place with the same words, and a record they have just created or changed can be put at the top by creation or
  * modification time.
  *
@@ -10,7 +9,6 @@
  * - Draw the two selects over a `ListSortState` (`useListSort`), the same state the table's column headers use.
  * - Offer a choice for each sortable column of the table plus **Created** and **Modified** (`sortChoices`, `sortChoices.ts`).
  * - Describe every choice in the caption's `(?)` tooltip, one line each, so a person can compare before choosing.
- * - Show **Reset to default order** only while a sort is chosen; there is nothing to reset otherwise.
  *
  * Dependencies: `FilterSelect`, `useListSort`, `strings.sort`.
  */
@@ -85,11 +83,6 @@ export function SortField({
           { value: "desc", label: text.descending },
         ]}
       />
-      {!list.isDefault && (
-        <button type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }} onClick={list.reset}>
-          {text.reset}
-        </button>
-      )}
     </>
   );
 }

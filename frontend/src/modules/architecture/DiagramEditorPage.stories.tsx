@@ -3,6 +3,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
 import { buildPlace, openPlacementPicker } from "../../testing/placementsFixtures";
+import { chooseAddition } from "../../testing/tagsFixtures";
 import { buttonHeightViolations } from "../../testing/buttonHeights";
 import { expectLabelInName } from "../../testing/labelInName";
 import { requiredCaptions } from "../../testing/requiredMarkers";
@@ -864,7 +865,10 @@ export const AComponentIsAssignedToABoxFromTheSelectionCard: Story = {
     await select(canvas, "Gateway");
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
     await expect((await panel.findAllByText("Hardware / Cooling")).length).toBeGreaterThan(0);
-    await openPlacementPicker(panel);
+    // The Selection card's labels are the one chip row: components are added from its (+) menu, in a dialog.
+    await chooseAddition(panel, "Add component or category");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add component or category" }));
+    await openPlacementPicker(dialog);
     await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Software" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/artefacts/architecture_element/el-1/placements`,

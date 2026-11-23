@@ -13,7 +13,7 @@ test.describe("record lists: sort by code, title, created and modified", () => {
   installCleanupHook();
   const API = "http://localhost:8000/api/v1";
 
-  test("the requirements list sorts by created and code, keeps the choice in the address and resets", async ({ page }) => {
+  test("the requirements list sorts by created and code, keeps the choice in the address and returns to the default", async ({ page }) => {
     const project = await createDisposableProject(page.request, PERSONAS.orgAdminAlphaBeta.email, "E2E List Sort");
     const { headers, projectId } = project;
     const [component] = project.components;
@@ -39,7 +39,6 @@ test.describe("record lists: sort by code, title, created and modified", () => {
       await expect(page.getByText(names[0])).toBeVisible();
       await expect(sortBy).toHaveValue("component");
       await expect(order).toBeDisabled();
-      await expect(page.getByRole("button", { name: "Reset to default order" })).toHaveCount(0);
     });
 
     await test.step("Created, newest first, puts the record created last at the top", async () => {
@@ -68,13 +67,13 @@ test.describe("record lists: sort by code, title, created and modified", () => {
       await expect(rows.nth(1)).toContainText(names[1]);
     });
 
-    await test.step("the choice survives a reload, and Reset returns to the default", async () => {
+    await test.step("the choice survives a reload, and choosing Component and category returns to the default", async () => {
       await page.reload();
       await expect(sortBy).toHaveValue("name");
       await expect(rows.nth(1)).toContainText(names[1]);
-      await page.getByRole("button", { name: "Reset to default order" }).click();
+      await sortBy.selectOption("component");
       await expect(sortBy).toHaveValue("component");
-      await expect(page).not.toHaveURL(/sort=/);
+      await expect(order).toBeDisabled();
     });
 
     await test.step("Code descending orders by the code, and the Export follows the sort", async () => {

@@ -84,14 +84,13 @@ type Story = StoryObj<typeof Harness>;
 const codes = (canvas: ReturnType<typeof within>) =>
   canvas.getAllByRole("row").slice(1).map((row: HTMLElement) => within(row).getAllByRole("cell")[0].textContent);
 
-/** With nothing chosen the list is by code ascending, numbers by value (DEC-2 before DEC-10), and there is nothing to reset. */
+/** With nothing chosen the list is by code ascending, numbers by value (DEC-2 before DEC-10). */
 export const DefaultsToCodeAscending: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(codes(canvas)).toEqual(["DEC-1", "DEC-2", "DEC-10"]);
     await expect(canvas.getByRole("combobox", { name: "Sort by" })).toHaveValue("unique_code");
     await expect(canvas.getByRole("combobox", { name: "Order" })).toHaveValue("asc");
-    await expect(canvas.queryByRole("button", { name: "Reset to default order" })).not.toBeInTheDocument();
   },
 };
 
@@ -120,7 +119,6 @@ export const ModifiedNewestFirst: Story = {
     const query = new URLSearchParams(canvas.getByLabelText("URL").textContent ?? "");
     await expect(query.get("sort")).toBe("modified");
     await expect(query.get("order")).toBe("desc");
-    await expect(canvas.getByRole("button", { name: "Reset to default order" })).toBeInTheDocument();
   },
 };
 
@@ -134,24 +132,10 @@ export const HeaderClickMovesTheSelect: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Title" }));
     await expect(canvas.getByRole("combobox", { name: "Order" })).toHaveValue("desc");
     await expect(codes(canvas)).toEqual(["DEC-1", "DEC-10", "DEC-2"]);
-    // A third click returns to the default order.
+    // A third click on the same column toggles back to ascending: the sort is never empty.
     await userEvent.click(canvas.getByRole("button", { name: "Title" }));
-    await expect(canvas.getByRole("combobox", { name: "Sort by" })).toHaveValue("unique_code");
-    await expect(canvas.queryByRole("button", { name: "Reset to default order" })).not.toBeInTheDocument();
-  },
-};
-
-/** Reset removes the chosen sort from the address and returns to code ascending. */
-export const ResetReturnsToTheDefault: Story = {
-  parameters: { path: "/list?sort=status&order=desc&keep=1" },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByRole("combobox", { name: "Sort by" })).toHaveValue("status");
-    await userEvent.click(canvas.getByRole("button", { name: "Reset to default order" }));
-    await expect(canvas.getByRole("combobox", { name: "Sort by" })).toHaveValue("unique_code");
-    const query = new URLSearchParams(canvas.getByLabelText("URL").textContent ?? "");
-    await expect(query.get("sort")).toBeNull();
-    await expect(query.get("keep")).toBe("1");
+    await expect(canvas.getByRole("combobox", { name: "Order" })).toHaveValue("asc");
+    await expect(canvas.getByRole("combobox", { name: "Sort by" })).toHaveValue("title");
   },
 };
 

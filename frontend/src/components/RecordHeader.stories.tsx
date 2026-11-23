@@ -118,22 +118,32 @@ export const ManyBadges: Story = {
 
 export const DarkTheme: Story = { globals: { theme: "dark" } };
 
-/** With `tagsInline` the tags sit on the badge line after the version, not on a line of their own. */
-export const TagsInlineBesideTheVersion: Story = {
-  args: { tagsInline: true, tags: <span>Safety</span> },
+/** Tags, components and references sit on the line under the title, after the badges and the version. */
+export const TagsAfterTheBadgesAndVersion: Story = {
+  args: { tags: <span>Safety</span> },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const line = canvas.getByText("Version 3").parentElement;
+    const line = canvas.getByText("Version 3").parentElement!;
     await expect(line).toContainElement(canvas.getByText("Safety"));
     await expect(line).toContainElement(canvas.getByText("Active"));
+    await expect(canvas.getByText("Version 3").compareDocumentPosition(canvas.getByText("Safety")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   },
 };
 
-/** Tags alone still open the badge line (a record with no badges and no version). */
-export const TagsInlineWithNoBadgesOrVersion: Story = {
-  args: { tagsInline: true, tags: <span>Safety</span>, badges: undefined, version: undefined },
+/** A record with no badges and no version still gets the line for its tags. */
+export const TagsWithNoBadgesOrVersion: Story = {
+  args: { tags: <span>Safety</span>, badges: undefined, version: undefined },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText("Safety").closest(".row")).not.toBeNull();
+    await expect(within(canvasElement).getByText("Safety").closest(".record-header__line")).not.toBeNull();
+  },
+};
+
+/** A `tags` element that draws nothing (a record with none that the viewer cannot add to) and no badges leave no line and no gap. */
+export const EmptyTagsLeaveNoLine: Story = {
+  args: { tags: <></>, badges: undefined, version: undefined },
+  play: async ({ canvasElement }) => {
+    const line = canvasElement.querySelector<HTMLElement>(".record-header__line")!;
+    await expect(getComputedStyle(line).display).toBe("none");
   },
 };
 

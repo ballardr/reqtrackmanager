@@ -3,8 +3,7 @@
  *
  * The header of every record detail page: back link, title (with the record's
  * code as a muted suffix), status pills, the Edit icon button and the object-action
- * menu, with the record's visible workflow buttons beneath. Tags go on their own line, or with `tagsInline` on the
- * badge line beside the version. A `stateMenu` (a record's "Change status" control) sits beside Edit. A `returnTo` control
+ * menu, with the record's visible workflow buttons beneath. Tags, components and references share the line under the title with the badges and the version. A `stateMenu` (a record's "Change status" control) sits beside Edit. A `returnTo` control
  * sits beside the back link when the person arrived from another record's page (docs/ux-style-guide.md, "Pattern: return to where you came from").
  *
  * Design decisions (style guide "Pattern: record header and object actions"):
@@ -42,8 +41,7 @@ const BACK_ARROW = "← ";
  * @param subtitle Secondary line under the title (type, owner, priority).
  * @param badges Status and scope pills, shown on the line under the title.
  * @param version The record's version number, for a versioned record; shown as "Version n" after the badges, never as its own line.
- * @param tags The record's tags (`RecordTags`), shown under the badges.
- * @param tagsInline Draw `tags` on the badge line after the version instead of on a line of its own. The page passes `<RecordTags inline />`, which draws nothing for a record with no tags or components, so the header carries no empty line.
+ * @param tags The record's tags, components and references (`RecordTags`), after the badges and the version on the line under the title (wrapping onto further lines of the same row). `RecordTags` draws nothing for a record with none that the viewer cannot add to, and an empty line is hidden, so the header carries no gap.
  * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself. The label is the destination's plural name ("Pain Points"); a name the project or organisation gave the destination's navigation entry replaces it. The header draws the leading arrow, so pages never type it.
  * @param returnTo A control beside the back link that leads to where the person came from (`ReturnLink`, or a menu of the places the record is used). Its page decides what it shows and whether it is trustworthy; the header only places it.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
@@ -62,7 +60,6 @@ export function RecordHeader({
   badges,
   version,
   tags,
-  tagsInline = false,
   back,
   returnTo,
   headingLevel = "h1",
@@ -80,7 +77,6 @@ export function RecordHeader({
   badges?: ReactNode;
   version?: number;
   tags?: ReactNode;
-  tagsInline?: boolean;
   back?: { to: string; label: string } | { onClick: () => void; label: string };
   returnTo?: ReactNode;
   headingLevel?: "h1" | "h2";
@@ -128,18 +124,17 @@ export function RecordHeader({
           {titleAddon}
         </span>
       </ItemRow>
-      {(badges || version !== undefined || (tagsInline && tags)) && (
-        <div className="row">
+      {(badges || version !== undefined || tags) && (
+        <div className="row record-header__line">
           {badges}
           {version !== undefined && (
             <span className="text-muted" style={{ fontSize: "0.85rem" }} title={`Version ${version} of this record`}>
               Version {version}
             </span>
           )}
-          {tagsInline && tags}
+          {tags}
         </div>
       )}
-      {tags && !tagsInline && <div>{tags}</div>}
       {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
       {transitions && <div className="row">{transitions}</div>}
     </header>

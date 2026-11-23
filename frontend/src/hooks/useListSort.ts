@@ -8,8 +8,9 @@
  * - Read the sort from the address (`sort`, `order`), else the person's last choice for this list (kept in
  *   `ui_preferences` as `list_sort_<key>`, so it follows them between browsers), else the list's default, which is the
  *   code ascending. The effective sort is never empty, so the table always shows what orders it.
- * - Write a chosen sort to the address and the preference; reset removes both.
- * - Offer the header click (`onHeaderSort`): another column ascending, the same column descending, then the default.
+ * - Write a chosen sort to the address and the preference.
+ * - Offer the header click (`onHeaderSort`): another column ascending, the same column toggles its direction. There is
+ *   no reset: the default (Code ascending) is a choice in the Sort by and Order fields like any other.
  *
  * Design decisions:
  * - The address wins over the stored choice, so a shared link opens in the order its sender saw.
@@ -23,7 +24,7 @@
  */
 import { useCallback, useContext, useMemo, useState } from "react";
 
-import { cycleSort, type SortState } from "../components/sortState";
+import type { SortState } from "../components/sortState";
 import { AuthContext } from "../context/AuthContextValue";
 import { useUrlSort } from "./useUrlFilter";
 
@@ -36,14 +37,10 @@ export interface ListSortState {
   sort: SortState;
   /** The keys the list offers. */
   keys: readonly string[];
-  /** Whether the sort in force is the list's default (nothing chosen, so there is nothing to reset). */
-  isDefault: boolean;
   /** Chooses a sort: written to the address and remembered for this list. */
   set: (next: SortState) => void;
-  /** A column header was clicked: that column ascending, descending if it already was, then the default. */
+  /** A column header was clicked: that column ascending, or the other direction if it is already the sort. */
   onHeaderSort: (key: string) => void;
-  /** Removes the chosen sort from the address and the preference, so the default applies again. */
-  reset: () => void;
 }
 
 function storedSort(value: unknown, keys: readonly string[]): SortState | null {
@@ -80,21 +77,12 @@ export function useListSort(listKey: string, keys: readonly string[], defaultKey
     },
     [local, setUrl, setPreference, prefKey],
   );
-  const reset = useCallback(() => {
-    if (local) setLocal(null);
-    else setUrl(null);
-    setPreference?.(prefKey, null);
-  }, [local, setUrl, setPreference, prefKey]);
   const onHeaderSort = useCallback(
-    (key: string) => {
-      const next = cycleSort<string>(sort, key);
-      if (next === null) reset();
-      else set(next);
-    },
-    [sort, set, reset],
+    (key: string) => set({ key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" }),
+    [sort, set],
   );
 
-  return { sort, keys, isDefault: chosen === null, set, onHeaderSort, reset };
+  return { sort, keys, set, onHeaderSort };
 }
 
 /**

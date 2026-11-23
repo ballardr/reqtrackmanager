@@ -10,13 +10,13 @@ A requirement is placed differently: it has one **own** component and category, 
 
 ## Placing a record
 
-Under a record's title, next to its tags, are its components. If you may tag that kind of record (the same people who may edit it), a picker is there.
+Under a record's title, in the same row as its tags and external references, are its components. If you may tag that kind of record (the same people who may edit it), the row ends with a single **+** button.
 
-- Choose **Components and categories**: each component is listed with its categories beneath it, and its arrow collapses or expands them. Type to filter (a match keeps its component open), and tick any number of places. A component on its own and the same component with a category are different places; tick both if you want both.
+- Select the **+** and choose **Add component or category**, then open **Components and categories**: each component is listed with its categories beneath it, and its arrow collapses or expands them. Type to filter (a match keeps its component open), and tick any number of places. A component on its own and the same component with a category are different places; tick both if you want both.
 - Remove a place with the delete button on its chip.
 - A change is saved at once and appears in the record's **Activity** tab ("Alex placed this in Hardware / Cooling").
-- A person who may only read the record sees its places but no picker.
-- The picker does not appear in a project that has no components yet.
+- A person who may only read the record sees its places but no **+**.
+- **Add component or category** is not in the menu in a project that has no components yet.
 
 The form that creates a record has a **Components** field too (below **Tags**). The places are applied when the record is saved; if one is refused the record is still saved and a message says where to set them.
 

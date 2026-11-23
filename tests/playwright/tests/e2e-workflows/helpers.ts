@@ -876,6 +876,21 @@ export async function chooseRecordAction(page: Page, recordLabel: string, item: 
 }
 
 /**
+ * Opens a record's one (+) menu (tags, components, external references) and chooses a row.
+ *
+ * Args:
+ *   page: The page showing the record detail.
+ *   row: Exact row name: "Add tag", "Add component or category" or "Add external reference".
+ *   scope: Where the (+) is; the record header by default (a page can also show one in a side panel).
+ */
+export async function chooseRecordAddition(
+  page: Page, row: string, scope: Locator = page.locator("header.record-header"),
+): Promise<void> {
+  await scope.getByRole("button", { name: "Add tag, component or reference" }).click();
+  await page.getByRole("menu", { name: "Add tag, component or reference" }).getByRole("menuitem", { name: row, exact: true }).click();
+}
+
+/**
  * Approves the requirement on screen through the Approve button and its confirm dialog.
  *
  * Args:

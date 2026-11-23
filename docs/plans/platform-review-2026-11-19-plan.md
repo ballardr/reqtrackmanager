@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 52 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 57 came from the review of 2026-11-23; 50 to 52 are done and 53 to 57 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 53 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 58 came from the review of 2026-11-23; 50 to 52 are done and 53 to 58 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-52 / 62 phases complete.
+53 / 63 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -62,11 +62,12 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 50 | Tree selector: no stray tooltip | The picker shows no tooltip over its trigger or rows unless it says something the person cannot already see | [x] |
 | 51 | Tree selector: the panel opens at its field | The panel of a picker (Additional components, Component and category) opens under the field's left edge, never at the far end of a full-width field | [x] |
 | 52 | Sort on every record list | A Sort by and Order control in each record list's filter panel (code, title, created, modified, ascending or descending), one shared mechanism for every registered type; a decision gate first | [x] |
-| 53 | Record header: one add control for tags, components and references | The three separate (+) buttons become one (+) with a menu naming what it adds, in one row with the chips | [ ] |
+| 53 | Record header: one add control for tags, components and references | The three separate (+) buttons become one (+) with a menu naming what it adds, in one row with the chips | [x] |
 | 54 | Clear control: a compact X | The control that empties an owner or similar field is one compact icon button after the value, not a text button; one shared component and a style guide pattern | [ ] |
 | 55 | Dead session: redirect to sign-in | A request refused for an invalid or expired token ends the session and returns the person to the sign-in page instead of leaving a spinner | [ ] |
 | 56 | Architecture types: one Add button, at the top | The two add buttons on Element Types and Connection Types become one at the top that opens the full form | [ ] |
 | 57 | Files pages: no background behind a type icon | A file-type icon is drawn bare; only a picture keeps its backdrop | [ ] |
+| 58 | Service users in the one Users list | Add user offers New service user; service users are managed from the Users list, not a separate section | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 57 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
@@ -127,6 +128,7 @@ flowchart LR
     P55["55 Dead session redirect"] --> R
     P56["56 One Add button on types"] --> R
     P57["57 Bare file type icon"] --> R
+    P58["58 Service users in Users list"] --> R
     P3 --> R{"R Review"}
     P5 --> R
     P6 --> R
@@ -136,7 +138,7 @@ flowchart LR
     R --> D["D Register clean-up"] --> W["W Website"] --> S["S Security"] --> C["C Local CI"]
 ```
 
-Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks, and phases 28 to 57 thirty more (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
+Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks, and phases 28 to 58 thirty-one more (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
 
 ## Findings and objections
 
@@ -779,6 +781,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **One mechanism:** whichever is chosen, `tagsInline` and the non-inline stack become one form (no flag), the call sites and stories are updated (the style guide's "Pattern: tags" is rewritten to the one form), the shared-component rule is met by one chip row component for the three kinds, and the create forms are untouched (they already use `TagField`, `ComponentField` and `QuickLinkField` for the same three).
 - Tests: Storybook for the header row with each combination of chips and each permission (no edit right: chips only and no (+); no systems: no reference row), in light and dark, the (+) and the chips on one baseline at any number of chips (wrapping to a second line keeps the (+) after the last chip); Playwright on a requirement: open the menu, add a tag, a component and an external reference from it, see the three chips, and see that a viewer without edit rights has no (+).
 
+- As built (**Decided by: User** for the menu, **Decided by: Agent** for the rest): `RecordTags` is one component and one row (`hooks/useRecordLabels.ts` reads and saves each set): chips for tags, components and categories, external references, then one (+) whose menu rows are **Add tag**, **Add component or category** and **Add external reference**, each present only when the person may do it. The editors are the existing ones (`TagAddBox` extracted from `TagInput`, `PlacementPicker` in a dialog, `ReferenceFormModal`). `RecordPlacements`, `RecordReferences`, the compact `inline` form and `RecordHeader`'s `tagsInline` are gone; the row sits after the badges and the version on the one line under the title (a line of its own pushed the diagram editor's canvas below the fold, which its Playwright check caught). The diagram Selection card uses the same row. The bare `(?)` beside the references moved into the reference dialog's caption; menu rows carry no tooltip (a native `title` on a menu row is not allowed). Also fixed: the Actions and Engagements pages read their list before the new record's places were applied, so the Components column could be missing (the cause of an intermittent `record-components` failure). See `docs/decisions.md` and the style guide's "Pattern: tags".
+
 ### Phase 54 — Clear control: a compact X
 
 **Why:** raised 2026-11-23: the button that clears an owner (and similar fields) is a large text button; it must be a compact X. The user also asked for the rule in the UX style guide. **Risk addressed:** a control that empties a value drawn at the weight of a primary action, widening the row and competing with the field, and drawn two ways by the same component. **Outcome:** every clearing control is one compact X after the value, from one shared component, and the style guide says so.
@@ -816,9 +820,18 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Optional, for the user: the type icon is the same for every non-picture file; distinct glyphs by kind (document, spreadsheet, archive, drawing) would make a bare icon more useful; not part of the request, so only if the user says so.
 - Tests: Storybook for `FileThumbnail` (a picture on each backdrop, a PDF, a failed picture) asserting the type icon has a transparent background and the picture does not, in light and dark; the Files page stories; one Playwright check that a Files row's icon has no background colour.
 
+### Phase 58 — Service users: one Users list, created from the Add user menu
+
+**Why:** raised 2026-11-23 while trying Phase 21: in organisation settings, People, **Add user** then **New user** asks for an email, name and a password and offers no way to make a service user; the service user feature is a separate section below the list. The user's direction: it belongs in the same list as users, not separated (**Decided by: User**). **Risk addressed:** a shipped capability nobody finds, so people keep creating human accounts with a pasted password for integrations, the practice Phase 21 exists to end. **Outcome:** service users are created, listed and managed where every other account is.
+- **Cause** (checked in code): `ServiceUsersPanel` and `ServiceUserFormModal` are mounted only as a `CollapsibleSection` (`orgAdmin.serviceUsers`, `defaultCollapsed`) at the bottom of the Users group in `OrgAdminPage`. `AddUserMenu` (Invite user, New user) does not know them, and the Users table already lists service users (the **Service** label, an `is_service_account` filter), so the same accounts appear in two lists with different actions. A service user is not a `New user` variant (no password, no sign-in, one organisation), so the person form cannot grow a checkbox; it is a third way to add an account.
+- **Fix:** `AddUserMenu` gains a third row, **New service user** (an optional `onNewServiceUser`; the Server Management Users page omits it because a service user belongs to one organisation), opening the existing `ServiceUserFormModal`. The Users table is the one list: a service user's row opens `ServiceUserDetailModal` (edit, issue and revoke tokens, deactivate, reactivate, archive) instead of the person's panel, and the separate section and its own table, filter and New button are removed. The create and detail logic moves out of `ServiceUsersPanel` into a hook/controller the page uses, with `includeArchived` joining the Users filters (an archived service user is hidden by default, as now). A created service user shows the shared created toast (`useCreatedToast`).
+- **Wording:** the menu row's tooltip states what differs from a person (no password, no sign-in, tokens issued by an administrator); the New user dialog's password help says a person's account needs one and points to the service user row for an integration. A service user's row hides person-only actions it already hides (reset password, 2FA).
+- **Check while there:** the row-level sort, export and import (the user record table) treat a service user consistently (no password column, no import creating one), the empty `.invalid` address is never shown, the access review's link to service users opens the Users list filtered to them, and the policy status view still lists them as not applicable.
+- Tests: Storybook for `AddUserMenu` (two and three rows) and `OrgAdminPage` (New service user opens the service user form; a service user row opens its detail, a person's row the person panel); a Playwright spec creating a service user from the Add user menu, seeing it in the Users list and issuing it a token; `docs/website/docs/core-features/personal-access-tokens.md` and `workflows/administering-an-organisation.md` updated to the menu row and the single list.
+
 ### Phase R — Review checkpoint: all changes together
 
-**Why:** fifty-seven phases across thirty tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
+**Why:** fifty-eight phases across thirty-one tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
 
 - The user reviews the running stack with every phase in place; each item raised becomes a numbered phase or is fixed in place; W starts only after the sign-off is recorded (**Decided by: User**).
 
@@ -831,7 +844,7 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Move what is durable out: any rule a later contributor needs to follow (the notification target kinds and the "no type lacks a target" guard, the Org Resources classification rule and `orgResourceSections`, the prefix rule and structure tree) is in `docs/modules.md`, `docs/ux-style-guide.md` or `docs/solution-architecture.md` as its owner, or is added there; the register then keeps only the per-row classification, with a link to that owner. Do not copy tables that the code already declares (a registry, a test inventory).
 - Overlap: where two registers or a register and the Org Resources "Behaviour to preserve" list describe the same rows (Compliance after phase 25), keep one and link to it.
 - References: rewrite any link whose wording or anchor changed; `docs/decisions.md` cites a register by its topic. Source files and `docs/soc2/` never cite a register or a phase (checked by `scripts/check_doc_links.py`).
-- Archive: the registers move with the plan. When the Status table reads 62/62, `git mv` the plan and every register to `docs/plans/completed/` together, rewrite each path (including the module 07 and Gitea plans and `docs/decisions.md`), run `python scripts/check_doc_links.py` to a pass, and update the memory index. This step runs once phases W, S and C are done, not inside this phase.
+- Archive: the registers move with the plan. When the Status table reads 63/63, `git mv` the plan and every register to `docs/plans/completed/` together, rewrite each path (including the module 07 and Gitea plans and `docs/decisions.md`), run `python scripts/check_doc_links.py` to a pass, and update the memory index. This step runs once phases W, S and C are done, not inside this phase.
 - Tests: `python scripts/check_doc_links.py` and `backend/tests/test_doc_links.py`; every Mermaid diagram touched renders.
 - Decided by: Agent (the scope of "clean-up"); revisit on the user's correction.
 
@@ -878,4 +891,4 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Phase 18 changes how every test runs:** a shared fixture, a template database or a shard boundary can hide an ordering assumption that a serial run never exposed; mitigated by the guardrails and the shuffled and repeated passes. It is also the one phase whose benefit comes from landing early, while the others only need it before R.
 - **No performance run is planned in the phases;** phase W reviews whether a new lookup on every create and a long-text render moved a measured number, and phase C does not run load scenarios (the project decided against performance tests in CI).
 
-When the table reads 62/62: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 63/63: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

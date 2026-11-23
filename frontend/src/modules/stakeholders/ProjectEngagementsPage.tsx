@@ -163,9 +163,13 @@ export function ProjectEngagementsPage() {
         onCreate={async (values, quickLinks, tags) => {
           const created = await projectEngagementApi.create(projectId, values);
           announceCreated("Engagement", created, "logged");
-          reload();
-          await commitQuickLinks(created.id, quickLinks);
-          await commitTags(created.id, tags);
+          // Read the list after the links, tags and places exist, so its extra columns include them.
+          try {
+            await commitQuickLinks(created.id, quickLinks);
+            await commitTags(created.id, tags);
+          } finally {
+            reload();
+          }
         }}
         renderCreateModal={(props) => (
           <EngagementFormModal projectId={projectId} error={props.error} onCancel={props.onCancel} onSave={props.onSave} />

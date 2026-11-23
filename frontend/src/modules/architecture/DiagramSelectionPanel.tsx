@@ -6,7 +6,7 @@
  *   diagram of its own, take it off this diagram (the element is not changed), or delete the element from the model (a separate,
  *   confirmed action that needs the code typed). A box that is shared, locked or on a read-only diagram shows its description
  *   and display note as text instead. Its ports are listed with the shared `PortList`; each change is stored at
- *   once, as on the element's page. Its project components (the shared `RecordPlacements`, also saved at once) are set
+ *   once, as on the element's page. Its project components (the shared `RecordTags` chip row, also saved at once) are set
  *   here too; a box shared from another owner shows none, since a component belongs to one project and its own
  *   project's tree is not disclosed to another.
  * - A note (an annotation): edit its text (applied when the field loses focus, as one undo step) and its tone, list its leader
@@ -46,7 +46,6 @@ import { FieldCaption } from "../../components/FieldHelp";
 import { IconAction } from "../../components/IconAction";
 import { ItemRow } from "../../components/ItemRow";
 import { LabeledSelect } from "../../components/LabeledSelect";
-import { RecordPlacements } from "../../components/RecordPlacements";
 import { RecordTags } from "../../components/RecordTags";
 import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage } from "../../context/ToastContext";
@@ -291,13 +290,7 @@ export function DiagramSelectionPanel({
           </div>
         )}
         {!box.locked && !box.shared && (
-          <RecordPlacements
-            key={`places-${box.elementId}`} projectId={projectId} artefactType="architecture_element" artefactId={box.elementId}
-            captioned
-          />
-        )}
-        {!box.locked && !box.shared && (
-          <RecordTags key={`tags-${box.elementId}`} projectId={projectId} artefactType="architecture_element" artefactId={box.elementId} components={false} />
+          <RecordTags key={`tags-${box.elementId}`} projectId={projectId} artefactType="architecture_element" artefactId={box.elementId} />
         )}
         {editable && !box.locked && (
           <LabeledSelect

@@ -545,7 +545,7 @@ export function StateMachineEditorPage() {
         title={diagram.name}
         titleAddon={<DiagramSwitcher kind="stateMachine" projectId={projectId} currentId={diagram.id} />}
         code={diagram.unique_code}
-        tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_state_machine_diagram" artefactId={diagram.id} />}
+        tags={<RecordTags projectId={projectId} artefactType="architecture_state_machine_diagram" artefactId={diagram.id} />}
         back={{ to: architectureTabPath(projectId, "diagrams"), label: "Diagrams" }}
         returnTo={<ReturnToDiagram projectId={projectId} elementId={diagram.element_id} from={searchParams.get("from")} />}
         badges={

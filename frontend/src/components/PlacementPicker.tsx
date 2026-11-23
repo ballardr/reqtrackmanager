@@ -3,7 +3,7 @@
  *
  * The control that chooses where a record sits in the project's component/category tree: a collapsible tree (each
  * component with its categories beneath it, searchable), so a record can hold any number of places. Shared by the
- * create form's `ComponentField` and the record header's `RecordPlacements`, so the two cannot drift.
+ * create form's `ComponentField` and the record header's `RecordTags`, so the two cannot drift.
  *
  * It renders nothing while the project has no components, since there is nothing to choose.
  */

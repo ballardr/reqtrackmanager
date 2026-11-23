@@ -205,9 +205,9 @@ export const SortFieldPutsTheNewestRequirementFirst: Story = {
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Order" }), "desc");
     await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created&order=desc")));
     await userEvent.click(canvas.getByRole("button", { name: "List view" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Reset to default order" }));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Sort by" }), "component");
     await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.not.stringContaining("sort=")));
-    await expect(canvas.getByRole("combobox", { name: "Sort by" })).toHaveValue("component");
+    await expect(canvas.getByRole("combobox", { name: "Order" })).toBeDisabled();
   },
 };
 

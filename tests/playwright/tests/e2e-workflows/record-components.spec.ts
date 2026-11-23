@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
+import { chooseRecordAddition, createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 
 // Archives this file's disposable projects after each test (see createDisposableProject).
 installCleanupHook();
@@ -58,19 +58,21 @@ test.describe("components on every record", () => {
     await test.step("a place is added and removed from the record's header", async () => {
       await page.goto(`/projects/${projectId}/actions/${plain.id}`);
       const header = page.locator(".record-header");
-      await header.getByRole("button", { name: "Components and categories" }).click();
+      await chooseRecordAddition(page, "Add component or category");
+      await page.getByRole("dialog", { name: "Add component or category" }).getByRole("button", { name: "Components and categories" }).click();
       await page.getByRole("checkbox", { name: "Software / Performance" }).check();
       await page.keyboard.press("Escape");
-      const places = header.getByRole("group", { name: "Components" });
+      await page.keyboard.press("Escape");
+      const places = header.getByRole("group", { name: "Tags, components and references" });
       await expect(places).toContainText("Software / Performance");
       await page.reload();
-      await expect(page.locator(".record-header").getByRole("group", { name: "Components" })).toContainText("Software / Performance");
+      await expect(page.locator(".record-header").getByRole("group", { name: "Tags, components and references" })).toContainText("Software / Performance");
       // The chip leaves the page before the change is saved, so wait for the save: the API is read in the next step.
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/placements") && r.request().method() !== "GET"),
         page.locator(".record-header").getByRole("button", { name: "Remove Software / Performance" }).click(),
       ]);
-      await expect(page.locator(".record-header").getByRole("group", { name: "Components" })).not.toContainText("Software / Performance");
+      await expect(page.locator(".record-header").getByRole("group", { name: "Tags, components and references" })).not.toContainText("Software / Performance");
     });
 
     await test.step("the places are in the API as component and category ids", async () => {
@@ -94,9 +96,12 @@ test.describe("components on every record", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto(`/projects/${projectId}/requirements/${requirement.id}`);
     await expect(page.locator(".record-header")).toBeVisible();
-    // The record header offers no place picker: the requirement's own place is its component, and its further places are
-    // the category-only picker of its Components card, below the header.
-    await expect(page.locator(".record-header").getByRole("button", { name: "Components and categories" })).toHaveCount(0);
+    // The record header's (+) menu offers no place row: the requirement's own place is its component, and its further
+    // places are the category-only picker of its Components card, below the header.
+    await page.getByRole("button", { name: "Add tag, component or reference" }).click();
+    await expect(page.getByRole("menuitem", { name: "Add tag" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Add component or category" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     const refused = await page.request.put(`${API}/projects/${projectId}/artefacts/requirement/${requirement.id}/placements`, {
       headers, data: { placements: [] },
     });

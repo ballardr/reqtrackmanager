@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { buttonHeightGeometry } from "../../../../../frontend/src/testing/buttonHeights";
-import { addDefinition, installCleanupHook } from "../../e2e-workflows/helpers";
+import { addDefinition, chooseRecordAddition, installCleanupHook } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 import { clickMenuRow } from "../../menuTree";
 
@@ -143,7 +143,7 @@ test.describe("System Architecture: diagram editor", () => {
     });
   });
 
-  test("the drawing fits the screen without scrolling, and tags and components are set from one button beside the version", async ({ page }) => {
+  test("the drawing fits the screen without scrolling, and tags and components are set from one (+) beside the version", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchFit", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
     await createElement(page.request, adminHeaders, project.id, `Gateway ${suffix}`);
@@ -204,28 +204,27 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(page.getByRole("tooltip")).toContainText("On:");
     });
 
-    await test.step("a record with no tags or components shows no empty line, only the button", async () => {
+    await test.step("a record with no tags or components shows no empty line, only the (+)", async () => {
       await expect(page.getByText("Not placed in a component")).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Tags, components and references" })).toBeVisible();
+      await expect(page.locator("header.record-header").getByRole("button", { name: "Add tag, component or reference" })).toBeVisible();
     });
 
-    await test.step("a tag and a component are added from the dialog and appear beside the version", async () => {
-      await page.getByRole("button", { name: "Tags, components and references" }).click();
-      const dialog = page.getByRole("dialog", { name: "Tags, components and references" });
-      await dialog.getByRole("button", { name: "Add tag" }).click();
+    await test.step("a tag and a component are added from the one (+) menu and appear in one row under the badges", async () => {
+      await chooseRecordAddition(page, "Add tag");
       await page.getByRole("combobox", { name: "Tags" }).fill("Core");
       await page.keyboard.press("Enter");
-      await expect(dialog.getByRole("button", { name: "Remove tag Core" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Remove tag Core" })).toBeVisible();
       await page.getByRole("combobox", { name: "Tags" }).press("Escape");
+      await chooseRecordAddition(page, "Add component or category");
+      const dialog = page.getByRole("dialog", { name: "Add component or category" });
       await dialog.getByRole("button", { name: "Components and categories" }).click();
       await page.getByRole("checkbox", { name: "Hardware", exact: true }).click();
       await page.keyboard.press("Escape");
-      await expect(dialog.getByRole("button", { name: "Remove Hardware" })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
-      const header = page.locator("header.record-header");
-      await expect(header.getByText("Core", { exact: true })).toBeVisible();
-      await expect(header.getByText("Hardware", { exact: true })).toBeVisible();
+      const row = page.locator("header.record-header").getByRole("group", { name: "Tags, components and references" });
+      await expect(row.getByText("Core", { exact: true })).toBeVisible();
+      await expect(row.getByText("Hardware", { exact: true })).toBeVisible();
     });
   });
 
@@ -258,10 +257,12 @@ test.describe("System Architecture: diagram editor", () => {
     await test.step("the Components control of the Selection card stores the choice at once", async () => {
       await selectNode(page, gateway);
       const panel = page.getByRole("region", { name: "Selection" });
-      await panel.getByRole("button", { name: "Components and categories" }).click();
+      await chooseRecordAddition(page, "Add component or category", panel);
+      await page.getByRole("dialog", { name: "Add component or category" }).getByRole("button", { name: "Components and categories" }).click();
       const saved = page.waitForResponse((r) => r.url().includes("/placements") && r.request().method() === "PUT");
       await page.getByRole("checkbox", { name: "Hardware", exact: true }).click();
       expect((await saved).ok()).toBeTruthy();
+      await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
       await expect(panel.getByRole("button", { name: "Remove Hardware" })).toBeVisible();
       await page.reload();

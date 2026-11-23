@@ -29,7 +29,7 @@ Part of [the platform review plan](platform-review-2026-11-19-plan.md). Every pl
 | 5 | `RequirementCreateModal` | Two native-style selects (component, then category), the category list reset when the component changes | One `PlacementPicker` in single mode: components as headings, one category chosen, searchable. The "previous component's category is never valid" rule disappears because the pair is one choice. |
 | 6 | `ChangeRequestCreateModal` (proposed requirement) | The same two selects | The same single-choice picker. |
 | 7 | `RequirementDetailPage` | No select (the primary place is shown and changed through `RequirementPlaces`, which already uses `PlacementPicker`) | None. The plan listed selects here; there are none. |
-| 8 | `RecordPlacements`, `ComponentField`, `RequirementAliasField`, `RequirementPlaces` | `PlacementPicker` | Unchanged. |
+| 8 | `RecordTags` (places), `ComponentField`, `RequirementAliasField`, `RequirementPlaces` | `PlacementPicker` | Unchanged. |
 | 9 | `ComponentFilterField` on record lists | `TreeSelect` through `placementTree` | Unchanged. |
 | 10 | Requirements list filter panel | Two flat `FilterSelect`s (`component`, `category` URL parameters) and `components={false}` | The shared `ComponentFilterField` (several places, `in_component` and `in_category`); old `component` and `category` links are moved onto them. |
 | 11 | Reviews due page filter | One flat `FilterSelect` of components | Left as is: a one-level choice with no category parameter on its endpoint is what `FilterSelect` is for. The reason is recorded in `docs/decisions.md`. |

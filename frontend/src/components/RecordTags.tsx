@@ -1,39 +1,45 @@
 /**
  * Module: components/RecordTags
  *
- * The tags of one existing record, in its header: chips for everyone who can open the record,
- * and, for someone who may tag it, the tag picker so a tag is added or removed in place. The record's components
- * (`RecordPlacements`) and external references (`RecordReferences`) are shown beside them, so every page that shows
- * tags shows places and references too.
+ * The labels of one existing record, in its header or a side panel: ONE row holding a chip for each tag, each place in
+ * the component tree (component or category) and each external reference, followed by ONE (+) button whose menu names what
+ * it adds: Add tag, Add component or category, Add external reference. Every page that shows a record's tags shows its
+ * components and references the same way, so a person learns one control.
  *
  * Responsibilities:
- * - Load the record's tags, the vocabulary to pick from, the project's mode and `can_edit`
- *   in one read (`RecordTagsApi.get`).
- * - Save every change at once (the whole set, `RecordTagsApi.set`), showing the change
- *   straight away and putting it back with an error toast if the server refuses.
- * - Say nothing when the record has no tags and the viewer cannot add any.
+ * - Read the three sets through `useRecordLabels` (one endpoint each) and draw them in the order tags, components,
+ *   references, each chip kind with its own remove (and, for a reference, edit) control for someone who may change it.
+ * - Offer a menu row only for what the person may do: tags and places need the record's edit right (places also a
+ *   project with components and a record that does not keep its own component), references need a system to exist. A row
+ *   that does not apply is absent, never disabled, and with no row the (+) is not drawn.
+ * - Open the editor that exists for each kind: the shared `TagAddBox` in a popover at the (+), the `PlacementPicker` in a
+ *   dialog (a tree picker is a popover of its own and popovers do not nest) and the `ReferenceFormModal`.
+ * - Say nothing for a record with no labels that the viewer cannot add to, and nothing for a failed read.
  *
- * `inline` is the compact form for the header's badge line (`RecordHeader` `tagsInline`): the tags and components as
- * read-only chips, nothing at all for a record with neither, and, for someone who may change them, one small
- * "Tags, components and references" button that opens the full editor in a dialog (a tag picker and a component picker each open
- * a popover of their own, and popovers do not nest). The chips follow each change made in the dialog.
- *
- * `onChanged` lets a page refresh anything that shows the tags' effects (the Activity tab).
- * `api` and `placementsApi` are injectable for stories.
+ * Design decisions: there is one form, with no compact variant, so the header and a side panel cannot drift; the row
+ * wraps, keeping the (+) after the last chip. `components` and `references` leave out a kind the page keeps elsewhere
+ * (a type that cannot be placed, a Product Feedback request). `onChanged` lets a page refresh anything that shows the
+ * change (the Activity tab). The three `*Api` props are injectable for stories.
  */
-import { Tags } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Boxes, Plus } from "lucide-react";
+import { useRef, useState } from "react";
 
-import { recordReferencesApi, type RecordReferences as ReferencesData, type RecordReferencesApi } from "../api/externalReferences";
-import { placementLabel, recordPlacementsApi, type RecordPlacements as PlacementsData, type RecordPlacementsApi } from "../api/placements";
-import { recordTagsApi, type RecordTags as RecordTagsData, type RecordTagsApi } from "../api/tags";
+import { referenceLabel, recordReferencesApi, type ExternalReference, type RecordReferencesApi } from "../api/externalReferences";
+import { placementLabel, recordPlacementsApi, type RecordPlacementsApi } from "../api/placements";
+import { recordTagsApi, type RecordTagsApi } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
-import { toErrorMessage, useToast } from "../context/ToastContext";
+import { useRecordPlaceSet, useRecordReferenceSet, useRecordTagSet } from "../hooks/useRecordLabels";
+import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { FieldCaption } from "./FieldHelp";
 import { Modal } from "./Modal";
-import { RecordPlacements } from "./RecordPlacements";
-import { RecordReferences, ReferenceChip } from "./RecordReferences";
+import { PlacementPicker } from "./PlacementPicker";
+import { Popover } from "./Popover";
+import { ReferenceChip } from "./ReferenceChip";
+import { ReferenceFormModal } from "./ReferenceFormModal";
+import { RemovableChip } from "./RemovableChip";
+import { TagAddBox } from "./TagAddBox";
 import { TagChip } from "./TagChip";
-import { TagInput } from "./TagInput";
 import { Tooltip } from "./Tooltip";
 
 /**
@@ -41,187 +47,130 @@ import { Tooltip } from "./Tooltip";
  * @param artefactType The record's registered artefact type.
  * @param artefactId The record's id.
  * @param onChanged Called after a change was saved.
- * @param inline The compact form for the header's badge line (see the module note).
- * @param components False leaves out the components, for a type that cannot be placed in the component tree.
  * @param api The tag calls (the live ones by default).
  * @param placementsApi The component calls (the live ones by default).
+ * @param components False leaves out the components, for a type that cannot be placed in the component tree.
  * @param references False leaves out the external references, for a page that keeps its own (a Product Feedback request).
  * @param referencesApi The external reference calls (the live ones by default).
  */
 export function RecordTags({
-  projectId, artefactType, artefactId, onChanged, inline = false, api = recordTagsApi, placementsApi = recordPlacementsApi,
+  projectId, artefactType, artefactId, onChanged, api = recordTagsApi, placementsApi = recordPlacementsApi,
   components = true, references = true, referencesApi = recordReferencesApi,
 }: {
   projectId: string;
   artefactType: string;
   artefactId: string;
   onChanged?: () => void;
-  inline?: boolean;
   api?: RecordTagsApi;
   placementsApi?: RecordPlacementsApi;
   components?: boolean;
   references?: boolean;
   referencesApi?: RecordReferencesApi;
 }) {
-  if (inline) {
-    return (
-      <RecordTagsInline
-        projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={api}
-        placementsApi={placementsApi} references={references} referencesApi={referencesApi}
-      />
-    );
-  }
-  return (
-    <>
-      <RecordTagList projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={api} />
-      {components && (
-        <RecordPlacements projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={placementsApi} />
-      )}
-      {references && (
-        <RecordReferences projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={referencesApi} />
-      )}
-    </>
-  );
-}
-
-/**
- * The compact form of {@link RecordTags}: read-only chips and the "Tags, components and references" button.
- *
- * Reads the record's tags and places itself (the dialog's editor loads its own copy), so it shows each change the
- * dialog saves. A failed read shows nothing, as in the full form.
- *
- * @param props The same props as {@link RecordTags}, all required.
- */
-function RecordTagsInline({
-  projectId, artefactType, artefactId, onChanged, api, placementsApi, references, referencesApi,
-}: {
-  projectId: string;
-  artefactType: string;
-  artefactId: string;
-  onChanged?: () => void;
-  api: RecordTagsApi;
-  placementsApi: RecordPlacementsApi;
-  references: boolean;
-  referencesApi: RecordReferencesApi;
-}) {
   const strings = useStrings();
-  const [tags, setTags] = useState<RecordTagsData | null>(null);
-  const [places, setPlaces] = useState<PlacementsData | null>(null);
-  const [refs, setRefs] = useState<ReferencesData | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [reads, setReads] = useState(0);
+  const record = { projectId, artefactType, artefactId };
+  const tagSet = useRecordTagSet(record, onChanged, api);
+  const placeSet = useRecordPlaceSet(record, components, onChanged, placementsApi);
+  const referenceSet = useRecordReferenceSet(record, references, onChanged, referencesApi);
+  const [adding, setAdding] = useState<"tag" | "place" | null>(null);
+  const [editing, setEditing] = useState<ExternalReference | "new" | null>(null);
+  const [removing, setRemoving] = useState<ExternalReference | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const addRef = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
-    let active = true;
-    api.get(projectId, artefactType, artefactId).then((r) => active && setTags(r)).catch(() => active && setTags(null));
-    placementsApi.get(projectId, artefactType, artefactId).then((r) => active && setPlaces(r)).catch(() => active && setPlaces(null));
-    if (references) referencesApi.get(projectId, artefactType, artefactId).then((r) => active && setRefs(r)).catch(() => active && setRefs(null));
-    return () => {
-      active = false;
-    };
-  }, [api, placementsApi, referencesApi, references, projectId, artefactType, artefactId, reads]);
+  const tags = tagSet.data;
+  const places = placeSet.data && !placeSet.data.managed_on_record ? placeSet.data.placements : [];
+  const refs = referenceSet.data;
+  const canTag = !!tags?.can_edit;
+  const canPlace = !!placeSet.data?.can_edit && !placeSet.data.managed_on_record && !!placeSet.tree && placeSet.tree.components.length > 0;
+  const canReference = !!refs?.can_edit && refs.systems.length > 0;
+  const canChangeReferences = !!refs?.can_edit;
+  const chipCount = (tags?.tags.length ?? 0) + places.length + (refs?.references.length ?? 0);
+  if (chipCount === 0 && !canTag && !canPlace && !canReference) return null;
 
-  const shownPlaces = places && !places.managed_on_record ? places.placements : [];
-  const shownReferences = references && refs ? refs.references : [];
-  const canEdit = !!tags?.can_edit || (!!places?.can_edit && !places.managed_on_record) || (references && !!refs?.can_edit);
-  if (!canEdit && (tags?.tags.length ?? 0) === 0 && shownPlaces.length === 0 && shownReferences.length === 0) return null;
-  return (
-    <>
-      <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
-        {tags?.tags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
-        {shownPlaces.map((place) => (
-          <span key={`${place.component_id}:${place.category_id}`} className="chip">{placementLabel(place)}</span>
-        ))}
-        {shownReferences.map((reference) => <ReferenceChip key={reference.id} reference={reference} />)}
-        {canEdit && (
-          <Tooltip label={strings.tags.editLabel}>
-            <button type="button" className="btn btn-sm btn-icon" aria-label={strings.tags.editLabel} aria-haspopup="dialog" onClick={() => setEditing(true)}>
-              <Tags size={14} aria-hidden="true" />
-            </button>
-          </Tooltip>
-        )}
-      </span>
-      {editing && (
-        <Modal title={strings.tags.editLabel} onClose={() => setEditing(false)}>
-          <div className="stack">
-            <RecordTags
-              projectId={projectId} artefactType={artefactType} artefactId={artefactId} api={api} placementsApi={placementsApi}
-              references={references} referencesApi={referencesApi}
-              onChanged={() => {
-                setReads((n) => n + 1);
-                onChanged?.();
-              }}
-            />
-          </div>
-        </Modal>
-      )}
-    </>
-  );
-}
+  const text = strings.tags;
+  const candidates: Array<ActionMenuItem | false> = [
+    canTag && { label: text.addTag, key: "tag", onSelect: () => setAdding("tag") },
+    canPlace && { label: text.addPlace, key: "place", onSelect: () => setAdding("place") },
+    canReference && { label: strings.references.addLabel, key: "reference", onSelect: () => { setError(null); setEditing("new"); } },
+  ];
+  const items = candidates.filter((item): item is ActionMenuItem => !!item);
 
-/** The tag chips or tag picker of {@link RecordTags}. */
-function RecordTagList({
-  projectId, artefactType, artefactId, onChanged, api,
-}: {
-  projectId: string;
-  artefactType: string;
-  artefactId: string;
-  onChanged?: () => void;
-  api: RecordTagsApi;
-}) {
-  const strings = useStrings();
-  const { showToast } = useToast();
-  const [data, setData] = useState<RecordTagsData | null>(null);
-  const saving = useRef(0);
-
-  useEffect(() => {
-    let active = true;
-    api.get(projectId, artefactType, artefactId)
-      .then((result) => active && setData(result))
-      .catch(() => active && setData(null));
-    return () => {
-      active = false;
-    };
-  }, [api, projectId, artefactType, artefactId]);
-
-  // Tags are secondary to the record: if they cannot be read, show none rather than an error in the header.
-  if (!data) return null;
-  if (!data.can_edit) {
-    if (data.tags.length === 0) return null;
-    return (
-      <div className="row" style={{ gap: "var(--space-2)" }} aria-label={strings.tags.label} role="group">
-        {data.tags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
-      </div>
-    );
-  }
-
-  async function change(names: string[]) {
-    if (!data) return;
-    const before = data;
-    const ticket = ++saving.current;
-    // Show the change straight away; names the vocabulary does not know yet get no colour until saved.
-    setData({
-      ...data,
-      tags: names.map((name) => data.suggestions.find((t) => t.name.toLowerCase() === name.toLowerCase())
-        ?? data.tags.find((t) => t.name.toLowerCase() === name.toLowerCase())
-        ?? { id: `pending-${name}`, name, colour: null }),
-    });
+  async function saveReference(draft: Parameters<typeof referenceSet.save>[1]) {
+    if (editing === null) return;
+    setError(null);
     try {
-      const saved = await api.set(projectId, artefactType, artefactId, names);
-      if (ticket === saving.current) setData(saved);
-      onChanged?.();
+      await referenceSet.save(editing === "new" ? null : editing, draft);
+      setEditing(null);
     } catch (err) {
-      if (ticket === saving.current) setData(before);
-      showToast(strings.tags.saveFailed(toErrorMessage(err, strings.common.error)), "error");
+      setError(strings.references.saveFailed(err instanceof Error ? err.message : strings.common.error));
     }
   }
 
   return (
-    <TagInput
-      value={data.tags.map((t) => t.name)}
-      onChange={change}
-      suggestions={data.suggestions}
-      restricted={data.restricted}
-    />
+    <>
+      <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center", minWidth: 0 }} role="group" aria-label={text.groupLabel}>
+        {tags?.tags.map((tag) => (
+          <TagChip
+            key={tag.id} tag={tag} removeLabel={text.removeLabel(tag.name)}
+            onRemove={canTag ? () => tagSet.change((tags?.tags ?? []).filter((t) => t.id !== tag.id).map((t) => t.name)) : undefined}
+          />
+        ))}
+        {places.map((place) => (
+          <Tooltip key={`${place.component_id}:${place.category_id}`} label={text.placeKind}>
+            <RemovableChip
+              icon={<Boxes size={12} aria-hidden="true" />}
+              label={placementLabel(place)}
+              removeLabel={strings.placements.removeLabel(placementLabel(place))}
+              onRemove={canPlace
+                ? () => placeSet.change(places.filter((p) => p.component_id !== place.component_id || p.category_id !== place.category_id))
+                : undefined}
+            />
+          </Tooltip>
+        ))}
+        {refs?.references.map((reference) => (
+          <ReferenceChip
+            key={reference.id} reference={reference}
+            onEdit={canChangeReferences ? () => { setError(null); setEditing(reference); } : undefined}
+            onRemove={canChangeReferences ? () => setRemoving(reference) : undefined}
+          />
+        ))}
+        {items.length > 0 && (
+          <span ref={addRef} style={{ display: "inline-flex" }}>
+            <ActionMenu triggerLabel={text.addMenuLabel} icon={<Plus size={14} aria-hidden="true" />} size="sm" items={items} />
+          </span>
+        )}
+      </div>
+      {adding === "tag" && tags && (
+        <Popover anchorRef={addRef} title={text.addTag} onClose={() => setAdding(null)} fit>
+          <TagAddBox
+            value={tags.tags.map((t) => t.name)} onChange={tagSet.change} suggestions={tags.suggestions}
+            restricted={tags.restricted} onDone={() => setAdding(null)}
+          />
+        </Popover>
+      )}
+      {adding === "place" && placeSet.tree && (
+        <Modal title={text.addPlace} onClose={() => setAdding(null)}>
+          <div className="stack" style={{ gap: "var(--space-1)" }}>
+            <FieldCaption label={strings.placements.label} help={strings.placements.help} />
+            <PlacementPicker tree={placeSet.tree} value={places} onChange={placeSet.change} />
+          </div>
+        </Modal>
+      )}
+      {editing !== null && refs && (
+        <ReferenceFormModal
+          initial={editing === "new" ? undefined : editing} systems={refs.systems} error={error}
+          onCancel={() => setEditing(null)} onSave={saveReference}
+        />
+      )}
+      {removing && (
+        <ConfirmDialog
+          title={strings.references.removeTitle} message={strings.references.removeMessage(referenceLabel(removing))}
+          confirmLabel={strings.references.removeConfirm}
+          onConfirm={() => { const target = removing; setRemoving(null); void referenceSet.remove(target); }}
+          onCancel={() => setRemoving(null)}
+        />
+      )}
+    </>
   );
 }

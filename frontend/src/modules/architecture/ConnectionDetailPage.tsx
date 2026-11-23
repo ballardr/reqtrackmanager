@@ -156,7 +156,7 @@ export function ConnectionDetailPage() {
         recordLabel="Connection"
         title={connection.name || `${connection.source_element_name} → ${connection.target_element_name}`}
         code={connection.unique_code}
-        tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_connection" artefactId={connection.id} />}
+        tags={<RecordTags projectId={projectId} artefactType="architecture_connection" artefactId={connection.id} />}
         back={{ to: architectureTabPath(projectId, "connections"), label: "Connections" }}
         badges={
           <>

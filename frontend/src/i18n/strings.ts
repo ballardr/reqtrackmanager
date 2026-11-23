@@ -3621,7 +3621,7 @@ const en = {
     noOtherComponent: "There is no other {component} to move it to.",
     moved: "{Category} moved.",
   },
-  /** Where a record sits in the project's component/category tree (`ComponentField`, `RecordPlacements`, `ComponentFilterField`). */
+  /** Where a record sits in the project's component/category tree (`ComponentField`, `RecordTags`, `ComponentFilterField`). */
   placements: {
     label: "Components",
     help: "The project's component and category tree, shared by every kind of record, so records can be filtered and reported by the part of the product they belong to. It is separate from an element's parent and child elements.",
@@ -3698,7 +3698,9 @@ const en = {
   },
   references: {
     label: "External references",
-    /** The header's compact control: the button and the dialog it opens. */
+    /** Tooltip of a reference chip. */
+    kind: "External reference",
+    /** A row of the record header's add menu and the title of the dialog it opens. */
     addLabel: "Add external reference",
     addTitle: "Add an external reference",
     editTitle: "Edit external reference",
@@ -3743,8 +3745,11 @@ const en = {
   },
   tags: {
     label: "Tags",
-    /** The header's compact tags control: the button and the dialog it opens. */
-    editLabel: "Tags, components and references",
+    /** The record header's one chip row (tags, components, references) and its one add menu. */
+    groupLabel: "Tags, components and references",
+    addMenuLabel: "Add tag, {component} or reference",
+    addPlace: "Add {component} or {category}",
+    placeKind: "{Component} or {category}",
     none: "No tags",
     addTag: "Add tag",
     done: "Done",
@@ -5061,7 +5066,6 @@ const en = {
     descending: "Descending",
     created: "Created",
     modified: "Modified",
-    reset: "Reset to default order",
     sortByIntro: "How the list is ordered. Your choice is remembered for this list.",
     code: "{label}: the record's code, numbers by value (REQ-2 before REQ-10).",
     text: "{label}: alphabetical, ignoring case.",

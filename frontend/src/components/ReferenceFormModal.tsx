@@ -2,13 +2,14 @@
  * Module: components/ReferenceFormModal
  *
  * Adds or changes one external reference from a record's page, in a dialog over the shared `ReferenceFields`. Saving
- * is the caller's (`RecordReferences`): it calls the reference endpoint, which does not create a version of the record,
+ * is the caller's (`RecordTags`): it calls the reference endpoint, which does not create a version of the record,
  * and reports a failure through `error`.
  */
 import { useState } from "react";
 
 import type { ExternalReference, ReferenceSystem } from "../api/externalReferences";
 import { useStrings } from "../context/TerminologyContext";
+import { FieldCaption } from "./FieldHelp";
 import { FormActions } from "./FormActions";
 import { FormGrid } from "./FormGrid";
 import { Modal } from "./Modal";
@@ -31,11 +32,13 @@ export function ReferenceFormModal({
   onCancel: () => void;
   onSave: (draft: ReferenceDraft) => void;
 }) {
-  const strings = useStrings().references;
+  const allStrings = useStrings();
+  const strings = allStrings.references;
   const [draft, setDraft] = useState<ReferenceDraft>(() => (initial ? draftFromReference(initial) : BLANK_REFERENCE));
   return (
     <Modal title={initial ? strings.editTitle : strings.addTitle} onClose={onCancel}>
       <div className="stack">
+        <FieldCaption label={strings.label} help={allStrings.help.recordReferences} />
         <FormGrid minColumn="14rem">
           <ReferenceFields draft={draft} onChange={setDraft} systems={systems} />
         </FormGrid>

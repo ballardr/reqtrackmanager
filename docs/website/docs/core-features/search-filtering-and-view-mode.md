@@ -30,8 +30,7 @@ flowchart LR
 
 Every record list has a **Sort by** and an **Order** field in its filter panel, and the column headers sort the same way. **Sort by** offers the table's sortable columns, then **Created** and **Modified**; **Modified** is when the record was last changed, including a new version. Hover or focus the field's **(?)** to read what each choice orders by. The order is **Code, ascending** until you choose another, with the numbers read by value (`REQ-2` before `REQ-10`).
 
-- Click a column heading to sort by it ascending, click it again for descending, and a third time to return to the default; the fields follow the headings, and the other way round.
-- **Reset to default order** appears in the panel while a sort is chosen.
+- Click a column heading to sort by it ascending, and click it again to switch between descending and ascending; the fields follow the headings, and the other way round. To return to the default, choose **Code** and **Ascending**.
 - The sort is part of the page address, so a copied link opens in the same order, and your last choice for each list is remembered with your account and applies when you open the list again with no sort in the address.
 - The list's **Export**, **Download report** and bulk edit grid follow the sort, like the filters.
 - The **Requirements** list is sorted by component, then category, then the project's own order unless you choose otherwise: that order is the choice **Component and category**, which has no direction. Choose **Created** with **Descending** to put the newest requirement at the top.
