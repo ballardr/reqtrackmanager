@@ -48,6 +48,18 @@ Reading this top to bottom: `db` and `storage` must be healthy before `backend` 
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO end-to-end | No — a real deployment points each org at its own IdP instead | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
 
+## Minimal example stack
+
+`deployments/minimal/docker-compose.yml` is a self-contained file for a small installation or an evaluation on one host. It runs the application's own services (`db`, `storage`, `backend`, `frontend`, `mcp-server` and `converter`) and nothing else: no observability services, backup, documentation site, MailHog or Keycloak. It keeps the production protections and needs five secrets.
+
+```bash
+cd deployments/minimal
+cp .env.example .env    # fill in the five blank secrets
+docker compose up -d
+```
+
+Outgoing email is off until `EMAIL_DELIVERY=smtp` and the `SMTP_*` variables are set, so invitations and password-reset emails are not delivered before then. For backups, observability and tuning, use the root `docker-compose.yml` ([Production deployment](./production-deployment.md)).
+
 ## Demonstration hosting
 
 :::note

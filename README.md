@@ -103,6 +103,8 @@ Then:
 docker compose up --build -d
 ```
 
+For a small installation or an evaluation on one host, [`deployments/minimal/`](deployments/minimal/docker-compose.yml) is a self-contained stack of the application's own services only (no observability, backup or documentation site) that needs five secrets in a `.env` file; see [docs/deployment.md](docs/deployment.md#minimal-example-stack).
+
 The full list of variables, defaults, and which are actually required is in [Configuration](#configuration) below; the complete deployment guide — including a `.env` walkthrough, backups, migrations, and troubleshooting — is [docs/deployment.md](docs/deployment.md).
 
 **Beyond the two obvious containers**, a full deployment brings a few more pieces together:

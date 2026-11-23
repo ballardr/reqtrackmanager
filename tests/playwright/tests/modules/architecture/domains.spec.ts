@@ -40,8 +40,8 @@ test.describe("System Architecture: domains are a vocabulary", () => {
 
     await test.step("an element type is in the new domain and in Hardware", async () => {
       await selectProjectAdminGroup(page, "Element Types", "System Architecture");
-      await page.getByRole("button", { name: "New element type with details" }).click();
-      const dialog = page.getByRole("dialog", { name: "New element type" });
+      await page.getByRole("button", { name: "Add element type", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Add element type" });
       await dialog.getByLabel("Name", { exact: true }).fill(typeName);
       await expect(dialog.getByRole("button", { name: "Domains", exact: true })).toContainText("Any domain");
       await dialog.getByRole("button", { name: "Domains", exact: true }).click();
@@ -73,7 +73,8 @@ test.describe("System Architecture: domains are a vocabulary", () => {
       await page.getByRole("dialog", { name: 'Hide "Software" in this project?' }).getByRole("button", { name: "Hide" }).click();
       await hidden;
       await expect(page.locator('input[value="Software"]')).toHaveCount(0);
-      await page.getByRole("button", { name: "Add organisation defaults (1)" }).click();
+      await page.getByRole("button", { name: "List actions" }).click();
+      await page.getByRole("menuitem", { name: "Add organisation defaults (1)" }).click();
       await page.getByRole("dialog", { name: "Add organisation defaults" }).getByRole("button", { name: "Add 1 default" }).click();
       await expect(page.locator('input[value="Software"]')).toBeVisible();
     });

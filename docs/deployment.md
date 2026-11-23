@@ -18,6 +18,18 @@ ReqTrackManager ships **two** Compose files with different purposes — using th
 
 These two are deliberately kept separate rather than sharing one file with a dev override, because sharing led to a real, serious bug during development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema (see [decisions.md](decisions.md), "Database: the test suite was wiping the live database"). Never run `pytest`, or anything from `tests/`, against the root stack.
 
+### Minimal example stack
+
+[`deployments/minimal/`](../deployments/minimal/docker-compose.yml) is a third, self-contained file for a small installation or an evaluation on one host: `db`, `storage`, `backend`, `frontend`, `mcp-server` and `converter`, and nothing else (no Grafana, Prometheus, Loki, Tempo, Alloy, cAdvisor, backup, documentation site, MailHog or Keycloak). It keeps the production protections (strong-secret check, one-bucket storage identity, sandboxed converter) and needs only five secrets:
+
+```bash
+cd deployments/minimal
+cp .env.example .env          # fill in the five blank secrets (openssl rand -base64 36)
+docker compose up -d
+```
+
+Differences from the root file: two backend workers and a 3 GiB limit (the root defaults are four and 5 GiB), outgoing email off until `EMAIL_DELIVERY=smtp` and the `SMTP_*` variables are set (so invitations and password-reset emails are not delivered until then), and none of the optional profiles. The root `docker-compose.yml` remains the reference for a full production deployment (backups, observability, tuning); when the two differ, the root file applies. `backend/tests/test_minimal_compose_example.py` pins the service list and the protections.
+
 ## Components
 
 The diagram below shows every container in the production stack and how they depend on each other at startup. Reading top to bottom: `db` and `storage` must be healthy before `backend` starts (the backend runs migrations and talks to storage immediately on boot); `backend` must be healthy before `frontend` *or* `mcp-server` start (the frontend's and mcp-server's own health checks are independent, but there is no reason to serve either before the API they both depend on is reachable); the backend sends outgoing mail to whatever `SMTP_HOST` points at, which in production is an external provider, not a container in this stack. This matters operationally because it tells you the correct order to check when something won't come up: `db`/`storage` first, then `backend`, then `frontend`/`mcp-server`.

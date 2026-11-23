@@ -46,8 +46,8 @@ test.describe("System Architecture: the connection type tree", () => {
     });
 
     await test.step("add a project type that sits under two groups", async () => {
-      await page.getByRole("button", { name: "New connection type with details" }).click();
-      const dialog = page.getByRole("dialog", { name: "New connection type" });
+      await page.getByRole("button", { name: "Add connection type", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Add connection type" });
       await dialog.getByLabel("Name", { exact: true }).fill("Board-to-board link");
       await dialog.getByRole("button", { name: "Sits under", exact: true }).click();
       const tree = page.getByRole("group", { name: "Sits under" });

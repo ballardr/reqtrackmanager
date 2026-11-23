@@ -1,0 +1,200 @@
+# Minimal example stack: the application and nothing else.
+#
+# Services: db (PostgreSQL), storage (S3-compatible file storage), backend, frontend, mcp-server and converter
+# (EPS/PDF logo upload and Mermaid diagrams in reports). There is no Grafana, Prometheus, Loki, Tempo, Alloy,
+# cAdvisor, backup, documentation site, MailHog or Keycloak. Mail delivery is off until you point it at an SMTP
+# provider (see .env.example).
+#
+# Use:  cp .env.example .env   (fill in the secrets)   then   docker compose up -d
+#
+# It is a starting point for a small installation or an evaluation on one host, and it keeps the production stack's
+# protections (strong-secret check, one-bucket storage identity, sandboxed converter). It is a separate file from the
+# root docker-compose.yml, which stays the reference for a full production deployment (backups, observability,
+# tuning); when the two disagree, the root file wins. See docs/deployment.md, "Minimal example stack".
+name: reqtrack-minimal
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: reqtrack
+      POSTGRES_USER: reqtrack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    mem_limit: ${DB_MEM_LIMIT:-3g}
+    volumes:
+      - reqtrack_db_data:/var/lib/postgresql/data
+    # No published port: only the backend reaches the database, over the Compose network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reqtrack -d reqtrack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # S3-compatible file storage (SeaweedFS) with one identity that may use the application bucket only. Everything
+  # except the S3 gateway listens on loopback, because the filer and master APIs carry no authentication.
+  storage:
+    image: chrislusf/seaweedfs:3.97
+    command: >-
+      server -dir=/data -ip=127.0.0.1 -ip.bind=127.0.0.1
+      -s3 -s3.port=9000 -s3.ip.bind=:: -s3.config=/etc/seaweedfs/s3.json
+      -master.volumePreallocate=false
+    configs:
+      - source: storage_identity
+        target: /etc/seaweedfs/s3.json
+    mem_limit: ${STORAGE_MEM_LIMIT:-2g}
+    volumes:
+      - reqtrack_storage_data:/data
+    healthcheck:
+      # The S3 API's /healthz is broken in this image, so this checks the master's status and that the S3 gateway
+      # answers (403 without credentials). wget, because the image has no curl.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status && wget -S -qO- http://127.0.0.1:9000/ 2>&1 | grep -q 'HTTP/1.1 403'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  backend:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backend:${IMAGE_TAG:-latest}
+    build:
+      context: ../../backend
+    # Each worker keeps the memory of the heaviest request it has served (about 0.8 GiB on projects up to 1,000
+    # requirements): two workers fit 3 GiB. Raise both together (docs/deployment.md, "Sizing").
+    mem_limit: ${BACKEND_MEM_LIMIT:-3g}
+    environment:
+      BACKEND_WORKERS: ${BACKEND_WORKERS:-2}
+      DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/reqtrack
+      # Refuse to start on a placeholder or short secret; leave on.
+      REQUIRE_STRONG_SECRETS: "true"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      APP_SECRET_ENCRYPTION_KEY: ${APP_SECRET_ENCRYPTION_KEY:?Set APP_SECRET_ENCRYPTION_KEY in .env}
+      SERVER_ADMIN_ENABLED: "true"
+      SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
+      SERVER_ADMIN_PASSWORD: ${SERVER_ADMIN_PASSWORD:?Set SERVER_ADMIN_PASSWORD in .env}
+      SERVER_ADMIN_CREATE_ORG: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      STORAGE_BACKEND: s3
+      STORAGE_S3_BUCKET: reqtrackmanager
+      STORAGE_S3_ENDPOINT_URL: http://storage:9000
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-reqtrack}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_SECRET_KEY:?Set STORAGE_SECRET_KEY in .env}
+      # `disabled` sends no mail: invitations and password-reset emails are not delivered. Set EMAIL_DELIVERY=smtp
+      # and the SMTP_* variables in .env to enable them.
+      EMAIL_DELIVERY: ${EMAIL_DELIVERY:-disabled}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-noreply@example.com}
+      PUBLIC_BACKEND_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      MCP_SERVER_PUBLIC_URL: ${MCP_SERVER_PUBLIC_URL:-http://localhost:8100}
+      REPORT_CONVERTER_URL: http://converter:8300
+    networks:
+      - default
+      - converter
+    depends_on:
+      db:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+      converter:
+        condition: service_healthy
+    # Published on the loopback address only: the API serves an unauthenticated /metrics and /docs. Put a reverse
+    # proxy in front for anything beyond this host (docs/deployment.md, "Binding the published ports").
+    ports:
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      start_period: 120s
+      timeout: 5s
+      retries: 10
+
+  # Draws Mermaid diagrams for reports and converts EPS and PDF logos. The sandbox: an internal network shared with
+  # the backend alone (no route out, no published port), no secrets, read-only filesystem, no capabilities.
+  converter:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-converter:${IMAGE_TAG:-latest}
+    build:
+      context: ../../converter
+    networks:
+      - converter
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 2560m
+    cpus: 2
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8300/health', timeout=4)"]
+      interval: 10s
+      start_period: 20s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}
+    build:
+      context: ../../frontend
+    mem_limit: ${FRONTEND_MEM_LIMIT:-128m}
+    environment:
+      # No colon in the default on purpose: an explicitly empty PUBLIC_API_BASE_URL= (same-origin deployment behind
+      # one proxy) must stay empty (docs/deployment.md, "TLS, reverse proxy, and same-origin deployment").
+      VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      start_period: 60s
+      timeout: 5s
+      retries: 10
+
+  # Model Context Protocol server for AI assistants. It holds no credentials: every call carries the caller's own
+  # access token, which it forwards to the backend (docs/mcp-server.md).
+  mcp-server:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-mcp-server:${IMAGE_TAG:-latest}
+    build:
+      context: ../../mcp-server
+    mem_limit: ${MCP_MEM_LIMIT:-256m}
+    environment:
+      REQTRACK_API_URL: http://backend:8000
+      REQTRACK_PUBLIC_API_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+      MCP_WRITES_ENABLED: ${MCP_WRITES_ENABLED:-true}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8100:8100"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8100/health"]
+      interval: 10s
+      start_period: 60s
+      timeout: 5s
+      retries: 10
+
+# `internal`: containers on it get no route to the outside world. Only the backend and the converter join it.
+networks:
+  converter:
+    internal: true
+
+volumes:
+  reqtrack_db_data:
+  reqtrack_storage_data:
+
+# The one S3 identity the bundled storage accepts, restricted to the application bucket. A value containing a quote
+# or backslash makes this invalid JSON, which SeaweedFS rejects at startup.
+configs:
+  storage_identity:
+    content: |
+      {"identities":[{"name":"app",
+        "credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-reqtrack}","secretKey":"${STORAGE_SECRET_KEY:?Set STORAGE_SECRET_KEY in .env}"}],
+        "actions":["Admin:reqtrackmanager","Read:reqtrackmanager","Write:reqtrackmanager","List:reqtrackmanager"]}]}

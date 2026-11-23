@@ -103,7 +103,8 @@ test.describe("System Architecture: elements, connections and sharing", () => {
 
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Element Types", "System Architecture");
-      await page.getByRole("button", { name: "Add organisation defaults (1)" }).click();
+      await page.getByRole("button", { name: "List actions" }).click();
+      await page.getByRole("menuitem", { name: "Add organisation defaults (1)" }).click();
       await page.getByRole("dialog", { name: "Add organisation defaults" }).getByRole("button", { name: "Add 1 default" }).click();
       await expect(page.locator('input[value="Subsystem"]')).toBeVisible();
     });

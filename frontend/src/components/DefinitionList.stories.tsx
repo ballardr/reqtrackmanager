@@ -561,3 +561,41 @@ export const LongText: Story = {
     await expectStressStable(canvasElement);
   },
 };
+
+/** A list whose Add button hands the create form to its caller, with one extra row in the list's actions menu. */
+function CallerOwnedAddHarness() {
+  const [open, setOpen] = useState(false);
+  const [restored, setRestored] = useState(false);
+  return (
+    <>
+      <DefinitionList<Named>
+        items={[{ id: "1", name: "Bug" }]}
+        fields={[{ key: "name", getValue: (i) => i.name, placeholder: "Name" }]}
+        getReassignLabel={(i) => i.name}
+        onRename={fn(async () => {})}
+        onAddRequest={() => setOpen(true)}
+        onDelete={fn(async () => {})}
+        deleteLabel="Delete type"
+        addLabel="Add type"
+        menuItems={[{ key: "restore", label: "Add organisation defaults (1)", onSelect: () => setRestored(true) }]}
+      />
+      {open && <div role="dialog" aria-label="Caller's own form">Full form</div>}
+      {restored && <p>Restored</p>}
+    </>
+  );
+}
+
+/** A list whose caller owns the create form: the one Add button calls `onAddRequest` instead of opening the name dialog, and the list's other actions are rows of one menu beside it. */
+export const AddRequestOpensTheCallersOwnDialog: Story = {
+  render: () => <CallerOwnedAddHarness />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "List actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Add organisation defaults (1)" }));
+    await expect(await canvas.findByText("Restored")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Add type" }));
+    await expect(await canvas.findByRole("dialog", { name: "Caller's own form" })).toBeInTheDocument();
+    // The list's own name dialog did not open.
+    await expect(screen.queryByRole("dialog", { name: "Add type" })).not.toBeInTheDocument();
+  },
+};

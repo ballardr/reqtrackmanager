@@ -40,8 +40,8 @@ test.describe("System Architecture: a connection type's default protocol", () =>
     await test.step("set a default protocol on a new connection type; the list shows it", async () => {
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Connection Types", "System Architecture");
-      await page.getByRole("button", { name: "New connection type with details" }).click();
-      const dialog = page.getByRole("dialog", { name: "New connection type" });
+      await page.getByRole("button", { name: "Add connection type", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Add connection type" });
       await dialog.getByLabel("Name", { exact: true }).fill(typeName);
       await dialog.getByLabel("Default protocol", { exact: true }).fill("SPI mode 0");
       await dialog.getByRole("button", { name: "Save", exact: true }).click();

@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import {withToast, openAddDialog } from "../../testing/storybook-helpers";
+import { expectTextRows } from "../../testing/menuRows";
+import { openAddDialog, withToast } from "../../testing/storybook-helpers";
 import { ArchitectureTypesPanel } from "./ArchitectureTypesPanel";
 import { mockArchitectureReads, ORG_ID, PROJECT_ID } from "./architectureFixtures";
 
@@ -86,7 +87,40 @@ export const ConnectionTypesShowLineStyleAndDirection: Story = {
   },
 };
 
-/** A new connection type is created at the top level, and a group's edit dialog lists the tree to sit under. */
+/** The one Add button sits above the list and opens the form with every field; there is no second create below the list. */
+export const OneAddButtonOpensTheFullForm: Story = {
+  args: { scope: { kind: "org", organizationId: ORG_ID }, kind: "connection" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const add = await canvas.findByRole("button", { name: "Add connection type" });
+    await expect(canvas.getAllByRole("button", { name: /^Add connection type$/ })).toHaveLength(1);
+    await expect(canvas.queryByRole("button", { name: /with details/ })).not.toBeInTheDocument();
+    // Above the list: the button precedes the first row of the grid.
+    const grid = canvasElement.querySelector(".definition-grid") as HTMLElement;
+    await expect(add.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.click(add);
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add connection type" }));
+    for (const field of ["Name", "Domains", "Line style", "Colour (light theme)", "Colour (dark theme)", "Sits under", "Default protocol", "One-way"]) {
+      await expect(dialog.getAllByText(field, { exact: false }).length).toBeGreaterThan(0);
+    }
+    await expect(dialog.getByRole("textbox", { name: "Name" })).toHaveFocus();
+    await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+  },
+};
+
+/** An element type's Add button opens the same form as Edit, with the shape, symbol and suggested connection types. */
+export const ElementTypeAddOpensTheFullForm: Story = {
+  args: { scope: { kind: "org", organizationId: ORG_ID }, kind: "element" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const dialog = await openAddDialog(canvas, "Add element type");
+    for (const field of ["Name", "Domains", "Shape", "Symbol", "Suggested connection types"]) {
+      await expect(dialog.getAllByText(field, { exact: false }).length).toBeGreaterThan(0);
+    }
+  },
+};
+
+/** A new connection type is created in one step with every value of the form, at the top level by default. */
 export const ANewConnectionTypeStartsAtTheTopLevel: Story = {
   args: { scope: { kind: "org", organizationId: ORG_ID }, kind: "connection" },
   beforeEach: () => {
@@ -97,10 +131,46 @@ export const ANewConnectionTypeStartsAtTheTopLevel: Story = {
     const canvas = within(canvasElement);
     const dialog = await openAddDialog(canvas, "Add connection type");
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Radio link");
-    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+    await userEvent.selectOptions(dialog.getByLabelText("Line style"), "dashed");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Default protocol" }), "LoRa");
+    await userEvent.click(dialog.getByRole("switch", { name: "One-way" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `/api/v1/orgs/${ORG_ID}/modules/architecture/connection-types`, expect.objectContaining({ name: "Radio link", parent_ids: [] }),
+      `/api/v1/orgs/${ORG_ID}/modules/architecture/connection-types`,
+      expect.objectContaining({ name: "Radio link", line_style: "dashed", directional: false, default_protocol: "LoRa", parent_ids: [] }),
     ));
+  },
+};
+
+/** In a project that hid a default, the list's actions menu offers Add organisation defaults as a text row; the one primary button stays Add. */
+export const ProjectActionsMenuRestoresHiddenDefaults: Story = {
+  args: { scope: { kind: "project", projectId: PROJECT_ID }, kind: "connection" },
+  beforeEach: () => {
+    const get = mockArchitectureReads({ hiddenDefinitions: [{ id: "ct-hidden", name: "Radio" }] });
+    const post = spyOn(api, "post").mockResolvedValue({} as never);
+    return () => { get.mockRestore(); post.mockRestore(); };
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "List actions" }));
+    const menu = await within(document.body).findByRole("menu");
+    await expectTextRows(menu);
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Add organisation defaults (1)" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add organisation defaults" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Add 1 default" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/architecture/connection-types/restore`, expect.anything(),
+    ));
+  },
+};
+
+/** With nothing hidden there is no actions menu, only the Add button. */
+export const NoActionsMenuWhenNothingIsHidden: Story = {
+  args: { scope: { kind: "project", projectId: PROJECT_ID }, kind: "connection" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("button", { name: "Add connection type" });
+    await expect(canvas.queryByRole("button", { name: "List actions" })).not.toBeInTheDocument();
   },
 };
 
@@ -117,7 +187,6 @@ export const DomainsAreListedByNameAndAnOrganisationDefaultIsHiddenNotDeleted: S
     const names = canvas.getAllByLabelText("Domain name", { selector: "input:not([placeholder])" }) as HTMLInputElement[];
     await expect(names.map((n) => [n.value, n.disabled])).toEqual([["Software", true], ["Hardware", true]]);
     // A domain is only a name: there is no details dialog.
-    await expect(canvas.queryByRole("button", { name: /with details/ })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: /^Edit / })).not.toBeInTheDocument();
     const [hide] = await canvas.findAllByRole("button", { name: "Hide domain in this project" });
     await userEvent.click(hide);
@@ -137,6 +206,8 @@ export const ANewDomainIsCreatedWithItsName: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const dialog = await openAddDialog(canvas, "Add domain");
+    // The domain's dialog is the name alone.
+    await expect(dialog.getAllByRole("textbox")).toHaveLength(1);
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Mechanical");
     await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(

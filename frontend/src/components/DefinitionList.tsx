@@ -9,6 +9,7 @@ import {
   type DeleteInUseKeepOption,
   type DeleteInUseRemoveOption,
 } from "./DeleteInUseDialog";
+import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { CellText } from "./CellText";
@@ -58,7 +59,26 @@ export interface DeleteInUseConfig {
   moveBlockedReason?: string;
 }
 
-export interface DefinitionListProps<T extends { id: string }> {
+/**
+ * How the Add button creates an item: `onAdd` takes the values typed in the list's own name-and-fields dialog, and
+ * `onAddRequest` hands the button to the caller, which opens its own full form (the one Edit uses) so a type with
+ * more attributes than the list shows has one create, not a reduced one beside a full one.
+ */
+export type DefinitionListAdd =
+  | {
+    /** Creates the item from the values of the Add dialog (one field per entry of `fields`). */
+    onAdd: (values: Record<string, string>) => Promise<void>;
+    onAddRequest?: undefined;
+  }
+  | {
+    onAdd?: undefined;
+    /** Called when the Add button is pressed; the caller opens its own create dialog. `fields` are then only the columns. */
+    onAddRequest: () => void;
+  };
+
+export type DefinitionListProps<T extends { id: string }> = DefinitionListBaseProps<T> & DefinitionListAdd;
+
+interface DefinitionListBaseProps<T extends { id: string }> {
   items: T[];
   fields: DefinitionListField<T>[];
   /** Label shown for each candidate in the in-use delete dialog's reassign dropdown. */
@@ -67,7 +87,6 @@ export interface DefinitionListProps<T extends { id: string }> {
    * scoring levels, ordered by weight) — the reorder buttons are hidden. */
   onMove?: (id: string, direction: "up" | "down") => Promise<void>;
   onRename: (id: string, values: Record<string, string>) => Promise<void>;
-  onAdd: (values: Record<string, string>) => Promise<void>;
   /**
    * Deletes the item. Called first with no `reassignToId` — per the
    * shared server contract, a plain delete succeeds unless the item is
@@ -95,6 +114,11 @@ export interface DefinitionListProps<T extends { id: string }> {
   confirmDelete?: (item: T) => { title: string; message: ReactNode; confirmLabel: string } | null;
   /** The Add button's name and the title of the dialog it opens (one field per entry of `fields`); the list shows no empty fields. */
   addLabel: string;
+  /**
+   * The list's other actions (restoring hidden organisation defaults), as rows of one actions menu beside the Add
+   * button; the menu is absent when there are none (docs/ux-style-guide.md, "Pattern: page actions menu").
+   */
+  menuItems?: ActionMenuItem[];
   /**
    * Optional per-row slot rendered between the text field(s) and the
    * reorder/delete buttons — for a field this component's own text-only
@@ -155,12 +179,14 @@ export function DefinitionList<T extends { id: string }>({
   onMove,
   onRename,
   onAdd,
+  onAddRequest,
   onDelete,
   loadInUse,
   deleteLabel,
   getDeleteLabel,
   confirmDelete,
   addLabel,
+  menuItems,
   renderExtra,
   extraContent = "text",
   renderDetails,
@@ -224,16 +250,23 @@ export function DefinitionList<T extends { id: string }>({
     else void handleAttemptDelete(item);
   }
 
-  /** The list's single Add control: the empty fields live in a dialog, not in the list (creation controls on demand). */
+  /** The list's single Add control: the empty fields live in a dialog, not in the list (creation controls on demand);
+   * the list's other actions are rows of the one menu beside it. */
   const addControl = (
-    <button className="btn btn-primary btn--fit" style={{ alignSelf: "flex-start" }} aria-label={addLabel} onClick={() => { setError(null); setAdding(true); }}>
-      <Plus /> <CellText>{addLabel}</CellText>
-    </button>
+    <div className="row" style={{ alignItems: "center" }}>
+      <button
+        className="btn btn-primary btn--fit" aria-label={addLabel}
+        onClick={() => { setError(null); if (onAddRequest) onAddRequest(); else setAdding(true); }}
+      >
+        <Plus /> <CellText>{addLabel}</CellText>
+      </button>
+      {menuItems && menuItems.length > 0 && <ActionMenu triggerLabel={strings.recordTables.menuLabel} items={menuItems} />}
+    </div>
   );
 
   const dialogs = (
     <>
-      {adding && (
+      {adding && onAdd && (
         <DefinitionAddModal
           title={addLabel}
           fields={fields}

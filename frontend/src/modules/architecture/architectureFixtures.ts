@@ -344,6 +344,8 @@ export const SYMBOL_SVG = new Blob(
 
 /** What `mockArchitectureReads` answers with; each list defaults to the fixtures above or empty. */
 export interface ArchitectureReads {
+  /** The organisation defaults a project has hidden, answered by every vocabulary's `.../hidden` (none by default). */
+  hiddenDefinitions?: { id: string; name: string }[];
   /** The allocation view of a requirement or an element (nothing allocated or suggested by default, so no card). */
   allocation?: AllocationView;
   elements?: ArchitectureElement[];
@@ -435,6 +437,7 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
   spyOn(api, "getForBlob").mockResolvedValue(SYMBOL_SVG);
   return spyOn(api, "get").mockImplementation(async (path: string) => {
     const base = path.split("?")[0];
+    if (/\/modules\/architecture\/(domains|element-types|connection-types|symbols)\/hidden$/.test(base)) return reads.hiddenDefinitions ?? [];
     if (base.endsWith("/modules/architecture/capabilities")) return { manage_types: reads.canManageTypes ?? false };
     if (base.endsWith("/enabled-modules")) {
       return [{ module_key: "architecture", name: "System Architecture", frontend_manifest: null, disabled_sub_components: reads.disabledSubComponents ?? [] }];

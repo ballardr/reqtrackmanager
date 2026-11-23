@@ -103,11 +103,11 @@ export function TypeFormModal({
   }
 
   return (
-    <Modal title={initial ? `Edit ${initial.name}` : `New ${noun}`} onClose={onCancel} size="lg">
+    <Modal title={initial ? `Edit ${initial.name}` : `Add ${noun}`} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded required label="Name" value={draft.name} onChange={(value) => set("name", value)} />
+            <TextField helpNotNeeded required label="Name" value={draft.name} onChange={(value) => set("name", value)} inputProps={{ autoFocus: true }} />
           </FormGridFull>
           <TreeSelectField
             help={ARCHITECTURE_HELP.typeDomain} label="Domains" emptyLabel="Any domain" value={draft.domain_ids}
