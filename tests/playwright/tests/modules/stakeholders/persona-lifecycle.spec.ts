@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { addDefinition, installCleanupHook, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { addDefinition, chooseRecordAction, installCleanupHook, recordActionNames, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -40,7 +40,8 @@ test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
     await expect(page.getByText("Persona's own weight", { exact: true })).toBeVisible();
 
     // --- Activate behind a confirm dialog; there is no approval step.
-    await page.getByRole("button", { name: "Activate" }).click();
+    await page.getByRole("button", { name: "Next step: Active" }).click();
+    await page.getByRole("button", { name: "Promote to Active" }).click();
     await page.getByRole("dialog", { name: "Activate this Persona?" }).getByRole("button", { name: "Activate" }).click();
     await expect(statusBadge(page, "Active")).toBeVisible();
 
@@ -55,10 +56,10 @@ test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
     await expect(page.getByText("Persona's own weight", { exact: true })).toBeVisible();
 
     // --- Retire, then reactivate (a retired persona keeps its history).
-    await page.getByRole("button", { name: "Retire" }).click();
+    await chooseRecordAction(page, "Persona", "Retire");
     await page.getByRole("dialog", { name: "Retire this Persona?" }).getByRole("button", { name: "Retire" }).click();
     await expect(statusBadge(page, "Retired")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Reactivate" })).toBeVisible();
+    expect(await recordActionNames(page, "Persona")).toContain("Reactivate");
 
     // --- The list shows the final status through its label map.
     await page.getByRole("link", { name: "← People", exact: true }).click();
@@ -129,7 +130,8 @@ test.describe("Stakeholders & Personas: organisation Personas and types", () => 
     await page.getByRole("button", { name: personaName }).click();
     await expect(page.getByText(/organisation-wide Persona/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Retire" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Next step: Active" })).toHaveCount(0);
+    expect(await recordActionNames(page, "Persona")).not.toContain("Retire");
     await page.getByRole("link", { name: "organisation view" }).click();
     await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/modules/stakeholders/personas/[^/]+$`));
 

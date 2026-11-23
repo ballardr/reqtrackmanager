@@ -108,10 +108,10 @@ test.describe("Stakeholders & Personas: People page", () => {
     const versions: { status: string }[] = await (await page.request.get(`${base}/personas/${active.id}/versions`, { headers: adminHeaders })).json();
     expect(versions.map((v) => v.status).sort()).toEqual(["active", "draft"]);
 
-    // --- Its page shows it Active, with no Activate step left.
+    // --- Its page shows it Active, with no Promote step left.
     await page.getByRole("button", { name: activeName }).click();
     await expect(statusBadge(page, "Active")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Activate", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Next step: Active" })).toHaveCount(0);
   });
 
   test("Save and activate is on every create form that can activate, and not on edit", async ({ page }) => {

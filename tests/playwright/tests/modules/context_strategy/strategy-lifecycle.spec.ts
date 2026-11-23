@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability, expectCurrentStep, promoteTo, expectRecordLocked } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -84,24 +84,25 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a St
     await page.getByRole("button", { name: strategyTitle }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/strategies/[^/]+$`));
     await expect(page.getByRole("heading", { name: strategyTitle })).toBeVisible();
-    await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Draft");
 
     // --- Walk the lifecycle: Draft -> Proposed -> Under review -> Approved -> Active.
-    await page.getByRole("button", { name: "Propose" }).click();
-    await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
+    await promoteTo(page, "Proposed");
+    await expectCurrentStep(page, "Proposed");
 
-    await page.getByRole("button", { name: "Submit for review" }).click();
-    await expect(page.getByText("Under review", { exact: true })).toBeVisible();
+    await promoteTo(page, "Under review");
+    await expectCurrentStep(page, "Under review");
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    await promoteTo(page, "Approved");
     const approveDialog = page.getByRole("dialog", { name: "Approve this Strategy?" });
     await approveDialog.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Approved");
+    await expectRecordLocked(page);
 
-    await page.getByRole("button", { name: "Activate" }).click();
+    await promoteTo(page, "Active");
     const activateDialog = page.getByRole("dialog", { name: "Activate this Strategy?" });
     await activateDialog.getByRole("button", { name: "Activate" }).click();
-    await expect(page.getByText("Active", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Active");
 
     // --- Back on the list, the Strategy shows its final status.
     await page.getByRole("link", { name: "← Strategies", exact: true }).click();

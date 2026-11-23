@@ -45,7 +45,7 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     await expect(page.getByText("Each delay costs an hour.")).toBeVisible();
 
     // --- Activate behind a confirm dialog; no approval step.
-    await page.getByRole("button", { name: "Activate" }).click();
+    await chooseRecordAction(page, "Stakeholder Need", "Promote to Active");
     await page.getByRole("dialog", { name: "Activate this Stakeholder Need?" }).getByRole("button", { name: "Activate" }).click();
     await expect(statusBadge(page, "Active")).toBeVisible();
 

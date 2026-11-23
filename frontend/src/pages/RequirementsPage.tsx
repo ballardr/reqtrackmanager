@@ -639,7 +639,6 @@ export function RequirementsPage() {
                         {/* C-G-11: own badge; completion is independent of the
                             status badge, which stays "Approved". */}
                         {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
-                        {r.is_locked && <Badge>{strings.requirements.locked}</Badge>}
                         {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
                       </div>
                       <div className="row" style={{ gap: "var(--space-3)" }}>{badges(r)}</div>
@@ -722,7 +721,6 @@ export function RequirementsPage() {
                               {REQUIREMENT_STATUS_LABEL[r.status]}
                             </FilterBadge>
                             {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
-                            {r.is_locked && <Badge>{strings.requirements.locked}</Badge>}
                             {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
                             {badges(r)}
                           </div>

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { approveRequirementFromDetail, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
+import { approveRequirementFromDetail, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests, expectRecordLocked, promoteTo } from "./helpers";
 
 /**
  * Once a requirement is locked (APPROVED/COMPLETED), adding an action to it follows the change-request-only-once-locked
@@ -30,7 +30,7 @@ test.describe("requirement action change requests", () => {
 
     await test.step("approve the requirement, locking it", async () => {
       await approveRequirementFromDetail(page);
-      await expect(page.getByText("Locked (approved)")).toBeVisible();
+      await expectRecordLocked(page);
     });
 
     await test.step("Create and link a new action now requires a reason and creates nothing directly", async () => {
@@ -66,9 +66,9 @@ test.describe("requirement action change requests", () => {
       // match is a case-insensitive substring, not case-sensitive).
       await expect(page.getByText("Proposed action", { exact: true })).toBeVisible();
       await expect(page.getByText(actionTitle)).toBeVisible();
-      await page.getByRole("button", { name: "Submit", exact: true }).click();
+      await promoteTo(page, "Submitted");
       await expect(page.getByText("Change request submitted")).toBeVisible();
-      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await promoteTo(page, "Approved");
       await expect(page.getByText("Change request approved")).toBeVisible();
     });
 

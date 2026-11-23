@@ -7,6 +7,8 @@ import type {
   RequirementLink,
 } from "../api/types";
 import { buildGraph, buildGraphNode } from "../testing/artefactLinksFixtures";
+import { promoteViaTrack } from "../testing/lifecycleTrack";
+import { chooseRecordAction, recordActionNames } from "../testing/recordActions";
 import { activityPage } from "../testing/recordActivityFixtures";
 import {
   buildActionType,
@@ -81,7 +83,7 @@ export default meta;
 type Story = StoryObj<typeof ChangeRequestDetailPage>;
 
 /** submit/withdraw aren't role-gated at all (project settings, not rbac,
- * control who may create one in the first place) — a draft CR shows both
+ * control who may create one in the first place) — a draft CR offers the next step Submitted and a Withdraw row
  * regardless of role. */
 export const DraftShowsSubmitAndWithdraw: Story = {
   beforeEach: () => {
@@ -90,8 +92,8 @@ export const DraftShowsSubmitAndWithdraw: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Add password reset flow" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Submit" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Submitted" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Change request")).toContain("Withdraw");
     await expect(canvas.getByRole("link", { name: "← Change requests" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/change-requests`);
   },
 };
@@ -251,7 +253,7 @@ export const ApprovingWithProposedLinksOpensTheMergeDialog: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Approve" }));
+    await promoteViaTrack(canvas, "Approved");
     const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve change request" }));
     const first = await dialog.findByRole("checkbox", { name: /Merge link: Depends on AUTH-002/ });
     await expect(first).toBeChecked();
@@ -306,8 +308,7 @@ export const SubmitShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Submit" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Submit" }));
+    await promoteViaTrack(canvas, "Submitted");
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringContaining("/submit")));
     await expect(within(document.body).getByText("Change request submitted")).toBeInTheDocument();
   },
@@ -321,22 +322,22 @@ export const RejectShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Change request actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Change request", "Reject");
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringContaining("/decide"), { approve: false, note: "" }));
     await expect(within(document.body).getByText("Change request rejected")).toBeInTheDocument();
   },
 };
 
-/** A project manager sees Approve/Reject on a submitted CR — `canDecide`. */
+/** A project manager sees the next step Approved and a Reject row on a submitted CR — `canDecide`. */
 export const SubmittedManagerCanDecide: Story = {
   beforeEach: () => {
     mockChangeRequestDetailApis(["project_manager"], { status: "submitted", proposed_name: "Add password reset flow" });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Change request")).toContain("Reject");
   },
 };
 
@@ -360,8 +361,8 @@ export const SubmittedManagerSeesClearCompletionOptionForCompletedTarget: Story 
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Approve and clear completion" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Change request")).toContain("Approve and clear completion");
   },
 };
 
@@ -381,8 +382,8 @@ export const ApproveAndClearCompletionSendsFlag: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const button = await canvas.findByRole("button", { name: "Approve and clear completion" });
-    await userEvent.click(button);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Change request actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Change request", "Approve and clear completion");
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         expect.stringContaining("/decide"),
@@ -401,7 +402,7 @@ export const SubmittedStakeholderCanVoteNotDecide: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Vote to approve" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Next step: Approved" })).not.toBeInTheDocument();
   },
 };
 
@@ -412,8 +413,10 @@ export const SubmittedMemberCannotDecideOrVote: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Change request actions" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Change request")).toContain("Withdraw");
+    await expect(canvas.queryByRole("button", { name: "Next step: Approved" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: "You do not have permission to promote this record to Approved." })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Vote to approve" })).not.toBeInTheDocument();
   },
 };

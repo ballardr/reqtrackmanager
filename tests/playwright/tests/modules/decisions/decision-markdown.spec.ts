@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, expectCurrentStep, installCleanupHook, loginAs, PASSWORD, promoteTo } from "../../e2e-workflows/helpers";
 import { chooseMarkdownView, markdownField, offeredMarkdownViews, shownMarkdownView } from "../../markdownViews";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -71,11 +71,11 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
       await expect(dialog.getByRole("cell", { name: "Moderate" })).toBeVisible();
       await expect(dialog.getByRole("img", { name: "Diagram: flowchart" })).toBeVisible({ timeout: 30_000 });
       await dialog.getByRole("button", { name: "Save" }).click();
-      await expect(page.getByRole("button", { name: "DEC-001" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^(\w+-)?DEC-001$/ })).toBeVisible();
     });
 
     await test.step("the quick view formats the statement and the detail page shows the Document", async () => {
-      await page.getByRole("button", { name: "DEC-001" }).click();
+      await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
       const quickView = page.getByRole("dialog", { name: "DEC-001" });
       await expect(quickView.locator("strong", { hasText: "adopt" })).toBeVisible();
       await expect(quickView).not.toContainText("**");
@@ -97,12 +97,14 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
     });
 
     await test.step("an approved Decision locks the Document", async () => {
-      await page.getByRole("button", { name: "Propose" }).click();
-      await page.getByRole("button", { name: "Submit for review" }).click();
-      await page.getByRole("button", { name: "Approve" }).click();
+      await promoteTo(page, "Proposed");
+      await expectCurrentStep(page, "Proposed");
+      await promoteTo(page, "Under review");
+      await expectCurrentStep(page, "Under review");
+      await promoteTo(page, "Approved");
       const confirm = page.getByRole("dialog", { name: "Approve this Decision?" });
       await confirm.getByRole("button", { name: "Approve" }).click();
-      await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Approved");
       await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
       await expect(page.getByRole("region", { name: "Document" })).toBeVisible();
     });
@@ -192,7 +194,7 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
 
     await test.step("the saved Decision shows the formatting", async () => {
       await dialog.getByRole("button", { name: "Save" }).click();
-      await page.getByRole("button", { name: "DEC-001" }).click();
+      await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
       const quickView = page.getByRole("dialog", { name: "DEC-001" });
       await expect(quickView.locator("strong", { hasText: "adopt" })).toBeVisible();
       await expect(quickView).not.toContainText("**");

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { approveRequirementFromDetail, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { approveRequirementFromDetail, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, expectCurrentStep, expectRecordLocked, promoteTo } from "./helpers";
 import { openAddLinkDialog } from "../modules/linksPanel";
 
 /**
@@ -80,7 +80,7 @@ test.describe("action/link change-request locking", () => {
 
       await approveRequirementFromDetail(page);
       await expect(page.getByText("Requirement approved")).toBeVisible();
-      await expect(page.getByText("Locked (approved)")).toBeVisible();
+      await expectRecordLocked(page);
     });
 
     let unlinkActionCrId = "";
@@ -102,10 +102,10 @@ test.describe("action/link change-request locking", () => {
 
     await test.step("approving that change request actually unlinks the action", async () => {
       await page.goto(`/projects/${projectId}/change-requests/${unlinkActionCrId}`);
-      await page.getByRole("button", { name: "Submit", exact: true }).click();
-      await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Approve", exact: true }).click();
-      await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+      await promoteTo(page, "Submitted");
+      await expectCurrentStep(page, "Submitted");
+      await promoteTo(page, "Approved");
+      await expectCurrentStep(page, "Approved");
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByName(page, reqAName);
@@ -131,10 +131,10 @@ test.describe("action/link change-request locking", () => {
 
     await test.step("approving that change request actually removes the link", async () => {
       await page.goto(`/projects/${projectId}/change-requests/${removeLinkCrId}`);
-      await page.getByRole("button", { name: "Submit", exact: true }).click();
-      await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Approve", exact: true }).click();
-      await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+      await promoteTo(page, "Submitted");
+      await expectCurrentStep(page, "Submitted");
+      await promoteTo(page, "Approved");
+      await expectCurrentStep(page, "Approved");
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByName(page, reqAName);
@@ -165,12 +165,12 @@ test.describe("action/link change-request locking", () => {
 
     await test.step("approving that change request actually creates the link", async () => {
       await page.goto(`/projects/${projectId}/change-requests/${addLinkCrId}`);
-      await page.getByRole("button", { name: "Submit", exact: true }).click();
-      await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await promoteTo(page, "Submitted");
+      await expectCurrentStep(page, "Submitted");
+      await promoteTo(page, "Approved");
       // An add-link request approves through the merge dialog link ticked by default.
       await page.getByRole("dialog", { name: "Approve change request" }).getByRole("button", { name: "Approve and merge 1 link" }).click();
-      await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Approved");
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByName(page, reqAName);

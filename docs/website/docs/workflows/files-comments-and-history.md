@@ -22,7 +22,18 @@ On every record's page (a requirement, action, change request, or a module recor
 | **Delete permanently** | Only on records that can be erased (an Engagement, a Stakeholder). Asks you to type the record's name first. |
 | **Subscribe** / **Unsubscribe** | On requirements and change requests; the page shows a **Subscribed** pill while you are. |
 
-Steps that move a record through its lifecycle (Approve, Activate, Retire, Submit for review, Withdraw) stay as buttons under the title, next to the status. You only see the menu items you are allowed to use; if you have none, there is no menu.
+A record that has states also shows its **lifecycle track** under the title, described in [The lifecycle track and Promote](#the-lifecycle-track-and-promote). You only see the menu items you are allowed to use; if you have none, there is no menu.
+
+## The lifecycle track and Promote
+
+A record with states (a requirement, change request, Decision, Risk, Persona and the like) shows a row of steps across the page under its title:
+
+- The **current** step is filled, earlier steps are tinted and later steps are plain. A padlock on a step means the record cannot be edited directly in that state; hover the padlock for the reason (for example, use a change request to modify).
+- A state outside the main path (Rejected, Withdrawn, Retired, Superseded) appears as one extra step at the end while the record is in it.
+- The **next step** is a button. Press it and choose **Promote to \<step\>**; the same **Promote to \<step\>** is the first item of the **⋮ "\{Record\} actions"** menu. Moves that need an approval or a comment open the same dialog as before.
+- Every other move (Reject, Send back, Withdraw, Retire, Revert completion) is an item of the actions menu.
+- A padlock on the next step means you do not have permission to promote the record; the server checks the permission in every case.
+- On a narrow screen the track shows the current step and its position ("Step 2 of 4"); press it to see the whole track.
 
 ## Browsing every file in a project
 

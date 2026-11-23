@@ -34,9 +34,11 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgStrategyApi, projectStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
-import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL } from "./types";
+import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_DESCRIPTION, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL, REVIEWED_LOCKED_REASON } from "./types";
 import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
@@ -73,6 +75,8 @@ const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; c
     confirmLabel: "Retire",
   },
 };
+
+const MAIN_PATH = ["draft", "proposed", "under_review", "approved", "active"] as const;
 
 export function StrategyDetailPage() {
   const { projectId, organizationId, strategyId } = useParams<{
@@ -173,6 +177,30 @@ export function StrategyDetailPage() {
     return asset;
   };
 
+  // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  let promote: LifecyclePromote | undefined;
+  if (strategy.status === "draft") {
+    promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, strategy.id), "Strategy proposed.") };
+  } else if (strategy.status === "proposed") {
+    promote = { to: "under_review", onPromote: () => runTransition(() => scopedApi.submitForReview(scopeId, strategy.id), "Strategy submitted for review.") };
+  } else if (strategy.status === "under_review") {
+    promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
+  } else if (strategy.status === "approved") {
+    promote = { to: "active", onPromote: () => setTransitionAction("activate") };
+  }
+
+  // An ended Strategy sits after the last main step it reached: any retired one was approved, and was active if a version says so.
+  const offPath = strategy.status === "superseded" || strategy.status === "retired"
+    ? {
+        key: strategy.status,
+        label: STRATEGY_STATUS_LABEL[strategy.status],
+        description: STRATEGY_STATUS_DESCRIPTION[strategy.status],
+        locked: true,
+        lockedReason: REVIEWED_LOCKED_REASON,
+        after: strategy.status === "superseded" || versions?.some((v) => v.status === "active") ? "active" : "approved",
+      }
+    : undefined;
+
   return (
     <DetailLayout
       pictures={{ files, upload: strategy.is_locked ? undefined : uploadAttachment }}
@@ -216,42 +244,18 @@ export function StrategyDetailPage() {
         version={strategy.version_number}
         subtitle={`${STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · ${STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]}`}
         onEdit={strategy.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {strategy.status === "draft" && (
-            <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, strategy.id), "Strategy proposed.")}>
-              Propose
-            </button>
-          )}
-          {strategy.status === "proposed" && (
-            <>
-              <button
-                className="btn btn-primary"
-                onClick={() => runTransition(() => scopedApi.submitForReview(scopeId, strategy.id), "Strategy submitted for review.")}
-              >
-                Submit for review
-              </button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-              )}
-              {strategy.status === "under_review" && (
-                <>
-                  <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-                  <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-                </>
-              )}
-              {strategy.status === "approved" && (
-                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-              )}
-              {strategy.status === "active" && (
-                <>
-                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-                </>
-              )}
-          </>
-        }
+        actions={[
+          (strategy.status === "proposed" || strategy.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
+          strategy.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
+          strategy.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycleSteps(MAIN_PATH, STRATEGY_STATUS_LABEL, { descriptions: STRATEGY_STATUS_DESCRIPTION, locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON } }),
+          current: strategy.status,
+          offPath,
+          promote,
+        }}
       />
       {archive.dialog}
 

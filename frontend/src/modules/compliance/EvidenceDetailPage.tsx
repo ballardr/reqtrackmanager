@@ -5,7 +5,7 @@
  * (`/projects/:projectId/modules/compliance/evidence/:evidenceId`, `module.ts`; the same path
  * `artefactPaths` gives search and the Links panel). Evidence carries file attachments and a Links
  * panel, so it is a page rather than a `SidePanel` (docs/ux-style-guide.md "Pattern: entity detail
- * panel"): header with Edit, Revalidate and Archive, the evidence's fields, §15's append-only
+ * panel"): header with Edit and an actions menu (Revalidate, Archive), the evidence's fields, §15's append-only
  * revalidation history, its files, and the shared Links, Activity and tags.
  *
  * Fetches its own data. Edit and Revalidate are `Modal` layers (`EvidenceFormModals.tsx`); every
@@ -125,8 +125,7 @@ export function EvidenceDetailPage() {
         }
         subtitle={evidence.expiry_date ? `Expires ${evidence.expiry_date}` : undefined}
         onEdit={evidence.is_archived ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={<button className="btn" onClick={() => setRevalidating(true)}>Revalidate</button>}
+        actions={[{ label: "Revalidate", onSelect: () => setRevalidating(true) }, archive.item]}
       />
       {archive.dialog}
         <DetailCard>

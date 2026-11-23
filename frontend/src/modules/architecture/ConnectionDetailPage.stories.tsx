@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
+import { recordActionNames } from "../../testing/recordActions";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildConnection, buildRecordDiagram, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ConnectionDetailPage } from "./ConnectionDetailPage";
@@ -27,6 +29,17 @@ export const ShowsBothEndsWithPortsAndLinksToThem: Story = {
     await expect(source).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/elements/el-1`);
     await expect(canvas.getByRole("link", { name: /ELM-002 Orders/ })).toBeInTheDocument();
     await expect(canvas.getByText("One-way, source to target")).toBeInTheDocument();
+  },
+};
+
+/** A draft connection promotes to Proposed; Activate directly and Reject are rows of the actions menu. */
+export const TheLifecycleTrackPromotesAndTheMenuOffersTheOtherMoves: Story = {
+  beforeEach: () => { mockArchitectureReads({ connection: buildConnection({ status: "draft" }) }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("button", { name: "Next step: Proposed" })).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Draft");
+    await expect((await recordActionNames(canvas, "Connection")).slice(0, 3)).toEqual(["Promote to Proposed", "Activate directly", "Reject"]);
   },
 };
 

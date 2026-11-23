@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability, showLinkRelationships, recordCodeText } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, expectCurrentStep, installCleanupHook, loginAs, PASSWORD, promoteTo, selectOrgAdminGroup, setOrgModuleAvailability, showLinkRelationships, recordCodeText } from "../../e2e-workflows/helpers";
 import { selectLabeledOption } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -81,9 +81,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await dialog.getByLabel("Decision title").fill("Adopt PostgreSQL for the billing service");
     await dialog.getByLabel("Decision statement").fill("Use PostgreSQL as the backing store for the billing service.");
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByRole("button", { name: "DEC-001" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^(\w+-)?DEC-001$/ })).toBeVisible();
 
-    await page.getByRole("button", { name: "DEC-001" }).click();
+    await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
     let quickView = page.getByRole("dialog", { name: "DEC-001" });
     await expect(quickView.getByRole("link", { name: "View full details" })).toBeVisible();
     await quickView.getByRole("link", { name: "View full details" }).click();
@@ -92,16 +92,16 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(page.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
     // Scoped to the detail header: the list page's own "Draft" badges and
     // Status filter option can still be in the DOM while the route swaps.
-    await expect(page.locator(".record-header").getByText("Draft", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Propose" }).click();
-    await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Submit for review" }).click();
-    await expect(page.getByText("Under review", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Approve" }).click();
+    await expectCurrentStep(page, "Draft");
+    await promoteTo(page, "Proposed");
+    await expectCurrentStep(page, "Proposed");
+    await promoteTo(page, "Under review");
+    await expectCurrentStep(page, "Under review");
+    await promoteTo(page, "Approved");
     let confirmDialog = page.getByRole("dialog", { name: "Approve this Decision?" });
     await confirmDialog.getByLabel("Approval comment").fill("Agreed at the architecture board.");
     await confirmDialog.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Approved");
 
     // The comment given at approval is shown, quoted, in the record's own Activity tab.
     await page.getByRole("tab", { name: "Activity" }).click();
@@ -119,9 +119,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await dialog.getByLabel("Decision title").fill("Adopt Terraform for infrastructure");
     await dialog.getByLabel("Decision statement").fill("Manage infrastructure as code with Terraform.");
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByRole("button", { name: "DEC-002" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^(\w+-)?DEC-002$/ })).toBeVisible();
 
-    await page.getByRole("button", { name: "DEC-002" }).click();
+    await page.getByRole("button", { name: /^(\w+-)?DEC-002$/ }).click();
     quickView = page.getByRole("dialog", { name: "DEC-002" });
     await quickView.getByRole("link", { name: "View full details" }).click();
     // Wait for the route change, not just page content, before querying the DOM: the list page (and its
@@ -130,12 +130,14 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
     await expect(page.locator(".record-header").getByText(recordCodeText("DEC-002"))).toBeVisible();
 
-    await page.getByRole("button", { name: "Propose" }).click();
-    await page.getByRole("button", { name: "Submit for review" }).click();
-    await page.getByRole("button", { name: "Approve" }).click();
+    await promoteTo(page, "Proposed");
+    await expectCurrentStep(page, "Proposed");
+    await promoteTo(page, "Under review");
+    await expectCurrentStep(page, "Under review");
+    await promoteTo(page, "Approved");
     confirmDialog = page.getByRole("dialog", { name: "Approve this Decision?" });
     await confirmDialog.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Approved");
 
     // From DEC-002's Links panel, record that it supersedes DEC-001. Both Decisions are already Approved, so the
     // supersession flips DEC-001 to Superseded immediately (`_maybe_supersede`: link created after the new
@@ -157,9 +159,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await page.getByRole("link", { name: "← Decisions", exact: true }).click();
     // The list opens on Decisions still to be made; the approved and superseded ones need the filter cleared.
     await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();
-    await expect(page.getByRole("button", { name: "DEC-001" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^(\w+-)?DEC-001$/ })).toHaveCount(0);
     await page.getByRole("checkbox", { name: "Open only" }).uncheck();
-    await page.getByRole("button", { name: "DEC-001" }).click();
+    await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
     quickView = page.getByRole("dialog", { name: "DEC-001" });
     await quickView.getByRole("link", { name: "View full details" }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
@@ -168,6 +170,6 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     // option all match too. Wait for the list's own table to go first.
     await expect(page.getByRole("table")).toHaveCount(0);
     await expect(page.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
-    await expect(page.getByText("Superseded", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Superseded");
   });
 });

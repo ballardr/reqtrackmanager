@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, recordActionNames } from "./helpers";
+import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, recordActionNames, expectRecordLocked } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -63,7 +63,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.goto(`/projects/${projectId}/requirements/${target.id}`);
       await expect(page.locator(".record-header h1")).toBeVisible();
-      await expect(page.getByText("Locked (approved)")).toBeVisible();
+      await expectRecordLocked(page);
       await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     });
 

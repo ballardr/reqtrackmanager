@@ -3,6 +3,8 @@ import { page } from "vitest/browser";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 import { buttonHeightViolations } from "../../testing/buttonHeights";
 import { expectContainerFits } from "../../testing/containerFits";
 import { expectLabelInName } from "../../testing/labelInName";
@@ -114,6 +116,8 @@ export const DrawsStatesMarkersAndTransitionsFromTheModel: Story = {
     // A state shows its entry and exit lines in the box.
     await expect(within(canvas.getByLabelText("Idle, node")).getByText(/entry \/ stop motor/)).toBeInTheDocument();
     await expect(canvas.getByText("Describes", { exact: false })).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Draft");
+    await expect((await recordActionNames(canvas, "State machine diagram")).slice(0, 3)).toEqual(["Promote to Proposed", "Activate directly", "Reject"]);
   },
 };
 
@@ -847,8 +851,7 @@ export const ARefusedActivationShowsTheErrorsAndOffersNoReload: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Change status" }));
-    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Move from Draft to Active" }));
+    await chooseRecordAction(canvas, "State machine diagram", "Activate directly");
     await expect(await canvas.findByText(/cannot be activated until its errors are resolved/)).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Reload state machine diagram" })).not.toBeInTheDocument();
     await expect(api.post).toHaveBeenCalledWith(`${MACHINE}/status`, { version: 5, status: "active" });

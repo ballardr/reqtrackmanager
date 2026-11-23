@@ -49,14 +49,15 @@ test.describe("Risk Management", () => {
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await expect(statusBadge(page, "Identified")).toBeVisible();
 
-    // --- Move to Assessed behind a dialog offering only the legal next states.
-    await page.getByRole("button", { name: "Change status" }).click();
-    const move = page.getByRole("dialog", { name: "Change status of RSK-001" });
-    await expect(move.getByRole("option", { name: "Assessed" })).toHaveCount(1);
-    await expect(move.getByRole("option", { name: "Closed" })).toHaveCount(0);
-    await move.getByLabel("New status").selectOption({ label: "Assessed" });
+    // --- Promote to Assessed behind a dialog; the menu offers only the legal other moves.
+    await page.getByRole("button", { name: "Risk actions" }).click();
+    const menu = page.getByRole("menu", { name: "Risk actions" });
+    await expect(menu.getByRole("menuitem", { name: "Mark as Rejected" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Promote to Closed" })).toHaveCount(0);
+    await menu.getByRole("menuitem", { name: "Promote to Assessed" }).click();
+    const move = page.getByRole("dialog", { name: "Move RSK-001 to Assessed" });
     await move.getByLabel("Status change comment").fill("Rated with the supplier");
-    await move.getByRole("button", { name: "Change status" }).click();
+    await move.getByRole("button", { name: "Move to Assessed" }).click();
     await expect(page.getByText("Risk moved to Assessed.")).toBeVisible();
     await expect(statusBadge(page, "Assessed")).toBeVisible();
 

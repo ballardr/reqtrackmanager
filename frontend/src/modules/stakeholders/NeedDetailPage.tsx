@@ -28,11 +28,11 @@ import { NeedFormModal } from "./NeedFormModal";
 import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
-import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useLifecycleTransition, type LifecycleAction } from "../../components/useLifecycleTransition";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Need, NeedFieldValues, NeedHolderKind, NeedVersion } from "./types";
-import { NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
+import { NEED_STATUS_DESCRIPTION, NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
 import { Badge } from "../../components/Badge";
 import { DetailCard } from "../../components/DetailCard";
 
@@ -123,6 +123,20 @@ export function NeedDetailPage() {
     },
   });
 
+  const { lifecycle, menuRows, dialog: lifecycleDialog } = useLifecycleTransition({
+    noun: "Stakeholder Need",
+    status: need?.status ?? "draft",
+    labels: NEED_STATUS_LABEL,
+    descriptions: NEED_STATUS_DESCRIPTION,
+    hidden: !need,
+    activateBody: "An Active need is part of the current set of stakeholder needs. A comment is optional.",
+    retireBody: "A Retired need is no longer current, but keeps its history and links and can be reactivated. A comment is optional.",
+    onTransition: async (action, comment) => {
+      if (!projectId || !need) return;
+      await run(() => projectNeedApi[action](projectId, need.id, comment), TRANSITION_DONE[action]);
+    },
+  });
+
   if (!projectId || !needId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (need === null) return <Spinner />;
@@ -169,18 +183,11 @@ export function NeedDetailPage() {
         }
         version={need.version_number}
         onEdit={() => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <RecordLifecycleControls
-            noun="Stakeholder Need"
-            status={need.status}
-            activateBody="An Active need is part of the current set of stakeholder needs. A comment is optional."
-            retireBody="A Retired need is no longer current, but keeps its history and links and can be reactivated. A comment is optional."
-            onTransition={(action, comment) => run(() => projectNeedApi[action](projectId, need.id, comment), TRANSITION_DONE[action])}
-          />
-        }
+        actions={[...menuRows, archive.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
+      {lifecycleDialog}
 
         <DetailCard>
           {need.description && <RecordField markdown label="Need" value={need.description} />}

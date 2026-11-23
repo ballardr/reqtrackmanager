@@ -9,6 +9,7 @@ import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholder
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
 import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder, StakeholderEngagement } from "./types";
 import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
 
 const PROJECT_ID = "project-1";
 const STAKEHOLDER_ID = "stakeholder-1";
@@ -89,9 +90,11 @@ export const ActiveShowsFieldsPositionAndCadence: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Pat Regulator" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Activate" })).not.toBeInTheDocument();
-    await expect(canvas.getByText("Active", { exact: true })).toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Stakeholder");
+    await expect(names).toContain("Retire");
+    await expect(names).not.toContain("Promote to Active");
+    await expect(canvas.queryByRole("button", { name: "Next step: Active" })).not.toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Active");
     await expect(canvas.getByText("Traceable records.")).toBeInTheDocument();
     await expect(canvas.getByText("pat@authority.example.com")).toBeInTheDocument();
     // Levels and cadence render through their label maps/names, never the raw wire value.
@@ -105,8 +108,11 @@ export const DraftOffersActivateAndRetire: Story = {
   beforeEach: () => mockDetailApis(buildStakeholder({ status: "draft" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Activate" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Active" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Stakeholder");
+    await expect(names[0]).toBe("Promote to Active");
+    await expect(names).toContain("Retire");
+    await expect(currentLifecycleStep(canvasElement)).toBe("Draft");
   },
 };
 
@@ -114,7 +120,9 @@ export const RetiredOffersReactivateAndStaysEditable: Story = {
   beforeEach: () => mockDetailApis(buildStakeholder({ status: "retired" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Reactivate" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Stakeholder actions" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Stakeholder")).toContain("Reactivate");
+    await expect(currentLifecycleStep(canvasElement)).toBe("Retired");
     await expect(canvas.getByRole("button", { name: "Edit" })).toBeInTheDocument();
   },
 };
@@ -126,15 +134,15 @@ export const RetireAsksForConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Retire" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Retire" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Stakeholder actions" }));
+    await chooseRecordAction(canvas, "Stakeholder", "Retire");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Retire this Stakeholder?" }));
     await userEvent.type(dialog.getByLabelText("Transition comment"), "Left the company");
     await userEvent.click(dialog.getByRole("button", { name: "Retire" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/retire`, { comment: "Left the company" }),
     );
-    await waitFor(() => expect(canvas.getByText("Retired", { exact: true })).toBeInTheDocument());
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Retired"));
   },
 };
 
@@ -180,7 +188,8 @@ export const OrgStakeholderInProjectIsReadOnly: Story = {
     await waitFor(() => expect(canvas.getByText(/organisation-wide Stakeholder/)).toBeInTheDocument());
     await expect(canvas.getByRole("link", { name: "organisation view" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Stakeholder")).not.toContain("Retire");
+    await expect(canvas.queryByRole("button", { name: "Next step: Active" })).not.toBeInTheDocument();
     await expect(await recordActionNames(canvas, "Stakeholder")).not.toContain("Delete permanently");
     await expect(canvas.queryByRole("combobox", { name: "Persona to represent" })).not.toBeInTheDocument();
   },

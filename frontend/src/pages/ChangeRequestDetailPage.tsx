@@ -22,7 +22,6 @@ import type {
 } from "../api/types";
 import {
   CHANGE_REQUEST_STATUS_LABEL,
-  CHANGE_REQUEST_STATUS_TONE,
   CHANGEABLE_FIELD_LABEL,
   principalText,
   REQUIREMENT_LEVEL_LABEL,
@@ -39,6 +38,8 @@ import { PrincipalFormField } from "../components/PrincipalFormField";
 import { Modal } from "../components/Modal";
 import { ProposedLinksSection } from "../components/ProposedLinksSection";
 import { Spinner } from "../components/Spinner";
+import type { LifecyclePromote } from "../components/LifecycleTrack";
+import { lifecycleSteps } from "../components/lifecycleSteps";
 import { RecordHeader } from "../components/RecordHeader";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -244,6 +245,43 @@ export function ChangeRequestDetailPage() {
     }
   }
 
+  /** Submits a draft request for a decision. */
+  function submit() {
+    return act(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/submit`), strings.changeRequests.submittedToast);
+  }
+
+  /** Withdraws a draft or submitted request. */
+  function withdraw() {
+    return act(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/withdraw`), strings.changeRequests.withdrawnToast);
+  }
+
+  /**
+   * Approves the request with the decision note. A request that proposes links opens the dialog where the approver
+   * chooses which links to merge.
+   *
+   * @param clearCompletion Also clears the completion of a completed target requirement so the change is re-verified.
+   */
+  function approve(clearCompletion: boolean) {
+    if (cr && cr.proposed_link_count > 0) {
+      setApproving({ clearCompletion });
+      return Promise.resolve();
+    }
+    return act(
+      () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+        approve: true, note: decisionNote, ...(clearCompletion ? { clear_completion: true } : {}),
+      }),
+      strings.changeRequests.approvedToast,
+    );
+  }
+
+  /** Rejects the request with the decision note. */
+  function reject() {
+    return act(
+      () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, { approve: false, note: decisionNote }),
+      strings.changeRequests.rejectedToast,
+    );
+  }
+
   async function postComment(body: string): Promise<Comment> {
     const comment = await api.post<Comment>(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`, { body });
     reload();
@@ -279,6 +317,16 @@ export function ChangeRequestDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (!cr) return <Spinner />;
 
+  // A draft is promoted by submitting it; a submitted or in-review request by approving it (project managers).
+  const isDecidable = cr.status === "submitted" || cr.status === "in_review";
+  let nextPromotion: LifecyclePromote | undefined;
+  if (cr.status === "draft") nextPromotion = { to: "submitted", onPromote: submit };
+  else if (isDecidable) {
+    nextPromotion = canDecide
+      ? { to: "approved", onPromote: () => approve(false) }
+      : { to: "approved", blockedReason: strings.lifecycle.notPermitted(CHANGE_REQUEST_STATUS_LABEL.approved) };
+  }
+
   const title = cr.proposed_name ?? requirement?.name ?? cr.id;
 
   return (
@@ -301,13 +349,25 @@ export function ChangeRequestDetailPage() {
             icon: cr.is_subscribed ? <BellOff /> : <Bell />,
             onSelect: toggleSubscription,
           },
+          isDecidable && canDecide && cr.kind === "modify_requirement" && requirement?.is_completed && {
+            label: strings.changeRequests.approveAndClearCompletion, onSelect: () => approve(true),
+          },
+          isDecidable && canDecide && { label: strings.changeRequests.reject, danger: true, onSelect: reject },
+          (cr.status === "draft" || cr.status === "submitted") && { label: strings.changeRequests.withdraw, onSelect: withdraw },
         ]}
+        lifecycle={{
+          steps: lifecycleSteps(["draft", "submitted", "in_review", "approved"], CHANGE_REQUEST_STATUS_LABEL, {
+            descriptions: strings.changeRequests.stateDescription,
+          }),
+          current: cr.status,
+          offPath: cr.status === "rejected" || cr.status === "withdrawn"
+            ? { key: cr.status, label: CHANGE_REQUEST_STATUS_LABEL[cr.status], description: strings.changeRequests.stateDescription[cr.status] }
+            : undefined,
+          promote: nextPromotion,
+        }}
       />
       <DetailCard>
         <div className="row">
-          <Badge tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}>
-            {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
-          </Badge>
           {cr.kind !== "add_action" && cr.kind !== "remove_action" && cr.kind !== "add_link" && cr.kind !== "remove_link" && (
             <>
               <Badge>Target: {targetLabel()}</Badge>
@@ -409,100 +469,13 @@ export function ChangeRequestDetailPage() {
           </div>
         )}
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          {cr.status === "draft" && (
-            <button
-              className="btn btn-primary"
-              onClick={() =>
-                act(
-                  () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/submit`),
-                  strings.changeRequests.submittedToast
-                )
-              }
-            >
-              {strings.changeRequests.submit}
-            </button>
-          )}
-          {(cr.status === "draft" || cr.status === "submitted") && (
-            <button
-              className="btn"
-              onClick={() =>
-                act(
-                  () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/withdraw`),
-                  strings.changeRequests.withdrawnToast
-                )
-              }
-            >
-              {strings.changeRequests.withdraw}
-            </button>
-          )}
-          {(cr.status === "submitted" || cr.status === "in_review") && canDecide && (
-            <>
-              <TextField helpNotNeeded
-                label={strings.changeRequests.decisionNote}
-                placeholder={strings.changeRequests.decisionNote}
-                value={decisionNote}
-                onChange={setDecisionNote}
-                inputProps={{ style: { maxWidth: 240 } }}
-              />
-              <button
-                className="btn btn-primary"
-                onClick={() =>
-                  cr.proposed_link_count > 0
-                    ? setApproving({ clearCompletion: false })
-                    : act(
-                        () =>
-                          api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                            approve: true,
-                            note: decisionNote,
-                          }),
-                        strings.changeRequests.approvedToast
-                      )
-                }
-              >
-                {strings.changeRequests.approve}
-              </button>
-              {/* C-G-11: second approve action, only for a MODIFY_REQUIREMENT request whose
-                  target is completed: plain Approve keeps completion, this button clears it
-                  so the change is re-verified. */}
-              {cr.kind === "modify_requirement" && requirement?.is_completed && (
-                <button
-                  className="btn"
-                  onClick={() =>
-                    cr.proposed_link_count > 0
-                      ? setApproving({ clearCompletion: true })
-                      : act(
-                          () =>
-                            api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                              approve: true,
-                              note: decisionNote,
-                              clear_completion: true,
-                            }),
-                          strings.changeRequests.approvedToast
-                        )
-                  }
-                >
-                  {strings.changeRequests.approveAndClearCompletion}
-                </button>
-              )}
-              <button
-                className="btn btn-danger"
-                onClick={() =>
-                  act(
-                    () =>
-                      api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                        approve: false,
-                        note: decisionNote,
-                      }),
-                    strings.changeRequests.rejectedToast
-                  )
-                }
-              >
-                {strings.changeRequests.reject}
-              </button>
-            </>
-          )}
-        </div>
+        {isDecidable && canDecide && (
+          <TextField helpNotNeeded
+            label={strings.changeRequests.decisionNote}
+            value={decisionNote}
+            onChange={setDecisionNote}
+          />
+        )}
       </DetailCard>
 
       <DetailCard heading={strings.changeRequests.tasks}>

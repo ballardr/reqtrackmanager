@@ -97,7 +97,7 @@ export type NeedCreateValues = Omit<NeedFieldValues, "change_note"> & { owner?: 
 export type NeedUpdateValues = Partial<NeedFieldValues> & { owner?: PrincipalRef | null };
 
 /** The calls every record kind in this module has; what the shared detail
- * components (`RecordDiscussion`, `RecordLifecycleControls`) are written
+ * components (`RecordDiscussion`, `useLifecycleTransition`) are written
  * against. */
 export interface RecordApi<Rec, Version, Comment, Create, Update> {
   list(id: string, filters?: RecordListFilters): Promise<Rec[]>;

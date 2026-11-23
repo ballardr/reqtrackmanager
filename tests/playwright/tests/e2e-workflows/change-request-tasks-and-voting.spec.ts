@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, openProject, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
+import { loginAs, logout, openProject, PERSONAS, PROJECT_NAMES, searchChangeRequests, expectNoPromote, promoteTo } from "./helpers";
 
 /**
  * Job to be done: a change request under review can have tasks assigned to
@@ -46,7 +46,7 @@ test.describe("change-request tasks and stakeholder voting", () => {
       projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
       crId = page.url().match(/change-requests\/([0-9a-f-]+)/)![1];
 
-      await page.getByRole("button", { name: "Submit", exact: true }).click();
+      await promoteTo(page, "Submitted");
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
     });
 
@@ -120,7 +120,7 @@ test.describe("change-request tasks and stakeholder voting", () => {
       await expect(page.getByText("I'd like more testing first.")).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+      await expectNoPromote(page, "Approved");
     });
 
     await test.step("a direct API vote never changes cr.status, confirmed by fetching the CR itself", async () => {

@@ -42,9 +42,13 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
-import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
+import {
+  OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_DESCRIPTION, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE, TERMINAL_LOCKED_REASON,
+} from "./types";
 import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
@@ -68,6 +72,8 @@ const OPTIONAL_COMMENT_COPY: Record<OptionalCommentAction, { title: string; body
     confirmLabel: "Resolve",
   },
 };
+
+const MAIN_PATH = ["open", "investigating", "ready_for_decision", "resolved"] as const;
 
 export function OpenQuestionDetailPage() {
   const { projectId, openQuestionId } = useParams<{ projectId: string; openQuestionId: string }>();
@@ -179,6 +185,31 @@ export function OpenQuestionDetailPage() {
     return asset;
   };
 
+  // The next forward move: a plain call for the start of investigation, otherwise the move's comment dialog.
+  let promote: LifecyclePromote | undefined;
+  if (openQuestion.status === "open") {
+    promote = {
+      to: "investigating",
+      onPromote: () => runTransition(() => projectOpenQuestionApi.investigate(projectId, openQuestion.id), "Open Question moved to Investigating."),
+    };
+  } else if (openQuestion.status === "investigating") {
+    promote = { to: "ready_for_decision", onPromote: () => setOptionalAction("mark_ready_for_decision") };
+  } else if (openQuestion.status === "ready_for_decision") {
+    promote = { to: "resolved", onPromote: () => setOptionalAction("resolve") };
+  }
+
+  // A withdrawn question was withdrawn from Investigating or Ready for Decision, so it had reached at least Investigating.
+  const offPath = openQuestion.status === "withdrawn"
+    ? {
+        key: "withdrawn",
+        label: OPEN_QUESTION_STATUS_LABEL.withdrawn,
+        description: OPEN_QUESTION_STATUS_DESCRIPTION.withdrawn,
+        locked: true,
+        lockedReason: TERMINAL_LOCKED_REASON,
+        after: "investigating",
+      }
+    : undefined;
+
   return (
     <DetailLayout
       pictures={{ files, upload: openQuestion.is_locked ? undefined : uploadAttachment }}
@@ -211,31 +242,21 @@ export function OpenQuestionDetailPage() {
           </>
         }
         onEdit={openQuestion.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {openQuestion.status === "open" && (
-            <button
-              className="btn btn-primary"
-              onClick={() => runTransition(() => projectOpenQuestionApi.investigate(projectId, openQuestion.id), "Open Question moved to Investigating.")}
-            >
-              Investigate
-            </button>
-          )}
-          {openQuestion.status === "investigating" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setOptionalAction("mark_ready_for_decision")}>Mark ready for decision</button>
-              <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
-            </>
-              )}
-              {openQuestion.status === "ready_for_decision" && (
-                <>
-                  <button className="btn btn-primary" onClick={() => setOptionalAction("resolve")}>Resolve</button>
-                  <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
-                </>
-              )}
-          </>
-        }
+        actions={[
+          (openQuestion.status === "investigating" || openQuestion.status === "ready_for_decision") && {
+            label: "Withdraw", danger: true, onSelect: () => setWithdrawConfirm(true),
+          },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycleSteps(MAIN_PATH, OPEN_QUESTION_STATUS_LABEL, {
+            descriptions: OPEN_QUESTION_STATUS_DESCRIPTION,
+            locked: { resolved: TERMINAL_LOCKED_REASON },
+          }),
+          current: openQuestion.status,
+          offPath,
+          promote,
+        }}
       />
       {archive.dialog}
 

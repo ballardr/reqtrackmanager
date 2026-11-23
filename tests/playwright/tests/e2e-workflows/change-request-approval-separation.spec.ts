@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { approveRequirementFromDetail, chooseRecordAction, loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
+import { approveRequirementFromDetail, chooseRecordAction, chooseRecordMenuAction, loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests, expectCanPromote, expectNoPromote, expectRecordLocked, promoteTo, expectCurrentStep } from "./helpers";
 
 /**
  * Job to be done: a stakeholder who spots a problem with an approved (locked) requirement can propose a fix but cannot
@@ -40,12 +40,11 @@ test("change request submitter cannot approve their own request; the project man
 
   await test.step("stakeholder submits it for review and sees no approve/reject controls", async () => {
     await page.getByText(proposedName).click();
-    await page.getByRole("button", { name: "Submit", exact: true }).click();
-    await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
+    await promoteTo(page, "Submitted");
+    await expectCurrentStep(page, "Submitted");
     // Exact match: the advisory "Vote to approve"/"Vote to reject" (C-R-03) would substring-match a loose query; the
     // decision controls asserted absent are the exact "Approve"/"Reject" buttons gated to project managers.
-    await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
+    await expectNoPromote(page, "Approved");
     crStatusAfterSubmit = "Submitted";
   });
 
@@ -74,11 +73,11 @@ test("change request submitter cannot approve their own request; the project man
     // briefly: the change requests list (its Status <select> has a "Submitted" option) can coexist with this detail
     // view and make the status text ambiguous. This CR's own heading, which the list lacks, proves the transition landed.
     await expect(page.getByRole("heading", { name: proposedName, level: 1 })).toBeVisible();
-    await expect(page.getByText(crStatusAfterSubmit, { exact: true })).toBeVisible();
-    await page.getByPlaceholder("Decision note").fill("Approved — matches the new latency budget.");
+    await expectCurrentStep(page, crStatusAfterSubmit);
+    await page.getByLabel("Decision note").fill("Approved — matches the new latency budget.");
     // Exact match: the PM also sees the advisory "Vote to approve" button (managers inherit voting rights).
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await promoteTo(page, "Approved");
+    await expectCurrentStep(page, "Approved");
   });
 
   await test.step("the requirement now reflects the approved change", async () => {
@@ -112,9 +111,9 @@ test("a project manager sees and can use 'Approve and clear completion' on a CR 
     await openRequirementByName(page, reqName);
 
     await approveRequirementFromDetail(page);
-    await expect(page.getByText("Locked (approved)")).toBeVisible();
-    await page.getByRole("button", { name: "Mark completed" }).click();
-    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    await expectRecordLocked(page);
+    await promoteTo(page, "Completed");
+    await expectCurrentStep(page, "Completed");
   });
 
   await test.step("PM submits a modify-requirement change request against it", async () => {
@@ -129,23 +128,20 @@ test("a project manager sees and can use 'Approve and clear completion' on a CR 
     await searchChangeRequests(page, proposedName);
     await expect(page.getByText(proposedName)).toBeVisible();
     await page.getByText(proposedName).click();
-    await page.getByRole("button", { name: "Submit", exact: true }).click();
-    await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
+    await promoteTo(page, "Submitted");
+    await expectCurrentStep(page, "Submitted");
   });
 
   await test.step("the decision view offers both plain Approve and Approve and clear completion", async () => {
-    await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeVisible();
-    const clearCompletionButton = page.getByRole("button", { name: "Approve and clear completion" });
-    await expect(clearCompletionButton).toBeVisible();
-    await clearCompletionButton.click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expectCanPromote(page, "Approved");
+    await chooseRecordMenuAction(page, "Approve and clear completion");
+    await expectCurrentStep(page, "Approved");
   });
 
   await test.step("the requirement reflects the change and no longer shows as completed", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await openRequirementByName(page, proposedName);
     await expect(page.getByText("Status: Approved")).toBeVisible();
-    await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Mark completed" })).toBeVisible();
+    await expectCanPromote(page, "Completed");
   });
 });

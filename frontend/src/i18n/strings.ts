@@ -328,8 +328,17 @@ const en = {
     owner: "Owner",
     ownerDefaultsToYou: "Defaults to you",
     keywords: "Keywords",
-    locked: "Locked (approved)",
+    /** The padlock's reason on a step in which the {requirement} cannot be edited directly. */
+    lockedReason: "Locked: use a {changeRequest} to modify.",
     lockedNotice: "use a {changeRequest} to modify",
+    /** What each state means, the tooltip of its step in the lifecycle track. */
+    stateDescription: {
+      draft: "Being written. It can be edited directly.",
+      reviewed: "A reviewer has recorded an outcome. It can still be edited directly.",
+      approved: "Approved by a project manager. Changes need a {changeRequest}.",
+      completed: "The work is done. Changes need a {changeRequest}.",
+      archived: "Moved out of the active list. Its history and links are kept.",
+    },
     archive: "Archive",
     archiveTitle: "Archive this {requirement}?",
     archiveConfirm: "It moves out of the active list, but its history and links are kept.",
@@ -496,6 +505,15 @@ const en = {
     reason: "Reason for change",
     submit: "Submit",
     withdraw: "Withdraw",
+    /** What each state means, the tooltip of its step in the lifecycle track. */
+    stateDescription: {
+      draft: "Being written by the requester. It can be withdrawn.",
+      submitted: "Sent for a decision. Approvers can approve or reject it.",
+      in_review: "Under review by approvers. Approvers can approve or reject it.",
+      approved: "Approved. The proposed change has been applied.",
+      rejected: "Rejected by an approver. No change was applied.",
+      withdrawn: "Withdrawn by the requester. No change was applied.",
+    },
     approve: "Approve",
     // C-G-11: shown beside plain "Approve" only when the target {requirement} is completed; an opt-in second action,
     // distinct from the carry-forward that a plain Approve keeps.
@@ -3542,6 +3560,23 @@ const en = {
       keyPlaceholder: "PROJ-123",
     },
     column: "External references",
+  },
+  lifecycle: {
+    /** Name of the track (a list of the record's states). */
+    label: "Lifecycle",
+    /** Assistive-technology text after a step's label, so its state is not carried by colour alone. */
+    done: "completed",
+    current: "current state",
+    later: "not yet reached",
+    locked: "Locked",
+    /** Name of the forward move (the popover's button and the first row of the actions menu). */
+    promoteTo: (label: string) => `Promote to ${label}`,
+    /** Name of the next step's button, which opens the Promote popover. */
+    nextStep: (label: string) => `Next step: ${label}`,
+    /** The padlock on the next step for a person who may not promote. */
+    notPermitted: (label: string) => `You do not have permission to promote this record to ${label}.`,
+    /** The collapsed track at a narrow width, before the current state's name. */
+    position: (n: number, total: number) => `Step ${n} of ${total}`,
   },
   tags: {
     label: "Tags",

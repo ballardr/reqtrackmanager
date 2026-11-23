@@ -42,11 +42,16 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgGuidingPrincipleApi, projectGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
-import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
+import {
+  GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_DESCRIPTION, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE,
+  REVIEWED_LOCKED_REASON,
+} from "./types";
 import type {
   GuidingPrinciple, GuidingPrincipleComment, GuidingPrincipleFieldValues, GuidingPrincipleVersion,
 } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
@@ -80,6 +85,8 @@ const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; c
     confirmLabel: "Retire",
   },
 };
+
+const MAIN_PATH = ["draft", "proposed", "approved", "active"] as const;
 
 export function GuidingPrincipleDetailPage() {
   const { projectId, organizationId, guidingPrincipleId } = useParams<{
@@ -210,6 +217,28 @@ export function GuidingPrincipleDetailPage() {
     return asset;
   };
 
+  // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  let promote: LifecyclePromote | undefined;
+  if (guidingPrinciple.status === "draft") {
+    promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, guidingPrinciple.id), "Guiding Principle proposed.") };
+  } else if (guidingPrinciple.status === "proposed") {
+    promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
+  } else if (guidingPrinciple.status === "approved") {
+    promote = { to: "active", onPromote: () => setTransitionAction("activate") };
+  }
+
+  // An ended Guiding Principle sits after the last main step it reached: any retired one was approved, and was active if a version says so.
+  const offPath = guidingPrinciple.status === "superseded" || guidingPrinciple.status === "retired"
+    ? {
+        key: guidingPrinciple.status,
+        label: GUIDING_PRINCIPLE_STATUS_LABEL[guidingPrinciple.status],
+        description: GUIDING_PRINCIPLE_STATUS_DESCRIPTION[guidingPrinciple.status],
+        locked: true,
+        lockedReason: REVIEWED_LOCKED_REASON,
+        after: guidingPrinciple.status === "superseded" || versions?.some((v) => v.status === "active") ? "active" : "approved",
+      }
+    : undefined;
+
   return (
     <DetailLayout
       pictures={{ files, upload: guidingPrinciple.is_locked ? undefined : uploadAttachment }}
@@ -253,34 +282,21 @@ export function GuidingPrincipleDetailPage() {
         version={guidingPrinciple.version_number}
         subtitle={`${GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority`}
         onEdit={guidingPrinciple.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {guidingPrinciple.status === "draft" && (
-            <button
-              className="btn btn-primary"
-              onClick={() => runTransition(() => scopedApi.propose(scopeId, guidingPrinciple.id), "Guiding Principle proposed.")}
-            >
-              Propose
-            </button>
-          )}
-          {guidingPrinciple.status === "proposed" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-              )}
-              {guidingPrinciple.status === "approved" && (
-                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-              )}
-              {guidingPrinciple.status === "active" && (
-                <>
-                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-                </>
-              )}
-          </>
-        }
+        actions={[
+          guidingPrinciple.status === "proposed" && { label: "Send back", onSelect: () => setSendingBack(true) },
+          guidingPrinciple.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
+          guidingPrinciple.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycleSteps(MAIN_PATH, GUIDING_PRINCIPLE_STATUS_LABEL, {
+            descriptions: GUIDING_PRINCIPLE_STATUS_DESCRIPTION,
+            locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON },
+          }),
+          current: guidingPrinciple.status,
+          offPath,
+          promote,
+        }}
       />
       {archive.dialog}
 

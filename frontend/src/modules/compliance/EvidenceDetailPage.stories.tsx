@@ -88,7 +88,8 @@ export const RevalidatePostsTheNewExpiry: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(document.body);
-    await userEvent.click(await canvas.findByRole("button", { name: "Revalidate" }));
+    await canvas.findByRole("heading", { name: "IPX6 Test Certificate" });
+    await chooseRecordAction(canvas, "Evidence", "Revalidate");
     const dialog = await waitFor(() => body.getByRole("dialog", { name: "Revalidate evidence" }));
     await userEvent.type(within(dialog).getByLabelText("New expiry date"), "2027-12-31");
     await userEvent.click(within(dialog).getByRole("button", { name: "Revalidate" }));

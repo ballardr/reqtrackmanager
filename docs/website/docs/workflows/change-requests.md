@@ -17,18 +17,18 @@ By default only stakeholders, administrators, and managers can submit change req
 
 ## Deciding a change request
 
-A project manager or administrator opens the change request and **approves** or **rejects** it, with an optional decision note:
+A project manager or administrator opens the change request and approves it (promotes it to **Approved**) or chooses **Reject** in the actions menu, with an optional decision note:
 
-- **Approve** applies only the ticked fields to the target requirement (creating it, for a "new requirement" change request) and notifies the requester. A proposed attachment is only actually attached to the requirement once approved.
+- **Approving** applies only the ticked fields to the target requirement (creating it, for a "new requirement" change request) and notifies the requester. A proposed attachment is only actually attached to the requirement once approved.
 - **Reject** leaves the requirement untouched.
-- If the change request proposes links, **Approve** opens a dialog where every link that can still be created is ticked; untick any or all, then **Approve and merge N links** (or **Approve without links**). A link that can no longer be merged is shown disabled with the reason. See [Core Features → Change requests](../core-features/change-requests.md#proposing-links).
+- If the change request proposes links, approving opens a dialog where every link that can still be created is ticked; untick any or all, then **Approve and merge N links** (or **Approve without links**). A link that can no longer be merged is shown disabled with the reason. See [Core Features → Change requests](../core-features/change-requests.md#proposing-links).
 
 | Change request detail |
 | --- |
 | Tasks, advisory stakeholder votes, discussion, and approve/reject |
 | ![Change request detail page with proposed links, tasks, stakeholder votes, and discussion](../../static/img/screenshots/change-request-detail.png) |
 
-Someone who submitted a change request never sees Approve/Reject controls on their own submission, even if they otherwise hold a role that could decide other change requests — separation of duties between proposing and approving a change is enforced by the server, not just hidden in the UI.
+Someone who submitted a change request is never offered the Approved step or Reject on their own submission, even if they otherwise hold a role that could decide other change requests — separation of duties between proposing and approving a change is enforced by the server, not just hidden in the UI.
 
 ## Tasks and stakeholder votes
 

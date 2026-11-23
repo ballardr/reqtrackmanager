@@ -5,6 +5,7 @@ import type { OrgUser, Principal } from "../../api/types";
 import { api } from "../../api/client";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 import { DecisionDetailPage } from "./DecisionDetailPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
 
@@ -72,13 +73,14 @@ export default meta;
 
 type Story = StoryObj<typeof DecisionDetailPage>;
 
-export const UnderReviewShowsApproveReject: Story = {
+export const UnderReviewShowsPromoteToApprovedAndReject: Story = {
   beforeEach: () => mockDetailApis(decision()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    await expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Under review");
+    await expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Decision")).toEqual(["Promote to Approved", "Reject", "Archive"]);
     // Owner (a group, with its kind and size) and decision maker (a user) are shown.
     await expect(canvas.getByText("Platform Architecture")).toBeInTheDocument();
     await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
@@ -112,11 +114,25 @@ export const NoDocumentNoCard: Story = {
   },
 };
 
-export const DraftShowsPropose: Story = {
-  beforeEach: () => mockDetailApis(decision({ status: "draft" })),
+/** Draft and Proposed each promote straight to the next step, with no dialog. */
+export const DraftPromotesToProposedThenUnderReview: Story = {
+  beforeEach: () => {
+    mockDetailApis(decision({ status: "draft" }));
+    spyOn(api, "post").mockImplementation(async (path: string) => {
+      if (path.endsWith("/propose")) return decision({ status: "proposed" });
+      if (path.endsWith("/submit-for-review")) return decision({ status: "under_review" });
+      throw new Error(`Unmocked POST: ${path}`);
+    });
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Propose" })).toBeInTheDocument());
+    await userEvent.click(await canvas.findByRole("button", { name: "Next step: Proposed" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Proposed" }));
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Proposed"));
+    await expect(await recordActionNames(canvas, "Decision")).toEqual(["Promote to Under review", "Archive"]);
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Under review" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Under review" }));
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Under review"));
   },
 };
 
@@ -126,6 +142,8 @@ export const ApprovedIsLockedAndUnEditable: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: /Locked: approved and superseded/ })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Next step/ })).not.toBeInTheDocument();
     await expect(canvas.getByText(/new attachments can no longer be added/)).toBeInTheDocument();
   },
 };
@@ -134,8 +152,8 @@ export const RejectRequiresComment: Story = {
   beforeEach: () => mockDetailApis(decision()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Reject" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Reject" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Decision actions" }));
+    await chooseRecordAction(canvas, "Decision", "Reject");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Reject this Decision?" }));
     await expect(dialog.getByRole("button", { name: "Reject" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText("Rejection comment"), "Needs a cost comparison first.");
@@ -153,8 +171,8 @@ export const ApproveDecision: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Approve" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Approve" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Next step: Approved" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Approved" }));
     const dialog = within(within(document.body).getByRole("dialog", { name: "Approve this Decision?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
 
@@ -162,7 +180,7 @@ export const ApproveDecision: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/decisions/${DECISION_ID}/approve`,
       { comment: null }
     ));
-    await waitFor(() => expect(canvas.getByText("Approved")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Approved"));
   },
 };
 
@@ -188,5 +206,5 @@ export const LinksPanelShowsLinksAndOffersSupersede: Story = {
   },
 };
 
-export const LightTheme: Story = { ...UnderReviewShowsApproveReject };
-export const DarkTheme: Story = { ...UnderReviewShowsApproveReject, globals: { theme: "dark" } };
+export const LightTheme: Story = { ...UnderReviewShowsPromoteToApprovedAndReject };
+export const DarkTheme: Story = { ...UnderReviewShowsPromoteToApprovedAndReject, globals: { theme: "dark" } };

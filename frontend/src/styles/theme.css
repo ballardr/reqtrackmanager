@@ -4504,3 +4504,66 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .nav-group-body-peek .nav-more-list {
   display: none;
 }
+
+/* Lifecycle track (components/LifecycleTrack): full-width chevron steps. Each step is two clipped layers, the border
+   colour and a 1px-inset fill, so the outline follows the point. Done steps carry a tint of the primary colour, the
+   current step is the primary colour, later steps are plain. The tint is a mix, so both themes derive it from their
+   own tokens. */
+.lifecycle-track,
+.lifecycle-track__popover {
+  --lifecycle-height: 2.25rem; /* the medium button's height, so the track sits level with the header's buttons */
+  --lifecycle-point: 0.7rem;
+  --lifecycle-tint: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
+}
+.lifecycle-track { display: flex; align-items: center; width: 100%; min-width: 0; }
+.lifecycle-track__full { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.lifecycle-track__full--hidden { position: absolute; visibility: hidden; height: 0; width: max-content; pointer-events: none; }
+.lifecycle-track__steps { display: flex; flex-wrap: nowrap; margin: 0; padding: 0; list-style: none; width: 100%; }
+.lifecycle-track__compact { max-width: 100%; min-width: 0; }
+.lifecycle-track__popover { min-width: 0; max-width: 100%; overflow-x: auto; }
+
+.lifecycle-step {
+  --lifecycle-fill: color-mix(in srgb, var(--color-surface) 45%, var(--color-bg));
+  --lifecycle-text: var(--color-text-muted);
+  position: relative;
+  flex: 1 0 auto;
+  height: var(--lifecycle-height);
+  margin-left: calc(var(--lifecycle-point) * -1 + 4px);
+  background: var(--color-border);
+  clip-path: polygon(0 0, calc(100% - var(--lifecycle-point)) 0, 100% 50%, calc(100% - var(--lifecycle-point)) 100%, 0 100%, var(--lifecycle-point) 50%);
+}
+.lifecycle-step--first { margin-left: 0; clip-path: polygon(0 0, calc(100% - var(--lifecycle-point)) 0, 100% 50%, calc(100% - var(--lifecycle-point)) 100%, 0 100%); }
+.lifecycle-step--last { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, var(--lifecycle-point) 50%); }
+.lifecycle-step--first.lifecycle-step--last { clip-path: none; border-radius: var(--radius-md); }
+.lifecycle-step--done { --lifecycle-fill: var(--lifecycle-tint); --lifecycle-text: var(--color-text); }
+.lifecycle-step--current { --lifecycle-fill: var(--color-primary); --lifecycle-text: var(--color-primary-contrast); background: var(--color-primary); font-weight: 600; }
+.lifecycle-step--current.lifecycle-step--branch { --lifecycle-fill: var(--color-danger); background: var(--color-danger); }
+.lifecycle-step__tip { display: flex; height: 100%; width: 100%; }
+.lifecycle-step__control {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 calc(var(--lifecycle-point) + var(--space-3));
+  border: 0;
+  background: none;
+  color: var(--lifecycle-text);
+  font: inherit;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+.lifecycle-step--first .lifecycle-step__control { padding-left: var(--space-4); }
+.lifecycle-step--last .lifecycle-step__control { padding-right: var(--space-4); }
+.lifecycle-step__fill { position: absolute; inset: 1px; background: var(--lifecycle-fill); clip-path: inherit; }
+.lifecycle-step__content { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.lifecycle-step__label { display: inline-flex; min-width: 0; max-width: 14rem; }
+.lifecycle-step__lock { display: inline-flex; color: inherit; }
+
+/* The next step, when the person may promote: bold primary text (the one step that can be pressed), tinted on hover or
+   focus; its edges keep the border colour of every other step. */
+.lifecycle-step--next .lifecycle-step__control { --lifecycle-text: var(--color-primary); font-weight: 600; cursor: pointer; }
+.lifecycle-step--next .lifecycle-step__control:hover,
+.lifecycle-step--next .lifecycle-step__control:focus-visible { --lifecycle-fill: var(--lifecycle-tint); --lifecycle-text: var(--color-text); }
+.lifecycle-step--next .lifecycle-step__control:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -3px; }

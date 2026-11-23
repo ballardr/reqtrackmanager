@@ -2,24 +2,25 @@
  * Module: components/RecordHeader
  *
  * The header of every record detail page: back link, title (with the record's code as a muted suffix), status
- * pills, the Edit icon button and the object-action menu, with the record's visible workflow buttons beneath. Tags,
- * components and references share the line under the title with the badges and the version. A `stateMenu` (a
- * "Change status" control) sits beside Edit; a `returnTo` control sits beside the back link when the person arrived
- * from another record's page (docs/ux-style-guide.md, "Pattern: return to where you came from").
+ * pills, the Edit icon button and the object-action menu, with the record's lifecycle track beneath. Tags,
+ * components and references share the line under the title with the badges and the version. A `returnTo` control sits
+ * beside the back link when the person arrived from another record's page (docs/ux-style-guide.md, "Pattern: return to
+ * where you came from").
  *
  * Design decisions (style guide "Pattern: record header and object actions"):
  * - Edit and the menu sit at the right edge of the title row in an `ItemRow`, so they never move or wrap under a
  *   long title.
  * - The title, its code and `titleAddon` are one inline run: the code follows the title's last word and wraps with
  *   it, so its place never depends on the title's length.
- * - *Object actions* (Archive/Restore, Delete permanently, Export, Subscribe) live in the menu, which renders even
- *   for a single action; *transitions* (Submit, Approve, Retire, Withdraw) stay visible beside the status because
- *   they depend on it.
+ * - *Object actions* (Archive/Restore, Delete permanently, Export, Subscribe, and every state move other than the
+ *   next forward one) live in the menu, which renders even for a single action. The next forward move is Promote: the
+ *   next step of the `LifecycleTrack` and the menu's first row (docs/ux-style-guide.md, "Pattern: lifecycle track and
+ *   Promote").
  * - The page passes only what the current user may do: an action they cannot perform is omitted, never disabled,
  *   and with no actions the menu is not drawn. The page owns each action's confirmation dialog
  *   (`useConfirmedAction`).
  *
- * External dependencies: `ActionMenu`, `ItemRow`, react-router `Link`.
+ * External dependencies: `ActionMenu`, `ItemRow`, `LifecycleTrack`, react-router `Link`.
  */
 import { RecordCode } from "./RecordCode";
 import { Pencil } from "lucide-react";
@@ -30,6 +31,8 @@ import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { useNavLabelOverride } from "../context/NavLabelValue";
 import { listBackTarget } from "../hooks/useListPosition";
 import { ItemRow } from "./ItemRow";
+import { LifecycleTrack, type LifecycleTrackProps } from "./LifecycleTrack";
+import { useStrings } from "../context/TerminologyContext";
 import { withDetailRank } from "./detailCardOrder";
 
 /** Leading arrow of the back link; drawn here so every page reads the same. */
@@ -48,9 +51,8 @@ const BACK_ARROW = "← ";
  * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself. The label is the destination's plural name ("Pain Points"); a name the project or organisation gave the destination's navigation entry replaces it. The header draws the leading arrow, so pages never type it.
  * @param returnTo A control beside the back link that leads to where the person came from (`ReturnLink`, or a menu of the places the record is used). Its page decides what it shows and whether it is trustworthy; the header only places it.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
- * @param stateMenu A "Change status" control drawn before Edit in the title row, for a record whose state moves along several paths; omit when the user cannot change it.
  * @param onEdit Opens the edit form; omit when the user cannot edit.
- * @param transitions Visible workflow buttons (Submit, Approve, Retire...).
+ * @param lifecycle The record's states and its next forward move (`LifecycleTrack`), drawn under the title; omit for a record with no states. The move is also the first row of the actions menu.
  * @param actions Object actions for the menu; falsy entries are dropped.
  */
 export function RecordHeader({
@@ -66,9 +68,8 @@ export function RecordHeader({
   back,
   returnTo,
   headingLevel = "h1",
-  stateMenu,
   onEdit,
-  transitions,
+  lifecycle,
   actions = [],
 }: {
   recordLabel: string;
@@ -83,15 +84,19 @@ export function RecordHeader({
   back?: { to: string; label: string } | { onClick: () => void; label: string };
   returnTo?: ReactNode;
   headingLevel?: "h1" | "h2";
-  stateMenu?: ReactNode;
   onEdit?: () => void;
-  transitions?: ReactNode;
+  lifecycle?: LifecycleTrackProps;
   actions?: Array<ActionMenuItem | null | false | undefined>;
 }) {
+  const strings = useStrings();
   const backName = useNavLabelOverride(back && "to" in back ? back.to : undefined);
-  const items = actions.filter((a): a is ActionMenuItem => !!a);
+  const promoteTarget = lifecycle?.promote && [...lifecycle.steps, ...(lifecycle.offPath ? [lifecycle.offPath] : [])].find((st) => st.key === lifecycle.promote?.to);
+  const promoteRow: ActionMenuItem | null = lifecycle?.promote?.onPromote && promoteTarget
+    ? { label: strings.lifecycle.promoteTo(promoteTarget.label), onSelect: lifecycle.promote.onPromote }
+    : null;
+  const items = [promoteRow, ...actions].filter((a): a is ActionMenuItem => !!a);
   const Heading = headingLevel;
-  const hasControls = stateMenu || onEdit || items.length > 0;
+  const hasControls = onEdit || items.length > 0;
   return (
     <header className="stack record-header" style={{ gap: "var(--space-3)" }}>
       {(back || returnTo) && (
@@ -108,7 +113,6 @@ export function RecordHeader({
         actions={
           hasControls ? (
             <>
-              {stateMenu}
               {onEdit && (
                 <button type="button" className="btn btn-icon" title="Edit" aria-label="Edit" onClick={onEdit}>
                   <Pencil />
@@ -139,7 +143,7 @@ export function RecordHeader({
         </div>
       )}
       {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
-      {transitions && <div className="row">{transitions}</div>}
+      {lifecycle && <LifecycleTrack {...lifecycle} />}
     </header>
   );
 }

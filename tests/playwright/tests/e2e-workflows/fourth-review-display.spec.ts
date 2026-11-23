@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "./helpers";
+import { installCleanupHook, promoteTo } from "./helpers";
 import { API_BASE_URL, setUpOrg } from "../modules/stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -94,7 +94,7 @@ test("detail header, aside card, Pain Points list defaults, score settings and t
 
   await test.step("addressing through the dialog records its comment too", async () => {
     await page.goto(`${list}/${open.id}`);
-    await page.getByRole("button", { name: "Address" }).click();
+    await promoteTo(page, "Addressed");
     const dialog = page.getByRole("dialog", { name: "Mark this Pain Point addressed?" });
     await dialog.getByLabel("Transition comment").fill("Shipped in the March release");
     await dialog.getByRole("button", { name: "Address" }).click();

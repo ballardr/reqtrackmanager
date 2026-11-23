@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES, searchChangeRequests, chooseRecordMenuAction } from "./helpers";
 
 /**
  * Job to be done: the requirements list can be narrowed by search (name/ID, U-E-01), status/target-version/category
@@ -165,9 +165,9 @@ test.describe("requirements list filters and view-mode persistence", () => {
       await expect(idHeaderCell).toHaveAttribute("aria-sort", "descending");
       await assertSorted(true);
 
-      // Third click returns to the default (unsorted) order.
+      // Third click returns to the list's default order, the code ascending.
       await idHeader.click();
-      await expect(idHeaderCell).toHaveAttribute("aria-sort", "none");
+      await expect(idHeaderCell).toHaveAttribute("aria-sort", "ascending");
       await page.getByRole("button", { name: "Tile view" }).click();
     });
   });
@@ -273,7 +273,7 @@ test.describe("change requests default to an active-only status filter", () => {
     // Withdraw it (creator-only action) to reach a terminal, non-active
     // status without needing project-manager decide permission.
     await crLink.click();
-    await page.getByRole("button", { name: "Withdraw" }).click();
+    await chooseRecordMenuAction(page, "Withdraw");
     await expect(page.getByText("Withdrawn", { exact: true })).toBeVisible();
 
     // Back on the list: default view ("Active") hides it.

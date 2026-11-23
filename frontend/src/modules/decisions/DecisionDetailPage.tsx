@@ -25,11 +25,13 @@ import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { RecordField, RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RecordHeader } from "../../components/RecordHeader";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { Spinner } from "../../components/Spinner";
 import { SupersedeAction } from "../../components/SupersedeAction";
 import { useArchiveAction } from "../../components/useConfirmedAction";
@@ -37,14 +39,16 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionFormModal } from "./DecisionFormModal";
-import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
+import { DECISION_STATUS_DESCRIPTION, DECISION_STATUS_LABEL } from "./types";
 import type { Decision, DecisionComment, DecisionFieldValues, DecisionTypeDefinition } from "./types";
 import type { FileAsset } from "../../api/types";
-import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
 import { MarkdownView } from "../../components/MarkdownView";
 import { DECISIONS_HELP } from "./help";
+
+/** Why an approved or superseded Decision cannot be edited directly. */
+const LOCKED_REASON = "Locked: approved and superseded Decisions cannot be edited.";
 
 export function DecisionDetailPage() {
   const { projectId, decisionId } = useParams<{ projectId: string; decisionId: string }>();
@@ -133,6 +137,20 @@ export function DecisionDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decision === null || project === null) return <Spinner />;
 
+  // The next forward move; Reject is a row of the actions menu.
+  const promote: LifecyclePromote | undefined =
+    decision.status === "draft" ? { to: "proposed", onPromote: () => void runTransition(() => decisionsApi.proposeDecision(projectId, decision.id), "Decision proposed.") }
+    : decision.status === "proposed" ? { to: "under_review", onPromote: () => void runTransition(() => decisionsApi.submitDecisionForReview(projectId, decision.id), "Decision submitted for review.") }
+    : decision.status === "under_review" ? { to: "approved", onPromote: () => setApproving(true) }
+    : undefined;
+  const offPathStep = decision.status === "rejected" || decision.status === "superseded" ? {
+    key: decision.status,
+    label: DECISION_STATUS_LABEL[decision.status],
+    description: DECISION_STATUS_DESCRIPTION[decision.status],
+    after: decision.status === "rejected" ? "under_review" : "approved",
+    ...(decision.status === "superseded" ? { locked: true, lockedReason: LOCKED_REASON } : {}),
+  } : undefined;
+
   const decisionType = decisionTypes.find((t) => t.id === decision.decision_type_id);
 
   /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
@@ -174,37 +192,21 @@ export function DecisionDetailPage() {
         code={decision.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="decision" artefactId={decision.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/decisions`, label: "Decisions" }}
-        badges={
-          <Badge tone={DECISION_STATUS_TONE[decision.status]}>
-            {DECISION_STATUS_LABEL[decision.status]}
-          </Badge>
-        }
         subtitle={decisionType?.name ?? "—"}
         onEdit={decision.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-            {decision.status === "draft" && (
-              <button className="btn btn-primary" onClick={() => runTransition(() => decisionsApi.proposeDecision(projectId, decision.id), "Decision proposed.")}>
-                Propose
-              </button>
-            )}
-            {decision.status === "proposed" && (
-              <button
-                className="btn btn-primary"
-                onClick={() => runTransition(() => decisionsApi.submitDecisionForReview(projectId, decision.id), "Decision submitted for review.")}
-              >
-                Submit for review
-              </button>
-            )}
-            {decision.status === "under_review" && (
-              <>
-                <button className="btn btn-primary" onClick={() => setApproving(true)}>Approve</button>
-                <button className="btn btn-danger" onClick={() => setRejecting(true)}>Reject</button>
-              </>
-            )}
-          </>
-        }
+        actions={[
+          decision.status === "under_review" && { label: "Reject", danger: true, onSelect: () => setRejecting(true) },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycleSteps(["draft", "proposed", "under_review", "approved"], DECISION_STATUS_LABEL, {
+            descriptions: DECISION_STATUS_DESCRIPTION,
+            locked: { approved: LOCKED_REASON },
+          }),
+          current: decision.status,
+          offPath: offPathStep,
+          promote,
+        }}
       />
       {archive.dialog}
         <DetailCard>

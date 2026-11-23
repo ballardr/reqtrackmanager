@@ -22,6 +22,13 @@ export const PERSONA_STATUS_LABEL: Record<PersonaStatus, string> = {
   retired: "Retired",
 };
 
+/** What each state means, the tooltip of its step in the lifecycle track. */
+export const PERSONA_STATUS_DESCRIPTION: Record<PersonaStatus, string> = {
+  draft: "Being written. It is not yet offered as a target when scoring.",
+  active: "Offered as a target when scoring.",
+  retired: "No longer offered when scoring. Its history is kept and it can be reactivated.",
+};
+
 export const PERSONA_STATUS_TONE: Record<PersonaStatus, BadgeTone> = {
   draft: "muted",
   active: "accent",
@@ -162,6 +169,13 @@ export const STAKEHOLDER_STATUS_LABEL: Record<StakeholderStatus, string> = {
   draft: "Draft",
   active: "Active",
   retired: "Retired",
+};
+
+/** What each state means, the tooltip of its step in the lifecycle track. */
+export const STAKEHOLDER_STATUS_DESCRIPTION: Record<StakeholderStatus, string> = {
+  draft: "Being written. It is not yet part of the current stakeholder register.",
+  active: "Part of the current stakeholder register.",
+  retired: "No longer part of the current register. Its history is kept and it can be reactivated.",
 };
 
 export const STAKEHOLDER_STATUS_TONE: Record<StakeholderStatus, BadgeTone> = {
@@ -358,6 +372,13 @@ export const NEED_STATUS_LABEL: Record<NeedStatus, string> = {
   draft: "Draft",
   active: "Active",
   retired: "Retired",
+};
+
+/** What each state means, the tooltip of its step in the lifecycle track. */
+export const NEED_STATUS_DESCRIPTION: Record<NeedStatus, string> = {
+  draft: "Being written. It is not yet part of the current set of stakeholder needs.",
+  active: "Part of the current set of stakeholder needs.",
+  retired: "No longer current. Its history and links are kept and it can be reactivated.",
 };
 
 export const NEED_STATUS_TONE: Record<NeedStatus, BadgeTone> = {

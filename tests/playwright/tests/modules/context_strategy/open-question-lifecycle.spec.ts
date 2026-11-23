@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability, chooseRecordMenuAction, expectCurrentStep, promoteTo, expectRecordLocked } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -85,21 +85,22 @@ test.describe("Context & Strategy: create -> investigate -> mark ready -> resolv
     await page.getByRole("button", { name: questionText }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/open-questions/[^/]+$`));
     await expect(page.getByRole("heading", { name: questionText })).toBeVisible();
-    await expect(page.getByText("Open", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Open");
 
     // --- Happy path: Open -> Investigating -> Ready for Decision -> Resolved.
-    await page.getByRole("button", { name: "Investigate" }).click();
-    await expect(page.getByText("Investigating", { exact: true })).toBeVisible();
+    await promoteTo(page, "Investigating");
+    await expectCurrentStep(page, "Investigating");
 
-    await page.getByRole("button", { name: "Mark ready for decision" }).click();
+    await promoteTo(page, "Ready for Decision");
     const markReadyDialog = page.getByRole("dialog", { name: "Mark this Open Question ready for decision?" });
     await markReadyDialog.getByRole("button", { name: "Mark ready for decision" }).click();
-    await expect(page.getByText("Ready for Decision", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Ready for Decision");
 
-    await page.getByRole("button", { name: "Resolve" }).click();
+    await promoteTo(page, "Resolved");
     const resolveDialog = page.getByRole("dialog", { name: "Resolve this Open Question?" });
     await resolveDialog.getByRole("button", { name: "Resolve" }).click();
-    await expect(page.getByText("Resolved", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Resolved");
+    await expectRecordLocked(page);
 
     // --- Back on the list, the first Open Question shows its final status.
     await page.getByRole("link", { name: "← Open Questions", exact: true }).click();
@@ -121,15 +122,15 @@ test.describe("Context & Strategy: create -> investigate -> mark ready -> resolv
 
     await page.getByRole("button", { name: secondQuestionText }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/open-questions/[^/]+$`));
-    await page.getByRole("button", { name: "Investigate" }).click();
-    await expect(page.getByText("Investigating", { exact: true })).toBeVisible();
+    await promoteTo(page, "Investigating");
+    await expectCurrentStep(page, "Investigating");
 
-    await page.getByRole("button", { name: "Withdraw" }).click();
+    await chooseRecordMenuAction(page, "Withdraw");
     const withdrawDialog = page.getByRole("dialog", { name: "Withdraw this Open Question?" });
     await expect(withdrawDialog.getByRole("button", { name: "Withdraw" })).toBeDisabled();
     await withdrawDialog.getByLabel("Withdrawal comment").fill("Already answered by the field ops team directly.");
     await expect(withdrawDialog.getByRole("button", { name: "Withdraw" })).toBeEnabled();
     await withdrawDialog.getByRole("button", { name: "Withdraw" }).click();
-    await expect(page.getByText("Withdrawn", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Withdrawn");
   });
 });

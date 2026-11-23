@@ -20,6 +20,19 @@ export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
   duplicate: "Duplicate",
 };
 
+/** What each status means, the tooltip of its step in the lifecycle track. */
+export const REQUEST_STATUS_DESCRIPTION: Record<RequestStatus, string> = {
+  new: "Submitted and awaiting triage.",
+  under_review: "Being assessed by a triager.",
+  accepted: "Accepted for delivery and awaiting delivery.",
+  delivered: "Delivered; the requesters can be informed.",
+  declined: "Not taken forward. The reason is recorded with the request.",
+  duplicate: "Merged into another request, whose demand now includes this one.",
+};
+
+/** The statuses of a request's main path, in order. */
+export const REQUEST_MAIN_PATH: readonly RequestStatus[] = ["new", "under_review", "accepted", "delivered"];
+
 /** Tone of a status badge: working states informational, the favourable outcomes green, the closed-out rest muted. */
 export const REQUEST_STATUS_TONE: Record<RequestStatus, BadgeTone> = {
   new: "info",

@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 61 done 2026-11-22 to 2026-11-24, 62 to 64 planned 2026-11-24; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 61 are done; phases 60 to 64 came from the review of 2026-11-24 (62 to 64 are planned, not started, because the user works them individually); R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 62 done 2026-11-22 to 2026-11-24, 63 and 64 planned 2026-11-24; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 62 are done; phases 60 to 64 came from the review of 2026-11-24 (63 and 64 are planned, not started, because the user works them individually); R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-61 / 69 phases complete.
+62 / 69 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -71,7 +71,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 59 | Comments describe the code, not the conversation | Every comment and docstring states what the code does now; chat references, change history and excess commentary are removed, and a check keeps them out | [x] |
 | 60 | Record header: the add menu names only what it offers | The (+) tooltip and accessible name list the rows the menu really has (a requirement offers no component row) | [x] |
 | 61 | Record header: the code beside a long title | The record code keeps a place that follows the title, not a spot beside the action buttons; a long-title story guards it; a decision gate first; decided 2026-11-24: inline after the title's last word | [x] |
-| 62 | Lifecycle track and Promote button | A chevron-style track of a record's states (current in the primary colour, earlier steps tinted, later steps plain) and one Promote action, replacing the transition buttons and the Locked notice badge; a Storybook mock with three interaction variants, a state inventory and a decision gate first | [ ] |
+| 62 | Lifecycle track and Promote button | A chevron-style track of a record's states (current in the primary colour, earlier steps tinted, later steps plain) and one Promote action, replacing the transition buttons and the Locked notice badge; a Storybook mock with three interaction variants, a state inventory and a decision gate first; decided 2026-11-24: every type, Promote on the next step and in the actions menu, full-width track, padlock on the next step without permission | [x] |
 | 63 | Files: click a picture for a larger preview | A picture's thumbnail opens a larger preview dialog on the Files pages | [ ] |
 | 64 | Project overview activity: styled as the project history | The Project activity widget uses the History page's columns and row wording through one shared component | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 64 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
@@ -904,6 +904,8 @@ Five items from the user's review, each checked against the code (findings in ea
 - **Narrow widths:** the track collapses to the current step with a position ("Step 2 of 4") and the full track opens in a popover; long step labels use `CellText`.
 - Tests: the mock's story (the three interaction variants and the look in light and dark) is reviewed by the user before wiring; then Storybook for each lifecycle shape (linear, branching, locked, the user without a right to promote: track and no button) in light and dark, keyboard and narrow width, with a `LongText` variant; Playwright on a requirement (draft, approval dialog, approved, locked, Mark completed), a change request and a persona; the permission check stays on the server (the existing endpoints), so no new endpoint, and a viewer sees the track without Promote.
 - Also: the website pages that describe approving and completing records, the style guide pattern and the MCP skill need no change unless a tool changes; the seeds already hold records in several states.
+
+- As built (**Decided by: User** for the gate answers, the full-width track, Promote in both the next step and the actions menu, the padlock on the next step for a person without permission and removing the Locked badge from lists, **Decided by: Agent** for the rest): `components/LifecycleTrack.tsx` (chevrons by `clip-path`, tint a `color-mix` of the primary colour, later steps a mix of surface and page background, collapses to "Step n of m" with a popover), `lifecycleSteps.ts`, `RecordHeader`'s `lifecycle` prop (its `transitions` and `stateMenu` props are removed), `useLifecycleTransition` for the personas, stakeholders and needs, `architectureLifecycle.ts` and `RiskTransitionDialog`. All 17 record pages with states are converted (register: [platform-review-2026-11-19-lifecycle-register.md](platform-review-2026-11-19-lifecycle-register.md)); the Locked badge is gone from the requirement page and list; `scripts/check_lifecycle_track.py`, the style guide pattern and a `CLAUDE.md` rule guard it. The Action outcome stays a select (no path). Storybook for the track and every page, Playwright `lifecycle-track.spec.ts` plus the updated approval, change request and module lifecycle specs. See `docs/decisions.md`.
 
 ### Phase 63 — Files: click a picture for a larger preview
 

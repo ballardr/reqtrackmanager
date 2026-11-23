@@ -21,6 +21,15 @@ export const ARCHITECTURE_STATUS_LABEL: Record<ArchitectureRecordStatus, string>
   rejected: "Rejected",
 };
 
+/** What each status means, the tooltip of its step in the lifecycle track. */
+export const ARCHITECTURE_STATUS_DESCRIPTION: Record<ArchitectureRecordStatus, string> = {
+  draft: "Being written. It is not yet part of the plan.",
+  proposed: "Put forward for consideration. It is not yet agreed.",
+  active: "In force.",
+  retired: "No longer in force. It can be reactivated.",
+  rejected: "Considered and not adopted. It can be reopened as a draft.",
+};
+
 export type PortDirection = "in" | "out" | "both";
 
 /** The colour family of an annotation note on a diagram; `none` draws the text alone, with no box. */

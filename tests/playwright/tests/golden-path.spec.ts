@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { addStructureCategory, addStructureComponent, structureRow, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { addStructureCategory, addStructureComponent, structureRow, selectProjectAdminGroup, expectRecordLocked, promoteTo, expectCurrentStep } from "./e2e-workflows/helpers";
 import { chooseListAction, chooseExport } from "./listActions";
 
 /**
@@ -76,7 +76,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await expect(phase.locator("option:checked")).toHaveText("Approved");
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    await expect(page.getByText("Locked (approved)")).toBeVisible();
+    await expect(page.getByText("Approved", { exact: true }).first()).toBeVisible();
   });
 
   let requirementCode = "";
@@ -103,12 +103,12 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await page.getByText("Boot in under 3 seconds").click();
-    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    await promoteTo(page, "Submitted");
     // Exact match: a project manager also sees the advisory "Vote to
     // approve" button, which a loose "Approve" query would ambiguously
     // match alongside the real decision button.
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await promoteTo(page, "Approved");
+    await expectCurrentStep(page, "Approved");
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     // Role-scoped, not a page-wide getByText: React Router 7 wraps navigation updates in `startTransition`,

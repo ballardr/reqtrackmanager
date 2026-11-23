@@ -24,6 +24,7 @@ import {
   withTerminology,
   withToast,
 } from "../testing/storybook-helpers";
+import { currentLifecycleStep, promoteViaTrack } from "../testing/lifecycleTrack";
 import { chooseRecordAction, recordActionNames } from "../testing/recordActions";
 import { buildAlias, buildAliasSettings, buildAliasTree } from "../testing/requirementAliasFixtures";
 import { RequirementDetailPage } from "./RequirementDetailPage";
@@ -197,11 +198,11 @@ export const StakeholderCanEditNotArchive: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByLabelText("Name")).toBeInTheDocument());
     await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
-    await expect(canvas.queryByRole("button", { name: "Mark completed" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Next step: Completed" })).not.toBeInTheDocument();
   },
 };
 
-/** A draft requirement shows a project manager "Approve" (`requires_approval` is true for draft/reviewed) but not "Make change
+/** A draft requirement shows a project manager "Promote to Approved" (`requires_approval` is true for draft/reviewed) but not "Make change
  * request" (a change request targets only a locked requirement); a stakeholder sees neither, since approval is manager-only. */
 export const ManagerCanApproveDraftRequirement: Story = {
   beforeEach: () => {
@@ -209,10 +210,10 @@ export const ManagerCanApproveDraftRequirement: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const approveButton = await canvas.findByRole("button", { name: "Approve" });
+    await canvas.findByRole("button", { name: "Next step: Approved" });
     await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Make change request");
 
-    await userEvent.click(approveButton);
+    await promoteViaTrack(canvas, "Approved");
     const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve this requirement?" }));
     await userEvent.type(dialog.getByLabelText("Approval comment"), "Checked against the interface spec");
     await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
@@ -231,7 +232,7 @@ export const ManagerApprovesWithoutAComment: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Approve" }));
+    await promoteViaTrack(canvas, "Approved");
     const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve this requirement?" }));
     await expect(dialog.getByLabelText("Approval comment")).not.toBeRequired();
     await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
@@ -250,7 +251,7 @@ export const ManagerCancelsApprove: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Approve" }));
+    await promoteViaTrack(canvas, "Approved");
     const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve this requirement?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
@@ -265,7 +266,7 @@ export const StakeholderDoesNotSeeApproveOnDraftRequirement: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByLabelText("Name")).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Next step: Approved" })).not.toBeInTheDocument();
     await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Make change request");
   },
 };
@@ -280,9 +281,9 @@ export const ManagerCanArchiveAndComplete: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
     await expect(await recordActionNames(canvas, "Requirement")).toContain("Archive");
-    await expect(canvas.getByRole("button", { name: "Mark completed" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Completed" })).toBeInTheDocument();
     await expect(await recordActionNames(canvas, "Requirement")).toContain("Make change request");
-    await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Next step: Approved" })).not.toBeInTheDocument();
   },
 };
 
@@ -347,8 +348,8 @@ export const ArchivedRequirementShowsRestoreButton: Story = {
   },
 };
 
-/** Once completed (C-G-11: `is_completed` overlays `approved`), a manager sees "Revert completion" instead of "Mark completed" and a
- * "Completed" badge beside the "Approved" status badge (help/02-requirement-lifecycle.md). */
+/** Once completed (C-G-11: `is_completed` overlays `approved`), a manager sees "Revert completion" in the actions menu instead of the next step and a
+ * "Completed" step current in the lifecycle track. */
 export const CompletedRequirementShowsRevert: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_administrator"], {
@@ -357,10 +358,10 @@ export const CompletedRequirementShowsRevert: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Revert completion" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Mark completed" })).not.toBeInTheDocument();
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Completed"));
+    await expect(await recordActionNames(canvas, "Requirement")).toContain("Revert completion");
+    await expect(canvas.queryByRole("button", { name: "Next step: Completed" })).not.toBeInTheDocument();
     await expect(canvas.getByText("Status: Approved")).toBeInTheDocument();
-    await expect(canvas.getByText("Completed")).toBeInTheDocument();
   },
 };
 
@@ -371,14 +372,8 @@ export const LockedRequirementIsReadOnlyForManager: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // The locked badge's text ("Locked (approved) — use a change request to
-    // modify") spans multiple sibling text nodes within one <div>, so match
-    // on that div's combined textContent rather than a single exact string.
-    await waitFor(() =>
-      expect(
-        canvas.getByText((_, element) => element?.className === "badge" && (element.textContent ?? "").includes("Locked (approved)"))
-      ).toBeInTheDocument()
-    );
+    // The padlock on the current step names the reason.
+    await waitFor(() => expect(canvas.getAllByRole("img", { name: /^Locked: use a change request to modify/ }).length).toBeGreaterThan(0));
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
     // Archive is still available to a manager even while locked.
     await expect(await recordActionNames(canvas, "Requirement")).toContain("Archive");
@@ -436,7 +431,7 @@ export const LinksPanelPopulated: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: /AUTH-LOG-002/ })).toBeInTheDocument());
     await expect(canvas.getByText("Depends on", { selector: ".artefact-links__phrase-label" })).toBeInTheDocument();
-    await expect(canvas.getByText("Approved")).toBeInTheDocument();
+    await expect(canvas.getByText("Approved", { selector: ".artefact-links__meta" })).toBeInTheDocument();
   },
 };
 
@@ -608,7 +603,7 @@ export const ActionsCardPopulated: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText(/ACT-001/)).toBeInTheDocument());
-    await expect(canvas.getByText("Completed")).toBeInTheDocument();
+    await expect(canvas.getByText("Completed", { selector: ".badge" })).toBeInTheDocument();
   },
 };
 

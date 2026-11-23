@@ -210,7 +210,8 @@ test.describe("Compliance Module: project compliance view", () => {
 
     // The evidence page's own actions: revalidate records a new expiry in its history, and archive
     // asks for confirmation first.
-    await page.getByRole("button", { name: "Revalidate" }).click();
+    await page.getByRole("button", { name: "Evidence actions" }).click();
+    await page.getByRole("menuitem", { name: "Revalidate" }).click();
     const revalidateDialog = page.getByRole("dialog", { name: "Revalidate evidence" });
     await revalidateDialog.getByLabel("New expiry date").fill("2099-12-31");
     await revalidateDialog.getByLabel("Justification").fill("Re-tested by the lab");

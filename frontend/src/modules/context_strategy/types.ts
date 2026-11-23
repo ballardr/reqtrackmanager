@@ -79,6 +79,20 @@ export const STRATEGY_STATUS_TONE: Record<StrategyStatus, import("../../api/type
   retired: "muted",
 };
 
+/** What each Strategy state means; the lifecycle track shows it as the step's tooltip. */
+export const STRATEGY_STATUS_DESCRIPTION: Record<StrategyStatus, string> = {
+  draft: "The Strategy is being written and its content can be edited.",
+  proposed: "The Strategy has been put forward and awaits submission for review.",
+  under_review: "An approver is reviewing the Strategy; it can still be sent back to Draft.",
+  approved: "The Strategy has been formally approved and awaits activation.",
+  active: "The Strategy is currently in force.",
+  superseded: "Another Strategy has replaced this one; it is no longer current.",
+  retired: "The Strategy's lifecycle has ended.",
+};
+
+/** Why a Strategy, Future State or Guiding Principle past review cannot be edited; the lifecycle track shows it beside the padlock. */
+export const REVIEWED_LOCKED_REASON = "Locked: approved content can no longer be edited.";
+
 // --- Relationship kinds -----------------------------------------
 
 export type StrategyLinkKind =
@@ -212,6 +226,17 @@ export type FutureStateStatus = StrategyStatus;
 // with textually identical values, so the frontend label and tone maps are reused.
 export const FUTURE_STATE_STATUS_LABEL: Record<FutureStateStatus, string> = STRATEGY_STATUS_LABEL;
 export const FUTURE_STATE_STATUS_TONE: Record<FutureStateStatus, import("../../api/types").BadgeTone> = STRATEGY_STATUS_TONE;
+
+/** What each Future State state means; the lifecycle track shows it as the step's tooltip. */
+export const FUTURE_STATE_STATUS_DESCRIPTION: Record<FutureStateStatus, string> = {
+  draft: "The Future State is being written and its content can be edited.",
+  proposed: "The Future State has been put forward and awaits submission for review.",
+  under_review: "An approver is reviewing the Future State; it can still be sent back to Draft.",
+  approved: "The Future State has been formally approved and awaits activation.",
+  active: "The Future State is the current target.",
+  superseded: "Another Future State has replaced this one; it is no longer current.",
+  retired: "The Future State's lifecycle has ended.",
+};
 
 // --- Future State relationship kinds ------------------------------
 
@@ -371,6 +396,20 @@ export const PAIN_POINT_STATUS_TONE: Record<PainPointStatus, import("../../api/t
   addressed: "info",
   closed: "accent",
 };
+
+/** What each Pain Point state means; the lifecycle track shows it as the step's tooltip. */
+export const PAIN_POINT_STATUS_DESCRIPTION: Record<PainPointStatus, string> = {
+  submitted: "The Pain Point has been raised and awaits triage.",
+  triaged: "The Pain Point has been assessed and awaits a decision to accept, reject or mark as a duplicate.",
+  rejected: "The Pain Point was rejected and will not be worked on.",
+  duplicate: "The Pain Point repeats another Pain Point and is tracked there.",
+  accepted: "The Pain Point is accepted and is in active work.",
+  addressed: "The underlying problem has been dealt with and awaits closure.",
+  closed: "The Pain Point's lifecycle has ended.",
+};
+
+/** Why a Pain Point or Open Question at a terminal outcome cannot be edited; the lifecycle track shows it beside the padlock. */
+export const TERMINAL_LOCKED_REASON = "Locked: a terminal outcome has been recorded.";
 
 // --- Pain Point relationship kinds --------------------------------
 
@@ -618,6 +657,16 @@ export const GUIDING_PRINCIPLE_STATUS_TONE: Record<GuidingPrincipleStatus, impor
   retired: "muted",
 };
 
+/** What each Guiding Principle state means; the lifecycle track shows it as the step's tooltip. */
+export const GUIDING_PRINCIPLE_STATUS_DESCRIPTION: Record<GuidingPrincipleStatus, string> = {
+  draft: "The Guiding Principle is being written and its content can be edited.",
+  proposed: "The Guiding Principle has been put forward and awaits approval; it can still be sent back to Draft.",
+  approved: "The Guiding Principle has been formally approved and awaits activation.",
+  active: "The Guiding Principle is currently in force.",
+  superseded: "Another Guiding Principle has replaced this one; it is no longer current.",
+  retired: "The Guiding Principle's lifecycle has ended.",
+};
+
 // --- Guiding Principle relationship kinds -------------------------
 //
 // `GuidingPrincipleLinkKind.GUIDES_DECISION`, the reserved Decision-target relationship, is absent: Decision links
@@ -726,6 +775,15 @@ export const OPEN_QUESTION_STATUS_TONE: Record<OpenQuestionStatus, import("../..
   ready_for_decision: "info",
   resolved: "accent",
   withdrawn: "muted",
+};
+
+/** What each Open Question state means; the lifecycle track shows it as the step's tooltip. */
+export const OPEN_QUESTION_STATUS_DESCRIPTION: Record<OpenQuestionStatus, string> = {
+  open: "The question has been raised and awaits investigation.",
+  investigating: "The question is being investigated.",
+  ready_for_decision: "Investigation is complete and a decision can be made.",
+  resolved: "A decision has been reached and the question is answered.",
+  withdrawn: "The question was withdrawn because it is no longer relevant or was answered elsewhere.",
 };
 
 // --- Open Question relationship kinds -----------------------------

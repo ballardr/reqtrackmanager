@@ -7,6 +7,8 @@ import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures"
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { GuidingPrincipleDetailPage } from "./GuidingPrincipleDetailPage";
 import type { GuidingPrinciple } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
 
 const PROJECT_ID = "project-1";
 const GUIDING_PRINCIPLE_ID = "gp-1";
@@ -80,42 +82,51 @@ export default meta;
 
 type Story = StoryObj<typeof GuidingPrincipleDetailPage>;
 
-export const DraftShowsPropose: Story = {
+export const DraftOffersPropose: Story = {
   beforeEach: () => mockDetailApis(guidingPrinciple({ status: "draft" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Field data is captured once" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Propose" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Proposed" })).toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Guiding Principle");
+    await expect(names[0]).toBe("Promote to Proposed");
   },
 };
 
-export const ProposedShowsApproveAndSendBack: Story = {
+export const ProposedOffersApproveAndSendBack: Story = {
   beforeEach: () => mockDetailApis(guidingPrinciple()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Send back" })).toBeInTheDocument();
-    // No "Submit for review" — Guiding Principle's own shorter lifecycle has
-    // no `under_review` step.
-    await expect(canvas.queryByRole("button", { name: "Submit for review" })).not.toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Guiding Principle");
+    await expect(names[0]).toBe("Promote to Approved");
+    await expect(names).toContain("Send back");
+    // The shorter lifecycle has no `under_review` step.
+    await expect(canvas.queryByText("Under review")).not.toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Proposed");
   },
 };
 
-export const ApprovedShowsActivate: Story = {
+export const ApprovedOffersActivateAndIsLocked: Story = {
   beforeEach: () => mockDetailApis(guidingPrinciple({ status: "approved", is_locked: true })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Activate" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Active" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Guiding Principle");
+    await expect(names[0]).toBe("Promote to Active");
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    await expect(canvas.getAllByRole("img", { name: /^Locked/ }).length).toBeGreaterThan(0);
   },
 };
 
-export const ActiveShowsSupersedeAndRetire: Story = {
+export const ActiveOffersSupersedeAndRetire: Story = {
   beforeEach: () => mockDetailApis(guidingPrinciple({ status: "active", is_locked: true })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Supersede" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Guiding Principle actions" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Guiding Principle");
+    await expect(names).toEqual(expect.arrayContaining(["Supersede", "Retire"]));
+    await expect(names.some((name) => name.startsWith("Promote to"))).toBe(false);
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     await expect(canvas.getByText(/new attachments can no longer be added/)).toBeInTheDocument();
   },
@@ -125,9 +136,11 @@ export const RetiredIsTerminal: Story = {
   beforeEach: () => mockDetailApis(guidingPrinciple({ status: "retired", is_locked: true })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText("Retired", { exact: true })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Supersede" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Retired"));
+    const names = await recordActionNames(canvas, "Guiding Principle");
+    await expect(names).not.toContain("Supersede");
+    await expect(names).not.toContain("Retire");
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
   },
 };
 
@@ -135,8 +148,8 @@ export const SendBackRequiresComment: Story = {
   beforeEach: () => mockDetailApis(guidingPrinciple()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Send back" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Send back" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Guiding Principle actions" }));
+    await chooseRecordAction(canvas, "Guiding Principle", "Send back");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Send this Guiding Principle back to Draft?" }));
     await expect(dialog.getByRole("button", { name: "Send back" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText("Send-back comment"), "Needs a stronger rationale first.");
@@ -154,8 +167,9 @@ export const ApproveGuidingPrinciple: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Approve" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Approve" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Approved" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Approved" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Promote to Approved" }));
     const dialog = within(within(document.body).getByRole("dialog", { name: "Approve this Guiding Principle?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
 
@@ -163,7 +177,23 @@ export const ApproveGuidingPrinciple: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/guiding-principles/${GUIDING_PRINCIPLE_ID}/approve`,
       { comment: null }
     ));
-    await waitFor(() => expect(canvas.getByText("Approved")).toBeInTheDocument());
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Approved"));
+  },
+};
+
+export const PromoteFromTheActionsMenuProposesADraft: Story = {
+  beforeEach: () => {
+    mockDetailApis(guidingPrinciple({ status: "draft" }));
+    spyOn(api, "post").mockResolvedValue(guidingPrinciple({ status: "proposed" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Guiding Principle actions" }));
+    await chooseRecordAction(canvas, "Guiding Principle", "Promote to Proposed");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/guiding-principles/${GUIDING_PRINCIPLE_ID}/propose`,
+    ));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Proposed"));
   },
 };
 
@@ -264,8 +294,8 @@ export const VersionHistoryShowsOwners: Story = {
   },
 };
 
-export const LightTheme: Story = { ...ProposedShowsApproveAndSendBack };
-export const DarkTheme: Story = { ...ProposedShowsApproveAndSendBack, globals: { theme: "dark" } };
+export const LightTheme: Story = { ...ProposedOffersApproveAndSendBack };
+export const DarkTheme: Story = { ...ProposedOffersApproveAndSendBack, globals: { theme: "dark" } };
 
 /** Links live in the shared Links panel beside the page; the page adds only what is specific to it. */
 export const LinksPanelShowsLinks: Story = {

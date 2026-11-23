@@ -34,19 +34,33 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { riskApi } from "./api";
 import { diffRiskFields, valuesFromRisk } from "./riskFields";
 import { RiskFormModal } from "./RiskFormModal";
-import { RiskLifecycleControls } from "./RiskLifecycleControls";
 import { RiskMatrix } from "./RiskMatrix";
 import { RiskRatingBadge } from "./RiskRatingBadge";
 import { RiskReviewsPanel } from "./RiskReviewsPanel";
+import { RiskTransitionDialog } from "./RiskTransitionDialog";
 import { RiskTreatmentsPanel } from "./RiskTreatmentsPanel";
 import {
   CONSEQUENCE_AXIS, DETECTABILITY_AXIS, levelName, LIKELIHOOD_AXIS, useRiskScheme,
 } from "./useRiskScheme";
-import { RISK_STATUS_LABEL, RISK_STATUS_TONE, TREATMENT_STRATEGY_LABEL } from "./types";
+import { RISK_MAIN_PATH, RISK_STATUS_DESCRIPTION, RISK_STATUS_LABEL, RISK_STATUS_TONE, TREATMENT_STRATEGY_LABEL } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus, RiskVersion } from "./types";
 import { Badge } from "../../components/Badge";
 import { RISK_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
+import type { ActionMenuItem } from "../../components/ActionMenu";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+
+/** Why the signed-off assessment of an accepted risk cannot be changed. */
+const ACCEPTED_LOCKED_REASON = "Locked: the rating, acceptance criteria and treatment strategy are signed off.";
+
+/** Outcome statuses, drawn as the one branch step while current. */
+const OUTCOME_STATUSES: readonly RiskStatus[] = ["accepted", "transferred", "avoided", "realised", "rejected"];
+
+/** The menu row that moves a risk to a status other than the next forward step. */
+function moveLabel(target: RiskStatus): string {
+  if (OUTCOME_STATUSES.includes(target)) return `Mark as ${RISK_STATUS_LABEL[target]}`;
+  return `Return to ${RISK_STATUS_LABEL[target]}`;
+}
 
 /** "Likely × Major" (and "× Undetectable" when scored), or "—" when nothing is set. */
 function levelSummary(
@@ -75,6 +89,7 @@ export function RiskDetailPage() {
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [treatmentsRefresh, setTreatmentsRefresh] = useState(0);
+  const [moveTarget, setMoveTarget] = useState<RiskStatus | null>(null);
 
   useEffect(() => {
     if (!projectId || !riskId) return;
@@ -150,6 +165,25 @@ export function RiskDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (risk === null || project === null) return <Spinner />;
 
+  // The next forward move, when the backend allows it; every other allowed move is a row of the actions menu.
+  const nextOnPath = RISK_MAIN_PATH[RISK_MAIN_PATH.indexOf(risk.status) + 1];
+  const promoteTo: RiskStatus | undefined = risk.is_archived ? undefined
+    : OUTCOME_STATUSES.includes(risk.status) ? "closed"
+    : nextOnPath;
+  const promote = promoteTo && risk.allowed_next_statuses.includes(promoteTo)
+    ? { to: promoteTo, onPromote: () => setMoveTarget(promoteTo) }
+    : undefined;
+  const moveRows: ActionMenuItem[] = risk.is_archived ? [] : risk.allowed_next_statuses
+    .filter((s) => s !== promote?.to)
+    .map((s) => ({ label: moveLabel(s), onSelect: () => setMoveTarget(s), danger: s === "rejected" }));
+  const offPathStep = OUTCOME_STATUSES.includes(risk.status) ? {
+    key: risk.status,
+    label: RISK_STATUS_LABEL[risk.status],
+    description: RISK_STATUS_DESCRIPTION[risk.status],
+    after: risk.status === "rejected" ? "identified" : "assessed",
+    ...(risk.status === "accepted" ? { locked: true, lockedReason: ACCEPTED_LOCKED_REASON } : {}),
+  } : undefined;
+
   const userNames = Object.fromEntries(orgUsers.map((u) => [u.user_id, u.display_name]));
 
   return (
@@ -188,18 +222,26 @@ export function RiskDetailPage() {
           </>
         }
         onEdit={risk.is_archived ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <RiskLifecycleControls
-            risk={risk}
-            onTransition={async (status: RiskStatus, comment: string) => {
-              setRisk(await riskApi.transition(projectId, risk.id, status, comment));
-              showToast(`Risk moved to ${RISK_STATUS_LABEL[status]}.`);
-            }}
-          />
-        }
+        actions={[...moveRows, archive.item]}
+        lifecycle={{
+          steps: lifecycleSteps(RISK_MAIN_PATH, RISK_STATUS_LABEL, { descriptions: RISK_STATUS_DESCRIPTION }),
+          current: risk.status,
+          offPath: offPathStep,
+          promote,
+        }}
       />
       {archive.dialog}
+      {moveTarget && (
+        <RiskTransitionDialog
+          risk={risk}
+          target={moveTarget}
+          onClose={() => setMoveTarget(null)}
+          onTransition={async (status, comment) => {
+            setRisk(await riskApi.transition(projectId, risk.id, status, comment));
+            showToast(`Risk moved to ${RISK_STATUS_LABEL[status]}.`);
+          }}
+        />
+      )}
         <DetailCard>
           {risk.statement && <MarkdownView text={risk.statement} />}
           {risk.cause && <RecordField markdown label="Cause" value={risk.cause} />}

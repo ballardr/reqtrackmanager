@@ -42,7 +42,7 @@ import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTabl
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
-import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useLifecycleTransition, type LifecycleAction } from "../../components/useLifecycleTransition";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
@@ -50,7 +50,7 @@ import { StakeholderFormModal } from "./StakeholderFormModal";
 import { StakeholderGroupsField } from "./StakeholderGroupsField";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup, StakeholderVersion } from "./types";
 import {
-  GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
+  GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_DESCRIPTION, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
 } from "./types";
 import { levelName, useStakeholderScheme } from "./useStakeholderScheme";
 import { Badge } from "../../components/Badge";
@@ -236,6 +236,20 @@ export function StakeholderDetailPage() {
     onConfirm: erase,
   });
 
+  const { lifecycle, menuRows, dialog: lifecycleDialog } = useLifecycleTransition({
+    noun: "Stakeholder",
+    status: stakeholder?.status ?? "draft",
+    labels: STAKEHOLDER_STATUS_LABEL,
+    descriptions: STAKEHOLDER_STATUS_DESCRIPTION,
+    hidden: !stakeholder || readOnlyInProject,
+    activateBody: "An Active stakeholder is part of the current stakeholder register. A comment is optional.",
+    retireBody: "A Retired stakeholder is no longer part of the current register, but keeps its history and can be reactivated. A comment is optional.",
+    onTransition: async (action, comment) => {
+      if (!scopeId || !stakeholder) return;
+      await run(() => scopedApi[action](scopeId, stakeholder.id, comment), TRANSITION_DONE[action]);
+    },
+  });
+
   const codeOwner = useRecordOwnerCode(stakeholder ?? {});
   if (!scopeId || !stakeholderId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -271,20 +285,11 @@ export function StakeholderDetailPage() {
         version={stakeholder.version_number}
         subtitle={[stakeholder.stakeholder_type_name, stakeholder.role, stakeholder.organisation_group].filter(Boolean).join(" · ") || "No type or role set"}
         onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
-        actions={[archive.item, eraseAction.item]}
-        transitions={
-          readOnlyInProject ? undefined : (
-            <RecordLifecycleControls
-              noun="Stakeholder"
-              status={stakeholder.status}
-              activateBody="An Active stakeholder is part of the current stakeholder register. A comment is optional."
-              retireBody="A Retired stakeholder is no longer part of the current register, but keeps its history and can be reactivated. A comment is optional."
-              onTransition={(action, comment) => run(() => scopedApi[action](scopeId, stakeholder.id, comment), TRANSITION_DONE[action])}
-            />
-          )
-        }
+        actions={[...menuRows, archive.item, eraseAction.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
+      {lifecycleDialog}
       {eraseAction.dialog}
 
         {readOnlyInProject && (

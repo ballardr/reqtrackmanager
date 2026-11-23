@@ -8,6 +8,8 @@ import { buttonHeightViolations } from "../../testing/buttonHeights";
 import { expectLabelInName } from "../../testing/labelInName";
 import { requiredCaptions } from "../../testing/requiredMarkers";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
+import { recordActionNames } from "../../testing/recordActions";
 import { buildUser, openAddDialog, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
   buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildLeader, buildModelElement, buildNote,
@@ -100,6 +102,9 @@ export const DrawsBoxesAndLinesFromTheModelData: Story = {
     await expect(canvas.getByLabelText("Orders, node")).toBeInTheDocument();
     await expect(await canvas.findByLabelText("Connection from Gateway to Orders")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Active");
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Diagram")).toContain("Retire");
     await openTab(canvas, "Configuration");
     await expect(await canvas.findByRole("switch", { name: "Security devices" })).toBeChecked();
   },

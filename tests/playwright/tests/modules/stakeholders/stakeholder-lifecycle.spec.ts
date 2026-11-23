@@ -54,7 +54,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     await expect(page.getByTestId("cadence")).toContainText("Target cadence: Quarterly (suggested by their position: Monthly)");
 
     // --- Activate behind a confirm dialog; no approval step.
-    await page.getByRole("button", { name: "Activate" }).click();
+    await chooseRecordAction(page, "Stakeholder", "Promote to Active");
     await page.getByRole("dialog", { name: "Activate this Stakeholder?" }).getByRole("button", { name: "Activate" }).click();
     await expect(statusBadge(page, "Active")).toBeVisible();
 

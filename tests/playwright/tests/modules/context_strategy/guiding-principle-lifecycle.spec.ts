@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability, chooseRecordMenuAction, expectCurrentStep, promoteTo, expectRecordLocked } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -85,34 +85,35 @@ test.describe("Context & Strategy: create -> propose -> send back -> re-propose 
     await page.getByRole("button", { name: guidingPrincipleName }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/guiding-principles/[^/]+$`));
     await expect(page.getByRole("heading", { name: guidingPrincipleName })).toBeVisible();
-    await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Draft");
 
     // Propose, then send back for rework (mandatory comment), Guiding Principle's "reject" equivalent. There is
     // no "Under review" step: `Propose` goes straight to offering `Approve`/`Send back`.
-    await page.getByRole("button", { name: "Propose" }).click();
-    await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Submit for review" })).toHaveCount(0);
+    await promoteTo(page, "Proposed");
+    await expectCurrentStep(page, "Proposed");
+    await expect(page.getByRole("list", { name: "Lifecycle" }).getByText("Under review")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Send back" }).click();
+    await chooseRecordMenuAction(page, "Send back");
     const sendBackDialog = page.getByRole("dialog", { name: "Send this Guiding Principle back to Draft?" });
     await expect(sendBackDialog.getByRole("button", { name: "Send back" })).toBeDisabled();
     await sendBackDialog.getByLabel("Send-back comment").fill("Needs a stronger rationale before it can be approved.");
     await sendBackDialog.getByRole("button", { name: "Send back" }).click();
-    await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Draft");
 
     // --- Re-propose and complete the happy path: Proposed -> Approved -> Active.
-    await page.getByRole("button", { name: "Propose" }).click();
-    await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
+    await promoteTo(page, "Proposed");
+    await expectCurrentStep(page, "Proposed");
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    await promoteTo(page, "Approved");
     const approveDialog = page.getByRole("dialog", { name: "Approve this Guiding Principle?" });
     await approveDialog.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Approved");
+    await expectRecordLocked(page);
 
-    await page.getByRole("button", { name: "Activate" }).click();
+    await promoteTo(page, "Active");
     const activateDialog = page.getByRole("dialog", { name: "Activate this Guiding Principle?" });
     await activateDialog.getByRole("button", { name: "Activate" }).click();
-    await expect(page.getByText("Active", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Active");
 
     // --- Back on the list, the Guiding Principle shows its final status.
     await page.getByRole("link", { name: "← Guiding Principles", exact: true }).click();

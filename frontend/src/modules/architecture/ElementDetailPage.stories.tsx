@@ -3,6 +3,9 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
+import { expectTooltip } from "../../testing/tooltips";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildConnection, buildElement, buildRecordDiagram, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ElementDetailPage } from "./ElementDetailPage";
@@ -43,7 +46,8 @@ export const ShowsPortsChildrenConnectionsAndSharing: Story = {
     await expect(connections.getByRole("link", { name: "CON-001" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/connections/con-1`);
     await expect(connections.getByText("Client traffic")).toBeInTheDocument();
     await expect(await canvas.findByText("Shared infrastructure · 1 grant")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Change status" })).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Active");
+    await expect(await recordActionNames(canvas, "Element")).toContain("Retire");
     // The display note (drawn in the box) is shown apart from the description.
     await expect(canvas.getByText("Public entry point.")).toBeInTheDocument();
     await expect(canvas.getByText("Terminates client traffic.")).toBeInTheDocument();
@@ -77,14 +81,16 @@ export const SharedElementIsReadOnly: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { name: /Identity provider/ })).toBeInTheDocument();
     await expect(canvas.getByText("Shared")).toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Change status" })).not.toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Active");
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Element")).not.toContain("Retire");
     await expect(canvas.queryByRole("button", { name: "Add child" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add port" })).not.toBeInTheDocument();
     await expect(canvas.getByText(/only its owner changes it/)).toBeInTheDocument();
   },
 };
 
-/** The menu offers the moves the server returned for the record's status, named from the current status. */
+/** The track promotes to the next main-path step and the actions menu offers the other moves the server returned. */
 export const ChangeStateOffersTheServersMoves: Story = {
   beforeEach: () => {
     const draft = buildElement({ status: "draft", version: 3 });
@@ -93,25 +99,39 @@ export const ChangeStateOffersTheServersMoves: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Change status" }));
-    const menu = within(document.body).getByRole("menu", { name: "Change status" });
-    await expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual([
-      "Move from Draft to Proposed", "Move from Draft to Active", "Move from Draft to Rejected",
-    ]);
+    await expect(await canvas.findByRole("button", { name: "Next step: Proposed" })).toBeInTheDocument();
+    await expect((await recordActionNames(canvas, "Element")).slice(0, 3)).toEqual(["Promote to Proposed", "Activate directly", "Reject"]);
   },
 };
 
-/** The menu button's own tooltip describes every status, not only the current one. */
-export const ChangeStateHelpDescribesEveryState: Story = {
+/** The next step's Promote button moves the record, sending the version the page was based on. */
+export const PromoteMovesToTheNextStep: Story = {
+  beforeEach: () => {
+    const draft = buildElement({ status: "draft", version: 3 });
+    const get = mockArchitectureReads({ elements: [PARENT, draft], element: draft, connections: [] });
+    const post = spyOn(api, "post").mockResolvedValue({ ...draft, status: "proposed", version: 4 } as never);
+    return () => { get.mockRestore(); post.mockRestore(); };
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Next step: Proposed" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Promote to Proposed" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/architecture/elements/el-1/status`, { version: 3, status: "proposed" },
+    ));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Proposed"));
+  },
+};
+
+/** Each step's tooltip says what the state means. */
+export const TrackStepsDescribeEveryState: Story = {
   beforeEach: () => {
     const get = mockArchitectureReads({ elements: [PARENT, ELEMENT], element: ELEMENT, connections: [] });
     return () => get.mockRestore();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.hover(await canvas.findByRole("button", { name: "Change status" }));
-    const tip = await within(document.body).findByRole("tooltip");
-    for (const state of ["Draft:", "Proposed:", "Active:", "Retired:", "Rejected:"]) await expect(tip).toHaveTextContent(state);
+    await expectTooltip(await canvas.findByText("Proposed", { selector: ".lifecycle-step__label *" }), "Put forward for consideration");
   },
 };
 
@@ -124,8 +144,7 @@ export const MoveSendsTheVersionAndShowsARefusal: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Change status" }));
-    await userEvent.click(within(document.body).getByRole("menuitem", { name: "Move from Active to Retired" }));
+    await chooseRecordAction(canvas, "Element", "Retire");
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/architecture/elements/el-1/status`, { version: 3, status: "retired" },
     ));

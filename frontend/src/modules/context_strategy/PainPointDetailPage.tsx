@@ -42,9 +42,11 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
 import { PainPointScoringPanel } from "./PainPointScoringPanel";
-import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
+import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_DESCRIPTION, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE, TERMINAL_LOCKED_REASON } from "./types";
 import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFieldValues } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
@@ -90,6 +92,8 @@ const MANDATORY_COMMENT_COPY: Record<MandatoryCommentAction, { title: string; hi
     confirmLabel: "Mark duplicate",
   },
 };
+
+const MAIN_PATH = ["submitted", "triaged", "accepted", "addressed", "closed"] as const;
 
 export function PainPointDetailPage() {
   const { projectId, painPointId } = useParams<{ projectId: string; painPointId: string }>();
@@ -204,6 +208,30 @@ export function PainPointDetailPage() {
     return asset;
   };
 
+  // The next forward move: a plain call for triage, otherwise the move's comment dialog.
+  let promote: LifecyclePromote | undefined;
+  if (painPoint.status === "submitted") {
+    promote = { to: "triaged", onPromote: () => runTransition(() => projectPainPointApi.triage(projectId, painPoint.id), "Pain Point triaged.") };
+  } else if (painPoint.status === "triaged") {
+    promote = { to: "accepted", onPromote: () => setOptionalAction("accept") };
+  } else if (painPoint.status === "accepted") {
+    promote = { to: "addressed", onPromote: () => setOptionalAction("address") };
+  } else if (painPoint.status === "addressed") {
+    promote = { to: "closed", onPromote: () => setOptionalAction("close") };
+  }
+
+  // A rejected or duplicate Pain Point ended after triage.
+  const offPath = painPoint.status === "rejected" || painPoint.status === "duplicate"
+    ? {
+        key: painPoint.status,
+        label: PAIN_POINT_STATUS_LABEL[painPoint.status],
+        description: PAIN_POINT_STATUS_DESCRIPTION[painPoint.status],
+        locked: true,
+        lockedReason: TERMINAL_LOCKED_REASON,
+        after: "triaged",
+      }
+    : undefined;
+
   return (
     <DetailLayout
       pictures={{ files, upload: uploadAttachment }}
@@ -236,32 +264,20 @@ export function PainPointDetailPage() {
           </>
         }
         onEdit={painPoint.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {painPoint.status === "submitted" && (
-            <button
-              className="btn btn-primary"
-              onClick={() => runTransition(() => projectPainPointApi.triage(projectId, painPoint.id), "Pain Point triaged.")}
-            >
-              Triage
-            </button>
-          )}
-          {painPoint.status === "triaged" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setOptionalAction("accept")}>Accept</button>
-              <button className="btn btn-danger" onClick={() => setMandatoryAction("reject")}>Reject</button>
-              <button className="btn" onClick={() => setMandatoryAction("mark_duplicate")}>Mark duplicate</button>
-            </>
-              )}
-              {painPoint.status === "accepted" && (
-                <button className="btn btn-primary" onClick={() => setOptionalAction("address")}>Address</button>
-              )}
-              {painPoint.status === "addressed" && (
-                <button className="btn btn-primary" onClick={() => setOptionalAction("close")}>Close</button>
-              )}
-          </>
-        }
+        actions={[
+          painPoint.status === "triaged" && { label: "Reject", danger: true, onSelect: () => setMandatoryAction("reject") },
+          painPoint.status === "triaged" && { label: "Mark duplicate", onSelect: () => setMandatoryAction("mark_duplicate") },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycleSteps(MAIN_PATH, PAIN_POINT_STATUS_LABEL, {
+            descriptions: PAIN_POINT_STATUS_DESCRIPTION,
+            locked: { closed: TERMINAL_LOCKED_REASON },
+          }),
+          current: painPoint.status,
+          offPath,
+          promote,
+        }}
       />
       {archive.dialog}
 

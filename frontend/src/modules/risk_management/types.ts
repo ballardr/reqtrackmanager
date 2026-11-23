@@ -37,6 +37,26 @@ export const RISK_STATUS_LABEL: Record<RiskStatus, string> = {
   closed: "Closed",
 };
 
+/** What each status means, the tooltip of its step in the lifecycle track. */
+export const RISK_STATUS_DESCRIPTION: Record<RiskStatus, string> = {
+  identified: "The risk has been recorded and is awaiting assessment.",
+  assessed: "The inherent rating has been established and a treatment has yet to be planned.",
+  treatment_planned: "A treatment has been chosen and has yet to start.",
+  treatment_in_progress: "The planned treatment is being carried out.",
+  mitigated: "The treatment is complete and the residual rating has been reduced.",
+  accepted: "The Risk Acceptor has recorded that the residual risk is tolerable. The signed-off assessment is locked.",
+  transferred: "The risk has been transferred to a third party.",
+  avoided: "The activity that gave rise to the risk has been removed.",
+  realised: "The risk has occurred.",
+  rejected: "The risk has been judged not to be a valid risk.",
+  closed: "The risk is no longer managed. It can be reopened for reassessment.",
+};
+
+/** The statuses of a risk's main path, in order. */
+export const RISK_MAIN_PATH: readonly RiskStatus[] = [
+  "identified", "assessed", "treatment_planned", "treatment_in_progress", "mitigated", "closed",
+];
+
 export type TreatmentStrategy = "mitigate" | "transfer" | "avoid" | "accept";
 
 export const TREATMENT_STRATEGY_LABEL: Record<TreatmentStrategy, string> = {

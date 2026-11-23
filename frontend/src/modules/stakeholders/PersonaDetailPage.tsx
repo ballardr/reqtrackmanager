@@ -16,7 +16,7 @@
  * "Pattern: scoring and inherited settings"); the organisation route shows only the persona's own weight.
  *
  * Personas have no approval gate, so lifecycle is Activate / Retire / Reactivate, each behind a tier-1 `ConfirmDialog`
- * with an optional comment (`RecordLifecycleControls`). Mutating controls always render whatever the role; the backend
+ * with an optional comment (`useLifecycleTransition`). Mutating controls always render whatever the role; the backend
  * enforces `persona_owner` / `org_persona_owner` and a 403 surfaces as a toast. Owner and champion use
  * `RecordPrincipalField` (a user or a group; a project group only on a project persona) and assigning sends a partial
  * update with only that field. Attachments and comments are `RecordDiscussion`, versions are `VersionHistoryTable` and
@@ -45,12 +45,12 @@ import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTabl
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
-import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useLifecycleTransition, type LifecycleAction } from "../../components/useLifecycleTransition";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Persona, PersonaFieldValues, PersonaVersion } from "./types";
-import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA_WEIGHT_SOURCE_LABEL } from "./types";
+import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_DESCRIPTION, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA_WEIGHT_SOURCE_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
 import { STAKEHOLDERS_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
@@ -186,6 +186,20 @@ export function PersonaDetailPage() {
     },
   });
 
+  const { lifecycle, menuRows, dialog: lifecycleDialog } = useLifecycleTransition({
+    noun: "Persona",
+    status: persona?.status ?? "draft",
+    labels: PERSONA_STATUS_LABEL,
+    descriptions: PERSONA_STATUS_DESCRIPTION,
+    hidden: !persona || readOnlyInProject,
+    activateBody: "An Active persona is offered as a target when scoring. A comment is optional.",
+    retireBody: "A Retired persona is no longer offered when scoring, but keeps its history and can be reactivated. A comment is optional.",
+    onTransition: async (action, comment) => {
+      if (!scopeId || !persona) return;
+      await run(() => scopedApi[action](scopeId, persona.id, comment), TRANSITION_DONE[action]);
+    },
+  });
+
   const codeOwner = useRecordOwnerCode(persona ?? {});
   if (!scopeId || !personaId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -224,20 +238,11 @@ export function PersonaDetailPage() {
         version={persona.version_number}
         subtitle={[persona.persona_type_name, persona.role_title].filter(Boolean).join(" · ") || "No type or role set"}
         onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          readOnlyInProject ? undefined : (
-            <RecordLifecycleControls
-              noun="Persona"
-              status={persona.status}
-              activateBody="An Active persona is offered as a target when scoring. A comment is optional."
-              retireBody="A Retired persona is no longer offered when scoring, but keeps its history and can be reactivated. A comment is optional."
-              onTransition={(action, comment) => run(() => scopedApi[action](scopeId, persona.id, comment), TRANSITION_DONE[action])}
-            />
-          )
-        }
+        actions={[...menuRows, archive.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
+      {lifecycleDialog}
 
         {readOnlyInProject && (
           <p className="text-muted" style={{ margin: 0 }}>

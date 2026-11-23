@@ -70,7 +70,7 @@ test.describe("Decision Management: equations", () => {
     });
 
     await dialog.getByRole("button", { name: "Save" }).click();
-    await page.getByRole("button", { name: "DEC-001" }).click();
+    await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
     await page.getByRole("dialog", { name: "DEC-001" }).getByRole("link", { name: "View full details" }).click();
 
     await test.step("the detail page draws the equation", async () => {

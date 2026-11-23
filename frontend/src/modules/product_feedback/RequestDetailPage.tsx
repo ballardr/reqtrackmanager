@@ -7,11 +7,11 @@
  * the URL (`/projects/:projectId/modules/product_feedback/requests/:requestId`,
  * `/orgs/:organizationId/modules/product_feedback/requests/:requestId`, the latter an always-mounted global route).
  *
- * - **Lifecycle** buttons come from the server's `allowed_next_statuses`; declining needs a reason (a required
- *   comment). Delivered is set manually: when every Requirement realising an accepted request is complete the page
+ * - **Lifecycle**: the next forward step is the track's Promote and every other move the server's
+ *   `allowed_next_statuses` allows is a row of the actions menu; declining needs a reason (a required comment). Delivered is set manually: when every Requirement realising an accepted request is complete the page
  *   prompts "Ready to deliver?" and never moves the status itself.
- * - **Controls follow `GET .../access`**: someone who may not triage sees no edit, transition, merge or archive
- *   controls (the server refuses them regardless).
+ * - **Controls follow `GET .../access`**: someone who may not triage sees no edit, merge or archive
+ *   controls and cannot promote (the server refuses them regardless).
  * - **External references** and each requester's **channel** are edited here by a triager; neither is a version.
  * - **Problem and requesters** use the generic Links panel ("Addresses" a Pain Point, "Realised by" a Requirement,
  *   "Requested by" a Stakeholder, Persona or Engagement). A solution with no Pain Point carries a warning badge, never
@@ -36,12 +36,15 @@ import { Modal } from "../../components/Modal";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { RecordHeader } from "../../components/RecordHeader";
 import { RecordTags } from "../../components/RecordTags";
 import { SectionOrderEditor } from "../../components/SectionOrderEditor";
 import { Spinner } from "../../components/Spinner";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { useAuth } from "../../context/AuthContext";
+import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
@@ -61,7 +64,7 @@ import { RequestLoopPanel } from "./RequestLoopPanel";
 import { RequestReferencesCard } from "./RequestReferencesCard";
 import { REQUEST_PAGE_SECTIONS, REQUEST_SECTION_KEYS, REQUEST_SECTIONS_PREFERENCE } from "./requestSections";
 import { RequestScoresPanel } from "./RequestScoresPanel";
-import { REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE } from "./types";
+import { REQUEST_MAIN_PATH, REQUEST_STATUS_DESCRIPTION, REQUEST_STATUS_LABEL } from "./types";
 import type {
   CloseTheLoop, Demand, EnhancementRequest, ExternalRef, FeedbackAccess, RequestComment, RequestMerge, RequestStatus,
   Requester, RequestVersion,
@@ -86,13 +89,13 @@ function transitionLabel(from: RequestStatus, to: RequestStatus): string {
   return from === "declined" ? "Reopen" : "Back to new";
 }
 
-const FORWARD: readonly RequestStatus[] = ["under_review", "accepted", "delivered"];
 
 export function RequestDetailPage() {
   const { projectId, organizationId, requestId } = useParams<{
     projectId?: string; organizationId?: string; requestId: string;
   }>();
   const navigate = useNavigate();
+  const strings = useStrings();
   const { user } = useAuth();
   const { showToast } = useToast();
   const scopedApi = projectId ? projectRequestApi : orgRequestApi;
@@ -343,6 +346,15 @@ export function RequestDetailPage() {
     ? `/projects/${projectId}/modules/product_feedback/requests`
     : organizationId ? orgResourcesPath(organizationId, ORG_REQUEST_INBOX_SECTION_KEY) : "/org-resources";
   const moves = request.allowed_next_statuses.filter((to) => !request.is_archived && canTriage && to !== "duplicate");
+  // The next forward step; a person who may not triage sees it padlocked. Every other move is a row of the actions menu.
+  const position = REQUEST_MAIN_PATH.indexOf(request.status);
+  const nextStep = position === -1 ? undefined : REQUEST_MAIN_PATH[position + 1];
+  const promote: LifecyclePromote | undefined = !nextStep || request.is_archived || !request.allowed_next_statuses.includes(nextStep) ? undefined
+    : canTriage ? { to: nextStep, onPromote: () => setPending({ to: nextStep }) }
+    : { to: nextStep, blockedReason: strings.lifecycle.notPermitted(REQUEST_STATUS_LABEL[nextStep]) };
+  const offPathStep = request.status === "declined" || request.status === "duplicate" ? {
+    key: request.status, label: REQUEST_STATUS_LABEL[request.status], description: REQUEST_STATUS_DESCRIPTION[request.status], after: "new",
+  } : undefined;
   const delivering = pending?.to === "delivered";
   const showLoop = Boolean(projectId) && loop !== null && (request.status === "delivered" || request.status === "declined");
   const readyToDeliver = Boolean(loop?.suggest_delivered) && request.status === "accepted" && canTriage;
@@ -496,7 +508,6 @@ export function RequestDetailPage() {
         version={request.version_number}
         badges={
           <>
-            <Badge tone={REQUEST_STATUS_TONE[request.status]}>{REQUEST_STATUS_LABEL[request.status]}</Badge>
             {request.is_archived && <Badge tone="muted">Archived</Badge>}
             {painPointsAvailable && request.pain_point_count === 0 && !isDuplicate && request.status !== "declined" && (
               <Badge tone="warning" title="This is a solution with no stated problem. Link the Pain Point it addresses with “Addresses” in the Links panel.">
@@ -513,23 +524,20 @@ export function RequestDetailPage() {
         onEdit={canTriage ? () => setEditing(true) : undefined}
         actions={[
           { label: "Arrange sections…", onSelect: () => setArranging(true) },
+          ...moves.filter((to) => to !== promote?.to).map((to) => ({
+            label: transitionLabel(request.status, to), danger: to === "declined", onSelect: () => setPending({ to }),
+          })),
+          isDuplicate && canTriage && { label: "Undo merge", onSelect: () => setUnmerging(true) },
           canTriage && !isDuplicate && !request.is_archived && { label: "Merge into another request…", onSelect: () => void openMerge() },
           canTriage && !projectId && !request.is_archived && !isDuplicate && { label: "Move to a project…", onSelect: () => void openMove() },
           archive.item,
         ]}
-        transitions={
-          <>
-            {isDuplicate && canTriage && <button className="btn btn-primary" onClick={() => setUnmerging(true)}>Undo merge</button>}
-            {moves.map((to) => (
-              <button
-                key={to} className={`btn${FORWARD.includes(to) ? " btn-primary" : to === "declined" ? " btn-danger" : ""}`}
-                onClick={() => setPending({ to })}
-              >
-                {transitionLabel(request.status, to)}
-              </button>
-            ))}
-          </>
-        }
+        lifecycle={{
+          steps: lifecycleSteps(REQUEST_MAIN_PATH, REQUEST_STATUS_LABEL, { descriptions: REQUEST_STATUS_DESCRIPTION }),
+          current: request.status,
+          offPath: offPathStep,
+          promote,
+        }}
       />
       {archive.dialog}
 

@@ -32,9 +32,11 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgFutureStateApi, projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
-import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
+import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE, FUTURE_STATE_STATUS_DESCRIPTION, REVIEWED_LOCKED_REASON } from "./types";
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
@@ -69,6 +71,8 @@ const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; c
     confirmLabel: "Retire",
   },
 };
+
+const MAIN_PATH = ["draft", "proposed", "under_review", "approved", "active"] as const;
 
 export function FutureStateDetailPage() {
   const { projectId, organizationId, futureStateId } = useParams<{
@@ -169,6 +173,30 @@ export function FutureStateDetailPage() {
     return asset;
   };
 
+  // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  let promote: LifecyclePromote | undefined;
+  if (futureState.status === "draft") {
+    promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, futureState.id), "Future State proposed.") };
+  } else if (futureState.status === "proposed") {
+    promote = { to: "under_review", onPromote: () => runTransition(() => scopedApi.submitForReview(scopeId, futureState.id), "Future State submitted for review.") };
+  } else if (futureState.status === "under_review") {
+    promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
+  } else if (futureState.status === "approved") {
+    promote = { to: "active", onPromote: () => setTransitionAction("activate") };
+  }
+
+  // An ended Future State sits after the last main step it reached: any retired one was approved, and was active if a version says so.
+  const offPath = futureState.status === "superseded" || futureState.status === "retired"
+    ? {
+        key: futureState.status,
+        label: FUTURE_STATE_STATUS_LABEL[futureState.status],
+        description: FUTURE_STATE_STATUS_DESCRIPTION[futureState.status],
+        locked: true,
+        lockedReason: REVIEWED_LOCKED_REASON,
+        after: futureState.status === "superseded" || versions?.some((v) => v.status === "active") ? "active" : "approved",
+      }
+    : undefined;
+
   return (
     <DetailLayout
       pictures={{ files, upload: futureState.is_locked ? undefined : uploadAttachment }}
@@ -212,42 +240,18 @@ export function FutureStateDetailPage() {
         version={futureState.version_number}
         subtitle={futureState.target_date ? `Target date ${futureState.target_date}` : undefined}
         onEdit={futureState.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {futureState.status === "draft" && (
-            <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, futureState.id), "Future State proposed.")}>
-              Propose
-            </button>
-          )}
-          {futureState.status === "proposed" && (
-            <>
-              <button
-                className="btn btn-primary"
-                onClick={() => runTransition(() => scopedApi.submitForReview(scopeId, futureState.id), "Future State submitted for review.")}
-              >
-                Submit for review
-              </button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-              )}
-              {futureState.status === "under_review" && (
-                <>
-                  <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-                  <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-                </>
-              )}
-              {futureState.status === "approved" && (
-                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-              )}
-              {futureState.status === "active" && (
-                <>
-                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-                </>
-              )}
-          </>
-        }
+        actions={[
+          (futureState.status === "proposed" || futureState.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
+          futureState.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
+          futureState.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycleSteps(MAIN_PATH, FUTURE_STATE_STATUS_LABEL, { descriptions: FUTURE_STATE_STATUS_DESCRIPTION, locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON } }),
+          current: futureState.status,
+          offPath,
+          promote,
+        }}
       />
       {archive.dialog}
 

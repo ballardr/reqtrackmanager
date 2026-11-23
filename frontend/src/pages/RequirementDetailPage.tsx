@@ -1,6 +1,6 @@
 import { useMutation } from "../hooks/useMutation";
 import { useRecordCode } from "../hooks/useRecordCode";
-import { Bell, BellOff, CheckCircle, FolderOpen, GitPullRequest, Plus, Trash2 } from "lucide-react";
+import { Bell, BellOff, FolderOpen, GitPullRequest, Plus, Trash2 } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -49,6 +49,8 @@ import { Popover } from "../components/Popover";
 import { ResourcePickerModal } from "../components/ResourcePickerModal";
 import { Spinner } from "../components/Spinner";
 import { RecordHeader } from "../components/RecordHeader";
+import type { LifecyclePromote } from "../components/LifecycleTrack";
+import { lifecycleSteps } from "../components/lifecycleSteps";
 import { useConfirmedAction } from "../components/useConfirmedAction";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
@@ -547,6 +549,19 @@ export function RequirementDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (!requirement) return <Spinner />;
 
+  // The next forward move: approval from draft or reviewed (a project manager, through the approval dialog), then
+  // completion of an approved requirement. Reverting completion is a row of the actions menu.
+  let nextPromotion: LifecyclePromote | undefined;
+  if (requirement.requires_approval) {
+    nextPromotion = canApprove
+      ? { to: "approved", onPromote: () => setApproving(true) }
+      : { to: "approved", blockedReason: strings.lifecycle.notPermitted(REQUIREMENT_STATUS_LABEL.approved) };
+  } else if (requirement.status === "approved" && !requirement.is_completed) {
+    nextPromotion = canArchive
+      ? { to: "completed", onPromote: markCompleted }
+      : { to: "completed", blockedReason: strings.lifecycle.notPermitted(strings.requirements.completedBadge) };
+  }
+
   return (
     <DetailLayout
       pictures={{ files, upload: requirement.is_locked ? undefined : attachPicture }}
@@ -596,27 +611,18 @@ export function RequirementDetailPage() {
             icon: <GitPullRequest />,
             onSelect: () => navigate(`/projects/${projectId}/change-requests?requirement=${requirementId}`),
           },
+          canArchive && requirement.is_completed && { label: strings.requirements.unmarkCompleted, onSelect: unmarkCompleted },
           archiveAction.item,
         ]}
-        transitions={
-          <>
-            {canApprove && requirement.requires_approval && (
-              <button className="btn btn-primary" onClick={() => setApproving(true)}>
-                <CheckCircle /> {strings.requirements.approve}
-              </button>
-            )}
-            {canArchive && requirement.status === "approved" && !requirement.is_completed && (
-              <button className="btn" onClick={markCompleted}>
-                {strings.requirements.markCompleted}
-              </button>
-            )}
-            {canArchive && requirement.is_completed && (
-              <button className="btn" onClick={unmarkCompleted}>
-                {strings.requirements.unmarkCompleted}
-              </button>
-            )}
-          </>
-        }
+        lifecycle={{
+          steps: lifecycleSteps(["draft", "reviewed", "approved", "completed"], { ...REQUIREMENT_STATUS_LABEL, completed: strings.requirements.completedBadge }, {
+            descriptions: strings.requirements.stateDescription,
+            locked: { approved: strings.requirements.lockedReason, completed: strings.requirements.lockedReason },
+          }),
+          current: requirement.is_completed ? "completed" : requirement.status === "archived" ? "archived" : requirement.status,
+          offPath: { key: "archived", label: REQUIREMENT_STATUS_LABEL.archived, description: strings.requirements.stateDescription.archived },
+          promote: nextPromotion,
+        }}
       />
       {archiveAction.dialog}
       {approving && (
@@ -642,11 +648,6 @@ export function RequirementDetailPage() {
 
       {requirement.is_locked || !canEdit ? (
         <DetailCard>
-          {requirement.is_locked && (
-            <Badge>
-              {strings.requirements.locked} — {strings.requirements.lockedNotice}
-            </Badge>
-          )}
           <div>
             <div className="text-muted">{strings.requirements.reasoning}</div>
             <MarkdownView math text={requirement.reasoning} />

@@ -55,7 +55,7 @@ import { useEscapeToLeaveMode } from "../../hooks/useEscapeToLeaveMode";
 import { useFillViewportHeight } from "../../hooks/useFillViewportHeight";
 import { useUrlChoice } from "../../hooks/useUrlFilter";
 import { projectElementApi, projectStateApi, projectStateMachineApi } from "./api";
-import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
+import { architectureLifecycle } from "./architectureLifecycle";
 import { architectureTabPath } from "./architectureTabs";
 import { DiagramCommentsPanel } from "./DiagramCommentsPanel";
 import { DiagramSwitcher } from "./DiagramSwitcher";
@@ -471,6 +471,8 @@ export function StateMachineEditorPage() {
     if (await editor.setStatus(status)) showToast(`State machine diagram moved to ${ARCHITECTURE_STATUS_LABEL[status]}.`);
   }
 
+  const { lifecycle, menuRows } = architectureLifecycle(diagram.status, diagram.allowed_status_moves, moveTo);
+
   const toolbar = (
     <div className="row" role="toolbar" aria-label="State machine diagram editing" style={{ alignItems: "center", gap: "var(--space-2)" }}>
       <EditHistoryButtons editable={editable} canUndo={editor.canUndo} canRedo={editor.canRedo} undo={editor.undo} redo={editor.redo} />
@@ -561,8 +563,8 @@ export function StateMachineEditorPage() {
         version={diagram.version}
         subtitle={<>Describes <Link to={`/projects/${projectId}/modules/architecture/elements/${diagram.element_id}`}>{elementLabel}</Link>{diagram.description ? ` · ${markdownPlainText(diagram.description)}` : ""}</>}
         onEdit={editable ? () => { setFormError(null); setEditingDiagram(true); } : undefined}
-        actions={[archive.item, remove.item]}
-        stateMenu={<ArchitectureStatusControls status={diagram.status} moves={diagram.allowed_status_moves} onMove={moveTo} />}
+        actions={[...menuRows, archive.item, remove.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
       {remove.dialog}

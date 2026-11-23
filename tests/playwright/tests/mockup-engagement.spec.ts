@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { addStructureCategory, addStructureComponent, structureRow, approveRequirementFromDetail, chooseRecordAction, selectProjectAdminGroup, recordCodeText } from "./e2e-workflows/helpers";
+import { addStructureCategory, addStructureComponent, structureRow, approveRequirementFromDetail, chooseRecordAction, selectProjectAdminGroup, recordCodeText, expectRecordLocked } from "./e2e-workflows/helpers";
 
 /**
  * Mockup-driven engagement features on top of the golden path: comment reactions, per-entity
@@ -54,7 +54,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Users can export their data");
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByText("WEB-FN-001")).toBeVisible();
+    await expect(page.getByText(/^(\w+-)?WEB-FN-001$/)).toBeVisible();
 
     await page.getByText("Users can export their data").click();
     await expect(page.locator(".record-header").getByText(recordCodeText("WEB-FN-001"))).toBeVisible();
@@ -65,7 +65,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // — this spec never baselines
     // a stage (unlike golden-path.spec.ts), so approve it directly instead.
     await approveRequirementFromDetail(page);
-    await expect(page.getByText("Locked (approved)")).toBeVisible();
+    await expectRecordLocked(page);
   });
 
   await test.step("subscribe to the requirement", async () => {

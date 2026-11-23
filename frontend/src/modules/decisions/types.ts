@@ -26,6 +26,16 @@ export const DECISION_STATUS_LABEL: Record<DecisionStatus, string> = {
   superseded: "Superseded",
 };
 
+/** What each status means, the tooltip of its step in the lifecycle track. */
+export const DECISION_STATUS_DESCRIPTION: Record<DecisionStatus, string> = {
+  draft: "Being written; the Decision can be edited directly.",
+  proposed: "Put forward for consideration and not yet under review.",
+  under_review: "Being reviewed by the decision maker, who approves or rejects it.",
+  approved: "Formally approved. The content is locked.",
+  rejected: "Declined by the decision maker. The reason is recorded in the comment.",
+  superseded: "Replaced by a later Decision. The content is locked.",
+};
+
 /** Decisions still to be made (not yet approved, rejected or superseded); the Decisions list opens on these. */
 export const DECISION_OPEN_STATUSES: readonly DecisionStatus[] = ["draft", "proposed", "under_review"];
 

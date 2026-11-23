@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { approveRequirementFromDetail, recordActionNames, loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { approveRequirementFromDetail, recordActionNames, loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, expectNoPromote, expectRecordLocked } from "./helpers";
 
 /**
  * Proves the standalone approve action: a project manager sees and can use "Approve" on a draft requirement; a
@@ -33,7 +33,7 @@ test.describe("requirement approval", () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByName(page, name);
       await expect(page.getByLabel("Name", { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+      await expectNoPromote(page, "Approved");
       await expect(page.getByRole("button", { name: "Requirement actions" })).toBeVisible();
       expect(await recordActionNames(page, "Requirement")).not.toContain("Make change request");
     });
@@ -60,8 +60,8 @@ test.describe("requirement approval", () => {
       expect(await recordActionNames(page, "Requirement")).not.toContain("Make change request");
       await approveRequirementFromDetail(page, approvalComment);
       await expect(page.getByText("Requirement approved")).toBeVisible();
-      await expect(page.getByText("Locked (approved)")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+      await expectRecordLocked(page);
+      await expectNoPromote(page, "Approved");
       expect(await recordActionNames(page, "Requirement")).toContain("Make change request");
     });
 

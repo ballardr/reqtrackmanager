@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { addDefinition, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { addDefinition, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, setOrgModuleAvailability, chooseRecordMenuAction, expectCurrentStep, promoteTo, expectRecordLocked } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -116,29 +116,30 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
     await page.getByRole("button", { name: painPointTitle }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points/[^/]+$`));
     await expect(page.getByRole("heading", { name: painPointTitle })).toBeVisible();
-    await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Submitted");
 
     await test.step("walk the lifecycle: Submitted -> Triaged -> Accepted -> Addressed -> Closed", async () => {
-      await page.getByRole("button", { name: "Triage" }).click();
-      await expect(page.getByText("Triaged", { exact: true })).toBeVisible();
+      await promoteTo(page, "Triaged");
+      await expectCurrentStep(page, "Triaged");
 
-      await page.getByRole("button", { name: "Accept" }).click();
+      await promoteTo(page, "Accepted");
       const acceptDialog = page.getByRole("dialog", { name: "Accept this Pain Point?" });
       await acceptDialog.getByRole("button", { name: "Accept" }).click();
-      await expect(page.getByText("Accepted", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Accepted");
 
-      await page.getByRole("button", { name: "Address" }).click();
+      await promoteTo(page, "Addressed");
       const addressDialog = page.getByRole("dialog", { name: "Mark this Pain Point addressed?" });
       await addressDialog.getByRole("button", { name: "Address" }).click();
-      await expect(page.getByText("Addressed", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Addressed");
 
-      await page.getByRole("button", { name: "Close" }).click();
+      await promoteTo(page, "Closed");
       const closeDialog = page.getByRole("dialog", { name: "Close this Pain Point?" });
       // `closeDialog.getByRole("button", { name: "Close" })` would be ambiguous: `Modal`'s header dismiss ("X")
       // button also has `aria-label="Close"`, colliding with this action's `confirmLabel` ("Close"). The
       // locator is scoped to the confirm button's class instead.
       await closeDialog.locator("button.btn-danger").click();
-      await expect(page.getByText("Closed", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Closed");
+      await expectRecordLocked(page);
     });
 
     // --- Back on the list, the Pain Point shows its final status.
@@ -159,16 +160,16 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
       await dialog.getByRole("button", { name: "Save" }).click();
       await page.getByRole("button", { name: duplicatePainPointTitle }).click();
 
-      await page.getByRole("button", { name: "Triage" }).click();
-      await expect(page.getByText("Triaged", { exact: true })).toBeVisible();
+      await promoteTo(page, "Triaged");
+      await expectCurrentStep(page, "Triaged");
 
-      await page.getByRole("button", { name: "Reject" }).click();
+      await chooseRecordMenuAction(page, "Reject");
       const rejectDialog = page.getByRole("dialog", { name: "Reject this Pain Point?" });
       await expect(rejectDialog.getByRole("button", { name: "Reject" })).toBeDisabled();
       await rejectDialog.getByLabel("Rejection comment").fill("Out of scope for this quarter.");
       await expect(rejectDialog.getByRole("button", { name: "Reject" })).toBeEnabled();
       await rejectDialog.getByRole("button", { name: "Reject" }).click();
-      await expect(page.getByText("Rejected", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Rejected");
     });
   });
 });

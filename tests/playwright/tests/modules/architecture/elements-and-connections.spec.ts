@@ -1,8 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { addDefinition, installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { addDefinition, chooseRecordAction, installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
-import { clickMenuRow } from "../../menuTree";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -110,7 +109,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
     });
   });
 
-  test("Change status offers the server's moves, and a parent retires only after its child", async ({ page }) => {
+  test("the lifecycle track offers the server's moves, and a parent retires only after its child", async ({ page }) => {
     const { suffix, project } = await setUpOrg(page, "ArchitectureStates", false, "System Architecture");
     const parent = `Gateway ${suffix}`;
     const child = `Orders ${suffix}`;
@@ -132,27 +131,25 @@ test.describe("System Architecture: elements, connections and sharing", () => {
 
     await test.step("a parent cannot retire while a child is in use; retire the child first", async () => {
       const moveTo = async (item: string, toast: string) => {
-        await page.getByRole("button", { name: "Change status", exact: true }).click();
-        await clickMenuRow(page, item);
+        await chooseRecordAction(page, "Element", item);
         await expect(page.getByText(toast)).toBeVisible();
       };
       await page.getByRole("link", { name: /ELM-002/ }).click();
-      await moveTo("Move from Draft to Proposed", "Element moved to Proposed.");
-      await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
-      await moveTo("Move from Proposed to Active", "Element moved to Active.");
+      await moveTo("Promote to Proposed", "Element moved to Proposed.");
+      await expect(page.locator('[aria-current="step"]', { hasText: "Proposed" })).toBeVisible();
+      await moveTo("Promote to Active", "Element moved to Active.");
 
       await page.goBack();
       await page.getByRole("link", { name: /ELM-001/ }).click();
-      await page.getByRole("button", { name: "Change status", exact: true }).click();
-      await clickMenuRow(page, "Move from Active to Retired");
+      await chooseRecordAction(page, "Element", "Retire");
       await expect(page.getByText(/still has 1 child element\(s\) in use/)).toBeVisible();
 
       await page.goBack();
       await page.getByRole("link", { name: /ELM-002/ }).click();
-      await moveTo("Move from Active to Retired", "Element moved to Retired.");
+      await moveTo("Retire", "Element moved to Retired.");
       await page.goBack();
       await page.getByRole("link", { name: /ELM-001/ }).click();
-      await moveTo("Move from Active to Retired", "Element moved to Retired.");
+      await moveTo("Retire", "Element moved to Retired.");
     });
   });
 

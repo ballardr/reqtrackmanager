@@ -1,6 +1,6 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
-import { installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openProject, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openProject, PASSWORD, PERSONAS, PROJECT_NAMES, chooseRecordMenuAction, promoteTo, expectCanPromote, expectCurrentStep } from "./helpers";
 
 /**
  * Job to be done: a project stage's full lifecycle: scoping, a review period stakeholders can explicitly approve or
@@ -159,15 +159,15 @@ test.describe("stage review deadlines and completion", () => {
     await test.step("a locked requirement can be marked completed directly by the PM (no change request needed)", async () => {
       // C-G-11: completion is an overlay marker independent of lifecycle
       // status (`Requirement.is_completed`) — the status badge stays
-      // "Approved" throughout; a separate "Completed" badge toggles.
-      await page.getByRole("button", { name: "Mark completed" }).click();
+      // "Approved" throughout; the lifecycle track moves to its Completed step.
+      await promoteTo(page, "Completed");
       await expect(page.getByText("Status: Approved")).toBeVisible();
-      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Revert completion" }).click();
+      await expectCurrentStep(page, "Completed");
+      await chooseRecordMenuAction(page, "Revert completion");
       await expect(page.getByText("Status: Approved")).toBeVisible();
-      await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
-      await page.getByRole("button", { name: "Mark completed" }).click();
-      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+      await expectCanPromote(page, "Completed");
+      await promoteTo(page, "Completed");
+      await expectCurrentStep(page, "Completed");
     });
 
     await test.step("PM completes the stage with cascade, which also completes its still-approved requirements", async () => {
@@ -181,7 +181,7 @@ test.describe("stage review deadlines and completion", () => {
       // reqNameB was never manually completed — only the cascade marked it.
       await page.goto(reqUrl[reqNameB]);
       await expect(page.getByText("Status: Approved")).toBeVisible();
-      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Completed");
     });
   });
 });

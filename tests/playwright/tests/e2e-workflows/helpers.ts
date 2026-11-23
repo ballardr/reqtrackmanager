@@ -345,8 +345,8 @@ export async function openRequirementByCode(page: Page, code: string): Promise<v
     .getByRole("link")
     .click();
   // Wait for the detail content, not only the URL: the lazy route chunk or the requirement fetch can still be in
-  // flight, and a caller's next assertion (for example the "Locked (approved)" badge) could match the still-mounted
-  // list row badge, a strict-mode violation that `toBeVisible()` cannot retry past. The `.record-header` h1 is never
+  // flight, and a caller's next assertion (for example the locked step's padlock) could match the still-mounted
+  // list row, a strict-mode violation that `toBeVisible()` cannot retry past. The `.record-header` h1 is never
   // rendered by the list page, so it is a terminology-independent signal that the page has swapped.
   await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
   await expect(page.locator(".record-header h1")).toBeVisible();
@@ -707,8 +707,8 @@ export async function expectTidyStatBlocks(page: Page): Promise<void> {
 
 /**
  * Opens a record's object-action menu in its header ("{recordLabel} actions") and picks `item`
- * (Archive, Restore, Delete permanently, Subscribe...). Workflow transitions (Activate, Retire,
- * Approve) are not in the menu; click those directly.
+ * (Archive, Restore, Delete permanently, Subscribe, "Promote to <Label>", Retire, Reactivate...). Promote is also
+ * the "Next step: <Label>" button on the lifecycle track.
  *
  * Args:
  *   page: The page showing the record detail.
@@ -741,15 +741,65 @@ export async function chooseRecordAddition(
   await page.getByRole("menu", { name: RECORD_ADD_NAME }).getByRole("menuitem", { name: row, exact: true }).click();
 }
 
+/** The record header's lifecycle track. */
+function lifecycleTrack(page: Page): Locator {
+  return page.locator("header.record-header .lifecycle-track__steps");
+}
+
 /**
- * Approves the requirement on screen through the Approve button and its confirm dialog.
+ * Promotes the record on screen to its next step through the track: presses the next step, then Promote in the popover
+ * it opens. A type's own confirmation dialog, when it has one, is left open for the caller.
+ *
+ * Args:
+ *   page: A record detail page whose lifecycle track offers the move.
+ *   stepLabel: The label of the next step ("Approved").
+ */
+export async function promoteTo(page: Page, stepLabel: string): Promise<void> {
+  await page.getByRole("button", { name: `Next step: ${stepLabel}` }).click();
+  await page.getByRole("button", { name: `Promote to ${stepLabel}`, exact: true }).click();
+}
+
+/** Asserts the person can promote the record to `stepLabel` (the track offers it as a button). */
+export async function expectCanPromote(page: Page, stepLabel: string): Promise<void> {
+  await expect(page.getByRole("button", { name: `Next step: ${stepLabel}` })).toBeVisible();
+}
+
+/** Asserts the person cannot promote the record to `stepLabel` (no control; the step carries a padlock when it is next). */
+export async function expectNoPromote(page: Page, stepLabel: string): Promise<void> {
+  await expect(page.getByRole("button", { name: `Next step: ${stepLabel}` })).toHaveCount(0);
+}
+
+/** Asserts the record's current lifecycle step is `stepLabel`. */
+export async function expectCurrentStep(page: Page, stepLabel: string): Promise<void> {
+  await expect(lifecycleTrack(page).locator("[aria-current='step']")).toContainText(stepLabel);
+}
+
+/** Asserts the record is locked: its current step carries the padlock. */
+export async function expectRecordLocked(page: Page): Promise<void> {
+  await expect(lifecycleTrack(page).locator("[aria-current='step']").getByRole("img", { name: /^Locked/ })).toBeVisible();
+}
+
+/**
+ * Chooses a row of the record's actions menu (Withdraw, Reject, Revert completion...).
+ *
+ * Args:
+ *   page: A record detail page.
+ *   row: The row's label.
+ */
+export async function chooseRecordMenuAction(page: Page, row: string): Promise<void> {
+  await page.locator("header.record-header").getByRole("button", { name: /actions$/ }).click();
+  await page.getByRole("menu").getByRole("menuitem", { name: row, exact: true }).click();
+}
+
+/**
+ * Approves the requirement on screen through Promote and its confirm dialog.
  *
  * Args:
  *   page: A requirement detail page the signed-in project manager can approve on.
  *   comment: Optional approval comment typed into the dialog.
  */
 export async function approveRequirementFromDetail(page: Page, comment?: string): Promise<void> {
-  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await promoteTo(page, "Approved");
   const dialog = page.getByRole("dialog", { name: "Approve this requirement?" });
   if (comment) await dialog.getByLabel("Approval comment").fill(comment);
   await dialog.getByRole("button", { name: "Approve", exact: true }).click();

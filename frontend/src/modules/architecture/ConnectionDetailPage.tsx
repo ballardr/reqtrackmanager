@@ -28,7 +28,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { architectureTabPath } from "./architectureTabs";
 import { projectConnectionApi, projectElementApi } from "./api";
 import { diffConnectionFields, valuesFromConnection } from "./architectureFields";
-import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
+import { architectureLifecycle } from "./architectureLifecycle";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ConnectionEnd } from "./connectionEnds";
 import { ARCHITECTURE_HELP } from "./help";
@@ -143,6 +143,8 @@ export function ConnectionDetailPage() {
     }
   }
 
+  const { lifecycle, menuRows } = architectureLifecycle(connection.status, connection.allowed_status_moves, moveTo);
+
   const endLink = (id: string, locked: boolean) => (locked ? null : `/projects/${projectId}/modules/architecture/elements/${id}`);
   const sourceHref = endLink(connection.source_element_id, connection.source_locked);
   const targetHref = endLink(connection.target_element_id, connection.target_locked);
@@ -167,8 +169,8 @@ export function ConnectionDetailPage() {
         version={connection.version}
         subtitle={<>{connection.connection_type_name}{connection.protocol ? ` · ${connection.protocol}` : ""}</>}
         onEdit={connection.is_archived ? undefined : () => setEditing(true)}
-        actions={[archive.item, remove.item]}
-        stateMenu={<ArchitectureStatusControls status={connection.status} moves={connection.allowed_status_moves} onMove={moveTo} />}
+        actions={[...menuRows, archive.item, remove.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
       {remove.dialog}

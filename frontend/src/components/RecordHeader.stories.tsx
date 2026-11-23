@@ -41,7 +41,7 @@ const meta: Meta<typeof RecordHeader> = {
     back: { to: "/personas", label: "Personas" },
     badges: <><Badge>Project</Badge><Badge tone="accent">Active</Badge></>,
     onEdit: fn(),
-    transitions: <button className="btn btn-danger">Retire</button>,
+    lifecycle: { steps: [{ key: "draft", label: "Draft" }, { key: "approved", label: "Approved" }], current: "draft", promote: { to: "approved", onPromote: fn() } },
     actions: [{ label: "Archive", danger: true, onSelect: fn() }],
   },
 };
@@ -54,7 +54,7 @@ export const Default: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Edit" }));
     await expect(args.onEdit).toHaveBeenCalled();
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument();
     // The header draws the back arrow; the page passes only the list's plural name.
     await expect(canvas.getByRole("link", { name: "← Personas" })).toHaveAttribute("href", "/personas");
     await userEvent.click(canvas.getByRole("button", { name: "Persona actions" }));
@@ -111,7 +111,7 @@ export const SingleActionStillUsesTheMenu: Story = {
 
 /** No permissions: no Edit, no menu, no empty kebab. */
 export const NoPermissions: Story = {
-  args: { onEdit: undefined, actions: [false, null], transitions: undefined },
+  args: { onEdit: undefined, actions: [false, null], lifecycle: undefined },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
@@ -139,7 +139,7 @@ export const LongUnbrokenTitle: Story = {
 
 /** A title with no actions still carries the code after its last word. */
 export const LongTitleWithoutActions: Story = {
-  args: { title: "An exceptionally long record title ".repeat(8), onEdit: undefined, actions: [], transitions: undefined },
+  args: { title: "An exceptionally long record title ".repeat(8), onEdit: undefined, actions: [], lifecycle: undefined },
   play: async ({ canvasElement }) => {
     await expectCodeFollowsTitle(canvasElement, "PER-001");
   },
@@ -231,15 +231,18 @@ export const EmptyTagsLeaveNoLine: Story = {
   },
 };
 
-/** A `stateMenu` sits beside Edit in the title row, before it, and counts as a control by itself. */
-export const StateMenuBesideEdit: Story = {
-  args: { stateMenu: <button className="btn">Change status</button> },
-  play: async ({ canvasElement }) => {
+/** The lifecycle track runs under the title, full width, and Promote is also the first row of the actions menu. */
+export const LifecycleTrackAndPromoteRow: Story = {
+  play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    const state = canvas.getByRole("button", { name: "Change status" });
-    const edit = canvas.getByRole("button", { name: "Edit" });
-    await expect(state.parentElement).toBe(edit.parentElement);
-    await expect(state.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const track = canvasElement.querySelector<HTMLElement>(".lifecycle-track")!;
+    const header = canvasElement.querySelector<HTMLElement>(".record-header")!;
+    await expect(Math.abs(track.getBoundingClientRect().right - header.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
+    await userEvent.click(canvas.getByRole("button", { name: "Persona actions" }));
+    const first = within(document.body).getAllByRole("menuitem")[0];
+    await expect(first).toHaveTextContent("Promote to Approved");
+    await userEvent.click(first);
+    await expect(args.lifecycle?.promote?.onPromote).toHaveBeenCalled();
   },
 };
 

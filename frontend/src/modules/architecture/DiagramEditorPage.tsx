@@ -68,7 +68,7 @@ import {
   blankConnectionValues, defaultElementName, diffConnectionFields, diffDiagramFields, valuesFromConnection, valuesFromDiagram,
 } from "./architectureFields";
 import { defaultConnectionType } from "./connectionGuidance";
-import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
+import { architectureLifecycle } from "./architectureLifecycle";
 import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { addBoundaries, addBoxes, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges, canvasLeaders, canvasNodes, clearConnectionRoute, moveItems, nextFreePosition, removeBoundary, removeBox, resizeItems, routedConnectionOf, routedConnections, sharesItsPair, setConnectionRoute, setLineAnchor, boxFrame, lockedBoxLabel, BOUNDARY_NODE_PREFIX } from "./diagramEditorModel";
@@ -760,6 +760,8 @@ export function DiagramEditorPage() {
     }
   }
 
+  const { lifecycle, menuRows } = architectureLifecycle(diagram.status, diagram.allowed_status_moves, moveTo);
+
   const elementEditor: ElementEditorReference | null = reference.project ? {
     elementTypes, symbols: reference.symbols, symbolUrl: (id) => projectSymbolUrl(projectId, id), orgUsers: reference.orgUsers,
     organizationId: reference.project.organization_id, onSymbolsChanged: reference.reloadSymbols,
@@ -882,8 +884,8 @@ export function DiagramEditorPage() {
         version={diagram.version}
         subtitle={diagram.purpose ? markdownPlainText(diagram.purpose) : undefined}
         onEdit={editable ? () => setEditingDiagram(true) : undefined}
-        actions={[archive.item, remove.item]}
-        stateMenu={<ArchitectureStatusControls status={diagram.status} moves={diagram.allowed_status_moves} onMove={moveTo} />}
+        actions={[...menuRows, archive.item, remove.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
       {remove.dialog}
