@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { Principal } from "../../api/types";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
-import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildUser, withStatefulAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
 import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
@@ -57,7 +57,7 @@ const meta: Meta<typeof ProjectDecisionsPage> = {
         "/projects/:projectId/modules/decisions",
       )(Story, context),
     withToast(),
-    withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
+    withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
   ],
 };
 export default meta;
@@ -224,5 +224,24 @@ export const TitleHeaderSortsTheDecisions: Story = {
   play: async ({ canvasElement }) => {
     const table = await within(canvasElement).findByRole("table", { name: "Decisions" });
     await expectHeaderOrdersText(table, "Title");
+  },
+};
+
+/** Owner is on by default; the column chooser hides it and the reset shows it again. */
+export const OwnerColumnIsOptionalAndOnByDefault: Story = {
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockPageApis(MIXED),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Decisions" });
+    for (const name of ["Code", "Title", "Type", "Status", "Owner"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Owner" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Owner" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Owner" })).toBeInTheDocument();
   },
 };

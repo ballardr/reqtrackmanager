@@ -206,7 +206,7 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("a record with no tags or components shows no empty line, only the (+)", async () => {
       await expect(page.getByText("Not placed in a component")).toHaveCount(0);
-      await expect(page.locator("header.record-header").getByRole("button", { name: "Add tag, component or reference" })).toBeVisible();
+      await expect(page.locator("header.record-header").getByRole("button", { name: "Add tag, component or external reference" })).toBeVisible();
     });
 
     await test.step("a tag and a component are added from the one (+) menu and appear in one row under the badges", async () => {

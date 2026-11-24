@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { Organization } from "../../api/types";
+import { expectHeaderSorts } from "../../testing/sortHelpers";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { StandardListPage } from "./StandardListPage";
 import type { ComplianceStandard } from "./types";
@@ -174,6 +175,54 @@ export const TogglesBetweenTilesAndListView: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "Tile view" }));
     await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
+  },
+};
+
+/** The list view shows Organisation and Issuing organisation by default; the column chooser hides Issuing organisation and the reset shows it again. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockStandardListApis(
+      [org(), org({ id: "org-2", name: "Beta Industries" })],
+      { "org-1": [standard()], "org-2": [standard({ id: "std-2", organization_id: "org-2", reference: "SOC2", name: "SOC 2 Type II" })] },
+    ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText("ISO 27001");
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    const table = await canvas.findByRole("table", { name: "Compliance standards" });
+    for (const name of ["Reference", "Name", "Organisation", "Issuing organisation", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Issuing organisation" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Issuing organisation" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Issuing organisation" })).toBeInTheDocument();
+  },
+};
+
+/** Every column header orders the list: Reference (the default), Name, Organisation, Issuing organisation (none last) and Status. */
+export const EveryColumnHeaderSortsTheList: Story = {
+  beforeEach: () =>
+    mockStandardListApis(
+      [org(), org({ id: "org-2", name: "Beta Industries" }), org({ id: "org-3", name: "Cyan Labs" })],
+      {
+        "org-1": [standard({ id: "std-1", organization_id: "org-1", reference: "B-2", name: "Zebra", issuing_organisation: "ISO" })],
+        "org-2": [standard({ id: "std-2", organization_id: "org-2", reference: "C-3", name: "Alpha", issuing_organisation: "IEC", is_archived: true })],
+        "org-3": [standard({ id: "std-3", organization_id: "org-3", reference: "A-1", name: "Mango", issuing_organisation: null })],
+      },
+    ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText("Zebra");
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    const table = await canvas.findByRole("table", { name: "Compliance standards" });
+    await expect(within(table).getByRole("columnheader", { name: "Reference" })).toHaveAttribute("aria-sort", "ascending");
+    await expectHeaderSorts(table, "Name", ["Alpha", "Mango", "Zebra"]);
+    await expectHeaderSorts(table, "Organisation", ["Acme Corp", "Beta Industries", "Cyan Labs"]);
+    await expectHeaderSorts(table, "Issuing organisation", ["IEC", "ISO", "—"]);
+    await expectHeaderSorts(table, "Status", ["Active", "Active", "Archived"]);
+    await expectHeaderSorts(table, "Reference", ["A-1", "B-2", "C-3"]);
   },
 };
 

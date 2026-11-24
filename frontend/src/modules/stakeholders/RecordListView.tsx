@@ -213,6 +213,7 @@ export function RecordListView<R extends ListedRecord, V>({
     type: (r) => typeName?.(r) ?? null,
     scope: (r) => (r.scope && scopeLabels ? scopeLabels[r.scope] : null),
     status: (r) => (r.status && statusLabel ? statusLabel[r.status] : null),
+    visibility: (r) => (r.project_hidden && r.hidden_source ? HIDDEN_SOURCE_LABEL[r.hidden_source] : null),
   };
   for (const column of [...columnsBeforeType, ...columnsAfterScope]) if (column.sortValue) sortValues[column.key] = column.sortValue;
   const listSort = useListSort(sectionKey, Object.keys(sortValues), "code", !page);
@@ -272,7 +273,7 @@ export function RecordListView<R extends ListedRecord, V>({
     ...columnsAfterScope.map(callerColumn),
     ...(includeHidden && onShowHidden
       ? [{
-          key: "visibility", label: "Visibility",
+          key: "visibility", label: "Visibility", sortable: true,
           render: (r: R) =>
             r.project_hidden && r.hidden_source ? (
               <span className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>

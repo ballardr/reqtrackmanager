@@ -44,6 +44,7 @@ import { ViewToggle, useViewMode } from "../../components/ViewToggle";
 import { toErrorMessage } from "../../context/ToastContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
 import { BlockerBadge, PainPointScoreBadge } from "./PainPointScoreBadges";
@@ -165,60 +166,9 @@ export function ProjectPainPointsPage() {
   }, [projectId, modelParam, rollup, includeArchived, scoresVersion]);
   const model = modelParam || scoring?.model_key || null;
 
-  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
-  function filterParams(): URLSearchParams {
-    const params = new URLSearchParams();
-    if (statusFilter) params.set("status", statusFilter);
-    if (priorityFilter) params.set("priority", priorityFilter);
-    if (search) params.set("search", search);
-    if (includeArchived) params.set("include_archived", "true");
-    if (openOnly) params.set("open_only", "true");
-    if (hideIntentional) params.set("hide_intentional", "true");
-    if (onlyIntentional) params.set("only_intentional", "true");
-    if (blockersOnly) params.set("blockers_only", "true");
-    if (scoredFilter) params.set("scored", scoredFilter);
-    if (blockersOnly || scoredFilter) {
-      if (modelParam) params.set("model_key", modelParam);
-      params.set("rollup", rollup);
-    }
-    addSharedListFilters(params, tagFilter, projectScope);
-    addSortParams(params, listSort.sort);
-    return params;
-  }
-
-  if (!projectId) return null;
-  if (loadError) return <p className="text-muted">{loadError}</p>;
-  if (painPoints === null || project === null) return <Spinner />;
-
   const summaryById = new Map<string, PainPointScoringSummary>((scoring?.items ?? []).map((i) => [i.pain_point_id, i]));
   const scoreOf = (p: PainPoint) => summaryById.get(p.id)?.score?.normalised ?? null;
 
-  const matches = (p: PainPoint, applyOpenOnly: boolean) => {
-    if (hideIntentional && p.is_intentional) return false;
-    if (onlyIntentional && !p.is_intentional) return false;
-    if (applyOpenOnly && !PAIN_POINT_OPEN_STATUSES.includes(p.status)) return false;
-    if (blockersOnly && !summaryById.get(p.id)?.is_blocker) return false;
-    if (scoredFilter && (scoreOf(p) !== null) !== (scoredFilter === "yes")) return false;
-    if (statusFilter && p.status !== statusFilter) return false;
-    if (priorityFilter && p.priority !== priorityFilter) return false;
-    if (search && !`${p.unique_code} ${p.title}`.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  };
-  const filtered = painPoints.filter((p) => matches(p, openOnly));
-  // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
-  const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && painPoints.some((p) => matches(p, false));
-
-  // Unscored items always sort last, in either direction.
-  const rows = listSort.sort.key === "score"
-    ? [...filtered].sort((a, b) => {
-        const [x, y] = [scoreOf(a), scoreOf(b)];
-        if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
-        return listSort.sort.direction === "asc" ? x - y : y - x;
-      })
-    : sortRows(filtered, listSort.sort, PAIN_POINT_SORT_VALUES);
-
-  // Scoring is the manager tier, and so is editing a Pain Point: the same grant opens the grid.
-  const canScore = scoringTargets?.can_score === true;
   const scoreSettingsLabel = scheme && model
     ? `Score settings: ${scheme.models.find((m) => m.key === model)?.label ?? model}, combined by ${PAIN_POINT_ROLLUP_LABEL[rollup]}`
     : "Score settings";
@@ -236,14 +186,14 @@ export function ProjectPainPointsPage() {
       ),
     },
     { key: "code", label: "Code", sortable: true, render: (p) => <RecordCode code={p.unique_code} ownerProjectCode={p.from_project_code} /> },
-    { key: "type", label: "Type", sortable: true, render: (p) => p.pain_point_type_name },
-    { key: "priority", label: "Priority", sortable: true, render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
+    { key: "type", label: "Type", sortable: true, optional: true, render: (p) => p.pain_point_type_name },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
     {
       key: "status", label: "Status", sortable: true,
       render: (p) => <Badge tone={PAIN_POINT_STATUS_TONE[p.status]}>{PAIN_POINT_STATUS_LABEL[p.status]}</Badge>,
     },
     {
-      key: "score", label: "Score", sortable: true,
+      key: "score", label: "Score", sortable: true, optional: true,
       headerAction: scheme && model && (
         <SettingsPopoverButton
           label={scoreSettingsLabel} title="Score settings"
@@ -274,11 +224,65 @@ export function ProjectPainPointsPage() {
     },
   ];
 
+  const shown = useOptionalColumns("context_pain_points", columns);
+
+  if (!projectId) return null;
+  if (loadError) return <p className="text-muted">{loadError}</p>;
+  if (painPoints === null || project === null) return <Spinner />;
+
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (priorityFilter) params.set("priority", priorityFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (openOnly) params.set("open_only", "true");
+    if (hideIntentional) params.set("hide_intentional", "true");
+    if (onlyIntentional) params.set("only_intentional", "true");
+    if (blockersOnly) params.set("blockers_only", "true");
+    if (scoredFilter) params.set("scored", scoredFilter);
+    if (blockersOnly || scoredFilter) {
+      if (modelParam) params.set("model_key", modelParam);
+      params.set("rollup", rollup);
+    }
+    addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
+    return params;
+  }
+
+  const matches = (p: PainPoint, applyOpenOnly: boolean) => {
+    if (hideIntentional && p.is_intentional) return false;
+    if (onlyIntentional && !p.is_intentional) return false;
+    if (applyOpenOnly && !PAIN_POINT_OPEN_STATUSES.includes(p.status)) return false;
+    if (blockersOnly && !summaryById.get(p.id)?.is_blocker) return false;
+    if (scoredFilter && (scoreOf(p) !== null) !== (scoredFilter === "yes")) return false;
+    if (statusFilter && p.status !== statusFilter) return false;
+    if (priorityFilter && p.priority !== priorityFilter) return false;
+    if (search && !`${p.unique_code} ${p.title}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  };
+  const filtered = painPoints.filter((p) => matches(p, openOnly));
+  // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
+  const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && painPoints.some((p) => matches(p, false));
+
+  // Unscored items always sort last, in either direction.
+  const rows = listSort.sort.key === "score"
+    ? [...filtered].sort((a, b) => {
+        const [x, y] = [scoreOf(a), scoreOf(b)];
+        if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+        return listSort.sort.direction === "asc" ? x - y : y - x;
+      })
+    : sortRows(filtered, listSort.sort, PAIN_POINT_SORT_VALUES);
+
+  // Scoring is the manager tier, and so is editing a Pain Point: the same grant opens the grid.
+  const canScore = scoringTargets?.can_score === true;
   return (
     <div className="container stack">
       <ListPageLayout
         title="Pain Point"
         records={{ projectId, recordType: "pain_point", filters: filterParams().toString(), onImported: reloadPainPoints }}
+        columnChooser={canScore && viewMode === "grid" ? null : shown.chooser}
         actions={
           submission && !submission.can_submit ? (
             <p className="text-muted" role="note">{submission.restriction_message}</p>
@@ -346,7 +350,7 @@ export function ProjectPainPointsPage() {
           ) : (
           <DirectoryTable
             ariaLabel="Pain Points"
-            columns={columns}
+            columns={shown.columns}
             rows={rows}
             sort={listSort.sort}
             onSort={listSort.onHeaderSort}

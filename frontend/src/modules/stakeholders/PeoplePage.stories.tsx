@@ -4,6 +4,7 @@ import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/tes
 import { ApiError, api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { columnTexts, expectHeaderSorts } from "../../testing/sortHelpers";
 import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { PeoplePage } from "./PeoplePage";
@@ -183,6 +184,39 @@ export const StakeholdersOnlyKeepsGroupFilteringAndLastEngaged: Story = {
     }
     await expect(table.getByText("2026-04-02")).toBeInTheDocument();
     await expect(canvas.getByLabelText("Group by")).toBeInTheDocument();
+  },
+};
+
+/** The Groups column orders stakeholders by their group names (none last), and the Group by column by the branch under the chosen top-level group. */
+export const GroupColumnsSortStakeholders: Story = {
+  parameters: { kind: "stakeholder" },
+  beforeEach: () => {
+    const client = buildStakeholderGroup({ id: "group-client", name: "Client", scope: "project", organization_id: null, project_id: "project-1", unique_code: "SGP-001" });
+    const acme = buildStakeholderGroup({ id: "group-acme", name: "Acme", scope: "project", organization_id: null, project_id: "project-1", unique_code: "SGP-002", parent_group_id: "group-client" });
+    const beta = buildStakeholderGroup({ id: "group-beta", name: "Beta", scope: "project", organization_id: null, project_id: "project-1", unique_code: "SGP-003", parent_group_id: "group-client" });
+    const ref = (group: StakeholderGroup) => ({
+      id: group.id, name: group.name, scope: group.scope, parent_group_id: group.parent_group_id, unique_code: group.unique_code, organization_id: null,
+    });
+    mockApis({
+      groups: [client, acme, beta],
+      stakeholders: [
+        buildStakeholder({ id: "s-zed", unique_code: "STK-001", name: "Zed", groups: [ref(beta)] }),
+        buildStakeholder({ id: "s-amy", unique_code: "STK-002", name: "Amy", groups: [ref(acme)] }),
+        buildStakeholder({ id: "s-mia", unique_code: "STK-003", name: "Mia", groups: [] }),
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Stakeholders" });
+    await waitFor(() => expect(columnTexts(table, "Name")).toEqual(["Zed", "Amy", "Mia"]));
+    await userEvent.click(within(table).getByRole("button", { name: "Groups" }));
+    await waitFor(() => expect(columnTexts(table, "Name")).toEqual(["Amy", "Zed", "Mia"]));
+    await userEvent.click(within(table).getByRole("button", { name: "Groups" }));
+    await waitFor(() => expect(columnTexts(table, "Name")).toEqual(["Mia", "Zed", "Amy"]));
+
+    await userEvent.selectOptions(canvas.getByLabelText("Group by"), "Client");
+    await expectHeaderSorts(table, "Client", ["Acme", "Beta", "—"], ["—", "Beta", "Acme"]);
   },
 };
 

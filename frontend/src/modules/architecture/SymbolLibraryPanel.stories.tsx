@@ -106,6 +106,23 @@ export const FiltersAndSortGoToTheServer: Story = {
   },
 };
 
+/** The Used by header orders by the number of records that use the symbol, on the server (sort=used, then order=desc). */
+export const UsedByHeaderSortsOnTheServer: Story = {
+  beforeEach: () => { mockSymbolLibrary(reads()); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Symbols" });
+    const queries = () => libraryQueries(api.get as unknown as ReturnType<typeof mockSymbolLibrary>);
+    await userEvent.click(within(table).getByRole("button", { name: "Used by" }));
+    await waitFor(() => expect(queries().slice(-1)[0].get("sort")).toBe("used"));
+    await expect(queries().slice(-1)[0].get("order")).not.toBe("desc");
+    await expect(within(table).getByRole("columnheader", { name: "Used by" })).toHaveAttribute("aria-sort", "ascending");
+    await userEvent.click(within(table).getByRole("button", { name: "Used by" }));
+    await waitFor(() => expect(queries().slice(-1)[0].get("order")).toBe("desc"));
+    await expect(within(table).getByRole("columnheader", { name: "Used by" })).toHaveAttribute("aria-sort", "descending");
+  },
+};
+
 /** The folder tree is a filter: choosing a folder sends its path, and "Include sub-folders" decides whether the folders below count. */
 export const ChoosingAFolderFiltersByItsPath: Story = {
   beforeEach: () => { mockSymbolLibrary(reads()); },

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import ColumnElement, String, and_, cast, exists, func, or_, select
+from sqlalchemy import ColumnElement, String, and_, case, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.change_request import ChangeRequest, ReviewComment
@@ -462,6 +462,8 @@ class ListRow:
         id / project_id / unique_code / created_at / updated_at: The identity row's values (`project_id` is the project
             asked for).
         name / status / sort_order: The current version's values the list filters and orders by.
+        order_value: The value of the `ROW_ORDER_COLUMNS` sort asked for (`target`, `placement`), read with the row so a
+            list widened over several projects orders the same way the database does; `None` for any other sort.
         from_project_id / from_project_name / from_project_code: Set by `ProjectScope.collect` on a row of
             another project.
     """
@@ -477,6 +479,7 @@ class ListRow:
     from_project_id: UUID | None = None
     from_project_name: str | None = None
     from_project_code: str | None = None
+    order_value: Any = None
 
 
 @dataclass
@@ -545,6 +548,31 @@ lets a caller write `code`, `title`, `created` and `modified`)."""
 _CANONICAL_TO_COLUMN = {"code": "unique_code", "title": "name", "created": "created_at", "modified": "updated_at"}
 
 
+#: Sorts whose value comes from tables the row query joins (the target stage, the component and category), read as
+#: `ListRow.order_value`; `references` is ordered by the caller from the references' text (`ROW_TEXT_SORTS`).
+ROW_ORDER_COLUMNS = ("target", "placement")
+ROW_TEXT_SORTS = ("references",)
+"""The extra keys `GET .../requirements?sort=` accepts: `target` (the target stage's position, then the level), `placement`
+(the component's then the category's name) and `references` (the first external reference's system and key)."""
+
+_LEVEL_RANK = case(
+    (RequirementVersion.level == RequirementLevel.REQUIREMENT, 0),
+    (RequirementVersion.level == RequirementLevel.RECOMMENDED, 1),
+    else_=2,
+)
+
+
+def _row_order_expression(sort: str | None) -> ColumnElement[Any] | None:
+    """The SQL value behind a `ROW_ORDER_COLUMNS` sort, or `None` for any other sort: the target stage's position times
+    ten plus the level's rank (mandatory, recommended, optional), or the component name and category name, lower-cased
+    and joined by a control character that sorts before any letter."""
+    if sort == "target":
+        return ProjectStage.sort_order * 10 + _LEVEL_RANK
+    if sort == "placement":
+        return func.lower(ProjectComponent.name) + "\x01" + func.lower(ProjectCategory.name)
+    return None
+
+
 def list_sort_column(sort: str | None) -> str | None:
     """`sort` as one of `LIST_SORT_COLUMNS` (a canonical key such as `title` is translated), or `None` when it is neither."""
     if sort is None:
@@ -554,8 +582,10 @@ def list_sort_column(sort: str | None) -> str | None:
 
 
 def list_row_sort_value(row: ListRow, column: str) -> Any:
-    """The value a `ListRow` is ordered by for `column` (one of `LIST_SORT_COLUMNS`): the order a widened scope
-    applies in Python after joining several projects' rows, the same as the database's order for one project."""
+    """The value a `ListRow` is ordered by for `column` (one of `LIST_SORT_COLUMNS` or `ROW_ORDER_COLUMNS`): the order a
+    widened scope applies in Python after joining several projects' rows, the same as the database's order for one project."""
+    if column in ROW_ORDER_COLUMNS:
+        return row.order_value
     if column == "status":
         return row.status.value
     if column in ("created_at", "updated_at"):
@@ -570,7 +600,10 @@ def _sql_order(sort: str | None, descending: bool) -> list:
     its prefix and then its number (`REQ-2` before `REQ-10`). The creation time and id break ties so a page is stable."""
     keys: list[Any]
     column_key = list_sort_column(sort)
-    if column_key is None:
+    row_order = _row_order_expression(sort)
+    if row_order is not None:
+        keys = apply_direction([row_order.collate("C") if sort == "placement" else row_order], descending)
+    elif column_key is None:
         keys = [ProjectComponent.sort_order, ProjectCategory.sort_order, RequirementVersion.sort_order]
     else:
         columns: Any = {
@@ -686,6 +719,8 @@ def filter_requirement_rows(
             query = query.join(ProjectComponent, ProjectComponent.id == Requirement.component_id).join(
                 ProjectCategory, ProjectCategory.id == Requirement.category_id,
             )
+        if sort == "target":
+            query = query.outerjoin(ProjectStage, ProjectStage.id == RequirementVersion.target_stage_id)
         return query.where(*conditions)
 
     def matching_count() -> int:
@@ -700,13 +735,21 @@ def filter_requirement_rows(
 
     # A keyword narrows in Python, so the page is cut after it; every other filter is already in the query.
     paged_in_sql = not filters.keyword
-    query = joined(select(
+    row_order = _row_order_expression(sort)
+    columns: list[Any] = [
         Requirement.id, Requirement.unique_code, Requirement.created_at, Requirement.updated_at,
         RequirementVersion.name, RequirementVersion.status, RequirementVersion.sort_order,
-    )).order_by(*_sql_order(sort, descending))
+    ]
+    query = joined(select(*columns, *([row_order] if row_order is not None else []))).order_by(*_sql_order(sort, descending))
     if paged_in_sql and limit is not None:
         query = query.limit(limit).offset(offset)
-    rows = [ListRow(row[0], project_id, *row[1:]) for row in db.execute(query).all()]
+    rows = [
+        ListRow(
+            row[0], project_id, row[1], row[2], row[3], row[4], row[5], row[6],
+            order_value=row[7] if row_order is not None else None,
+        )
+        for row in db.execute(query).all()
+    ]
     if any(row.status is None for row in rows):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
     if paged_in_sql:

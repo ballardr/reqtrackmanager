@@ -11,15 +11,20 @@
  * - The data is static and authorless, so it bypasses the versioned policy model (`docs/decisions.md`, "Licences
  *   in the Policies area"). The product licence is a constant here. No licence text or package field is markup.
  *
- * Dependencies: `hooks/useThirdPartyNotices` (static JSON assets), `DirectoryTable`, `Modal`.
+ * - The library table's optional columns (version, licence, kind, used in) are chosen with the column chooser, offered
+ *   only to a signed-in person because the choice is stored in their preferences.
+ *
+ * Dependencies: `hooks/useThirdPartyNotices` (static JSON assets), `DirectoryTable`, `Modal`, `useOptionalColumns`.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import {
   useLicenceTexts, useThirdPartyNotices,
   type LicenceFont, type LicencePackage, type LicenceSystemComponent, type ThirdPartyNotices,
 } from "../hooks/useThirdPartyNotices";
+import { useAuth } from "../context/AuthContext";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { useSortState, useTableSort } from "../hooks/useTableSort";
 import type { LicenceSection } from "../utils/policiesPath";
 import { sortRows } from "../utils/sortRows";
@@ -111,12 +116,10 @@ function componentTitles(notices: ThirdPartyNotices, ids: string[]): string {
   return ids.map((id) => notices.components.find((c) => c.id === id)?.title ?? id).join(", ");
 }
 
-const LIBRARY_SORT_VALUES = {
-  name: (p: LicencePackage) => p.name,
-  version: (p: LicencePackage) => p.version,
-  licence: (p: LicencePackage) => p.licence,
-  kind: (p: LicencePackage) => p.ecosystem,
-};
+/** The images or bundles listed in a cell, comma-joined as the cell shows them, or `null` when there are none. */
+function joinedOrNull(items: string[]): string | null {
+  return items.length ? items.join(", ") : null;
+}
 
 /** The searchable, sortable table of every library, with a detail dialog per row. */
 function LibrariesTable({ notices }: { notices: ThirdPartyNotices }) {
@@ -130,25 +133,37 @@ function LibrariesTable({ notices }: { notices: ThirdPartyNotices }) {
     [notices.packages, needle],
   );
   const { sort, onSort } = useSortState();
-  const rows = useMemo(() => sortRows(filtered, sort, LIBRARY_SORT_VALUES), [filtered, sort]);
+  const kindLabel = useCallback((p: LicencePackage) => (p.ecosystem === "npm" ? text.packageNpm : text.packagePython), [text.packageNpm, text.packagePython]);
+  const rows = useMemo(() => sortRows(filtered, sort, {
+    name: (p: LicencePackage) => p.name,
+    version: (p) => p.version,
+    licence: (p) => p.licence,
+    kind: kindLabel,
+    usedIn: (p) => componentTitles(notices, p.components),
+  }), [filtered, sort, notices, kindLabel]);
   const columns: DirectoryColumn<LicencePackage>[] = [
     { key: "name", label: text.name, sortable: true, render: (p) => p.name },
-    { key: "version", label: text.version, sortable: true, render: (p) => p.version },
-    { key: "licence", label: text.licence, sortable: true, render: (p) => p.licence },
-    { key: "kind", label: text.kind, sortable: true, render: (p) => (p.ecosystem === "npm" ? text.packageNpm : text.packagePython) },
-    { key: "usedIn", label: text.usedIn, render: (p) => componentTitles(notices, p.components) },
+    { key: "version", label: text.version, optional: true, sortable: true, render: (p) => p.version },
+    { key: "licence", label: text.licence, optional: true, sortable: true, render: (p) => p.licence },
+    { key: "kind", label: text.kind, optional: true, sortable: true, render: kindLabel },
+    { key: "usedIn", label: text.usedIn, optional: true, sortable: true, render: (p) => componentTitles(notices, p.components) },
   ];
+  const chosen = useOptionalColumns("licences_libraries", columns);
+  const { user } = useAuth();
   return (
     <section className="stack" aria-labelledby="licences-libraries">
       <h3 id="licences-libraries" style={{ margin: 0 }}>{text.librariesHeading}</h3>
-      <div style={{ maxWidth: "24rem" }}>
-        <InlineTextInput
-          ariaLabel={text.librariesSearch} placeholder={text.librariesSearchPlaceholder} value={query}
-          onChange={(value) => { setQuery(value); setShown(LIBRARY_PAGE); }}
-        />
+      <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
+        <div style={{ maxWidth: "24rem", flex: "1 1 auto" }}>
+          <InlineTextInput
+            ariaLabel={text.librariesSearch} placeholder={text.librariesSearchPlaceholder} value={query}
+            onChange={(value) => { setQuery(value); setShown(LIBRARY_PAGE); }}
+          />
+        </div>
+        {user && chosen.chooser}
       </div>
       <DirectoryTable
-        ariaLabel={text.librariesTable} columns={columns} rows={rows.slice(0, shown)} rowKey={(p) => `${p.ecosystem}:${p.name}@${p.version}`}
+        ariaLabel={text.librariesTable} columns={chosen.columns} rows={rows.slice(0, shown)} rowKey={(p) => `${p.ecosystem}:${p.name}@${p.version}`}
         sort={sort} onSort={onSort} total={rows.length} onLoadMore={() => setShown((n) => n + LIBRARY_PAGE)}
         onRowClick={setSelected} emptyState={<p className="text-muted">{text.librariesNone}</p>}
       />
@@ -165,13 +180,13 @@ function ProgramsTable({ notices }: { notices: ThirdPartyNotices }) {
     program: text.useProgram, "separate-program": text.useSeparateProgram, library: text.useLibrary, "build-tool": text.useBuildTool,
   };
   const { rows, sort, onSort } = useTableSort(notices.system_components, {
-    name: (c: LicenceSystemComponent) => c.name, licence: (c) => c.licence,
+    name: (c: LicenceSystemComponent) => c.name, licence: (c) => c.licence, role: (c) => c.role, images: (c) => joinedOrNull(c.images),
   });
   const columns: DirectoryColumn<LicenceSystemComponent>[] = [
     { key: "name", label: text.name, sortable: true, render: (c) => c.name },
     { key: "licence", label: text.licence, sortable: true, render: (c) => c.licence },
-    { key: "role", label: text.role, render: (c) => c.role },
-    { key: "images", label: text.images, render: (c) => (c.images.length ? c.images.join(", ") : "–") },
+    { key: "role", label: text.role, sortable: true, render: (c) => c.role },
+    { key: "images", label: text.images, sortable: true, render: (c) => (c.images.length ? c.images.join(", ") : "–") },
   ];
   return (
     <section className="stack" aria-labelledby="licences-programs">
@@ -198,12 +213,14 @@ function ProgramsTable({ notices }: { notices: ThirdPartyNotices }) {
 function BaseImagesTable({ notices }: { notices: ThirdPartyNotices }) {
   const text = useStrings().licences;
   const entries = Object.entries(notices.base_images).map(([image, info]) => ({ image, ...info }));
-  const { rows, sort, onSort } = useTableSort(entries, { image: (e: (typeof entries)[number]) => e.image, licence: (e) => e.licence });
+  const { rows, sort, onSort } = useTableSort(entries, {
+    image: (e: (typeof entries)[number]) => e.image, licence: (e) => e.licence, images: (e) => joinedOrNull(e.images), note: (e) => e.note,
+  });
   const columns: DirectoryColumn<(typeof entries)[number]>[] = [
     { key: "image", label: text.image, sortable: true, render: (e) => e.image },
     { key: "licence", label: text.licence, sortable: true, render: (e) => e.licence },
-    { key: "images", label: text.usedIn, render: (e) => (e.images.length ? e.images.join(", ") : "–") },
-    { key: "note", label: text.notices, render: (e) => e.note },
+    { key: "images", label: text.usedIn, sortable: true, render: (e) => (e.images.length ? e.images.join(", ") : "–") },
+    { key: "note", label: text.notices, sortable: true, render: (e) => e.note },
   ];
   return (
     <section className="stack" aria-labelledby="licences-base-images">

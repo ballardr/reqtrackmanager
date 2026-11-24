@@ -6,7 +6,7 @@
  *
  * Two views over the same filtered set, switched with `Tabs`:
  * - *Register*: a `DirectoryTable` (code opens the detail page) with inherent and residual rating, status, owner and
- *   next-review columns, plus a `FilterPanel` (search, status, type, "review overdue", "no effective treatment yet",
+ *   next-review columns (each but code, title and status can be hidden with the column chooser), plus a `FilterPanel` (search, status, type, "review overdue", "no effective treatment yet",
  *   archived).
  * - *Matrix*: the configured Likelihood x Consequence grid with the risks plotted by inherent or residual rating
  *   (`RiskMatrix`). Clicking a cell narrows the register to that cell and returns to it.
@@ -46,6 +46,7 @@ import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
 import { SortField } from "../../components/SortField";
@@ -215,17 +216,12 @@ export function ProjectRisksPage() {
   }, [search, statusFilter, typeFilter, overdueOnly, untreatedOnly, cell]);
   const filtered = useMemo(() => (risks ?? []).filter((r) => matches(r, openOnly)), [risks, matches, openOnly]);
 
-  if (!projectId) return null;
-  if (loadError) return <p className="text-muted">{loadError}</p>;
-  if (risks === null || project === null) return <Spinner />;
-
-
   const columns: DirectoryColumn<Risk>[] = [
     { key: "code", label: "Code", sortable: true, render: (r) => <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /> },
     { key: "title", label: "Title", sortable: true, render: (r) => <>{r.title}<ProjectScopeLabel row={r} /></> },
-    { key: "type", label: "Type", sortable: true, render: (r) => r.risk_type_name ?? "—" },
-    { key: "inherent", label: "Inherent", sortable: true, render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },
-    { key: "residual", label: "Residual", sortable: true, render: (r) => <RiskRatingBadge rating={r.residual_rating} /> },
+    { key: "type", label: "Type", sortable: true, optional: true, render: (r) => r.risk_type_name ?? "—" },
+    { key: "inherent", label: "Inherent", sortable: true, optional: true, render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },
+    { key: "residual", label: "Residual", sortable: true, optional: true, render: (r) => <RiskRatingBadge rating={r.residual_rating} /> },
     {
       key: "status", label: "Status", sortable: true,
       render: (r) => (
@@ -237,14 +233,20 @@ export function ProjectRisksPage() {
         </FilterBadge>
       ),
     },
-    { key: "owner", label: "Owner", sortable: true, render: (r) => <PrincipalBadge principal={r.owner} placeholder="—" /> },
+    { key: "owner", label: "Owner", sortable: true, optional: true, render: (r) => <PrincipalBadge principal={r.owner} placeholder="—" /> },
     {
-      key: "review", label: "Next review", sortable: true,
+      key: "review", label: "Next review", sortable: true, optional: true,
       render: (r) => r.review_date
         ? <span>{r.review_date}{r.is_review_overdue && <> <Badge tone="danger">Overdue</Badge></>}</span>
         : "—",
     },
   ];
+
+  const shown = useOptionalColumns("risks", columns);
+
+  if (!projectId) return null;
+  if (loadError) return <p className="text-muted">{loadError}</p>;
+  if (risks === null || project === null) return <Spinner />;
 
   // An empty register the "Open only" default caused says so, so it is not read as "nothing recorded".
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && risks.some((r) => matches(r, false));
@@ -254,6 +256,7 @@ export function ProjectRisksPage() {
     <div className="container stack">
       <ListPageLayout
         title="Risks"
+        columnChooser={view === "register" ? shown.chooser : null}
         records={{ projectId, recordType: "risk", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -309,7 +312,7 @@ export function ProjectRisksPage() {
             {view === "register" ? (
               <DirectoryTable
                 ariaLabel="Risks"
-                columns={columns}
+                columns={shown.columns}
                 rows={sortRows(filtered, listSort.sort, RISK_SORT_VALUES)}
                 sort={listSort.sort}
                 onSort={listSort.onHeaderSort}

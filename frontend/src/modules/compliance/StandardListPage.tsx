@@ -27,6 +27,7 @@ import type { ActionMenuItem } from "../../components/ActionMenu";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { SortField } from "../../components/SortField";
 import { SplitButtonTrigger } from "../../components/SplitButtonTrigger";
 import { TileCard, TileGrid } from "../../components/TileCard";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
@@ -41,11 +42,32 @@ import { StandardImportModal } from "./StandardImportModal";
 import { useStandardsTabs } from "./StandardsTabs";
 import type { StandardImportResult } from "./types";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
+import { TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows, TIME_SORT_VALUES, type SortValue } from "../../utils/sortRows";
 
 type StandardListRow = StandardAcrossOrgsRow;
 
 const strings = t().standardsPage;
+
+/** The sortable column keys of the standards list (plus Created and Modified). */
+const STANDARD_SORT_KEYS = ["reference", "name", "organisation", "issuing_organisation", "status", ...TIME_SORT_KEYS] as const;
+
+/** The status the Status column shows for a standard. */
+function statusLabel(standard: StandardListRow): string {
+  return standard.is_archived ? "Archived" : "Active";
+}
+
+/** The sortable value of each column, as the cell shows it (an absent issuing organisation sorts last). */
+const STANDARD_SORT_VALUES: Record<string, (row: StandardListRow) => SortValue> = {
+  ...TIME_SORT_VALUES,
+  reference: (s) => s.reference,
+  name: (s) => s.name,
+  organisation: (s) => s.organization_name,
+  issuing_organisation: (s) => s.issuing_organisation,
+  status: statusLabel,
+};
 
 export function StandardListPage() {
   const navigate = useNavigate();
@@ -66,6 +88,7 @@ export function StandardListPage() {
   const [importing, setImporting] = useState(false);
   const [viewMode, setViewMode] = useViewMode("standards");
   const { tabs, contentProps } = useStandardsTabs("standards");
+  const listSort = useListSort("standards", STANDARD_SORT_KEYS, "reference");
 
   async function reload() {
     setRows(null);
@@ -82,6 +105,7 @@ export function StandardListPage() {
       (!orgChoice || s.organization_id === orgChoice) &&
       (!search || s.name.toLowerCase().includes(search.toLowerCase()) || s.reference.toLowerCase().includes(search.toLowerCase()))
   );
+  const sorted = sortRows(filtered, listSort.sort, STANDARD_SORT_VALUES);
   // One row for a single organisation; with several, one row per organisation under a "Compliance settings" group.
   const settingsItems: ActionMenuItem[] = (orgs ?? []).map((o) => ({
     label: orgs?.length === 1 ? strings.complianceSettings : o.name,
@@ -91,14 +115,16 @@ export function StandardListPage() {
   }));
 
   const columns: DirectoryColumn<StandardListRow>[] = [
-    { key: "reference", label: "Reference", sortable: false, render: (s) => s.reference },
-    { key: "name", label: "Name", sortable: false, render: (s) => s.name },
+    { key: "reference", label: "Reference", sortable: true, render: (s) => s.reference },
+    { key: "name", label: "Name", sortable: true, render: (s) => s.name },
     ...(showOrgColumn
-      ? [{ key: "organisation", label: "Organisation", render: (s: StandardListRow) => s.organization_name } as DirectoryColumn<StandardListRow>]
+      ? [{ key: "organisation", label: "Organisation", sortable: true, optional: true, render: (s: StandardListRow) => s.organization_name } as DirectoryColumn<StandardListRow>]
       : []),
-    { key: "issuing_organisation", label: "Issuing organisation", render: (s) => s.issuing_organisation ?? "—" },
-    { key: "status", label: "Status", render: (s) => (s.is_archived ? "Archived" : "Active") },
+    { key: "issuing_organisation", label: "Issuing organisation", sortable: true, optional: true, render: (s) => s.issuing_organisation ?? "—" },
+    { key: "status", label: "Status", sortable: true, render: statusLabel },
   ];
+
+  const shown = useOptionalColumns("compliance_standards", columns);
 
   async function handleCreate(values: StandardFormValues | EditableStandardFieldValues, organizationId: string) {
     setCreateError(null);
@@ -133,6 +159,7 @@ export function StandardListPage() {
     <div className="stack">
       <ListPageLayout
         title={strings.title}
+        columnChooser={viewMode === "list" ? shown.chooser : null}
         tabs={tabs}
         contentProps={contentProps}
         menuItems={settingsItems}
@@ -167,6 +194,7 @@ export function StandardListPage() {
                 options={orgs.map((o) => ({ value: o.id, label: o.name }))}
               />
             )}
+            <SortField list={listSort} columns={columns} codeKey="reference" titleKey="name" />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -183,23 +211,25 @@ export function StandardListPage() {
             {rows !== null && filtered.length > 0 && viewMode === "list" && (
               <DirectoryTable
                 ariaLabel="Compliance standards"
-                columns={columns}
-                rows={filtered}
+                columns={shown.columns}
+                rows={sorted}
                 rowKey={(s) => s.id}
+                sort={listSort.sort}
+                onSort={listSort.onHeaderSort}
                 onRowClick={(s) => navigate(`/standards/${s.id}`)}
                 emptyState={<p className="text-muted">No compliance standards yet.</p>}
               />
             )}
             {rows !== null && filtered.length > 0 && viewMode === "tiles" && (
               <TileGrid>
-                {filtered.map((s) => (
+                {sorted.map((s) => (
                   <TileCard key={s.id} title={s.name} to={`/standards/${s.id}`}>
                     <div className="text-muted" style={{ fontSize: "0.85rem" }}>{s.reference}</div>
                     {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.organization_name}</div>}
                     <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                       Issuing organisation: {s.issuing_organisation ?? "—"}
                     </div>
-                    <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.is_archived ? "Archived" : "Active"}</div>
+                    <div className="text-muted" style={{ fontSize: "0.8rem" }}>{statusLabel(s)}</div>
                   </TileCard>
                 ))}
               </TileGrid>

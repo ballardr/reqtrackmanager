@@ -99,7 +99,9 @@ function answerLibrary(all: SymbolLibraryRow[], params: URLSearchParams, reads: 
   });
   const sort = params.get("sort");
   if (sort) {
-    const key = (r: SymbolLibraryRow) => (sort === "folder" ? (r.folder_path ?? "") : sort === "source" ? (r.is_builtin ? "0" : "1") : r.name).toLowerCase();
+    const key = (r: SymbolLibraryRow) => (
+      sort === "folder" ? (r.folder_path ?? "") : sort === "source" ? (r.is_builtin ? "0" : "1") : sort === "used" ? String(r.usage_count).padStart(6, "0") : r.name
+    ).toLowerCase();
     rows = [...rows].sort((a, b) => key(a).localeCompare(key(b)) * (params.get("order") === "desc" ? -1 : 1));
   }
   const offset = Number(params.get("offset") ?? 0);

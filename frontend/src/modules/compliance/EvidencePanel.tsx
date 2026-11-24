@@ -22,6 +22,7 @@ import { COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL, type ComplianceEvidence } fro
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useCreatedToast } from "../../hooks/useCreatedToast";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
 import { SortField } from "../../components/SortField";
@@ -79,21 +80,23 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
 
   const listSort = useListSort("compliance_evidence", EVIDENCE_SORT_KEYS, "code", true);
   const sortedRows = sortRows(evidence ?? NO_EVIDENCE, listSort.sort, EVIDENCE_SORT_VALUES);
+  const columns: DirectoryColumn<ComplianceEvidence>[] = [
+    { key: "title", label: "Title", sortable: true, render: (e) => e.title },
+    { key: "code", label: "Code", sortable: true, render: (e) => <RecordCode code={e.unique_code} /> },
+    { key: "issuing_organisation", label: "Issuing organisation", sortable: true, optional: true, render: (e) => e.issuing_organisation ?? "—" },
+    { key: "expiry_date", label: "Expiry", sortable: true, optional: true, render: (e) => e.expiry_date ?? "—" },
+    { key: "validity", label: "Validity", sortable: true, optional: true, render: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state] },
+    { key: "status", label: "Status", sortable: true, render: (e) => (e.is_archived ? "Archived" : "Active") },
+  ];
+
+  const shown = useOptionalColumns("compliance_evidence", columns);
+
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (evidence === null) return <Spinner />;
 
   const filtered = sortedRows
     .filter((e) => includeArchived || !e.is_archived)
     .filter((e) => !search || `${e.unique_code} ${e.title}`.toLowerCase().includes(search.toLowerCase()));
-
-  const columns: DirectoryColumn<ComplianceEvidence>[] = [
-    { key: "title", label: "Title", sortable: true, render: (e) => e.title },
-    { key: "code", label: "Code", sortable: true, render: (e) => <RecordCode code={e.unique_code} /> },
-    { key: "issuing_organisation", label: "Issuing organisation", sortable: true, render: (e) => e.issuing_organisation ?? "—" },
-    { key: "expiry_date", label: "Expiry", sortable: true, render: (e) => e.expiry_date ?? "—" },
-    { key: "validity", label: "Validity", sortable: true, render: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state] },
-    { key: "status", label: "Status", sortable: true, render: (e) => (e.is_archived ? "Archived" : "Active") },
-  ];
 
   return (
     <div className="stack">
@@ -102,11 +105,12 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
           Add evidence
         </button>
         <ListActions projectId={projectId} recordType="compliance_evidence" filters={filterParams().toString()} onImported={reload} />
+        {shown.chooser}
       </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Compliance evidence"
-          columns={columns}
+          columns={shown.columns}
           rows={filtered}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}

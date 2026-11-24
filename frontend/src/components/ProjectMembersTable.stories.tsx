@@ -558,3 +558,24 @@ export const ManyRolesCollapseToCount: Story = {
     await expect(canvas.getByRole("button", { name: "Priya Shah's roles" })).toHaveTextContent("Stakeholder");
   },
 };
+
+/** Role and Source sort by the text the cell shows: the joined role names, and the one-phrase source summary. */
+export const SortByRoleAndSource: Story = {
+  args: { invites: [] },
+  play: async ({ canvasElement }) => {
+    const table = within(canvasElement).getByRole("table", { name: "Project members" });
+    const names = () => within(table).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
+    const header = (name: string) => within(table).getByRole("columnheader", { name });
+
+    await userEvent.click(within(table).getByRole("button", { name: "Role" }));
+    await expect(header("Role")).toHaveAttribute("aria-sort", "ascending");
+    await expect(names()).toEqual(["Morgan Casey", "Alex Morgan", "Priya Shah", "Jordan Lee"]);
+    await userEvent.click(within(table).getByRole("button", { name: "Role" }));
+    await expect(header("Role")).toHaveAttribute("aria-sort", "descending");
+    await expect(names()).toEqual(["Jordan Lee", "Priya Shah", "Alex Morgan", "Morgan Casey"]);
+
+    await userEvent.click(within(table).getByRole("button", { name: "Source" }));
+    await expect(header("Source")).toHaveAttribute("aria-sort", "ascending");
+    await expect(names()).toEqual(["Alex Morgan", "Jordan Lee", "Priya Shah", "Morgan Casey"]);
+  },
+};

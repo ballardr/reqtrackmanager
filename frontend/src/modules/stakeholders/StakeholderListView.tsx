@@ -161,7 +161,8 @@ export function StakeholderListView({
           { key: "interest", label: "Interest", sortable: true, sortValue: (s) => levelOrNull(scheme, "interest", s.interest_level_id), render: (s) => levelName(scheme, "interest", s.interest_level_id) },
           ...(groups.length > 0
             ? [{
-                key: "groups", label: "Groups",
+                key: "groups", label: "Groups", sortable: true,
+                sortValue: (s: Stakeholder) => s.groups.map((g) => g.name).join(", ") || null,
                 render: (s: Stakeholder) =>
                   s.groups.length === 0 ? "—" : (
                     <span className="row" style={{ gap: "var(--space-1)" }}>
@@ -181,7 +182,8 @@ export function StakeholderListView({
             : []),
           ...(groupByRoot
             ? [{
-                key: "group-by", label: groupByRoot.name,
+                key: "group-by", label: groupByRoot.name, sortable: true,
+                sortValue: (s: Stakeholder) => branchNames(groups, s.groups, groupByRoot.id).join(", ") || null,
                 render: (s: Stakeholder) => branchNames(groups, s.groups, groupByRoot.id).join(", ") || "—",
               }]
             : []),

@@ -4,7 +4,7 @@ import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { ProjectContext } from "../../context/ProjectContextValue";
 import { buildUser, withStatefulAuth } from "../../testing/storybook-helpers";
-import { expectHeaderOrdersText, expectHeaderSorts } from "../../testing/sortHelpers";
+import { columnTexts, expectHeaderOrdersText, expectHeaderSorts } from "../../testing/sortHelpers";
 import { expectStressStable, stressText } from "../../testing/stressFixtures";
 import { TextStress } from "../../testing/TextStress";
 import { RecordListView, type ListedRecord } from "./RecordListView";
@@ -178,6 +178,27 @@ export const HeadersSortTheRecords: Story = {
     await expectHeaderOrdersText(table, "Name");
     await expectHeaderSorts(table, "Size", ["1", "3", "5"]);
     await expectHeaderSorts(table, "Type", ["Round", "Square", "—"]);
+  },
+};
+
+/** The Visibility header orders hidden records by who hid them (a record that is shown sorts last). */
+export const VisibilityHeaderSortsHiddenRecords: Story = {
+  args: {
+    includeHidden: true, onShowHidden: fn(), onIncludeHiddenChange: fn(),
+    records: [
+      { ...WIDGETS[0], project_hidden: true, hidden_source: "project" },
+      { ...WIDGETS[1], project_hidden: false, hidden_source: null },
+      { ...WIDGETS[2], project_hidden: true, hidden_source: "ancestor_project" },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const table = within(canvasElement).getByRole("table", { name: "Widgets" });
+    // The Visibility cell also holds a Show button, which is not part of what the header orders by.
+    await userEvent.click(within(table).getByRole("button", { name: "Visibility" }));
+    await waitFor(() => expect(columnTexts(table, "Name")).toEqual(["Gamma", "Alpha", "Beta"]));
+    await expect(within(table).getByRole("columnheader", { name: "Visibility" })).toHaveAttribute("aria-sort", "ascending");
+    await userEvent.click(within(table).getByRole("button", { name: "Visibility" }));
+    await waitFor(() => expect(columnTexts(table, "Name")).toEqual(["Beta", "Alpha", "Gamma"]));
   },
 };
 

@@ -24,6 +24,7 @@ import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useListSort } from "../../hooks/useListSort";
 import { SortField } from "../../components/SortField";
@@ -60,6 +61,20 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
 
   const listSort = useListSort("org_guiding_principles", GUIDING_PRINCIPLE_SORT_KEYS, "code", true);
   const sortedRows = sortRows(guidingPrinciples ?? NONE, listSort.sort, GUIDING_PRINCIPLE_SORT_VALUES);
+
+  const columns: DirectoryColumn<GuidingPrinciple>[] = [
+    { key: "name", label: "Name", sortable: true, render: (g) => g.name },
+    { key: "code", label: "Code", sortable: true, render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (g) => `v${g.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("org_guiding_principles", columns);
+
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciples === null) return <Spinner />;
 
@@ -70,17 +85,6 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
     return true;
   });
 
-  const columns: DirectoryColumn<GuidingPrinciple>[] = [
-    { key: "name", label: "Name", sortable: true, render: (g) => g.name },
-    { key: "code", label: "Code", sortable: true, render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
-    { key: "priority", label: "Priority", sortable: true, render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
-    },
-    { key: "version", label: "Version", sortable: true, render: (g) => `v${g.version_number}` },
-  ];
-
   return (
     <div className="stack">
       <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
@@ -90,11 +94,12 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
         <ListActions
           organizationId={orgId} recordType="guiding_principle" filters={filterStringWithSort({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived }, listSort.sort)} onImported={reloadGuidingPrinciples}
         />
+        {shown.chooser}
       </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Organisation Guiding Principles"
-          columns={columns}
+          columns={shown.columns}
           rows={filtered}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}

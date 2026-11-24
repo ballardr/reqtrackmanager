@@ -74,7 +74,7 @@ test.describe("Compliance Module: standard applicability defaults", () => {
     // project in the org with no manual per-project action. The control is a `link`, not a `button`, because
     // `/standards` defaults to its tiles view, whose cards are `<Link>`s.
     await page.goto("/standards");
-    await page.getByRole("link", { name: new RegExp(reference) }).click();
+    await page.getByRole("link", { name: standardName }).click();
     await expect(page.getByRole("switch", { name: "Applies to all projects by default" })).toHaveAttribute("aria-checked", "false");
     await page.getByRole("switch", { name: "Applies to all projects by default" }).click();
     await expect(page.getByRole("switch", { name: "Applies to all projects by default" })).toHaveAttribute("aria-checked", "true");
@@ -95,7 +95,7 @@ test.describe("Compliance Module: standard applicability defaults", () => {
     // --- Except Gamma-1 back out — its reconciled assignment archives,
     // never deletes, preserving whatever history it may have accrued.
     await page.goto("/standards");
-    await page.getByRole("link", { name: new RegExp(reference) }).click();
+    await page.getByRole("link", { name: standardName }).click();
     await page.getByRole("button", { name: "Exclude a project" }).click();
     const excludeDialog = page.getByRole("dialog", { name: "Exclude a project" });
     await excludeDialog.getByLabel("Project").selectOption({ label: PROJECT_NAMES.gamma1 });

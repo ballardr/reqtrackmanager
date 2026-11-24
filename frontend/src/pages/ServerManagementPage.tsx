@@ -35,6 +35,7 @@ import { ServerModulesTab } from "./ServerModulesTab";
 import { ServerReportFontsTab } from "./ServerReportFontsTab";
 import { FileUploadsTab, PlatformBrandingTab, ServerDetailsTab, SignupModeTab, TestEmailTab } from "./ServerSettingsGroups";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { useServerAccess } from "../hooks/useServerAccess";
 
 const strings = t();
@@ -60,7 +61,7 @@ type AccessReviewConfirmKind =
 /** Sortable columns of the Access Review `DirectoryTable` — mirrors `list_org_users`'s own
  * `sort`/`order` contract; `created_at` is the one addition `/system/users`
  * needed beyond that (Org Users has no "Created" column). */
-type SystemUserSortKey = "display_name" | "email" | "last_login_at" | "created_at";
+type SystemUserSortKey = "display_name" | "email" | "last_login_at" | "created_at" | "organizations" | "groups" | "status";
 
 function AccessReviewTab() {
   const [users, setUsers] = useState<SystemUser[] | null>(null);
@@ -307,10 +308,9 @@ function AccessReviewTab() {
       ),
     },
     {
-      // Comma-joined names have no natural order, so not sortable (style guide
-      // "Pattern: sortable column header"). Orgs stay inline (typically few)
+      // Sorted by the joined names (the count while names are hidden). Orgs stay inline (typically few)
       // with a "show all N" toggle past 2, as Org Admin's "View access" panel does.
-      key: "organizations", label: strings.system.organizations(orgLabelPlural),
+      key: "organizations", label: strings.system.organizations(orgLabelPlural), sortable: true, optional: true,
       render: (u) => {
         if (u.organization_names.length === 0) {
           return u.organization_count > 0
@@ -337,7 +337,7 @@ function AccessReviewTab() {
     {
       // Groups are uncapped, so the full list is in a modal off the row's
       // `ActionMenu` ("View groups"); this column shows a short summary.
-      key: "groups", label: strings.system.groups,
+      key: "groups", label: strings.system.groups, sortable: true, optional: true,
       render: (u) => {
         if (u.group_names.length === 0) return "—";
         const shown = u.group_names.slice(0, 2).join(", ");
@@ -345,7 +345,7 @@ function AccessReviewTab() {
       },
     },
     {
-      key: "status", label: strings.system.status,
+      key: "status", label: strings.system.status, sortable: true,
       render: (u) =>
         u.is_banned ? (
           <Badge tone="danger">{strings.system.bannedBadge}</Badge>
@@ -356,11 +356,11 @@ function AccessReviewTab() {
         ),
     },
     {
-      key: "last_login_at", label: strings.system.lastLogin, sortable: true,
+      key: "last_login_at", label: strings.system.lastLogin, sortable: true, optional: true,
       render: (u) => (u.last_login_at ? new Date(u.last_login_at).toLocaleString() : strings.system.never),
     },
     {
-      key: "created_at", label: strings.system.created, sortable: true,
+      key: "created_at", label: strings.system.created, sortable: true, optional: true, defaultHidden: true,
       render: (u) => new Date(u.created_at).toLocaleDateString(),
     },
     {
@@ -398,6 +398,8 @@ function AccessReviewTab() {
     },
   ];
 
+  const shown = useOptionalColumns("server_users", usersColumns);
+
   const viewGroupsUser = users?.find((u) => u.user_id === viewGroupsUserId) ?? null;
   const assignRolesUser = users?.find((u) => u.user_id === assignRolesUserId) ?? null;
 
@@ -407,6 +409,7 @@ function AccessReviewTab() {
         sectionKey="serverManagement.users" title={strings.system.users} help={strings.system.usersHint(orgLabel)} collapsible={false}
       >
         <div className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap", gap: "var(--space-3)" }}>
+          {shown.chooser}
           <button className="btn" onClick={() => setForceResetOpen(true)}>{strings.passwordReset.forceOpen}</button>
           <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
         </div>
@@ -439,7 +442,7 @@ function AccessReviewTab() {
             </FilterPanel>
             <DirectoryTable
               ariaLabel={strings.system.users}
-              columns={usersColumns}
+              columns={shown.columns}
               rows={users}
               rowKey={(u) => u.user_id}
               sort={sort}

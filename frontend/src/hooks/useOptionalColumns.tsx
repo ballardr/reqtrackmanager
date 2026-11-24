@@ -17,6 +17,9 @@ import { ColumnChooser } from "../components/ColumnChooser";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { useColumnChoice } from "./useColumnChoice";
 
+/** Columns that hold row controls, not data: they are never listed as a shown column. */
+const CONTROL_COLUMNS: ReadonlySet<string> = new Set(["actions", "preview", "select"]);
+
 /** A column's name for the chooser: its `chooserLabel`, its text label, or its key. */
 function chooserName<Row>(column: DirectoryColumn<Row>): string {
   return column.chooserLabel ?? (typeof column.label === "string" ? column.label : column.key);
@@ -47,7 +50,7 @@ export function useOptionalColumns<Row>(
     <ColumnChooser
       columns={optional.map((c) => ({ id: c.key, label: chooserName(c) }))}
       visible={choice.visible} onToggle={choice.toggle} onReset={choice.reset} isDefault={choice.isDefault}
-      alwaysOn={columns.filter((c) => !c.optional).map(chooserName)}
+      alwaysOn={columns.filter((c) => !c.optional && !CONTROL_COLUMNS.has(c.key)).map(chooserName)}
     />
   ) : null;
   return { columns: drawn, chooser };

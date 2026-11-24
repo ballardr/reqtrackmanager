@@ -1,7 +1,7 @@
 /**
  * Module: pages/ProjectHistoryPage
  *
- * The project's changes-over-time view (C-A-10): a `ProjectActivityTable` of Time, Type, Event, Record(s) and Person, newest first, narrowed by a filter panel
+ * The project's changes-over-time view (C-A-10): a `ProjectActivityTable` of Time, Type, Event, Record(s) and Person (Time and Event always; the others through the column chooser), newest first, narrowed by a filter panel
  * (period, type, change, person or group, discussion comments) and exportable as CSV, PDF, Word, ODT or ODS with the same filters.
  * Every filter and the sort live in the URL (`hooks/useUrlFilter`); pages come from `GET .../changes` (server-side narrowing and paging) with
  * the previous rows dimmed while a filter loads; the local period converts to UTC instants (`utils/historyPeriod`). A day is written once, on
@@ -27,6 +27,7 @@ import { cycleSort } from "../components/sortState";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { ProjectContext } from "../context/ProjectContextValue";
 import { useStrings } from "../context/TerminologyContext";
+import { useActivityColumnChoice } from "../hooks/useActivityColumns";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlFlag, useUrlList, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
@@ -209,6 +210,7 @@ export function ProjectHistoryPage() {
   }
 
   const rows = useMemo(() => toActivityRows(entries ?? []), [entries]);
+  const shown = useActivityColumnChoice("project_history", projectId);
 
   const emptyState = (
     <div className="stack" style={{ alignItems: "flex-start" }}>
@@ -220,7 +222,7 @@ export function ProjectHistoryPage() {
   return (
     <ListPageLayout
       title={strings.history.title}
-      ready={entries !== null}
+      ready={entries !== null} columnChooser={shown.chooser}
       loadedRows={entries?.length}
       actions={projectId && (
         <ListExportMenu
@@ -271,7 +273,7 @@ export function ProjectHistoryPage() {
         <div style={loading ? { opacity: 0.55 } : undefined} aria-busy={loading}>
           <ProjectActivityTable
             ariaLabel={strings.history.tableLabel}
-            rows={rows}
+            rows={rows} columns={shown.columns}
             projectId={projectId}
             sort={sort ?? { key: "time", direction: "desc" }}
             onSort={(key) => setSort(cycleSort(sort, key as (typeof SORT_KEYS)[number]))}

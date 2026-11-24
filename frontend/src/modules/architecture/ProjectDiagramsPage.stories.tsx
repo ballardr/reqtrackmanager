@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildDiagram, buildElement, buildFolder, buildStateMachine, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ProjectDiagramsPage } from "./ProjectDiagramsPage";
 
@@ -90,6 +90,26 @@ export const FolderColumnAndFilterNarrowTheList: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Folder Overviews" }));
     await waitFor(() => expect(within(table).queryByRole("link", { name: "DGM-002" })).not.toBeInTheDocument());
     await expect(within(table).getByRole("link", { name: "DGM-001" })).toBeInTheDocument();
+  },
+};
+
+/** The Switches count is off by default; the column chooser adds it and the reset puts it away again. */
+export const SwitchesColumnIsOptionalAndOffByDefault: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  beforeEach: () => { mockArchitectureReads({ diagrams: DIAGRAMS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Diagrams" });
+    for (const name of ["Code", "Name", "Folder", "Element", "Contents", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await expect(within(table).queryByRole("columnheader", { name: "Switches" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Switches" }));
+    await expect(within(table).getByRole("columnheader", { name: "Switches" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Switches" })).not.toBeInTheDocument();
   },
 };
 

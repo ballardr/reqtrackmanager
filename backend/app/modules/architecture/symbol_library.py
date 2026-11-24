@@ -64,7 +64,7 @@ _USERS = (
 #: `(symbol id, owning project id, owning organisation id)`: one owner of one symbol's users.
 _OwnerKey = tuple[uuid.UUID, uuid.UUID | None, uuid.UUID | None]
 
-SORT_KEYS = ("name", "source", "folder")
+SORT_KEYS = ("name", "source", "folder", "used")
 FILE_TYPES = ("svg", "eps", "pdf")
 
 
@@ -295,6 +295,8 @@ def library_page(db: Session, scope: LibraryScope, viewer: User, query: LibraryQ
         shown.sort(key=lambda r: (r.builtin_key is None, r.name.casefold()), reverse=query.descending)
     elif query.sort == "folder":
         shown.sort(key=lambda r: ((paths[r.id] or "").casefold(), r.name.casefold()), reverse=query.descending)
+    elif query.sort == "used":
+        shown.sort(key=lambda r: (totals[r.id], r.name.casefold()), reverse=query.descending)
 
     page = shown[query.offset: query.offset + query.limit]
     owners = usage_owners(db, scope, viewer, [r.id for r in page if totals[r.id] > 0], with_type_names=False)

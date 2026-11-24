@@ -1439,6 +1439,52 @@ export const GroupsTabShowsGroupsAndMemberSourcesTogether: Story = {
   },
 };
 
+/** Name, Role and Members sort the groups on the server (`sort` and `order` on the request); the fully loaded member-source rows
+ * are ordered in the browser by the same column, and a descending Type sort places them after the groups. */
+export const GroupsTabSortsEveryColumn: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      groups: [
+        { id: "g1", name: "Stakeholders", roles: ["stakeholder"], member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [] },
+      ],
+      memberSources: [
+        { source_project_id: "s-zeta", source_project_name: "Zeta", mirror_mode: "mirror_all", mirror_filter_role: null },
+        { source_project_id: "s-alpha", source_project_name: "Alpha", mirror_mode: "member_only", mirror_filter_role: null },
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
+    const table = await canvas.findByRole("table", { name: "Project groups" });
+    await within(table).findByRole("cell", { name: "Stakeholders" });
+    const names = () => within(table).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
+    const header = (name: string) => within(table).getByRole("columnheader", { name });
+
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=name&order=asc")));
+    await expect(names()).toEqual(["Alpha", "Zeta", "Stakeholders"]);
+
+    await userEvent.click(within(table).getByRole("button", { name: "Role" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=roles&order=asc")));
+    await expect(header("Role")).toHaveAttribute("aria-sort", "ascending");
+    // "Member only" precedes "Mirror all roles".
+    await expect(names()).toEqual(["Alpha", "Zeta", "Stakeholders"]);
+    await userEvent.click(within(table).getByRole("button", { name: "Role" }));
+    await expect(names()).toEqual(["Zeta", "Alpha", "Stakeholders"]);
+
+    await userEvent.click(within(table).getByRole("button", { name: "Members" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=members&order=asc")));
+    await expect(header("Members")).toHaveAttribute("aria-sort", "ascending");
+
+    await userEvent.click(within(table).getByRole("button", { name: "Type" }));
+    await expect(header("Type")).toHaveAttribute("aria-sort", "ascending");
+    await expect(names()).toEqual(["Zeta", "Alpha", "Stakeholders"]);
+    await userEvent.click(within(table).getByRole("button", { name: "Type" }));
+    await expect(header("Type")).toHaveAttribute("aria-sort", "descending");
+    await expect(names()).toEqual(["Stakeholders", "Zeta", "Alpha"]);
+  },
+};
+
 /** A project group's members can be "the direct members of another project" (`ProjectGroupMember.source_project_id`,
  * docs/decisions.md), alongside users and nested {@link OrgGroup}s. The labelled line, inside the group's `SidePanel`, links to
  * that project's Members page with a hint that the list is live, not fixed. */

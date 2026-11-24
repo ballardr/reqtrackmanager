@@ -25,6 +25,7 @@ import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { connectionTypeApi, elementTypeApi, orgElementApi, orgSymbolUrl, symbolApi } from "./api";
@@ -85,33 +86,6 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
 
   const listSort = useListSort("org_architecture_elements", ELEMENT_SORT_KEYS, "code", true);
   const sortedRows = sortRows(elements ?? NO_ELEMENTS, listSort.sort, ORG_ELEMENT_SORT_VALUES);
-  if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
-  if (elements === null) return <Spinner />;
-
-  const shown = sortedRows.filter((e) => folders.matches(e.folder_path));
-  const exportFilters = new URLSearchParams();
-  folders.addParams(exportFilters);
-  if (showArchived) exportFilters.set("include_archived", "true");
-  addSortParams(exportFilters, listSort.sort);
-
-  async function save(values: ElementFieldValues, extras: ElementCreateExtras) {
-    setFormError(null);
-    try {
-      if (editing === "new") {
-        await calls.create({ ...values, activate: extras.activate, ports: extras.ports });
-        showToast("Element created.");
-      } else if (editing) {
-        const changed = diffElementFields(valuesFromElement(editing), values);
-        if (Object.keys(changed).length > 0) await calls.update(editing.id, editing.version, changed);
-        showToast(Object.keys(changed).length > 0 ? "Element updated." : "Nothing changed.");
-      }
-      setEditing(null);
-      reload();
-    } catch (err) {
-      setFormError(toErrorMessage(err, "Could not save the element."));
-    }
-  }
-
   async function act(action: () => Promise<unknown>, done: string) {
     try {
       await action();
@@ -125,9 +99,9 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
   const columns: DirectoryColumn<ArchitectureElement>[] = [
     { key: "code", label: "Code", sortable: true, render: (e) => <ScopedRecordCode record={elementCodeRecord(e)} /> },
     { key: "name", label: "Name", sortable: true, render: (e) => e.name },
-    { key: "type", label: "Type", sortable: true, render: (e) => e.element_type_name },
-    { key: "folder", label: "Folder", sortable: true, render: (e) => e.folder_path ?? "—" },
-    { key: "owner", label: "Owner", sortable: true, render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
+    { key: "type", label: "Type", sortable: true, optional: true, render: (e) => e.element_type_name },
+    { key: "folder", label: "Folder", sortable: true, optional: true, render: (e) => e.folder_path ?? "—" },
+    { key: "owner", label: "Owner", sortable: true, optional: true, render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
     {
       key: "status", label: "Status", sortable: true,
       render: (e) => (
@@ -162,6 +136,35 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
     },
   ];
 
+  const chosen = useOptionalColumns("architecture_org_elements", columns);
+
+  if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
+  if (elements === null) return <Spinner />;
+
+  const shown = sortedRows.filter((e) => folders.matches(e.folder_path));
+  const exportFilters = new URLSearchParams();
+  folders.addParams(exportFilters);
+  if (showArchived) exportFilters.set("include_archived", "true");
+  addSortParams(exportFilters, listSort.sort);
+
+  async function save(values: ElementFieldValues, extras: ElementCreateExtras) {
+    setFormError(null);
+    try {
+      if (editing === "new") {
+        await calls.create({ ...values, activate: extras.activate, ports: extras.ports });
+        showToast("Element created.");
+      } else if (editing) {
+        const changed = diffElementFields(valuesFromElement(editing), values);
+        if (Object.keys(changed).length > 0) await calls.update(editing.id, editing.version, changed);
+        showToast(Object.keys(changed).length > 0 ? "Element updated." : "Nothing changed.");
+      }
+      setEditing(null);
+      reload();
+    } catch (err) {
+      setFormError(toErrorMessage(err, "Could not save the element."));
+    }
+  }
+
   return (
     <div className="stack">
       <Tabs
@@ -179,12 +182,13 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
                 <ListMenuItems items={folders.menuItems} />
                 <ListActions organizationId={orgId} recordType="architecture_element" filters={exportFilters.toString()} onImported={reload} />
               </ListActionsMenu>
+              {chosen.chooser}
             </div>
             <div className="side-grid">
               <div className="stack">
                 {folders.bar}
                 <DirectoryTable
-                  ariaLabel="Organisation elements" columns={columns} rows={shown} rowKey={(e) => e.id}
+                  ariaLabel="Organisation elements" columns={chosen.columns} rows={shown} rowKey={(e) => e.id}
                   sort={listSort.sort} onSort={listSort.onHeaderSort}
                   selection={{ selected: folders.selected, onChange: folders.setSelected, label: (e) => `Select ${e.unique_code}`, allLabel: "Select all elements" }}
                       emptyState={<p className="text-muted">{elements.length === 0 ? "The organisation has no elements of its own yet." : "No elements match the chosen folder."}</p>}

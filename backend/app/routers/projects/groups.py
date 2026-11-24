@@ -11,7 +11,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -26,6 +26,7 @@ from app.schemas.principal import PrincipalRef, PrincipalUsageOut
 from app.schemas.project import ProjectGroupCreate, ProjectGroupMemberAdd, ProjectGroupOut, ProjectGroupRoleAssign
 from app.services import engagement
 from app.services.audit import log_event
+from app.services.list_sort import natural_key, order_records
 from app.services.lookups import affected_rows, present
 from app.services.membership_notifications import (
     actor_bypasses_project_managers,
@@ -45,6 +46,12 @@ from app.services.rbac import (
 )
 
 router = APIRouter(tags=["projects-groups"])
+
+#: The Role column's display name of each project role, in the order its dropdown lists them.
+_ROLE_LABELS: dict[ProjectRole, str] = {
+    ProjectRole.PROJECT_MANAGER: "Project manager", ProjectRole.PROJECT_ADMINISTRATOR: "Project administrator",
+    ProjectRole.STAKEHOLDER: "Stakeholder", ProjectRole.MEMBER: "Member",
+}
 
 
 @router.post("/{project_id}/groups", response_model=ProjectGroupOut, status_code=status.HTTP_201_CREATED)
@@ -75,6 +82,7 @@ def list_project_groups(
     project_id: UUID,
     response: Response,
     search: str | None = None,
+    sort: str = Query("name", pattern="^(name|roles|members)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -85,14 +93,36 @@ def list_project_groups(
 
     `search` (case-insensitive name substring) and `limit`/`offset` are optional, as `list_org_groups`:
     omitting `limit` returns every group unpaginated; when given, the pre-slice total is returned via
-    `X-Total-Count`. `order` flips the name order to descending (as `list_org_groups`); Name is the list's
-    only sortable column, so there is no `sort` field.
+    `X-Total-Count`. `sort` is `name` (default), `roles` (the joined role names the Role column shows; a group
+    with no role sorts last ascending and first descending) or `members` (the number of user members); `order`
+    sets the direction. Equal values are ordered by name, then id.
     """
     query = select(ProjectGroup).where(ProjectGroup.project_id == project_id)
     if search:
         query = query.where(ProjectGroup.name.ilike(f"%{search}%"))
-    name_order = ProjectGroup.name.desc() if order == "desc" else ProjectGroup.name
-    groups = db.scalars(query.order_by(name_order)).all()
+    descending = order == "desc"
+    if sort == "members":
+        member_count = (
+            select(func.count()).select_from(ProjectGroupMember)
+            .where(ProjectGroupMember.project_group_id == ProjectGroup.id, ProjectGroupMember.user_id.is_not(None))
+            .correlate(ProjectGroup).scalar_subquery()
+        )
+        ordering = [member_count.desc() if descending else member_count.asc(), ProjectGroup.name.asc(), ProjectGroup.id.asc()]
+    else:
+        ordering = [ProjectGroup.name.desc() if descending and sort == "name" else ProjectGroup.name.asc(), ProjectGroup.id.asc()]
+    groups = list(db.scalars(query.order_by(*ordering)).all())
+    if sort == "roles" and groups:
+        held: dict[UUID, set[ProjectRole]] = {}
+        for group_id, role in db.execute(
+            select(ProjectGroupRole.project_group_id, ProjectGroupRole.role).where(
+                ProjectGroupRole.project_group_id.in_([g.id for g in groups])
+            )
+        ).all():
+            held.setdefault(group_id, set()).add(role)
+        groups = order_records(
+            groups, lambda g: ", ".join(_ROLE_LABELS[r] for r in _ROLE_LABELS if r in held.get(g.id, ())) or None,
+            descending=descending, tie_of=lambda g: natural_key(g.name),
+        )
 
     response.headers["X-Total-Count"] = str(len(groups))
     if limit is not None:

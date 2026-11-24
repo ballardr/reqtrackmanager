@@ -49,10 +49,14 @@ const LAST_MANAGER_TITLE =
 
 type Row = { kind: "user"; member: ComplianceStandardMember } | { kind: "group"; group: ComplianceStandardGroupMember };
 
-/** Sortable value of each sortable column; a group's Email cell shows its member count, so that text orders it. */
+/** Sortable value of each column: a group has no email (its cell shows a dash, which sorts last) and the roles order by their joined labels. */
 const MEMBER_SORT_VALUES: Record<string, (row: Row) => SortValue> = {
   name: (row) => (row.kind === "user" ? row.member.display_name : row.group.group_name),
-  email: (row) => (row.kind === "user" ? row.member.email : ""),
+  email: (row) => (row.kind === "user" ? row.member.email : null),
+  roles: (row) =>
+    STANDARD_ROLE_KEYS.filter((roleKey) => (row.kind === "user" ? row.member.role_keys : row.group.role_keys).includes(roleKey))
+      .map((roleKey) => COMPLIANCE_STANDARD_ROLE_LABEL[roleKey])
+      .join(", ") || null,
 };
 
 export function StandardMembersSection({
@@ -175,6 +179,7 @@ export function StandardMembersSection({
     {
       key: "roles",
       label: "Roles",
+      sortable: true,
       render: (row) => {
         const name = row.kind === "user" ? row.member.display_name : row.group.group_name;
         const roleKeys = row.kind === "user" ? row.member.role_keys : row.group.role_keys;

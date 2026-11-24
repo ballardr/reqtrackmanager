@@ -2,8 +2,9 @@
  * Module: modules/architecture/SymbolLibraryTable
  *
  * The table view of the symbol library page: a `DirectoryTable` with a checkbox column (the rows that can be filed), the
- * drawing, the name with its badges, the source, the folder, where the symbol is used and the row's actions. Name, Source and
- * Folder sort on a header click, and the sort is the server's (the page passes `sort` and `onSort`), so it covers every row.
+ * drawing, the name with its badges, the source, the folder, where the symbol is used and the row's actions. Name, Source,
+ * Folder and Used by (the number of records that use the symbol) sort on a header click, and the sort is the server's
+ * (the page passes `sort` and `onSort`), so it covers every row.
  * Text a person typed (a name, a folder path) is drawn with `CellText`, so a long one never changes the table's shape.
  */
 import type { ReactNode } from "react";
@@ -58,7 +59,7 @@ export function SymbolLibraryTable({
     },
     { key: "source", label: "Source", sortable: true, render: sourceText },
     { key: "folder", label: "Folder", sortable: true, render: (r) => (r.folder_path ? <CellText lines={2}>{r.folder_path}</CellText> : <span className="text-muted">—</span>) },
-    { key: "used", label: "Used by", render: (r) => <UsedBy row={r} onShow={onShowUsage} /> },
+    { key: "used", label: "Used by", sortable: true, render: (r) => <UsedBy row={r} onShow={onShowUsage} /> },
   ];
   if (actions) {
     columns.push({

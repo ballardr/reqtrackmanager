@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { expectHeaderSorts } from "../../testing/sortHelpers";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildStakeholderGroup } from "./fixtures";
 import { StakeholderGroupsPanel } from "./StakeholderGroupsPanel";
@@ -167,6 +168,18 @@ export const MembersSortByName: Story = {
     await userEvent.click(within(region).getByRole("button", { name: /Name/ }));
     await userEvent.click(within(region).getByRole("button", { name: /Name/ }));
     await waitFor(() => expect(order()[0]).toContain("Fran Finance"));
+  },
+};
+
+/** The Membership header orders direct members before members that arrive through a child group, and back. */
+export const MembersSortByMembership: Story = {
+  beforeEach: () => mockReads(ORG_BASE, GROUPS),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Acme" }));
+    const region = await canvas.findByRole("region", { name: "Members of Acme" });
+    const table = await within(region).findByRole("table");
+    await expectHeaderSorts(table, "Membership", ["Direct", "Via a child group"]);
   },
 };
 

@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { expectHeaderSorts } from "../../testing/sortHelpers";
 import type { OrgUser, Project } from "../../api/types";
-import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
 import type { ComplianceStandard, ComplianceStandardVersion, ProjectCompliance, ProjectComplianceStatus } from "./types";
 
@@ -83,7 +83,7 @@ function mockApis(overrides: {
 const meta: Meta<typeof ProjectCompliancePage> = {
   title: "Modules/Compliance/ProjectCompliancePage",
   component: ProjectCompliancePage,
-  decorators: [withToast(), withRouter(`/projects/${PROJECT_ID}/modules/compliance`, "/projects/:projectId/modules/compliance")],
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" })), withToast(), withRouter(`/projects/${PROJECT_ID}/modules/compliance`, "/projects/:projectId/modules/compliance")],
 };
 export default meta;
 
@@ -95,6 +95,24 @@ export const ListsAssignedStandards: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText(/ISO-27001/)).toBeInTheDocument());
     await expect(canvas.getByText(/77.8%/)).toBeInTheDocument();
+  },
+};
+
+/** Every column is shown by default; the column chooser hides Version and the reset shows it again. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Compliance standards assigned to this project" });
+    for (const name of ["Standard", "Version", "Compliance", "Non-compliant", "Target date"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Version" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Version" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Version" })).toBeInTheDocument();
   },
 };
 

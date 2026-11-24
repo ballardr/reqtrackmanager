@@ -26,7 +26,7 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, Pend
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.service_user import ServiceUserProfile
 from app.models.user import User
-from app.modules.registry import list_enabled_module_roles
+from app.modules.registry import get_module_registry, list_enabled_module_roles
 from app.routers.orgs.core import _now
 from app.schemas.org import (
     CustomRoleGrantOut,
@@ -48,6 +48,7 @@ from app.schemas.org import (
 )
 from app.services import credential_reset, engagement, invites, service_users
 from app.services.audit import log_event
+from app.services.list_sort import natural_key, order_records
 from app.services.lookups import present
 from app.services.notifications import notify
 from app.services.org_membership import (
@@ -122,7 +123,7 @@ def list_org_users(
     is_service_account: bool | None = None,
     include_archived: bool = False,
     search: str | None = None,
-    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at)$"),
+    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at|roles|status|2fa)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -143,9 +144,11 @@ def list_org_users(
     can already browse, so they do not need org-admin. As `list_requirements`, omitting `limit` returns every
     match unpaginated; when given, the total before slicing is returned via `X-Total-Count`.
 
-    `sort` overrides the default `display_name` sort with `email` or `last_login_at`; `order` is `asc`
-    (default) or `desc`. `last_login_at` is nullable: never-logged-in rows sort last regardless of `order`, so
-    descending surfaces the most recently active users first.
+    `sort` overrides the default `display_name` sort with `email`, `last_login_at`, `roles` (the joined role names
+    as the Roles column shows them), `status` (Active, Archived or Deactivated) or `2fa` (without before with; a
+    service user has no value and sorts last); `order` is `asc` (default) or `desc`. `last_login_at` is nullable:
+    never-logged-in rows sort last regardless of `order`, so descending surfaces the most recently active users
+    first. A row with no value for `roles` or `2fa` sorts last ascending and first descending, equal values by name.
     """
     filters_requested = any(
         v is not None
@@ -246,7 +249,17 @@ def list_org_users(
         needle = search.lower()
         results = [r for r in results if needle in r.display_name.lower() or needle in r.email.lower()]
 
-    if sort and sort != "display_name":
+    if sort is not None and sort in _DERIVED_USER_SORT_KEYS:
+        sort_key: str = sort
+        module_labels = {
+            (module_key, role.role_key): f"{role.name} ({get_module_registry()[module_key].name})"
+            for module_key, role in list_enabled_module_roles(db, organization_id, "org")
+        }
+        results = order_records(
+            results, lambda r: _derived_user_sort_value(r, sort_key, module_labels), descending=(order == "desc"),
+            id_of=lambda r: str(r.user_id), tie_of=lambda r: natural_key(r.display_name),
+        )
+    elif sort and sort != "display_name":
         def _sort_value(item: OrgUserOut):
             value = getattr(item, sort)
             if sort == "last_login_at":
@@ -262,6 +275,37 @@ def list_org_users(
     if limit is not None:
         results = results[offset:offset + limit]
     return results
+
+
+#: The `sort` keys of `list_org_users` whose value is derived from what a column displays, not read from one field.
+_DERIVED_USER_SORT_KEYS = frozenset({"roles", "status", "2fa"})
+
+#: The Roles column's display name of each organisation role, in the order its dropdown lists them.
+_ORG_ROLE_LABELS: dict[OrgRole, str] = {
+    OrgRole.MEMBER: "Member", OrgRole.PROJECT_CREATOR: "Project creator", OrgRole.ORG_ADMIN: "Org admin",
+}
+
+
+def _derived_user_sort_value(item: OrgUserOut, key: str, module_labels: dict[tuple[str, str], str]) -> str | int | None:
+    """The sort value of one organisation user for a derived sort key, matching the text its column shows.
+
+    Args:
+        item: The listed user.
+        key: `roles`, `status` or `2fa`.
+        module_labels: The display label (`"<role name> (<module name>)"`) of each enabled organisation-scoped module role.
+
+    Returns:
+        `roles`: the joined display names of the organisation, module and custom roles, or `None` when there are none.
+        `status`: "Active", "Archived" or "Deactivated". `2fa`: 0 without, 1 with, `None` for a service user.
+    """
+    if key == "roles":
+        names = [_ORG_ROLE_LABELS[role] for role in _ORG_ROLE_LABELS if role in item.roles]
+        names += [module_labels[(g.module_key, g.role_key)] for g in item.module_roles if (g.module_key, g.role_key) in module_labels]
+        names += [g.name for g in item.custom_roles]
+        return ", ".join(names) or None
+    if key == "status":
+        return "Archived" if item.is_archived else "Deactivated" if not item.is_active else "Active"
+    return None if item.is_service_account else int(item.is_2fa_enabled)
 
 
 def _org_pending_invite_out(invite: PendingInvite, db: Session) -> OrgPendingInviteOut:

@@ -52,6 +52,7 @@ from app.services import requirement_aliases as alias_service
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.external_reference_surfaces import reference_texts
 from app.services.list_sort import order_records
 from app.services.lookups import project_or_404
 from app.services.placements import PlacementPair
@@ -61,6 +62,8 @@ from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirement_aliases import active_aliases
 from app.services.requirements import (
     OPEN_CR_STATUSES,
+    ROW_ORDER_COLUMNS,
+    ROW_TEXT_SORTS,
     ListPrefetch,
     ListRow,
     RequirementFilters,
@@ -256,7 +259,9 @@ def list_requirements(
     only_watched: bool | None = None,
     phase: str | None = Query(None, description="Only requirements whose governing phase (their component's track, else the stage's) has this name."),
     include_archived: bool = False,
-    sort: str | None = Query(None, pattern="^(unique_code|code|name|title|status|created_at|created|updated_at|modified)$"),
+    sort: str | None = Query(
+        None, pattern="^(unique_code|code|name|title|status|created_at|created|updated_at|modified|target|placement|references)$",
+    ),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -278,9 +283,10 @@ def list_requirements(
     slicing) is returned in the `X-Total-Count` response header.
 
     `sort` overrides the default component/category/manual-order sort with a single-column sort by
-    `unique_code` (`code`), `name` (`title`), `status`, `created_at` (`created`) or `updated_at` (`modified`);
-    `order` picks `asc` (default) or `desc`. A code orders by its prefix and then its number (`REQ-2` before
-    `REQ-10`). Without `sort` the default ordering applies.
+    `unique_code` (`code`), `name` (`title`), `status`, `created_at` (`created`), `updated_at` (`modified`),
+    `target` (the target stage's position, then the level), `placement` (the component's then the category's name)
+    or `references` (the first external reference's system and key); `order` picks `asc` (default) or `desc`.
+    A code orders by its prefix and then its number (`REQ-2` before `REQ-10`). Without `sort` the default ordering applies.
 
     `X-Total-Unfiltered-Count` is the count within only the mandatory project + default archived-visibility
     scope, before the component/category/search/status/completed/stage/comments/watched filters narrow it;
@@ -305,7 +311,7 @@ def list_requirements(
     # One project, or a scope widened over related projects. With one project the database sorts and pages,
     # so only the returned page is read; a widened scope needs every project's rows to order and page them
     # together, so those are read whole and cut here.
-    single = not project_scope.widened
+    single = not project_scope.widened and sort not in ROW_TEXT_SORTS
     matching = 0
 
     def rows_for(pid: UUID) -> list[ListRow]:
@@ -323,8 +329,11 @@ def list_requirements(
 
     if not single:
         matching = len(rows)
-        column = list_sort_column(sort)
-        if column is not None:
+        column = list_sort_column(sort) or (sort if sort in ROW_ORDER_COLUMNS else None)
+        if sort in ROW_TEXT_SORTS:
+            texts = reference_texts(db, "requirement", [row.id for row in rows])
+            rows = order_records(rows, lambda row: texts.get(row.id), descending=order == "desc")
+        elif column is not None:
             rows = order_records(rows, lambda row: list_row_sort_value(row, column), descending=order == "desc")
         if limit is not None:
             rows = rows[offset:offset + limit]

@@ -234,7 +234,7 @@ export const SYMBOL_SOURCE_LABEL = { builtin: "Built-in", uploaded: "Uploaded" }
 export const SYMBOL_USED_LABEL = { used: "Used", unused: "Not used" } as const;
 
 /** The library's sortable columns (the server sorts). */
-export const SYMBOL_SORT_KEYS = ["name", "source", "folder"] as const;
+export const SYMBOL_SORT_KEYS = ["name", "source", "folder", "used"] as const;
 
 /** One row of the symbol library page (`GET .../symbols/library`). */
 export interface SymbolLibraryRow {

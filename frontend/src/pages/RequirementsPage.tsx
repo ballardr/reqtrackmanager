@@ -27,13 +27,13 @@ import { RequirementCreateModal } from "../components/RequirementCreateModal";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
+import { DirectoryTable, type DirectoryColumn } from "../components/DirectoryTable";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
 import { BulkTagDialog } from "../components/BulkTagDialog";
 import { projectTagAdminApi } from "../api/tags";
 import { TagFilterField } from "../components/TagFilterField";
-import { SortableHeader } from "../components/SortableHeader";
 import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
 import { TileCard, TileGrid } from "../components/TileCard";
@@ -45,6 +45,7 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { usePageReferences } from "../hooks/usePageReferences";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -71,7 +72,7 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "a
  * order); it has no direction and the server is sent no `sort` for it.
  */
 const COMPONENT_ORDER = "component";
-const SORT_KEYS = [COMPONENT_ORDER, "unique_code", "name", "status", ...TIME_SORT_KEYS] as const;
+const SORT_KEYS = [COMPONENT_ORDER, "unique_code", "name", "status", "target", "placement", "references", ...TIME_SORT_KEYS] as const;
 
 /**
  * Requirement browser (C-G-04: sorted by component/category): search by name/ID
@@ -158,7 +159,6 @@ export function RequirementsPage() {
   const [bulkMoveStageId, setBulkMoveStageId] = useState("");
   const [bulkMoveDialogOpen, setBulkMoveDialogOpen] = useState(false);
   const bulkMoveTriggerRef = useRef<HTMLButtonElement>(null);
-  const selectAllRef = useRef<HTMLInputElement>(null);
 
   /** The list's filters, by the names its list request and the shared export both take (no paging or sort). */
   function filterParams(): URLSearchParams {
@@ -237,6 +237,9 @@ export function RequirementsPage() {
     { key: "unique_code", label: "ID", sortable: true },
     { key: "name", label: "Name", sortable: true },
     { key: "status", label: strings.changeRequests.status, sortable: true },
+    { key: "target", label: "Target · level", sortable: true },
+    { key: "placement", label: "Component · category", sortable: true },
+    { key: "references", label: strings.references.column, sortable: true },
   ];
 
   useLoadOnChange(reload, [
@@ -281,34 +284,6 @@ export function RequirementsPage() {
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
-  }
-
-  // `indeterminate` is a DOM-only property, not a React prop, so the "some
-  // but not all rows selected" state is applied through the ref.
-  useEffect(() => {
-    if (!selectAllRef.current || !requirements) return;
-    const own = requirements.filter((r) => !r.from_project_id);
-    const selectedLoaded = own.filter((r) => selectedIds.has(r.id)).length;
-    selectAllRef.current.indeterminate = selectedLoaded > 0 && selectedLoaded < own.length;
-  }, [requirements, selectedIds]);
-
-  function toggleRowSelected(id: string) {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleSelectAllLoaded() {
-    if (!requirements) return;
-    // Rows from a related project are read-only here: bulk actions only ever touch this project's own.
-    const own = requirements.filter((r) => !r.from_project_id);
-    setSelectedIds((current) => {
-      const allSelected = own.every((r) => current.has(r.id));
-      return allSelected ? new Set() : new Set(own.map((r) => r.id));
-    });
   }
 
   /** Runs `action` once per selected requirement, sequentially, tolerating
@@ -421,6 +396,64 @@ export function RequirementsPage() {
     );
   }
 
+  /** Every column the list can draw; the person chooses the optional ones (`useOptionalColumns`). */
+  const columns: DirectoryColumn<Requirement>[] = [
+    {
+      key: "unique_code", label: "ID", sortable: true,
+      render: (r) => <span className="text-muted"><RequirementListCode requirement={r} componentIds={tagFilter.components} categoryIds={tagFilter.categories} /></span>,
+    },
+    {
+      key: "name", label: "Name", sortable: true,
+      render: (r) => (
+        <>
+          <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`}>{r.name}</Link>
+          <ProjectScopeLabel row={r} />
+        </>
+      ),
+    },
+    {
+      key: "status", label: strings.changeRequests.status, sortable: true,
+      render: (r) => (
+        <div className="row" style={{ gap: "var(--space-2)" }}>
+          <FilterBadge active={statusFilter === r.status} tone={REQUIREMENT_STATUS_TONE[r.status]} onClick={() => toggleStatusFilter(r.status)}>
+            {REQUIREMENT_STATUS_LABEL[r.status]}
+          </FilterBadge>
+          {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
+          {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
+          {badges(r)}
+        </div>
+      ),
+    },
+    {
+      key: "target", label: "Target · level", sortable: true, optional: true, chooserLabel: "Target and level",
+      render: (r) => <span className="text-muted">{targetText(r)} · {REQUIREMENT_LEVEL_LABEL[r.level]}</span>,
+    },
+    {
+      key: "placement", label: "Component · category", sortable: true, optional: true, chooserLabel: "Component and category",
+      render: (r) => <span className="text-muted">{r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}</span>,
+    },
+    ...(showReferences
+      ? [{
+          key: "references", label: strings.references.column, sortable: true, optional: true,
+          render: (r: Requirement) => <ReferencesCell references={referenced[r.id]} />,
+        } as DirectoryColumn<Requirement>]
+      : []),
+    {
+      key: "order", label: <span className="sr-only">{strings.requirements.sortComponentOrder}</span>,
+      render: (r) => !r.from_project_id && (
+        <div className="row" style={{ gap: "var(--space-1)" }}>
+          <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
+            <ArrowUp />
+          </button>
+          <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
+            <ArrowDown />
+          </button>
+        </div>
+      ),
+    },
+  ];
+  const shown = useOptionalColumns("requirements", columns);
+
   return (
     <div className="stack">
       <ListPageLayout
@@ -432,6 +465,7 @@ export function RequirementsPage() {
             <Plus size={16} /> {strings.requirements.newRequirement}
           </button>
         }
+        columnChooser={shown.chooser}
         records={{ projectId: projectId ?? "", recordType: "requirement", filters: (headerSort ? addSortParams(filterParams(), headerSort) : filterParams()).toString(), onImported: reload }}
         filter={
           <FilterPanel
@@ -654,101 +688,17 @@ export function RequirementsPage() {
               </TileGrid>
             )}
             {requirements && requirements.length > 0 && viewMode === "list" && (
-              <div className="card" style={{ overflowX: "auto" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      {canManageProject && (
-                        <th style={{ width: "3%" }}>
-                          <input
-                            ref={selectAllRef}
-                            type="checkbox"
-                            checked={requirements.some((r) => !r.from_project_id) && requirements.every((r) => r.from_project_id || selectedIds.has(r.id))}
-                            onChange={toggleSelectAllLoaded}
-                            aria-label={strings.requirements.bulkSelectAll}
-                          />
-                        </th>
-                      )}
-                      <SortableHeader
-                        style={{ width: "9%" }} label="ID" sortKey="unique_code" sort={headerSort}
-                        onSort={listSort.onHeaderSort}
-                      />
-                      <SortableHeader
-                        style={{ width: "38%" }} label="Name" sortKey="name" sort={headerSort}
-                        onSort={listSort.onHeaderSort}
-                      />
-                      <SortableHeader
-                        label={strings.changeRequests.status} sortKey="status" sort={headerSort}
-                        onSort={listSort.onHeaderSort}
-                      />
-                      <th>Target · level</th>
-                      <th>Component · category</th>
-                      {showReferences && <th>{strings.references.column}</th>}
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {requirements.map((r) => (
-                      <tr
-                        key={r.id}
-                        className="entity-accent-row"
-                        style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
-                      >
-                        {canManageProject && (
-                          <td>
-                            {!r.from_project_id && (
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.has(r.id)}
-                                onChange={() => toggleRowSelected(r.id)}
-                                aria-label={strings.requirements.bulkSelectRow(`${r.unique_code} ${r.name}`)}
-                              />
-                            )}
-                          </td>
-                        )}
-                        <td className="text-muted"><RequirementListCode requirement={r} componentIds={tagFilter.components} categoryIds={tagFilter.categories} /></td>
-                        <td>
-                          <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`}>{r.name}</Link>
-                          <ProjectScopeLabel row={r} />
-                        </td>
-                        <td>
-                          <div className="row" style={{ gap: "var(--space-2)" }}>
-                            <FilterBadge
-                              active={statusFilter === r.status}
-                              tone={REQUIREMENT_STATUS_TONE[r.status]}
-                              onClick={() => toggleStatusFilter(r.status)}
-                            >
-                              {REQUIREMENT_STATUS_LABEL[r.status]}
-                            </FilterBadge>
-                            {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
-                            {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
-                            {badges(r)}
-                          </div>
-                        </td>
-                        <td className="text-muted">
-                          {targetText(r)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
-                        </td>
-                        <td className="text-muted">
-                          {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
-                        </td>
-                        {showReferences && <td><ReferencesCell references={referenced[r.id]} /></td>}
-                        <td>
-                          {!r.from_project_id && (
-                            <div className="row" style={{ gap: "var(--space-1)" }}>
-                              <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
-                                <ArrowUp />
-                              </button>
-                              <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
-                                <ArrowDown />
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DirectoryTable
+                ariaLabel={strings.requirements.title} columns={shown.columns} rows={requirements} rowKey={(r) => r.id}
+                rowAccent={ENTITY_ACCENT_COLOR.requirement}
+                selection={canManageProject ? {
+                  selected: selectedIds, onChange: setSelectedIds, selectable: (r) => !r.from_project_id,
+                  label: (r) => strings.requirements.bulkSelectRow(`${r.unique_code} ${r.name}`),
+                  allLabel: strings.requirements.bulkSelectAll,
+                } : undefined}
+                sort={headerSort} onSort={listSort.onHeaderSort}
+                emptyState={null}
+              />
             )}
             {requirements && (
               <LoadMoreButton

@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import {
-  buildComponent, buildComponentPhases, buildComponentTrack, buildStage, buildStageWorkflow, withToast,
+  buildComponent, buildComponentPhases, buildComponentTrack, buildStage, buildStageWorkflow, buildUser, withAuth, withToast,
 } from "../testing/storybook-helpers";
 import { ComponentPhasesPanel } from "./ComponentPhasesPanel";
 
@@ -25,7 +25,7 @@ function mockReads(phases: ReturnType<typeof buildComponentPhases>) {
 const meta: Meta<typeof ComponentPhasesPanel> = {
   title: "Components/ComponentPhasesPanel",
   component: ComponentPhasesPanel,
-  decorators: [withToast()],
+  decorators: [withAuth(buildUser()), withToast()],
   args: { projectId: "project-1", organizationId: "org-1", orgUsers: [] },
 };
 export default meta;

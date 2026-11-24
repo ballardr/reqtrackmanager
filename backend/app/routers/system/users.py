@@ -30,6 +30,7 @@ from app.schemas.pat import BulkRevokeResult
 from app.services import credential_reset
 from app.services.audit import log_event
 from app.services.imported_people import assert_not_imported_person
+from app.services.list_sort import natural_key, order_records
 from app.services.pats import revoke_matching
 from app.services.rate_limit import RateLimiter
 from app.services.rbac import get_user_org_group_ids, require_server_admin
@@ -424,7 +425,7 @@ def list_system_users(
     has_2fa: bool | None = None,
     is_server_admin: bool | None = None,
     search: str | None = None,
-    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at|created_at)$"),
+    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at|created_at|organizations|groups|status)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -451,6 +452,10 @@ def list_system_users(
     `created_at`, ascending unless `order=desc`. They re-sort the full filtered result across pages for
     `DirectoryTable`'s sortable columns, not only the loaded rows. `last_login_at` is nullable: never-logged-in
     rows sort last regardless of `order`, so descending surfaces the most recently active users first.
+    `organizations` and `groups` order by the joined names the columns show, `status` by Active, Banned or
+    Deactivated; a user with no value sorts last ascending and first descending, equal values by name. While
+    `access_review_show_org_names` is off the names are not read, so `organizations` orders by the number of
+    organisations and `groups` has no value for any user.
 
     Server-admin only (`require_server_admin`, no org-admin fallback): this spans every organisation's users.
     """
@@ -473,7 +478,21 @@ def list_system_users(
         needle = search.lower()
         users = [u for u in users if needle in u.display_name.lower() or needle in u.email.lower()]
 
-    if sort and sort != "display_name":
+    # The organisation and group names are read for every filtered user when they are the sort key, otherwise only for the page.
+    lookups = _directory_lookups(db, [u.id for u in users]) if sort in ("organizations", "groups") else None
+    if lookups is not None and sort is not None:
+        org_ids, org_names, group_names = lookups
+        sort_key: str = sort
+        users = order_records(
+            users, lambda u: _names_sort_value(u.id, sort_key, org_ids, org_names, group_names), descending=(order == "desc"),
+            id_of=lambda u: str(u.id), tie_of=lambda u: natural_key(u.display_name),
+        )
+    elif sort == "status":
+        users = order_records(
+            users, lambda u: "Banned" if u.is_banned else "Deactivated" if not u.is_active else "Active",
+            descending=(order == "desc"), id_of=lambda u: str(u.id), tie_of=lambda u: natural_key(u.display_name),
+        )
+    elif sort and sort != "display_name":
         def _sort_value(u: User):
             value = getattr(u, sort)
             if sort == "last_login_at":
@@ -497,34 +516,7 @@ def list_system_users(
             select(UserServerRole.user_id, UserServerRole.role).where(UserServerRole.user_id.in_(user_ids))
         ).all():
             server_roles_by_user.setdefault(user_id, []).append(role)
-    org_ids_by_user: dict[UUID, set[UUID]] = {}
-    if user_ids:
-        for user_id, organization_id in db.execute(
-            select(UserOrgRole.user_id, UserOrgRole.organization_id)
-            .where(UserOrgRole.user_id.in_(user_ids))
-            .distinct()
-        ).all():
-            org_ids_by_user.setdefault(user_id, set()).add(organization_id)
-    all_org_ids = {oid for oids in org_ids_by_user.values() for oid in oids}
-    org_names_by_id = (
-        dict(db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(all_org_ids))).tuples().all())
-        if all_org_ids and settings.access_review_show_org_names
-        else {}
-    )
-    # Group names are gated by the same setting as org names (see
-    # SystemUserOut's docstring) — skip the per-user group lookups
-    # entirely when the gate is off, same as the org-names branch above.
-    group_names_by_user: dict[UUID, list[str]] = {}
-    if settings.access_review_show_org_names:
-        for user_id, org_ids in org_ids_by_user.items():
-            group_ids: set[UUID] = set()
-            for organization_id in org_ids:
-                direct, inherited = get_user_org_group_ids(db, user_id, organization_id)
-                group_ids |= direct | inherited
-            if group_ids:
-                group_names_by_user[user_id] = sorted(
-                    db.scalars(select(OrgGroup.name).where(OrgGroup.id.in_(group_ids))).all()
-                )
+    org_ids_by_user, org_names_by_id, group_names_by_user = lookups if lookups is not None else _directory_lookups(db, user_ids)
     return [
         SystemUserOut(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
@@ -539,6 +531,73 @@ def list_system_users(
         )
         for u in users
     ]
+
+
+def _directory_lookups(
+    db: Session, user_ids: list[UUID]
+) -> tuple[dict[UUID, set[UUID]], dict[UUID, str], dict[UUID, list[str]]]:
+    """Reads the organisations and groups of `user_ids` for the access review's Organisations and Groups columns.
+
+    Names are gated by `access_review_show_org_names` (see `SystemUserOut`): with the gate off the name maps stay
+    empty and no per-user group lookup runs.
+
+    Args:
+        db: The database session.
+        user_ids: The users to read, the page or (for an organisations or groups sort) every filtered user.
+
+    Returns:
+        The organisation ids of each user, the name of each organisation id, and each user's sorted group names.
+    """
+    org_ids_by_user: dict[UUID, set[UUID]] = {}
+    if user_ids:
+        for user_id, organization_id in db.execute(
+            select(UserOrgRole.user_id, UserOrgRole.organization_id)
+            .where(UserOrgRole.user_id.in_(user_ids))
+            .distinct()
+        ).all():
+            org_ids_by_user.setdefault(user_id, set()).add(organization_id)
+    all_org_ids = {oid for oids in org_ids_by_user.values() for oid in oids}
+    org_names_by_id = (
+        dict(db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(all_org_ids))).tuples().all())
+        if all_org_ids and settings.access_review_show_org_names
+        else {}
+    )
+    group_names_by_user: dict[UUID, list[str]] = {}
+    if settings.access_review_show_org_names:
+        for user_id, org_ids in org_ids_by_user.items():
+            group_ids: set[UUID] = set()
+            for organization_id in org_ids:
+                direct, inherited = get_user_org_group_ids(db, user_id, organization_id)
+                group_ids |= direct | inherited
+            if group_ids:
+                group_names_by_user[user_id] = sorted(
+                    db.scalars(select(OrgGroup.name).where(OrgGroup.id.in_(group_ids))).all()
+                )
+    return org_ids_by_user, org_names_by_id, group_names_by_user
+
+
+def _names_sort_value(
+    user_id: UUID, key: str, org_ids_by_user: dict[UUID, set[UUID]], org_names_by_id: dict[UUID, str],
+    group_names_by_user: dict[UUID, list[str]],
+) -> str | int | None:
+    """The sort value of one user for the Organisations or Groups column, matching the text the column shows.
+
+    Args:
+        user_id: The user.
+        key: `organizations` or `groups`.
+        org_ids_by_user: Each user's organisation ids.
+        org_names_by_id: The organisation names (empty while names are hidden).
+        group_names_by_user: Each user's sorted group names (empty while names are hidden).
+
+    Returns:
+        The joined names, the organisation count when only the count is shown, or `None` when there is nothing to show.
+    """
+    if key == "groups":
+        return ", ".join(group_names_by_user.get(user_id, ())) or None
+    names = sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(user_id, ()) if oid in org_names_by_id)
+    if names:
+        return ", ".join(names)
+    return len(org_ids_by_user.get(user_id, ())) or None
 
 
 def _require_orphaned_user(db: Session, user_id: UUID) -> User:

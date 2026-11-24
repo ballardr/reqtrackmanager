@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { OrgPolicySettings, OrgPolicySummary, PolicySummary } from "../api/types";
 import { requiredCaptions } from "../testing/requiredMarkers";
-import { buildPolicy, buildPolicySummary, withToast } from "../testing/storybook-helpers";
+import { buildPolicy, buildPolicySummary, buildUser, withAuth, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { PoliciesPanel } from "./PoliciesPanel";
 
 const UNSET_PRIVACY: PolicySummary = buildPolicySummary({ id: null, key: "privacy", title: "Privacy policy", has_unpublished_changes: false, updated_at: null });
@@ -68,7 +68,7 @@ export const TheEditorSendsTheRequirement: Story = {
 const meta: Meta<typeof PoliciesPanel> = {
   title: "Components/PoliciesPanel",
   component: PoliciesPanel,
-  decorators: [withToast()],
+  decorators: [withToast(), withAuth(buildUser())],
   args: { scope: { kind: "server" } },
 };
 export default meta;
@@ -202,6 +202,22 @@ export const OrganisationListsPoliciesWithTheirAudience: Story = {
   },
 };
 
+/** The Audience header orders policies by the named audience, with "Every member" as its own text. */
+export const OrganisationAudienceHeaderSortsThePolicies: Story = {
+  args: { scope: { kind: "organisation", organizationId: ORG_ID } },
+  beforeEach: () => mockOrganisationReads(),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    const rows = () => within(table).getAllByRole("row").slice(1);
+    await userEvent.click(within(table).getByRole("button", { name: "Audience" }));
+    await waitFor(() => expect(rows()[0]).toHaveTextContent("Access policy"));
+    await expect(within(table).getByRole("columnheader", { name: "Audience" })).toHaveAttribute("aria-sort", "ascending");
+    await userEvent.click(within(table).getByRole("button", { name: "Audience" }));
+    await waitFor(() => expect(rows()[0]).toHaveTextContent("Confidentiality agreement"));
+    await expect(within(table).getByRole("columnheader", { name: "Audience" })).toHaveAttribute("aria-sort", "descending");
+  },
+};
+
 /** The organisation chooses whether its policies may contain links; the change applies at once. */
 export const OrganisationAllowsLinksWithASwitch: Story = {
   args: { scope: { kind: "organisation", organizationId: ORG_ID } },
@@ -274,5 +290,25 @@ export const OrganisationEditKeepsTheAudience: Story = {
     await waitFor(() => expect(api.put).toHaveBeenCalled());
     const [, payload] = (api.put as unknown as { mock: { calls: [string, { audience: unknown[] }][] } }).mock.calls[0];
     await expect(payload.audience).toEqual([{ type: "org_group", id: "g1" }]);
+  },
+};
+
+/** The Updated column is off by default; the column chooser adds it and the reset removes it. */
+export const UpdatedColumnIsOptionalAndOffByDefault: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  beforeEach: () => mockReads(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Policies" });
+    for (const name of ["Title", "Status", "Version", "Effective from"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await expect(within(table).queryByRole("columnheader", { name: "Updated" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Updated" }));
+    await expect(within(table).getByRole("columnheader", { name: "Updated" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Updated" })).not.toBeInTheDocument();
   },
 };

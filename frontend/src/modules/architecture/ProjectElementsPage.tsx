@@ -3,7 +3,8 @@
  *
  * The project's elements, the Elements tab of `SystemArchitecturePage` (`/projects/:projectId/modules/architecture?tab=elements`;
  * `chrome` is the page's tab strip). Two views over the same filtered set, switched with `Tabs`:
- * - *List*: a `DirectoryTable` (code opens the detail page) with type, owner, parent, connection count and status, plus a
+ * - *List*: a `DirectoryTable` (code opens the detail page) with type, owner, parent, connection count and status (every column but the code, name and status is
+ *   chosen with the column chooser; Parent and Connections are off until chosen), plus a
  *   `FilterPanel` (search, status, type, "Open only", scope, tags, archived).
  * - *Tree*: the elements arranged by parent, each a link to its page. An element whose parent is filtered out is shown at
  *   the top level, so every match is visible.
@@ -35,6 +36,7 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { useStrings } from "../../context/TerminologyContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
@@ -120,6 +122,32 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
   const sorted = sortRows(filtered, listSort.sort, elementSortValues(parentName));
   const tree = useMemo(() => buildElementTree(filtered), [filtered]);
 
+  const columns: DirectoryColumn<ArchitectureElement>[] = [
+    { key: "code", label: "Code", sortable: true, render: (e) => <ScopedRecordCode record={elementCodeRecord(e)} /> },
+    {
+      key: "name", label: "Name", sortable: true,
+      render: (e) => <>{e.name}{e.shared && <> <Badge tone="info">Shared</Badge></>}<ProjectScopeLabel row={e} /></>,
+    },
+    { key: "type", label: "Type", sortable: true, optional: true, render: (e) => e.element_type_name },
+    { key: "folder", label: "Folder", sortable: true, optional: true, render: (e) => e.folder_path ?? "—" },
+    { key: "parent", label: "Parent", sortable: true, optional: true, defaultHidden: true, render: (e) => parentName(e) || "—" },
+    { key: "owner", label: "Owner", sortable: true, optional: true, render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
+    { key: "connections", label: "Connections", sortable: true, optional: true, defaultHidden: true, render: (e) => e.connection_count },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (e) => (
+        <FilterBadge
+          tone={ARCHITECTURE_STATUS_TONE[e.status]} active={statusFilter === e.status}
+          onClick={() => setStatusFilter(statusFilter === e.status ? "" : e.status)}
+        >
+          {ARCHITECTURE_STATUS_LABEL[e.status]}
+        </FilterBadge>
+      ),
+    },
+  ];
+
+  const shown = useOptionalColumns("architecture_elements", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (elements === null || !reference.loaded || reference.project === null) return <Spinner />;
@@ -142,30 +170,6 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
 
   const rowHref = (e: ArchitectureElement) => `/projects/${rowProjectId(e, projectId)}/modules/architecture/elements/${e.id}`;
 
-  const columns: DirectoryColumn<ArchitectureElement>[] = [
-    { key: "code", label: "Code", sortable: true, render: (e) => <ScopedRecordCode record={elementCodeRecord(e)} /> },
-    {
-      key: "name", label: "Name", sortable: true,
-      render: (e) => <>{e.name}{e.shared && <> <Badge tone="info">Shared</Badge></>}<ProjectScopeLabel row={e} /></>,
-    },
-    { key: "type", label: "Type", sortable: true, render: (e) => e.element_type_name },
-    { key: "folder", label: "Folder", sortable: true, render: (e) => e.folder_path ?? "—" },
-    { key: "parent", label: "Parent", sortable: true, render: (e) => parentName(e) || "—" },
-    { key: "owner", label: "Owner", sortable: true, render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
-    { key: "connections", label: "Connections", sortable: true, render: (e) => e.connection_count },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (e) => (
-        <FilterBadge
-          tone={ARCHITECTURE_STATUS_TONE[e.status]} active={statusFilter === e.status}
-          onClick={() => setStatusFilter(statusFilter === e.status ? "" : e.status)}
-        >
-          {ARCHITECTURE_STATUS_LABEL[e.status]}
-        </FilterBadge>
-      ),
-    },
-  ];
-
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && rows.some((e) => matches(e, false));
   const emptyState = (
     <p className="text-muted">
@@ -180,7 +184,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={{ projectId, recordType: "architecture_element", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
-        menuItems={menuItems}
+        menuItems={menuItems} columnChooser={shown.chooser}
         actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New element</button>}
         filter={
           <FilterPanel
@@ -215,7 +219,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
             <>
             {folders.bar}
             <DirectoryTable
-              ariaLabel="Elements" columns={columns} rows={sorted} rowKey={(e) => e.id}
+              ariaLabel="Elements" columns={shown.columns} rows={sorted} rowKey={(e) => e.id}
               selection={{
                 selected: folders.selected, onChange: folders.setSelected, label: (e) => `Select ${e.unique_code}`,
                 selectable: (e) => e.project_id === projectId, allLabel: "Select all elements",

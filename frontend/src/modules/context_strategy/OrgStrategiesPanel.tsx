@@ -26,6 +26,7 @@ import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useListSort } from "../../hooks/useListSort";
 import { SortField } from "../../components/SortField";
@@ -62,6 +63,20 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
 
   const listSort = useListSort("org_strategies", STRATEGY_SORT_KEYS, "code", true);
   const sortedRows = sortRows(strategies ?? NONE, listSort.sort, STRATEGY_SORT_VALUES);
+
+  const columns: DirectoryColumn<Strategy>[] = [
+    { key: "title", label: "Title", sortable: true, render: (s) => s.title },
+    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (s) => `v${s.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("org_strategies", columns);
+
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategies === null) return <Spinner />;
 
@@ -72,17 +87,6 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
     return true;
   });
 
-  const columns: DirectoryColumn<Strategy>[] = [
-    { key: "title", label: "Title", sortable: true, render: (s) => s.title },
-    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
-    { key: "priority", label: "Priority", sortable: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
-    },
-    { key: "version", label: "Version", sortable: true, render: (s) => `v${s.version_number}` },
-  ];
-
   return (
     <div className="stack">
       <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
@@ -92,11 +96,12 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
         <ListActions
           organizationId={orgId} recordType="strategy" filters={filterStringWithSort({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived }, listSort.sort)} onImported={reloadStrategies}
         />
+        {shown.chooser}
       </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Organisation Strategy"
-          columns={columns}
+          columns={shown.columns}
           rows={filtered}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}

@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
+import { chooseColumn } from "../columnChooser";
 import {
   apiHeaders, ensureExpanded, installCleanupHook, loginAs, logout, onCleanup, ORG_NAMES, PERSONAS, selectOrgAdminGroup,
   selectServerManagementGroup,
@@ -130,6 +131,7 @@ test.describe("announcements", () => {
       await page.goto(`/orgs/${alpha.id}/admin`);
       await selectOrgAdminGroup(page, "Messages");
       await ensureExpanded(page, "Messages");
+      await chooseColumn(page, "Send as notification");
       await page.getByRole("button", { name: `Send ${marker} as a notification` }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Send" }).click();
       await expect(page.getByText("Notification sent.")).toBeVisible();

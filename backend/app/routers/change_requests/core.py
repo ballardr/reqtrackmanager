@@ -10,6 +10,7 @@ its activity timeline. Also holds `_to_out`/`_latest_version` (used by `workflow
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -23,11 +24,11 @@ from app.database import get_db
 from app.models.action_type import ActionTypeDefinition
 from app.models.change_request import ChangeRequest, ChangeRequestProposedLink, ChangeRequestVersion
 from app.models.custom_field import CustomFieldEntityKind
-from app.models.enums import ArtefactType, ChangeRequestKind, ChangeRequestStatus, ProjectRole, ReviewTargetType
+from app.models.enums import ArtefactType, ChangeRequestKind, ChangeRequestStatus, ProjectRole, RequirementLevel, ReviewTargetType
 from app.models.file import FileAsset
-from app.models.project import Project, ProjectCategory, ProjectComponent
+from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.relationship import ArtefactLink
-from app.models.requirement import Requirement
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.change_request import (
     CHANGEABLE_REQUIREMENT_FIELDS,
@@ -44,8 +45,10 @@ from app.services.change_request_links import ProposedLinkProblem, check_propose
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.external_reference_surfaces import reference_texts
 from app.services.list_sort import canonical_key, instant, order_records
 from app.services.lookups import project_or_404
+from app.services.placements import placement_texts
 from app.services.principals import principal_columns, principal_out, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
@@ -445,6 +448,54 @@ def _sort_value(item: ChangeRequestOut, sort: str) -> Any:
     return item.status.value
 
 
+#: Sorts whose value is read for the whole list at once: the target stage and level (the change request's own, else the
+#: requirement's current), where the request sits (`places`) and its external references.
+LOOKUP_SORTS = ("target", "level", "places", "references")
+_LEVEL_RANK = {RequirementLevel.REQUIREMENT: 0, RequirementLevel.RECOMMENDED: 1, RequirementLevel.OPTIONAL: 2}
+
+
+def _lookup_sort_values(db: Session, items: list[ChangeRequestOut], sort: str) -> Callable[[ChangeRequestOut], Any]:
+    """The value function for a `LOOKUP_SORTS` key, reading what it needs for every item in a fixed number of statements.
+
+    Args:
+        db: Active session (read only).
+        items: The change requests being ordered.
+        sort: One of `LOOKUP_SORTS`.
+
+    Returns:
+        `(item) -> number, text or None`: the target stage's position, the level's rank (mandatory, recommended,
+        optional), the places text or the references text; `None` when the request has none.
+    """
+    ids = [item.id for item in items]
+    if sort == "places":
+        places = placement_texts(db, CHANGE_REQUEST_ARTEFACT_TYPE, ids)
+        return lambda item: places.get(item.id)
+    if sort == "references":
+        references = reference_texts(db, CHANGE_REQUEST_ARTEFACT_TYPE, ids)
+        return lambda item: references.get(item.id)
+    requirement_ids = {item.requirement_id for item in items if item.requirement_id is not None}
+    current = {
+        row[0]: (row[1], row[2]) for row in db.execute(
+            select(RequirementVersion.requirement_id, RequirementVersion.target_stage_id, RequirementVersion.level).where(
+                RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None),
+            )
+        ).all()
+    } if requirement_ids else {}
+    stage_ids = {item.proposed_target_stage_id for item in items if item.proposed_target_stage_id} | {stage for stage, _ in current.values()}
+    positions = {
+        row[0]: row[1] for row in db.execute(select(ProjectStage.id, ProjectStage.sort_order).where(ProjectStage.id.in_(stage_ids))).all()
+    } if stage_ids else {}
+
+    def value(item: ChangeRequestOut) -> Any:
+        stage, level = current.get(item.requirement_id, (None, None)) if item.requirement_id is not None else (None, None)
+        if sort == "target":
+            return positions.get(item.proposed_target_stage_id or stage)
+        chosen = item.proposed_level or level
+        return _LEVEL_RANK[chosen] if chosen is not None else None
+
+    return value
+
+
 @router.get("", response_model=list[ChangeRequestOut])
 def list_change_requests(
     project_id: UUID,
@@ -453,7 +504,9 @@ def list_change_requests(
     active_only: bool = False,
     target_stage_id: UUID | None = None,
     search: str | None = None,
-    sort: str | None = Query(None, pattern="^(proposed_name|title|unique_code|code|status|created_at|created|updated_at|modified)$"),
+    sort: str | None = Query(
+        None, pattern="^(proposed_name|title|unique_code|code|status|created_at|created|updated_at|modified|target|level|places|references)$",
+    ),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -469,7 +522,8 @@ def list_change_requests(
     specific).
 
     `sort` sorts by `proposed_name` (`title`), `unique_code` (`code`; by prefix then number, so `CR-2`
-    precedes `CR-10`), `status`, `created_at` (`created`) or `updated_at` (`modified`); `order` picks `asc`
+    precedes `CR-10`), `status`, `created_at` (`created`), `updated_at` (`modified`), `target` (the target stage's
+    position), `level` (mandatory, recommended, optional), `places` or `references`; `order` picks `asc`
     (default) or `desc`. Without `sort`, rows are newest first. Rows with no `proposed_name` (the list
     view falls back to the requirement's name, see `crTitle()` in `ChangeRequestsPage.tsx`) sort as empty,
     since the raw column cannot resolve that fallback without an extra join.
@@ -500,7 +554,8 @@ def list_change_requests(
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:
-        out = order_records(out, lambda item: _sort_value(item, sort), descending=order == "desc")
+        value_of = _lookup_sort_values(db, out, sort) if sort in LOOKUP_SORTS else (lambda item: _sort_value(item, sort))
+        out = order_records(out, value_of, descending=order == "desc")
 
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:

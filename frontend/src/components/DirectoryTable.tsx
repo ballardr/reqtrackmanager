@@ -11,7 +11,7 @@
  * A column can hold a floor width (`minWidth`, the Name column's 12rem: its text wraps beyond it and the other columns
  * give way first, and it stays at the left edge when the table scrolls sideways), drop when the table is narrow (`hideBelow`)
  * and be chosen by the person (`optional`, `defaultHidden`: see `useOptionalColumns`, which filters the columns
- * before they reach this table). Excluded: a search box (`FilterPanel`'s own), `.side-grid` wrapping, an add slot and
+ * before they reach this table). `rowAccent` draws the record type's accent stripe on each row. Excluded: a search box (`FilterPanel`'s own), `.side-grid` wrapping, an add slot and
  * any fetch or mutate logic.
  */
 import { useEffect, useRef } from "react";
@@ -111,6 +111,7 @@ export function DirectoryTable<Row>({
   emptyState,
   placements,
   selection,
+  rowAccent,
 }: {
   /** Accessible name for the `<table>` itself. */
   ariaLabel: string;
@@ -151,9 +152,14 @@ export function DirectoryTable<Row>({
     rowId: (row: Row) => string;
     api?: RecordPlacementsApi;
     referencesApi?: RecordReferencesApi;
+    /** The sort keys of the Components and External references headers, when the list's server orders by them; the
+     * headers are plain text without them. */
+    sortKeys?: { places?: string; references?: string };
   };
   /** Adds a leading column of checkboxes for a bulk action; the caller owns the selected keys and the action itself. */
   selection?: DirectoryTableSelection<Row>;
+  /** The record type's accent colour (`ENTITY_ACCENT_COLOR`), drawn as a stripe at the left edge of every row. */
+  rowAccent?: string;
 }): JSX.Element {
   const strings = useStrings();
   const placed = usePagePlacementsByType(placements?.projectId, placementIdsByType(rows, placements), placements?.api);
@@ -199,13 +205,21 @@ export function DirectoryTable<Row>({
                   </th>
                 )
               )}
-              {showPlacements && <th>{strings.placements.label}</th>}
-              {showReferences && <th>{strings.references.column}</th>}
+              {showPlacements && (placements?.sortKeys?.places && onSort
+                ? <SortableHeader label={strings.placements.label} sortKey={placements.sortKeys.places} sort={sort} onSort={onSort} />
+                : <th>{strings.placements.label}</th>)}
+              {showReferences && (placements?.sortKeys?.references && onSort
+                ? <SortableHeader label={strings.references.column} sortKey={placements.sortKeys.references} sort={sort} onSort={onSort} />
+                : <th>{strings.references.column}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={rowKey(row)}>
+              <tr
+                key={rowKey(row)}
+                className={rowAccent ? "entity-accent-row" : undefined}
+                style={rowAccent ? { ["--entity-accent-color" as string]: rowAccent } : undefined}
+              >
                 {selection && (
                   <td>
                     {(selection.selectable?.(row) ?? true) && (

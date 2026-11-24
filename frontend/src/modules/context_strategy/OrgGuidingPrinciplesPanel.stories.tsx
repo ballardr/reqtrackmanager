@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
-import { withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { OrgGuidingPrinciplesPanel } from "./OrgGuidingPrinciplesPanel";
 import type { GuidingPrinciple } from "./types";
 
@@ -31,7 +31,7 @@ const meta: Meta<typeof OrgGuidingPrinciplesPanel> = {
   title: "Modules/ContextStrategy/OrgGuidingPrinciplesPanel",
   component: OrgGuidingPrinciplesPanel,
   args: { orgId: ORG_ID },
-  decorators: [withRouter("/org-overview"), withToast()],
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" })), withRouter("/org-overview"), withToast()],
 };
 export default meta;
 
@@ -43,6 +43,28 @@ export const ListsOrgGuidingPrinciples: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Operate safely under degraded connectivity")).toBeInTheDocument());
     await expect(canvas.getByText("Field data is captured once")).toBeInTheDocument();
+  },
+};
+
+/** The Version column is off by default; the column chooser adds it, Priority can be hidden, and the reset restores the defaults. */
+export const VersionColumnIsOptionalAndOffByDefault: Story = {
+  beforeEach: () => mockPanelApis([guidingPrinciple()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Organisation Guiding Principles" });
+    for (const name of ["Name", "Code", "Priority", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await expect(within(table).queryByRole("columnheader", { name: "Version" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Version" }));
+    await expect(within(table).getByRole("columnheader", { name: "Version" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Priority" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Priority" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Version" })).not.toBeInTheDocument();
+    await expect(within(table).getByRole("columnheader", { name: "Priority" })).toBeInTheDocument();
   },
 };
 

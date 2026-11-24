@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ServiceUser } from "../api/serviceUsers";
-import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, OutsideDomainUser, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildServiceUser } from "../testing/serviceUserFixtures";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast, openAddDialog } from "../testing/storybook-helpers";
@@ -69,7 +69,7 @@ function mockOrgAdminApis(overrides: {
   scim?: { enabled: boolean; token_prefix: string | null };
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
-  pats?: OrgPersonalAccessToken[]; serviceUsers?: ServiceUser[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
+  outsideDomainUsers?: OutsideDomainUser[]; pats?: OrgPersonalAccessToken[]; serviceUsers?: ServiceUser[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
   modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
   // A module's declared sub-components, keyed by `module_key`; `[]` per module when none are declared, as the real `GET .../subcomponents` returns.
   moduleSubComponents?: Record<string, OrgModuleSubComponent[]>;
@@ -139,6 +139,7 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/entity-scopes")) return overrides.entityScopes ?? [];
     // `UserAutocomplete`'s debounced server search (`organizationId` mode, used by the custom-role assignment card), before the
     // "/users" catch-all it also matches.
+    if (path.includes("/users/outside-domain")) return overrides.outsideDomainUsers ?? [];
     if (path.includes("/users/search")) return { members: orgUsers, external: null };
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
@@ -233,6 +234,26 @@ export const UsersSectionAndCreateUser: Story = {
     await expect(canvas.getByRole("button", { name: "Alex Morgan's roles" })).toHaveTextContent("Org admin");
     // This table's 6 columns crowd a side sidebar, so its `FilterPanel` renders `layout="top"` (docs/ux-style-guide.md "Pattern: filter panel placement").
     await expect(canvasElement.querySelector(".filter-panel-top")).toBeInTheDocument();
+  },
+};
+
+/** Email and Name are always drawn; the column chooser hides Roles, Status, Last login and 2FA, and the reset brings them back. */
+export const UsersColumnChooserHidesOptionalColumns: Story = {
+  beforeEach: () => mockOrgAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+    const table = canvas.getByRole("table", { name: /users$/i });
+    const heads = () => within(table).getAllByRole("columnheader").map((h) => h.textContent?.trim());
+    for (const name of ["Email", "Name", "Roles", "Status", "Last login", "2FA"]) await expect(heads()).toContain(name);
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "2FA" }));
+    await waitFor(() => expect(heads()).not.toContain("2FA"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await waitFor(() => expect(heads()).toContain("2FA"));
   },
 };
 
@@ -910,6 +931,43 @@ export const UsersSectionSortByEmail: Story = {
     await waitFor(() =>
       expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=email&order=desc"))
     );
+  },
+};
+
+/** Roles, Status and 2FA sort on the server too: each header click refetches with its `sort` key and direction. */
+export const UsersSectionSortByRolesStatusAndTwoFactor: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    for (const [header, key] of [["Roles", "roles"], ["Status", "status"], ["2FA", "2fa"]] as const) {
+      await userEvent.click(canvas.getByRole("button", { name: header }));
+      await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining(`sort=${key}&order=asc`)));
+      await expect(canvas.getByRole("button", { name: header }).closest("th")).toHaveAttribute("aria-sort", "ascending");
+      await userEvent.click(canvas.getByRole("button", { name: header }));
+      await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining(`sort=${key}&order=desc`)));
+    }
+  },
+};
+
+/** Members sorts the Groups table on the server: the header click refetches with `sort=members` and the direction. */
+export const GroupsSectionSortByMembers: Story = {
+  beforeEach: () => mockOrgAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Engineering" })).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Members" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=members&order=asc")));
+    await expect(canvas.getByRole("button", { name: "Members" }).closest("th")).toHaveAttribute("aria-sort", "ascending");
+    await userEvent.click(canvas.getByRole("button", { name: "Members" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=members&order=desc")));
   },
 };
 
@@ -2152,6 +2210,64 @@ export const RoleManagementDeleteCustomRoleConfirm: Story = {
     );
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     await waitFor(() => expect(canvas.queryAllByText("Reviewer").length).toBe(0));
+  },
+};
+
+/** The three administration tables that hold their whole list in the browser sort on a header click: users outside the
+ * organisation's domain, Personal Access Tokens and custom roles. */
+export const SecurityAndRoleTablesSortOnHeaderClick: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      advanced: { ...advanced, auto_accept_email_domain: "example.com" },
+      outsideDomainUsers: [
+        { user_id: "o1", email: "zed@example.com", display_name: "Zed Outside" },
+        { user_id: "o2", email: "amy@example.com", display_name: "Amy Outside" },
+      ],
+      pats: [
+        { ...onePat, id: "pat-late", name: "Late token", user_display_name: "Zoe Late", expires_at: "2027-06-01T00:00:00Z", last_used_at: "2026-03-01T00:00:00Z" },
+        { ...onePat, id: "pat-early", name: "Early token", user_display_name: "Abe Early", expires_at: "2027-01-01T00:00:00Z", last_used_at: null },
+      ],
+      permissions: fixturePermissions,
+      customRoles: [
+        { ...fixtureCustomRole, id: "role-z", name: "Zeta role", description: "Zeta duties.", permissions: ["requirement:view:"] },
+        { ...fixtureCustomRole, id: "role-a", name: "Alpha role", description: "Alpha duties.", permissions: ["requirement:view:", "grant_roles", "requirement:edit:"] },
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const firstColumn = (table: HTMLElement) =>
+      within(table).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
+
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await userEvent.click(await canvas.findByRole("button", { name: /Show users outside/ }));
+    const outside = await canvas.findByRole("table", { name: /Users outside/ });
+    await userEvent.click(within(outside).getByRole("button", { name: "Name" }));
+    await expect(within(outside).getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "ascending");
+    await expect(firstColumn(outside)).toEqual(["amy@example.com", "zed@example.com"]);
+    await userEvent.click(within(outside).getByRole("button", { name: "Name" }));
+    await expect(firstColumn(outside)).toEqual(["zed@example.com", "amy@example.com"]);
+
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
+    const tokens = await canvas.findByRole("table", { name: "Personal Access Tokens" });
+    await userEvent.click(within(tokens).getByRole("button", { name: "Expires" }));
+    await expect(within(tokens).getByRole("columnheader", { name: "Expires" })).toHaveAttribute("aria-sort", "ascending");
+    await expect(firstColumn(tokens).map((cell) => cell?.replace(/\(.*$/, ""))).toEqual(["Abe Early", "Zoe Late"]);
+    // A token never used has no value and sorts last when ascending.
+    await userEvent.click(within(tokens).getByRole("button", { name: "Last used" }));
+    await expect(firstColumn(tokens).map((cell) => cell?.replace(/\(.*$/, ""))).toEqual(["Zoe Late", "Abe Early"]);
+
+    await userEvent.click(canvas.getByRole("link", { name: "Role management" }));
+    const roles = await canvas.findByRole("table", { name: "Custom roles" });
+    await userEvent.click(within(roles).getByRole("button", { name: "Name" }));
+    await expect(firstColumn(roles)).toEqual(["Alpha role", "Zeta role"]);
+    await userEvent.click(within(roles).getByRole("button", { name: "Permissions" }));
+    await expect(within(roles).getByRole("columnheader", { name: "Permissions" })).toHaveAttribute("aria-sort", "ascending");
+    await expect(firstColumn(roles)).toEqual(["Zeta role", "Alpha role"]);
+    await userEvent.click(within(roles).getByRole("button", { name: "Permissions" }));
+    await expect(firstColumn(roles)).toEqual(["Alpha role", "Zeta role"]);
+    await userEvent.click(within(roles).getByRole("button", { name: "Description" }));
+    await expect(firstColumn(roles)).toEqual(["Alpha role", "Zeta role"]);
   },
 };
 

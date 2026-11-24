@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ServerAccess, ServerSettings, SignupConfig, SystemUser } from "../api/types";
-import { buildPolicySummary, buildUser, withAuth, withRouter, withToast } from "../testing/storybook-helpers";
+import { buildPolicySummary, buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ServerManagementPage } from "./ServerManagementPage";
 
 function systemUser(overrides: Partial<SystemUser>): SystemUser {
@@ -425,8 +425,29 @@ export const AccessReviewFilterPanelSearchAndFilters: Story = {
   },
 };
 
+/** Created is off by default; the column chooser adds it and the reset removes it. */
+export const AccessReviewCreatedColumnIsOptionalAndOffByDefault: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1", is_server_admin: true }))],
+  beforeEach: () => mockServerManagementApis([systemUser({ user_id: "u1", email: "orphan@example.com" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    const table = canvas.getByRole("table", { name: "Users" });
+    for (const name of ["Email", "Name", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+    }
+    await expect(within(table).queryByRole("columnheader", { name: /^Created/ })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Created" }));
+    await expect(within(table).getByRole("columnheader", { name: /^Created/ })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: /^Created/ })).not.toBeInTheDocument();
+  },
+};
+
 /** Column-header sorting: Email, Name, Last login and Created are sortable
- * through `SortableHeader`, backed by `list_system_users`'s `sort`/`order`
+ * through `SortableHeader` (Created once chosen in the column chooser), backed by `list_system_users`'s `sort`/`order`
  * params so the full filtered result re-sorts, not only the loaded page. */
 export const AccessReviewSortByEmail: Story = {
   beforeEach: () => mockServerManagementApis([systemUser({ user_id: "u1", email: "orphan@example.com" })]),
@@ -443,6 +464,25 @@ export const AccessReviewSortByEmail: Story = {
     await waitFor(() =>
       expect(api.getPage).toHaveBeenLastCalledWith(expect.stringMatching(/sort=email&order=desc/))
     );
+  },
+};
+
+/** Organisations, Groups and Status sort on the server too: each header click refetches with its `sort` key and direction. */
+export const AccessReviewSortByOrganisationsGroupsAndStatus: Story = {
+  beforeEach: () => mockServerManagementApis([systemUser({ user_id: "u1", email: "orphan@example.com" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    const table = canvas.getByRole("table", { name: "Users" });
+
+    for (const [header, key] of [["Organisations", "organizations"], ["Groups", "groups"], ["Status", "status"]] as const) {
+      await userEvent.click(within(table).getByRole("button", { name: header }));
+      await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringMatching(new RegExp(`sort=${key}&order=asc`))));
+      await expect(within(table).getByRole("columnheader", { name: header })).toHaveAttribute("aria-sort", "ascending");
+      await userEvent.click(within(table).getByRole("button", { name: header }));
+      await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringMatching(new RegExp(`sort=${key}&order=desc`))));
+      await expect(within(table).getByRole("columnheader", { name: header })).toHaveAttribute("aria-sort", "descending");
+    }
   },
 };
 

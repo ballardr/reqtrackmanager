@@ -81,6 +81,7 @@ import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { downloadBlob } from "../utils/download";
+import { sortRows } from "../utils/sortRows";
 import { reportLayoutApi } from "../api/reportLayouts";
 import { reportPackApi } from "../api/reportPacks";
 import { reportPlacementApi } from "../api/reportPlacements";
@@ -100,6 +101,12 @@ const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirem
 // The four project roles a group's per-row `MultiSelectDropdown` (Groups tab and the group's `SidePanel`) offers; the same
 // list `ProjectMembersTable.tsx`'s Role column iterates for a user.
 const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
+
+/** The Groups tab's sortable columns. */
+type ProjectGroupSortKey = "name" | "type" | "role" | "members";
+
+/** The `sort` value `list_project_groups` takes for each column it orders; Type has none. */
+const GROUP_SERVER_SORT_KEY: Partial<Record<ProjectGroupSortKey, string>> = { name: "name", role: "roles", members: "members" };
 
 /**
  * The `ResourceMenu` groups. Each key is the route segment under `/projects/:projectId/admin/:group?` (App.tsx), so a
@@ -178,9 +185,9 @@ export function ProjectAdminPage() {
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [groupsTotal, setGroupsTotal] = useState(0);
   const [groupSearch, setGroupSearch] = useState("");
-  // The Groups `DirectoryTable` is paginated (`list_project_groups` takes `limit`/`offset`), so Name sort is a backend
-  // `order` refetch, not a client sort of the loaded page (style guide "Pattern: sortable column header").
-  type ProjectGroupSortKey = "name";
+  // The Groups `DirectoryTable` is paginated (`list_project_groups` takes `limit`/`offset`), so Name, Role and Members sort is a
+  // backend `sort`/`order` refetch, not a client sort of the loaded page (style guide "Pattern: sortable column header"). Type has
+  // one value across the groups, so it only places the fully loaded member-source rows before or after them.
   const [groupSort, setGroupSort] = useState<SortState<ProjectGroupSortKey> | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
@@ -298,7 +305,11 @@ export function ProjectAdminPage() {
     const id = requestId ?? ++loadGroupsRequestIdRef.current;
     const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
-    if (sort) params.set("order", sort.direction);
+    const serverKey = sort ? GROUP_SERVER_SORT_KEY[sort.key] : undefined;
+    if (sort && serverKey) {
+      params.set("sort", serverKey);
+      params.set("order", sort.direction);
+    }
     const page = await api.getPage<ProjectGroup>(`/api/v1/projects/${projectId}/groups?${params.toString()}`);
     if (id !== loadGroupsRequestIdRef.current) return;
     setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
@@ -1036,17 +1047,33 @@ export function ProjectAdminPage() {
   // so "Load more" only appends groups. A member-source row is read-only detail (mirror mode/filter role, a Remove action) and
   // has no "click to open" affordance.
   type GroupsTabRow = { kind: "group"; group: ProjectGroup } | { kind: "member_source"; source: ProjectMemberSource };
-  const groupsTabRows: GroupsTabRow[] = [
-    ...memberSources.map((source): GroupsTabRow => ({ kind: "member_source", source })),
-    ...groups.map((group): GroupsTabRow => ({ kind: "group", group })),
-  ];
+  const memberSourceLabel = (source: ProjectMemberSource) =>
+    source.mirror_mode === "mirror_role" && source.mirror_filter_role
+      ? strings.admin.memberSourceModeRole(PROJECT_ROLE_LABEL[source.mirror_filter_role])
+      : PROJECT_ROLE_INHERITANCE_MODE_LABEL[source.mirror_mode];
+  // The member-source rows are fully loaded, so the page orders them by the active column, by the text each cell shows; the groups
+  // arrive in the server's order. They precede the groups, except that a descending Type sort places them after the loaded groups
+  // ("{Project} group" follows "{Project}" in ascending order).
+  const memberSourceRows = sortRows(
+    memberSources.map((source): GroupsTabRow => ({ kind: "member_source", source })),
+    groupSort,
+    {
+      name: (row) => (row.kind === "member_source" ? row.source.source_project_name : null),
+      type: (row) => (row.kind === "member_source" ? strings.admin.groupTypeBadgeMemberSource : null),
+      role: (row) => (row.kind === "member_source" ? memberSourceLabel(row.source) : null),
+      members: () => null,
+    },
+  );
+  const groupRows = groups.map((group): GroupsTabRow => ({ kind: "group", group }));
+  const sourcesAfterGroups = groupSort?.key === "type" && groupSort.direction === "desc";
+  const groupsTabRows: GroupsTabRow[] = sourcesAfterGroups ? [...groupRows, ...memberSourceRows] : [...memberSourceRows, ...groupRows];
   const groupsTabColumns: DirectoryColumn<GroupsTabRow>[] = [
     {
       key: "name", label: strings.admin.name, sortable: true,
       render: (row) => (row.kind === "group" ? row.group.name : row.source.source_project_name),
     },
     {
-      key: "type", label: strings.admin.groupTypeColumn,
+      key: "type", label: strings.admin.groupTypeColumn, sortable: true,
       render: (row) => (
         <Badge>
           {row.kind === "group" ? strings.admin.groupTypeBadgeGroup : strings.admin.groupTypeBadgeMemberSource}
@@ -1054,7 +1081,7 @@ export function ProjectAdminPage() {
       ),
     },
     {
-      key: "role", label: strings.admin.groupRole,
+      key: "role", label: strings.admin.groupRole, sortable: true,
       render: (row) =>
         row.kind === "group" ? (
           // A group's role is a MultiSelectDropdown over zero to several independently revocable grants, like `ProjectMembersTable`'s Role column.
@@ -1079,14 +1106,12 @@ export function ProjectAdminPage() {
           />
         ) : (
           <Badge>
-            {row.source.mirror_mode === "mirror_role" && row.source.mirror_filter_role
-              ? strings.admin.memberSourceModeRole(PROJECT_ROLE_LABEL[row.source.mirror_filter_role])
-              : PROJECT_ROLE_INHERITANCE_MODE_LABEL[row.source.mirror_mode]}
+            {memberSourceLabel(row.source)}
           </Badge>
         ),
     },
     {
-      key: "members", label: strings.admin.groupMembersColumn,
+      key: "members", label: strings.admin.groupMembersColumn, sortable: true,
       render: (row) =>
         row.kind === "group" ? strings.admin.memberCount(row.group.member_user_ids.length) : <span className="text-muted">—</span>,
     },

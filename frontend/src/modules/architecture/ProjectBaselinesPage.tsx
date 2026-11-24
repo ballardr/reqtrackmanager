@@ -2,7 +2,8 @@
  * Module: modules/architecture/ProjectBaselinesPage
  *
  * The Baselines tab of the System Architecture page: the project's baselines that hold architecture records (taken manually or
- * written by a stage entering a locked phase), with their kind, stage, who took them, when and how many records. A row opens the
+ * written by a stage entering a locked phase), with their kind, stage, who took them, when and how many records (the column chooser hides any but the name; Taken by is off
+ * until chosen). A row opens the
  * baseline (`BaselineDetailPage`); "Take baseline" records the architecture as it stands. A baseline is not a record type, so
  * the list has no export or import; it filters by search and kind, sorts on a header click (the sort in the address) and keeps its
  * place like every list. Taking one is refused by the server for a person without the Architect role, shown in the dialog.
@@ -17,6 +18,7 @@ import { ListPageLayout } from "../../components/ListPageLayout";
 import { Spinner } from "../../components/Spinner";
 import { cycleSort } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useUrlChoice, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
 import { labelOptions } from "../../utils/labelOptions";
 import { sortRows } from "../../utils/sortRows";
@@ -77,23 +79,26 @@ export function ProjectBaselinesPage({ chrome }: { chrome?: ArchitectureListChro
     }
   }, [projectId, showToast]);
 
+  const columns: DirectoryColumn<ProjectBaseline>[] = [
+    { key: "name", label: "Name", sortable: true, render: (b) => b.label },
+    { key: "kind", label: "Kind", sortable: true, optional: true, render: (b) => BASELINE_KIND_LABEL[b.kind] },
+    { key: "stage", label: "Stage", sortable: true, optional: true, render: (b) => b.stage_name ?? "—" },
+    { key: "taken", label: "Taken", sortable: true, optional: true, render: (b) => new Date(b.created_at).toLocaleString() },
+    { key: "by", label: "Taken by", sortable: true, optional: true, defaultHidden: true, render: (b) => b.created_by_name ?? "—" },
+    { key: "records", label: "Records", sortable: true, optional: true, render: (b) => baselineRecordCount(b) },
+  ];
+
+  const shown = useOptionalColumns("architecture_baselines", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (baselines === null) return <Spinner />;
-
-  const columns: DirectoryColumn<ProjectBaseline>[] = [
-    { key: "name", label: "Name", sortable: true, render: (b) => b.label },
-    { key: "kind", label: "Kind", sortable: true, render: (b) => BASELINE_KIND_LABEL[b.kind] },
-    { key: "stage", label: "Stage", sortable: true, render: (b) => b.stage_name ?? "—" },
-    { key: "taken", label: "Taken", sortable: true, render: (b) => new Date(b.created_at).toLocaleString() },
-    { key: "by", label: "Taken by", sortable: true, render: (b) => b.created_by_name ?? "—" },
-    { key: "records", label: "Records", sortable: true, render: (b) => baselineRecordCount(b) },
-  ];
 
   return (
     <div className="container stack">
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
+        columnChooser={shown.chooser}
         actions={<button type="button" className="btn btn-primary" onClick={() => { setTakeError(null); setTaking(true); }}>Take baseline</button>}
         filter={
           <FilterPanel
@@ -108,7 +113,7 @@ export function ProjectBaselinesPage({ chrome }: { chrome?: ArchitectureListChro
         }
       >
         <DirectoryTable
-          ariaLabel="Baselines" columns={columns} rows={sorted} rowKey={(b) => b.id}
+          ariaLabel="Baselines" columns={shown.columns} rows={sorted} rowKey={(b) => b.id}
           sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
           rowHref={(b) => `/projects/${projectId}/modules/architecture/baselines/${b.id}`}
           emptyState={<p className="text-muted">{baselines.length === 0 ? "No baselines hold architecture records yet." : "No baselines match these filters."}</p>}

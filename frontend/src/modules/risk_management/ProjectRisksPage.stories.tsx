@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildRisk, buildRiskScheme, ORG_USERS, PROJECT_ID, RISK_TYPES } from "./riskFixtures";
 import { ProjectRisksPage } from "./ProjectRisksPage";
 import type { Risk } from "./types";
@@ -39,7 +39,7 @@ const meta: Meta<typeof ProjectRisksPage> = {
   title: "Modules/RiskManagement/ProjectRisksPage",
   component: ProjectRisksPage,
   decorators: [
-    withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
+    withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
     // `parameters.query` opens the page the way a link with a status or `open=0` does.
     (Story, context) =>
       withRouter(
@@ -52,6 +52,24 @@ const meta: Meta<typeof ProjectRisksPage> = {
 export default meta;
 
 type Story = StoryObj<typeof ProjectRisksPage>;
+
+/** Every register column is shown by default; the column chooser hides Owner and the reset shows it again. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Risks" });
+    for (const name of ["Code", "Title", "Type", "Inherent", "Residual", "Status", "Owner", "Next review"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Owner" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Owner" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Owner" })).toBeInTheDocument();
+  },
+};
 
 export const RegisterShowsRatingsStatusOwnerAndOverdue: Story = {
   beforeEach: () => mockApis(),

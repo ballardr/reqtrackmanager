@@ -1,10 +1,13 @@
 import { useMutation } from "../hooks/useMutation";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
+import { useTableSort } from "../hooks/useTableSort";
+import { instantOf, type SortValue } from "../utils/sortRows";
 import { usePlatformBranding } from "../hooks/usePlatformBranding";
 import { ImportWarnings } from "../components/ImportWarnings";
 import { UploadsDisabledPrompt } from "../components/UploadsDisabledPrompt";
 import { uploadsDisabledInfo, type UploadsDisabledInfo } from "../utils/uploadsDisabled";
 import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
@@ -162,6 +165,56 @@ type AdvancedGroup = "email" | "security" | "pats";
 type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: OrgPendingInvite };
 
 /**
+ * The organisation Users table with its column chooser: Email and Name are always drawn, Roles, Status, Last login and
+ * 2FA are chosen, and the chooser sits above the table. It is its own component so the choice hook is not
+ * called after `OrgAdminPage`'s early returns.
+ *
+ * @param columns Every column of the table, with the optional ones marked.
+ * @param table The remaining `DirectoryTable` props (rows, sort, paging).
+ * @returns The chooser row and the table.
+ */
+function OrgUsersTable({ columns, ...table }: { columns: DirectoryColumn<UsersRow>[] } & Omit<ComponentProps<typeof DirectoryTable<UsersRow>>, "columns">) {
+  const shown = useOptionalColumns("org_users", columns);
+  return (
+    <>
+      {shown.chooser && <div className="row" style={{ justifyContent: "flex-end" }}>{shown.chooser}</div>}
+      <DirectoryTable {...table} columns={shown.columns} />
+    </>
+  );
+}
+
+/** Sort values of the outside-domain users table: the text each column shows. */
+const OUTSIDE_DOMAIN_SORT_VALUES: Record<string, (user: OutsideDomainUser) => SortValue> = {
+  email: (u) => u.email,
+  name: (u) => u.display_name,
+};
+
+/** Sort values of the personal access tokens table: the owner's display name, the token name, and the expiry and last-use instants
+ * (a token never used has no value and sorts last ascending). */
+const PAT_SORT_VALUES: Record<string, (token: OrgPersonalAccessToken) => SortValue> = {
+  user: (p) => p.user_display_name,
+  name: (p) => p.name,
+  expires: (p) => instantOf(p.expires_at),
+  lastUsed: (p) => instantOf(p.last_used_at),
+};
+
+/**
+ * A `DirectoryTable` that holds its whole list in the browser and sorts it on a header click, for the administration tables that
+ * are not paged. It is its own component so the sort state is not held after `OrgAdminPage`'s early returns.
+ *
+ * @param rows The rows in their default order.
+ * @param values The sortable value of a row for each sortable column key.
+ * @param table The remaining `DirectoryTable` props (columns, labels, empty state).
+ * @returns The table, ordered by the chosen column.
+ */
+function SortedDirectoryTable<Row>({
+  rows, values, ...table
+}: { rows: Row[]; values: Record<string, (row: Row) => SortValue> } & Omit<ComponentProps<typeof DirectoryTable<Row>>, "rows" | "sort" | "onSort">) {
+  const sorted = useTableSort(rows, values);
+  return <DirectoryTable {...table} rows={sorted.rows} sort={sorted.sort} onSort={sorted.onSort} />;
+}
+
+/**
  * Organisation administration: users (C-U-01), groups (C-U-08), shared resource files (C-M-03), the logo (U-C-02), the default template
  * project (C-E-04), definable project statuses and definable bidirectional requirement link types (forward and reverse display name,
  * since a link reads differently from each side; `docs/decisions.md`). Both share custom fields' rename/reorder/delete-with-reassignment
@@ -208,9 +261,9 @@ export function OrgAdminPage() {
   // dropdown must offer every group whatever the paginated `groups` list shows.
   const [allGroups, setAllGroups] = useState<OrgGroup[]>([]);
   // Org Groups `DirectoryTable` with a per-row `SidePanel`, the shape Project Groups use. `list_org_groups` pages via `limit`/`offset`, so Name
-  // sort is a backend `order` refetch, as in Org Users, not a client sort of the loaded page (style guide "Pattern: sortable column header");
-  // Members has no natural order and stays unsorted.
-  type OrgGroupSortKey = "name";
+  // sort is a backend `sort`/`order` refetch, as in Org Users, not a client sort of the loaded page (style guide "Pattern: sortable
+  // column header"); Members orders by the user-member count.
+  type OrgGroupSortKey = "name" | "members";
   const [groupSort, setGroupSort] = useState<SortState<OrgGroupSortKey> | null>(null);
   const [openOrgGroupId, setOpenOrgGroupId] = useState<string | null>(null);
   // Organisation group pending deletion in its Tier 1 `ConfirmDialog`, or null.
@@ -299,7 +352,7 @@ export function OrgAdminPage() {
   const [inviteUserModalOpen, setInviteUserModalOpen] = useState(false);
   const [inviteUserEmail, setInviteUserEmail] = useState("");
   // Column-header sorting is backend `sort`/`order`: the table is backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`).
-  type OrgUserSortKey = "display_name" | "email" | "last_login_at";
+  type OrgUserSortKey = "display_name" | "email" | "last_login_at" | "roles" | "status" | "2fa";
   const [userSort, setUserSort] = useState<SortState<OrgUserSortKey> | null>(null);
   const [patMaxLifetimeDays, setPatMaxLifetimeDays] = useState("");
   const [require2fa, setRequire2fa] = useState(false);
@@ -443,7 +496,10 @@ export function OrgAdminPage() {
     const isLatest = beginGroupsLoad();
     const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
-    if (sort) params.set("order", sort.direction);
+    if (sort) {
+      params.set("sort", sort.key);
+      params.set("order", sort.direction);
+    }
     const page = await api.getPage<OrgGroup>(`/api/v1/orgs/${orgId}/groups?${params.toString()}`);
     if (!isLatest()) return;
     setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
@@ -1674,7 +1730,7 @@ export function OrgAdminPage() {
         ),
     },
     {
-      key: "roles", label: strings.orgAdmin.roles,
+      key: "roles", label: strings.orgAdmin.roles, sortable: true, optional: true,
       render: (row) => {
         if (row.kind === "invited") return <span className="text-muted">—</span>;
         const u = row.user;
@@ -1741,7 +1797,7 @@ export function OrgAdminPage() {
       },
     },
     {
-      key: "status", label: strings.orgAdmin.status,
+      key: "status", label: strings.orgAdmin.status, sortable: true, optional: true,
       render: (row) => {
         if (row.kind === "invited") {
           const invite = row.invite;
@@ -1768,7 +1824,7 @@ export function OrgAdminPage() {
     },
     {
       // For an invited row this shows when the invite was sent, since there is no last login yet.
-      key: "last_login_at", label: strings.orgAdmin.lastLogin, sortable: true,
+      key: "last_login_at", label: strings.orgAdmin.lastLogin, sortable: true, optional: true,
       render: (row) => {
         if (row.kind === "invited") {
           return (
@@ -1783,7 +1839,7 @@ export function OrgAdminPage() {
       },
     },
     {
-      key: "2fa", label: strings.orgAdmin.twoFactor,
+      key: "2fa", label: strings.orgAdmin.twoFactor, sortable: true, optional: true,
       render: (row) =>
         row.kind === "invited"
           ? ""
@@ -1839,7 +1895,7 @@ export function OrgAdminPage() {
   const orgGroupColumns: DirectoryColumn<OrgGroup>[] = [
     { key: "name", label: strings.orgAdmin.name, sortable: true, render: (g) => g.name },
     {
-      key: "members", label: strings.orgAdmin.groupMembersColumn,
+      key: "members", label: strings.orgAdmin.groupMembersColumn, sortable: true,
       render: (g) => strings.admin.memberCount(g.member_user_ids.length),
     },
   ];
@@ -1963,13 +2019,14 @@ export function OrgAdminPage() {
                     <strong>{strings.orgAdmin.outsideDomainUsers(orgLabel)}</strong>
                     <FieldHelp label={strings.orgAdmin.outsideDomainUsers(orgLabel)} help={strings.orgAdmin.outsideDomainUsersHint(orgLabel)} />
                   </span>
-                    <DirectoryTable
+                    <SortedDirectoryTable
                       ariaLabel={strings.orgAdmin.outsideDomainUsers(orgLabel)}
                       rows={outsideDomainUsers}
+                      values={OUTSIDE_DOMAIN_SORT_VALUES}
                       rowKey={(u) => u.user_id}
                       columns={[
-                        { key: "email", label: strings.orgAdmin.email, render: (u) => u.email },
-                        { key: "name", label: strings.orgAdmin.name, render: (u) => u.display_name },
+                        { key: "email", label: strings.orgAdmin.email, sortable: true, render: (u) => u.email },
+                        { key: "name", label: strings.orgAdmin.name, sortable: true, render: (u) => u.display_name },
                       ]}
                       emptyState={<p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers(orgLabel)}</p>}
                     />
@@ -2027,7 +2084,7 @@ export function OrgAdminPage() {
                     onChange={setShowInvitedUsers}
                   />
                 </FilterPanel>
-                <DirectoryTable
+                <OrgUsersTable
                   ariaLabel={strings.orgAdmin.users(orgLabelCap)}
                   columns={usersColumns}
                   rows={usersRows}
@@ -2811,13 +2868,14 @@ export function OrgAdminPage() {
                 </div>
                 <InlineMessage>{advancedError}</InlineMessage>
 
-                  <DirectoryTable
+                  <SortedDirectoryTable
                     ariaLabel={strings.orgAdmin.pats}
                     rows={orgPats}
+                    values={PAT_SORT_VALUES}
                     rowKey={(p) => p.id}
                     columns={[
                       {
-                        key: "user", label: strings.orgAdmin.patUser,
+                        key: "user", label: strings.orgAdmin.patUser, sortable: true,
                         render: (p) => (
                           <>
                             <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
@@ -2831,7 +2889,7 @@ export function OrgAdminPage() {
                         ),
                       },
                       {
-                        key: "name", label: strings.orgAdmin.patName,
+                        key: "name", label: strings.orgAdmin.patName, sortable: true,
                         render: (p) => (
                           <>
                             {p.name}
@@ -2841,9 +2899,9 @@ export function OrgAdminPage() {
                           </>
                         ),
                       },
-                      { key: "expires", label: strings.orgAdmin.patExpires, render: (p) => new Date(p.expires_at).toLocaleDateString() },
+                      { key: "expires", label: strings.orgAdmin.patExpires, sortable: true, render: (p) => new Date(p.expires_at).toLocaleDateString() },
                       {
-                        key: "lastUsed", label: strings.orgAdmin.patLastUsed,
+                        key: "lastUsed", label: strings.orgAdmin.patLastUsed, sortable: true,
                         render: (p) => (p.last_used_at ? new Date(p.last_used_at).toLocaleString() : strings.orgAdmin.never),
                       },
                       {
@@ -2965,23 +3023,29 @@ export function OrgAdminPage() {
                 >
                   <Plus /> {strings.orgAdmin.newCustomRole}
                 </button>
-                <DirectoryTable
+                <SortedDirectoryTable
                   ariaLabel={strings.orgAdmin.customRolesTitle}
+                  values={{
+                    name: (r) => r.name,
+                    description: (r) => r.description || null,
+                    scope: (r) => customRoleScopeLabel(r.scope),
+                    permissions: (r) => r.permissions.length,
+                  }}
                   rowKey={(r) => r.id}
                   emptyState={<p className="text-muted">{strings.orgAdmin.noCustomRoles}</p>}
                   rows={customRoles}
                   columns={[
-                    { key: "name", label: strings.orgAdmin.customRoleName, render: (r) => <strong>{r.name}</strong> },
+                    { key: "name", label: strings.orgAdmin.customRoleName, sortable: true, render: (r) => <strong>{r.name}</strong> },
                     {
-                      key: "description", label: strings.orgAdmin.customRoleDescription,
+                      key: "description", label: strings.orgAdmin.customRoleDescription, sortable: true,
                       render: (r) => <span className="text-muted">{r.description}</span>,
                     },
                     {
-                      key: "scope", label: strings.orgAdmin.customRoleScope,
+                      key: "scope", label: strings.orgAdmin.customRoleScope, sortable: true,
                       render: (r) => customRoleScopeLabel(r.scope),
                     },
                     {
-                      key: "permissions", label: strings.orgAdmin.customRolePermissionsLabel,
+                      key: "permissions", label: strings.orgAdmin.customRolePermissionsLabel, sortable: true,
                       render: (r) => strings.orgAdmin.customRolePermissionsCount(r.permissions.length),
                     },
                     {

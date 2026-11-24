@@ -40,6 +40,7 @@ import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { SortField } from "../../components/SortField";
 import { sortRows, TIME_SORT_VALUES } from "../../utils/sortRows";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
@@ -130,6 +131,25 @@ export function ProjectDecisionsPage() {
     return params;
   }
 
+  const columns: DirectoryColumn<Decision>[] = [
+    { key: "unique_code", label: "Code", sortable: true, render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
+    { key: "title", label: "Title", sortable: true, render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
+    {
+      key: "type", label: "Type", sortable: true, optional: true,
+      render: (d) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? "—",
+    },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (d) => <Badge tone={DECISION_STATUS_TONE[d.status]}>{DECISION_STATUS_LABEL[d.status]}</Badge>,
+    },
+    {
+      key: "owner", label: "Owner", sortable: true, optional: true,
+      render: (d) => <PrincipalBadge principal={d.owner} />,
+    },
+  ];
+
+  const shown = useOptionalColumns("decisions_list", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decisions === null || project === null) return <Spinner />;
@@ -147,27 +167,11 @@ export function ProjectDecisionsPage() {
     owner: (d) => d.owner?.label ?? null,
   });
 
-  const columns: DirectoryColumn<Decision>[] = [
-    { key: "unique_code", label: "Code", sortable: true, render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
-    { key: "title", label: "Title", sortable: true, render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
-    {
-      key: "type", label: "Type", sortable: true,
-      render: (d) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? "—",
-    },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (d) => <Badge tone={DECISION_STATUS_TONE[d.status]}>{DECISION_STATUS_LABEL[d.status]}</Badge>,
-    },
-    {
-      key: "owner", label: "Owner", sortable: true,
-      render: (d) => <PrincipalBadge principal={d.owner} />,
-    },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Decisions"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "decision", filters: filterParams().toString(), onImported: reloadDecisions }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -204,7 +208,7 @@ export function ProjectDecisionsPage() {
       >
         <DirectoryTable
           ariaLabel="Decisions"
-          columns={columns}
+          columns={shown.columns}
           rows={sorted}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}

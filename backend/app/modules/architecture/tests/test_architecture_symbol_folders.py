@@ -61,6 +61,11 @@ def _library(client, token, base, **params) -> dict:
     return resp.json()
 
 
+def _symbol_id(client, token, base, name) -> str:
+    """The id of the library symbol called `name`."""
+    return next(r["id"] for r in _library(client, token, base, search=name)["items"] if r["name"] == name)
+
+
 def _names(page: dict) -> list[str]:
     return [row["name"] for row in page["items"]]
 
@@ -215,6 +220,14 @@ def test_the_library_lists_filters_sorts_and_pages_with_the_server_doing_the_wor
     by_folder = _names(_library(client, token, base, source="uploaded", sort="folder"))
     assert by_folder[0] == "Mango" and by_folder[1:] == ["Zebra router", "Apple switch"]
     assert _names(_library(client, token, base, sort="source"))[-1] in {"Apple switch", "Mango", "Zebra router"}
+    # Used by orders by the number of records that use the symbol, ties by name.
+    types = org_element_types(client, token, org["id"])
+    zebra = _symbol_id(client, token, base, "Zebra router")
+    resp = client.patch(f"{base}/element-types/{types['System']}", json={"symbol_id": zebra}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    by_used = _names(_library(client, token, base, source="uploaded", sort="used"))
+    assert by_used == ["Apple switch", "Mango", "Zebra router"]
+    assert _names(_library(client, token, base, source="uploaded", sort="used", order="desc")) == ["Zebra router", "Mango", "Apple switch"]
 
     first, second = _library(client, token, base, limit=5), _library(client, token, base, limit=5, offset=5)
     assert len(first["items"]) == 5 and first["total"] == 13 and not set(_names(first)) & set(_names(second))

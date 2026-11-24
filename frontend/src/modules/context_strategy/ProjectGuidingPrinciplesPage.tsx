@@ -30,6 +30,7 @@ import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
@@ -94,6 +95,19 @@ export function ProjectGuidingPrinciplesPage() {
     return params;
   }
 
+  const columns: DirectoryColumn<GuidingPrinciple>[] = [
+    { key: "name", label: "Name", sortable: true, render: (g) => <>{g.name}<ProjectScopeLabel row={g} /></> },
+    { key: "code", label: "Code", sortable: true, render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (g) => `v${g.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("context_guiding_principles", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciples === null || project === null) return <Spinner />;
@@ -105,21 +119,11 @@ export function ProjectGuidingPrinciplesPage() {
     return true;
   });
 
-  const columns: DirectoryColumn<GuidingPrinciple>[] = [
-    { key: "name", label: "Name", sortable: true, render: (g) => <>{g.name}<ProjectScopeLabel row={g} /></> },
-    { key: "code", label: "Code", sortable: true, render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
-    { key: "priority", label: "Priority", sortable: true, render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
-    },
-    { key: "version", label: "Version", sortable: true, render: (g) => `v${g.version_number}` },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Guiding Principle"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "guiding_principle", filters: filterParams().toString(), onImported: reloadGuidingPrinciples }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -154,7 +158,7 @@ export function ProjectGuidingPrinciplesPage() {
       >
         <DirectoryTable
           ariaLabel="Guiding Principles"
-          columns={columns}
+          columns={shown.columns}
           rows={sortRows(filtered, listSort.sort, GUIDING_PRINCIPLE_SORT_VALUES)}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}

@@ -15,21 +15,18 @@ import { ChangeRequestCreateModal } from "../components/ChangeRequestCreateModal
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
+import { DirectoryTable, type DirectoryColumn } from "../components/DirectoryTable";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { TagFilterField } from "../components/TagFilterField";
-import { placementsText } from "../api/placements";
-import { usePagePlacements } from "../hooks/usePagePlacements";
-import { usePageReferences } from "../hooks/usePageReferences";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { LoadMoreButton } from "../components/LoadMoreButton";
-import { SortableHeader } from "../components/SortableHeader";
-import { ReferencesCell } from "../components/ReferencesCell";
 import { LoadFailed } from "../components/LoadFailed";
 import { Spinner } from "../components/Spinner";
 import { TileCard, TileGrid } from "../components/TileCard";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useStrings, useTerm } from "../context/TerminologyContext";
 import { useLatest } from "../hooks/useLatest";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -45,7 +42,7 @@ import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
 import { addSharedListFilters } from "../utils/listFilterParams";
 
 const PAGE_SIZE = 30;
-const SORT_KEYS = ["unique_code", "proposed_name", "status", ...TIME_SORT_KEYS] as const;
+const SORT_KEYS = ["unique_code", "proposed_name", "status", "target", "level", "places", "references", ...TIME_SORT_KEYS] as const;
 
 const CR_STATUS_OPTIONS: ChangeRequestStatus[] = [
   "draft", "submitted", "in_review", "approved", "rejected", "withdrawn",
@@ -68,10 +65,6 @@ export function ChangeRequestsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [crs, setCrs] = useState<ChangeRequest[] | null>(null);
-  const placed = usePagePlacements(projectId, "change_request", (crs ?? []).map((cr) => cr.id));
-  const showPlaces = Object.keys(placed).length > 0;
-  const referenced = usePageReferences(projectId, "change_request", (crs ?? []).map((cr) => cr.id));
-  const showReferences = Object.keys(referenced).length > 0;
   const [total, setTotal] = useState(0);
   // Unfiltered mandatory-scope count, shown by `ResultCount` beside the filtered `total`.
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
@@ -177,6 +170,10 @@ export function ChangeRequestsPage() {
     { key: "unique_code", label: "Code", sortable: true },
     { key: "proposed_name", label: "Name", sortable: true },
     { key: "status", label: strings.changeRequests.status, sortable: true },
+    { key: "target", label: "Target", sortable: true },
+    { key: "level", label: "Level", sortable: true },
+    { key: "places", label: strings.placements.label, sortable: true },
+    { key: "references", label: strings.references.column, sortable: true },
     { key: "created", label: "Created", sortable: true },
   ];
 
@@ -217,6 +214,32 @@ export function ChangeRequestsPage() {
     setTargetStageFilter((current) => (current === stageId ? "" : stageId));
   }
 
+  /** Every column the list can draw; the person chooses the optional ones (`useOptionalColumns`). */
+  const columns: DirectoryColumn<ChangeRequest>[] = [
+    { key: "unique_code", label: "Code", sortable: true, render: (cr) => <span className="text-muted"><RecordCode code={cr.unique_code} ownerProjectCode={cr.from_project_code} /></span> },
+    {
+      key: "proposed_name", label: "Name", sortable: true,
+      render: (cr) => (
+        <>
+          <Link to={`/projects/${rowProjectId(cr, projectId ?? "")}/change-requests/${cr.id}`}>{crTitle(cr)}</Link>
+          <ProjectScopeLabel row={cr} />
+        </>
+      ),
+    },
+    {
+      key: "status", label: strings.changeRequests.status, sortable: true,
+      render: (cr) => (
+        <FilterBadge active={statusFilter === cr.status} tone={CHANGE_REQUEST_STATUS_TONE[cr.status]} onClick={() => toggleStatusFilter(cr.status)}>
+          {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
+        </FilterBadge>
+      ),
+    },
+    { key: "target", label: "Target", sortable: true, optional: true, render: (cr) => <span className="text-muted">{crTargetLabel(cr)}</span> },
+    { key: "level", label: "Level", sortable: true, optional: true, render: (cr) => <span className="text-muted">{crLevelLabel(cr)}</span> },
+    { key: "created", label: "Created", sortable: true, optional: true, render: (cr) => new Date(cr.created_at).toLocaleString() },
+  ];
+  const shown = useOptionalColumns("change_requests", columns);
+
   return (
     <div className="stack">
       <ListPageLayout
@@ -228,6 +251,7 @@ export function ChangeRequestsPage() {
             <Plus /> {strings.changeRequests.newChangeRequest}
           </button>
         }
+        columnChooser={shown.chooser}
         records={{ projectId: projectId ?? "", recordType: "change_request", filters: addSortParams(filterParams(), listSort.sort).toString(), onImported: reload }}
         filter={
           <FilterPanel
@@ -274,63 +298,13 @@ export function ChangeRequestsPage() {
             {!crs && !failed && <Spinner />}
             {crs && crs.length === 0 && <p className="text-muted">{strings.changeRequests.empty}</p>}
             {crs && crs.length > 0 && viewMode === "list" && (
-              <div className="card" style={{ overflowX: "auto" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <SortableHeader
-                        label="Code" sortKey="unique_code" sort={listSort.sort}
-                        onSort={listSort.onHeaderSort}
-                      />
-                      <SortableHeader
-                        label="Name" sortKey="proposed_name" sort={listSort.sort}
-                        onSort={listSort.onHeaderSort}
-                      />
-                      <SortableHeader
-                        label={strings.changeRequests.status} sortKey="status" sort={listSort.sort}
-                        onSort={listSort.onHeaderSort}
-                      />
-                      <th>Target</th>
-                      <th>Level</th>
-                      <SortableHeader
-                        label="Created" sortKey="created" sort={listSort.sort}
-                        onSort={listSort.onHeaderSort}
-                      />
-                      {showPlaces && <th>{strings.placements.label}</th>}
-                      {showReferences && <th>{strings.references.column}</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {crs.map((cr) => (
-                      <tr
-                        key={cr.id}
-                        className="entity-accent-row"
-                        style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
-                      >
-                        <td className="text-muted"><RecordCode code={cr.unique_code} ownerProjectCode={cr.from_project_code} /></td>
-                        <td>
-                          <Link to={`/projects/${rowProjectId(cr, projectId ?? "")}/change-requests/${cr.id}`}>{crTitle(cr)}</Link>
-                          <ProjectScopeLabel row={cr} />
-                        </td>
-                        <td>
-                          <FilterBadge
-                            active={statusFilter === cr.status}
-                            tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}
-                            onClick={() => toggleStatusFilter(cr.status)}
-                          >
-                            {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
-                          </FilterBadge>
-                        </td>
-                        <td className="text-muted">{crTargetLabel(cr)}</td>
-                        <td className="text-muted">{crLevelLabel(cr)}</td>
-                        <td>{new Date(cr.created_at).toLocaleString()}</td>
-                        {showPlaces && <td className="text-muted">{placementsText(placed[cr.id])}</td>}
-                        {showReferences && <td><ReferencesCell references={referenced[cr.id]} /></td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DirectoryTable
+                ariaLabel={strings.changeRequests.title} columns={shown.columns} rows={crs} rowKey={(cr) => cr.id}
+                rowAccent={ENTITY_ACCENT_COLOR.change_request}
+                sort={listSort.sort} onSort={listSort.onHeaderSort}
+                placements={{ projectId, artefactType: "change_request", rowId: (cr) => cr.id, sortKeys: { places: "places", references: "references" } }}
+                emptyState={null}
+              />
             )}
             {crs && crs.length > 0 && viewMode === "tiles" && (
               <TileGrid>

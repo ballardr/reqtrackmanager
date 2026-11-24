@@ -237,3 +237,37 @@ export const NameHeaderSortsTheSnippets: Story = {
     await expectHeaderOrdersText(t, "Name");
   },
 };
+/** The Carries header orders the snippets by what they carry (a snippet carrying nothing last when ascending). */
+export const CarriesHeaderSortsTheSnippets: Story = {
+  args: { api: buildSnippetStoreApi() },
+  play: async ({ canvasElement }) => {
+    const t = await within(canvasElement).findByRole("table", { name: "Saved snippets" });
+    const rows = () => within(t).getAllByRole("row").slice(1);
+    await userEvent.click(within(t).getByRole("button", { name: "Carries" }));
+    await waitFor(() => expect(rows()[0]).toHaveTextContent("style Wide"));
+    await expect(rows()[1]).toHaveTextContent("variable audience");
+    await expect(rows()[2]).toHaveTextContent("House risk table");
+    await expect(within(t).getByRole("columnheader", { name: "Carries" })).toHaveAttribute("aria-sort", "ascending");
+    await userEvent.click(within(t).getByRole("button", { name: "Carries" }));
+    await waitFor(() => expect(rows()[0]).toHaveTextContent("House risk table"));
+    await expect(rows()[2]).toHaveTextContent("style Wide");
+  },
+};
+
+/** Category, Source, Blocks and Carries are optional and on by default; the column chooser hides one and the reset shows it again. */
+export const ColumnChooserHidesAndRestoresAColumn: Story = {
+  args: { api: buildSnippetStoreApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const t = await table(canvasElement);
+    for (const name of ["Name", "Category", "Source", "Blocks", "Carries"]) {
+      await expect(t.getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Blocks" }));
+    await expect(t.queryByRole("columnheader", { name: "Blocks" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(t.getByRole("columnheader", { name: "Blocks" })).toBeInTheDocument();
+  },
+};

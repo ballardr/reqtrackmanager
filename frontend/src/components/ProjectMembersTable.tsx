@@ -58,6 +58,7 @@ import { cycleSort, type SortState } from "./sortState";
 import { Badge } from "./Badge";
 import { ServiceBadge } from "./ServiceBadge";
 import { useResetOnChange } from "../hooks/useResetOnChange";
+import { instantOf, sortRows, type SortValue } from "../utils/sortRows";
 
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 const PAGE_SIZE = 20;
@@ -68,7 +69,7 @@ type Row =
   | { kind: "member"; member: EffectiveMember }
   | { kind: "invited"; invite: PendingInvite }
   | { kind: "group"; group: OrgGroupProjectRoleSummary };
-type SortKey = "name" | "email";
+type SortKey = "name" | "email" | "role" | "source";
 
 /** Per-role provenance text for the Source column: one line per source a user holds a given role through
  * (`MemberSourceProvenanceKind` in `api/types.ts` describes the five direct kinds). */
@@ -105,6 +106,27 @@ function sourceLine(strings: Strings, s: MemberSourceProvenance): string {
   }
 }
 
+/**
+ * The Source column's one-phrase summary for a member, the text `MemberSourceSummary` shows and the Source sort value.
+ *
+ * @param strings The resolved UI strings.
+ * @param member The effective member.
+ * @returns "Direct", "Group" or "Direct and group", or `null` when the member has no source.
+ */
+function sourceSummaryLabel(strings: Strings, member: EffectiveMember): string | null {
+  if (member.sources.length === 0) return null;
+  const hasDirect = member.sources.some((s) => s.kind === "direct_role");
+  const hasIndirect = member.sources.some((s) => s.kind !== "direct_role");
+  if (!hasIndirect) return strings.membersTable.sourceDirectRole;
+  return hasDirect ? strings.membersTable.sourceSummaryDirectAndGroup : strings.membersTable.sourceSummaryGroup;
+}
+
+/** The roles' displayed names joined in the order the Role dropdown lists them, for the Role sort value; `null` when none are held. */
+function joinedRoleNames(roles: ProjectRole[], moduleNames: string[]): string | null {
+  const names = [...PROJECT_ROLES.filter((role) => roles.includes(role)).map((role) => PROJECT_ROLE_LABEL[role]), ...moduleNames];
+  return names.length > 0 ? names.join(", ") : null;
+}
+
 /** The Source column's cell for a `kind: "member"` row: one plain word or phrase ("Direct" / "Group" / "Direct and
  * group"), because the Role column already names the roles held. The per-source detail (`sourceLine`) is behind a
  * click-to-open `Popover`. */
@@ -114,13 +136,10 @@ function MemberSourceSummary({ strings, member }: { strings: Strings; member: Ef
 
   if (member.sources.length === 0) return <span className="text-muted">—</span>;
 
-  const hasDirect = member.sources.some((s) => s.kind === "direct_role");
-  const hasIndirect = member.sources.some((s) => s.kind !== "direct_role");
+  const label = sourceSummaryLabel(strings, member) ?? "";
 
   // Every source is `direct_role`, so a popover would only repeat "Direct" per role; the disclosure is skipped.
-  if (!hasIndirect) return <span className="text-muted">{strings.membersTable.sourceDirectRole}</span>;
-
-  const label = hasDirect ? strings.membersTable.sourceSummaryDirectAndGroup : strings.membersTable.sourceSummaryGroup;
+  if (member.sources.every((s) => s.kind === "direct_role")) return <span className="text-muted">{label}</span>;
 
   return (
     <>
@@ -152,6 +171,36 @@ function MemberSourceSummary({ strings, member }: { strings: Strings; member: Ef
       )}
     </>
   );
+}
+
+/**
+ * The sort value of each sortable column for every row kind, matching the text the cell shows.
+ *
+ * @param strings The resolved UI strings.
+ * @param moduleRoles The module roles offered in the Role dropdown, whose names a member's checked module roles add to the Role value.
+ * @returns Accessors keyed by column key: name and email (an invite has no name, a group no email), Role (the joined role
+ *   names, or the invite's status label), Source (the summary phrase; an invite by its sent time).
+ */
+function rowSortValues(strings: Strings, moduleRoles: ModuleRoleDefinition[]): Record<SortKey, (row: Row) => SortValue> {
+  return {
+    name: (row) => (row.kind === "member" ? row.member.display_name : row.kind === "group" ? row.group.org_group_name : null),
+    email: (row) => (row.kind === "member" ? row.member.email : row.kind === "invited" ? row.invite.email : null),
+    role: (row) => {
+      if (row.kind === "invited") return PENDING_INVITE_STATUS_LABEL[row.invite.status];
+      if (row.kind === "group") return joinedRoleNames(row.group.roles, []);
+      const { member } = row;
+      const moduleNames = moduleRoles
+        .filter((d) => member.module_roles.some((g) => g.module_key === d.module_key && g.role_key === d.role_key))
+        .map((d) => d.name);
+      return joinedRoleNames(member.sources.map((s) => s.role), moduleNames);
+    },
+    source: (row) =>
+      row.kind === "invited"
+        ? instantOf(row.invite.created_at)
+        : row.kind === "group"
+          ? strings.membersTable.sourceDirectRole
+          : sourceSummaryLabel(strings, row.member),
+  };
 }
 
 export function ProjectMembersTable({
@@ -235,15 +284,6 @@ export function ProjectMembersTable({
     if (roleFilter && !m.sources.some((s) => s.role === roleFilter)) return false;
     return true;
   });
-  const sortedMembers = sort
-    ? [...filteredMembers].sort((a, b) => {
-        const dir = sort.direction === "asc" ? 1 : -1;
-        const av = sort.key === "name" ? a.display_name : a.email;
-        const bv = sort.key === "name" ? b.display_name : b.email;
-        return av.localeCompare(bv) * dir;
-      })
-    : filteredMembers;
-
   // Same search/role-filter treatment as `filteredMembers` above, applied
   // to group rows — a group has no email, so search only matches
   // its name.
@@ -253,12 +293,13 @@ export function ProjectMembersTable({
     return true;
   });
 
-  // Invited and group rows render ahead of the sorted member rows ("fixed kind first" in the style guide's
-  // type-badged mixed rows pattern): they have no name to sort by and are small, fully loaded sets.
+  // Invited and group rows render ahead of the member rows ("fixed kind first" in the style guide's type-badged mixed
+  // rows pattern); each kind is ordered within itself by the sort, since the kinds hold different values.
+  const sortValues = rowSortValues(strings, availableModuleRoles);
   const rows: Row[] = [
-    ...filteredInvites.map((invite): Row => ({ kind: "invited", invite })),
-    ...filteredGroupRoles.map((group): Row => ({ kind: "group", group })),
-    ...sortedMembers.map((member): Row => ({ kind: "member", member })),
+    ...sortRows(filteredInvites.map((invite): Row => ({ kind: "invited", invite })), sort, sortValues),
+    ...sortRows(filteredGroupRoles.map((group): Row => ({ kind: "group", group })), sort, sortValues),
+    ...sortRows(filteredMembers.map((member): Row => ({ kind: "member", member })), sort, sortValues),
   ];
   const visible = rows.slice(0, visibleCount);
 
@@ -313,6 +354,7 @@ export function ProjectMembersTable({
     {
       key: "role",
       label: strings.membersTable.role,
+      sortable: true,
       render: (row) => {
         if (row.kind === "invited") {
           const invite = row.invite;
@@ -434,6 +476,7 @@ export function ProjectMembersTable({
     {
       key: "source",
       label: strings.membersTable.source,
+      sortable: true,
       render: (row) => {
         if (row.kind === "invited") {
           return (

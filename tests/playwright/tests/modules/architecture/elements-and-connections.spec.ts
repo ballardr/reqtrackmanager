@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { addDefinition, chooseRecordAction, installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { chooseColumn } from "../../columnChooser";
 import { setUpOrg } from "../stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -78,6 +79,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await dialog.getByLabel("Protocol").fill("HTTPS/1.1");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
       await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
+      await chooseColumn(page, "Protocol");
       const row = page.locator("tr", { hasText: "HTTPS/1.1" });
       await expect(row.getByText(new RegExp(`${gateway} \\(HTTPS API\\)`))).toBeVisible();
       await expect(row.getByText(new RegExp(orders))).toBeVisible();

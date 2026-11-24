@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { DRAFT_ARTEFACT_ID } from "../api/artefactLinks";
 import { api } from "../api/client";
@@ -82,6 +82,39 @@ export const ListOfChangeRequests: Story = {
   },
 };
 
+/** Target, Level and Created order the whole list on the server through the header. */
+export const TargetAndLevelHeadersSortOnTheServer: Story = {
+  beforeEach: () => mockChangeRequestsListApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    for (const [header, key] of [["Target", "target"], ["Level", "level"]] as const) {
+      await userEvent.click(canvas.getByRole("button", { name: header }));
+      await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining(`sort=${key}&order=asc`)));
+    }
+  },
+};
+
+/** Every column is drawn by default; the chooser hides Created and the reset brings it back. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockChangeRequestsListApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    for (const name of ["Code", "Name", "Target", "Level", "Created"]) {
+      await expect(canvas.getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Created" }));
+    await expect(canvas.queryByRole("columnheader", { name: "Created" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(canvas.getByRole("columnheader", { name: "Created" })).toBeInTheDocument();
+  },
+};
+
 /** The list opens by code ascending and Sort by offers Created and Modified; choosing Modified newest first is sent to the server. */
 export const SortFieldOrdersByModifiedNewestFirst: Story = {
   beforeEach: () => mockChangeRequestsListApis(),
@@ -90,7 +123,7 @@ export const SortFieldOrdersByModifiedNewestFirst: Story = {
     await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
     await expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=unique_code&order=asc"));
     const sortBy = canvas.getByRole("combobox", { name: "Sort by" });
-    await expect(within(sortBy).getAllByRole("option").map((o) => o.textContent)).toEqual(["Code", "Name", "Status", "Created", "Modified"]);
+    await expect(within(sortBy).getAllByRole("option").map((o) => o.textContent)).toEqual(["Code", "Name", "Status", "Target", "Level", "Components", "External references", "Created", "Modified"]);
     await userEvent.selectOptions(sortBy, "modified");
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Order" }), "desc");
     await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=modified&order=desc")));

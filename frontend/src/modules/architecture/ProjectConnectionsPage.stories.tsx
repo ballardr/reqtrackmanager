@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildConnection, buildElement, buildFolder, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ProjectConnectionsPage } from "./ProjectConnectionsPage";
 
@@ -11,6 +11,12 @@ const CONNECTIONS = [
   buildConnection({ id: "con-2", unique_code: "CON-002", name: "", protocol: "", target_locked: true, target_element_name: "" }),
   buildConnection({ id: "con-3", unique_code: "CON-003", name: "Old feed", status: "retired" }),
 ];
+
+/** A person who has chosen every optional column, including the two that are off by default. */
+const withEveryColumn = withAuth(buildUser({
+  id: "user-1",
+  ui_preferences: { column_choice_architecture_connections: ["type", "source", "target", "folder", "protocol"] },
+}));
 
 const meta: Meta<typeof ProjectConnectionsPage> = {
   title: "Modules/Architecture/ProjectConnectionsPage",
@@ -26,6 +32,7 @@ export default meta;
 type Story = StoryObj<typeof ProjectConnectionsPage>;
 
 export const ListShowsEndsAndNamesALockedEndByCodeOnly: Story = {
+  decorators: [withEveryColumn],
   beforeEach: () => { mockArchitectureReads({ connections: CONNECTIONS }); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -75,6 +82,7 @@ export const NameHeaderSortsTheList: Story = {
 
 /** The Folder column shows each connection's path, and choosing a folder in the filter panel narrows the list to it. */
 export const FolderColumnAndFilterNarrowTheList: Story = {
+  decorators: [withEveryColumn],
   beforeEach: () => {
     mockArchitectureReads({
       connections: [
@@ -91,5 +99,27 @@ export const FolderColumnAndFilterNarrowTheList: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Folder Buses" }));
     await waitFor(() => expect(within(table).queryByRole("link", { name: "CON-002" })).not.toBeInTheDocument());
     await expect(within(table).getByRole("link", { name: "CON-001" })).toBeInTheDocument();
+  },
+};
+
+/** Folder and Protocol are off by default; the column chooser adds them and the reset puts them away again. */
+export const FolderAndProtocolAreOptionalAndOffByDefault: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  beforeEach: () => { mockArchitectureReads({ connections: CONNECTIONS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Connections" });
+    for (const name of ["Code", "Name", "Type", "Source", "Target", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    for (const name of ["Folder", "Protocol"]) {
+      await expect(within(table).queryByRole("columnheader", { name })).not.toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Protocol" }));
+    await expect(within(table).getByRole("columnheader", { name: "Protocol" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Protocol" })).not.toBeInTheDocument();
   },
 };

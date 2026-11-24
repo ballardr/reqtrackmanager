@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ArtefactLinkCandidate, ArtefactLinkTypeOption } from "../api/artefactLinks";
@@ -149,6 +149,25 @@ export const ListView: Story = {
   },
 };
 
+/** The list view draws every column by default; the chooser hides Target and level, and the reset brings it back. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    for (const name of ["ID", "Name", "Target · level", "Component · category"]) {
+      await expect(canvas.getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Target and level" }));
+    await expect(canvas.queryByRole("columnheader", { name: "Target · level" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(canvas.getByRole("columnheader", { name: "Target · level" })).toBeInTheDocument();
+  },
+};
+
 /** Column-header sorting — this list is backend-
  * paginated (`PAGE_SIZE`/`LoadMoreButton`), so a header click refetches with
  * `sort`/`order` query params rather than reordering just the loaded page. */
@@ -184,6 +203,20 @@ export const SortByNameRefetchesWithSortParams: Story = {
     await waitFor(() =>
       expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "ascending")
     );
+  },
+};
+
+/** Target and level and Component and category order the whole list on the server, like every other header. */
+export const TargetAndComponentHeadersSortOnTheServer: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    for (const [header, key] of [["Target · level", "target"], ["Component · category", "placement"]] as const) {
+      await userEvent.click(canvas.getByRole("button", { name: header }));
+      await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining(`sort=${key}&order=asc`)));
+    }
   },
 };
 

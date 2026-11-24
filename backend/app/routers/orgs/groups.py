@@ -69,6 +69,7 @@ def list_org_groups(
     organization_id: UUID,
     response: Response,
     search: str | None = None,
+    sort: str = Query("name", pattern="^(name|members)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -81,9 +82,10 @@ def list_org_groups(
     omitting `limit` returns every group unpaginated (Project Admin's org-group nesting picker relies on
     this); when given, the pre-slice total is returned via `X-Total-Count`.
 
-    `order` (`asc` default, or `desc`) sets the direction of the name order; Name is the list's only sortable
-    column, so there is no `sort` field. It is a server parameter because sorting only the loaded page would
-    misrepresent the full-list order.
+    `sort` is `name` (default) or `members` (the number of user members the Members column shows); `order`
+    (`asc` default, or `desc`) sets the direction. Equal values are ordered by name, then id, so pages never
+    repeat or skip a group. They are server parameters because sorting only the loaded page would misrepresent
+    the full-list order.
 
     `granted_org_role` is masked to `None` for a non-admin caller: the endpoint is open to any org member
     (a `MEMBER`/`PROJECT_CREATOR` needs group names and ids for the nesting picker), but which group
@@ -94,8 +96,18 @@ def list_org_groups(
     query = select(OrgGroup).where(OrgGroup.organization_id == organization_id)
     if search:
         query = query.where(OrgGroup.name.ilike(f"%{search}%"))
-    name_order = OrgGroup.name.desc() if order == "desc" else OrgGroup.name
-    groups = db.scalars(query.order_by(name_order)).all()
+    descending = order == "desc"
+    name_order = OrgGroup.name.desc() if descending else OrgGroup.name.asc()
+    if sort == "members":
+        member_count = (
+            select(func.count()).select_from(OrgGroupMember)
+            .where(OrgGroupMember.org_group_id == OrgGroup.id, OrgGroupMember.user_id.is_not(None))
+            .correlate(OrgGroup).scalar_subquery()
+        )
+        ordering = [member_count.desc() if descending else member_count.asc(), OrgGroup.name.asc(), OrgGroup.id.asc()]
+    else:
+        ordering = [name_order, OrgGroup.id.asc()]
+    groups = db.scalars(query.order_by(*ordering)).all()
 
     response.headers["X-Total-Count"] = str(len(groups))
     if limit is not None:

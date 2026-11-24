@@ -38,6 +38,7 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { useStrings } from "../../context/TerminologyContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
@@ -150,6 +151,43 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
   const filtered = useMemo(() => rows.filter((r) => matches(r, openOnly)), [rows, matches, openOnly]);
   const sorted = useMemo(() => sortRows(filtered, listSort.sort, DIAGRAM_ROW_SORT_VALUES), [filtered, listSort.sort]);
 
+  const columns: DirectoryColumn<DiagramListRow>[] = [
+    { key: "code", label: "Code", sortable: true, render: (r) => <RecordCode code={r.source.unique_code} ownerProjectCode={r.source.from_project_code} /> },
+    { key: "name", label: "Name", sortable: true, render: (r) => <>{r.source.name}<ProjectScopeLabel row={r.source} /></> },
+    ...(offered.length > 1 ? [{ key: "type", label: "Type", sortable: true, optional: true, render: (r: DiagramListRow) => DIAGRAM_KIND_LABEL[r.kind] }] : []),
+    { key: "folder", label: "Folder", sortable: true, optional: true, render: (r) => (r.kind === "block" ? r.source.folder_path ?? "—" : "—") },
+    {
+      key: "scope", label: "Element", sortable: true, optional: true,
+      render: (r) => (r.kind === "block" && !r.source.scope_element_id
+        ? <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>
+        : rowElementText(r) || "—"),
+    },
+    {
+      key: "boxes", label: "Contents", sortable: true, optional: true,
+      render: (r) => (
+        <>
+          {rowContents(r)} {r.kind === "block" ? (rowContents(r) === 1 ? "element" : "elements") : (rowContents(r) === 1 ? "state" : "states")}
+          {r.kind === "state_machine" && r.source.error_count > 0 && <> <Badge tone="danger">{r.source.error_count} {r.source.error_count === 1 ? "error" : "errors"}</Badge></>}
+          {r.kind === "state_machine" && r.source.warning_count > 0 && <> <Badge tone="warning">{r.source.warning_count} {r.source.warning_count === 1 ? "warning" : "warnings"}</Badge></>}
+        </>
+      ),
+    },
+    { key: "toggles", label: "Switches", sortable: true, optional: true, defaultHidden: true, render: (r) => (r.kind === "block" ? r.source.toggle_count : "—") },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (r) => (
+        <FilterBadge
+          tone={ARCHITECTURE_STATUS_TONE[r.source.status]} active={statusFilter === r.source.status}
+          onClick={() => setStatusFilter(statusFilter === r.source.status ? "" : r.source.status)}
+        >
+          {ARCHITECTURE_STATUS_LABEL[r.source.status]}
+        </FilterBadge>
+      ),
+    },
+  ];
+
+  const shown = useOptionalColumns("architecture_diagrams", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (blocks === null && machines === null) return <Spinner />;
@@ -178,48 +216,13 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
       };
     });
 
-  const columns: DirectoryColumn<DiagramListRow>[] = [
-    { key: "code", label: "Code", sortable: true, render: (r) => <RecordCode code={r.source.unique_code} ownerProjectCode={r.source.from_project_code} /> },
-    { key: "name", label: "Name", sortable: true, render: (r) => <>{r.source.name}<ProjectScopeLabel row={r.source} /></> },
-    ...(offered.length > 1 ? [{ key: "type", label: "Type", sortable: true, render: (r: DiagramListRow) => DIAGRAM_KIND_LABEL[r.kind] }] : []),
-    { key: "folder", label: "Folder", sortable: true, render: (r) => (r.kind === "block" ? r.source.folder_path ?? "—" : "—") },
-    {
-      key: "scope", label: "Element", sortable: true,
-      render: (r) => (r.kind === "block" && !r.source.scope_element_id
-        ? <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>
-        : rowElementText(r) || "—"),
-    },
-    {
-      key: "boxes", label: "Contents", sortable: true,
-      render: (r) => (
-        <>
-          {rowContents(r)} {r.kind === "block" ? (rowContents(r) === 1 ? "element" : "elements") : (rowContents(r) === 1 ? "state" : "states")}
-          {r.kind === "state_machine" && r.source.error_count > 0 && <> <Badge tone="danger">{r.source.error_count} {r.source.error_count === 1 ? "error" : "errors"}</Badge></>}
-          {r.kind === "state_machine" && r.source.warning_count > 0 && <> <Badge tone="warning">{r.source.warning_count} {r.source.warning_count === 1 ? "warning" : "warnings"}</Badge></>}
-        </>
-      ),
-    },
-    { key: "toggles", label: "Switches", sortable: true, render: (r) => (r.kind === "block" ? r.source.toggle_count : "—") },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (r) => (
-        <FilterBadge
-          tone={ARCHITECTURE_STATUS_TONE[r.source.status]} active={statusFilter === r.source.status}
-          onClick={() => setStatusFilter(statusFilter === r.source.status ? "" : r.source.status)}
-        >
-          {ARCHITECTURE_STATUS_LABEL[r.source.status]}
-        </FilterBadge>
-      ),
-    },
-  ];
-
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && rows.some((r) => matches(r, false));
 
   return (
     <div className="container stack">
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
-        records={records}
+        records={records} columnChooser={shown.chooser}
         menuItems={folders.menuItems}
         actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New diagram</button>}
         filter={
@@ -249,7 +252,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
         {viewTabs}
         {folders.bar}
         <DirectoryTable
-          ariaLabel="Diagrams" columns={columns} rows={sorted} rowKey={(r) => r.id}
+          ariaLabel="Diagrams" columns={shown.columns} rows={sorted} rowKey={(r) => r.id}
           selection={{
             selected: folders.selected, onChange: folders.setSelected, label: (r) => `Select ${r.source.unique_code}`,
             selectable: (r) => r.kind === "block" && r.source.project_id === projectId, allLabel: "Select all diagrams",

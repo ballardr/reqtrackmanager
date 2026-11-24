@@ -2,7 +2,8 @@
  * Module: components/StagePlanTable
  *
  * The project's stages on the delivery status page: each stage's current phase (movable in place by a project manager),
- * owner, progress, expected range and overdue state, as a table or, with `view="timeline"`, as bars on the shared axis.
+ * owner, progress, expected range and overdue state (the stage always; the rest through the column chooser), as a
+ * table or, with `view="timeline"`, as bars on the shared axis.
  *
  * Responsibilities: one row per stage from `utils/deliveryPlan.stageRows`; the phase picker moves a stage through the
  * shared `usePhaseMove` (a closed phase first asks about completing its requirements); a locked phase is shown
@@ -16,6 +17,7 @@ import { CalendarRange } from "lucide-react";
 
 import type { PhasePlan, ProjectStage, StageWorkflow } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { usePhaseMove } from "../hooks/usePhaseMove";
 import { useTableSort } from "../hooks/useTableSort";
 import { formatDay, stageRows, type DeliveryRow } from "../utils/deliveryPlan";
@@ -64,25 +66,10 @@ export function StagePlanTable({
     expected: (stage) => rows.get(stage.id)?.expectedFrom ?? null,
   });
 
-  if (view === "timeline") {
-    return (
-      <DeliveryTimeline
-        items={stages.flatMap((stage) => {
-          const row = rows.get(stage.id);
-          return row ? [{ row, title: stage.name }] : [];
-        })}
-        actions={onSchedule ? (item) => {
-          const stage = stages.find((s) => s.id === item.row.key);
-          return stage ? <button className="btn" aria-label={scheduleLabel(stage)} title={scheduleLabel(stage)} onClick={() => onSchedule(stage)}><CalendarRange /></button> : null;
-        } : undefined}
-      />
-    );
-  }
-
   const columns: DirectoryColumn<ProjectStage>[] = [
     { key: "stage", label: strings.componentPhases.stageColumn, sortable: true, render: (stage) => <strong>{stage.name}</strong> },
     {
-      key: "phase", label: t.currentPhaseColumn, sortable: true,
+      key: "phase", label: t.currentPhaseColumn, sortable: true, optional: true,
       render: (stage) => {
         const phases = workflows.find((w) => w.id === stage.workflow_id)?.phases ?? [{ id: stage.phase_id, name: stage.phase_name, kind: stage.phase_kind }];
         return (
@@ -104,16 +91,16 @@ export function StagePlanTable({
         );
       },
     },
-    { key: "owner", label: strings.componentPhases.owner, sortable: true, render: (stage) => <PrincipalBadge principal={stage.owner} placeholder="" /> },
+    { key: "owner", label: strings.componentPhases.owner, sortable: true, optional: true, render: (stage) => <PrincipalBadge principal={stage.owner} placeholder="" /> },
     {
-      key: "progress", label: t.progressColumn, sortable: true,
+      key: "progress", label: t.progressColumn, sortable: true, optional: true,
       render: (stage) => {
         const row = rows.get(stage.id);
         return row ? <ProgressMeter value={row.completedPhases} max={row.totalPhases} label={t.progress(row.completedPhases, row.totalPhases)} /> : "";
       },
     },
     {
-      key: "expected", label: t.expectedColumn, sortable: true,
+      key: "expected", label: t.expectedColumn, sortable: true, optional: true,
       render: (stage) => {
         const row = rows.get(stage.id);
         if (!row) return "";
@@ -132,10 +119,28 @@ export function StagePlanTable({
     },
   ];
 
+  const chosen = useOptionalColumns("stage_plan", columns);
+
+  if (view === "timeline") {
+    return (
+      <DeliveryTimeline
+        items={stages.flatMap((stage) => {
+          const row = rows.get(stage.id);
+          return row ? [{ row, title: stage.name }] : [];
+        })}
+        actions={onSchedule ? (item) => {
+          const stage = stages.find((s) => s.id === item.row.key);
+          return stage ? <button className="btn" aria-label={scheduleLabel(stage)} title={scheduleLabel(stage)} onClick={() => onSchedule(stage)}><CalendarRange /></button> : null;
+        } : undefined}
+      />
+    );
+  }
+
   return (
     <>
+      {chosen.chooser && <div className="row" style={{ justifyContent: "flex-end" }}>{chosen.chooser}</div>}
       <DirectoryTable
-        ariaLabel={t.stagesTable} columns={columns} rows={table.rows} rowKey={(stage) => stage.id}
+        ariaLabel={t.stagesTable} columns={chosen.columns} rows={table.rows} rowKey={(stage) => stage.id}
         sort={table.sort} onSort={table.onSort}
         emptyState={<div className="text-muted">{strings.stagePhases.noStages}</div>}
       />

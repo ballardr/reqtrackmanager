@@ -2,7 +2,7 @@
 (C-A-13), including the authorization boundaries called out explicitly
 during planning."""
 
-from tests.conftest import auth_headers, create_org_admin_in, create_org_user, login
+from tests.conftest import auth_headers, create_org_admin_in, create_org_group, create_org_user, login
 
 
 def test_plain_member_can_list_org_users_unfiltered(client, admin_token, org_id):
@@ -356,6 +356,37 @@ def test_system_users_sort_by_email_and_created_at(client, admin_token, org_id):
         "/api/v1/system/users?search=sorttarget&sort=email&order=desc", headers=auth_headers(admin_token)
     ).json()
     assert [u["email"] for u in descending] == ["zoe.sorttarget@example.com", "aaron.sorttarget@example.com"]
+
+
+def test_system_users_sort_by_organizations_groups_and_status(client, admin_token, org_id):
+    """`organizations` and `groups` order by the joined names the columns show (a user with none last ascending),
+    `status` by Active, Banned, Deactivated; equal values keep the name order, in both directions."""
+    create_org_admin_in(client, admin_token, "Alpha Sort Org")
+    omega_org, omega_token = create_org_admin_in(client, admin_token, "Omega Sort Org")
+    omega_user = client.get("/api/v1/auth/me", headers=auth_headers(omega_token)).json()["id"]
+    create_org_group(client, omega_token, omega_org["id"], "Zz Sort Group", users=[omega_user])
+
+    def emails(sort: str, order: str, search: str) -> list[str]:
+        resp = client.get(f"/api/v1/system/users?search={search}&sort={sort}&order={order}", headers=auth_headers(admin_token))
+        assert resp.status_code == 200, resp.text
+        return [u["email"] for u in resp.json()]
+
+    alpha, omega = "alpha_sort_org_admin@example.com", "omega_sort_org_admin@example.com"
+    assert emails("organizations", "asc", "sort_org_admin") == [alpha, omega]
+    assert emails("organizations", "desc", "sort_org_admin") == [omega, alpha]
+    assert emails("groups", "asc", "sort_org_admin") == [omega, alpha]
+    assert emails("groups", "desc", "sort_org_admin") == [alpha, omega]
+
+    active = "sortstatus.active@example.com"
+    deactivated = "sortstatus.deact@example.com"
+    banned = "sortstatus.banned@example.com"
+    for email, action in ((active, None), (deactivated, "deactivate"), (banned, "ban")):
+        user_id = _make_orphaned_user(client, admin_token, org_id, email)
+        if action:
+            resp = client.post(f"/api/v1/system/users/{user_id}/status", json={"action": action}, headers=auth_headers(admin_token))
+            assert resp.status_code == 204, resp.text
+    assert emails("status", "asc", "sortstatus") == [active, banned, deactivated]
+    assert emails("status", "desc", "sortstatus") == [deactivated, banned, active]
 
 
 def test_cannot_revoke_the_deployment_last_active_server_admin(client, admin_token, org_id):

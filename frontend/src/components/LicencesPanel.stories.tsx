@@ -1,11 +1,17 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
+import { expectHeaderSorts } from "../testing/sortHelpers";
+import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 import { buildThirdPartyNotices, mockLicenceFetch, MIT_TEXT, OFL_TEXT } from "../testing/licenceFixtures";
 import { LicencesSection } from "./LicencesPanel";
 
 /** The sections of the Licences group on the Policies page: product licence, third-party components and fonts. */
-const meta: Meta<typeof LicencesSection> = { title: "Components/LicencesPanel", component: LicencesSection };
+const meta: Meta<typeof LicencesSection> = {
+  title: "Components/LicencesPanel",
+  component: LicencesSection,
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+};
 export default meta;
 
 type Story = StoryObj<typeof LicencesSection>;
@@ -63,6 +69,36 @@ export const SortByLicence: Story = {
     await expect(within(canvas.getByRole("table", { name: "Libraries" })).getAllByRole("row")[1]).toHaveTextContent("svglib");
     await userEvent.click(within(canvas.getByRole("table", { name: "Libraries" })).getByRole("button", { name: /Licence/ }));
     await expect(within(canvas.getByRole("table", { name: "Libraries" })).getAllByRole("row")[1]).toHaveTextContent("react");
+  },
+};
+
+/** Every data column of the three tables sorts on a header click: Type and Used in (libraries), Role and Images (programs), Used in and Notices (base images). */
+export const EveryColumnSorts: Story = {
+  args: { section: "components" },
+  beforeEach: () => {
+    const base = buildThirdPartyNotices();
+    mockLicenceFetch(buildThirdPartyNotices({
+      system_components: [
+        ...base.system_components,
+        { name: "Poppler", licence: "GPL-2.0-or-later", images: ["backend"], role: "Reads PDF pages.", reason: "Separate process.", source: "https://poppler.freedesktop.org/", use: "separate-program", packages: ["poppler-utils"] },
+      ],
+      base_images: {
+        ...base.base_images,
+        "node:26-slim": { licence: "MIT", images: ["frontend"], note: "Build stage." },
+      },
+    }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const libraries = await canvas.findByRole("table", { name: "Libraries" });
+    await expectHeaderSorts(libraries, "Type", ["npm package", "npm package", "Python package"]);
+    await expectHeaderSorts(libraries, "Used in", ["Backend API image", "Front-end application (bundled)", "Front-end application (bundled)"]);
+    const programs = canvas.getByRole("table", { name: "Programs in the images" });
+    await expectHeaderSorts(programs, "Role", ["Converts uploaded EPS logos to SVG.", "Reads PDF pages."]);
+    await expectHeaderSorts(programs, "Images", ["backend", "converter"]);
+    const images = canvas.getByRole("table", { name: "Base images" });
+    await expectHeaderSorts(images, "Used in", ["backend", "frontend"]);
+    await expectHeaderSorts(images, "Notices", ["Build stage.", "Debian slim."]);
   },
 };
 
@@ -147,5 +183,24 @@ export const LoadFailure: Story = {
   beforeEach: () => mockLicenceFetch(null),
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByRole("alert")).toHaveTextContent("Could not load the licence information.");
+  },
+};
+
+/** Version, Licence, Type and Used in are optional and on by default; the column chooser hides one and the reset shows it again. */
+export const ColumnChooserHidesAndRestoresAColumn: Story = {
+  args: { section: "components" },
+  beforeEach: () => mockLicenceFetch(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Libraries" });
+    for (const name of ["Name", "Version", "Licence", "Type", "Used in"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Type" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Type" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Type" })).toBeInTheDocument();
   },
 };

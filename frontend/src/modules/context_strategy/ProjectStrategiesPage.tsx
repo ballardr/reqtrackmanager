@@ -29,6 +29,7 @@ import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
@@ -93,6 +94,19 @@ export function ProjectStrategiesPage() {
     return params;
   }
 
+  const columns: DirectoryColumn<Strategy>[] = [
+    { key: "title", label: "Title", sortable: true, render: (s) => <>{s.title}<ProjectScopeLabel row={s} /></> },
+    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (s) => `v${s.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("context_strategies", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategies === null || project === null) return <Spinner />;
@@ -104,21 +118,11 @@ export function ProjectStrategiesPage() {
     return true;
   });
 
-  const columns: DirectoryColumn<Strategy>[] = [
-    { key: "title", label: "Title", sortable: true, render: (s) => <>{s.title}<ProjectScopeLabel row={s} /></> },
-    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
-    { key: "priority", label: "Priority", sortable: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
-    },
-    { key: "version", label: "Version", sortable: true, render: (s) => `v${s.version_number}` },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Strategy"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "strategy", filters: filterParams().toString(), onImported: reloadStrategies }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -153,7 +157,7 @@ export function ProjectStrategiesPage() {
       >
         <DirectoryTable
           ariaLabel="Strategies"
-          columns={columns}
+          columns={shown.columns}
           rows={sortRows(filtered, listSort.sort, STRATEGY_SORT_VALUES)}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}

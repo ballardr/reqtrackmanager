@@ -38,6 +38,7 @@ import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
@@ -114,6 +115,19 @@ export function ProjectOpenQuestionsPage() {
     return params;
   }
 
+  const columns: DirectoryColumn<OpenQuestion>[] = [
+    { key: "question", label: "Question", sortable: true, render: (q) => <>{markdownPlainText(q.question)}<ProjectScopeLabel row={q} /></> },
+    { key: "code", label: "Code", sortable: true, render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (q) => <Badge tone={OPEN_QUESTION_STATUS_TONE[q.status]}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</Badge>,
+    },
+    { key: "due_date", label: "Due", sortable: true, optional: true, render: (q) => q.due_date ?? "—" },
+  ];
+
+  const shown = useOptionalColumns("context_open_questions", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestions === null || project === null) return <Spinner />;
@@ -132,21 +146,11 @@ export function ProjectOpenQuestionsPage() {
   // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && openQuestions.some((q) => matches(q, false));
 
-  const columns: DirectoryColumn<OpenQuestion>[] = [
-    { key: "question", label: "Question", sortable: true, render: (q) => <>{markdownPlainText(q.question)}<ProjectScopeLabel row={q} /></> },
-    { key: "code", label: "Code", sortable: true, render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
-    { key: "priority", label: "Priority", sortable: true, render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (q) => <Badge tone={OPEN_QUESTION_STATUS_TONE[q.status]}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</Badge>,
-    },
-    { key: "due_date", label: "Due", sortable: true, render: (q) => q.due_date ?? "—" },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Open Question"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "open_question", filters: filterParams().toString(), onImported: reloadOpenQuestions }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -184,7 +188,7 @@ export function ProjectOpenQuestionsPage() {
       >
         <DirectoryTable
           ariaLabel="Open Questions"
-          columns={columns}
+          columns={shown.columns}
           rows={sortRows(filtered, listSort.sort, OPEN_QUESTION_SORT_VALUES)}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}

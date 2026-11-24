@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import { buildAnnouncement, withToast } from "../testing/storybook-helpers";
+import { expectHeaderSorts } from "../testing/sortHelpers";
+import { buildAnnouncement, buildUser, withAuth, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { AnnouncementsPanel } from "./AnnouncementsPanel";
 
 const ACTIVE = buildAnnouncement();
@@ -12,11 +13,16 @@ const SENT = buildAnnouncement({
 });
 const ENDED = buildAnnouncement({ id: "announcement-3", title: "Old notice", severity: "critical", status: "ended", ends_at: "2026-10-01T00:00:00Z" });
 
+/** Every optional column shown, so the stories below that read the sign-in, dismissible and send columns see them. */
+const ALL_COLUMNS = buildUser({
+  ui_preferences: { column_choice_announcements: ["severity", "window", "login", "dismissible", "notify"] },
+});
+
 /** Announcement administration for one scope, shared by Server Management and Organisation Admin. */
 const meta: Meta<typeof AnnouncementsPanel> = {
   title: "Components/AnnouncementsPanel",
   component: AnnouncementsPanel,
-  decorators: [withToast()],
+  decorators: [withToast(), withAuth(ALL_COLUMNS)],
 };
 export default meta;
 
@@ -39,6 +45,30 @@ export const ListsMessagesWithStatusAndSend: Story = {
     await expect(canvas.getByText(/Sent to 12 people on/)).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Send Release notes as a notification" })).not.toBeInTheDocument();
     await expect(api.get).toHaveBeenCalledWith("/api/v1/system/announcements");
+  },
+};
+
+/** The Severity, Login pages, Dismissible and Send as notification headers order the messages, ascending then descending. */
+export const OptionalColumnHeadersSortTheMessages: Story = {
+  args: { scope: { kind: "server" } },
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ items: [
+      ACTIVE, SENT, buildAnnouncement({ id: "announcement-5", title: "Fire drill", severity: "critical", dismissible: false }),
+    ] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText("Planned maintenance");
+    const table = canvas.getByRole("table");
+    await expectHeaderSorts(table, "Severity", ["Critical", "Information", "Warning"]);
+    await expectHeaderSorts(table, "Login pages", ["No", "Yes", "Yes"]);
+    await expectHeaderSorts(table, "Dismissible", ["No", "Yes", "Yes"]);
+    const header = () => within(table).getByRole("columnheader", { name: /Send as notification/ });
+    await userEvent.click(within(header()).getByText("Send as notification"));
+    await waitFor(() => expect(within(table).getAllByRole("row")[1]).toHaveTextContent("Release notes"));
+    await expect(header()).toHaveAttribute("aria-sort", "ascending");
+    await userEvent.click(within(header()).getByText("Send as notification"));
+    await waitFor(() => expect(within(table).getAllByRole("row")[3]).toHaveTextContent("Release notes"));
   },
 };
 
@@ -231,5 +261,30 @@ export const OrganisationSendNamesMembersAndDeleteConfirms: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Delete message Planned maintenance" }));
     await userEvent.click(await within(document.body).findByRole("button", { name: "Delete" }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/v1/orgs/org-1/announcements/announcement-1"));
+  },
+};
+
+/** The sign-in page, dismissible and send columns are off by default; the column chooser adds them and the reset removes them. */
+export const SettingColumnsAreOptionalAndOffByDefault: Story = {
+  args: { scope: { kind: "server" } },
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ items: [ACTIVE] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Messages" });
+    for (const name of ["Title", "Severity", "Showing", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+    }
+    for (const name of ["Login pages", "Dismissible", "Send as notification"]) {
+      await expect(within(table).queryByRole("columnheader", { name })).not.toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Login pages" }));
+    await expect(within(table).getByRole("columnheader", { name: "Login pages" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Login pages" })).not.toBeInTheDocument();
   },
 };

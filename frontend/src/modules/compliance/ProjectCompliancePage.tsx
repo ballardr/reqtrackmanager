@@ -41,6 +41,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useInitialSearchParams, oneOf } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { COMPLIANCE_HELP } from "./help";
 
 const COMPLIANCE_TABS = ["standards", "evidence", "outstanding"] as const;
@@ -114,6 +115,30 @@ export function ProjectCompliancePage() {
   }, [projectId]);
 
   const sorting = useSortState();
+  const columns: DirectoryColumn<AssignmentRow>[] = [
+    {
+      key: "standard", label: "Standard", sortable: true,
+      render: (row) => (row.status ? `${row.status.standard_reference} — ${row.status.standard_name}` : "—"),
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, render: (row) => row.status?.version_label ?? "—" },
+    {
+      key: "compliance", label: "Compliance", sortable: true,
+      render: (row) =>
+        row.assignment.is_archived
+          ? "Archived"
+          : row.status
+            ? `${row.status.compliance_percentage.toFixed(1)}% (${row.status.applicable_count} applicable)`
+            : "—",
+    },
+    {
+      key: "outstanding", label: "Non-compliant", sortable: true, optional: true,
+      render: (row) => (row.status ? complianceRiskLabel(row.status) : "—"),
+    },
+    { key: "target_date", label: "Target date", sortable: true, optional: true, render: (row) => row.assignment.target_compliance_date ?? "—" },
+  ];
+
+  const shown = useOptionalColumns("compliance_standards_by_project", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (assignments === null || project === null) return <Spinner />;
@@ -143,28 +168,6 @@ export function ProjectCompliancePage() {
     status: statuses.find((s) => s.project_compliance_id === assignment.id) ?? null,
   }));
 
-  const columns: DirectoryColumn<AssignmentRow>[] = [
-    {
-      key: "standard", label: "Standard", sortable: true,
-      render: (row) => (row.status ? `${row.status.standard_reference} — ${row.status.standard_name}` : "—"),
-    },
-    { key: "version", label: "Version", sortable: true, render: (row) => row.status?.version_label ?? "—" },
-    {
-      key: "compliance", label: "Compliance", sortable: true,
-      render: (row) =>
-        row.assignment.is_archived
-          ? "Archived"
-          : row.status
-            ? `${row.status.compliance_percentage.toFixed(1)}% (${row.status.applicable_count} applicable)`
-            : "—",
-    },
-    {
-      key: "outstanding", label: "Non-compliant", sortable: true,
-      render: (row) => (row.status ? complianceRiskLabel(row.status) : "—"),
-    },
-    { key: "target_date", label: "Target date", sortable: true, render: (row) => row.assignment.target_compliance_date ?? "—" },
-  ];
-
   return (
     <div className="container stack">
       <h1 style={{ margin: 0 }}>{navName ?? "Compliance"}</h1>
@@ -185,10 +188,11 @@ export function ProjectCompliancePage() {
               Assign standard
             </button>
             <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
+            {shown.chooser}
           </div>
           <DirectoryTable
             ariaLabel="Compliance standards assigned to this project"
-            columns={columns}
+            columns={shown.columns}
             rows={sortRows(rows, sorting.sort, ASSIGNMENT_SORT_VALUES)}
             sort={sorting.sort}
             onSort={sorting.onSort}

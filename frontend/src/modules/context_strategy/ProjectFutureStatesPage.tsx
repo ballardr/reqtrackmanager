@@ -34,6 +34,7 @@ import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
@@ -103,6 +104,19 @@ export function ProjectFutureStatesPage() {
     return params;
   }
 
+  const columns: DirectoryColumn<FutureState>[] = [
+    { key: "title", label: "Title", sortable: true, render: (fs) => <>{fs.title}<ProjectScopeLabel row={fs} /></> },
+    { key: "code", label: "Code", sortable: true, render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
+    },
+    { key: "target_date", label: "Target date", sortable: true, optional: true, render: (fs) => fs.target_date ?? "—" },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (fs) => `v${fs.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("context_future_states", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureStates === null || project === null) return <Spinner />;
@@ -117,21 +131,11 @@ export function ProjectFutureStatesPage() {
     return true;
   });
 
-  const columns: DirectoryColumn<FutureState>[] = [
-    { key: "title", label: "Title", sortable: true, render: (fs) => <>{fs.title}<ProjectScopeLabel row={fs} /></> },
-    { key: "code", label: "Code", sortable: true, render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
-    },
-    { key: "target_date", label: "Target date", sortable: true, render: (fs) => fs.target_date ?? "—" },
-    { key: "version", label: "Version", sortable: true, render: (fs) => `v${fs.version_number}` },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Future State"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "future_state", filters: filterParams().toString(), onImported: reloadFutureStates }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -162,7 +166,7 @@ export function ProjectFutureStatesPage() {
       >
         <DirectoryTable
           ariaLabel="Future States"
-          columns={columns}
+          columns={shown.columns}
           rows={sortRows(filtered, listSort.sort, FUTURE_STATE_SORT_VALUES)}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}

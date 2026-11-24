@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { expectTextRows } from "../../testing/menuRows";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildElement, buildFolder, mockArchitectureReads, ORG_ID } from "./architectureFixtures";
 import { OrgElementsPanel } from "./OrgElementsPanel";
 
@@ -114,5 +114,22 @@ export const NameHeaderSortsTheElements: Story = {
   play: async ({ canvasElement }) => {
     const table = await within(canvasElement).findByRole("table", { name: "Organisation elements" });
     await expectHeaderOrdersText(table, "Name");
+  },
+};
+/** Type, Folder and Owner are optional and on by default; the column chooser hides one and the reset shows it again. */
+export const ColumnChooserHidesAndRestoresAColumn: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Organisation elements" });
+    for (const name of ["Code", "Name", "Type", "Folder", "Owner", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Owner" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Owner" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Owner" })).toBeInTheDocument();
   },
 };

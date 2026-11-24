@@ -5,8 +5,9 @@
  * project administration (which also edits a track) and the "Delivery status" page (where a track's owner moves
  * theirs).
  *
- * - One flat row per component and stage (component, stage, phase, workflow, owner, state), filterable by stage
- *   and by "tracks I can move".
+ * - One flat row per component and stage (component always; stage, phase, owner, state and, with `plans`, progress
+ *   and expected range by default; workflow on request through the column chooser), filterable by stage and by
+ *   "tracks I can move".
  * - Moving a track (a closed phase first asks whether to complete the approved requirements too) is reported
  *   through `onChanged`. The server decides who may move (`can_move`); the list only disables the picker, and a
  *   locked-phase move by someone who cannot make it is not offered.
@@ -19,6 +20,7 @@ import { useMemo, useState } from "react";
 
 import type { Component, ComponentPhases, ComponentTrack, PhasePlan, ProjectStage, StageWorkflow } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { usePhaseMove } from "../hooks/usePhaseMove";
 import { useTableSort } from "../hooks/useTableSort";
 import { formatDay, trackRows, type DeliveryRow } from "../utils/deliveryPlan";
@@ -100,12 +102,20 @@ export function ComponentTracksList({
     expected: (track) => (track.not_applicable ? null : planRowOf(track)?.expectedFrom ?? null),
     workflow: (track) => track.workflow_name,
     owner: (track) => track.owner?.label ?? null,
+    state: (track) => stateBadges(track).join(", ") || null,
   });
+  function stateBadges(track: ComponentTrack): string[] {
+    return [
+      ...(track.not_applicable ? [t.notApplicableBadge] : []),
+      ...(track.customised ? [t.customisedBadge] : []),
+      ...(track.previous_closed ? [t.previousClosedBadge] : []),
+    ];
+  }
   const columns: DirectoryColumn<ComponentTrack>[] = [
     { key: "component", label: t.component, sortable: true, render: (track) => <strong>{nameOf(components, track.component_id)}</strong> },
-    { key: "stage", label: strings.componentPhases.stageColumn, sortable: true, render: (track) => nameOf(stages, track.stage_id) },
+    { key: "stage", label: strings.componentPhases.stageColumn, sortable: true, optional: true, render: (track) => nameOf(stages, track.stage_id) },
     {
-      key: "phase", label: plans ? strings.deliveryPlan.currentPhaseColumn : t.phaseColumn, sortable: true,
+      key: "phase", label: plans ? strings.deliveryPlan.currentPhaseColumn : t.phaseColumn, sortable: true, optional: true,
       render: (track) => {
         if (track.not_applicable) return <span className="text-muted">{t.noPhase}</span>;
         const phases = workflows.find((w) => w.id === track.workflow_id)?.phases ?? [{ id: track.phase_id, name: track.phase_name, kind: track.phase_kind }];
@@ -119,10 +129,10 @@ export function ComponentTracksList({
       },
     },
     ...(plans ? planColumns(planRows, strings.deliveryPlan, (track) => [nameOf(components, track.component_id), nameOf(stages, track.stage_id)], onSchedule) : []),
-    ...(plans ? [] : [{ key: "workflow", label: t.workflow, sortable: true, render: (track: ComponentTrack) => track.workflow_name }]),
-    { key: "owner", label: t.owner, sortable: true, render: (track) => <PrincipalBadge principal={track.owner} placeholder="" /> },
+    ...(plans ? [] : [{ key: "workflow", label: t.workflow, sortable: true, optional: true, defaultHidden: true, render: (track: ComponentTrack) => track.workflow_name }]),
+    { key: "owner", label: t.owner, sortable: true, optional: true, render: (track) => <PrincipalBadge principal={track.owner} placeholder="" /> },
     {
-      key: "state", label: t.stateColumn,
+      key: "state", label: t.stateColumn, sortable: true, optional: true,
       render: (track) => (
         <span className="row">
           {track.not_applicable && <Badge>{t.notApplicableBadge}</Badge>}
@@ -142,6 +152,8 @@ export function ComponentTracksList({
     });
   }
 
+  const chosen = useOptionalColumns("component_tracks", columns);
+
   return (
     <div className="stack">
       <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -150,6 +162,7 @@ export function ComponentTracksList({
           options={stages.map((s) => ({ value: s.id, label: s.name }))}
         />
         <CheckboxField help={t.movableOnlyHelp} label={t.movableOnly} checked={movableOnly} onChange={setMovableOnly} />
+        {!(plans && view === "timeline") && chosen.chooser}
       </div>
       {plans && view === "timeline" ? (
         rows.length === 0 ? (
@@ -168,7 +181,7 @@ export function ComponentTracksList({
         )
       ) : (
         <DirectoryTable
-          ariaLabel={plans ? strings.deliveryPlan.tracksTable : t.tracksTable} columns={columns} rows={table.rows}
+          ariaLabel={plans ? strings.deliveryPlan.tracksTable : t.tracksTable} columns={chosen.columns} rows={table.rows}
           sort={table.sort} onSort={table.onSort}
           rowKey={(track) => `${track.component_id}:${track.stage_id}`}
           emptyState={<div className="text-muted">{movableOnly ? t.noMovable : t.noTracks}</div>}
@@ -192,7 +205,7 @@ function planColumns(
   const rowOf = (track: ComponentTrack) => rows.get(`${track.component_id}:${track.stage_id}`);
   return [
     {
-      key: "progress", label: t.progressColumn, sortable: true,
+      key: "progress", label: t.progressColumn, sortable: true, optional: true,
       render: (track) => {
         const row = rowOf(track);
         return row && !track.not_applicable
@@ -201,7 +214,7 @@ function planColumns(
       },
     },
     {
-      key: "expected", label: t.expectedColumn, sortable: true,
+      key: "expected", label: t.expectedColumn, sortable: true, optional: true,
       render: (track) => {
         const row = rowOf(track);
         if (!row || track.not_applicable) return "";

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildGrid, buildRecordColumns } from "../../testing/recordTablesFixtures";
@@ -384,5 +384,23 @@ export const NoGridViewWithoutTheScoringGrant: Story = {
     const canvas = within(canvasElement);
     await canvas.findByRole("table", { name: "Pain Points" });
     await expect(canvas.queryByRole("button", { name: "Grid view" })).not.toBeInTheDocument();
+  },
+};
+
+/** Type is on by default; the column chooser hides it and the reset shows it again. */
+export const TypeColumnIsOptionalAndOnByDefault: Story = {
+  beforeEach: () => mockPageApis([painPoint()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Pain Points" });
+    for (const name of ["Title", "Code", "Type", "Priority", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Type" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Type" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Type" })).toBeInTheDocument();
   },
 };

@@ -38,6 +38,7 @@ import { useCommitTags } from "../../hooks/useCommitTags";
 import { useOpenFolders } from "../../hooks/useOpenFolders";
 import { useUrlSort } from "../../hooks/useUrlFilter";
 import type { FolderNode } from "../../utils/reportFolders";
+import { sortRows, type SortValue } from "../../utils/sortRows";
 import { orgStakeholderApi, orgStakeholderGroupApi, projectStakeholderApi, projectStakeholderGroupApi } from "./api";
 import { type GroupNode, ancestorsOf, buildGroupTree, groupFolderNodes, parentGroupIds } from "./groupTree";
 import { GroupsFromTextModal } from "./GroupsFromTextModal";
@@ -49,7 +50,18 @@ import { STAKEHOLDER_SCOPE_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
 import { MarkdownView } from "../../components/MarkdownView";
 
-const MEMBER_SORT_KEYS = ["name"] as const;
+const MEMBER_SORT_KEYS = ["name", "membership"] as const;
+
+/** The text of the Membership column: a direct member of the group, or one of a group beneath it. */
+function membershipLabel(member: StakeholderGroupMember): string {
+  return member.direct ? "Direct" : "Via a child group";
+}
+
+/** The sortable value of each member column, as its cell shows it. */
+const MEMBER_SORT_VALUES: Record<string, (member: StakeholderGroupMember) => SortValue> = {
+  name: (m) => m.name,
+  membership: membershipLabel,
+};
 
 type FormState = { initial?: StakeholderGroup; parentId?: string | null } | null;
 
@@ -204,9 +216,8 @@ export function StakeholderGroupsPanel({
   if (groups === null) return <Spinner />;
 
   const memberIds = new Set((members ?? []).map((m) => m.stakeholder_id));
-  const shownMembers = [...(members ?? [])].sort((a, b) =>
-    memberSort?.direction === "desc" ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name),
-  );
+  // With no sort chosen the members read by name.
+  const shownMembers = sortRows(members ?? [], memberSort ?? { key: "name", direction: "asc" }, MEMBER_SORT_VALUES);
 
   const membersButton = (group: GroupNode) => (
     <button
@@ -266,7 +277,7 @@ export function StakeholderGroupsPanel({
 
   const memberColumns: DirectoryColumn<StakeholderGroupMember>[] = [
     { key: "name", label: "Name", sortable: true, render: (m) => m.name },
-    { key: "membership", label: "Membership", render: (m) => (m.direct ? "Direct" : "Via a child group") },
+    { key: "membership", label: "Membership", sortable: true, render: membershipLabel },
     {
       key: "actions", label: <span className="sr-only">Actions</span>,
       render: (m) => selected && m.direct && editable(selected) ? (
@@ -317,7 +328,7 @@ export function StakeholderGroupsPanel({
               rows={shownMembers}
               rowKey={(m) => m.stakeholder_id}
               sort={memberSort}
-              onSort={() => setMemberSort(cycleSort(memberSort, "name"))}
+              onSort={(key) => setMemberSort(cycleSort(memberSort, key as (typeof MEMBER_SORT_KEYS)[number]))}
               emptyState={<p className="text-muted" style={{ margin: 0 }}>No stakeholders in this group yet.</p>}
             />
           )}

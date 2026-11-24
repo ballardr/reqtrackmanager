@@ -22,6 +22,7 @@ import { RecordCode } from "../../components/RecordCode";
 import { Spinner } from "../../components/Spinner";
 import { TagFilterField } from "../../components/TagFilterField";
 import { toErrorMessage } from "../../context/ToastContext";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { useUrlChoice, useUrlText } from "../../hooks/useUrlFilter";
@@ -70,6 +71,16 @@ export function ProjectStatesList({ chrome, viewTabs }: { chrome?: ArchitectureL
   }, [states, kindFilter, search]);
   const sorted = useMemo(() => sortRows(filtered, listSort.sort, STATE_SORT_VALUES), [filtered, listSort.sort]);
 
+  const columns: DirectoryColumn<ArchitectureState>[] = [
+    { key: "code", label: "Code", sortable: true, render: (s) => <RecordCode code={s.unique_code} ownerProjectCode={s.from_project_code} /> },
+    { key: "name", label: "Name", sortable: true, render: (s) => <>{s.name}<ProjectScopeLabel row={s} /></> },
+    { key: "diagram", label: "State machine diagram", sortable: true, optional: true, render: (s) => `${s.state_machine_diagram_code} ${s.state_machine_diagram_name}` },
+    { key: "kind", label: "Kind", sortable: true, optional: true, render: (s) => STATE_KIND_LABEL[s.kind] },
+    { key: "element", label: "Element", sortable: true, optional: true, render: (s) => `${s.element_code ?? ""} ${s.element_name ?? ""}`.trim() || "—" },
+  ];
+
+  const shown = useOptionalColumns("architecture_states", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (states === null) return <Spinner />;
@@ -83,19 +94,12 @@ export function ProjectStatesList({ chrome, viewTabs }: { chrome?: ArchitectureL
     return params;
   }
 
-  const columns: DirectoryColumn<ArchitectureState>[] = [
-    { key: "code", label: "Code", sortable: true, render: (s) => <RecordCode code={s.unique_code} ownerProjectCode={s.from_project_code} /> },
-    { key: "name", label: "Name", sortable: true, render: (s) => <>{s.name}<ProjectScopeLabel row={s} /></> },
-    { key: "diagram", label: "State machine diagram", sortable: true, render: (s) => `${s.state_machine_diagram_code} ${s.state_machine_diagram_name}` },
-    { key: "kind", label: "Kind", sortable: true, render: (s) => STATE_KIND_LABEL[s.kind] },
-    { key: "element", label: "Element", sortable: true, render: (s) => `${s.element_code ?? ""} ${s.element_name ?? ""}`.trim() || "—" },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={{ projectId, recordType: "architecture_state", filters: filterParams().toString(), kindLabel: "states" }}
+        columnChooser={shown.chooser}
         filter={
           <FilterPanel
             sectionKey="architecture.states" total={filtered.length}
@@ -113,7 +117,7 @@ export function ProjectStatesList({ chrome, viewTabs }: { chrome?: ArchitectureL
       >
         {viewTabs}
         <DirectoryTable
-          ariaLabel="States" columns={columns} rows={sorted} rowKey={(s) => s.id}
+          ariaLabel="States" columns={shown.columns} rows={sorted} rowKey={(s) => s.id}
           sort={listSort.sort} onSort={listSort.onHeaderSort}
           rowHref={(s) => `/projects/${rowProjectId(s, projectId)}/modules/architecture/state-machine-diagrams/${s.state_machine_diagram_id}?state=${s.id}`}
           emptyState={<p className="text-muted">{states.length === 0 ? "No states drawn for this project yet." : "No states match these filters."}</p>}

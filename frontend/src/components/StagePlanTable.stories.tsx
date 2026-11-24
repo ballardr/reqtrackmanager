@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import { expectHeaderSorts } from "../testing/sortHelpers";
-import { buildPhasePlan, buildStage, buildStageWorkflow, withToast } from "../testing/storybook-helpers";
+import { buildPhasePlan, buildStage, buildStageWorkflow, buildUser, withAuth, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { StagePlanTable } from "./StagePlanTable";
 
 const DESIGN = buildStage({ id: "s1", name: "Design", can_lock: true });
@@ -13,7 +13,7 @@ const BUILD = buildStage({ id: "s2", name: "Build", sort_order: 1, can_lock: tru
 const meta: Meta<typeof StagePlanTable> = {
   title: "Components/StagePlanTable",
   component: StagePlanTable,
-  decorators: [withToast()],
+  decorators: [withToast(), withAuth(buildUser())],
   args: {
     projectId: "project-1", stages: [DESIGN, BUILD], workflows: [buildStageWorkflow()], canManage: true, onChanged: fn(),
     plans: [buildPhasePlan({ stage_id: "s1", component_id: null, phase_id: "phase-scoping", expected_from: "2020-01-01", expected_to: "2020-02-01" })],
@@ -80,5 +80,21 @@ export const StageHeaderSortsTheStages: Story = {
   play: async ({ canvasElement }) => {
     const table = within(canvasElement).getByRole("table");
     await expectHeaderSorts(table, "Stage", ["Build", "Design"]);
+  },
+};
+/** Every column after the stage is on by default; the column chooser hides one and the reset brings it back. */
+export const OptionalColumnsCanBeHidden: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = canvas.getByRole("table");
+    const heads = () => within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    await expect(heads()).toEqual(["Stage", "Current phase", "Owner", "Progress", "Expected"]);
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Owner" }));
+    await expect(heads()).toEqual(["Stage", "Current phase", "Progress", "Expected"]);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(heads()).toContain("Owner");
   },
 };
