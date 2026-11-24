@@ -28,6 +28,7 @@ import { FormActions } from "../../components/FormActions";
 import { TextAreaField } from "../../components/FormFields";
 import { DetailCard } from "../../components/DetailCard";
 import { MarkdownView } from "../../components/MarkdownView";
+import { MarkdownSummary } from "../../components/MarkdownSummary";
 
 /** The verdicts a person can record; "Needs reassessment" is only ever set by the system. */
 const ASSESSABLE: TreatmentAssessmentStatus[] = ["effective", "ineffective", "proposed"];
@@ -126,7 +127,7 @@ export function RiskTreatmentsPanel({
                     </Badge>
                   </td>
                   <td>
-                    {t.rationale || "—"}
+                    {t.rationale ? <MarkdownSummary text={t.rationale} /> : "—"}
                     {t.status === "needs_reassessment" && t.reassessment_reason && (
                       <MarkdownView className="text-muted" text={t.reassessment_reason} />
                     )}

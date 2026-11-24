@@ -34,6 +34,7 @@ const INITIAL_DEPTH = 2;
 /** Approximate width of one 10px edge-label character, for sizing its pill. */
 const EDGE_CHAR_W = 5.4;
 function clip(text: string, width: number): string {
+  // ellipsis-ok: SVG text cannot be clamped by CellText; the labels are plain record labels.
   return text.length > width ? `${text.slice(0, width - 1)}…` : text;
 }
 

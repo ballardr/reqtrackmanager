@@ -61,12 +61,39 @@ test.describe("Markdown for every long-text field", () => {
     });
   });
 
+  test("the Specs tile shows the description as plain words with its equation drawn, the same words as the detail page", async ({ page }) => {
+    const project = await projectWithRequirement(page, "E2E Markdown Tile");
+    await page.goto(`/projects/${project.projectId}/requirements`);
+    await page.getByRole("button", { name: "Tile view" }).click();
+
+    await test.step("the tile has no Markdown marks and draws the equation", async () => {
+      const tile = page.locator(".entity-accent-card", { hasText: project.requirementName });
+      const summary = tile.locator(".markdown-summary");
+      await expect(summary).toContainText("The range shall satisfy");
+      await expect(summary).toContainText("first item second item");
+      await expect(summary).not.toContainText("**");
+      await expect(summary).not.toContainText("\\(");
+      await expect(summary.locator(".katex").first()).toBeVisible({ timeout: 30_000 });
+      await expect(summary.locator("strong, li")).toHaveCount(0);
+    });
+
+    await test.step("the detail page shows the same words, formatted", async () => {
+      await page.goto(`/projects/${project.projectId}/requirements/${project.requirementId}`);
+      await chooseMarkdownView(markdownField(page, 2), "Preview");
+      const preview = page.locator(".markdown-preview");
+      await expect(preview).toContainText("The range shall satisfy");
+      await expect(preview).toContainText("first item");
+      await expect(preview.locator("strong", { hasText: "range" })).toBeVisible();
+    });
+  });
+
   test("the record list report shows the words of a Markdown cell and the CSV keeps its source", async ({ page }) => {
     const project = await projectWithRequirement(page, "E2E Markdown Report");
     await page.goto(`/projects/${project.projectId}?reports=choose&report=record-list`);
 
     await test.step("the on-screen table shows plain words in the Description cell", async () => {
-      const row = page.getByRole("row", { name: new RegExp(project.requirementName) });
+      // The page's activity table also names the requirement, so the row is the one that holds the Description cell.
+      const row = page.getByRole("row", { name: new RegExp(project.requirementName) }).filter({ hasText: "satisfy" });
       await expect(row).toBeVisible();
       await expect(row).toContainText("The range shall satisfy");
       await expect(row).not.toContainText("**");

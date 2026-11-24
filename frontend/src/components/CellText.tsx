@@ -7,13 +7,14 @@
  * only while it is clipped (or always, when a `detail` line is given).
  *
  * The element is `min-width: 0` and flexes (`flex: 0 1 auto`), so beside a control it gives way and the control
- * keeps its size and line. It never holds controls. The text must be a string so the tooltip can carry it. A table
+ * keeps its size and line. It never holds controls. The text is a string so the tooltip can carry it; drawn children
+ * (`MarkdownSummary`'s equations) are given with `plain`, the same words as a string, so the tooltip never holds markup. A table
  * column sized from its content never narrows below a one-line text, so a table cell uses `lines` of two or more
  * and, for a narrow column, `maxWidth`.
  *
  * Dependencies: `Tooltip`, `useIsClipped`; the `.cell-text*` rules in `styles/theme.css`.
  */
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { useIsClipped } from "../hooks/useIsClipped";
 import { Tooltip } from "./Tooltip";
@@ -21,7 +22,8 @@ import { Tooltip } from "./Tooltip";
 /**
  * Text that stays inside its cell.
  *
- * @param children The text to show (a string, so the tooltip can repeat it in full).
+ * @param children The text to show (a string, so the tooltip can repeat it in full), or drawn content with `plain`.
+ * @param plain The words of drawn `children` as a string, for the tooltip; required when `children` is not a string.
  * @param lines How many lines to allow before clipping (default 1, a single line with an ellipsis).
  * @param maxWidth A cap on the text's width (a CSS length such as `14rem`); a short text keeps its own width.
  * @param detail A line the tooltip always shows beneath the text (what the text is, such as a group's kind and size).
@@ -29,15 +31,16 @@ import { Tooltip } from "./Tooltip";
  * @param style Extra style for the text element.
  */
 export function CellText({
-  children, lines = 1, maxWidth, detail, className, style,
+  children, plain, lines = 1, maxWidth, detail, className, style,
 }: {
-  children: string; lines?: number; maxWidth?: string; detail?: string; className?: string; style?: CSSProperties;
+  children: ReactNode; plain?: string; lines?: number; maxWidth?: string; detail?: string; className?: string; style?: CSSProperties;
 }) {
   const [ref, clipped] = useIsClipped<HTMLSpanElement>();
 
   const clamp = lines > 1;
   const classes = ["cell-text", clamp ? "cell-text--clamp" : "", className ?? ""].filter(Boolean).join(" ");
-  const tooltip = [clipped ? children : "", detail ?? ""].filter(Boolean).join("\n");
+  const words = typeof children === "string" ? children : plain ?? "";
+  const tooltip = [clipped ? words : "", detail ?? ""].filter(Boolean).join("\n");
   return (
     <Tooltip label={tooltip} wrap disabled={tooltip === ""} className="cell-text-trigger" style={maxWidth ? { maxWidth } : undefined}>
       <span ref={ref} className={classes} style={clamp ? ({ ...style, "--cell-text-lines": lines } as CSSProperties) : style}>

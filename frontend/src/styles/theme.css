@@ -2228,6 +2228,20 @@ a.figure-projects-link:hover {
   white-space: normal;
 }
 
+/* `MarkdownSummary`: an equation drawn in a clamped summary may not make a line taller than its neighbours, so the
+   box is capped at the clamp's own height and a tall fraction is clipped instead of moving the card. */
+.markdown-summary {
+  max-height: calc(var(--cell-text-lines, 3) * 1.5em);
+}
+
+.markdown-summary .math-text {
+  display: inline;
+}
+
+.markdown-summary .katex {
+  line-height: 1.2;
+}
+
 .activity-table__day {
   display: block;
 }

@@ -34,6 +34,7 @@ import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQuestionStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { MarkdownSummary } from "../../components/MarkdownSummary";
 import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
@@ -54,7 +55,6 @@ import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
-import { markdownPlainText } from "../../utils/markdownPlain";
 
 export function ProjectOpenQuestionsPage() {
   const strings = useStrings();
@@ -116,7 +116,7 @@ export function ProjectOpenQuestionsPage() {
   }
 
   const columns: DirectoryColumn<OpenQuestion>[] = [
-    { key: "question", label: "Question", sortable: true, render: (q) => <>{markdownPlainText(q.question)}<ProjectScopeLabel row={q} /></> },
+    { key: "question", label: "Question", sortable: true, render: (q) => <><MarkdownSummary text={q.question} math /><ProjectScopeLabel row={q} /></> },
     { key: "code", label: "Code", sortable: true, render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
     { key: "priority", label: "Priority", sortable: true, optional: true, render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
     {

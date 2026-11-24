@@ -405,9 +405,10 @@ export function ChangeRequestDetailPage() {
                   <strong>{strings.actions.name}:</strong> {cr.proposed_action_title}
                 </p>
                 {cr.proposed_action_description && (
-                  <p>
-                    <strong>{strings.actions.description}:</strong> {cr.proposed_action_description}
-                  </p>
+                  <div>
+                    <strong>{strings.actions.description}:</strong>
+                    <MarkdownView text={cr.proposed_action_description} />
+                  </div>
                 )}
                 <p>
                   <strong>{strings.actions.actionType}:</strong> {actionTypeName(cr.proposed_action_type_id)}

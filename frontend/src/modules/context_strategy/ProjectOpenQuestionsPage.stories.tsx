@@ -67,6 +67,20 @@ export const ListsOpenQuestions: Story = {
   },
 };
 
+/** The question cell shows the words without marks and draws an equation, never the TeX or the marks. */
+export const QuestionCellShowsPlainWordsWithEquationsDrawn: Story = {
+  beforeEach: () => mockPageApis([question({ id: "oq-eq", question: "Is the **peak** load \\(\\sigma = F/A\\) within limits?" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvasElement.querySelector(".markdown-summary")).not.toBeNull());
+    const cell = canvasElement.querySelector<HTMLElement>(".markdown-summary") as HTMLElement;
+    await expect(cell.textContent).toContain("Is the peak load");
+    await expect(cell.textContent).not.toMatch(/\*|\\\(/);
+    await expect(cell.querySelector(".katex")).not.toBeNull();
+    await expect(canvas.queryByText(/\*\*peak\*\*/)).not.toBeInTheDocument();
+  },
+};
+
 /** The list opens on unresolved questions only, with the filter shown ticked. */
 export const OpensOnOpenQuestionsByDefault: Story = {
   beforeEach: () => mockPageApis(QUESTIONS),

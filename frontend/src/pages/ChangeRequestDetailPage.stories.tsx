@@ -131,6 +131,24 @@ export const AddActionShowsProposedActionContent: Story = {
   },
 };
 
+/** The proposed action's description is Markdown, shown formatted on the detail page, not as typed. */
+export const AddActionDescriptionIsShownFormatted: Story = {
+  beforeEach: () => {
+    mockChangeRequestDetailApis(["member"], {
+      kind: "add_action", status: "submitted",
+      proposed_action_title: "Verify audit log retention", proposed_action_description: "A **full** sweep:\n\n- first\n- second",
+      proposed_action_type_id: "at1", reason: "gap",
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Proposed action")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("full").tagName).toBe("STRONG"));
+    await expect(canvas.getAllByRole("listitem").some((item) => item.textContent === "first")).toBe(true);
+    await expect(canvas.queryByText(/\*\*/)).not.toBeInTheDocument();
+  },
+};
+
 /** The link-existing-action half of ADD_ACTION shows which action is being
  * linked, resolved from `GET .../actions/{id}` rather than a bare id. */
 export const AddActionShowsLinkedActionPreview: Story = {

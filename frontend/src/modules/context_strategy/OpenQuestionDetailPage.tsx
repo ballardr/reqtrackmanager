@@ -241,7 +241,7 @@ export function OpenQuestionDetailPage() {
     >
       <RecordHeader
         recordLabel="Open Question"
-        title={markdownPlainText(openQuestion.question)}
+        title={markdownPlainText(openQuestion.question, { math: true })}
         code={openQuestion.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "Open Questions" }}

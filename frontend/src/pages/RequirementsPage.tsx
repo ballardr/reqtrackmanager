@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
+import { MarkdownSummary } from "../components/MarkdownSummary";
 import { RequirementListCode } from "../components/RequirementListCode";
 import { Tooltip } from "../components/Tooltip";
 import { useEffect, useRef, useState } from "react";
@@ -656,11 +657,7 @@ export function RequirementsPage() {
                     }
                   >
                     <ProjectScopeLabel row={r} />
-                    {r.reasoning && (
-                      <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                        {r.reasoning.length > 140 ? `${r.reasoning.slice(0, 140)}…` : r.reasoning}
-                      </p>
-                    )}
+                    {r.description && <MarkdownSummary text={r.description} math className="text-muted" style={{ fontSize: "0.85rem" }} />}
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <div className="row" style={{ gap: "var(--space-2)" }}>
                         <FilterBadge

@@ -106,6 +106,30 @@ export const TilesView: Story = {
   },
 };
 
+/** The tile shows the Description as its plain words with equations drawn, clamped to three lines, never its Markdown marks. */
+export const TilesShowTheDescriptionAsPlainTextWithEquationsDrawn: Story = {
+  beforeEach: () => {
+    mockRequirementsListApis("manager");
+    const items = [
+      buildRequirement({
+        id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1",
+        description: "We as a company have signed up to ***Paris Agreement*** and we must aim to be *green*. Stress \\(\\sigma = F/A\\) holds.",
+        reasoning: "Reasoning that the tile no longer shows.",
+      }),
+    ];
+    spyOn(api, "getPage").mockImplementation(async () => ({ items, total: items.length }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    const summary = canvasElement.querySelector<HTMLElement>(".markdown-summary") as HTMLElement;
+    await expect(summary.textContent).toContain("signed up to Paris Agreement and we must aim to be green.");
+    await expect(summary.textContent).not.toMatch(/[*$]|\\\(/);
+    await expect(summary.querySelector(".katex")).not.toBeNull();
+    await expect(canvas.queryByText(/Reasoning that the tile/)).not.toBeInTheDocument();
+  },
+};
+
 /** A plain click on "New requirement" opens the create form as a `Modal` layer (not an inline block that reflows
  * the list underneath), with no menu stop first. Import is not hidden behind it: the list's shared Export and
  * Import controls sit beside it (see `ListActions.stories.tsx` for what they do). */
