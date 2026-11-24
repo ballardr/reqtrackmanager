@@ -71,15 +71,13 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
       await expect(dialog.getByRole("cell", { name: "Moderate" })).toBeVisible();
       await expect(dialog.getByRole("img", { name: "Diagram: flowchart" })).toBeVisible({ timeout: 30_000 });
       await dialog.getByRole("button", { name: "Save" }).click();
-      await expect(page.getByRole("button", { name: /^(\w+-)?DEC-001$/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /^(\w+-)?DEC-001$/ })).toBeVisible();
     });
 
-    await test.step("the quick view formats the statement and the detail page shows the Document", async () => {
-      await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
-      const quickView = page.getByRole("dialog", { name: "DEC-001" });
-      await expect(quickView.locator("strong", { hasText: "adopt" })).toBeVisible();
-      await expect(quickView).not.toContainText("**");
-      await quickView.getByRole("link", { name: "View full details" }).click();
+    await test.step("the detail page formats the statement and shows the Document", async () => {
+      await page.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();
+      await expect(page.locator("strong", { hasText: "adopt" })).toBeVisible();
+      await expect(page.locator(".record-header")).not.toContainText("**");
       const card = page.getByRole("region", { name: "Document" });
       await expect(card.getByRole("heading", { name: "Failover plan" })).toBeVisible();
       await expect(card.getByRole("cell", { name: "Moderate" })).toBeVisible();
@@ -194,11 +192,8 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
 
     await test.step("the saved Decision shows the formatting", async () => {
       await dialog.getByRole("button", { name: "Save" }).click();
-      await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
-      const quickView = page.getByRole("dialog", { name: "DEC-001" });
-      await expect(quickView.locator("strong", { hasText: "adopt" })).toBeVisible();
-      await expect(quickView).not.toContainText("**");
-      await quickView.getByRole("link", { name: "View full details" }).click();
+      await page.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();
+      await expect(page.locator("strong", { hasText: "adopt" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Background" })).toBeVisible();
       await expect(page.getByRole("listitem").filter({ hasText: "first point" })).toBeVisible();
     });

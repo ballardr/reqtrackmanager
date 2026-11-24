@@ -3,8 +3,8 @@
  *
  * The project-scoped Guiding Principle list route, mounted at
  * `/projects/:projectId/modules/context_strategy/guiding-principles` (`module.ts`, a top-level nav-rail entry). It has
- * `ProjectStrategiesPage.tsx`'s `DirectoryTable`, `FilterPanel` and "New X" `Modal` shape, without the quick-view
- * `SidePanel` tier, for the reasons given there.
+ * `ProjectStrategiesPage.tsx`'s `DirectoryTable`, `FilterPanel` and "New X" `Modal` shape; a row click navigates
+ * straight to the detail page.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

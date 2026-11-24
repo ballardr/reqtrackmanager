@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 66 done 2026-11-22 to 2026-11-24 and 67 and 68 planned 2026-11-24; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 66 are done; phases 60 to 68 came from the review of 2026-11-24 (the user works them individually; 67 and 68 are planned, not started); R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 67 done 2026-11-22 to 2026-11-24 and 68 planned 2026-11-24; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 67 are done; phases 60 to 68 came from the review of 2026-11-24 (the user works them individually; 68 is planned, not started); R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-66 / 73 phases complete.
+67 / 73 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -76,7 +76,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 64 | Project overview activity: styled as the project history | The Project activity widget uses the History page's columns and row wording through one shared component | [x] |
 | 65 | Lifecycle states: project configuration, organisation enforcement | A project administrator turns off the optional states of a record type (a solo project skips triage or review); an organisation can mark states required so no project can turn them off (certification); one shared server rule, Promote goes to the next enabled state; a decision gate first | [x] |
 | 66 | Lifecycle: skip steps on one record | A project manager moves one record straight to a later step with a reason, never past a gated step and never past a state the organisation requires; builds on phase 65's resolver | [x] |
-| 67 | Decisions: remove the quick-view side panel | A row opens the Decision page like every other record list; the panel, its stories and its specs go | [ ] |
+| 67 | Decisions: remove the quick-view side panel | A row opens the Decision page like every other record list; the panel, its stories and its specs go | [x] |
 | 68 | Approval separation: project setting, organisation enforcement | Whether the person who submits a record may also approve it becomes a setting per gated type (change requests first): enforced by default, a project may allow self-approval only where the organisation permits it, and a self-approved record is marked; a decision gate first, and a SOC 2 control change | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 68 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
@@ -967,6 +967,8 @@ Five items from the user's review, each checked against the code (findings in ea
 - **Fix:** `onRowClick` navigates to the Decision page using `rowProjectId`, so a row from a nested project opens in its own project and the list position is kept on the way back. Delete `DecisionQuickViewPanel.tsx` and its story, remove the `selected` state and the import, and remove every mention in `module.ts` and the docstrings of `DecisionDetailPage.tsx` and `ProjectDecisionsPage.tsx`. The code, status and decision statement the panel showed are on the page already, so nothing is lost. Check that no other list uses a read-only peek (none was found); if one is, it is raised, not changed here.
 - **Docs:** the style guide's entity detail panel pattern keeps its rule (a quick view only when it earns its keep) and stops citing Decisions as the example; `docs/solution-architecture.md` states the current result only (a page, no panel); the website pages that describe the peek; a `docs/decisions.md` entry (**Decided by: User**).
 - Tests: Storybook: the `ProjectDecisionsPage` stories keep rendering and the quick-view stories are removed. Playwright: the four specs that go through the panel (`decision-lifecycle`, `decision-markdown`, `decision-equations`, `decision-group-owners`) open the page from the row instead; one assertion that a row click lands on the page and Back returns to the same list position; a nested-project row opens in its own project.
+
+- As built (**Decided by: User**): rows use the shared `rowHref` (a link) rather than `onRowClick` plus `navigate`, in the row's own project. The panel and its stories are deleted, the module and page docstrings and the Strategy and Guiding Principle docstrings no longer mention it, the style guide and architecture document state the page only, and the four specs open the page from the row. Added: story `RowsLinkToTheDecisionPage`, Playwright `decision-nested-row.spec.ts`, and a Back check in `decision-lifecycle`. The website never described the peek. See `docs/decisions.md`.
 
 ### Phase 68 — Approval separation: project setting, organisation enforcement
 

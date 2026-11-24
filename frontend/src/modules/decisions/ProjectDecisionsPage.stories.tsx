@@ -82,6 +82,23 @@ export const ListsDecisions: Story = {
   },
 };
 
+/** A row is a link to the Decision page, in its own project for a row from a nested project. */
+export const RowsLinkToTheDecisionPage: Story = {
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockPageApis([
+    decision({ id: "decision-1", unique_code: "DEC-001" }),
+    decision({ id: "decision-9", unique_code: "DEC-009", title: "Child project decision", from_project_id: "child-project", from_project_code: "CHILD" }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const own = await canvas.findByRole("link", { name: "DEC-001" });
+    await expect(own).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/decisions/decision-1`);
+    const nested = await canvas.findByRole("link", { name: /DEC-009/ });
+    await expect(nested).toHaveAttribute("href", "/projects/child-project/modules/decisions/decision-9");
+    await expect(canvas.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
 /** The list opens on Decisions still to be made; unticking the filter shows the ones already made. */
 export const OpensOnOpenDecisionsByDefault: Story = {
   beforeEach: () => mockPageApis(MIXED),

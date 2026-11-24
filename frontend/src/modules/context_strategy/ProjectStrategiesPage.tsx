@@ -2,10 +2,8 @@
  * Module: modules/context_strategy/ProjectStrategiesPage
  *
  * The project-scoped Strategy list route, mounted at `/projects/:projectId/modules/context_strategy/strategies`
- * (`module.ts`, one of the five top-level nav-rail entries). It has `modules/decisions/ProjectDecisionsPage.tsx`'s
- * `DirectoryTable`, `FilterPanel` and "New X" `Modal` shape, without the quick-view `SidePanel` tier: a row click
- * navigates straight to `StrategyDetailPage.tsx`, because a Strategy has no `unique_code` cell driving a separate
- * quick-view panel.
+ * (`module.ts`, one of the five top-level nav-rail entries): a `DirectoryTable`, `FilterPanel` and "New X" `Modal`.
+ * A row click navigates straight to `StrategyDetailPage.tsx`.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

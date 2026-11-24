@@ -16,9 +16,8 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  *
  * `routes`: `ProjectDecisionsPage` (the list) and `DecisionDetailPage` (a Decision's full management and context
  * view); `path` matches the `nav_path` in `module.py`'s `frontend_manifest`, with React Router's
- * `:projectId`/`:decisionId` standing in for the backend's `"{project_id}"`/`"{decision_id}"`. The list opens a
- * `DecisionQuickViewPanel` `SidePanel` on row click (rendered inline, not a route), and its "View full details" link
- * reaches `DecisionDetailPage` (`docs/ux-style-guide.md` "Pattern: entity detail panel").
+ * `:projectId`/`:decisionId` standing in for the backend's `"{project_id}"`/`"{decision_id}"`. A list row links
+ * straight to `DecisionDetailPage`.
  *
  * `projectAdminSections`: `DecisionTypesPanel`, the project's Decision Type vocabulary, beside the other
  * definition-table settings (Action Types, Custom Fields) on `ProjectAdminPage.tsx`.

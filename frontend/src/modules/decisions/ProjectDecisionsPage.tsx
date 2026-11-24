@@ -2,9 +2,8 @@
  * Module: modules/decisions/ProjectDecisionsPage
  *
  * The Decision Management module's project-scoped route component, mounted at `/projects/:projectId/modules/decisions`
- * (`module.ts`): a `DirectoryTable` + `FilterPanel` list, a "New decision" `Modal`, and a row click opening
- * `DecisionQuickViewPanel` (a read-only `SidePanel` peek) whose "View full details" link leads to
- * `DecisionDetailPage.tsx` (`docs/ux-style-guide.md` "Pattern: entity detail panel"). It fetches the project's
+ * (`module.ts`): a `DirectoryTable` + `FilterPanel` list and a "New decision" `Modal`. A row is a link to
+ * `DecisionDetailPage.tsx` in the row's own project (`rowProjectId`), as in every other record list. It fetches the project's
  * `organization_id` once and passes it down wherever an organisation-scoped call is needed (Decision Templates,
  * organisation member list), without a `ProjectContext` provider, as `ProjectCompliancePage.tsx` does.
  *
@@ -33,7 +32,6 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionFormModal } from "./DecisionFormModal";
-import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
 import { DECISION_OPEN_STATUSES, DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
 import { Badge } from "../../components/Badge";
@@ -87,7 +85,6 @@ export function ProjectDecisionsPage() {
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Decision | null>(null);
 
   async function reloadDecisions() {
     if (!projectId) return;
@@ -213,7 +210,7 @@ export function ProjectDecisionsPage() {
           onSort={listSort.onHeaderSort}
           rowKey={(d) => d.id}
           placements={{ projectId, artefactType: "decision", rowId: (d) => d.id }}
-          onRowClick={setSelected}
+          rowHref={(d) => `/projects/${rowProjectId(d, projectId)}/modules/decisions/${d.id}`}
           emptyState={
             <p className="text-muted">
               {emptyBecauseOfOpenOnly
@@ -249,15 +246,6 @@ export function ProjectDecisionsPage() {
               setCreateError(toErrorMessage(err, "Could not create decision."));
             }
           }}
-        />
-      )}
-
-      {selected && (
-        <DecisionQuickViewPanel
-          projectId={rowProjectId(selected, projectId)}
-          decision={selected}
-          decisionTypes={decisionTypes}
-          onClose={() => setSelected(null)}
         />
       )}
     </div>

@@ -4,8 +4,7 @@
  * A single Decision's full detail (management and full context) as a routed page
  * (`/projects/:projectId/modules/decisions/:decisionId`, `module.ts`). `docs/ux-style-guide.md` "Pattern: entity
  * detail panel" calls for a page here: the detail carries a comment thread, file attachments, a Links panel and three
- * or more lifecycle actions each with a `ConfirmDialog`. `ProjectDecisionsPage.tsx`'s list opens
- * `DecisionQuickViewPanel` (a read-only peek) on row click, and its "View full details" link leads here.
+ * or more lifecycle actions each with a `ConfirmDialog`. `ProjectDecisionsPage.tsx`'s rows link here.
  *
  * Fetches its own data on mount (`project`, `orgUsers`, `decisionTypes` and the `Decision` through
  * `decisionsApi.getDecision`), as `RequirementDetailPage.tsx` does, so the route is deep-linkable.

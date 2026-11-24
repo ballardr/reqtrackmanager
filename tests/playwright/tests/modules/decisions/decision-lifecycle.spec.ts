@@ -9,12 +9,11 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: e2e coverage for create -> propose -> approve -> supersede with the quick-view and full-page
- * detail split (`frontend/src/modules/decisions/`) against a real backend. A second Decision supersedes the
+ * Job to be done: e2e coverage for create -> propose -> approve -> supersede through the list and the full-page
+ * detail (`frontend/src/modules/decisions/`) against a real backend. A second Decision supersedes the
  * first, which flips to Superseded once the second is Approved (§13/10.6, `service.py`'s `_maybe_supersede`).
  *
- * A row click on the list opens `DecisionQuickViewPanel`, a read-only `SidePanel` (`role="dialog"`) whose
- * "View full details" link reaches the routed `DecisionDetailPage` (lifecycle actions, Links, comments,
+ * A row on the list is a link to the routed `DecisionDetailPage` (lifecycle actions, Links, comments,
  * attachments); there, locators are scoped to `page`. Uses a disposable org + admin + project created via the
  * API, as `org-admin-modules.spec.ts` does (Decision Management is `default_enabled=False`).
  * `selectLabeledOption` (`./helpers.ts`) works around the `LabeledSelect` wrapping-`<label>` markup.
@@ -75,18 +74,21 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions(?:\\?.*)?$`));
 
     // --- Create Decision A ("DEC-001") and move it to Approved on its own
-    // detail page (reached via the list's quick-view panel).
+    // detail page (reached from the list row).
     await page.getByRole("button", { name: "New decision" }).click();
     let dialog = page.getByRole("dialog", { name: "New decision" });
     await dialog.getByLabel("Decision title").fill("Adopt PostgreSQL for the billing service");
     await dialog.getByLabel("Decision statement").fill("Use PostgreSQL as the backing store for the billing service.");
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByRole("button", { name: /^(\w+-)?DEC-001$/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^(\w+-)?DEC-001$/ })).toBeVisible();
 
-    await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
-    let quickView = page.getByRole("dialog", { name: "DEC-001" });
-    await expect(quickView.getByRole("link", { name: "View full details" })).toBeVisible();
-    await quickView.getByRole("link", { name: "View full details" }).click();
+    // A row opens the Decision page directly (no side panel), and Back returns to the list.
+    await page.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions(?:\\?.*)?$`));
+    await page.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
 
     await expect(page.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
@@ -119,11 +121,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await dialog.getByLabel("Decision title").fill("Adopt Terraform for infrastructure");
     await dialog.getByLabel("Decision statement").fill("Manage infrastructure as code with Terraform.");
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByRole("button", { name: /^(\w+-)?DEC-002$/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^(\w+-)?DEC-002$/ })).toBeVisible();
 
-    await page.getByRole("button", { name: /^(\w+-)?DEC-002$/ }).click();
-    quickView = page.getByRole("dialog", { name: "DEC-002" });
-    await quickView.getByRole("link", { name: "View full details" }).click();
+    await page.getByRole("link", { name: /^(\w+-)?DEC-002$/ }).click();
     // Wait for the route change, not just page content, before querying the DOM: the list page (and its
     // "Superseded"/status text in the table and FilterPanel) stays mounted for one render tick after the `Link`
     // click, and a bare `getByText` racing that window can hit a Playwright strict-mode violation.
@@ -159,15 +159,12 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await page.getByRole("link", { name: "← Decisions", exact: true }).click();
     // The list opens on Decisions still to be made; the approved and superseded ones need the filter cleared.
     await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();
-    await expect(page.getByRole("button", { name: /^(\w+-)?DEC-001$/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /^(\w+-)?DEC-001$/ })).toHaveCount(0);
     await page.getByRole("checkbox", { name: "Open only" }).uncheck();
-    await page.getByRole("button", { name: /^(\w+-)?DEC-001$/ }).click();
-    quickView = page.getByRole("dialog", { name: "DEC-001" });
-    await quickView.getByRole("link", { name: "View full details" }).click();
+    await page.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
-    // The URL changes before the list page unmounts; until it does, its
-    // quick view (also headed "DEC-001"), table badge and status filter
-    // option all match too. Wait for the list's own table to go first.
+    // The URL changes before the list page unmounts; until it does, its table badge and status filter
+    // option also match. Wait for the list's own table to go first.
     await expect(page.getByRole("table")).toHaveCount(0);
     await expect(page.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
     await expectCurrentStep(page, "Superseded");
