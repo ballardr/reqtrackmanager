@@ -32,6 +32,7 @@ from app.modules.risk_management.models import (
 from app.modules.risk_management.ratings import RatingContext, rate_version
 from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES, RISK_SCORING_SCHEME_KEY
 from app.services.current_versions import primed_current_version
+from app.services.lifecycles import check_move
 from app.services.sequences import generate_unique_code
 from app.services.type_vocabulary import TypeVocabulary
 
@@ -268,13 +269,12 @@ def transition_risk(
     """
     if risk.is_archived:
         raise ValueError("An archived risk cannot change status; unarchive it first.")
-    if target not in RISK_ALLOWED_TRANSITIONS[current.status]:
-        raise ValueError(f"Cannot move a Risk from '{current.status.value}' to '{target.value}'.")
+    skipped = check_move(db, risk.project_id, RISK_ARTEFACT_TYPE, current.status.value, target.value)
     from app.modules.risk_management.treatment import effective_treatment_counts
 
-    check_transition_guards(
-        current, target, ctx, effective_treatments=effective_treatment_counts(db, [risk.id]).get(risk.id, 0)
-    )
+    effective = effective_treatment_counts(db, [risk.id]).get(risk.id, 0)
+    for passed_over in (*skipped, target.value):
+        check_transition_guards(current, RiskStatus(passed_over), ctx, effective_treatments=effective)
     note = comment.strip() or f"Status: {risk_status_label(current.status.value)} -> {risk_status_label(target.value)}."
     return apply_new_version(db, risk, current, actor, changes={"status": target}, change_note=note)
 

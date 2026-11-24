@@ -45,7 +45,7 @@ from app.models.requirement_alias import RequirementAlias
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.stage_workflow import ComponentStageState, StageWorkflow
 from app.models.user import User
-from app.services import code_prefixes
+from app.services import code_prefixes, lifecycles
 from app.services.bundle_common import BundleImportWarnings
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
@@ -181,6 +181,7 @@ def clone_project(
         )
 
     code_prefixes.copy_overrides(db, source, new_project, creator.id)
+    lifecycles.copy_project(db, source, new_project, creator.id)
     copy_project_systems(db, source, new_project)
 
     # Old project group id -> its copy in the new project, so a requirement owned by (or assigned for review

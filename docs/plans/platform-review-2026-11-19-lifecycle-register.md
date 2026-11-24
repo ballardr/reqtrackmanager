@@ -26,3 +26,19 @@ Part of [the platform review plan](platform-review-2026-11-19-plan.md). Every re
 |-------|--------|
 | Action outcome (Pending, Completed, Failed) | A free choice among outcomes with no path; stays a select. |
 | Compliance evidence validity | A validity indicator, not a state path; its Revalidate is a row of the actions menu. |
+
+## Optional states (phase 65)
+
+A project may turn off these states and an organisation may require them (`ModuleDefinition.lifecycles`, `docs/modules.md` section 4l15). Approval states and the ends of a path are never optional; requirement and change request have no optional state.
+
+| Type | Optional states | Gated |
+|------|-----------------|-------|
+| Pain point | Triaged | none |
+| Open question | Investigating | none |
+| Decision | Proposed, Under review | Approved |
+| Strategy, Future state | Proposed, Under review | Approved |
+| Guiding principle | Proposed | Approved |
+| Risk | Treatment planned, Treatment in progress | Accepted |
+| Product feedback request | Under review | none |
+
+Types that keep their fixed path: requirement, change request, persona, stakeholder, stakeholder need and the architecture types.

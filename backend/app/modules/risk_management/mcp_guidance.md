@@ -19,3 +19,4 @@ Rules and gotchas:
 - `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none).
 - A risk's `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. `null` clears it. Members of an owner group may assess treatments and record reviews, as the owner can.
 - There is no delete tool. Do not invent level or type ids; read them.
+- A project may turn off Treatment planned and Treatment in progress; `allowed_next_statuses` already reflects that, and the checks of a state passed over (owner and treatment strategy) still apply.

@@ -34,6 +34,8 @@ ADMINISTRATIVE_PERMISSIONS: tuple[str, ...] = (
     "manage_project_report_layouts",
     "publish_organization_templates",
     "manage_org_resources",
+    "manage_org_lifecycles",
+    "manage_project_lifecycles",
 )
 """Short, explicit list of non-artefact administrative permissions — hand-maintained here rather than derived from any registry, since
 these describe fixed organisational admin actions, not a per-artefact-type
@@ -63,6 +65,11 @@ project's own management. Organisation admins hold it; it can be given to others
 `manage_org_resources` lets its holder upload and delete the organisation's shared resources (files any project of the
 organisation can link). Organisation admins hold it; a custom role can give it to a user or an organisation group, so a team
 can look after the resources without holding the administrator role.
+
+`manage_org_lifecycles` and `manage_project_lifecycles` let their holder change which optional states of a record type
+an organisation requires (and which projects it exempts) and which a project uses. They are two atoms so a project can
+be trusted with its own process without being able to change what every project in the organisation must keep.
+Organisation admins hold both; project administrators hold the project one in their project.
 """
 
 

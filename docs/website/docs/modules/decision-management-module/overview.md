@@ -38,6 +38,8 @@ stateDiagram-v2
     Approved --> Superseded: a new Decision that supersedes this one is itself Approved
 ```
 
+A project can turn **Proposed** and **Under review** off, so a Decision goes from Draft to Approved through the same approval, still needing the approver's permission and comment; an organisation can require them. See [Lifecycles](../../core-features/lifecycles.md).
+
 **Rejected** and **Superseded** are both real, queryable statuses in their own right — a rejected or superseded Decision stays fully visible for historical purposes, filterable and reportable by its own status, rather than only recoverable from the audit log. A Decision's content fields (statement, options considered, chosen option, rationale, consequences, assumptions, constraints) become locked — no further edits — the moment it reaches **Approved** or **Superseded**; see [Data model and lifecycle](./data-model-and-lifecycle.md) for the full field list and supersession mechanics.
 
 An ordinary project member can create a Decision and move it through **Draft → Proposed → Under Review** for a Decision they own (or one owned by a group they belong to), with no special grant needed. Approving, rejecting, or superseding a Decision requires the **Decision Approver** role — see [Roles](#roles) below.

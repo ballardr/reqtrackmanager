@@ -632,6 +632,7 @@ const en = {
     // Project Admin's "Modules" tab: a project's whole-module enablement override and, for a module with sub-components,
     // its per-sub-component override (one level below `orgAdmin.modules*`, which sets the organisation's default).
     modulesNav: "Modules",
+    lifecyclesNav: "Lifecycles",
     tagsNav: "Tags",
     modulesDescription:
       "Turn modules on or off for this {project}. New {project}s start with the organisation's defaults; later changes to those defaults do not affect existing {project}s.",
@@ -1134,6 +1135,7 @@ const en = {
     // A top-level group of its own: enabling and disabling optional feature modules is a day-to-day administration surface,
     // not an authentication or access-policy setting.
     groupModules: "Modules",
+    groupLifecycles: "Lifecycles",
     groupTags: "Tags",
     // Fine-Grained Access Control (core): a top-level group for custom-role definition (organisation administrators only)
     // and for the grant_roles-based assignment of fixed, module and custom roles; named "Role Management" because it
@@ -3567,6 +3569,36 @@ const en = {
     },
     column: "External references",
   },
+  lifecycleSettings: {
+    heading: "Lifecycles",
+    loadFailed: "The lifecycle settings could not be loaded.",
+    saved: "The lifecycle settings were saved.",
+    noTypes: "No record type of an enabled module has states that can be turned off.",
+    /** Project panel. */
+    useState: (label: string) => `Use ${label}`,
+    typeOf: (label: string, module: string) => (module ? `${label} (${module})` : label),
+    pathPreview: "Path in this project",
+    requiredByOrganisation: "Required by the organisation",
+    requiredReason: "The organisation requires this state, so it stays on in every project of the organisation.",
+    exempt: "Exempt from the organisation's requirement",
+    inheritedParent: "Inherited from parent project",
+    allStates: "Every state is used",
+    resetToInherited: "Use inherited setting",
+    resetToDefault: "Use every state",
+    /** Organisation panel. */
+    requireState: (label: string) => `Require ${label}`,
+    exemptHeading: "Exempt projects",
+    noExemptions: "No project is exempt.",
+    addExemption: "Exempt a project",
+    addExemptionTitle: (type: string) => `Exempt a project from the ${type} requirement`,
+    projectLabel: "Project",
+    includeChildren: "Include nested projects",
+    includesChildren: "Includes nested projects",
+    exemptionAdded: "The project is exempt.",
+    removeExemption: (name: string) => `Remove the exemption of ${name}`,
+    exemptionRemoved: "The exemption was removed.",
+    noOptionalStates: "This type has no state that can be required.",
+  },
   lifecycle: {
     /** Name of the track (a list of the record's states). */
     label: "Lifecycle",
@@ -3884,6 +3916,12 @@ const en = {
       "Moves the {stage} to another phase of its workflow. Entering or leaving a Locked phase needs the project manager role.",
     // Components on any record
     requirementAliases: "Further components and categories this requirement belongs to, such as both sides of an interface.\nEach one gives the requirement a code of its own, named after that component and category.\nEvery code names the same requirement: its text, approval, comments and links are shared.",
+    lifecyclesProject: "A lifecycle is the path a record follows, for example a Pain Point from Submitted to Closed. Clear a state this project does not use and a record moves straight past it.\nOnly record types with a state that can be turned off are listed, and only for modules enabled in this project. Approval states, the first and last state, and states such as Rejected or Retired are never optional, so Requirements and Change requests are not listed.\nThe organisation can require a state for every project, which locks it here. A nested project uses its parent project's choice until it sets its own.",
+    lifecyclesOrganization: "A lifecycle is the path a record follows, for example a Decision from Draft to Approved. Require a state and no project of the organisation can turn it off; a project that had turned it off uses it again from then on, and its records are not changed.\nOnly record types with a state that can be turned off are listed, for modules enabled in this organisation. Approval states are never optional.\nAn exempt project keeps its own choice for that record type.",
+    lifecycleStates: "Turn off a state this project does not use. A record then moves past it: for example a Pain Point goes from Submitted straight to Accepted. A record already in a turned-off state can still be opened, edited and moved on, and turning the state back on restores it.\nA state marked Required is required by the organisation and cannot be turned off here.\nApproval states are never optional, so the approver's permission and comment still apply.",
+    lifecycleRequired: "Require a state to be used by every project of the organisation. A project cannot turn a required state off, and a project that had turned it off uses it again from now on; its records are not changed.\nA project listed under Exempt projects is not bound by the requirement.",
+    lifecycleExemptProject: "The project that may turn the required states of this record type off. Its own choice applies again.",
+    lifecycleIncludeChildren: "Off: only this project is exempt.\nOn: its nested child projects are exempt too, including projects added to it later.",
     requirementAliasMode: "Allowed: a requirement can be placed in further components and categories, each with a code of its own.\nDisabled: no new further places can be added; the ones that exist keep working and can be made independent.\nA project follows its parent project, then the organisation, until it sets its own value.\nA project that relies on traceability matrices and coverage figures reads them most clearly with one code per requirement: choose Disabled.",
     recordComponents: "The components and categories this record belongs to, for example Hardware or Hardware / Cooling. A record can belong to several, and every list can be filtered by them.",
     recordComponentsFilter: "Shows records placed in any chosen component or category.\nA component chosen alone matches the record whatever its category.",

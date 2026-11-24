@@ -34,6 +34,7 @@ from app.modules.decisions.models import (
 )
 from app.modules.registry import LinkTypeSeed
 from app.services.audit import log_event
+from app.services.lifecycles import check_move
 from app.services.link_types import ensure_org_link_type
 from app.services.permissions import encode_permission
 from app.services.relationships import create_link, get_link_between, get_links_from
@@ -286,8 +287,7 @@ def _transition_status(
         ValueError: if `new_status` isn't reachable from `decision.status`
             per `_ALLOWED_TRANSITIONS` (the router returns 409).
     """
-    if new_status not in _ALLOWED_TRANSITIONS[decision.status]:
-        raise ValueError(f"Cannot move a Decision from '{decision.status.value}' to '{new_status.value}'.")
+    check_move(db, decision.project_id, DECISION_ARTEFACT_TYPE, decision.status.value, new_status.value)
     decision.status = new_status
     detail = {}
     if comment:

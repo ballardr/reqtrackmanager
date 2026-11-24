@@ -504,6 +504,7 @@ Rules and gotchas:
 - `decisions_approve_decision` and `decisions_reject_decision` are approvals, gated by AI approval (see the main skill) and by the caller holding the decision approve permission. Only call them when the user explicitly asks about that specific decision, and pass the reason the user gave.
 - Check the decision's status before acting: only a decision awaiting a verdict can be approved or rejected.
 - A superseded decision is history; follow its relationships to the decision that replaced it before quoting it as current.
+- A project may turn off Proposed and Under review; a Decision then goes from `draft` to `approved` through the same approval, with the same permission and comment. A refused move names the allowed next states.
 
 ### Tool list
 
@@ -614,6 +615,7 @@ Rules and gotchas:
 - `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a pain point, guiding principle or open question; responses return the same shape plus `label`. `null` clears it. On update, send the owner you want to keep, since an omitted owner is cleared.
 - Reports take `include_children` to roll up child projects.
 - Comments and file uploads are not available through MCP.
+- A project may turn off an optional state (a Pain Point's Triaged, a Strategy's Proposed and Under review, a Guiding Principle's Proposed, an Open Question's Investigating); the move then goes straight past it. A refused move names the states that are allowed, so use that list rather than guessing.
 
 ### Tool list
 
@@ -1604,6 +1606,7 @@ Rules and gotchas:
 - `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none).
 - A risk's `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. `null` clears it. Members of an owner group may assess treatments and record reviews, as the owner can.
 - There is no delete tool. Do not invent level or type ids; read them.
+- A project may turn off Treatment planned and Treatment in progress; `allowed_next_statuses` already reflects that, and the checks of a state passed over (owner and treatment strategy) still apply.
 
 ### Tool list
 
@@ -1753,6 +1756,7 @@ Rules and gotchas:
 - Triage: `move_inbox_request_to_project` re-homes an inbox request into a project (same id, status and history; the code becomes the project's next `ENH-nnn`, so quote the new code afterwards). It needs the organisation triager role and is refused with 409 if the request has links. A moved request cannot go back to the inbox.
 - The organisation inbox tools answer 404 when an organisation administrator has switched the inbox off.
 - There is no delete tool; archiving is a UI action.
+- A project may turn off Under review; `allowed_next_statuses` already reflects that, and a refused move names the states that are allowed.
 
 ### Tool list
 

@@ -130,7 +130,8 @@ CORE_METADATA_TYPES: dict[str, str] = {
     **dict.fromkeys((
         "project", "project_stage", "project_component", "project_category", "stage_workflow", "stage_phase_plan",
         "component_stage_state", "overview_layout", "nav_labels", "project_module", "project_module_subcomponent",
-        "tag_settings", "requirement_alias_settings", "pain_point_submission_settings", "project_feedback_settings", "record_sensitivity_policy",
+        "tag_settings", "requirement_alias_settings", "lifecycle_settings", "pain_point_submission_settings",
+        "project_feedback_settings", "record_sensitivity_policy",
         "scoring_model", "scoring_level", "scoring_axis", "scoring_threshold_set", "scoring_model_default",
         "scoring_enabled_models", "scoring_cell_rating_set", "scoring_band_set", "report_layout", "report_pack",
         "report_pack_set", "report_snippet", "report_folder", "report_placement", "report_run", "generated_report",

@@ -47,6 +47,7 @@ from app.routers import (
     external_systems,
     files,
     health,
+    lifecycles,
     nav_labels,
     notifications,
     org_dashboards,
@@ -392,6 +393,8 @@ app.include_router(action_types.router)
 app.include_router(actions.router)
 app.include_router(artefact_links.router)
 app.include_router(placements.router)
+app.include_router(lifecycles.org_router)
+app.include_router(lifecycles.project_router)
 app.include_router(requirement_aliases.org_router)
 app.include_router(requirement_aliases.project_router)
 app.include_router(code_prefixes.org_router)

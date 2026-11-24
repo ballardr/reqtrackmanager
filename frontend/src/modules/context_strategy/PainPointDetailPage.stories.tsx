@@ -10,6 +10,8 @@ import { PainPointDetailPage } from "./PainPointDetailPage";
 import type { EffectivePainPointType, PainPoint } from "./types";
 import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 import { currentLifecycleStep } from "../../testing/lifecycleTrack";
+import type { ProjectLifecycle } from "../../api/lifecycles";
+import { buildPainPointLifecycle, buildProjectLifecycles } from "../../testing/lifecycleFixtures";
 
 const PROJECT_ID = "project-1";
 const PAIN_POINT_ID = "pain-point-1";
@@ -49,8 +51,9 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
 
 const LINKED_DECISION = buildGraphNode({ type: "decision", id: "dec-1", type_label: "Decision", label: "DEC-001 Use Postgres", status: null });
 
-function mockDetailApis(current: PainPoint) {
+function mockDetailApis(current: PainPoint, lifecycle?: ProjectLifecycle) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (lifecycle && path === `/api/v1/projects/${PROJECT_ID}/lifecycles`) return buildProjectLifecycles([lifecycle]);
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === `/api/v1/orgs/org-1/users`) return ORG_USERS;
     if (path.startsWith("/api/v1/orgs/org-1/users/search")) {
@@ -95,6 +98,19 @@ export const SubmittedOffersTriage: Story = {
     await expect(canvas.getByRole("button", { name: "Next step: Triaged" })).toBeInTheDocument();
     const names = await recordActionNames(canvas, "Pain Point");
     await expect(names[0]).toBe("Promote to Triaged");
+  },
+};
+
+export const TriagedTurnedOffPromotesSubmittedToAccepted: Story = {
+  beforeEach: () => mockDetailApis(painPoint({ status: "submitted" }), buildPainPointLifecycle({ disabled: ["triaged"] })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Accepted" }));
+    const names = await recordActionNames(canvas, "Pain Point");
+    await expect(names[0]).toBe("Promote to Accepted");
+    // Reject and Mark duplicate are offered at Submitted, and the track omits Triaged.
+    await expect(names).toEqual(expect.arrayContaining(["Reject", "Mark duplicate"]));
+    await expect(canvas.queryByText("Triaged")).not.toBeInTheDocument();
   },
 };
 

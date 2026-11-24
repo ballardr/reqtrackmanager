@@ -34,6 +34,11 @@ from app.models.external_reference import (
 )
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.generated_report import GeneratedReport
+from app.models.lifecycle import (
+    OrganizationLifecycleExemption,
+    OrganizationLifecycleRequirement,
+    ProjectLifecycleSetting,
+)
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
 from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
@@ -112,6 +117,9 @@ __all__ = [
     "ExternalReference",
     "ExternalSystemDefinition",
     "OrganizationCodePrefix",
+    "OrganizationLifecycleExemption",
+    "OrganizationLifecycleRequirement",
+    "ProjectLifecycleSetting",
     "ProjectCodePrefix",
     "ProjectExternalSystem",
     "ArtefactPlacement",

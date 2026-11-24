@@ -51,6 +51,7 @@ import type {
 } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
@@ -103,6 +104,7 @@ export function GuidingPrincipleDetailPage() {
     : organizationId ? orgResourcesPath(organizationId, ORG_GUIDING_PRINCIPLES_SECTION_KEY) : "/org-resources";
 
   const [guidingPrinciple, setGuidingPrinciple] = useState<GuidingPrinciple | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "guiding_principle");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<GuidingPrincipleVersion[] | null>(null);
   const [comments, setComments] = useState<GuidingPrincipleComment[] | null>(null);
@@ -218,12 +220,14 @@ export function GuidingPrincipleDetailPage() {
   };
 
   // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  // It goes to the next step the project uses (a project may turn Proposed off).
+  const next = lifecycle.nextOnPath(MAIN_PATH, guidingPrinciple.status);
   let promote: LifecyclePromote | undefined;
-  if (guidingPrinciple.status === "draft") {
+  if (next === "proposed") {
     promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, guidingPrinciple.id), "Guiding Principle proposed.") };
-  } else if (guidingPrinciple.status === "proposed") {
+  } else if (next === "approved") {
     promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
-  } else if (guidingPrinciple.status === "approved") {
+  } else if (next === "active") {
     promote = { to: "active", onPromote: () => setTransitionAction("activate") };
   }
 
@@ -283,16 +287,19 @@ export function GuidingPrincipleDetailPage() {
         subtitle={`${GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority`}
         onEdit={guidingPrinciple.is_locked ? undefined : () => setEditing(true)}
         actions={[
-          guidingPrinciple.status === "proposed" && { label: "Send back", onSelect: () => setSendingBack(true) },
+          lifecycle.canMove(guidingPrinciple.status, "draft", guidingPrinciple.status === "proposed") && { label: "Send back", onSelect: () => setSendingBack(true) },
           guidingPrinciple.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
           guidingPrinciple.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
           archive.item,
         ]}
         lifecycle={{
-          steps: lifecycleSteps(MAIN_PATH, GUIDING_PRINCIPLE_STATUS_LABEL, {
-            descriptions: GUIDING_PRINCIPLE_STATUS_DESCRIPTION,
-            locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON },
-          }),
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, GUIDING_PRINCIPLE_STATUS_LABEL, {
+              descriptions: GUIDING_PRINCIPLE_STATUS_DESCRIPTION,
+              locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON },
+            }),
+            guidingPrinciple.status,
+          ),
           current: guidingPrinciple.status,
           offPath,
           promote,

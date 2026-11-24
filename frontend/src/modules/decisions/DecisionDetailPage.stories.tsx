@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { ProjectLifecycle } from "../../api/lifecycles";
+import { buildDecisionLifecycle, buildProjectLifecycles } from "../../testing/lifecycleFixtures";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser, Principal } from "../../api/types";
@@ -45,8 +47,9 @@ const LINKED_REQUIREMENT = buildGraphNode({
   type: "requirement", id: "req-1", type_label: "Requirement", label: "REQ-001 Remote diagnostics", status: null,
 });
 
-function mockDetailApis(current: Decision) {
+function mockDetailApis(current: Decision, lifecycle?: ProjectLifecycle) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (lifecycle && path === `/api/v1/projects/${PROJECT_ID}/lifecycles`) return buildProjectLifecycles([lifecycle]);
     if (path.endsWith(`/decisions/${DECISION_ID}`)) return current;
     if (path.includes("/decision-types")) return DECISION_TYPES;
     if (path.includes("/comments")) return [];
@@ -111,6 +114,24 @@ export const NoDocumentNoCard: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
     await expect(canvas.queryByRole("region", { name: "Document" })).not.toBeInTheDocument();
+  },
+};
+
+/** With Proposed and Under review turned off, Draft promotes straight to Approved through the approval dialog. */
+export const ReviewStepsTurnedOffPromoteDraftToApproved: Story = {
+  beforeEach: () => mockDetailApis(
+    decision({ status: "draft" }),
+    buildDecisionLifecycle({
+      disabled: ["proposed", "under_review"], own_disabled: ["proposed", "under_review"], source: "project",
+      transitions: { draft: ["approved", "rejected"], approved: ["superseded"] },
+    }),
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Next step: Approved" }));
+    await expect(await within(document.body).findByRole("button", { name: "Promote to Approved" })).toBeInTheDocument();
+    await expect(canvas.queryByText("Proposed")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Under review")).not.toBeInTheDocument();
   },
 };
 

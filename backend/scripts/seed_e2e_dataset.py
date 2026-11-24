@@ -558,6 +558,13 @@ PAIN_POINT_INTENTIONAL_NAME = "E2E Intentional Limitation"
 PAIN_POINT_UNSCORED_NAME = "E2E Unscored Pain Point"
 
 
+def require_lifecycle_states(headers: dict, org_id: str, artefact_type: str, states: list[str]) -> None:
+    """Makes the organisation require these optional states of a record type in every project."""
+    httpx.put(
+        f"{BASE}/orgs/{org_id}/lifecycles/{artefact_type}", json={"required_states": states}, headers=headers, timeout=30
+    ).raise_for_status()
+
+
 def create_pain_point(headers: dict, project_id: str, type_id: str, title: str, **fields) -> dict:
     """Creates a Pain Point in `project_id` (Submitted)."""
     r = httpx.post(
@@ -1151,6 +1158,9 @@ def main() -> None:
         f"{BASE}/orgs/{gamma['id']}/modules/context_strategy/pain-point-types/{pp_type_id}",
         json={"definition": "People who run, deploy or maintain the product."}, headers=h_g, timeout=30,
     ).raise_for_status()
+    # Gamma requires Proposed on Guiding Principles, so the Lifecycles settings show a required state; no seeded record
+    # of that type exists, so no existing specification depends on it.
+    require_lifecycle_states(h_g, gamma["id"], "guiding_principle", ["proposed"])
     pp_levels = pain_point_levels(h_g, gamma3["id"])
     multi = create_pain_point(
         h_g, gamma3["id"], pp_type_id, PAIN_POINT_MULTI_PERSONA_NAME, description="Hits personas differently.",

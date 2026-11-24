@@ -50,6 +50,7 @@ import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import { DetailCard } from "../../components/DetailCard";
 
 /** The three optional-comment, positive/neutral-progression actions —
@@ -103,6 +104,7 @@ export function PainPointDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [painPoint, setPainPoint] = useState<PainPoint | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "pain_point");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [types, setTypes] = useState<EffectivePainPointType[]>([]);
   const [comments, setComments] = useState<PainPointComment[] | null>(null);
@@ -209,14 +211,16 @@ export function PainPointDetailPage() {
   };
 
   // The next forward move: a plain call for triage, otherwise the move's comment dialog.
+  // The move goes to the next step the project uses, so a project that turned Triaged off promotes Submitted straight to Accepted.
+  const next = lifecycle.nextOnPath(MAIN_PATH, painPoint.status);
   let promote: LifecyclePromote | undefined;
-  if (painPoint.status === "submitted") {
+  if (next === "triaged") {
     promote = { to: "triaged", onPromote: () => runTransition(() => projectPainPointApi.triage(projectId, painPoint.id), "Pain Point triaged.") };
-  } else if (painPoint.status === "triaged") {
+  } else if (next === "accepted") {
     promote = { to: "accepted", onPromote: () => setOptionalAction("accept") };
-  } else if (painPoint.status === "accepted") {
+  } else if (next === "addressed") {
     promote = { to: "addressed", onPromote: () => setOptionalAction("address") };
-  } else if (painPoint.status === "addressed") {
+  } else if (next === "closed") {
     promote = { to: "closed", onPromote: () => setOptionalAction("close") };
   }
 
@@ -228,7 +232,7 @@ export function PainPointDetailPage() {
         description: PAIN_POINT_STATUS_DESCRIPTION[painPoint.status],
         locked: true,
         lockedReason: TERMINAL_LOCKED_REASON,
-        after: "triaged",
+        after: lifecycle.lastOnPath(MAIN_PATH, "triaged"),
       }
     : undefined;
 
@@ -265,15 +269,18 @@ export function PainPointDetailPage() {
         }
         onEdit={painPoint.is_locked ? undefined : () => setEditing(true)}
         actions={[
-          painPoint.status === "triaged" && { label: "Reject", danger: true, onSelect: () => setMandatoryAction("reject") },
-          painPoint.status === "triaged" && { label: "Mark duplicate", onSelect: () => setMandatoryAction("mark_duplicate") },
+          lifecycle.canMove(painPoint.status, "rejected", painPoint.status === "triaged") && { label: "Reject", danger: true, onSelect: () => setMandatoryAction("reject") },
+          lifecycle.canMove(painPoint.status, "duplicate", painPoint.status === "triaged") && { label: "Mark duplicate", onSelect: () => setMandatoryAction("mark_duplicate") },
           archive.item,
         ]}
         lifecycle={{
-          steps: lifecycleSteps(MAIN_PATH, PAIN_POINT_STATUS_LABEL, {
-            descriptions: PAIN_POINT_STATUS_DESCRIPTION,
-            locked: { closed: TERMINAL_LOCKED_REASON },
-          }),
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, PAIN_POINT_STATUS_LABEL, {
+              descriptions: PAIN_POINT_STATUS_DESCRIPTION,
+              locked: { closed: TERMINAL_LOCKED_REASON },
+            }),
+            painPoint.status,
+          ),
           current: painPoint.status,
           offPath,
           promote,

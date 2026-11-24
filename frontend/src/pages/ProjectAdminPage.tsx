@@ -47,6 +47,7 @@ import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { ProjectExternalSystemsPanel } from "../components/ExternalSystemsPanels";
 import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
 import { StructurePanel } from "../components/StructurePanel";
+import { ProjectLifecyclesPanel } from "../components/ProjectLifecyclesPanel";
 import { RequirementAliasSettingsPanel } from "../components/RequirementAliasSettingsPanel";
 import { PhaseSchedulePanel } from "../components/PhaseSchedulePanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
@@ -109,7 +110,7 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * pending invites as a per-row status; "groups" lists the project groups, each opening a `SidePanel` (docs/decisions.md).
  */
 type CoreProjectAdminGroupKey =
-  | "overview" | "structure" | "stagesPhases" | "fieldsActions" | "members" | "groups" | "reportSetup" | "tags" | "modules";
+  | "overview" | "structure" | "stagesPhases" | "lifecycles" | "fieldsActions" | "members" | "groups" | "reportSetup" | "tags" | "modules";
 
 /** Admits a module-contributed section's key, as `OrgAdminGroupKey` does for `OrgAdminPage.tsx`'s `moduleAdminSections`. */
 type ProjectAdminGroupKey = CoreProjectAdminGroupKey | string;
@@ -118,6 +119,7 @@ const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
   "overview",
   "structure",
   "stagesPhases",
+  "lifecycles",
   "fieldsActions",
   "members",
   "groups",
@@ -1105,6 +1107,7 @@ export function ProjectAdminPage() {
     { key: "overview", label: strings.admin.settings, href: `/projects/${projectId}/admin/overview` },
     { key: "structure", label: strings.admin.structure, href: `/projects/${projectId}/admin/structure` },
     { key: "stagesPhases", label: strings.admin.stagesPhases, href: `/projects/${projectId}/admin/stagesPhases` },
+    { key: "lifecycles", label: strings.admin.lifecyclesNav, href: `/projects/${projectId}/admin/lifecycles` },
     { key: "fieldsActions", label: strings.admin.fieldsAndActions, href: `/projects/${projectId}/admin/fieldsActions` },
     { key: "members", label: strings.admin.membersNav, href: `/projects/${projectId}/admin/members` },
     { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
@@ -1521,6 +1524,14 @@ export function ProjectAdminPage() {
 
         <CollapsibleSection sectionKey="projectAdmin.structure.requirementAliases" title={strings.requirementAliases.settings.heading}>
           {projectId && <RequirementAliasSettingsPanel scope={{ kind: "project", projectId }} />}
+        </CollapsibleSection>
+      </div>
+      )}
+
+      {activeGroup === "lifecycles" && (
+      <div className="stack">
+        <CollapsibleSection sectionKey="projectAdmin.lifecycles" title={strings.lifecycleSettings.heading} help={strings.help.lifecyclesProject} defaultCollapsed={false}>
+          {projectId && <ProjectLifecyclesPanel projectId={projectId} />}
         </CollapsibleSection>
       </div>
       )}

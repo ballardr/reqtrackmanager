@@ -15,3 +15,4 @@ Rules and gotchas:
 - `decisions_approve_decision` and `decisions_reject_decision` are approvals, gated by AI approval (see the main skill) and by the caller holding the decision approve permission. Only call them when the user explicitly asks about that specific decision, and pass the reason the user gave.
 - Check the decision's status before acting: only a decision awaiting a verdict can be approved or rejected.
 - A superseded decision is history; follow its relationships to the decision that replaced it before quoting it as current.
+- A project may turn off Proposed and Under review; a Decision then goes from `draft` to `approved` through the same approval, with the same permission and comment. A refused move names the allowed next states.

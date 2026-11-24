@@ -26,6 +26,7 @@ import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -47,6 +48,9 @@ import { DetailCard } from "../../components/DetailCard";
 import { MarkdownView } from "../../components/MarkdownView";
 import { DECISIONS_HELP } from "./help";
 
+/** The main path; a project may turn Proposed and Under review off. */
+const PATH = ["draft", "proposed", "under_review", "approved"] as const;
+
 /** Why an approved or superseded Decision cannot be edited directly. */
 const LOCKED_REASON = "Locked: approved and superseded Decisions cannot be edited.";
 
@@ -59,6 +63,7 @@ export function DecisionDetailPage() {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [decisionTypes, setDecisionTypes] = useState<DecisionTypeDefinition[]>([]);
   const [decision, setDecision] = useState<Decision | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "decision");
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState(false);
@@ -138,16 +143,19 @@ export function DecisionDetailPage() {
   if (decision === null || project === null) return <Spinner />;
 
   // The next forward move; Reject is a row of the actions menu.
+  // It goes to the next step the project uses: with Proposed and Under review turned off, Draft goes to Approved
+  // through the approval dialog and the approver's permission.
+  const next = lifecycle.nextOnPath(PATH, decision.status);
   const promote: LifecyclePromote | undefined =
-    decision.status === "draft" ? { to: "proposed", onPromote: () => void runTransition(() => decisionsApi.proposeDecision(projectId, decision.id), "Decision proposed.") }
-    : decision.status === "proposed" ? { to: "under_review", onPromote: () => void runTransition(() => decisionsApi.submitDecisionForReview(projectId, decision.id), "Decision submitted for review.") }
-    : decision.status === "under_review" ? { to: "approved", onPromote: () => setApproving(true) }
+    next === "proposed" ? { to: "proposed", onPromote: () => void runTransition(() => decisionsApi.proposeDecision(projectId, decision.id), "Decision proposed.") }
+    : next === "under_review" ? { to: "under_review", onPromote: () => void runTransition(() => decisionsApi.submitDecisionForReview(projectId, decision.id), "Decision submitted for review.") }
+    : next === "approved" ? { to: "approved", onPromote: () => setApproving(true) }
     : undefined;
   const offPathStep = decision.status === "rejected" || decision.status === "superseded" ? {
     key: decision.status,
     label: DECISION_STATUS_LABEL[decision.status],
     description: DECISION_STATUS_DESCRIPTION[decision.status],
-    after: decision.status === "rejected" ? "under_review" : "approved",
+    after: lifecycle.lastOnPath(PATH, decision.status === "rejected" ? "under_review" : "approved"),
     ...(decision.status === "superseded" ? { locked: true, lockedReason: LOCKED_REASON } : {}),
   } : undefined;
 
@@ -195,14 +203,17 @@ export function DecisionDetailPage() {
         subtitle={decisionType?.name ?? "—"}
         onEdit={decision.is_locked ? undefined : () => setEditing(true)}
         actions={[
-          decision.status === "under_review" && { label: "Reject", danger: true, onSelect: () => setRejecting(true) },
+          lifecycle.canMove(decision.status, "rejected", decision.status === "under_review") && { label: "Reject", danger: true, onSelect: () => setRejecting(true) },
           archive.item,
         ]}
         lifecycle={{
-          steps: lifecycleSteps(["draft", "proposed", "under_review", "approved"], DECISION_STATUS_LABEL, {
-            descriptions: DECISION_STATUS_DESCRIPTION,
-            locked: { approved: LOCKED_REASON },
-          }),
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(PATH, DECISION_STATUS_LABEL, {
+              descriptions: DECISION_STATUS_DESCRIPTION,
+              locked: { approved: LOCKED_REASON },
+            }),
+            decision.status,
+          ),
           current: decision.status,
           offPath: offPathStep,
           promote,

@@ -1468,6 +1468,30 @@ flowchart LR
 - **Bundles and templates.** The project bundle carries `code_prefixes` (the project's own), the organisation bundle the organisation's own (a merge adds only types the target has not set). An entry that no longer fits (a type not registered, a prefix now taken) is skipped with a warning; a project made from a template copies the template's own.
 - **UI.** `RecordCodePrefixPanel` in Organisation Settings (Projects group) and in Project Admin overview; the record types are grouped into Core and one foldable section per module (the API returns each row's `module_key` and `module_name`), the inherited value is the placeholder with its tier, and a restore control returns to it.
 
+### 4l15. Lifecycle states: configuration and enforcement
+
+A module gives a record type a state path with `ModuleDefinition.lifecycles[type] = LifecycleDefinition(label, path, transitions, labels, optional, gated)` (`app/modules/registry.py`). `transitions` is built from the table the type's own transition function enforces (`services.lifecycles.table_from_enum`), so there is one source. `optional` lists the states a project may turn off (default none, so a type opts in; never the first or last of `path`, an off-path state or a gated one: `validate_definition`, checked for every registered type by `backend/tests/test_lifecycles.py`); `gated` lists states whose move needs a permission or a second person's decision of its own. A core file never names a module's states.
+
+```mermaid
+flowchart LR
+    M["transition function"] --> C["services.lifecycles.check_move"]
+    C --> R["resolve_project_lifecycles"]
+    R --> P["project choice (own, else nearest ancestor)"]
+    R --> O["organisation required states (minus exempt projects)"]
+    C --> E["effective_moves: turned-off states stepped over"]
+    E -->|"legal"| S["skipped states returned for their checks"]
+    E -->|"illegal"| X["ValueError naming the allowed states"]
+```
+
+- **Enforcement.** A type's `_transition` calls `check_move(db, project_id, type, current, target)` in place of its own table lookup. It returns the turned-off states the move passes over, so a type can still apply their checks (a Risk applies the guards of every passed-over state). A record the organisation owns (`project_id` is `None`) keeps the full path.
+- **Resolution** (`resolve_project_lifecycles`, four queries per call): the project's own row for the type, else the nearest ancestor's (the `resolve_effective_action_types` shape; an empty list is an explicit choice), else every state on; then the organisation's required states are added back unless the project is exempt (the exemption row names the project and may cover its nested children). A stored choice is kept when a requirement overrides it, so removing the requirement gives it back.
+- **A list response** that carries legal next states (`RiskOut`, `RequestOut.allowed_next_statuses`) resolves the lifecycle once per request and project (`lifecycle_for`, `next_states`), never per record; `backend/tests/test_scaling_shapes.py` guards it.
+- **Tables.** `project_lifecycle_settings` (one row per project and type, `disabled_states`), `organization_lifecycle_requirements` (one row per type and state) and `organization_lifecycle_exemptions` (one row per type and project, `include_children`).
+- **API.** `GET /api/v1/projects/{id}/lifecycles` (any project member; the effective path, legal moves and the caller's right to change them, for the modules enabled in the project), `PUT .../lifecycles/{type}` (`manage_project_lifecycles`, no server-administrator bypass; a required state is refused with 409), and under `/api/v1/orgs/{id}/lifecycles` the organisation's read, `PUT /{type}` for the required states and `POST`/`DELETE /{type}/exemptions` (`manage_org_lifecycles`). Every change is one `lifecycle_settings` audit event (type and state keys only).
+- **Bundles and templates.** The project bundle carries `lifecycles` (the project's own rows); an import stores the choice as written, since a required state beats it when the path is resolved, and skips an unknown type or a state that cannot be turned off with a warning. The organisation bundle carries `lifecycle_requirements` and `lifecycle_exemptions` (a project by its bundle reference; a merge keeps the target's own requirement of a type). A project made from a template copies the template's own rows.
+- **Frontend.** `hooks/useProjectLifecycle` reads the project's lifecycle once per record page: `visibleSteps`, `nextOnPath` (Promote goes to the next step that is on), `lastOnPath` and `canMove(from, to, base)` (an actions-menu row appears where the server accepts the move; `base` is the answer while the configuration is unknown). Settings are `ProjectLifecyclesPanel` (Project administration) and `OrgLifecyclesPanel` (Organisation administration); a module's page passes its own path and type key and imports nothing from another module.
+- **Adding a type:** declare its `LifecycleDefinition`, call `check_move` in its transition function, use `lifecycle_for` for any list that returns legal next states, and read `useProjectLifecycle` in its detail page. Requirements and change requests declare none (no optional state), so they keep their fixed path.
+
 ### 4l13. External references on every record
 
 A record can point to the same work in an outside tool (a Jira epic, a ServiceNow ticket, a customer's register), and be found from either side. One core table, `external_references`, serves every registered artefact type, keyed by the type string like tags and placements, so a module adds a type with no per-module code. A module declares nothing for it; the only optional hook is a sub-component keyed `external_references` (`services.external_references.EXTERNAL_REFERENCES_SUBCOMPONENT_KEY`), which lets an administrator switch the feature off for that module's types (the endpoints then answer 404 and stored references are kept; Product Feedback declares it).

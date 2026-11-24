@@ -70,6 +70,7 @@ from app.modules.registry import LinkTypeSeed
 from app.schemas.principal import PrincipalRef
 from app.services import definition_suppression
 from app.services.audit import log_event
+from app.services.lifecycles import check_move
 from app.services.link_types import ensure_org_link_type
 from app.services.rbac import lock_row_for_update
 from app.services.relationships import create_link, get_link_between
@@ -277,8 +278,7 @@ def _transition(
         ValueError: if `new_status` isn't reachable from `current_version.
             status` per `_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _ALLOWED_TRANSITIONS[current_version.status]:
-        raise ValueError(f"Cannot move a Strategy from '{current_version.status.value}' to '{new_status.value}'.")
+    check_move(db, strategy.project_id, STRATEGY_ARTEFACT_TYPE, current_version.status.value, new_status.value)
     new_version = apply_new_version(
         db, strategy, current_version, actor, status_value=new_status, change_note=comment or "",
     )
@@ -566,8 +566,7 @@ def _future_state_transition(
         ValueError: if `new_status` isn't reachable from `current_version.
             status` per `_FS_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _FS_ALLOWED_TRANSITIONS[current_version.status]:
-        raise ValueError(f"Cannot move a Future State from '{current_version.status.value}' to '{new_status.value}'.")
+    check_move(db, future_state.project_id, FUTURE_STATE_ARTEFACT_TYPE, current_version.status.value, new_status.value)
     new_version = apply_future_state_new_version(
         db, future_state, current_version, actor, status_value=new_status, change_note=comment or "",
     )
@@ -1220,8 +1219,7 @@ def _pp_transition(
         ValueError: if `new_status` isn't reachable from `pain_point.
             status` per `_PP_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _PP_ALLOWED_TRANSITIONS[pain_point.status]:
-        raise ValueError(f"Cannot move a Pain Point from '{pain_point.status.value}' to '{new_status.value}'.")
+    check_move(db, pain_point.project_id, PAIN_POINT_ARTEFACT_TYPE, pain_point.status.value, new_status.value)
     pain_point.status = new_status
     db.flush()
     log_event(
@@ -1490,10 +1488,10 @@ def _guiding_principle_transition(
         ValueError: if `new_status` isn't reachable from `current_version.
             status` per `_GP_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _GP_ALLOWED_TRANSITIONS[current_version.status]:
-        raise ValueError(
-            f"Cannot move a Guiding Principle from '{current_version.status.value}' to '{new_status.value}'."
-        )
+    check_move(
+        db, guiding_principle.project_id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, current_version.status.value,
+        new_status.value,
+    )
     new_version = apply_guiding_principle_new_version(
         db, guiding_principle, current_version, actor, status_value=new_status, change_note=comment or "",
     )
@@ -1731,8 +1729,7 @@ def _oq_transition(
         ValueError: if `new_status` isn't reachable from `open_question.
             status` per `_OQ_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _OQ_ALLOWED_TRANSITIONS[open_question.status]:
-        raise ValueError(f"Cannot move an Open Question from '{open_question.status.value}' to '{new_status.value}'.")
+    check_move(db, open_question.project_id, OPEN_QUESTION_ARTEFACT_TYPE, open_question.status.value, new_status.value)
     open_question.status = new_status
     db.flush()
     log_event(

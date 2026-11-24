@@ -73,6 +73,7 @@ from app.schemas.type_vocabulary import (
 from app.services import scoring
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
+from app.services.lifecycles import lifecycle_for
 from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled, require_project_subcomponent_enabled
@@ -228,6 +229,7 @@ def list_risks(
         """This endpoint's rows for one project of the scope."""
         project = _project(db, pid)
         ctx = load_rating_context(db, project)
+        lifecycle = lifecycle_for(db, pid, RISK_ARTEFACT_TYPE)
         risks = list_project_risks(db, pid, include_archived=include_archived)
         risks = tag_filter.keep(db, pid, RISK_ARTEFACT_TYPE, risks)
         counts = effective_treatment_counts(db, [r.id for r in risks])
@@ -239,6 +241,7 @@ def list_risks(
         out = [
             sh.risk_to_out(
                 db, r, versions[r.id], ctx, effective_treatments=counts.get(r.id, 0), labels=labels, type_names=type_names,
+                lifecycle=lifecycle,
             )
             for r in risks
         ]

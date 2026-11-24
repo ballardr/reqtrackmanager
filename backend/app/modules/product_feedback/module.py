@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.modules.product_feedback import export as bundle_export
 from app.modules.product_feedback._shared import REQUEST_MANAGE_PERMISSION
 from app.modules.product_feedback.demand import REQUESTED_BY_SEED
+from app.modules.product_feedback.lifecycles import LIFECYCLES
 from app.modules.product_feedback.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.product_feedback.mcp_tools import build_mcp_tools
 from app.modules.product_feedback.models import EnhancementRequestVersion
@@ -139,6 +140,7 @@ MODULE_DEFINITION = ModuleDefinition(
     no_record_attachments=NO_RECORD_ATTACHMENTS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    lifecycles=LIFECYCLES,
     perf_generators={REQUEST_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_requests, order=166)},
     sub_components=(
         ModuleSubComponentDefinition(key=REQUEST_SUBCOMPONENT_KEY, name="Enhancement requests", default_enabled=True),

@@ -85,6 +85,7 @@ import { PoliciesPanel } from "../components/PoliciesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { OrgOverviewDefaultPanel } from "../components/overview/OrgOverviewDefaultPanel";
 import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
+import { OrgLifecyclesPanel } from "../components/OrgLifecyclesPanel";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
 import { OrgExternalSystemsPanel } from "../components/ExternalSystemsPanels";
@@ -132,6 +133,7 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "groups",
   "projects",
   "workflow",
+  "lifecycles",
   "branding-defaults",
   "oauth-sso",
   "email",
@@ -1618,6 +1620,7 @@ export function OrgAdminPage() {
     { key: "groups", label: strings.orgAdmin.groupGroups, href: `/orgs/${orgId}/admin/groups` },
     { key: "projects", label: strings.orgAdmin.groupProjects, href: `/orgs/${orgId}/admin/projects` },
     { key: "workflow", label: strings.orgAdmin.groupWorkflow, href: `/orgs/${orgId}/admin/workflow` },
+    { key: "lifecycles", label: strings.orgAdmin.groupLifecycles, href: `/orgs/${orgId}/admin/lifecycles` },
     { key: "branding-defaults", label: strings.orgAdmin.groupBrandingDefaults, href: `/orgs/${orgId}/admin/branding-defaults` },
     { key: "oauth-sso", label: strings.orgAdmin.groupOauthSso, href: `/orgs/${orgId}/admin/oauth-sso` },
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
@@ -2367,6 +2370,14 @@ export function OrgAdminPage() {
                 onClose={() => setInUseOrgGroup(null)}
               />
             )}
+          </div>
+        )}
+
+        {activeGroup === "lifecycles" && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.lifecycles" title={strings.lifecycleSettings.heading} help={strings.help.lifecyclesOrganization} defaultCollapsed={false}>
+              <OrgLifecyclesPanel organizationId={org.id} />
+            </CollapsibleSection>
           </div>
         )}
 

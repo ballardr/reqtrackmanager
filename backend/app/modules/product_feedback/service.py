@@ -34,6 +34,7 @@ from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST
 from app.modules.product_feedback.scoring_filter import ScoredFilter, keep_by_scoring
 from app.services.current_versions import current_versions
 from app.services.external_references import EXTERNAL_REFERENCES_SUBCOMPONENT_KEY as SHARED_REFERENCES_SUBCOMPONENT_KEY
+from app.services.lifecycles import check_move
 from app.services.scoring_custom import effective_scheme
 from app.services.sequences import code_owner, generate_unique_code
 
@@ -251,11 +252,7 @@ def transition_request(
         raise ValueError("An archived request cannot change status; unarchive it first.")
     if target == _S.DUPLICATE:
         raise ValueError("A request becomes a duplicate by being merged into another request.")
-    if target not in ALLOWED_TRANSITIONS[current.status]:
-        raise ValueError(
-            f"Cannot move a request from '{request_status_label(current.status.value)}' to "
-            f"'{request_status_label(target.value)}'."
-        )
+    check_move(db, request.project_id, REQUEST_ARTEFACT_TYPE, current.status.value, target.value)
     changes: dict[str, Any] = {"status": target}
     if target == _S.DECLINED:
         if not comment.strip():

@@ -102,6 +102,7 @@ from app.schemas.principal import PrincipalOut
 from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
+from app.services.lifecycles import ResolvedLifecycle, lifecycle_for, next_states
 from app.services.link_graph import ArtefactResolver
 from app.services.permissions import encode_permission
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
@@ -228,14 +229,34 @@ def rating_context_for(
     return ctx
 
 
+def _allowed_next_statuses(
+    db: Session, request: EnhancementRequest, status: EnhancementRequestStatus,
+    lifecycles: dict[uuid.UUID, ResolvedLifecycle] | None,
+) -> list[EnhancementRequestStatus]:
+    """The legal next statuses of a request: a project request follows its project's lifecycle (turned-off states
+    stepped over), an organisation inbox request the base table. A direct move to Duplicate is never offered (a merge
+    makes one)."""
+    if request.project_id is None:
+        moves = [s.value for s in ALLOWED_TRANSITIONS[status]]
+    else:
+        cache = lifecycles if lifecycles is not None else {}
+        if request.project_id not in cache:
+            cache[request.project_id] = lifecycle_for(db, request.project_id, REQUEST_ARTEFACT_TYPE)
+        moves = next_states(cache[request.project_id], status.value)
+    wanted = {EnhancementRequestStatus(m) for m in moves} - {EnhancementRequestStatus.DUPLICATE}
+    return sorted(wanted, key=list(EnhancementRequestStatus).index)
+
+
 def request_to_out(
     db: Session, request: EnhancementRequest, version: EnhancementRequestVersion, labels: OwnerLabels | None = None,
     extras: RequestExtras | None = None, ctx: RatingContext | None = None,
     scoring_model: Sequence[str] | None = None, levels: dict[str, uuid.UUID] | None = None,
+    lifecycles: dict[uuid.UUID, ResolvedLifecycle] | None = None,
 ) -> RequestOut:
     """Merges a request with its current version. `labels` (owner data), `extras` (merge status and demand),
-    `ctx` (scoring configuration) and `levels` (the version's scoring levels) are pre-resolved when building
-    many, resolved here when omitted; `scoring_model` picks the models scored (default: the enabled ones)."""
+    `ctx` (scoring configuration), `levels` (the version's scoring levels) and `lifecycles` (each project's resolved
+    lifecycle, filled as it is read) are pre-resolved when building many, resolved here when omitted; `scoring_model`
+    picks the models scored (default: the enabled ones)."""
     labels = labels if labels is not None else owner_labels(db, [version])
     extras = extras if extras is not None else request_extras(db, [request])
     ctx = ctx if ctx is not None else rating_context_for(db, request, scoring_model)
@@ -249,10 +270,7 @@ def request_to_out(
         unique_code=request.unique_code, creator_id=request.creator_id, is_archived=request.is_archived,
         archived_at=request.archived_at, archived_by=request.archived_by, title=version.title,
         description=version.description, status=version.status,
-        allowed_next_statuses=sorted(
-            ALLOWED_TRANSITIONS[version.status] - {EnhancementRequestStatus.DUPLICATE},
-            key=list(EnhancementRequestStatus).index,
-        ),
+        allowed_next_statuses=_allowed_next_statuses(db, request, version.status, lifecycles),
         owner=_owner_of(labels, version), external_refs=extras.references.get(request.id, []),
         decline_reason=version.decline_reason,
         levels=levels, derived_levels=derived_levels(ctx, levels, demand.weighted),
@@ -280,9 +298,11 @@ def requests_to_out(
     extras = request_extras(db, requests)
     levels = version_levels(db, [v.id for v in versions])
     contexts: dict[tuple[uuid.UUID, uuid.UUID | None], RatingContext] = {}
+    lifecycles: dict[uuid.UUID, ResolvedLifecycle] = {}
     return [
         request_to_out(
             db, r, v, labels, extras, rating_context_for(db, r, scoring_model, contexts), levels=levels[v.id],
+            lifecycles=lifecycles,
         )
         for r, v in zip(requests, versions, strict=True)
     ]

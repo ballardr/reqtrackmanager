@@ -49,6 +49,7 @@ import { RISK_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
 import type { ActionMenuItem } from "../../components/ActionMenu";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 
 /** Why the signed-off assessment of an accepted risk cannot be changed. */
 const ACCEPTED_LOCKED_REASON = "Locked: the rating, acceptance criteria and treatment strategy are signed off.";
@@ -76,6 +77,7 @@ function levelSummary(
 
 export function RiskDetailPage() {
   const { projectId, riskId } = useParams<{ projectId: string; riskId: string }>();
+  const lifecycle = useProjectLifecycle(projectId, "risk");
   const { user } = useAuth();
   const { showToast } = useToast();
   const scheme = useRiskScheme(projectId);
@@ -166,7 +168,7 @@ export function RiskDetailPage() {
   if (risk === null || project === null) return <Spinner />;
 
   // The next forward move, when the backend allows it; every other allowed move is a row of the actions menu.
-  const nextOnPath = RISK_MAIN_PATH[RISK_MAIN_PATH.indexOf(risk.status) + 1];
+  const nextOnPath = lifecycle.nextOnPath(RISK_MAIN_PATH, risk.status) as RiskStatus | undefined;
   const promoteTo: RiskStatus | undefined = risk.is_archived ? undefined
     : OUTCOME_STATUSES.includes(risk.status) ? "closed"
     : nextOnPath;
@@ -224,7 +226,7 @@ export function RiskDetailPage() {
         onEdit={risk.is_archived ? undefined : () => setEditing(true)}
         actions={[...moveRows, archive.item]}
         lifecycle={{
-          steps: lifecycleSteps(RISK_MAIN_PATH, RISK_STATUS_LABEL, { descriptions: RISK_STATUS_DESCRIPTION }),
+          steps: lifecycle.visibleSteps(lifecycleSteps(RISK_MAIN_PATH, RISK_STATUS_LABEL, { descriptions: RISK_STATUS_DESCRIPTION }), risk.status),
           current: risk.status,
           offPath: offPathStep,
           promote,

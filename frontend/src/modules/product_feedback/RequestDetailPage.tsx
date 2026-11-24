@@ -38,6 +38,7 @@ import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import { RecordHeader } from "../../components/RecordHeader";
 import { RecordTags } from "../../components/RecordTags";
 import { SectionOrderEditor } from "../../components/SectionOrderEditor";
@@ -96,6 +97,7 @@ export function RequestDetailPage() {
   }>();
   const navigate = useNavigate();
   const strings = useStrings();
+  const lifecycle = useProjectLifecycle(projectId, "enhancement_request");
   const { user } = useAuth();
   const { showToast } = useToast();
   const scopedApi = projectId ? projectRequestApi : orgRequestApi;
@@ -348,7 +350,7 @@ export function RequestDetailPage() {
   const moves = request.allowed_next_statuses.filter((to) => !request.is_archived && canTriage && to !== "duplicate");
   // The next forward step; a person who may not triage sees it padlocked. Every other move is a row of the actions menu.
   const position = REQUEST_MAIN_PATH.indexOf(request.status);
-  const nextStep = position === -1 ? undefined : REQUEST_MAIN_PATH[position + 1];
+  const nextStep = position === -1 ? undefined : lifecycle.nextOnPath(REQUEST_MAIN_PATH, request.status) as RequestStatus | undefined;
   const promote: LifecyclePromote | undefined = !nextStep || request.is_archived || !request.allowed_next_statuses.includes(nextStep) ? undefined
     : canTriage ? { to: nextStep, onPromote: () => setPending({ to: nextStep }) }
     : { to: nextStep, blockedReason: strings.lifecycle.notPermitted(REQUEST_STATUS_LABEL[nextStep]) };
@@ -533,7 +535,7 @@ export function RequestDetailPage() {
           archive.item,
         ]}
         lifecycle={{
-          steps: lifecycleSteps(REQUEST_MAIN_PATH, REQUEST_STATUS_LABEL, { descriptions: REQUEST_STATUS_DESCRIPTION }),
+          steps: lifecycle.visibleSteps(lifecycleSteps(REQUEST_MAIN_PATH, REQUEST_STATUS_LABEL, { descriptions: REQUEST_STATUS_DESCRIPTION }), request.status),
           current: request.status,
           offPath: offPathStep,
           promote,

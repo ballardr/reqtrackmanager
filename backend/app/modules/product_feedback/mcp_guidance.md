@@ -24,3 +24,4 @@ Rules and gotchas:
 - Triage: `move_inbox_request_to_project` re-homes an inbox request into a project (same id, status and history; the code becomes the project's next `ENH-nnn`, so quote the new code afterwards). It needs the organisation triager role and is refused with 409 if the request has links. A moved request cannot go back to the inbox.
 - The organisation inbox tools answer 404 when an organisation administrator has switched the inbox off.
 - There is no delete tool; archiving is a UI action.
+- A project may turn off Under review; `allowed_next_statuses` already reflects that, and a refused move names the states that are allowed.

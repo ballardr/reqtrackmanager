@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.modules.decisions import activity_links as _activity_links
 from app.modules.decisions import export as bundle_export
+from app.modules.decisions.lifecycles import LIFECYCLES
 from app.modules.decisions.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.decisions.models import Decision
 from app.modules.decisions.perf_dataset import generate_decisions
@@ -256,6 +257,7 @@ MODULE_DEFINITION = ModuleDefinition(
     report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    lifecycles=LIFECYCLES,
     perf_generators={DECISION_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_decisions, order=110)},
     default_code_prefixes={DECISION_ARTEFACT_TYPE: DECISION_CODE_PREFIX},
     artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},

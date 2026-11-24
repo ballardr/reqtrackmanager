@@ -35,6 +35,7 @@ from app.modules.registry import (
 from app.modules.risk_management import export as risk_export
 from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MANAGE_PERMISSION
 from app.modules.risk_management.alerts import NOTIFICATION_TYPES
+from app.modules.risk_management.lifecycles import LIFECYCLES
 from app.modules.risk_management.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.risk_management.mcp_tools import build_mcp_tools
 from app.modules.risk_management.models import RiskVersion
@@ -184,6 +185,7 @@ MODULE_DEFINITION = ModuleDefinition(
     report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    lifecycles=LIFECYCLES,
     perf_generators={RISK_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_risks, order=100)},
     link_type_seeds=LINK_TYPE_SEEDS,
     sub_components=(ModuleSubComponentDefinition(key=RISK_SUBCOMPONENT_KEY, name="Risks", default_enabled=True),),

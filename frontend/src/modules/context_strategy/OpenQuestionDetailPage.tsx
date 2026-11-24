@@ -48,6 +48,7 @@ import {
 import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
@@ -83,6 +84,7 @@ export function OpenQuestionDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [openQuestion, setOpenQuestion] = useState<OpenQuestion | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "open_question");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [comments, setComments] = useState<OpenQuestionComment[] | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
@@ -186,15 +188,17 @@ export function OpenQuestionDetailPage() {
   };
 
   // The next forward move: a plain call for the start of investigation, otherwise the move's comment dialog.
+  // It goes to the next step the project uses (a project may turn Investigating off).
+  const next = lifecycle.nextOnPath(MAIN_PATH, openQuestion.status);
   let promote: LifecyclePromote | undefined;
-  if (openQuestion.status === "open") {
+  if (next === "investigating") {
     promote = {
       to: "investigating",
       onPromote: () => runTransition(() => projectOpenQuestionApi.investigate(projectId, openQuestion.id), "Open Question moved to Investigating."),
     };
-  } else if (openQuestion.status === "investigating") {
+  } else if (next === "ready_for_decision") {
     promote = { to: "ready_for_decision", onPromote: () => setOptionalAction("mark_ready_for_decision") };
-  } else if (openQuestion.status === "ready_for_decision") {
+  } else if (next === "resolved") {
     promote = { to: "resolved", onPromote: () => setOptionalAction("resolve") };
   }
 
@@ -206,7 +210,7 @@ export function OpenQuestionDetailPage() {
         description: OPEN_QUESTION_STATUS_DESCRIPTION.withdrawn,
         locked: true,
         lockedReason: TERMINAL_LOCKED_REASON,
-        after: "investigating",
+        after: lifecycle.lastOnPath(MAIN_PATH, "investigating"),
       }
     : undefined;
 
@@ -243,16 +247,19 @@ export function OpenQuestionDetailPage() {
         }
         onEdit={openQuestion.is_locked ? undefined : () => setEditing(true)}
         actions={[
-          (openQuestion.status === "investigating" || openQuestion.status === "ready_for_decision") && {
+          lifecycle.canMove(openQuestion.status, "withdrawn", openQuestion.status === "investigating" || openQuestion.status === "ready_for_decision") && {
             label: "Withdraw", danger: true, onSelect: () => setWithdrawConfirm(true),
           },
           archive.item,
         ]}
         lifecycle={{
-          steps: lifecycleSteps(MAIN_PATH, OPEN_QUESTION_STATUS_LABEL, {
-            descriptions: OPEN_QUESTION_STATUS_DESCRIPTION,
-            locked: { resolved: TERMINAL_LOCKED_REASON },
-          }),
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, OPEN_QUESTION_STATUS_LABEL, {
+              descriptions: OPEN_QUESTION_STATUS_DESCRIPTION,
+              locked: { resolved: TERMINAL_LOCKED_REASON },
+            }),
+            openQuestion.status,
+          ),
           current: openQuestion.status,
           offPath,
           promote,

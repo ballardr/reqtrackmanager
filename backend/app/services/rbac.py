@@ -2930,6 +2930,16 @@ MANAGE_ORG_RESOURCES = "manage_org_resources"
 MANAGE_PROJECT_REPORT_LAYOUTS = "manage_project_report_layouts"
 """The administrative permission that lets a person manage a project's custom report layouts."""
 
+MANAGE_ORG_LIFECYCLES = "manage_org_lifecycles"
+"""The administrative permission that lets a person set the organisation's required lifecycle states and exemptions."""
+
+MANAGE_PROJECT_LIFECYCLES = "manage_project_lifecycles"
+"""The administrative permission that lets a person choose which optional lifecycle states a project uses."""
+
+_PROJECT_LIFECYCLE_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR})
+"""Project roles that hold `MANAGE_PROJECT_LIFECYCLES` in their project (organisation admins hold it through
+`_ORG_ROLE_PERMISSIONS`; anyone else needs a custom or module role that lists it)."""
+
 _PROJECT_REPORT_LAYOUT_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR})
 """Project roles that hold `MANAGE_PROJECT_REPORT_LAYOUTS` in their project (organisation admins hold it
 through `_ORG_ROLE_PERMISSIONS`; anyone else needs a custom or module role that lists it)."""
@@ -3312,6 +3322,8 @@ def get_effective_permissions(
             permissions.add(EXPORT_PERSONAL_DATA)
         if project_roles & _PROJECT_REPORT_LAYOUT_ROLES:
             permissions.add(MANAGE_PROJECT_REPORT_LAYOUTS)
+        if project_roles & _PROJECT_LIFECYCLE_ROLES:
+            permissions.add(MANAGE_PROJECT_LIFECYCLES)
 
     permissions |= _module_role_permission_grants(
         db, user_id, organization_id=organization_id, project_id=project_id,

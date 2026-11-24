@@ -1970,6 +1970,32 @@ def set_record_code_prefix(headers: dict, project_id: str, artefact_type: str, p
     r.raise_for_status()
 
 
+def require_lifecycle_states(headers: dict, org_id: str, artefact_type: str, states: list[str]) -> None:
+    """Makes the organisation require these optional states of a record type in every project."""
+    r = httpx.put(
+        f"{BASE}/orgs/{org_id}/lifecycles/{artefact_type}", json={"required_states": states}, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+
+
+def exempt_project_from_lifecycle(headers: dict, org_id: str, artefact_type: str, project_id: str) -> None:
+    """Exempts one project from the organisation's required states of a record type."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/lifecycles/{artefact_type}/exemptions",
+        json={"project_id": project_id, "include_children": False}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def turn_off_lifecycle_states(headers: dict, project_id: str, artefact_type: str, states: list[str]) -> None:
+    """Turns optional states of a record type off for one project (a record then moves past them)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/lifecycles/{artefact_type}", json={"disabled_states": states}, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+
+
 def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points", json=fields, headers=headers, timeout=30
@@ -4710,6 +4736,10 @@ def main() -> None:
         "The tablet app pilots use at the launch site, created from the Product Design template.",
         template_project_id=product_design["id"],
     )
+    # The organisation requires Triage for every project; this small team is exempt and goes from Submitted to Accepted.
+    require_lifecycle_states(h_pm, org["id"], "pain_point", ["triaged"])
+    exempt_project_from_lifecycle(h_pm, org["id"], "pain_point", operator_app["id"])
+    turn_off_lifecycle_states(h_pm, operator_app["id"], "pain_point", ["triaged"])
     app_pain_point_types = list_effective_pain_point_types(h_pm, operator_app["id"])
     app_levels = get_pain_point_levels(h_pm, operator_app["id"])
     for title, description, point_type, scores in (
@@ -4724,7 +4754,6 @@ def main() -> None:
             h_pm, operator_app["id"], pain_point_type_id=app_pain_point_types[point_type]["id"], title=title,
             description=description, source="Pilot debrief — launch-site trial", priority="medium",
         )
-        triage_pain_point(h_pm, operator_app["id"], pain_point["id"])
         accept_pain_point(h_pm, operator_app["id"], pain_point["id"])
         set_pain_point_scores(h_pm, operator_app["id"], pain_point["id"], [score_entry(app_levels, None, **scores)])
 

@@ -41,7 +41,6 @@ from app.modules.risk_management.schemas import (
 )
 from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES
 from app.modules.risk_management.service import (
-    RISK_ALLOWED_TRANSITIONS,
     RISK_ARTEFACT_TYPE,
     RISK_MODULE_KEY,
     RISK_TYPES,
@@ -58,6 +57,7 @@ from app.schemas.principal import PrincipalOut
 from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.client_date import effective_today
+from app.services.lifecycles import ResolvedLifecycle, lifecycle_for, next_states
 from app.services.permissions import encode_permission
 from app.services.principals import (
     is_principal_member,
@@ -128,14 +128,16 @@ def risk_versions_out(db: Session, versions: Sequence[RiskVersion]) -> list[Risk
 
 def risk_to_out(
     db: Session, risk: Risk, version: RiskVersion, ctx: RatingContext, *, effective_treatments: int = 0,
-    labels: OwnerLabels | None = None, type_names: dict | None = None,
+    labels: OwnerLabels | None = None, type_names: dict | None = None, lifecycle: ResolvedLifecycle | None = None,
 ) -> RiskOut:
     """Merges a risk with its current version and derived ratings. `ctx` is
     loaded once per request (`load_rating_context`); `effective_treatments` is
     the risk's count from `treatment.effective_treatment_counts`; `labels` is
     pre-resolved owner data (`owner_labels`) when building many, resolved here
-    when omitted."""
+    when omitted. `lifecycle` is the project's resolved lifecycle (`lifecycle_for`), resolved here when omitted; a list
+    passes one so `allowed_next_statuses` costs no query per risk."""
     labels = labels if labels is not None else owner_labels(db, [version])
+    lifecycle = lifecycle if lifecycle is not None else lifecycle_for(db, risk.project_id, RISK_ARTEFACT_TYPE)
     inherent, residual = rate_version(ctx, version)
     return RiskOut(
         id=risk.id, project_id=risk.project_id, unique_code=risk.unique_code, creator_id=risk.creator_id,
@@ -149,7 +151,7 @@ def risk_to_out(
         treatment_strategy=version.treatment_strategy, acceptance_criteria=version.acceptance_criteria,
         **{column: getattr(version, column) for column in LEVEL_COLUMN_AXES},
         inherent_rating=_rating_out(inherent), residual_rating=_rating_out(residual), status=version.status,
-        allowed_next_statuses=sorted(RISK_ALLOWED_TRANSITIONS[version.status], key=list(RiskStatus).index),
+        allowed_next_statuses=[RiskStatus(s) for s in next_states(lifecycle, version.status.value)],
         owner=_owner_of(labels, version), review_date=version.review_date, version_number=version.version_number,
         effective_treatment_count=effective_treatments, is_effectively_treated=effective_treatments > 0,
         is_review_overdue=(

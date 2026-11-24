@@ -432,3 +432,33 @@ def test_acceptor_role_is_registered_with_the_approve_atom():
 
     role = {r.role_key: r for r in MODULE_DEFINITION.roles}["risk_acceptor"]
     assert role.scope == "project" and role.permissions == (encode_permission("risk", "approve_baseline"),)
+
+
+# --- Lifecycle configuration -----------------------------------------------------
+
+
+def test_a_turned_off_treatment_step_still_applies_its_checks(client, admin_token):
+    org, project, token = setup(client, admin_token, "Risk Life Config Co")
+    resp = client.put(
+        f"/api/v1/projects/{project['id']}/lifecycles/risk",
+        json={"disabled_states": ["treatment_planned", "treatment_in_progress"]}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+    risk = _score_and_create(client, token, project)
+    _walk(client, token, project["id"], risk["id"], "assessed")
+
+    # The state is stepped over, not refused as unreachable, and still demands an owner and a strategy.
+    refused = _move(client, token, project["id"], risk["id"], "treatment_planned")
+    assert refused.status_code == 409 and "turned off" in refused.text
+    blocked = _move(client, token, project["id"], risk["id"], "mitigated")
+    assert blocked.status_code == 409 and "an owner and a treatment strategy" in blocked.text
+
+    owner = create_owner(client, token, org)
+    client.put(
+        _url(project["id"], risk["id"]), json={"owner": user_ref(owner), "treatment_strategy": "mitigate"},
+        headers=auth_headers(token),
+    )
+    _score(client, token, project, risk, residual=True)
+    add_effective_treatment(client, token, org, project, risk["id"])
+    moved = _move(client, token, project["id"], risk["id"], "mitigated")
+    assert moved.status_code == 200 and moved.json()["status"] == "mitigated"

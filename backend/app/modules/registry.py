@@ -1795,6 +1795,30 @@ class ScalingProbe:
 
 
 @dataclass(frozen=True)
+class LifecycleDefinition:
+    """The state path of one record type, so a project can turn off its optional states and an organisation can
+    require them (`services.lifecycles`).
+
+    Attributes:
+        label: The record type's singular name, used in messages and the settings panels.
+        path: The main path in order (first = the start, last = the end).
+        transitions: Every legal move as `{state: {next states}}`, the same table the type's own transition
+            function enforces, with state keys as plain strings. A move to a turned-off state is stepped over.
+        labels: The formal label of each state, for the settings panels and messages.
+        optional: States a project may turn off. Never the first or last of `path`, never an off-path state and never
+            a gated state, so a type opts in explicitly (the default is none).
+        gated: States whose move needs a permission or a second person's decision of its own; never optional.
+    """
+
+    label: str
+    path: tuple[str, ...]
+    transitions: Mapping[str, frozenset[str]]
+    labels: Mapping[str, str]
+    optional: tuple[str, ...] = ()
+    gated: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RecordCommentProvider:
     """How a module opts one of its `artefact_types` into the generic record comments (`services.record_comments`).
 
@@ -2481,6 +2505,9 @@ class ModuleDefinition:
             type's records in the performance tiers, or the reason there is none.
         scaling_probes / no_scaling_probe: `ScalingProbe`s the scaling-shape guard
             uses, or the reason a type cannot be filled through the API.
+        lifecycles: Maps an artefact type to its `LifecycleDefinition`; the type's transition functions call
+            `services.lifecycles.check_move`, so a project's turned-off states and an organisation's required states
+            apply on the server. A type with none keeps its fixed path.
         overview_metrics / overview_widgets: `OverviewMetric`s (served as
             `<module_key>:<key>`) and `OverviewWidgetType`s for project overviews;
             evaluated only where the module is enabled.
@@ -2583,6 +2610,7 @@ class ModuleDefinition:
     baseline_snapshots: dict[str, BaselineSnapshotProvider] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
     scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
+    lifecycles: dict[str, LifecycleDefinition] = field(default_factory=dict)
     no_scaling_probe: dict[str, str] = field(default_factory=dict)
     no_perf_generator: dict[str, str] = field(default_factory=dict)
     overview_metrics: dict[str, OverviewMetric] = field(default_factory=dict)
@@ -4238,6 +4266,16 @@ def get_scaling_probes() -> dict[str, ScalingProbe]:
     for definition in get_module_registry().values():
         for artefact_type, probe in definition.scaling_probes.items():
             merged.setdefault(artefact_type, probe)
+    return merged
+
+
+def get_lifecycles() -> dict[str, tuple[str, LifecycleDefinition]]:
+    """`{artefact type: (module key, LifecycleDefinition)}` for every type a module gave a lifecycle. A type claimed
+    twice keeps the first registration."""
+    merged: dict[str, tuple[str, LifecycleDefinition]] = {}
+    for key, definition in get_module_registry().items():
+        for artefact_type, lifecycle in definition.lifecycles.items():
+            merged.setdefault(artefact_type, (key, lifecycle))
     return merged
 
 

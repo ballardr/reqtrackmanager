@@ -60,6 +60,7 @@ const sidebars: SidebarsConfig = {
         'core-features/requirement-actions',
         'core-features/links-and-traceability',
         'core-features/tags',
+        'core-features/lifecycles',
         'core-features/components-on-records',
         'core-features/project-overview',
         'core-features/reports-and-export',

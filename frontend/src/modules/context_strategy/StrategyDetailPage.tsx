@@ -38,6 +38,7 @@ import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_DESCRIPTION, STRATEGY_STATUS_L
 import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
@@ -93,6 +94,7 @@ export function StrategyDetailPage() {
     : organizationId ? orgResourcesPath(organizationId, ORG_STRATEGIES_SECTION_KEY) : "/org-resources";
 
   const [strategy, setStrategy] = useState<Strategy | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "strategy");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<StrategyVersion[] | null>(null);
   const [comments, setComments] = useState<StrategyComment[] | null>(null);
@@ -178,14 +180,16 @@ export function StrategyDetailPage() {
   };
 
   // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  // It goes to the next step the project uses (a project may turn Proposed and Under review off).
+  const next = lifecycle.nextOnPath(MAIN_PATH, strategy.status);
   let promote: LifecyclePromote | undefined;
-  if (strategy.status === "draft") {
+  if (next === "proposed") {
     promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, strategy.id), "Strategy proposed.") };
-  } else if (strategy.status === "proposed") {
+  } else if (next === "under_review") {
     promote = { to: "under_review", onPromote: () => runTransition(() => scopedApi.submitForReview(scopeId, strategy.id), "Strategy submitted for review.") };
-  } else if (strategy.status === "under_review") {
+  } else if (next === "approved") {
     promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
-  } else if (strategy.status === "approved") {
+  } else if (next === "active") {
     promote = { to: "active", onPromote: () => setTransitionAction("activate") };
   }
 
@@ -245,13 +249,16 @@ export function StrategyDetailPage() {
         subtitle={`${STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · ${STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]}`}
         onEdit={strategy.is_locked ? undefined : () => setEditing(true)}
         actions={[
-          (strategy.status === "proposed" || strategy.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
+          lifecycle.canMove(strategy.status, "draft", strategy.status === "proposed" || strategy.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
           strategy.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
           strategy.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
           archive.item,
         ]}
         lifecycle={{
-          steps: lifecycleSteps(MAIN_PATH, STRATEGY_STATUS_LABEL, { descriptions: STRATEGY_STATUS_DESCRIPTION, locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON } }),
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, STRATEGY_STATUS_LABEL, { descriptions: STRATEGY_STATUS_DESCRIPTION, locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON } }),
+            strategy.status,
+          ),
           current: strategy.status,
           offPath,
           promote,

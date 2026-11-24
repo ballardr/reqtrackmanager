@@ -36,6 +36,7 @@ import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE, FUTURE_STATE_STATU
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
@@ -89,6 +90,7 @@ export function FutureStateDetailPage() {
     : organizationId ? orgResourcesPath(organizationId, ORG_FUTURE_STATES_SECTION_KEY) : "/org-resources";
 
   const [futureState, setFutureState] = useState<FutureState | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "future_state");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<FutureStateVersion[] | null>(null);
   const [comments, setComments] = useState<FutureStateComment[] | null>(null);
@@ -174,14 +176,16 @@ export function FutureStateDetailPage() {
   };
 
   // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  // It goes to the next step the project uses (a project may turn Proposed and Under review off).
+  const next = lifecycle.nextOnPath(MAIN_PATH, futureState.status);
   let promote: LifecyclePromote | undefined;
-  if (futureState.status === "draft") {
+  if (next === "proposed") {
     promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, futureState.id), "Future State proposed.") };
-  } else if (futureState.status === "proposed") {
+  } else if (next === "under_review") {
     promote = { to: "under_review", onPromote: () => runTransition(() => scopedApi.submitForReview(scopeId, futureState.id), "Future State submitted for review.") };
-  } else if (futureState.status === "under_review") {
+  } else if (next === "approved") {
     promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
-  } else if (futureState.status === "approved") {
+  } else if (next === "active") {
     promote = { to: "active", onPromote: () => setTransitionAction("activate") };
   }
 
@@ -241,13 +245,16 @@ export function FutureStateDetailPage() {
         subtitle={futureState.target_date ? `Target date ${futureState.target_date}` : undefined}
         onEdit={futureState.is_locked ? undefined : () => setEditing(true)}
         actions={[
-          (futureState.status === "proposed" || futureState.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
+          lifecycle.canMove(futureState.status, "draft", futureState.status === "proposed" || futureState.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
           futureState.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
           futureState.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
           archive.item,
         ]}
         lifecycle={{
-          steps: lifecycleSteps(MAIN_PATH, FUTURE_STATE_STATUS_LABEL, { descriptions: FUTURE_STATE_STATUS_DESCRIPTION, locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON } }),
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, FUTURE_STATE_STATUS_LABEL, { descriptions: FUTURE_STATE_STATUS_DESCRIPTION, locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON } }),
+            futureState.status,
+          ),
           current: futureState.status,
           offPath,
           promote,

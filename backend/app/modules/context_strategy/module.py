@@ -25,6 +25,7 @@ from app.modules.context_strategy._shared import (
 from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSION as _OPEN_QUESTION_RESOLVE_PERMISSION
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
+from app.modules.context_strategy.lifecycles import LIFECYCLES
 from app.modules.context_strategy.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.context_strategy.models import GuidingPrincipleVersion, OpenQuestion, PainPoint
 from app.modules.context_strategy.perf_dataset import (
@@ -774,6 +775,7 @@ MODULE_DEFINITION = ModuleDefinition(
     report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    lifecycles=LIFECYCLES,
     perf_generators={
         STRATEGY: PerfDatasetGenerator(generate=generate_strategies, order=155),
         PAIN_POINT: PerfDatasetGenerator(generate=generate_pain_points, order=150),
