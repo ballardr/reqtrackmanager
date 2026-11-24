@@ -35,11 +35,19 @@ def read_cases(paths: list[Path]) -> tuple[list[tuple[float, str]], float]:
     Returns:
         (cases, elapsed): each case as (seconds, "class :: name"), and the largest single-suite `time` among the files, a
         lower bound of the elapsed time of a run whose suites ran in parallel.
+
+    Raises:
+        ValueError: When a file declares a document type or an entity (a JUnit report never does).
     """
     cases: list[tuple[float, str]] = []
     elapsed = 0.0
     for path in paths:
-        root = ET.parse(path).getroot()
+        text = path.read_text(encoding="utf-8")
+        if "<!DOCTYPE" in text or "<!ENTITY" in text:
+            raise ValueError(f"{path}: a JUnit report has no document type declaration or entity.")
+        # A report with no DOCTYPE or ENTITY declares no external entity and no entity expansion, which is what the
+        # XXE and entity-expansion rule guards; the standard library alone is available on the runner.
+        root = ET.fromstring(text)  # nosemgrep: python.lang.security.use-defused-xml-fromstring.use-defused-xml-fromstring
         suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
         for suite in suites:
             elapsed = max(elapsed, float(suite.get("time", 0) or 0))
@@ -82,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         argv: Command-line arguments (default `sys.argv[1:]`).
 
     Returns:
-        0, or 2 when no JUnit file could be read.
+        0, or 2 when no JUnit file could be read or one is not a plain JUnit document.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("reports", nargs="+", type=Path)
@@ -93,7 +101,11 @@ def main(argv: list[str] | None = None) -> int:
     if not readable:
         print(f"no JUnit report found among {[str(p) for p in args.reports]}", file=sys.stderr)
         return 2
-    cases, elapsed = read_cases(readable)
+    try:
+        cases, elapsed = read_cases(readable)
+    except (ValueError, ET.ParseError) as error:
+        print(f"unreadable JUnit report: {error}", file=sys.stderr)
+        return 2
     print(summary(args.title, cases, elapsed, args.budget_minutes))
     if args.budget_minutes is not None and elapsed and elapsed / 60 > args.budget_minutes:
         print(f"::warning::{args.title} took {elapsed / 60:.1f} minutes, over its {args.budget_minutes:g}-minute target", file=sys.stderr)

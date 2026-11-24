@@ -48,3 +48,10 @@ def test_a_run_within_its_target_has_no_warning(tmp_path, capsys):
 
 def test_a_missing_report_is_reported_not_raised(tmp_path, capsys):
     assert _module().main([str(tmp_path / "none.xml"), "--title", "Suite"]) == 2
+
+
+def test_a_report_declaring_an_entity_is_refused_not_parsed(tmp_path, capsys):
+    report = tmp_path / "r.xml"
+    report.write_text('<!DOCTYPE r [<!ENTITY x "boom">]><testsuites><testsuite name="a" time="1"/></testsuites>')
+    assert _module().main([str(report), "--title", "Suite"]) == 2
+    assert "document type declaration" in capsys.readouterr().err

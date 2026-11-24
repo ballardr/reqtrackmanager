@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 73, R, D and W done 2026-11-22 to 2026-11-25; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 73, R and D are done; phases 60 to 73 came from the review of 2026-11-24 (the user works them individually); S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 73, R, D, W and S done 2026-11-22 to 2026-11-25; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 73, R and D are done; phases 60 to 73 came from the review of 2026-11-24 (the user works them individually); C follows). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-76 / 78 phases complete.
+77 / 78 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -86,7 +86,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 73 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [x] |
 | D | Register clean-up | Each phase register was reconciled with the reviewed result, what is durable moved into the permanent docs and the code, and the eight registers removed (decided 2026-11-25); gates W | [x] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [x] |
-| S | Security review | Dependabot, CodeQL, `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, image scan; identify → verify → remediate on touched areas | [ ] |
+| S | Security review | Dependabot, CodeQL, `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, image scan; identify → verify → remediate on touched areas | [x] |
 | C | Local CI test review | Every job in `.github/workflows/` run locally before the pull request exists | [ ] |
 
 ```mermaid
@@ -1080,6 +1080,8 @@ Five items from the user's review, each checked against the code (findings in ea
 
 - Open Dependabot and CodeQL alerts; `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, the image scan; each vulnerable dependency upgraded to a supported version (never pinned back), each finding fixed in code.
 - Identify → verify → remediate for: the return path (open redirect), Markdown and Mermaid (XSS, resource exhaustion), external reference URLs (scheme, injection), the notification route (record existence and access), the migration of Product Feedback data (tenant isolation), code overrides (collision and cross-tenant), service users (a token issued for another account, sign-in and recovery paths that must stay closed, cross-organisation reach). Outcome in `docs/decisions.md`; SOC 2 control matrix updated where a control changed.
+
+- **Done 2026-11-25** (account in `docs/decisions.md`, "Phase S"): every scan clean after three fixes: the CI summary script's XML parse (Semgrep), a scoped token marking a notification outside its scope as read, and concurrent record-code prefix writes (now serialised per organisation); the seven named areas were reviewed with no further finding; no dependency needed an upgrade; no SOC 2 control changed.
 
 ### Phase C — Local CI test review
 

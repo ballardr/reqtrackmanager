@@ -558,3 +558,31 @@ def test_every_prefixed_type_creates_a_record_with_an_override(client, admin_tok
     # A type with no probe cannot be filled through its API here; the scaling-shape guard already requires every type to
     # have a probe or a stated reason, so this only fails if most types stop being exercised.
     assert len(tested) >= 15, tested
+
+
+def test_a_prefix_write_holds_the_organisation_until_it_ends(world):
+    """Two writes in one organisation cannot both pass the collision check: the first holds the organisation row, so
+    the second waits for it (here a non-waiting lock request is refused) and then sees its prefix."""
+    from sqlalchemy import select, text
+    from sqlalchemy.exc import OperationalError
+
+    writer, other = SessionLocal(), SessionLocal()
+    try:
+        org = writer.get(Organization, uuid.UUID(world.org["id"]))
+        code_prefixes.set_override(writer, org, PAIN, "QLK", None)
+        with pytest.raises(OperationalError):
+            other.execute(
+                select(Organization.id).where(Organization.id == org.id).with_for_update(nowait=True)
+            ).all()
+        other.rollback()
+        writer.commit()
+        assert other.execute(
+            select(Organization.id).where(Organization.id == org.id).with_for_update(nowait=True)
+        ).all()
+        other.rollback()
+    finally:
+        writer.rollback()
+        writer.execute(text("DELETE FROM organization_code_prefixes WHERE organization_id = :o"), {"o": world.org["id"]})
+        writer.commit()
+        writer.close()
+        other.close()

@@ -54,6 +54,27 @@ def _out(notification: Notification, targets: dict[str, tuple[str, ...]] | None 
     return out
 
 
+def _require_in_credential_scope(db: Session, notification: Notification) -> None:
+    """Refuses a notification a scoped credential may not reach.
+
+    A token or module frame limited to some organisations or projects sees only notifications that concern a
+    project it may reach, never account-level notices; the refusal is the same 404 as an absent notification.
+
+    Args:
+        db: Active session carrying the credential's scope in `db.info`.
+        notification: The caller's own notification.
+
+    Raises:
+        HTTPException: 404 when the credential's scope excludes the notification's project (or it has none).
+    """
+    allowed_orgs, allowed_projects = db.info.get("pat_allowed_org_ids"), db.info.get("pat_allowed_project_ids")
+    if allowed_orgs is None and allowed_projects is None and "module_frame_project_id" not in db.info:
+        return
+    reachable = restrict_to_session_scope(db, {notification.project_id} if notification.project_id else set())
+    if notification.project_id is None or notification.project_id not in reachable:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+
+
 @router.get("", response_model=list[NotificationOut])
 def list_notifications(
     response: Response,
@@ -106,6 +127,7 @@ def mark_read(notification_id: UUID, current_user: User = Depends(get_current_us
     notification = db.get(Notification, notification_id)
     if notification is None or notification.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+    _require_in_credential_scope(db, notification)
     if notification.read_at is None:
         notification.read_at = datetime.now(UTC)
         db.commit()
@@ -232,11 +254,7 @@ def get_notification(notification_id: UUID, current_user: User = Depends(get_cur
     notification = db.get(Notification, notification_id)
     if notification is None or notification.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
-    allowed_orgs, allowed_projects = db.info.get("pat_allowed_org_ids"), db.info.get("pat_allowed_project_ids")
-    if allowed_orgs is not None or allowed_projects is not None or "module_frame_project_id" in db.info:
-        reachable = restrict_to_session_scope(db, {notification.project_id} if notification.project_id else set())
-        if notification.project_id is None or notification.project_id not in reachable:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+    _require_in_credential_scope(db, notification)
     detail = NotificationDetailOut.model_validate(_out(notification).model_dump())
     detail.subject_available = subject_available(db, current_user.id, notification)
     return detail

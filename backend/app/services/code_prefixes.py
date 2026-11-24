@@ -322,6 +322,16 @@ def _organization_of(db: Session, scope: Project | Organization) -> Organization
     return organization
 
 
+def _lock_organization(db: Session, organization: Organization) -> None:
+    """Serialises prefix writes of one organisation until the transaction ends.
+
+    The collision check reads every override of the organisation and the write follows it, so two concurrent writes
+    could each pass the check and together give two types one prefix; the row lock makes the second wait and see
+    the first.
+    """
+    db.execute(select(Organization.id).where(Organization.id == organization.id).with_for_update())
+
+
 def _apply(snapshot: _Snapshot, scope: Project | Organization, artefact_type: str, prefix: str | None) -> None:
     """Applies (or, for `None`, removes) the override to the in-memory snapshot only."""
     target = snapshot.org_overrides if isinstance(scope, Organization) else snapshot.project_overrides.setdefault(scope.id, {})
@@ -391,6 +401,7 @@ def set_override(
     if message is not None:
         raise _bad_request(message)
     organization = _organization_of(db, scope)
+    _lock_organization(db, organization)
     snapshot = _snapshot(db, organization)
     affected = _affected(snapshot, scope)
     defaults = default_prefixes()
@@ -428,7 +439,9 @@ def clear_override(db: Session, scope: Project | Organization, artefact_type: st
     row = _stored(db, scope, artefact_type)
     if row is None:
         return False
-    snapshot = _snapshot(db, _organization_of(db, scope))
+    organization = _organization_of(db, scope)
+    _lock_organization(db, organization)
+    snapshot = _snapshot(db, organization)
     affected = _affected(snapshot, scope)
     defaults = default_prefixes()
     before = {s: snapshot.effective(s, defaults)[artefact_type] for s in affected}
