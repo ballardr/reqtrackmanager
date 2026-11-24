@@ -15,7 +15,7 @@ A project's **Overview** is a page of widgets. Every member sees the same overvi
 | Chart | A breakdown (requirements by status, change requests by outcome, records by type) as a pie or a bar chart |
 | Stage progress | How complete each stage is |
 | Record totals | How many records of each type the project holds |
-| Activity | The latest changes, from 1 to 25 entries |
+| Activity | The latest changes, from 1 to 25 entries, as the same table the Project history page shows (time, type, event, record and person), with a **View all history** link; a narrow widget stacks each row |
 | Text | A note for the people who open the overview, written in markdown |
 | Module widgets | Any widget an enabled module contributes, such as Compliance's tile for each assigned standard |
 

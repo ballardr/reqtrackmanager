@@ -119,7 +119,9 @@ export const Dashboard: Story = {
     for (const label of ["Requirements", "Risks", "Decisions"]) {
       await expect(within(totalCard).getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
     }
-    await expect(canvas.getByText("Alex Morgan updated")).toBeInTheDocument();
+    const feed = await canvas.findByRole("table", { name: "Project activity" });
+    await expect(within(feed).getByText("Alex Morgan")).toBeInTheDocument();
+    await expect(within(feed).getByText("Updated")).toBeInTheDocument();
   },
 };
 

@@ -91,8 +91,11 @@ export const AllWidgetTypes: Story = {
     await expect(within(totals).getByText("37")).toBeInTheDocument();
     await expect(within(totals).getByRole("button", { name: /Risks/ })).toBeInTheDocument();
     // The activity feed reads its own data and honours its limit.
-    await expect(await canvas.findByText("Alex Morgan updated")).toBeInTheDocument();
-    await expect(canvas.queryByText("Sam Lee updated")).not.toBeInTheDocument();
+    // It is the History page's table: the person is a column of its own, and a link leads to the whole history.
+    const feed = await canvas.findByRole("table", { name: "Project activity" });
+    await expect(within(feed).getByText("Alex Morgan")).toBeInTheDocument();
+    await expect(within(feed).queryByText("Sam Lee")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "View all history" })).toHaveAttribute("href", "/projects/project-1/history");
   },
 };
 

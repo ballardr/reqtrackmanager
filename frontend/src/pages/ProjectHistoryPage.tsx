@@ -1,31 +1,27 @@
 /**
  * Module: pages/ProjectHistoryPage
  *
- * The project's changes-over-time view (C-A-10): a table of Time, Type, Event, Record(s) and Person, newest first, narrowed by a filter panel
+ * The project's changes-over-time view (C-A-10): a `ProjectActivityTable` of Time, Type, Event, Record(s) and Person, newest first, narrowed by a filter panel
  * (period, type, change, person or group, discussion comments) and exportable as CSV, PDF, Word, ODT or ODS with the same filters.
  * Every filter and the sort live in the URL (`hooks/useUrlFilter`); pages come from `GET .../changes` (server-side narrowing and paging) with
  * the previous rows dimmed while a filter loads; the local period converts to UTC instants (`utils/historyPeriod`). A day is written once, on
- * its first row; Event and the Activity aside share `describeActivityAction`; the Person filter holds people and groups on parity
+ * its first row; the overview's activity widget draws the same table; Event and the Activity aside share `describeActivityAction`; the Person filter holds people and groups on parity
  * (`PrincipalListField`). Dependencies: `GET /api/v1/projects/{id}/changes` (+ `/facets`, `/actors`, `/export`).
  */
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import {
-  ACTIVITY_KIND_LABEL, activityEntityLabel, activityEntryNotes, describeActivityAction, describeLinkEventAction, linkEventVerb,
-  sentenceCase, type ActivityKind, type ChangeEntry, type Principal, type PrincipalRef,
+  ACTIVITY_KIND_LABEL, activityEntityLabel, type ActivityKind, type ChangeEntry, type Principal, type PrincipalRef,
 } from "../api/types";
-import { ActivityLinkEnds } from "../components/ActivityLinkEnds";
-import { ActivityNote } from "../components/ActivityNote";
-import { Badge } from "../components/Badge";
-import { DirectoryTable, type DirectoryColumn } from "../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ListExportMenu } from "../components/ListExportMenu";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { MultiSelectDropdown, type MultiSelectOption } from "../components/MultiSelectDropdown";
 import { PeriodFilter } from "../components/PeriodFilter";
 import { PrincipalListField } from "../components/PrincipalListField";
+import { ProjectActivityTable } from "../components/ProjectActivityTable";
 import { Spinner } from "../components/Spinner";
 import { cycleSort } from "../components/sortState";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
@@ -34,7 +30,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlFlag, useUrlList, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
-import { activityRecordLink } from "../utils/activityLink";
+import { toActivityRows } from "../utils/activityRows";
 import { PERIOD_KEYS, periodRange } from "../utils/historyPeriod";
 
 const PAGE_SIZE = 30;
@@ -54,39 +50,6 @@ interface HistoryFacets {
   entity_types: string[];
   groups: HistoryTypeGroup[];
   total: number;
-}
-
-/** One table row: the entry and whether it opens a new local day (so the day is written once). */
-interface HistoryRow {
-  key: string;
-  entry: ChangeEntry;
-  showDate: boolean;
-}
-
-/** The local calendar day of an instant, as `YYYY-MM-DD`, for grouping rows. */
-function localDay(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-}
-
-/**
- * The table rows of `entries`: each with a React key that does not depend on position (a reload that inserts a
- * newer event shifts nothing) and whether it is the first of its local day.
- *
- * @param entries The loaded entries, in display order.
- */
-function toRows(entries: ChangeEntry[]): HistoryRow[] {
-  const seen = new Map<string, number>();
-  return entries.map((entry, index) => {
-    const base = `${entry.timestamp}|${entry.entity_type}|${entry.entity_id}|${entry.action}`;
-    const occurrence = (seen.get(base) ?? 0) + 1;
-    seen.set(base, occurrence);
-    return {
-      key: `${base}|${occurrence}`,
-      entry,
-      showDate: index === 0 || localDay(entry.timestamp) !== localDay(entries[index - 1].timestamp),
-    };
-  });
 }
 
 /** `type:id` of a principal, the form the API and the URL both use. */
@@ -245,57 +208,7 @@ export function ProjectHistoryPage() {
     setIncludeComments(false);
   }
 
-  const rows = useMemo(() => toRows(entries ?? []), [entries]);
-
-  const columns: DirectoryColumn<HistoryRow>[] = [
-    {
-      key: "time",
-      label: strings.history.columnTime,
-      sortable: true,
-      render: ({ entry, showDate }) => (
-        <time dateTime={entry.timestamp} style={{ whiteSpace: "nowrap" }}>
-          {showDate && <strong style={{ display: "block" }}>{new Date(entry.timestamp).toLocaleDateString(undefined, { dateStyle: "medium" })}</strong>}
-          <span className="text-muted">{new Date(entry.timestamp).toLocaleTimeString()}</span>
-        </time>
-      ),
-    },
-    {
-      key: "type",
-      label: strings.history.columnType,
-      render: ({ entry }) => <Badge>{activityEntityLabel(entry.entity_type, orgLabelCap)}</Badge>,
-    },
-    {
-      key: "event",
-      label: strings.history.columnEvent,
-      width: "28%",
-      render: ({ entry }) => (
-        <span className="stack" style={{ gap: "0.15rem" }}>
-          <span>{sentenceCase(describeLinkEventAction(entry) ?? describeActivityAction(entry, projectId))}</span>
-          {activityEntryNotes(entry).map((note) => <ActivityNote key={note} text={note} />)}
-        </span>
-      ),
-    },
-    {
-      key: "record",
-      label: strings.history.columnRecord,
-      width: "42%",
-      render: ({ entry }) => {
-        if (projectId && linkEventVerb(entry) !== null) return <ActivityLinkEnds entry={entry} projectId={projectId} />;
-        const link = projectId ? activityRecordLink(entry, projectId) : null;
-        if (link) return <Link to={link.to}>{link.label}</Link>;
-        return entry.record_label ?? <span className="text-muted">—</span>;
-      },
-    },
-    {
-      key: "person",
-      label: strings.history.columnPerson,
-      render: ({ entry }) => (
-        <span style={{ whiteSpace: "nowrap" }}>
-          {entry.actor_display_name ?? <span className="text-muted">{strings.history.unnamedActor}</span>}
-        </span>
-      ),
-    },
-  ];
+  const rows = useMemo(() => toActivityRows(entries ?? []), [entries]);
 
   const emptyState = (
     <div className="stack" style={{ alignItems: "flex-start" }}>
@@ -356,11 +269,10 @@ export function ProjectHistoryPage() {
     >
       {entries === null ? <Spinner /> : (
         <div style={loading ? { opacity: 0.55 } : undefined} aria-busy={loading}>
-          <DirectoryTable
+          <ProjectActivityTable
             ariaLabel={strings.history.tableLabel}
-            columns={columns}
             rows={rows}
-            rowKey={(row) => row.key}
+            projectId={projectId}
             sort={sort ?? { key: "time", direction: "desc" }}
             onSort={(key) => setSort(cycleSort(sort, key as (typeof SORT_KEYS)[number]))}
             total={total}

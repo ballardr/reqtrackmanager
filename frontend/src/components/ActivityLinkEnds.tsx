@@ -25,7 +25,7 @@ export function ActivityLinkEnds({ entry, projectId }: { entry: ChangeEntry; pro
   if (linkEventVerb(entry) === null) return null;
   const [source, target] = entry.linked_records ?? [];
   return (
-    <span className="stack" style={{ gap: "0.15rem" }}>
+    <span className="stack" style={{ gap: "0.15rem" }} data-wrap-ok="the two ends of a link are one above the other">
       <LinkedRecordItem end={source} projectId={projectId} />
       <span><span aria-hidden="true">→ </span><LinkedRecordItem end={target} projectId={projectId} /></span>
     </span>

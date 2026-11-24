@@ -2228,6 +2228,57 @@ a.figure-projects-link:hover {
   white-space: normal;
 }
 
+.activity-table__day {
+  display: block;
+}
+
+/* The activity table of the overview widget measures its own container, not the window's, because the widget sits in a
+   card of any width: below 34rem each row is a block, the type, time and person on the first line, then the event and
+   the record. A table that sorts keeps its header and does not stack. */
+.activity-table--stacks {
+  container-type: inline-size;
+}
+
+@container (max-width: 34rem) {
+  .activity-table--stacks thead {
+    display: none;
+  }
+
+  .activity-table--stacks table,
+  .activity-table--stacks tbody {
+    display: block;
+  }
+
+  .activity-table--stacks tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .activity-table--stacks td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .activity-table--stacks td:nth-child(1) { order: 2; }
+  .activity-table--stacks td:nth-child(2) { order: 1; }
+  .activity-table--stacks td:nth-child(5) { order: 3; margin-left: auto; }
+  .activity-table--stacks td:nth-child(3),
+  .activity-table--stacks td:nth-child(4) { flex: 1 1 100%; }
+  .activity-table--stacks td:nth-child(3) { order: 4; }
+  .activity-table--stacks td:nth-child(4) { order: 5; }
+
+  .activity-table--stacks .activity-table__day {
+    display: inline;
+    margin-right: var(--space-2);
+  }
+}
+
 /* A list with a per-row control (`renderExtra`) measures its own width, not the window's, because the same list sits in
    a wide page and in a narrow card: below 34rem the columns give way to one flowing row per item, the fields and the
    actions on the first line and the extra controls on the line below. */

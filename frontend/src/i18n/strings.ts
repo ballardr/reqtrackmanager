@@ -3089,6 +3089,7 @@ const en = {
     columnRecord: "Record(s)",
     columnPerson: "Person",
     unnamedActor: "System",
+    viewAll: "View all history",
     empty: "No changes in this range.",
     emptyFiltered: "No events match these filters.",
     exportLabel: "Project history",

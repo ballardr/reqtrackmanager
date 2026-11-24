@@ -19,15 +19,13 @@
  * page (`useOverviewMetrics`); the activity feed reads its own data because it is a list of changes, not a figure.
  */
 import { GripVertical, Eye, EyeOff, MoveDiagonal2, SlidersHorizontal, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, api } from "../../api/client";
 import type { ChangeEntry, OverviewScope, OverviewWidget } from "../../api/types";
-import { activityEntityLabel, activityEntryNotes, describeActivityEntry } from "../../api/types";
-import { activityRecordLink } from "../../utils/activityLink";
+import { toActivityRows } from "../../utils/activityRows";
 import type { ProjectScope } from "../../api/projectScope";
-import { useOrgLabelCapitalized } from "../../context/BrandingContext";
 import { useStrings } from "../../context/TerminologyContext";
 import type { OverviewMetricsState } from "../../hooks/useOverviewMetrics";
 import { getInstalledModule } from "../../modules/registry";
@@ -36,12 +34,12 @@ import {
   chartDestination, clamp, effectiveScope, formatMetricValue, gridSpans, isScopedType, moveWidgetTo, orgTileDestination, OVERVIEW_COLUMNS,
   OVERVIEW_MAX_ROWS, resizedBy, tileDestination,
 } from "../../utils/overviewWidgets";
-import { ActivityNote } from "../ActivityNote";
 import { MarkdownView } from "../MarkdownView";
 import { rowLabel, titleOf } from "./overviewTitles";
-import { Badge } from "../Badge";
 import { BarChart } from "../BarChart";
+import { Badge } from "../Badge";
 import { Gauge } from "../Gauge";
+import { ProjectActivityTable } from "../ProjectActivityTable";
 import { MetricTile } from "../MetricTile";
 import { Spinner } from "../Spinner";
 import { StatusPieChart } from "../StatusPieChart";
@@ -57,10 +55,13 @@ function Notice({ title, message }: { title: string; message: string }) {
   );
 }
 
-/** The widget's latest changes, read on its own (a feed, not a figure). */
+/**
+ * The widget's latest changes, read on its own (a feed, not a figure): the History page's table (`ProjectActivityTable`),
+ * capped at `limit` and stacked when the widget is narrow, with a link to the History page, which has the sorting and
+ * the filters this feed leaves out.
+ */
 function ActivityWidget({ projectId, title, limit }: { projectId: string; title: string; limit: number }) {
   const strings = useStrings();
-  const orgLabelCap = useOrgLabelCapitalized();
   const [entries, setEntries] = useState<ChangeEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -77,35 +78,18 @@ function ActivityWidget({ projectId, title, limit }: { projectId: string; title:
       cancelled = true;
     };
   }, [projectId, limit, strings.overviewWidgets.figureError]);
+  const rows = useMemo(() => toActivityRows(entries ?? []), [entries]);
   if (error) return <Notice title={title} message={error} />;
   return (
     <div className="card stack">
       <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>
-      {entries && entries.length === 0 && <p className="text-muted">{strings.history.empty}</p>}
-      {entries?.map((c, idx) => {
-        const link = activityRecordLink(c, projectId);
-        return (
-          <div
-            key={idx}
-            className="row"
-            style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}
-          >
-            <span className="stack" style={{ gap: "var(--space-1)", minWidth: 0 }}>
-              <span>
-                <Badge>{activityEntityLabel(c.entity_type, orgLabelCap)}</Badge> {describeActivityEntry(c)}
-                {link && (
-                  <>
-                    {" "}
-                    <Link to={link.to}>{link.label}</Link>
-                  </>
-                )}
-              </span>
-              {activityEntryNotes(c).map((note) => <ActivityNote key={note} text={note} />)}
-            </span>
-            <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
-          </div>
-        );
-      })}
+      {entries && (
+        <ProjectActivityTable
+          rows={rows} projectId={projectId} ariaLabel={title} stacks
+          emptyState={<p className="text-muted">{strings.history.empty}</p>}
+        />
+      )}
+      <Link to={`/projects/${projectId}/history`} style={{ alignSelf: "flex-start" }}>{strings.history.viewAll}</Link>
     </div>
   );
 }
