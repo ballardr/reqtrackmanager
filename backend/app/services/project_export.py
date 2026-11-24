@@ -562,6 +562,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         ],
         "code_prefixes": code_prefixes.export_overrides(db, project),
         "lifecycles": lifecycles.export_project(db, project),
+        "lifecycle_skip": lifecycles.export_project_skip(db, project),
         "external_systems": export_project_list(db, project, EXTERNAL_SYSTEMS),
         "custom_field_definitions": [
             {
@@ -734,6 +735,7 @@ def _apply_project_data(
     import_project_action_types(db, project, data)
     code_prefixes.import_overrides(db, project, data.get("code_prefixes"), current_user.id, warnings.add)
     lifecycles.import_project(db, project, data.get("lifecycles"), current_user.id, warnings.add)
+    lifecycles.import_project_skip(db, project, data.get("lifecycle_skip"))
     import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_packs(db, project, data, current_user, warnings)
     import_project_snippets(db, project, data, current_user, warnings, file_bytes_by_ref)

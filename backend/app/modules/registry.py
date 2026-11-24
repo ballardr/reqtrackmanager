@@ -1808,6 +1808,10 @@ class LifecycleDefinition:
         optional: States a project may turn off. Never the first or last of `path`, never an off-path state and never
             a gated state, so a type opts in explicitly (the default is none).
         gated: States whose move needs a permission or a second person's decision of its own; never optional.
+        entry_guard: `entry_guard(db, user, project, record_id, state)` raises a 403 `HTTPException` when `user` may
+            not move this record into `state`, the same check the type's own move endpoint makes. A skip of steps
+            runs it for every step passed over, so a person never skips into a step they could not enter in turn.
+            A type without one cannot have steps skipped.
     """
 
     label: str
@@ -1816,6 +1820,7 @@ class LifecycleDefinition:
     labels: Mapping[str, str]
     optional: tuple[str, ...] = ()
     gated: tuple[str, ...] = ()
+    entry_guard: Callable[[Session, User, Project, uuid.UUID, str], None] | None = None
 
 
 @dataclass(frozen=True)

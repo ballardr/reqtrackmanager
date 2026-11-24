@@ -98,6 +98,29 @@ export const INVALID_TOKEN_CODE = "invalid_token";
  */
 export const READ_TIMEOUT_MS = 120_000;
 
+/** Header that asks a record's move endpoint to skip steps of its lifecycle; its value is the percent-encoded reason. */
+export const LIFECYCLE_SKIP_HEADER = "X-Lifecycle-Skip-Reason";
+
+/** The reason the next request carries (set and cleared synchronously by `withLifecycleSkip`). */
+let pendingSkipReason: string | null = null;
+
+/**
+ * Runs `call`, which must issue its request before its first `await`, so that request asks the server to skip the
+ * steps between the record's state and its target (`LIFECYCLE_SKIP_HEADER`). Every other request is untouched.
+ *
+ * @param reason Why the steps are skipped (the server requires it, at most 500 characters).
+ * @param call Makes the record's own move request (for example `decisionsApi.approveDecision(...)`).
+ * @returns The move's result.
+ */
+export function withLifecycleSkip<T>(reason: string, call: () => Promise<T>): Promise<T> {
+  pendingSkipReason = reason;
+  try {
+    return call();
+  } finally {
+    pendingSkipReason = null;
+  }
+}
+
 /** Message of the error raised when a request outlives its ceiling. */
 export const REQUEST_TIMEOUT_MESSAGE = "The server is taking longer than expected to respond. Please try again.";
 
@@ -130,6 +153,10 @@ function isPlainRead(options: RequestInit): boolean {
  */
 async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: number | null): Promise<Response> {
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>), "X-Client-Date": localToday() };
+  if (pendingSkipReason !== null) {
+    headers[LIFECYCLE_SKIP_HEADER] = encodeURIComponent(pendingSkipReason);
+    pendingSkipReason = null;
+  }
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }

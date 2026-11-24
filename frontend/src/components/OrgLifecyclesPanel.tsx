@@ -1,15 +1,16 @@
 /**
  * Module: components/OrgLifecyclesPanel
  *
- * The Lifecycles group of Organisation Administration: for each record type of an enabled module that has optional
- * states, a checkbox per state that makes it required in every project of the organisation, and the projects that are
- * exempt from the requirement.
+ * The Lifecycles group of Organisation Administration: a switch that forbids skipping steps on a record in every
+ * project (with the projects exempt from it), then for each record type of an enabled module that has optional states,
+ * a checkbox per state that makes it required in every project of the organisation, and the projects that are exempt
+ * from the requirement.
  *
  * Responsibilities:
- * - Read the organisation's lifecycles and save one type's required states, add and remove an exemption
- *   (`LifecyclesApi`); `api` and `loadProjects` are injectable for stories.
+ * - Read the organisation's lifecycles and skip rule and save them: one type's required states, the ban on skipping,
+ *   and the exemptions of each (`LifecyclesApi`); `api` and `loadProjects` are injectable for stories.
  * - Offer an exemption through a dialog (a project and whether its nested projects are exempt too), never as empty fields
- *   in the layout.
+ *   in the layout. The list of exempt projects and the dialog are one component for the ban and for each type.
  *
  * Design decisions: a required state binds every project, including nested ones; an exempt project keeps its own choice
  * (see `ProjectLifecyclesPanel`). Only an optional state can be required.
@@ -18,7 +19,7 @@ import { Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { api as http } from "../api/client";
-import { lifecyclesApi, type LifecyclesApi, type OrgLifecycle } from "../api/lifecycles";
+import { lifecyclesApi, type LifecycleExemption, type LifecyclesApi, type OrgLifecycle, type OrgSkip } from "../api/lifecycles";
 import type { Project } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -50,12 +51,16 @@ export function OrgLifecyclesPanel({
   const text = strings.lifecycleSettings;
   const { showToast } = useToast();
   const [types, setTypes] = useState<OrgLifecycle[] | null>(null);
+  const [skip, setSkip] = useState<OrgSkip | null>(null);
   const [failed, setFailed] = useState(false);
-  const [exempting, setExempting] = useState<OrgLifecycle | null>(null);
+  /** The type whose exemption is being added; `"skip"` is the ban on skipping steps. */
+  const [exempting, setExempting] = useState<OrgLifecycle | "skip" | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setTypes(await api.organization(organizationId));
+      const [loadedTypes, loadedSkip] = await Promise.all([api.organization(organizationId), api.organizationSkip(organizationId)]);
+      setTypes(loadedTypes);
+      setSkip(loadedSkip);
       setFailed(false);
     } catch {
       setFailed(true);
@@ -75,12 +80,35 @@ export function OrgLifecyclesPanel({
     }
   }
 
-  if (failed && !types) return <p className="text-muted" role="alert">{text.loadFailed}</p>;
-  if (!types) return <Spinner />;
-  if (types.length === 0) return <p className="text-muted">{text.noTypes}</p>;
+  /** The same for a change to the skip rule. */
+  async function runSkip(action: () => Promise<OrgSkip>, message: string): Promise<boolean> {
+    try {
+      setSkip(await action());
+      showToast(message);
+      return true;
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+      return false;
+    }
+  }
+
+  if (failed && (!types || !skip)) return <p className="text-muted" role="alert">{text.loadFailed}</p>;
+  if (!types || !skip) return <Spinner />;
 
   return (
     <div className="stack">
+      <section className="stack" aria-label={text.skipHeading}>
+        <h3 style={{ margin: 0 }}>{text.skipHeading}</h3>
+        <CheckboxField
+          label={text.forbidSkip} help={strings.help.lifecycleSkipForbidden} checked={skip.forbidden}
+          onChange={(on) => void runSkip(() => api.setSkipForbidden(organizationId, on), text.saved)}
+        />
+        <ExemptionList
+          exemptions={skip.exemptions} onAdd={() => setExempting("skip")}
+          onRemove={(projectId) => void runSkip(() => api.removeSkipExemption(organizationId, projectId), text.exemptionRemoved)}
+        />
+      </section>
+      {types.length === 0 && <p className="text-muted">{text.noTypes}</p>}
       {types.map((type) => (
         <section key={type.artefact_type} className="stack" aria-label={type.label}>
           <h3 style={{ margin: 0 }}>{text.typeOf(type.label, type.module_name)}</h3>
@@ -96,52 +124,66 @@ export function OrgLifecyclesPanel({
               />
             ))}
           </div>
-          <div className="stack" style={{ gap: "var(--space-1)" }}>
-            <strong>{text.exemptHeading}</strong>
-            {type.exemptions.length === 0 ? (
-              <span className="text-muted">{text.noExemptions}</span>
-            ) : (
-              <ul className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: "var(--space-1)" }}>
-                {type.exemptions.map((ex) => (
-                  <li key={ex.project_id} className="row" style={{ justifyContent: "space-between", flexWrap: "nowrap" }} data-stress-row>
-                    <span style={{ minWidth: 0 }}>
-                      <CellText>{`${ex.project_code} ${ex.project_name}`}</CellText>
-                      {ex.include_children && <> <Badge>{text.includesChildren}</Badge></>}
-                    </span>
-                    <span style={{ flex: "none" }}>
-                      <IconAction
-                        label={text.removeExemption(ex.project_name)}
-                        onClick={() => void run(() => api.removeExemption(organizationId, type.artefact_type, ex.project_id), text.exemptionRemoved)}
-                      >
-                        <Trash2 size={14} />
-                      </IconAction>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div>
-              <button type="button" className="btn" onClick={() => setExempting(type)}>{text.addExemption}</button>
-            </div>
-          </div>
+          <ExemptionList
+            exemptions={type.exemptions} onAdd={() => setExempting(type)}
+            onRemove={(projectId) => void run(() => api.removeExemption(organizationId, type.artefact_type, projectId), text.exemptionRemoved)}
+          />
         </section>
       ))}
       {exempting && (
         <ExemptionDialog
-          type={exempting} organizationId={organizationId} loadProjects={loadProjects} onClose={() => setExempting(null)}
-          onSave={(projectId, includeChildren) =>
-            run(() => api.addExemption(organizationId, exempting.artefact_type, projectId, includeChildren), text.exemptionAdded)}
+          title={exempting === "skip" ? text.skipExemptTitle : text.addExemptionTitle(exempting.label)}
+          taken={new Set((exempting === "skip" ? skip.exemptions : exempting.exemptions).map((e) => e.project_id))}
+          organizationId={organizationId} loadProjects={loadProjects} onClose={() => setExempting(null)}
+          onSave={(projectId, includeChildren) => exempting === "skip"
+            ? runSkip(() => api.addSkipExemption(organizationId, projectId, includeChildren), text.exemptionAdded)
+            : run(() => api.addExemption(organizationId, exempting.artefact_type, projectId, includeChildren), text.exemptionAdded)}
         />
       )}
     </div>
   );
 }
 
-/** The dialog that exempts one project (and optionally its nested projects) from a type's required states. */
+/** The projects exempt from a requirement or from the ban on skipping steps, each removable, and the button that adds one. */
+function ExemptionList({
+  exemptions, onAdd, onRemove,
+}: { exemptions: LifecycleExemption[]; onAdd: () => void; onRemove: (projectId: string) => void }) {
+  const strings = useStrings();
+  const text = strings.lifecycleSettings;
+  return (
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
+      <strong>{text.exemptHeading}</strong>
+      {exemptions.length === 0 ? (
+        <span className="text-muted">{text.noExemptions}</span>
+      ) : (
+        <ul className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: "var(--space-1)" }}>
+          {exemptions.map((ex) => (
+            <li key={ex.project_id} className="row" style={{ justifyContent: "space-between", flexWrap: "nowrap" }} data-stress-row>
+              <span style={{ minWidth: 0 }}>
+                <CellText>{`${ex.project_code} ${ex.project_name}`}</CellText>
+                {ex.include_children && <> <Badge>{text.includesChildren}</Badge></>}
+              </span>
+              <span style={{ flex: "none" }}>
+                <IconAction label={text.removeExemption(ex.project_name)} onClick={() => onRemove(ex.project_id)}>
+                  <Trash2 size={14} />
+                </IconAction>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div>
+        <button type="button" className="btn" onClick={onAdd}>{text.addExemption}</button>
+      </div>
+    </div>
+  );
+}
+
+/** The dialog that exempts one project (and optionally its nested projects) from a requirement or from the ban on skipping steps. */
 function ExemptionDialog({
-  type, organizationId, loadProjects, onSave, onClose,
+  title, taken, organizationId, loadProjects, onSave, onClose,
 }: {
-  type: OrgLifecycle; organizationId: string; loadProjects: LoadOrgProjects;
+  title: string; taken: ReadonlySet<string>; organizationId: string; loadProjects: LoadOrgProjects;
   onSave: (projectId: string, includeChildren: boolean) => Promise<boolean>; onClose: () => void;
 }) {
   const strings = useStrings();
@@ -160,7 +202,6 @@ function ExemptionDialog({
   }, [loadProjects, organizationId]);
   useLoadOnChange(load, [organizationId]);
 
-  const taken = new Set(type.exemptions.map((e) => e.project_id));
   const options = projects.filter((p) => !taken.has(p.id)).map((p) => ({ value: p.id, label: `${p.code} ${p.name}` }));
 
   async function submit() {
@@ -173,7 +214,7 @@ function ExemptionDialog({
   }
 
   return (
-    <Modal title={text.addExemptionTitle(type.label)} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       <div className="stack">
         <LabeledSelect
           required label={text.projectLabel} help={strings.help.lifecycleExemptProject} value={projectId} options={options}

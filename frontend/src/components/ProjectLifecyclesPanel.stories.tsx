@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import {
-  buildDecisionLifecycle, buildLifecyclesApi, buildPainPointLifecycle, buildProjectLifecycles,
+  buildDecisionLifecycle, buildLifecyclesApi, buildPainPointLifecycle, buildProjectLifecycles, buildProjectSkip,
 } from "../testing/lifecycleFixtures";
 import { ProjectLifecyclesPanel } from "./ProjectLifecyclesPanel";
 
@@ -76,17 +76,6 @@ export const ANestedProjectNamesTheInheritedChoice: Story = {
   },
 };
 
-export const GoingBackToTheInheritedChoice: Story = {
-  args: {
-    api: buildLifecyclesApi(buildProjectLifecycles([buildPainPointLifecycle({ disabled: ["triaged"] })], { has_parent: true })),
-  },
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Use inherited setting" }));
-    await waitFor(() => expect(args.api!.setProject).toHaveBeenCalledWith("project-1", "pain_point", null));
-  },
-};
-
 export const WithoutPermissionTheChoiceIsReadOnly: Story = {
   args: {
     api: buildLifecyclesApi(buildProjectLifecycles([buildDecisionLifecycle({ disabled: ["proposed"] })], { can_manage: false })),
@@ -114,5 +103,66 @@ export const ALoadFailureIsStated: Story = {
   args: { api: { ...buildLifecyclesApi(), project: async () => { throw new Error("down"); } } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByRole("alert")).toHaveTextContent("could not be loaded");
+  },
+};
+
+export const SkippingStepsIsOffByDefaultAndSavedWhenAllowed: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const box = await canvas.findByRole("checkbox", { name: "Allow skipping steps" });
+    await expect(box).not.toBeChecked();
+    await expect(canvas.queryByText("Custom")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /inherited|Turn skipping/ })).not.toBeInTheDocument();
+    await userEvent.click(box);
+    await waitFor(() => expect(args.api!.setProjectSkip).toHaveBeenCalledWith("project-1", true));
+    await expect(await canvas.findByRole("checkbox", { name: "Allow skipping steps" })).toBeChecked();
+  },
+};
+
+export const TheOrganisationsBanLocksSkippingSteps: Story = {
+  args: {
+    api: buildLifecyclesApi(buildProjectLifecycles([buildPainPointLifecycle()], {
+      skip: buildProjectSkip({ own: true, chosen: true, source: "project", forbidden: true }),
+    })),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("checkbox", { name: "Allow skipping steps" })).toBeDisabled();
+    await expect(canvas.getByText("Not allowed by the organisation")).toBeInTheDocument();
+  },
+};
+
+export const AnExemptProjectMaySkipSteps: Story = {
+  args: {
+    api: buildLifecyclesApi(buildProjectLifecycles([buildPainPointLifecycle()], {
+      skip: buildProjectSkip({ own: true, chosen: true, source: "project", allowed: true, exempt: true }),
+    })),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("checkbox", { name: "Allow skipping steps" })).toBeEnabled();
+    await expect(canvas.getByText("Exempt from the organisation's ban on skipping steps")).toBeInTheDocument();
+  },
+};
+
+export const ANestedProjectNamesTheInheritedSkipChoice: Story = {
+  args: {
+    api: buildLifecyclesApi(buildProjectLifecycles([buildPainPointLifecycle()], {
+      has_parent: true, skip: buildProjectSkip({ chosen: true, allowed: true, source: "parent_project" }),
+    })),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const section = within(await canvas.findByRole("region", { name: "Skipping steps" }));
+    await expect(section.getByText("Inherited from parent project")).toBeInTheDocument();
+    await userEvent.click(section.getByRole("checkbox", { name: "Allow skipping steps" }));
+    await waitFor(() => expect(args.api!.setProjectSkip).toHaveBeenCalledWith("project-1", false));
+  },
+};
+
+export const WithoutPermissionSkippingStepsIsReadOnly: Story = {
+  args: { api: buildLifecyclesApi(buildProjectLifecycles([buildPainPointLifecycle()], { can_manage: false })) },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("checkbox", { name: "Allow skipping steps" })).toBeDisabled();
   },
 };

@@ -308,6 +308,7 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   member_added: "added a member",
   member_removed: "removed a member",
   status_changed: "changed status",
+  steps_skipped: "skipped steps",
   review_deadline_set: "set a review deadline",
   review_recorded: "recorded a review",
   file_attached: "attached a file",
@@ -2192,6 +2193,11 @@ export function describeActivityAction(entry: ChangeEntry, projectId?: string): 
     }[entry.action];
     return `${verb} ${code}${place}`;
   }
+  if (entry.action === "steps_skipped") {
+    const named = entry.detail?.skipped_labels;
+    const labels = Array.isArray(named) ? named.filter((label): label is string => typeof label === "string") : [];
+    if (labels.length > 0) return `skipped ${labels.length === 1 ? "the step" : "the steps"} ${labels.join(", ")}`;
+  }
   const action = activityActionLabel(entry.action);
   // AI approval via MCP (docs/decisions.md): every approval/decision/
   // completion performed through the MCP server carries `detail.via ===
@@ -2215,7 +2221,8 @@ export function activityEntryNotes(entry: ChangeEntry): string[] {
   const legacyDecisionNote = entry.entity_type === "change_request" && (entry.action === "approved" || entry.action === "rejected")
     ? detail.note
     : undefined;
-  const candidates = [detail.comment, legacyDecisionNote, detail.change_note];
+  const skipReason = entry.action === "steps_skipped" ? detail.reason : undefined;
+  const candidates = [detail.comment, legacyDecisionNote, detail.change_note, skipReason];
   const notes: string[] = [];
   for (const candidate of candidates) {
     if (typeof candidate !== "string") continue;

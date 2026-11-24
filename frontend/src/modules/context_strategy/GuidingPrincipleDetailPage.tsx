@@ -52,6 +52,8 @@ import type {
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
@@ -208,6 +210,16 @@ export function GuidingPrincipleDetailPage() {
   });
 
   const codeOwner = useRecordOwnerCode(guidingPrinciple ?? {});
+  const skipSteps = useSkipSteps<GuidingPrinciple>({
+    lifecycle, current: guidingPrinciple?.status ?? "", labels: GUIDING_PRINCIPLE_STATUS_LABEL, noun: "Guiding Principle",
+    move: (target, reason) => {
+      if (!scopeId || !guidingPrinciple) return Promise.reject(new Error("This move is not available."));
+      if (target === "approved") return withLifecycleSkip(reason, () => scopedApi.approve(scopeId, guidingPrinciple.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setGuidingPrinciple,
+  });
+
   if (!scopeId || !guidingPrincipleId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciple === null) return <Spinner />;
@@ -287,6 +299,7 @@ export function GuidingPrincipleDetailPage() {
         subtitle={`${GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority`}
         onEdit={guidingPrinciple.is_locked ? undefined : () => setEditing(true)}
         actions={[
+          skipSteps.menuRow,
           lifecycle.canMove(guidingPrinciple.status, "draft", guidingPrinciple.status === "proposed") && { label: "Send back", onSelect: () => setSendingBack(true) },
           guidingPrinciple.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
           guidingPrinciple.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
@@ -303,6 +316,7 @@ export function GuidingPrincipleDetailPage() {
           current: guidingPrinciple.status,
           offPath,
           promote,
+          skip: skipSteps.track,
         }}
       />
       {archive.dialog}
@@ -371,6 +385,8 @@ export function GuidingPrincipleDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {sendingBack && (
         <CommentConfirmDialog

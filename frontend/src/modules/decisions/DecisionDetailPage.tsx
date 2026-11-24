@@ -27,6 +27,8 @@ import { RecordTags } from "../../components/RecordTags";
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -110,6 +112,17 @@ export function DecisionDetailPage() {
       showToast(toErrorMessage(err, "Could not update this Decision."), "error");
     }
   }
+
+  const skipSteps = useSkipSteps<Decision>({
+    lifecycle, current: decision?.status ?? "", labels: DECISION_STATUS_LABEL, noun: "Decision",
+    move: (target, reason) => {
+      if (!projectId || !decision) return Promise.reject(new Error("This move is not available."));
+      if (target === "under_review") return withLifecycleSkip(reason, () => decisionsApi.submitDecisionForReview(projectId, decision.id));
+      if (target === "approved") return withLifecycleSkip(reason, () => decisionsApi.approveDecision(projectId, decision.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setDecision,
+  });
 
   async function saveEdit(values: DecisionFieldValues) {
     if (!projectId || !decision) return;
@@ -203,6 +216,7 @@ export function DecisionDetailPage() {
         subtitle={decisionType?.name ?? "—"}
         onEdit={decision.is_locked ? undefined : () => setEditing(true)}
         actions={[
+          skipSteps.menuRow,
           lifecycle.canMove(decision.status, "rejected", decision.status === "under_review") && { label: "Reject", danger: true, onSelect: () => setRejecting(true) },
           archive.item,
         ]}
@@ -217,6 +231,7 @@ export function DecisionDetailPage() {
           current: decision.status,
           offPath: offPathStep,
           promote,
+          skip: skipSteps.track,
         }}
       />
       {archive.dialog}
@@ -290,6 +305,8 @@ export function DecisionDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {approving && (
         <CommentConfirmDialog

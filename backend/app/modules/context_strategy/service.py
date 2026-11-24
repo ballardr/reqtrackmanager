@@ -278,7 +278,10 @@ def _transition(
         ValueError: if `new_status` isn't reachable from `current_version.
             status` per `_ALLOWED_TRANSITIONS`.
     """
-    check_move(db, strategy.project_id, STRATEGY_ARTEFACT_TYPE, current_version.status.value, new_status.value)
+    check_move(
+        db, strategy.project_id, STRATEGY_ARTEFACT_TYPE, current_version.status.value, new_status.value,
+        record_id=strategy.id,
+    )
     new_version = apply_new_version(
         db, strategy, current_version, actor, status_value=new_status, change_note=comment or "",
     )
@@ -566,7 +569,10 @@ def _future_state_transition(
         ValueError: if `new_status` isn't reachable from `current_version.
             status` per `_FS_ALLOWED_TRANSITIONS`.
     """
-    check_move(db, future_state.project_id, FUTURE_STATE_ARTEFACT_TYPE, current_version.status.value, new_status.value)
+    check_move(
+        db, future_state.project_id, FUTURE_STATE_ARTEFACT_TYPE, current_version.status.value, new_status.value,
+        record_id=future_state.id,
+    )
     new_version = apply_future_state_new_version(
         db, future_state, current_version, actor, status_value=new_status, change_note=comment or "",
     )
@@ -1219,7 +1225,10 @@ def _pp_transition(
         ValueError: if `new_status` isn't reachable from `pain_point.
             status` per `_PP_ALLOWED_TRANSITIONS`.
     """
-    check_move(db, pain_point.project_id, PAIN_POINT_ARTEFACT_TYPE, pain_point.status.value, new_status.value)
+    check_move(
+        db, pain_point.project_id, PAIN_POINT_ARTEFACT_TYPE, pain_point.status.value, new_status.value,
+        record_id=pain_point.id,
+    )
     pain_point.status = new_status
     db.flush()
     log_event(
@@ -1490,7 +1499,7 @@ def _guiding_principle_transition(
     """
     check_move(
         db, guiding_principle.project_id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, current_version.status.value,
-        new_status.value,
+        new_status.value, record_id=guiding_principle.id,
     )
     new_version = apply_guiding_principle_new_version(
         db, guiding_principle, current_version, actor, status_value=new_status, change_note=comment or "",
@@ -1729,7 +1738,10 @@ def _oq_transition(
         ValueError: if `new_status` isn't reachable from `open_question.
             status` per `_OQ_ALLOWED_TRANSITIONS`.
     """
-    check_move(db, open_question.project_id, OPEN_QUESTION_ARTEFACT_TYPE, open_question.status.value, new_status.value)
+    check_move(
+        db, open_question.project_id, OPEN_QUESTION_ARTEFACT_TYPE, open_question.status.value, new_status.value,
+        record_id=open_question.id,
+    )
     open_question.status = new_status
     db.flush()
     log_event(

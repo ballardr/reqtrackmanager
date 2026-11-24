@@ -1996,6 +1996,12 @@ def turn_off_lifecycle_states(headers: dict, project_id: str, artefact_type: str
     r.raise_for_status()
 
 
+def allow_skipping_steps(headers: dict, project_id: str) -> None:
+    """Lets a person move one record of the project past steps of its lifecycle, with a reason."""
+    r = httpx.put(f"{BASE}/projects/{project_id}/lifecycles/skip", json={"allowed": True}, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
 def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points", json=fields, headers=headers, timeout=30
@@ -4740,6 +4746,7 @@ def main() -> None:
     require_lifecycle_states(h_pm, org["id"], "pain_point", ["triaged"])
     exempt_project_from_lifecycle(h_pm, org["id"], "pain_point", operator_app["id"])
     turn_off_lifecycle_states(h_pm, operator_app["id"], "pain_point", ["triaged"])
+    allow_skipping_steps(h_pm, operator_app["id"])
     app_pain_point_types = list_effective_pain_point_types(h_pm, operator_app["id"])
     app_levels = get_pain_point_levels(h_pm, operator_app["id"])
     for title, description, point_type, scores in (

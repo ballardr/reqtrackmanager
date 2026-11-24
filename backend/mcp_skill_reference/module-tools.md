@@ -505,6 +505,7 @@ Rules and gotchas:
 - Check the decision's status before acting: only a decision awaiting a verdict can be approved or rejected.
 - A superseded decision is history; follow its relationships to the decision that replaced it before quoting it as current.
 - A project may turn off Proposed and Under review; a Decision then goes from `draft` to `approved` through the same approval, with the same permission and comment. A refused move names the allowed next states.
+- A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
 
 ### Tool list
 
@@ -600,6 +601,8 @@ Five artefact types, each with its own lifecycle (read the current `status` befo
 - **Guiding principle**: `draft` -> `proposed` -> `approved` -> `active` -> `superseded` / `retired`.
 - **Pain point**: `submitted` -> `triaged` -> `accepted` -> `addressed` -> `closed`; also `rejected` or `duplicate`.
 - **Open question**: `open` -> `investigating` -> `ready_for_decision` -> `resolved`, or `withdrawn`.
+
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
 
 Read workflow: `list_<type>` then `get_<type>`; `list_<type>_relationships` shows how it connects to other artefacts. Reports (`..._report`) answer cross-cutting questions: prioritisation, strategy cascade and alignment gaps, coverage, roadmap, open question register, change history, summary, upgrade drivers.
 
@@ -1589,6 +1592,8 @@ Record, assess, treat and review project risks.
 
 Model: a **risk** has a lifecycle (`identified` -> `assessed` -> `treatment_planned` -> `treatment_in_progress` -> `mitigated`, or an outcome such as `accepted`, `transferred`, `avoided`, `realised`, `rejected`, then `closed`). Its **inherent** and **residual** ratings are derived from Likelihood, Consequence and (optionally) Detectability levels; ratings are never set directly. A requirement, design or action that **mitigates or treats** the risk carries a verdict: `proposed` (just linked), `effective`, `ineffective` or `needs_reassessment`. Only `effective` counts as treatment. The owner or a Risk Manager also records periodic **reviews**.
 
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
+
 Read workflow:
 1. `risk_management_list_risks` (filter `effectively_treated=false` for untreated risks, `review_overdue=true` for overdue reviews), then `risk_management_get_risk` for detail and `allowed_next_statuses`.
 2. `risk_management_list_risk_treatments` for what treats it and why a verdict needs reassessment; `risk_management_list_risk_reviews` and `risk_management_list_risk_versions` for history.
@@ -1733,6 +1738,8 @@ Capture enhancement requests (proposed solutions) from stakeholders, staff and s
 Capture, triage and track enhancement requests: proposed solutions asked for by stakeholders, staff or support.
 
 Model: a **request** is a *solution* someone wants; a Pain Point is the *problem* it addresses. A request has a lifecycle (`new` -> `under_review` -> `accepted` -> `delivered`, or `declined`; `duplicate` is set only by merging). It lives in a project or, where the organisation allows it, in the organisation's **inbox**. It carries an owner (a user or a group) and any number of **external references** to the same work in outside tools (a Jira epic, a ServiceNow ticket). Delivery tracking itself stays in those tools.
+
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
 
 Read workflow: `product_feedback_list_requests` (filter `status`, `open_only`, `search`), then `product_feedback_get_request` for detail and `allowed_next_statuses`; `product_feedback_list_request_versions` for history and `product_feedback_list_request_comments` for the discussion. `product_feedback_get_feedback_settings` says who may submit in the project.
 

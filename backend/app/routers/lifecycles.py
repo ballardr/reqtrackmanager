@@ -6,9 +6,10 @@ which projects it exempts (`services.lifecycles`).
 
 Responsibilities:
 - Project: read every lifecycle of the project's enabled modules with its effective path and legal moves (any
-  project member, because the record pages draw their track from it), and set the project's own choice for one type.
-- Organisation: read the types with their required states and exemptions, set the required states of a type, and add
-  or remove an exempt project.
+  project member, because the record pages draw their track from it), set the project's own choice for one type and
+  switch on skipping steps.
+- Organisation: read the types with their required states and exemptions, set the required states of a type, add or
+  remove an exempt project, and forbid skipping steps with its own exempt projects.
 
 Design decisions:
 - Changing needs a fine-grained permission (`manage_project_lifecycles`, held by project administrators, or
@@ -38,9 +39,13 @@ from app.schemas.lifecycle import (
     LifecycleStateOut,
     OrgLifecycleOut,
     OrgLifecycleSet,
+    OrgSkipOut,
+    OrgSkipSet,
     ProjectLifecycleOut,
     ProjectLifecycleSet,
     ProjectLifecyclesOut,
+    ProjectSkipOut,
+    ProjectSkipSet,
 )
 from app.services import lifecycles
 from app.services.lifecycles import ResolvedLifecycle
@@ -83,8 +88,8 @@ def _off_path(definition: LifecycleDefinition) -> tuple[str, ...]:
     return tuple(sorted(every - set(definition.path)))
 
 
-def _project_out(resolved: ResolvedLifecycle) -> ProjectLifecycleOut:
-    """One resolved lifecycle as the API shape."""
+def _project_out(resolved: ResolvedLifecycle, skip_allowed: bool) -> ProjectLifecycleOut:
+    """One resolved lifecycle as the API shape; the skip moves are listed only when the project allows skipping."""
     definition = resolved.definition
     return ProjectLifecycleOut(
         artefact_type=resolved.artefact_type, label=definition.label, module_key=resolved.module_key,
@@ -94,6 +99,7 @@ def _project_out(resolved: ResolvedLifecycle) -> ProjectLifecycleOut:
         disabled=[s for s in definition.optional if s in resolved.disabled],
         required=[s for s in definition.optional if s in resolved.enforced], exempt=resolved.exempt,
         source=resolved.source, transitions=lifecycles.effective_transitions(resolved),
+        skip_transitions=lifecycles.effective_skip_transitions(resolved) if skip_allowed else {},
     )
 
 
@@ -102,12 +108,17 @@ def _project_response(db: Session, project: Project, user: User) -> ProjectLifec
     from app.modules.registry import artefact_type_enabled_for_project
 
     resolved = lifecycles.resolve_project_lifecycles(db, project)
+    policy = lifecycles.resolve_skip_policy(db, project)
     held = get_effective_permissions(db, user.id, project_id=project.id)
     return ProjectLifecyclesOut(
         can_manage=permission_satisfied(held, MANAGE_PROJECT_LIFECYCLES),
         has_parent=project.parent_project_id is not None,
+        skip=ProjectSkipOut(
+            allowed=policy.allowed, own=policy.own, chosen=policy.chosen, source=policy.source,
+            forbidden=policy.enforced, exempt=policy.forbidden and policy.exempt,
+        ),
         lifecycles=[
-            _project_out(r) for _, r in sorted(resolved.items())
+            _project_out(r, policy.allowed) for _, r in sorted(resolved.items())
             if artefact_type_enabled_for_project(db, r.artefact_type, project.id)
         ],
     )
@@ -155,6 +166,18 @@ def get_project_lifecycles(
     return _project_response(db, project_or_404(db, project_id), current_user)
 
 
+@project_router.put("/skip", response_model=ProjectLifecyclesOut)
+def set_project_skip(
+    project_id: UUID, body: ProjectSkipSet,
+    current_user: User = Depends(_manage_project), db: Session = Depends(get_db),
+) -> ProjectLifecyclesOut:
+    """Sets whether the project lets a record skip steps (`null` follows the nearest ancestor project, else off)."""
+    project = project_or_404(db, project_id)
+    lifecycles.set_project_skip(db, project=project, allowed=body.allowed, actor_id=current_user.id)
+    db.commit()
+    return _project_response(db, project, current_user)
+
+
 @project_router.put("/{artefact_type}", response_model=ProjectLifecyclesOut)
 def set_project_lifecycle(
     project_id: UUID, artefact_type: str, body: ProjectLifecycleSet,
@@ -178,6 +201,72 @@ def get_org_lifecycles(
 ) -> list[OrgLifecycleOut]:
     """The organisation's lifecycle types with their required states and exempt projects."""
     return _org_response(db, _org_or_404(db, organization_id))
+
+
+def _org_skip_response(db: Session, org: Organization) -> OrgSkipOut:
+    """The organisation's rule on skipping steps with its exempt projects."""
+    skip = lifecycles.organization_skip(db, org)
+    project_ids = {pid for pid, _ in skip["exemptions"]}
+    projects = {p.id: p for p in db.query(Project).filter(Project.id.in_(project_ids)).all()} if project_ids else {}
+    return OrgSkipOut(
+        forbidden=skip["forbidden"],
+        exemptions=[
+            ExemptionOut(
+                project_id=pid, project_name=projects[pid].name, project_code=projects[pid].code,
+                include_children=include_children,
+            )
+            for pid, include_children in skip["exemptions"] if pid in projects
+        ],
+    )
+
+
+@org_router.get("/skip", response_model=OrgSkipOut)
+def get_org_skip(
+    organization_id: UUID, current_user: User = Depends(_manage_org), db: Session = Depends(get_db),
+) -> OrgSkipOut:
+    """Whether the organisation forbids skipping steps, and the projects exempt from the ban."""
+    return _org_skip_response(db, _org_or_404(db, organization_id))
+
+
+@org_router.put("/skip", response_model=OrgSkipOut)
+def set_org_skip(
+    organization_id: UUID, body: OrgSkipSet,
+    current_user: User = Depends(_manage_org), db: Session = Depends(get_db),
+) -> OrgSkipOut:
+    """Sets whether the organisation forbids skipping steps."""
+    org = _org_or_404(db, organization_id)
+    lifecycles.set_org_skip_forbidden(db, organization=org, forbidden=body.forbidden, actor_id=current_user.id)
+    db.commit()
+    return _org_skip_response(db, org)
+
+
+@org_router.post("/skip/exemptions", response_model=OrgSkipOut)
+def add_org_skip_exemption(
+    organization_id: UUID, body: ExemptionSet,
+    current_user: User = Depends(_manage_org), db: Session = Depends(get_db),
+) -> OrgSkipOut:
+    """Exempts a project (optionally with its nested children) from the organisation's ban on skipping steps."""
+    org = _org_or_404(db, organization_id)
+    project = db.get(Project, body.project_id)
+    if project is None or project.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    lifecycles.add_skip_exemption(
+        db, organization=org, project=project, include_children=body.include_children, actor_id=current_user.id,
+    )
+    db.commit()
+    return _org_skip_response(db, org)
+
+
+@org_router.delete("/skip/exemptions/{project_id}", response_model=OrgSkipOut)
+def remove_org_skip_exemption(
+    organization_id: UUID, project_id: UUID,
+    current_user: User = Depends(_manage_org), db: Session = Depends(get_db),
+) -> OrgSkipOut:
+    """Removes a project's exemption from the ban on skipping steps."""
+    org = _org_or_404(db, organization_id)
+    lifecycles.remove_skip_exemption(db, organization=org, project_id=project_id, actor_id=current_user.id)
+    db.commit()
+    return _org_skip_response(db, org)
 
 
 @org_router.put("/{artefact_type}", response_model=list[OrgLifecycleOut])

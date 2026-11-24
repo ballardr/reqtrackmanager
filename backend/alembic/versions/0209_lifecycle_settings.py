@@ -1,4 +1,4 @@
-"""Lifecycle configuration: project settings, organisation required states and exemptions.
+"""Lifecycle configuration: project settings, organisation required states and exemptions, and the skip-steps rule.
 
 Revision ID: 0209
 Revises: 0208
@@ -74,7 +74,65 @@ def upgrade() -> None:
     )
 
 
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS project_lifecycle_skip_settings (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            allowed BOOLEAN NOT NULL DEFAULT false,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_project_lifecycle_skip_settings UNIQUE (project_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_project_lifecycle_skip_settings_project_id "
+        "ON project_lifecycle_skip_settings (project_id)"
+    )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS organization_lifecycle_skip_policies (
+            id UUID PRIMARY KEY,
+            organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            forbidden BOOLEAN NOT NULL DEFAULT false,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_org_lifecycle_skip_policies UNIQUE (organization_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_organization_lifecycle_skip_policies_organization_id "
+        "ON organization_lifecycle_skip_policies (organization_id)"
+    )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS organization_lifecycle_skip_exemptions (
+            id UUID PRIMARY KEY,
+            organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            include_children BOOLEAN NOT NULL DEFAULT false,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_org_lifecycle_skip_exemptions UNIQUE (organization_id, project_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_organization_lifecycle_skip_exemptions_organization_id "
+        "ON organization_lifecycle_skip_exemptions (organization_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_organization_lifecycle_skip_exemptions_project_id "
+        "ON organization_lifecycle_skip_exemptions (project_id)"
+    )
+
+
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS organization_lifecycle_skip_exemptions")
+    op.execute("DROP TABLE IF EXISTS organization_lifecycle_skip_policies")
+    op.execute("DROP TABLE IF EXISTS project_lifecycle_skip_settings")
     op.execute("DROP TABLE IF EXISTS organization_lifecycle_exemptions")
     op.execute("DROP TABLE IF EXISTS organization_lifecycle_requirements")
     op.execute("DROP TABLE IF EXISTS project_lifecycle_settings")

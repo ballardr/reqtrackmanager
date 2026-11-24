@@ -2,6 +2,8 @@ Record, assess, treat and review project risks.
 
 Model: a **risk** has a lifecycle (`identified` -> `assessed` -> `treatment_planned` -> `treatment_in_progress` -> `mitigated`, or an outcome such as `accepted`, `transferred`, `avoided`, `realised`, `rejected`, then `closed`). Its **inherent** and **residual** ratings are derived from Likelihood, Consequence and (optionally) Detectability levels; ratings are never set directly. A requirement, design or action that **mitigates or treats** the risk carries a verdict: `proposed` (just linked), `effective`, `ineffective` or `needs_reassessment`. Only `effective` counts as treatment. The owner or a Risk Manager also records periodic **reviews**.
 
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
+
 Read workflow:
 1. `risk_management_list_risks` (filter `effectively_treated=false` for untreated risks, `review_overdue=true` for overdue reviews), then `risk_management_get_risk` for detail and `allowed_next_statuses`.
 2. `risk_management_list_risk_treatments` for what treats it and why a verdict needs reassessment; `risk_management_list_risk_reviews` and `risk_management_list_risk_versions` for history.

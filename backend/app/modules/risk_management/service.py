@@ -269,7 +269,9 @@ def transition_risk(
     """
     if risk.is_archived:
         raise ValueError("An archived risk cannot change status; unarchive it first.")
-    skipped = check_move(db, risk.project_id, RISK_ARTEFACT_TYPE, current.status.value, target.value)
+    skipped = check_move(
+        db, risk.project_id, RISK_ARTEFACT_TYPE, current.status.value, target.value, record_id=risk.id,
+    )
     from app.modules.risk_management.treatment import effective_treatment_counts
 
     effective = effective_treatment_counts(db, [risk.id]).get(risk.id, 0)

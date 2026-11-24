@@ -287,7 +287,9 @@ def _transition_status(
         ValueError: if `new_status` isn't reachable from `decision.status`
             per `_ALLOWED_TRANSITIONS` (the router returns 409).
     """
-    check_move(db, decision.project_id, DECISION_ARTEFACT_TYPE, decision.status.value, new_status.value)
+    check_move(
+        db, decision.project_id, DECISION_ARTEFACT_TYPE, decision.status.value, new_status.value, record_id=decision.id,
+    )
     decision.status = new_status
     detail = {}
     if comment:

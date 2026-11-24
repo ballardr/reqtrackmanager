@@ -39,6 +39,8 @@ import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../co
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import { RecordHeader } from "../../components/RecordHeader";
 import { RecordTags } from "../../components/RecordTags";
 import { SectionOrderEditor } from "../../components/SectionOrderEditor";
@@ -338,6 +340,16 @@ export function RequestDetailPage() {
   });
 
   const codeOwner = useRecordOwnerCode(request ?? {});
+  const skipSteps = useSkipSteps<EnhancementRequest>({
+    lifecycle, current: request?.status ?? "", labels: REQUEST_STATUS_LABEL, noun: "Request",
+    move: (target, reason) => {
+      if (!scopeId || !request) return Promise.reject(new Error("This move is not available."));
+      return withLifecycleSkip(reason, () => scopedApi.transition(scopeId, request.id, target as RequestStatus));
+    },
+    onMoved: (updated) => { setRequest(updated); void refresh(); },
+    hidden: (request?.is_archived ?? false) || access?.can_triage !== true,
+  });
+
   if (!scopeId || !requestId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (request === null) return <Spinner />;
@@ -525,6 +537,7 @@ export function RequestDetailPage() {
         ) : undefined}
         onEdit={canTriage ? () => setEditing(true) : undefined}
         actions={[
+          skipSteps.menuRow,
           { label: "Arrange sections…", onSelect: () => setArranging(true) },
           ...moves.filter((to) => to !== promote?.to).map((to) => ({
             label: transitionLabel(request.status, to), danger: to === "declined", onSelect: () => setPending({ to }),
@@ -539,6 +552,7 @@ export function RequestDetailPage() {
           current: request.status,
           offPath: offPathStep,
           promote,
+          skip: skipSteps.track,
         }}
       />
       {archive.dialog}
@@ -618,6 +632,8 @@ export function RequestDetailPage() {
           }}
         />
       )}
+
+      {skipSteps.dialog}
 
       {pending && (
         <CommentConfirmDialog

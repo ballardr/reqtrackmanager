@@ -51,6 +51,8 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import { DetailCard } from "../../components/DetailCard";
 
 /** The three optional-comment, positive/neutral-progression actions —
@@ -93,6 +95,9 @@ const MANDATORY_COMMENT_COPY: Record<MandatoryCommentAction, { title: string; hi
     confirmLabel: "Mark duplicate",
   },
 };
+
+/** The move request that enters each later step a skip may target. */
+const SKIP_ACTIONS: Record<string, "accept" | "address" | "close"> = { accepted: "accept", addressed: "address", closed: "close" };
 
 const MAIN_PATH = ["submitted", "triaged", "accepted", "addressed", "closed"] as const;
 
@@ -156,6 +161,15 @@ export function PainPointDetailPage() {
       showToast(toErrorMessage(err, "Could not update this Pain Point."), "error");
     }
   }
+
+  const skipSteps = useSkipSteps<PainPoint>({
+    lifecycle, current: painPoint?.status ?? "", labels: PAIN_POINT_STATUS_LABEL, noun: "Pain Point",
+    move: (target, reason) => {
+      if (!projectId || !painPoint || !(target in SKIP_ACTIONS)) return Promise.reject(new Error("This move is not available."));
+      return withLifecycleSkip(reason, () => projectPainPointApi[SKIP_ACTIONS[target]](projectId, painPoint.id));
+    },
+    onMoved: setPainPoint,
+  });
 
   async function saveEdit(values: PainPointFieldValues) {
     if (!projectId || !painPoint) return;
@@ -269,6 +283,7 @@ export function PainPointDetailPage() {
         }
         onEdit={painPoint.is_locked ? undefined : () => setEditing(true)}
         actions={[
+          skipSteps.menuRow,
           lifecycle.canMove(painPoint.status, "rejected", painPoint.status === "triaged") && { label: "Reject", danger: true, onSelect: () => setMandatoryAction("reject") },
           lifecycle.canMove(painPoint.status, "duplicate", painPoint.status === "triaged") && { label: "Mark duplicate", onSelect: () => setMandatoryAction("mark_duplicate") },
           archive.item,
@@ -284,6 +299,7 @@ export function PainPointDetailPage() {
           current: painPoint.status,
           offPath,
           promote,
+          skip: skipSteps.track,
         }}
       />
       {archive.dialog}
@@ -348,6 +364,8 @@ export function PainPointDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {optionalAction && (
         <CommentConfirmDialog

@@ -42,3 +42,19 @@ A project may turn off these states and an organisation may require them (`Modul
 | Product feedback request | Under review | none |
 
 Types that keep their fixed path: requirement, change request, persona, stakeholder, stakeholder need and the architecture types.
+
+## Skipping steps (phase 66)
+
+A person may move one record to a later main-path step with a reason where the project allows it (off by default) and the organisation has not forbidden it. A skip never passes a gated step (it may be the target) or a step the organisation requires, and needs the right to enter every step passed over (`LifecycleDefinition.entry_guard`).
+
+| Type | Step passed over by a skip | Gated (target only) | Entry right for a passed-over step |
+|------|---------------------------|---------------------|-----------------------------------|
+| Pain point | Triaged, Accepted, Addressed | none | Pain Point decide tier |
+| Open question | Investigating, Ready for decision | none | Open Question manage role (Resolved needs the resolve permission) |
+| Decision | Proposed, Under review | Approved | Owner or editor (Approved needs the approver permission) |
+| Strategy, Future state | Proposed, Under review | Approved | Creator or manager (Approved needs the approver permission) |
+| Guiding principle | Proposed | Approved | Creator or manager (Approved needs the approver permission) |
+| Risk | Assessed, Treatment planned, Treatment in progress, Mitigated (the checks of each still run) | Accepted | Risk Manager role |
+| Product feedback request | Under review, Accepted | none | Feedback Triager |
+
+Status: closed 2026-11-24.

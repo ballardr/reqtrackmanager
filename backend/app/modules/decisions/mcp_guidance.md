@@ -16,3 +16,4 @@ Rules and gotchas:
 - Check the decision's status before acting: only a decision awaiting a verdict can be approved or rejected.
 - A superseded decision is history; follow its relationships to the decision that replaced it before quoting it as current.
 - A project may turn off Proposed and Under review; a Decision then goes from `draft` to `approved` through the same approval, with the same permission and comment. A refused move names the allowed next states.
+- A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.

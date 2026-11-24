@@ -45,6 +45,8 @@ class ProjectLifecycleOut(BaseModel):
         exempt: Whether the organisation's requirement does not bind this project.
         source: Where the project's choice comes from: `project`, `parent_project` or `default`.
         transitions: Every state's legal next states with the turned-off states stepped over.
+        skip_transitions: `{state: {target: [states passed over]}}` for the later steps a record may be moved to by
+            skipping steps; empty unless the project allows skipping and the type supports it.
     """
 
     artefact_type: str
@@ -59,6 +61,27 @@ class ProjectLifecycleOut(BaseModel):
     exempt: bool
     source: Literal["project", "parent_project", "default"]
     transitions: dict[str, list[str]]
+    skip_transitions: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+
+
+class ProjectSkipOut(BaseModel):
+    """Whether records of a project may skip steps of their lifecycle.
+
+    Attributes:
+        allowed: Whether skipping is possible now (the project's choice and not forbidden by the organisation).
+        own: The project's own choice, or `None` when it has none.
+        chosen: The project's choice (own, else the nearest ancestor's, else off).
+        source: Where `chosen` comes from: `project`, `parent_project` or `default`.
+        forbidden: Whether the organisation forbids skipping and binds this project.
+        exempt: Whether the organisation forbids skipping but this project is exempt.
+    """
+
+    allowed: bool
+    own: bool | None
+    chosen: bool
+    source: Literal["project", "parent_project", "default"]
+    forbidden: bool
+    exempt: bool
 
 
 class ProjectLifecyclesOut(BaseModel):
@@ -66,7 +89,14 @@ class ProjectLifecyclesOut(BaseModel):
 
     can_manage: bool
     has_parent: bool
+    skip: ProjectSkipOut
     lifecycles: list[ProjectLifecycleOut]
+
+
+class ProjectSkipSet(BaseModel):
+    """The project's own choice on skipping steps; `null` follows the nearest ancestor project (else off)."""
+
+    allowed: bool | None = None
 
 
 class ProjectLifecycleSet(BaseModel):
@@ -118,3 +148,21 @@ class ExemptionSet(BaseModel):
 
     project_id: UUID
     include_children: bool = False
+
+
+class OrgSkipOut(BaseModel):
+    """The organisation's rule on skipping steps.
+
+    Attributes:
+        forbidden: Whether no project may skip steps (except the exempt ones).
+        exemptions: The projects the ban does not bind.
+    """
+
+    forbidden: bool
+    exemptions: list[ExemptionOut]
+
+
+class OrgSkipSet(BaseModel):
+    """Whether the organisation forbids skipping steps."""
+
+    forbidden: bool

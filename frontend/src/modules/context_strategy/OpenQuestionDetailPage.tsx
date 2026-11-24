@@ -49,6 +49,8 @@ import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from 
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
@@ -176,6 +178,17 @@ export function OpenQuestionDetailPage() {
     },
   });
 
+  const skipSteps = useSkipSteps<OpenQuestion>({
+    lifecycle, current: openQuestion?.status ?? "", labels: OPEN_QUESTION_STATUS_LABEL, noun: "Open Question",
+    move: (target, reason) => {
+      if (!projectId || !openQuestion) return Promise.reject(new Error("This move is not available."));
+      if (target === "ready_for_decision") return withLifecycleSkip(reason, () => projectOpenQuestionApi.markReadyForDecision(projectId, openQuestion.id));
+      if (target === "resolved") return withLifecycleSkip(reason, () => projectOpenQuestionApi.resolve(projectId, openQuestion.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setOpenQuestion,
+  });
+
   if (!projectId || !openQuestionId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestion === null) return <Spinner />;
@@ -247,6 +260,7 @@ export function OpenQuestionDetailPage() {
         }
         onEdit={openQuestion.is_locked ? undefined : () => setEditing(true)}
         actions={[
+          skipSteps.menuRow,
           lifecycle.canMove(openQuestion.status, "withdrawn", openQuestion.status === "investigating" || openQuestion.status === "ready_for_decision") && {
             label: "Withdraw", danger: true, onSelect: () => setWithdrawConfirm(true),
           },
@@ -263,6 +277,7 @@ export function OpenQuestionDetailPage() {
           current: openQuestion.status,
           offPath,
           promote,
+          skip: skipSteps.track,
         }}
       />
       {archive.dialog}

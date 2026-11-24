@@ -15,6 +15,9 @@ Responsibilities:
   (`export_project`, `import_project`, `copy_project`, `export_org`, `import_org`).
 - Write the three tiers (`set_project_disabled`, `set_org_required`, `add_exemption`, `remove_exemption`), validating
   against the registered definitions and recording one audit event each (type and state keys only).
+- Let one record skip steps of its path (`skip_moves`, and `check_move` when the request carries a skip request): the
+  project must allow it, the organisation must not forbid it (an exempt project is not bound), the person must be
+  able to enter every step passed over, and a gated or organisation-required step is never passed over.
 
 Design decisions:
 - A state is turned off for a project, never deleted: a record already in it stays valid and can move on, and turning
@@ -24,7 +27,10 @@ Design decisions:
 - An organisation requirement beats a project's choice; an exemption (per type, per project, optionally with nested
   children) lifts the requirement for that project only. The project's stored choice is kept, so a requirement later
   removed gives the project's own choice back.
-- Resolution reads four small tables per call and never loops per record; list responses read it once per request.
+- A skip is one more legal move through the same rule, never a second transition table: the type's own move endpoint
+  runs, the skip request (reason, person) rides on the session, and `check_move` accepts the move and records one
+  `steps_skipped` audit event naming the steps passed over.
+- Resolution reads a few small tables per call and never loops per record; list responses read it once per request.
 
 Dependencies: `modules.registry` (definitions), `services.project_hierarchy` (ancestor chain), `services.audit`.
 """
@@ -45,10 +51,14 @@ from sqlalchemy.orm import Session
 from app.models.lifecycle import (
     OrganizationLifecycleExemption,
     OrganizationLifecycleRequirement,
+    OrganizationLifecycleSkipExemption,
+    OrganizationLifecycleSkipPolicy,
     ProjectLifecycleSetting,
+    ProjectLifecycleSkipSetting,
 )
 from app.models.organization import Organization
 from app.models.project import Project
+from app.models.user import User
 from app.modules.registry import (
     LifecycleDefinition,
     artefact_type_enabled_for_project,
@@ -63,6 +73,53 @@ from app.services.project_hierarchy import get_project_chain_ids
 
 AUDIT_ENTITY_TYPE = "lifecycle_settings"
 Source = Literal["project", "parent_project", "default"]
+
+SKIP_REQUEST_KEY = "lifecycle_skip_request"
+SKIP_REASON_MAX_LENGTH = 500
+SKIP_AUDIT_ACTION = "steps_skipped"
+
+
+@dataclass(frozen=True)
+class SkipRequest:
+    """A person's request to move one record past steps of its path, carried on the database session so the type's own
+    move endpoint and transition function need no extra parameter.
+
+    Attributes:
+        user: The person asking; every step passed over is checked against their rights.
+        reason: Why the steps are skipped (recorded on the audit event).
+    """
+
+    user: User
+    reason: str
+
+
+@dataclass(frozen=True)
+class SkipPolicy:
+    """Whether records of a project may skip steps.
+
+    Attributes:
+        own: The project's own choice, or `None` when it has none.
+        chosen: The project's choice (own, else the nearest ancestor's, else off).
+        source: Where `chosen` came from.
+        forbidden: Whether the organisation forbids skipping.
+        exempt: Whether the organisation's ban does not bind this project.
+    """
+
+    own: bool | None
+    chosen: bool
+    source: Source
+    forbidden: bool
+    exempt: bool
+
+    @property
+    def enforced(self) -> bool:
+        """Whether the organisation's ban binds this project."""
+        return self.forbidden and not self.exempt
+
+    @property
+    def allowed(self) -> bool:
+        """Whether a record of the project may skip steps now."""
+        return self.chosen and not self.enforced
 
 
 @dataclass(frozen=True)
@@ -185,6 +242,114 @@ def effective_transitions(resolved: ResolvedLifecycle) -> dict[str, list[str]]:
     return {s: list(effective_moves(resolved.definition, resolved.disabled, s)) for s in states}
 
 
+def skip_moves(
+    definition: LifecycleDefinition, disabled: Iterable[str], enforced: Iterable[str], current: str,
+) -> dict[str, tuple[str, ...]]:
+    """The later steps of the path a record in `current` may be moved to by skipping steps.
+
+    A skip never passes a gated step or a step the organisation requires: such a step may be the target, nothing
+    beyond it is offered. A move the type already allows (`effective_moves`) is not a skip.
+
+    Args:
+        definition: The type's definition.
+        disabled: The states that are off.
+        enforced: The states the organisation requires of this project.
+        current: The record's current state; only a state on the main path can skip.
+
+    Returns:
+        `{target state: every state the move passes over, turned-off ones included, in order}`, in path order.
+    """
+    if current not in definition.path:
+        return {}
+    off = frozenset(disabled)
+    stop = frozenset(definition.gated) | frozenset(enforced)
+    direct = effective_moves(definition, off, current)
+    moves: dict[str, tuple[str, ...]] = {}
+    passed: list[str] = []
+    for state in definition.path[definition.path.index(current) + 1:]:
+        if state in off:
+            passed.append(state)
+            continue
+        if state not in direct:
+            moves[state] = tuple(passed)
+        if state in stop:
+            break
+        passed.append(state)
+    return moves
+
+
+def effective_skip_transitions(resolved: ResolvedLifecycle) -> dict[str, dict[str, list[str]]]:
+    """Every main-path state's skip moves in `resolved`'s project: `{state: {target: [states passed over]}}`, with no
+    entry for a state that has none. Empty for a type that cannot have steps skipped (no `entry_guard`)."""
+    definition = resolved.definition
+    if definition.entry_guard is None:
+        return {}
+    out: dict[str, dict[str, list[str]]] = {}
+    for state in definition.path:
+        moves = skip_moves(definition, resolved.disabled, resolved.enforced, state)
+        if moves:
+            out[state] = {target: list(passed) for target, passed in moves.items()}
+    return out
+
+
+def resolve_skip_policy(db: Session, project: Project) -> SkipPolicy:
+    """Whether records of `project` may skip steps: the project's choice (own, else the nearest ancestor's, else off)
+    unless the organisation forbids skipping and the project is not exempt.
+
+    Args:
+        db: Active session (read only).
+        project: The project.
+    """
+    chain = get_project_chain_ids(db, project.id)
+    rows = {
+        row.project_id: row.allowed
+        for row in db.scalars(select(ProjectLifecycleSkipSetting).where(ProjectLifecycleSkipSetting.project_id.in_(chain)))
+    }
+    chosen = False
+    source: Source = "default"
+    for depth, project_id in enumerate(chain):
+        if project_id in rows:
+            chosen, source = rows[project_id], "project" if depth == 0 else "parent_project"
+            break
+    forbidden = bool(db.scalar(
+        select(OrganizationLifecycleSkipPolicy.forbidden).where(
+            OrganizationLifecycleSkipPolicy.organization_id == project.organization_id
+        )
+    ))
+    exempt = False
+    if forbidden:
+        exempt = any(
+            ex.project_id == project.id or ex.include_children
+            for ex in db.scalars(
+                select(OrganizationLifecycleSkipExemption).where(
+                    OrganizationLifecycleSkipExemption.organization_id == project.organization_id,
+                    OrganizationLifecycleSkipExemption.project_id.in_(chain),
+                )
+            )
+        )
+    return SkipPolicy(own=rows.get(project.id), chosen=chosen, source=source, forbidden=forbidden, exempt=exempt)
+
+
+def request_skip(db: Session, user: User, reason: str) -> None:
+    """Records on the session that this request moves a record past steps (`check_move` acts on it).
+
+    Args:
+        db: The request's session.
+        user: The person asking.
+        reason: Why; stored on the audit event.
+
+    Raises:
+        HTTPException: 400 when the reason is empty or longer than `SKIP_REASON_MAX_LENGTH`.
+    """
+    text = reason.strip()
+    if not text or len(text) > SKIP_REASON_MAX_LENGTH:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"A reason of up to {SKIP_REASON_MAX_LENGTH} characters is required to skip steps.",
+        )
+    db.info[SKIP_REQUEST_KEY] = SkipRequest(user=user, reason=text)
+
+
 def resolve_project_lifecycles(db: Session, project: Project) -> dict[str, ResolvedLifecycle]:
     """The effective lifecycle of every registered type for `project`.
 
@@ -275,31 +440,40 @@ def _article(label: str) -> str:
 
 def check_move(
     db: Session, project_id: uuid.UUID | None, artefact_type: str, current: str, target: str,
+    *, record_id: uuid.UUID | None = None,
 ) -> tuple[str, ...]:
     """Enforces a state move in `project_id`.
 
+    A move the path allows is accepted. Otherwise, when the request carries a skip request (`request_skip`), a move to
+    a later step of the path is accepted if the project allows skipping, the organisation does not forbid it, no
+    gated or required step is passed over and the person may enter every step passed over.
+
     Args:
-        db: Active session (read only).
+        db: Active session (a skip writes one audit event; not committed).
         project_id: The record's project, or `None` for a record the organisation owns, which has no project to
             configure and keeps the type's full path.
         artefact_type: The registered record type.
         current: The record's current state.
         target: The state it is moved to.
+        record_id: The record, needed to skip steps (the audit event and the entry checks name it).
 
     Returns:
-        The turned-off states the move passes over, in order (empty for a move to the next state), so the caller can
-        still apply the checks of those states.
+        The states the move passes over, in order (turned-off ones, and skipped ones), so the caller can still apply
+        the checks of those states.
 
     Raises:
         ValueError: When the move is not legal here; the message names the states that are.
+        HTTPException: 403 when a skip passes over a step the person may not enter.
         KeyError: When the type has no registered lifecycle (a programming error).
     """
+    skip_request: SkipRequest | None = db.info.get(SKIP_REQUEST_KEY)
     if project_id is None:
         definition = get_lifecycles()[artefact_type][1]
         disabled: frozenset[str] = frozenset()
+        enforced: frozenset[str] = frozenset()
     else:
         resolved = lifecycle_for(db, project_id, artefact_type)
-        definition, disabled = resolved.definition, resolved.disabled
+        definition, disabled, enforced = resolved.definition, resolved.disabled, resolved.enforced
     moves = effective_moves(definition, disabled, current)
     if target in moves:
         return moves[target]
@@ -308,11 +482,35 @@ def check_move(
     def name(state: str) -> str:
         return definition.labels.get(state, state)
 
+    skips: dict[str, tuple[str, ...]] = {}
+    if skip_request is not None and project_id is not None and record_id is not None:
+        project = db.get(Project, project_id)
+        if project is None or not resolve_skip_policy(db, project).allowed:
+            raise ValueError("Skipping steps is not allowed in this project.")
+        if definition.entry_guard is None:
+            raise ValueError(f"Steps cannot be skipped for {_article(label)} {label}.")
+        skips = skip_moves(definition, disabled, enforced, current)
+        if target in skips:
+            passed = skips[target]
+            skipped = [state for state in passed if state not in disabled]
+            for state in skipped:
+                definition.entry_guard(db, skip_request.user, project, record_id, state)
+            log_event(
+                db, entity_type=artefact_type, entity_id=record_id, action=SKIP_AUDIT_ACTION,
+                actor_id=skip_request.user.id, project_id=project_id,
+                detail={
+                    "from": current, "to": target, "skipped": skipped,
+                    "skipped_labels": [name(state) for state in skipped], "reason": skip_request.reason,
+                },
+            )
+            return passed
+
     head = f"Cannot move {_article(label)} {label} from '{name(current)}' to '{name(target)}'."
     if target in disabled and target in {n for ns in definition.transitions.values() for n in ns}:
         head += f" The state '{name(target)}' is turned off in this project."
-    if moves:
-        head += " Allowed next states: " + ", ".join(f"'{name(s)}'" for s in moves) + "."
+    allowed = [*moves, *skips]
+    if allowed:
+        head += " Allowed next states: " + ", ".join(f"'{name(s)}'" for s in allowed) + "."
     raise ValueError(head)
 
 
@@ -486,6 +684,127 @@ def remove_exemption(
     db.flush()
 
 
+def set_project_skip(db: Session, *, project: Project, allowed: bool | None, actor_id: uuid.UUID) -> None:
+    """Sets whether the project lets a record skip steps.
+
+    Args:
+        db: Active session (not committed).
+        project: The project.
+        allowed: The choice, or `None` to follow the nearest ancestor project (else off).
+        actor_id: The acting user.
+
+    Raises:
+        HTTPException: 409 when turning it on while the organisation forbids skipping and the project is not exempt.
+    """
+    row = db.scalar(select(ProjectLifecycleSkipSetting).where(ProjectLifecycleSkipSetting.project_id == project.id))
+    if allowed and resolve_skip_policy(db, project).enforced:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The organisation does not allow skipping steps.")
+    if allowed is None:
+        if row is not None:
+            db.delete(row)
+    elif row is None:
+        db.add(ProjectLifecycleSkipSetting(project_id=project.id, allowed=allowed))
+    else:
+        row.allowed = allowed
+    log_event(
+        db, entity_type=AUDIT_ENTITY_TYPE, entity_id=project.id, action="skip_updated", actor_id=actor_id,
+        organization_id=project.organization_id, project_id=project.id,
+        detail={"skip_allowed": allowed, "inherits": allowed is None},
+    )
+    db.flush()
+
+
+def set_org_skip_forbidden(db: Session, *, organization: Organization, forbidden: bool, actor_id: uuid.UUID) -> None:
+    """Sets whether the organisation forbids skipping steps in every project that is not exempt."""
+    row = db.scalar(
+        select(OrganizationLifecycleSkipPolicy).where(OrganizationLifecycleSkipPolicy.organization_id == organization.id)
+    )
+    if row is None:
+        db.add(OrganizationLifecycleSkipPolicy(organization_id=organization.id, forbidden=forbidden))
+    else:
+        row.forbidden = forbidden
+    log_event(
+        db, entity_type=AUDIT_ENTITY_TYPE, entity_id=organization.id, action="skip_forbidden_updated", actor_id=actor_id,
+        organization_id=organization.id, detail={"forbidden": forbidden},
+    )
+    db.flush()
+
+
+def add_skip_exemption(
+    db: Session, *, organization: Organization, project: Project, include_children: bool, actor_id: uuid.UUID,
+) -> None:
+    """Exempts a project (optionally with its nested children) from the organisation's ban on skipping steps.
+
+    Raises:
+        HTTPException: 422 for a project of another organisation.
+    """
+    if project.organization_id != organization.id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The project belongs to another organisation.")
+    row = db.scalar(
+        select(OrganizationLifecycleSkipExemption).where(
+            OrganizationLifecycleSkipExemption.organization_id == organization.id,
+            OrganizationLifecycleSkipExemption.project_id == project.id,
+        )
+    )
+    if row is None:
+        db.add(OrganizationLifecycleSkipExemption(
+            organization_id=organization.id, project_id=project.id, include_children=include_children,
+        ))
+    else:
+        row.include_children = include_children
+    log_event(
+        db, entity_type=AUDIT_ENTITY_TYPE, entity_id=organization.id, action="skip_exemption_added", actor_id=actor_id,
+        organization_id=organization.id, project_id=project.id, detail={"include_children": include_children},
+    )
+    db.flush()
+
+
+def remove_skip_exemption(
+    db: Session, *, organization: Organization, project_id: uuid.UUID, actor_id: uuid.UUID,
+) -> None:
+    """Removes a project's exemption from the ban on skipping steps.
+
+    Raises:
+        HTTPException: 404 when the project has no such exemption.
+    """
+    row = db.scalar(
+        select(OrganizationLifecycleSkipExemption).where(
+            OrganizationLifecycleSkipExemption.organization_id == organization.id,
+            OrganizationLifecycleSkipExemption.project_id == project_id,
+        )
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That project has no exemption.")
+    db.delete(row)
+    log_event(
+        db, entity_type=AUDIT_ENTITY_TYPE, entity_id=organization.id, action="skip_exemption_removed", actor_id=actor_id,
+        organization_id=organization.id, project_id=project_id, detail={},
+    )
+    db.flush()
+
+
+def organization_skip(db: Session, organization: Organization) -> dict:
+    """The organisation's rule on skipping steps.
+
+    Returns:
+        `{"forbidden": bool, "exemptions": [(project id, include_children)]}`, exemptions in creation order.
+    """
+    forbidden = bool(db.scalar(
+        select(OrganizationLifecycleSkipPolicy.forbidden).where(
+            OrganizationLifecycleSkipPolicy.organization_id == organization.id
+        )
+    ))
+    exemptions = [
+        (ex.project_id, ex.include_children)
+        for ex in db.scalars(
+            select(OrganizationLifecycleSkipExemption)
+            .where(OrganizationLifecycleSkipExemption.organization_id == organization.id)
+            .order_by(OrganizationLifecycleSkipExemption.created_at)
+        )
+    ]
+    return {"forbidden": forbidden, "exemptions": exemptions}
+
+
 def _enabled_for_organization(db: Session, organization_id: uuid.UUID, artefact_type: str, module_key: str) -> bool:
     """Whether the type's module (and the sub-component serving the type) is enabled for the organisation."""
     if not is_module_enabled(db, organization_id, module_key):
@@ -537,6 +856,27 @@ def export_project(db: Session, project: Project) -> list[dict]:
     return [{"artefact_type": r.artefact_type, "disabled_states": list(r.disabled_states or [])} for r in rows]
 
 
+def export_project_skip(db: Session, project: Project) -> dict:
+    """The project's own choice on skipping steps as a bundle entry, `{"allowed": bool | None}` (`None` follows the
+    ancestor project)."""
+    row = db.scalar(select(ProjectLifecycleSkipSetting).where(ProjectLifecycleSkipSetting.project_id == project.id))
+    return {"allowed": None if row is None else row.allowed}
+
+
+def import_project_skip(db: Session, project: Project, entry: dict | None) -> None:
+    """Applies a bundle's skip choice to `project`, stored as written: an organisation's ban beats it when the policy
+    is resolved, so an import never lets a project skip steps the organisation forbids. Not committed."""
+    allowed = (entry or {}).get("allowed")
+    if allowed is None:
+        return
+    row = db.scalar(select(ProjectLifecycleSkipSetting).where(ProjectLifecycleSkipSetting.project_id == project.id))
+    if row is None:
+        db.add(ProjectLifecycleSkipSetting(project_id=project.id, allowed=bool(allowed)))
+    else:
+        row.allowed = bool(allowed)
+    db.flush()
+
+
 def import_project(
     db: Session, project: Project, entries: list[dict] | None, actor_id: uuid.UUID | None, warn: Callable[[str], None],
 ) -> None:
@@ -572,6 +912,7 @@ def import_project(
 def copy_project(db: Session, source: Project, target: Project, actor_id: uuid.UUID | None) -> None:
     """Copies `source`'s own choices to `target` (a project made from a template)."""
     import_project(db, target, export_project(db, source), actor_id, lambda _message: None)
+    import_project_skip(db, target, export_project_skip(db, source))
 
 
 def export_org(db: Session, organization: Organization, project_ref_by_id: Mapping[uuid.UUID, str]) -> dict:
@@ -585,7 +926,8 @@ def export_org(db: Session, organization: Organization, project_ref_by_id: Mappi
 
     Returns:
         `{"lifecycle_requirements": [{"artefact_type", "states"}], "lifecycle_exemptions": [{"artefact_type",
-        "project_ref", "include_children"}]}`, ordered by type.
+        "project_ref", "include_children"}], "lifecycle_skip": {"forbidden", "exemptions": [{"project_ref",
+        "include_children"}]}}`, ordered by type.
     """
     required: dict[str, list[str]] = {}
     for req in db.scalars(
@@ -601,9 +943,17 @@ def export_org(db: Session, organization: Organization, project_ref_by_id: Mappi
         )
         if ex.project_id in project_ref_by_id
     ]
+    skip = organization_skip(db, organization)
     return {
         "lifecycle_requirements": [{"artefact_type": t, "states": required[t]} for t in sorted(required)],
         "lifecycle_exemptions": exemptions,
+        "lifecycle_skip": {
+            "forbidden": skip["forbidden"],
+            "exemptions": [
+                {"project_ref": project_ref_by_id[pid], "include_children": include_children}
+                for pid, include_children in skip["exemptions"] if pid in project_ref_by_id
+            ],
+        },
     }
 
 
@@ -650,3 +1000,21 @@ def import_org(
             )
         except HTTPException as error:
             warn(f"A lifecycle exemption was not imported: {error.detail}")
+    skip = data.get("lifecycle_skip") or {}
+    own_skip = db.scalar(
+        select(OrganizationLifecycleSkipPolicy.id).where(OrganizationLifecycleSkipPolicy.organization_id == organization.id)
+    )
+    if skip and not (keep_existing and own_skip is not None):
+        set_org_skip_forbidden(db, organization=organization, forbidden=bool(skip.get("forbidden")), actor_id=actor_id)
+        for entry in skip.get("exemptions") or []:
+            project_id = project_id_by_ref.get(str(entry.get("project_ref", "")))
+            project = None if project_id is None else db.get(Project, project_id)
+            if project is None:
+                continue
+            try:
+                add_skip_exemption(
+                    db, organization=organization, project=project, include_children=bool(entry.get("include_children")),
+                    actor_id=actor_id,
+                )
+            except HTTPException as error:
+                warn(f"A skip exemption was not imported: {error.detail}")

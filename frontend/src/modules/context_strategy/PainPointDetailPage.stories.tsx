@@ -11,7 +11,7 @@ import type { EffectivePainPointType, PainPoint } from "./types";
 import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 import { currentLifecycleStep } from "../../testing/lifecycleTrack";
 import type { ProjectLifecycle } from "../../api/lifecycles";
-import { buildPainPointLifecycle, buildProjectLifecycles } from "../../testing/lifecycleFixtures";
+import { buildPainPointLifecycle, buildProjectLifecycles, PAIN_POINT_SKIPS } from "../../testing/lifecycleFixtures";
 
 const PROJECT_ID = "project-1";
 const PAIN_POINT_ID = "pain-point-1";
@@ -111,6 +111,66 @@ export const TriagedTurnedOffPromotesSubmittedToAccepted: Story = {
     // Reject and Mark duplicate are offered at Submitted, and the track omits Triaged.
     await expect(names).toEqual(expect.arrayContaining(["Reject", "Mark duplicate"]));
     await expect(canvas.queryByText("Triaged")).not.toBeInTheDocument();
+  },
+};
+
+export const SkippingStepsIsOfferedOnlyWhenTheProjectAllowsIt: Story = {
+  beforeEach: () => mockDetailApis(painPoint({ status: "submitted" })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Triaged" }));
+    await expect(await recordActionNames(canvas, "Pain Point")).not.toContain("Skip steps…");
+  },
+};
+
+export const SkipStepsMovesPastTheStepsInBetween: Story = {
+  beforeEach: () => {
+    mockDetailApis(painPoint({ status: "submitted" }), buildPainPointLifecycle({ skip_transitions: PAIN_POINT_SKIPS }));
+    spyOn(api, "post").mockImplementation(async (path: string) => {
+      if (path.endsWith("/address")) return painPoint({ status: "addressed" });
+      throw new Error(`Unmocked POST: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Pain Point actions" }));
+    await chooseRecordAction(canvas, "Pain Point", "Skip steps…");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Skip steps of this Pain Point" }));
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: /Move to/ }), "addressed");
+    await userEvent.type(dialog.getByLabelText(/Reason/), "Fixed in the hot patch");
+    await userEvent.click(dialog.getByRole("button", { name: "Skip steps" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}/address`, { comment: null },
+    ));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Addressed"));
+  },
+};
+
+/** A step a skip reaches is a bold button in the track and opens the dialog with that step chosen. */
+export const ASkipStepOfTheTrackOpensTheDialogForIt: Story = {
+  beforeEach: () => mockDetailApis(painPoint({ status: "submitted" }), buildPainPointLifecycle({ skip_transitions: PAIN_POINT_SKIPS })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Skip to Addressed" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Skip steps of this Pain Point" }));
+    await expect(dialog.getByRole("combobox", { name: /Move to/ })).toHaveValue("addressed");
+  },
+};
+
+export const ARefusedSkipShowsTheServersMessage: Story = {
+  beforeEach: () => {
+    mockDetailApis(painPoint({ status: "submitted" }), buildPainPointLifecycle({ skip_transitions: PAIN_POINT_SKIPS }));
+    spyOn(api, "post").mockRejectedValue(new Error("Insufficient permissions."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Pain Point actions" }));
+    await chooseRecordAction(canvas, "Pain Point", "Skip steps…");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Skip steps of this Pain Point" }));
+    await userEvent.type(dialog.getByLabelText(/Reason/), "Urgent");
+    await userEvent.click(dialog.getByRole("button", { name: "Skip steps" }));
+    await expect(await within(document.body).findByText("Insufficient permissions.")).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Submitted");
   },
 };
 

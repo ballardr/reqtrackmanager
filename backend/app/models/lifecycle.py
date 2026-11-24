@@ -12,6 +12,9 @@ Design decisions:
 - A state turned off is never deleted from the data: records already in it stay valid.
 - An organisation requirement is one row per `(type, state)`; an exemption is one row per `(type, project)` and may
   cover the project's nested children.
+- Skipping steps on one record is configured per project (a row exists once the project chose; no row follows the
+  nearest ancestor, else off) and can be forbidden for the whole organisation, with exempt projects, mirroring the
+  required states above.
 """
 
 from __future__ import annotations
@@ -81,6 +84,61 @@ class OrganizationLifecycleExemption(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
     )
     artefact_type: Mapped[str] = mapped_column(String(64))
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    include_children: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ProjectLifecycleSkipSetting(UUIDPKMixin, TimestampMixin, Base):
+    """Whether a project allows a record to be moved past steps of its path.
+
+    Attributes:
+        project_id: The owning project.
+        allowed: Whether skipping steps is on. No row follows the nearest ancestor project, else it is off.
+    """
+
+    __tablename__ = "project_lifecycle_skip_settings"
+    __table_args__ = (UniqueConstraint("project_id", name="uq_project_lifecycle_skip_settings"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    allowed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class OrganizationLifecycleSkipPolicy(UUIDPKMixin, TimestampMixin, Base):
+    """The organisation's rule on skipping steps.
+
+    Attributes:
+        organization_id: The organisation.
+        forbidden: Whether no project of the organisation may skip steps (except its exempt projects).
+    """
+
+    __tablename__ = "organization_lifecycle_skip_policies"
+    __table_args__ = (UniqueConstraint("organization_id", name="uq_org_lifecycle_skip_policies"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    forbidden: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class OrganizationLifecycleSkipExemption(UUIDPKMixin, TimestampMixin, Base):
+    """A project the organisation's ban on skipping steps does not bind.
+
+    Attributes:
+        organization_id: The organisation that granted the exemption.
+        project_id: The exempt project.
+        include_children: Whether the project's nested child projects are exempt too.
+    """
+
+    __tablename__ = "organization_lifecycle_skip_exemptions"
+    __table_args__ = (UniqueConstraint("organization_id", "project_id", name="uq_org_lifecycle_skip_exemptions"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )

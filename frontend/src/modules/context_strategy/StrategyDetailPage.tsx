@@ -39,6 +39,8 @@ import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } 
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
@@ -168,6 +170,17 @@ export function StrategyDetailPage() {
   });
 
   const codeOwner = useRecordOwnerCode(strategy ?? {});
+  const skipSteps = useSkipSteps<Strategy>({
+    lifecycle, current: strategy?.status ?? "", labels: STRATEGY_STATUS_LABEL, noun: "Strategy",
+    move: (target, reason) => {
+      if (!scopeId || !strategy) return Promise.reject(new Error("This move is not available."));
+      if (target === "under_review") return withLifecycleSkip(reason, () => scopedApi.submitForReview(scopeId, strategy.id));
+      if (target === "approved") return withLifecycleSkip(reason, () => scopedApi.approve(scopeId, strategy.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setStrategy,
+  });
+
   if (!scopeId || !strategyId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategy === null) return <Spinner />;
@@ -249,6 +262,7 @@ export function StrategyDetailPage() {
         subtitle={`${STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · ${STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]}`}
         onEdit={strategy.is_locked ? undefined : () => setEditing(true)}
         actions={[
+          skipSteps.menuRow,
           lifecycle.canMove(strategy.status, "draft", strategy.status === "proposed" || strategy.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
           strategy.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
           strategy.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
@@ -262,6 +276,7 @@ export function StrategyDetailPage() {
           current: strategy.status,
           offPath,
           promote,
+          skip: skipSteps.track,
         }}
       />
       {archive.dialog}
@@ -342,6 +357,8 @@ export function StrategyDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {sendingBack && (
         <CommentConfirmDialog

@@ -28,7 +28,7 @@ from app.body_limit import BodySizeLimitMiddleware
 from app.concurrency_limit import ConcurrencyLimitMiddleware
 from app.config import get_settings
 from app.database import SessionLocal, engine
-from app.deps import INVALID_TOKEN_CODE, InvalidTokenError
+from app.deps import INVALID_TOKEN_CODE, InvalidTokenError, capture_lifecycle_skip
 from app.metrics import http_request_duration_seconds, http_requests_total, run_worker_gauge_loop
 from app.migrations import run_migrations
 from app.modules.registry import get_module_registry, sync_module_role_definitions
@@ -445,4 +445,4 @@ for _module_definition in get_module_registry().values():
         _module_definition.get_global_router() if _module_definition.get_global_router is not None else None,
     ):
         if _module_router is not None:
-            app.include_router(_module_router)
+            app.include_router(_module_router, dependencies=[Depends(capture_lifecycle_skip)])

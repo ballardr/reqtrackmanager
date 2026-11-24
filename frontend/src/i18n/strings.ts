@@ -3582,9 +3582,6 @@ const en = {
     requiredReason: "The organisation requires this state, so it stays on in every project of the organisation.",
     exempt: "Exempt from the organisation's requirement",
     inheritedParent: "Inherited from parent project",
-    allStates: "Every state is used",
-    resetToInherited: "Use inherited setting",
-    resetToDefault: "Use every state",
     /** Organisation panel. */
     requireState: (label: string) => `Require ${label}`,
     exemptHeading: "Exempt projects",
@@ -3598,6 +3595,14 @@ const en = {
     removeExemption: (name: string) => `Remove the exemption of ${name}`,
     exemptionRemoved: "The exemption was removed.",
     noOptionalStates: "This type has no state that can be required.",
+    /** Skipping steps (project and organisation panels). */
+    skipHeading: "Skipping steps",
+    allowSkip: "Allow skipping steps",
+    forbidSkip: "Do not allow skipping steps",
+    skipBannedByOrganisation: "Not allowed by the organisation",
+    skipExempt: "Exempt from the organisation's ban on skipping steps",
+    skipInherited: "Inherited from parent project",
+    skipExemptTitle: "Exempt a project from the ban on skipping steps",
   },
   lifecycle: {
     /** Name of the track (a list of the record's states). */
@@ -3617,6 +3622,16 @@ const en = {
     notPermitted: (label: string) => `You do not have permission to promote this record to ${label}.`,
     /** The collapsed track at a narrow width, before the current state's name. */
     position: (n: number, total: number) => `Step ${n} of ${total}`,
+    /** Skipping steps of one record (the actions-menu row and its dialog). */
+    skipSteps: "Skip steps…",
+    /** Name of a later step's button in the track, which opens the Skip steps dialog for it. */
+    skipTo: (label: string) => `Skip to ${label}`,
+    skipTitle: (noun: string) => `Skip steps of this ${noun}`,
+    skipTarget: "Move to",
+    skipOption: (target: string, passed: readonly string[]) => `${target} (skips ${passed.join(", ")})`,
+    skipReason: "Reason",
+    skipConfirm: "Skip steps",
+    skipped: (noun: string, target: string) => `${noun} moved to ${target}; the skipped steps are recorded in its history.`,
   },
   tags: {
     label: "Tags",
@@ -3919,8 +3934,12 @@ const en = {
     lifecyclesProject: "A lifecycle is the path a record follows, for example a Pain Point from Submitted to Closed. Clear a state this project does not use and a record moves straight past it.\nOnly record types with a state that can be turned off are listed, and only for modules enabled in this project. Approval states, the first and last state, and states such as Rejected or Retired are never optional, so Requirements and Change requests are not listed.\nThe organisation can require a state for every project, which locks it here. A nested project uses its parent project's choice until it sets its own.",
     lifecyclesOrganization: "A lifecycle is the path a record follows, for example a Decision from Draft to Approved. Require a state and no project of the organisation can turn it off; a project that had turned it off uses it again from then on, and its records are not changed.\nOnly record types with a state that can be turned off are listed, for modules enabled in this organisation. Approval states are never optional.\nAn exempt project keeps its own choice for that record type.",
     lifecycleStates: "Turn off a state this project does not use. A record then moves past it: for example a Pain Point goes from Submitted straight to Accepted. A record already in a turned-off state can still be opened, edited and moved on, and turning the state back on restores it.\nA state marked Required is required by the organisation and cannot be turned off here.\nApproval states are never optional, so the approver's permission and comment still apply.",
+    lifecycleSkip: "Allow a record of this project to be moved past the steps between its state and a later one, with a reason that is recorded in its history.\nA record can skip only steps that the person moving it may carry out themselves, never a step that needs an approval, and never a step the organisation requires.\nOff by default. The organisation can forbid it for all its projects.",
+    lifecycleSkipForbidden: "No project of the organisation may skip steps, whatever its own setting. A project listed under Exempt projects is not bound by this.",
+    lifecycleSkipTarget: "The later step the record moves to. Each option names the steps it passes over. The permission to carry out each of those steps, and the target's own permission, are checked when you save.",
+    lifecycleSkipReason: "Why the steps are skipped. The reason is recorded with the move in the record's history, which names each skipped step.",
     lifecycleRequired: "Require a state to be used by every project of the organisation. A project cannot turn a required state off, and a project that had turned it off uses it again from now on; its records are not changed.\nA project listed under Exempt projects is not bound by the requirement.",
-    lifecycleExemptProject: "The project that may turn the required states of this record type off. Its own choice applies again.",
+    lifecycleExemptProject: "The project that the requirement, or the ban on skipping steps, does not bind. Its own choice applies again.",
     lifecycleIncludeChildren: "Off: only this project is exempt.\nOn: its nested child projects are exempt too, including projects added to it later.",
     requirementAliasMode: "Allowed: a requirement can be placed in further components and categories, each with a code of its own.\nDisabled: no new further places can be added; the ones that exist keep working and can be made independent.\nA project follows its parent project, then the organisation, until it sets its own value.\nA project that relies on traceability matrices and coverage figures reads them most clearly with one code per requirement: choose Disabled.",
     recordComponents: "The components and categories this record belongs to, for example Hardware or Hardware / Cooling. A record can belong to several, and every list can be filtered by them.",

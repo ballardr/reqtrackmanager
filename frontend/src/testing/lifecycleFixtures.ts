@@ -6,7 +6,9 @@
  */
 import { fn } from "storybook/test";
 
-import type { LifecyclesApi, LifecycleState, OrgLifecycle, ProjectLifecycle, ProjectLifecycles } from "../api/lifecycles";
+import type {
+  LifecyclesApi, LifecycleState, OrgLifecycle, OrgSkip, ProjectLifecycle, ProjectLifecycles, ProjectSkip,
+} from "../api/lifecycles";
 
 const state = (key: string, label: string, optional = false, gated = false): LifecycleState => ({ key, label, optional, gated });
 
@@ -24,9 +26,22 @@ export function buildPainPointLifecycle(overrides: Partial<ProjectLifecycle> = {
     ],
     off_path: [state("rejected", "Rejected"), state("duplicate", "Duplicate")],
     own_disabled: disabled.length > 0 ? disabled : null, disabled, required: [], exempt: false,
-    source: disabled.length > 0 ? "project" : "default", transitions, ...overrides,
+    source: disabled.length > 0 ? "project" : "default", transitions, skip_transitions: {}, ...overrides,
   };
 }
+
+/** The Pain Point skip moves with every step on: from Submitted to Accepted, Addressed or Closed, and so on. */
+export const PAIN_POINT_SKIPS: ProjectLifecycle["skip_transitions"] = {
+  submitted: { accepted: ["triaged"], addressed: ["triaged", "accepted"], closed: ["triaged", "accepted", "addressed"] },
+  triaged: { addressed: ["accepted"], closed: ["accepted", "addressed"] },
+  accepted: { closed: ["addressed"] },
+};
+
+/** The Decision skip moves with every step on: Draft to Under review or to Approved (the gated step may be the target). */
+export const DECISION_SKIPS: ProjectLifecycle["skip_transitions"] = {
+  draft: { under_review: ["proposed"], approved: ["proposed", "under_review"] },
+  proposed: { approved: ["under_review"] },
+};
 
 /** The Decision lifecycle with Proposed and Under review optional and Approved gated. */
 export function buildDecisionLifecycle(overrides: Partial<ProjectLifecycle> = {}): ProjectLifecycle {
@@ -36,12 +51,22 @@ export function buildDecisionLifecycle(overrides: Partial<ProjectLifecycle> = {}
     off_path: [state("rejected", "Rejected"), state("superseded", "Superseded")],
     own_disabled: null, disabled: [], required: [], exempt: false, source: "default",
     transitions: { draft: ["proposed"], proposed: ["under_review", "rejected"], under_review: ["approved", "rejected"], approved: ["superseded"] },
+    skip_transitions: {},
     ...overrides,
   };
 }
 
+/** Skipping steps as a project sees it: off by default; pass `{ chosen: true, own: true, allowed: true }` to allow it. */
+export function buildProjectSkip(overrides: Partial<ProjectSkip> = {}): ProjectSkip {
+  return { allowed: false, own: null, chosen: false, source: "default", forbidden: false, exempt: false, ...overrides };
+}
+
 export function buildProjectLifecycles(lifecycles: ProjectLifecycle[], overrides: Partial<ProjectLifecycles> = {}): ProjectLifecycles {
-  return { can_manage: true, has_parent: false, lifecycles, ...overrides };
+  return { can_manage: true, has_parent: false, skip: buildProjectSkip(), lifecycles, ...overrides };
+}
+
+export function buildOrgSkip(overrides: Partial<OrgSkip> = {}): OrgSkip {
+  return { forbidden: false, exemptions: [], ...overrides };
 }
 
 export function buildOrgLifecycle(overrides: Partial<OrgLifecycle> = {}): OrgLifecycle {
@@ -55,6 +80,7 @@ export function buildOrgLifecycle(overrides: Partial<OrgLifecycle> = {}): OrgLif
 export function buildLifecyclesApi(
   project: ProjectLifecycles = buildProjectLifecycles([buildPainPointLifecycle(), buildDecisionLifecycle()]),
   organization: OrgLifecycle[] = [buildOrgLifecycle()],
+  organizationSkip: OrgSkip = buildOrgSkip(),
 ): LifecyclesApi {
   return {
     project: fn(async () => project),
@@ -64,7 +90,23 @@ export function buildLifecyclesApi(
         ? { ...l, own_disabled: disabled, disabled: disabled ?? [], source: disabled === null ? "default" as const : "project" as const }
         : l)),
     })),
+    setProjectSkip: fn(async (_projectId: string, allowed: boolean | null) => ({
+      ...project,
+      skip: {
+        ...project.skip, own: allowed, chosen: allowed ?? false, source: allowed === null ? "default" as const : "project" as const,
+        allowed: (allowed ?? false) && !project.skip.forbidden,
+      },
+    })),
     organization: fn(async () => organization),
+    organizationSkip: fn(async () => organizationSkip),
+    setSkipForbidden: fn(async (_organizationId: string, forbidden: boolean) => ({ ...organizationSkip, forbidden })),
+    addSkipExemption: fn(async (_organizationId: string, projectId: string, includeChildren: boolean) => ({
+      ...organizationSkip,
+      exemptions: [...organizationSkip.exemptions, { project_id: projectId, project_name: "Solo project", project_code: "SOLO", include_children: includeChildren }],
+    })),
+    removeSkipExemption: fn(async (_organizationId: string, projectId: string) => ({
+      ...organizationSkip, exemptions: organizationSkip.exemptions.filter((e) => e.project_id !== projectId),
+    })),
     setRequired: fn(async (_organizationId: string, artefactType: string, required: string[]) =>
       organization.map((o) => (o.artefact_type === artefactType ? { ...o, required } : o))),
     addExemption: fn(async (_organizationId: string, artefactType: string, projectId: string, includeChildren: boolean) =>

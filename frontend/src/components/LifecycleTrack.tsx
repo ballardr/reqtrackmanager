@@ -13,6 +13,8 @@
  * - Offer Promote in two places that run the same move: the next step opens a popover with the Promote button, and
  *   `RecordHeader` adds Promote as the first row of the record's actions menu. The page owns what a Promote does
  *   (its own confirmation or approval dialog), so the track never skips an approval gate.
+ * - Draw every step the record can be moved to now in bold: the next step (Promote) and the later steps a skip reaches
+ *   (`skip`); selecting a skip step opens the Skip steps dialog for it, so the track and the actions menu agree.
  * - At a narrow width collapse to the current step with its position and open the full track in a popover.
  *
  * Design decisions: colour is never the only signal (`aria-current="step"`, a text state for assistive technology,
@@ -52,6 +54,12 @@ export type LifecyclePromote =
   | { to: string; onPromote: () => void; blockedReason?: undefined }
   | { to: string; onPromote?: undefined; blockedReason: string };
 
+/** The later steps a record can be moved to by skipping steps, and what choosing one does (opens the Skip steps dialog). */
+export interface LifecycleSkip {
+  to: readonly string[];
+  onSkip: (to: string) => void;
+}
+
 /** What a page passes to `RecordHeader`'s `lifecycle` prop and what the track draws. */
 export interface LifecycleTrackProps {
   /** The main path in order. */
@@ -62,6 +70,8 @@ export interface LifecycleTrackProps {
   offPath?: LifecycleStep & { after?: string };
   /** The next forward move; omit when no forward move exists from the current state. */
   promote?: LifecyclePromote;
+  /** Later steps reachable by skipping steps; omit when skipping is off or has nowhere to go. */
+  skip?: LifecycleSkip;
 }
 
 /** Text for assistive technology that carries the state colour alone would. */
@@ -90,7 +100,7 @@ function StepBody({ step, state, lockReason }: { step: LifecycleStep; state: Ste
 /**
  * The chevron row. The step `promote.to` is a button that opens the Promote popover when `interactive`.
  */
-function Steps({ steps, current, offPath, promote, interactive }: LifecycleTrackProps & { interactive: boolean }) {
+function Steps({ steps, current, offPath, promote, skip, interactive }: LifecycleTrackProps & { interactive: boolean }) {
   const strings = useStrings();
   const drawn = trackSteps(steps, current, offPath);
   const targetRef = useRef<HTMLButtonElement>(null);
@@ -102,7 +112,8 @@ function Steps({ steps, current, offPath, promote, interactive }: LifecycleTrack
           "lifecycle-step", `lifecycle-step--${state}`,
           i === 0 ? "lifecycle-step--first" : "", i === drawn.length - 1 ? "lifecycle-step--last" : "",
           step.key === offPath?.key ? "lifecycle-step--branch" : "",
-          interactive && promote?.onPromote && promote.to === step.key && state !== "current" ? "lifecycle-step--next" : "",
+          interactive && state !== "current" && (promote?.onPromote && promote.to === step.key || skip?.to.includes(step.key))
+            ? "lifecycle-step--next" : "",
         ].filter(Boolean).join(" ");
         const isTarget = !!promote && promote.to === step.key && state !== "current";
         const lockReason = [
@@ -110,6 +121,7 @@ function Steps({ steps, current, offPath, promote, interactive }: LifecycleTrack
           isTarget ? promote.blockedReason : undefined,
         ].filter(Boolean).join("\n") || undefined;
         const canPress = interactive && isTarget && !!promote.onPromote;
+        const canSkipTo = interactive && !canPress && state !== "current" && !!skip?.to.includes(step.key);
         const tip = [step.label, step.description].filter(Boolean).join("\n");
         return (
           <li key={step.key} className={classes} aria-current={state === "current" ? "step" : undefined}>
@@ -118,6 +130,13 @@ function Steps({ steps, current, offPath, promote, interactive }: LifecycleTrack
                 <button
                   ref={targetRef} type="button" className="lifecycle-step__control" aria-haspopup="dialog" aria-expanded={open}
                   aria-label={strings.lifecycle.nextStep(step.label)} onClick={() => setOpen((o) => !o)}
+                >
+                  <StepBody step={step} state={state} lockReason={lockReason} />
+                </button>
+              ) : canSkipTo ? (
+                <button
+                  type="button" className="lifecycle-step__control" aria-label={strings.lifecycle.skipTo(step.label)}
+                  onClick={() => skip?.onSkip(step.key)}
                 >
                   <StepBody step={step} state={state} lockReason={lockReason} />
                 </button>
@@ -153,7 +172,7 @@ function Steps({ steps, current, offPath, promote, interactive }: LifecycleTrack
  */
 export function LifecycleTrack(props: LifecycleTrackProps) {
   const strings = useStrings();
-  const { steps, current, offPath, promote } = props;
+  const { steps, current, offPath, promote, skip } = props;
   const wrapRef = useRef<HTMLDivElement>(null);
   const fullRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -174,7 +193,7 @@ export function LifecycleTrack(props: LifecycleTrackProps) {
     const observer = new ResizeObserver(measure);
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [steps, current, offPath, promote?.to]);
+  }, [steps, current, offPath, promote?.to, skip?.to]);
 
   const drawn = trackSteps(steps, current, offPath);
   const position = Math.max(0, drawn.findIndex((d) => d.state === "current"));

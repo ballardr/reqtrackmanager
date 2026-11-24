@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { ProjectLifecycle } from "../../api/lifecycles";
-import { buildDecisionLifecycle, buildProjectLifecycles } from "../../testing/lifecycleFixtures";
+import { buildDecisionLifecycle, buildProjectLifecycles, DECISION_SKIPS } from "../../testing/lifecycleFixtures";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser, Principal } from "../../api/types";
@@ -132,6 +132,32 @@ export const ReviewStepsTurnedOffPromoteDraftToApproved: Story = {
     await expect(await within(document.body).findByRole("button", { name: "Promote to Approved" })).toBeInTheDocument();
     await expect(canvas.queryByText("Proposed")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Under review")).not.toBeInTheDocument();
+  },
+};
+
+/** A project that allows it offers Skip steps: a Draft goes to Approved by the approver, the steps in between named. */
+export const SkipStepsMovesDraftToApproved: Story = {
+  beforeEach: () => {
+    mockDetailApis(decision({ status: "draft" }), buildDecisionLifecycle({ skip_transitions: DECISION_SKIPS }));
+    spyOn(api, "post").mockImplementation(async (path: string) => {
+      if (path.endsWith("/approve")) return decision({ status: "approved", is_locked: true });
+      throw new Error(`Unmocked POST: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Decision actions" }));
+    await chooseRecordAction(canvas, "Decision", "Skip steps…");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Skip steps of this Decision" }));
+    const select = dialog.getByRole("combobox", { name: /Move to/ });
+    await expect(within(select).getByRole("option", { name: "Approved (skips Proposed, Under review)" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "approved");
+    await userEvent.type(dialog.getByLabelText(/Reason/), "Agreed in the design review");
+    await userEvent.click(dialog.getByRole("button", { name: "Skip steps" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/decisions/${DECISION_ID}/approve`, { comment: null },
+    ));
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Approved"));
   },
 };
 

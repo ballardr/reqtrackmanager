@@ -9,6 +9,7 @@ for login auditing (C-A-07).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from urllib.parse import unquote
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query, Request, status
@@ -183,6 +184,29 @@ def get_current_user(
             inactive/archived.
     """
     return _resolve_user_from_token(token, db, request)
+
+
+LIFECYCLE_SKIP_HEADER = "X-Lifecycle-Skip-Reason"
+
+
+def capture_lifecycle_skip(
+    request: Request, token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> None:
+    """Route dependency that reads a request to skip steps of a record's lifecycle.
+
+    A move endpoint is asked to skip steps with the percent-encoded reason in `X-Lifecycle-Skip-Reason`; the request
+    is recorded on the session for `services.lifecycles.check_move`. A request without the header is untouched, and
+    the header never authenticates by itself: the caller must hold a normal session or personal access token.
+
+    Raises:
+        HTTPException: 400 for an empty or over-long reason, 401 for no valid credential.
+    """
+    raw = request.headers.get(LIFECYCLE_SKIP_HEADER)
+    if raw is None or request.method != "POST":
+        return
+    from app.services.lifecycles import request_skip
+
+    request_skip(db, _resolve_user_from_token(token, db, request), unquote(raw))
 
 
 _PAT_REFUSED = "Personal access tokens cannot manage account security or other access tokens; sign in to do this."

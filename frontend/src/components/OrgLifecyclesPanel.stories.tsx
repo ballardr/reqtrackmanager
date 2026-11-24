@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
-import { buildLifecyclesApi, buildOrgLifecycle, buildProjectLifecycles } from "../testing/lifecycleFixtures";
+import { buildLifecyclesApi, buildOrgLifecycle, buildOrgSkip, buildProjectLifecycles } from "../testing/lifecycleFixtures";
 import { expectStressStable, stressText } from "../testing/stressFixtures";
 import { TextStress } from "../testing/TextStress";
 import { OrgLifecyclesPanel } from "./OrgLifecyclesPanel";
@@ -39,7 +39,7 @@ export const RequiringAState: Story = {
 
 export const ExemptingAProjectAndItsNestedProjects: Story = {
   play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
+    const canvas = within(await within(canvasElement).findByRole("region", { name: "Pain Point" }));
     await expect(await canvas.findByText("No project is exempt.")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Exempt a project" }));
     const dialog = within(await within(document.body).findByRole("dialog"));
@@ -60,7 +60,7 @@ export const RemovingAnExemption: Story = {
     })]),
   },
   play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
+    const canvas = within(await within(canvasElement).findByRole("region", { name: "Pain Point" }));
     await userEvent.click(await canvas.findByRole("button", { name: "Remove the exemption of Solo project" }));
     await waitFor(() => expect(args.api!.removeExemption).toHaveBeenCalledWith("org-1", "pain_point", "p-solo"));
     await expect(await canvas.findByText("No project is exempt.")).toBeInTheDocument();
@@ -74,11 +74,47 @@ export const AProjectAlreadyExemptIsNotOffered: Story = {
     })]),
   },
   play: async ({ canvasElement }) => {
-    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Exempt a project" }));
+    const section = within(await within(canvasElement).findByRole("region", { name: "Pain Point" }));
+    await userEvent.click(await section.findByRole("button", { name: "Exempt a project" }));
     const dialog = within(await within(document.body).findByRole("dialog"));
     const select = await dialog.findByRole("combobox", { name: /Project/ });
     await waitFor(() => expect(within(select).getByRole("option", { name: "TEAM Team project" })).toBeInTheDocument());
     await expect(within(select).queryByRole("option", { name: "SOLO Solo project" })).not.toBeInTheDocument();
+  },
+};
+
+const SOLO_EXEMPTION = { project_id: "p-solo", project_name: "Solo project", project_code: "SOLO", include_children: false };
+
+export const ForbiddingSkippedSteps: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("checkbox", { name: "Do not allow skipping steps" }));
+    await waitFor(() => expect(args.api!.setSkipForbidden).toHaveBeenCalledWith("org-1", true));
+    await expect(await canvas.findByRole("checkbox", { name: "Do not allow skipping steps" })).toBeChecked();
+  },
+};
+
+export const ExemptingAProjectFromTheBanOnSkippedSteps: Story = {
+  args: { api: buildLifecyclesApi(buildProjectLifecycles([]), [buildOrgLifecycle()], buildOrgSkip({ forbidden: true })) },
+  play: async ({ canvasElement, args }) => {
+    const section = within(await within(canvasElement).findByRole("region", { name: "Skipping steps" }));
+    await userEvent.click(await section.findByRole("button", { name: "Exempt a project" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Exempt a project from the ban on skipping steps" }));
+    await userEvent.selectOptions(await dialog.findByRole("combobox", { name: /Project/ }), "p-team");
+    await userEvent.click(dialog.getByRole("checkbox", { name: "Include nested projects" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Exempt a project" }));
+    await waitFor(() => expect(args.api!.addSkipExemption).toHaveBeenCalledWith("org-1", "p-team", true));
+    await expect(await section.findByText("SOLO Solo project")).toBeInTheDocument();
+  },
+};
+
+export const RemovingAnExemptionFromTheBanOnSkippedSteps: Story = {
+  args: { api: buildLifecyclesApi(buildProjectLifecycles([]), [buildOrgLifecycle()], buildOrgSkip({ forbidden: true, exemptions: [SOLO_EXEMPTION] })) },
+  play: async ({ canvasElement, args }) => {
+    const section = within(await within(canvasElement).findByRole("region", { name: "Skipping steps" }));
+    await userEvent.click(await section.findByRole("button", { name: "Remove the exemption of Solo project" }));
+    await waitFor(() => expect(args.api!.removeSkipExemption).toHaveBeenCalledWith("org-1", "p-solo"));
+    await expect(await section.findByText("No project is exempt.")).toBeInTheDocument();
   },
 };
 
@@ -93,7 +129,13 @@ export const LongText: Story = {
               project_id: `p-${n}`, project_name: stressText(long, `Project ${n}`), project_code: stressText(long, `P${n}`, "code"),
               include_children: n === 2,
             })),
-          })])}
+          })], buildOrgSkip({
+            forbidden: true,
+            exemptions: [4, 5].map((n) => ({
+              project_id: `p-${n}`, project_name: stressText(long, `Project ${n}`), project_code: stressText(long, `P${n}`, "code"),
+              include_children: n === 5,
+            })),
+          }))}
         />
       )}
     />

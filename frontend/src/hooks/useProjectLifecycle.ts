@@ -9,6 +9,7 @@
  *   turned off) and aim Promote at the next step that is on (`visibleSteps`, `nextOnPath`).
  * - Answer whether a move is legal now (`canMove`), so an actions-menu row appears exactly where the server accepts
  *   the move.
+ * - List the later steps a record may be moved to by skipping steps (`skipTargets`), empty unless the project allows it.
  *
  * Design decisions: until the configuration is loaded, or when it cannot be (no project, an organisation record, a
  * failed request), every answer is the page's own default, so a page behaves as before and never blocks on this read.
@@ -33,6 +34,8 @@ export interface EffectiveLifecycle {
   lastOnPath(path: readonly string[], key: string): string;
   /** Whether a record in `from` may move to `to`; `base` is the answer while the configuration is unknown. */
   canMove(from: string, to: string, base: boolean): boolean;
+  /** The later steps a record in `from` may be moved to by skipping steps, each with the states passed over. */
+  skipTargets(from: string): Array<{ target: string; passed: string[] }>;
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -69,5 +72,7 @@ export function useProjectLifecycle(
     nextOnPath: (path, current) => path.slice(path.indexOf(current) + 1).find((key) => !disabled.has(key)),
     lastOnPath: (path, key) => path.slice(0, path.indexOf(key) + 1).reverse().find((k) => !disabled.has(k)) ?? key,
     canMove: (from, to, base) => (lifecycle ? (lifecycle.transitions[from] ?? []).includes(to) : base),
+    skipTargets: (from) =>
+      Object.entries(lifecycle?.skip_transitions[from] ?? {}).map(([target, passed]) => ({ target, passed })),
   };
 }

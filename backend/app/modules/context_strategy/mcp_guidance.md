@@ -7,6 +7,8 @@ Five artefact types, each with its own lifecycle (read the current `status` befo
 - **Pain point**: `submitted` -> `triaged` -> `accepted` -> `addressed` -> `closed`; also `rejected` or `duplicate`.
 - **Open question**: `open` -> `investigating` -> `ready_for_decision` -> `resolved`, or `withdrawn`.
 
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
+
 Read workflow: `list_<type>` then `get_<type>`; `list_<type>_relationships` shows how it connects to other artefacts. Reports (`..._report`) answer cross-cutting questions: prioritisation, strategy cascade and alignment gaps, coverage, roadmap, open question register, change history, summary, upgrade drivers.
 
 Write workflow:

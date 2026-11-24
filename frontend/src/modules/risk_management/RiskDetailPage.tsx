@@ -50,6 +50,8 @@ import { DetailCard } from "../../components/DetailCard";
 import type { ActionMenuItem } from "../../components/ActionMenu";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 
 /** Why the signed-off assessment of an accepted risk cannot be changed. */
 const ACCEPTED_LOCKED_REASON = "Locked: the rating, acceptance criteria and treatment strategy are signed off.";
@@ -163,6 +165,16 @@ export function RiskDetailPage() {
     },
   });
 
+  const skipSteps = useSkipSteps<Risk>({
+    lifecycle, current: risk?.status ?? "", labels: RISK_STATUS_LABEL, noun: "Risk",
+    move: (target, reason) => {
+      if (!projectId || !risk) return Promise.reject(new Error("This move is not available."));
+      return withLifecycleSkip(reason, () => riskApi.transition(projectId, risk.id, target as RiskStatus, ""));
+    },
+    onMoved: setRisk,
+    hidden: risk?.is_archived ?? false,
+  });
+
   if (!projectId || !riskId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (risk === null || project === null) return <Spinner />;
@@ -224,15 +236,18 @@ export function RiskDetailPage() {
           </>
         }
         onEdit={risk.is_archived ? undefined : () => setEditing(true)}
-        actions={[...moveRows, archive.item]}
+        actions={[skipSteps.menuRow, ...moveRows, archive.item]}
         lifecycle={{
           steps: lifecycle.visibleSteps(lifecycleSteps(RISK_MAIN_PATH, RISK_STATUS_LABEL, { descriptions: RISK_STATUS_DESCRIPTION }), risk.status),
           current: risk.status,
           offPath: offPathStep,
           promote,
+          skip: skipSteps.track,
         }}
       />
       {archive.dialog}
+      {skipSteps.dialog}
+
       {moveTarget && (
         <RiskTransitionDialog
           risk={risk}

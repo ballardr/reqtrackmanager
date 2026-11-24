@@ -252,7 +252,9 @@ def transition_request(
         raise ValueError("An archived request cannot change status; unarchive it first.")
     if target == _S.DUPLICATE:
         raise ValueError("A request becomes a duplicate by being merged into another request.")
-    check_move(db, request.project_id, REQUEST_ARTEFACT_TYPE, current.status.value, target.value)
+    check_move(
+        db, request.project_id, REQUEST_ARTEFACT_TYPE, current.status.value, target.value, record_id=request.id,
+    )
     changes: dict[str, Any] = {"status": target}
     if target == _S.DECLINED:
         if not comment.strip():

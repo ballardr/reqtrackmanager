@@ -2,6 +2,8 @@ Capture, triage and track enhancement requests: proposed solutions asked for by 
 
 Model: a **request** is a *solution* someone wants; a Pain Point is the *problem* it addresses. A request has a lifecycle (`new` -> `under_review` -> `accepted` -> `delivered`, or `declined`; `duplicate` is set only by merging). It lives in a project or, where the organisation allows it, in the organisation's **inbox**. It carries an owner (a user or a group) and any number of **external references** to the same work in outside tools (a Jira epic, a ServiceNow ticket). Delivery tracking itself stays in those tools.
 
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
+
 Read workflow: `product_feedback_list_requests` (filter `status`, `open_only`, `search`), then `product_feedback_get_request` for detail and `allowed_next_statuses`; `product_feedback_list_request_versions` for history and `product_feedback_list_request_comments` for the discussion. `product_feedback_get_feedback_settings` says who may submit in the project.
 
 Write workflow: `create_request` (only a title is needed) -> `update_request` (owner, description) -> `transition_request`. Link it to the Pain Point it addresses and the Requirement that realises it with the core link tools (see Problem and delivery).

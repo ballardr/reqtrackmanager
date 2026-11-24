@@ -74,7 +74,7 @@ CORE_ACTION_KINDS: dict[str, str] = {
                      "activated", "retired", "superseded", "proposed", "accepted", "archived", "unarchived", "restored",
                      "investigating", "triaged", "ready_for_decision", "addressed", "workflow_changed", "reconciled",
                      "approval_invalidated", "draft_discarded", "acknowledged", "enabled", "disabled",
-                     "treatment_needs_reassessment"), STATUS),
+                     "treatment_needs_reassessment", "steps_skipped"), STATUS),
     **dict.fromkeys(("linked", "unlinked", "relationship_added", "relationship_removed", "requirement_linked",
                      "requirement_unlinked", "action_linked", "action_unlinked", "evidence_linked", "evidence_unlinked",
                      "file_attached", "file_linked", "file_unlinked", "comment_file_attached", "comment_file_removed",

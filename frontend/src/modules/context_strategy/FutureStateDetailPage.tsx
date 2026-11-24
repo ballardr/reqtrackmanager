@@ -37,6 +37,8 @@ import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureSta
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
@@ -164,6 +166,17 @@ export function FutureStateDetailPage() {
   });
 
   const codeOwner = useRecordOwnerCode(futureState ?? {});
+  const skipSteps = useSkipSteps<FutureState>({
+    lifecycle, current: futureState?.status ?? "", labels: FUTURE_STATE_STATUS_LABEL, noun: "Future State",
+    move: (target, reason) => {
+      if (!scopeId || !futureState) return Promise.reject(new Error("This move is not available."));
+      if (target === "under_review") return withLifecycleSkip(reason, () => scopedApi.submitForReview(scopeId, futureState.id));
+      if (target === "approved") return withLifecycleSkip(reason, () => scopedApi.approve(scopeId, futureState.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setFutureState,
+  });
+
   if (!scopeId || !futureStateId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureState === null) return <Spinner />;
@@ -245,6 +258,7 @@ export function FutureStateDetailPage() {
         subtitle={futureState.target_date ? `Target date ${futureState.target_date}` : undefined}
         onEdit={futureState.is_locked ? undefined : () => setEditing(true)}
         actions={[
+          skipSteps.menuRow,
           lifecycle.canMove(futureState.status, "draft", futureState.status === "proposed" || futureState.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
           futureState.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
           futureState.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
@@ -258,6 +272,7 @@ export function FutureStateDetailPage() {
           current: futureState.status,
           offPath,
           promote,
+          skip: skipSteps.track,
         }}
       />
       {archive.dialog}
@@ -337,6 +352,8 @@ export function FutureStateDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {sendingBack && (
         <CommentConfirmDialog

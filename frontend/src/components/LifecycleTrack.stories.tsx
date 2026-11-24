@@ -40,6 +40,30 @@ export const NextStepOpensPromote: Story = {
   },
 };
 
+/** Every step the record can be moved to now is bold: the next step and each later step a skip reaches, and the latter open the Skip steps dialog. */
+export const ReachableStepsAreBold: Story = {
+  args: { skip: { to: ["approved", "completed"], onSkip: fn() } },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const weight = (name: string) => Number(getComputedStyle(canvas.getByText(name).closest(".lifecycle-step__control")!).fontWeight);
+    await expect(weight("Reviewed")).toBeGreaterThanOrEqual(600);
+    await expect(weight("Approved")).toBeGreaterThanOrEqual(600);
+    await expect(weight("Completed")).toBeGreaterThanOrEqual(600);
+    await userEvent.click(canvas.getByRole("button", { name: "Skip to Approved" }));
+    await expect(args.skip?.onSkip).toHaveBeenCalledWith("approved");
+  },
+};
+
+/** A step the record cannot be moved to stays regular weight. */
+export const UnreachableStepsAreNotBold: Story = {
+  args: { skip: { to: ["approved"], onSkip: fn() } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Skip to Completed" })).not.toBeInTheDocument();
+    await expect(Number(getComputedStyle(canvas.getByText("Completed").closest(".lifecycle-step__control")!).fontWeight)).toBeLessThan(600);
+  },
+};
+
 /** The track fills the width of its row. */
 export const FullWidth: Story = {
   play: async ({ canvasElement }) => {
