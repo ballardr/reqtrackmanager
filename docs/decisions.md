@@ -18944,7 +18944,7 @@ Frontend only. No migration, endpoint, table or seed change. A person who is sen
 
 ## Platform review 2026-11-19, Phase 2: notification targets, review (2026-11-19)
 
-Analysis phase; no code changed. The register is [docs/plans/platform-review-2026-11-19-notification-register.md](plans/platform-review-2026-11-19-notification-register.md).
+Analysis phase; no code changed. The register of every notification type and its target was a working paper, removed once its decisions were recorded here and in `docs/modules.md` §4h.
 
 - **Findings (Decided by: Agent).** Forty-three types (40 core, 3 Risk) and about 50 creation sites. The email button never opens the record (project root, or the notifications list when there is no project) and the daily digest links only to the list. Eight stage types open project administration. Seven types open nothing from the bell in at least one case, and four Compliance types open only the project root. Two creation sites lack the id needed to name a destination (an organisation-level access grant, a standard-level access grant) and one lacks the standard (a standard-level compliance review).
 - **Stage notifications open Delivery status (Decided by: User).** Delivery status gains a settings (gear) link to project administration, Stages and phases, shown only to a person who may change them (Decided by: User; the placement and permission check are Decided by: Agent). Moving a stage and setting its dates are already on that page.
@@ -18957,7 +18957,7 @@ Analysis phase; no code changed. The register is [docs/plans/platform-review-202
 
 ## Platform review 2026-11-19, Phase 3: notification targets, fixes (2026-11-19)
 
-Implements the signed-off register ([plans/platform-review-2026-11-19-notification-register.md](plans/platform-review-2026-11-19-notification-register.md)). No migration and no new table; one new read endpoint, one new core extension point and one new page.
+Implements the signed-off notification register. No migration and no new table; one new read endpoint, one new core extension point and one new page.
 
 - **One address for every surface (Decided by: Agent, extends the earlier resolver decision).** The bell, the notification list, the instant email and each item of the daily digest open `/notifications/:id` (`NotificationOpenPage`). The page loads the notification, marks it read and navigates (replacing itself in the history, so Back returns to where the person was) to the page `resolveNotificationTarget` names, or shows the full message. The bell and list previously resolved the page themselves; they now share the page, so a notification cannot open different pages depending on where it was clicked. The cost is one request on click. The digest's footer link to the list is unchanged; each item gains its own link.
 - **Target kinds are an ordered list per type, chosen by data (Decided by: Agent).** The register gave one kind per row, but `permission_granted` and the review types have several cases (project, organisation, standard) that only the notification's data tells apart, so a type declares an ordered list and the first kind whose data the notification carries wins. A notification stored before its data existed matches no kind and shows its message, never a wrong page. Core's table is `services/notification_targets.py`; the API lists `target_kinds` on every notification, so the frontend holds no second type-to-kind table.
@@ -19021,7 +19021,7 @@ The product moves from GPLv3 to the GNU Affero General Public License, version 3
 
 ## Platform review 2026-11-19, Phase 7: Org Resources, review (2026-11-19)
 
-Analysis phase; no code changed. The register is [docs/plans/platform-review-2026-11-19-org-resources-register.md](plans/platform-review-2026-11-19-org-resources-register.md).
+Analysis phase; no code changed. The classification of every Organisation Settings group and Overview section is recorded here and in `docs/modules.md` §4l11.
 
 - **Rule (Decided by: User).** Org Resources holds what the organisation owns and shares with its projects, not organisation settings. Organisation Settings keeps people, access, security, integrations, branding, modules, and the vocabularies and defaults that govern behaviour; the Organisation Overview keeps dashboards.
 - **Moves to Resources (Decided by: User):** the four modules' Overview sections (Strategy, Future State, Guiding Principle, Personas, Stakeholders, Stakeholder Groups, Request inbox, and Compliance by standard and outstanding), the whole Reports group (layouts, packs, snippets and the report configuration fields), and Tags. **Moves to Resources (Decided by: Agent, not objected to):** Architecture Elements and Collections and Decision Templates, which are records and authored content sitting in Settings.
@@ -19378,7 +19378,7 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 
 **Why.** A person adding a component or category had to invent and type a prefix every time, and a duplicate was rejected after the form was filled; the Structure page was a flat stack of inline-edit rows that could not be collapsed; and the same two-level choice was built three ways (the stack, two selects in the requirement forms and two flat filters on the requirements list).
 
-**Register and sign-off.** `docs/plans/platform-review-2026-11-19-structure-register.md` lists every place a component or category is created, edited, ordered, deleted or chosen. Signed off 2026-11-21 (**Decided by: User**) as written, with two answers to its open questions: the requirements list filter becomes the shared tree filter, and a category **can** be moved to another component (the register recommended not building it).
+**Register and sign-off.** The register listed every place a component or category is created, edited, ordered, deleted or chosen. Signed off 2026-11-21 (**Decided by: User**) as written, with two answers to its open questions: the requirements list filter becomes the shared tree filter, and a category **can** be moved to another component (the register recommended not building it).
 
 **Decided by: User.**
 - *Prefix suggested by the server, editable.* One function (`services.taxonomy.suggest_prefix`) serves the screen, the API, MCP and a create with the prefix omitted; the browser asks (`GET …/components/suggest-prefix`, `…/categories/suggest-prefix`) and never works a prefix out itself.
@@ -19445,7 +19445,7 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 
 ## Platform review 2026-11-19, Phase 25: Compliance, one home per view (2026-11-21)
 
-**Why.** Compliance showed organisation-level rows in several places: the Standards page, two Org Resources sections (By standard, Outstanding) and two Overview widgets. Outstanding is a to-do list over projects, not something shared with projects, and standards are an entity of their own (a nav entry and a workspace) that the two views read across. Register: [platform-review-2026-11-19-compliance-register.md](plans/platform-review-2026-11-19-compliance-register.md) (seven surfaces; no rows duplicated except one standard's Projects section against its By standard row).
+**Why.** Compliance showed organisation-level rows in several places: the Standards page, two Org Resources sections (By standard, Outstanding) and two Overview widgets. Outstanding is a to-do list over projects, not something shared with projects, and standards are an entity of their own (a nav entry and a workspace) that the two views read across. Register (seven surfaces; no rows duplicated except one standard's Projects section against its By standard row).
 
 **Decided by: User.**
 - The two cross-project views become **tabs of the Standards page** (Standards, By standard, Outstanding), not Org Resources sections and not Overview widgets. The user first said Outstanding belongs on the Overview only, then chose the Standards page tab among the alternatives offered ("they are perpendicular to each other, rather than being parts of projects directly"); the same applies to By standard.
@@ -19466,7 +19466,7 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 
 ## Platform review 2026-11-19, Phase 26: Stakeholder Groups page alignment (2026-11-21)
 
-**Why.** The Stakeholder Groups panel (Org Resources and the project page share it) was visibly unaligned: every group name was its own bordered button sized to its text, so the code, member count, badges and five icon buttons began at a different position on every row, and the members were a bulleted list with a bare "Remove" button. The register is `platform-review-2026-11-19-stakeholder-groups-register.md`.
+**Why.** The Stakeholder Groups panel (Org Resources and the project page share it) was visibly unaligned: every group name was its own bordered button sized to its text, so the code, member count, badges and five icon buttons began at a different position on every row, and the members were a bulleted list with a bare "Remove" button. The review's result is the layout described below.
 
 **Decided by: User** (answers to the review questions, 2026-11-21).
 - The tree becomes the shared `FolderTreeList` grid (Name, Code, Members, Scope in a project, Rule), with the selected group's members **below** the grid, not in a side panel.
@@ -19543,7 +19543,7 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 
 ## Platform review 2026-11-19, Phase 30: Architecture elements and collections, and the page actions menu (2026-11-22)
 
-**Problem.** The organisation Architecture page drew three folder buttons (New, Edit, Delete) under a bare Folders box, three buttons per element row and two per collection card; the project Elements page had a Sharing link-button, an Interchange menu button, New element and the List actions kebab. See [the register](plans/platform-review-2026-11-19-architecture-register.md).
+**Problem.** The organisation Architecture page drew three folder buttons (New, Edit, Delete) under a bare Folders box, three buttons per element row and two per collection card; the project Elements page had a Sharing link-button, an Interchange menu button, New element and the List actions kebab. The one-menu rule is the style guide's "Pattern: page actions menu".
 
 **Decided by: User.**
 - *The rule:* a page or list has at most one primary button; every other action is a row of its one actions menu (`CLAUDE.md`, the style guide's "Pattern: page actions menu").
@@ -20082,7 +20082,7 @@ Raised while trying service users: in Organisation Settings, People, **Add user*
 - **Design (Decided by: Agent):** `RecordHeader` takes `lifecycle` (`steps`, `current`, `offPath`, `promote`) and loses `transitions` and `stateMenu`. A page declares the main path with `lifecycleSteps(order, labels, { descriptions, locked })` and adds one `offPath` end step for a branch state, so no core file holds a per-module state list. `promote` is `{ to, onPromote }` or `{ to, blockedReason }`; `onPromote` runs the type's own approval or comment dialog, so Promote never skips an approval gate. Every other move is a row of the actions menu, absent when not allowed. The track collapses to "Step n of m" with a popover when it does not fit. Tints are theme tokens (`color-mix` of the primary colour), so both themes derive them.
 - **Not a lifecycle (Decided by: Agent):** an Action's outcome (a free choice among Pending, Completed and Failed, with no path) stays a select; Compliance evidence "Revalidate" is a row of its actions menu.
 - **Consequence to watch (Decided by: User, noted by Agent):** with the badge removed from lists, a list row no longer shows that a requirement is locked; the status badge (Approved) is the remaining signal there.
-- **Inventory:** [platform-review-2026-11-19-lifecycle-register.md](plans/platform-review-2026-11-19-lifecycle-register.md) lists each type's main path, off-path states, Promote, menu rows, locked states and dialogs. Lock reasons and a few menu labels ("Activate directly", "Return to draft", "Mark as", "Reopen as draft") were worded by the implementing agents and are open to correction.
+- **Inventory:** the register listed each type's main path, off-path states, Promote, menu rows, locked states and dialogs. Lock reasons and a few menu labels ("Activate directly", "Return to draft", "Mark as", "Reopen as draft") were worded by the implementing agents and are open to correction.
 - **Guard:** `scripts/check_lifecycle_track.py` (pinned by `backend/tests/test_lifecycle_track_guard.py`, empty baseline) fails `transitions=` or `stateMenu=` on `RecordHeader`.
 - **Tests:** Storybook for the track (next step opens Promote, full width, locked, not permitted, branch, narrow, in a header, long text) and every converted page; Playwright `lifecycle-track.spec.ts` and the updated requirement, change request and module lifecycle specs through the shared helpers (`promoteTo`, `expectCurrentStep`, `expectRecordLocked`, `chooseRecordMenuAction`).
 - **Docs:** the style guide's "Pattern: lifecycle track and Promote", the `CLAUDE.md` rule, and the website pages on authoring requirements, change requests and the record actions menu.
@@ -20196,7 +20196,7 @@ The Stakeholders record lists (`RecordListView`: People, Personas, Stakeholders,
 
 ### Phase 71 (platform review): every list of five or more columns offers a column chooser
 
-Every `DirectoryTable` list with five or more data columns passes its columns through `useOptionalColumns`, so a person shows the columns their work needs and a rarely needed one (the Diagrams Switches count) starts hidden. The register of every list, its always-on, optional and default-off columns is `docs/plans/platform-review-2026-11-19-columns-register.md`.
+Every `DirectoryTable` list with five or more data columns passes its columns through `useOptionalColumns`, so a person shows the columns their work needs and a rarely needed one (the Diagrams Switches count) starts hidden. Each list's always-on, optional and default-off columns are declared on its columns.
 
 - **Decided by: User** (gate, 2026-11-24): the threshold is **five or more** data columns (the plan's recommendation was more than five); the register's defaults are approved as drafted; Requirements and Change Requests move onto `DirectoryTable` in this phase; the rule is written into `CLAUDE.md` and the style guide.
 - **Build (Decided by: Agent):** 27 lists converted (26 existing and the two moved ones, with Diagrams the first). `DirectoryTable` gained `rowAccent` (the record type's accent stripe) so the two moved lists keep it; their bulk selection uses `DirectoryTable`'s `selection`, their Components and References columns its `placements`, and the hand-written select-all indeterminate effect was removed. The Requirements References column is an optional column drawn only when a row has a reference. Each list has its own `ui_preferences` key (`column_choice_<key>`); about 30 keys against the 200-key limit.
@@ -20246,3 +20246,11 @@ The Specs tiles cut a requirement's text by hand at 140 characters and showed it
 - **Review (identify, verify, remediate):** display only; no authorization, logging, data-handling or tenant-isolation change; no new endpoint, field or stored value; an equation is drawn through the existing `MathEquation` (KaTeX with `trust: false` and a DOMPurify pass), and the summary inserts no other markup.
 - **Tests:** Storybook for `MarkdownSummary` (marks removed, every mark read as words, inline and display equations drawn at inline size, no math when not asked, a refused equation shown as written, a tall equation within the clamp, plain-text tooltip, empty text, `LongText` with `expectStressStable`), `markdownPlain` (parts agree with the plain text, parts in order, a limit), the Specs tile, the Open Questions list, Risk treatments and the change request page; Playwright `markdown-everywhere.spec.ts` (the tile and the detail page show the same words, the tile has no marks and draws the equation).
 - **Docs:** the style guide's Markdown "Lists and notifications" bullet, the CLAUDE.md long-text rule, the website's view-mode paragraph, and this entry. Seed data: the demo requirements already carry Markdown descriptions with equations.
+
+### Phase R and Phase D (platform review): sign-off and register clean-up (2026-11-25)
+
+- **Sign-off (Decided by: User, 2026-11-25).** The user reviewed phases 1 to 73 as one result and approved moving on; the review raised no further phase.
+- **Registers removed (Decided by: User, 2026-11-25).** The eight `platform-review-2026-11-19-*-register.md` working papers were reconciled with the built result, then deleted because they will not be used again. What was durable is in `docs/modules.md` §4h (notification target kinds, `subject_available`) and §4l11 (Org Resources, the Settings, Resources and Overview rule, Compliance's status tabs, which read every organisation by default), the style guide (structure tree, column chooser, page actions menu, lifecycle track) and the code (`CORE_NOTIFICATION_TARGETS` and each module's `notification_targets`, `orgResourceSections`, `services/taxonomy.py`, each column's `optional` and `defaultHidden`, each type's lifecycle). Org Resources after the review: 15 core Settings groups (Reports and Tags moved to Resources, Lifecycles added) and the module record lists, libraries and templates as Resources. Open gap kept (recorded under Phase 71): Projects, Favourites, Actions, Reviews due and the organisation Compliance standards panel draw their own `<table>` with five or more columns and offer no column chooser; the user limited that phase to Requirements and Change Requests.
+- **Corrections (Decided by: Agent).** `modules.md` §4l11 said the Compliance status tabs open on the first organisation; they open on every organisation. The style guide named Compliance by standard as an Org Resources section; it is a tab of the Standards page.
+- **References.** Earlier entries that cited a register now say what it held; no source file or SOC 2 document cited one.
+- **Review table.** No code, schema, endpoint or permission changed: documentation only. Seeds, tests and website: unchanged (phase W covers the website).

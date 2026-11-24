@@ -1015,7 +1015,10 @@ flowchart LR
   the one browser resolver (`modules/notificationTargets.ts`): it tries the
   type's kinds in order and opens the first whose data the notification carries
   (the `record` kind opens the record through the owning module's
-  `artefactPaths`), else shows the full message. A kind only the module can
+  `artefactPaths`), else shows the full message. `GET /notifications/{id}`
+  returns `subject_available` (false for a project the person can no longer open,
+  by `link_nesting.can_open_project`, or an organisation they have left), and the
+  detail page then states that access ended instead of ending on an error. A kind only the module can
   open goes in `ModuleDefinition.notification_target_kinds` with a resolver on
   `TierAModuleDefinition.notificationTargets`; kinds for a type that core's enum
   defines but the module owns (Compliance's) go in
@@ -1438,7 +1441,7 @@ Org Resources (`/orgs/:orgId/resources/:group?/:section?`, `pages/OrgResourcesPa
 
 #### Compliance's status views
 
-The organisation-wide Compliance views (By standard, Outstanding) are tabs of the Standards page (`/standards`, `/standards/by-standard`, `/standards/outstanding`; `modules/compliance/ComplianceStatusPage.tsx`, `StandardsTabs.tsx`), not Org Resources sections: standards are an entity of their own beside projects, and these are cross-project views of them. Each tab is a `ListPageLayout` with an Organisation filter (shown only for a person who may read the status of more than one organisation, `?org=`, first one by default) and every other filter in the address, so the summary widget's tiles open the tab already narrowed. `GET /api/v1/compliance/nav-visibility` returns `status_organization_ids`, the organisations where the caller holds the Compliance Manager gate those endpoints enforce; the tab strip and the filter list only those.
+The organisation-wide Compliance views (By standard, Outstanding) are tabs of the Standards page (`/standards`, `/standards/by-standard`, `/standards/outstanding`; `modules/compliance/ComplianceStatusPage.tsx`, `StandardsTabs.tsx`), not Org Resources sections: standards are an entity of their own beside projects, and these are cross-project views of them. Each tab is a `ListPageLayout` with an Organisation filter (shown only for a person who may read the status of more than one organisation, `?org=`; no choice reads every organisation, and Export needs one chosen) and every other filter in the address, so the summary widget's tiles open the tab already narrowed. `GET /api/v1/compliance/nav-visibility` returns `status_organization_ids`, the organisations where the caller holds the Compliance Manager gate those endpoints enforce; the tab strip and the filter list only those.
 
 ```mermaid
 flowchart LR
