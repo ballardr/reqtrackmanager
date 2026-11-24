@@ -89,6 +89,14 @@ const en = {
     // Badge distinguishing a project-group match (local to this project) from an organisation-group match.
     projectGroupBadge: "Project group",
   },
+  principalBadge: {
+    // Spoken and tooltip description of a group: its kind, then how many people it stands for.
+    groupDetail: (kind: string, members: number | null) =>
+      members === null ? kind : `${kind}, ${members} ${members === 1 ? "member" : "members"}`,
+    // A group that no longer exists but is still named by a history row.
+    deletedGroupDetail: (kind: string) => `${kind}, deleted`,
+    deleted: "Deleted",
+  },
   signup: {
     title: "Create an account",
     displayName: "Display name",

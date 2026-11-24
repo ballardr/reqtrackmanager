@@ -58,7 +58,7 @@ export const TabLabelShowsTheCount: Story = {
     await userEvent.click(await canvas.findByRole("tab", { name: "Watching (2)" }));
     await expect(canvas.getByText("Platform Team")).toBeVisible();
     await expect(canvas.getByText("Alex Morgan")).toBeVisible();
-    await expect(canvas.getByText("Organisation group · 4 members")).toBeVisible();
+    await expect(canvas.getByText("Organisation group, 4 members")).toBeVisible();
     await expect(canvas.getByRole("button", { name: "Stop watching: Alex Morgan" })).toBeInTheDocument();
   },
 };

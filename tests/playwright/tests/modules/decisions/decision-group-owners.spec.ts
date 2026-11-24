@@ -74,10 +74,12 @@ test.describe("Decision Management: groups as owners and decision makers", () =>
     await dialog.getByRole("option", { name: new RegExp(squadName) }).click();
     await dialog.getByRole("button", { name: "Save" }).click();
 
-    // The list's Owner column names the group with its kind and size.
+    // The list's Owner cell is the group's icon and name on one line; the kind and size are its accessible name.
     const row = page.getByRole("row", { name: /DEC-001/ });
     await expect(row.getByText(groupName)).toBeVisible();
-    await expect(row.getByText("Organisation group · 1 member")).toBeVisible();
+    await expect(row.getByText("Organisation group, 1 member")).toHaveClass(/sr-only/);
+    const ownerCell = row.getByRole("cell").filter({ hasText: groupName });
+    await expect(ownerCell.locator(".badge")).toHaveCount(0);
 
     // The Decision page shows both the owner group and the decision-maker group.
     await page.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();

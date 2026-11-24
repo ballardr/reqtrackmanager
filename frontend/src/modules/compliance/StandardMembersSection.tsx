@@ -10,15 +10,16 @@
  * - Add-member uses `UserAutocomplete`: debounced server-side search over the organisation's users (`organizationId` set) plus
  *   organisation-group matching (`groups`/`onSelectGroup`), as `OrgAdminPage.tsx`'s manage-users add flow (`addManageUsersGroupRole`
  *   -> `POST .../group-roles`). `onSelectExternal` is unwired: no external Standards-Contributor invite is supported.
- * - The roster has a second row kind for group grants (`ComplianceStandardGroupMember`), marked with the `Users` icon and the
- *   "Organisation group" badge `UserAutocomplete` uses. It lists the standard's direct grants (user or group), not every user a
- *   group reaches.
+ * - The roster has a second row kind for group grants (`ComplianceStandardGroupMember`), drawn with `PrincipalBadge` (the
+ *   group icon, with the kind and member count in its tooltip). It lists the standard's direct grants (user or group), not every
+ *   user a group reaches.
  */
-import { UserPlus, Users } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { useRef, useState } from "react";
 
 import type { OrgGroup, OrgUser } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { MultiSelectDropdown } from "../../components/MultiSelectDropdown";
 import { Popover } from "../../components/Popover";
 import { Spinner } from "../../components/Spinner";
@@ -33,7 +34,6 @@ import {
   type ComplianceStandardMembers,
   type ComplianceStandardRoleKey,
 } from "./types";
-import { Badge } from "../../components/Badge";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useSortState } from "../../hooks/useTableSort";
@@ -52,7 +52,7 @@ type Row = { kind: "user"; member: ComplianceStandardMember } | { kind: "group";
 /** Sortable value of each sortable column; a group's Email cell shows its member count, so that text orders it. */
 const MEMBER_SORT_VALUES: Record<string, (row: Row) => SortValue> = {
   name: (row) => (row.kind === "user" ? row.member.display_name : row.group.group_name),
-  email: (row) => (row.kind === "user" ? row.member.email : `${row.group.member_count} member${row.group.member_count === 1 ? "" : "s"}`),
+  email: (row) => (row.kind === "user" ? row.member.email : ""),
 };
 
 export function StandardMembersSection({
@@ -160,10 +160,9 @@ export function StandardMembersSection({
         row.kind === "user" ? (
           row.member.display_name
         ) : (
-          <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
-            <Users size={14} aria-hidden="true" />
-            {row.group.group_name} <Badge>Organisation group</Badge>
-          </span>
+          <PrincipalBadge
+            principal={{ type: "org_group", id: row.group.org_group_id, label: row.group.group_name, member_count: row.group.member_count, exists: true }}
+          />
         ),
     },
     {
@@ -171,9 +170,7 @@ export function StandardMembersSection({
       label: "Email",
       sortable: true,
       render: (row) =>
-        row.kind === "user"
-          ? row.member.email
-          : `${row.group.member_count} member${row.group.member_count === 1 ? "" : "s"}`,
+        row.kind === "user" ? row.member.email : "—",
     },
     {
       key: "roles",

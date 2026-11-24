@@ -188,7 +188,7 @@ export const EditExisting: Story = {
     await expect(body.queryByLabelText("Start from a template")).not.toBeInTheDocument();
     // The existing group owner shows its name, kind and member count.
     await expect(body.getByText("Platform Architecture")).toBeInTheDocument();
-    await expect(body.getByText("Organisation group · 2 members")).toBeInTheDocument();
+    await expect(body.getByText("Organisation group, 2 members")).toBeInTheDocument();
   },
 };
 

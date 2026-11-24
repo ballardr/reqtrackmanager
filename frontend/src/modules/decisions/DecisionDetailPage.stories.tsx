@@ -86,7 +86,7 @@ export const UnderReviewShowsPromoteToApprovedAndReject: Story = {
     await expect(await recordActionNames(canvas, "Decision")).toEqual(["Promote to Approved", "Reject", "Archive"]);
     // Owner (a group, with its kind and size) and decision maker (a user) are shown.
     await expect(canvas.getByText("Platform Architecture")).toBeInTheDocument();
-    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument();
     await expect(canvas.getByText("Alex Morgan")).toBeInTheDocument();
   },
 };
