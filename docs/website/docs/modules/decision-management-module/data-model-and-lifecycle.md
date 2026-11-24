@@ -33,6 +33,11 @@ flowchart TD
 | `decision_maker` | Who actually made (or is expected to make) this specific decision — a user, an organisation group or a project group, and optional. Distinct from who may *approve* it (the Decision Approver role) and from who owns the record. |
 | `owner` | Who maintains the record — a user, an organisation group or a project group, so a team can own a Decision instead of a nominee. Required; defaults to the person creating it. |
 | `context` / `options_considered` / `chosen_option` / `rationale` / `consequences` / `assumptions` / `constraints` | Free-text fields capturing the reasoning — rationale and consequences are deliberately kept as separate fields rather than folded into one description, so "why we chose it" and "what it costs us" can each be read on their own. |
+| `document` | The decision written out in full, for an ADR or a longer argument that does not fit the sections above. Empty by default, and shown as its own card on the Decision page only when it has text. Up to 200,000 characters (each section: 50,000). |
+
+### Writing a Decision
+
+The statement, the seven sections and the Document are [Markdown](../../core-features/writing-with-markdown.md): headings, lists, tables, code, equations and [Mermaid diagrams](../../core-features/writing-with-markdown.md#diagrams) are drawn on the Decision page, in reports and in exports, so a Decision can hold a sequence diagram or a comparison table. The title stays plain text. The Document is locked with the rest once the Decision is approved, and file attachments remain for documents made elsewhere. A list, the search results and the four Decision reports show a text field as its words without marks, and the CSV keeps the Markdown.
 
 ### Groups as owners
 
@@ -47,7 +52,7 @@ Once a Decision reaches **Approved** or **Superseded**, every content field abov
 | An Approved Decision's detail view |
 | --- |
 | Content fields and the locked-attachments notice on an Approved Decision, with its Supersedes link in the Links panel |
-| ![Detail view of an Approved Decision showing its content fields, a notice that attachments can no longer be added, and a Links panel with a "Supersedes" link to an earlier Decision](../../../static/img/screenshots/decision-detail.png) |
+| ![Detail view of an Approved Decision with its lifecycle track, its content fields and a Links panel with a "Supersedes" link to an earlier Decision](../../../static/img/screenshots/decision-detail.png) |
 
 ## Supersession
 

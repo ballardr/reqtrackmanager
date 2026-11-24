@@ -13,6 +13,7 @@ A requirement's **keywords** are its tags: the same labels, the same list.
 Open a record. Under its title, after its status and version, is one row holding the record's tags, components and external references, followed by a single small **+** button, if you may tag that kind of record (the same people who may edit it; a decision or a risk needs the **Manage** permission on it, see [Role Management](role-management.md)). The menu lists only what you can add: a requirement has no component row, because its components are set in its own **Component** field and on its **Components** card.
 
 - Select the **+** (its name lists what the menu offers, for example "Add tag or external reference") and choose **Add tag** to open a small box. Type to see the project's tags and pick one, or press **Enter** (or type a comma) to add what you typed. The box stays open after each tag, so you can add several in one go; select **Done**, press **Escape** or click elsewhere to close it. Remove a tag with the **×** on its chip.
+- Choose **Add external reference** to point the record at an item in another tool; see [External references](./external-references.md).
 - A create form has its own **+** on the **Tags** line.
 - A change is saved at once, and appears in the record's **Activity** tab ("Alex added the tag Safety").
 - Tags are not part of a record's content, so you can tag an approved requirement without a change request.
@@ -60,11 +61,15 @@ Every change is recorded in the audit trail, and a bulk change also appears in e
 flowchart LR
     P["Parent project<br/>has tags"] --> C["Child project with no tags of its own<br/>uses the parent's list and setting"]
     C --> D["First tag the child adds<br/>starts a list of its own"]
-    O["Organisation<br/>Org admin → Tags"] --> R["Records the organisation owns<br/>(personas, strategies …)"]
+    O["Organisation<br/>Organisation resources → Tags"] --> R["Records the organisation owns<br/>(personas, strategies …)"]
 ```
 
 - A child project that has no tags of its own uses its nearest parent project's tags and setting. The parent manages that list; the child sees it read-only. The first tag the child itself adds starts a list of its own; records keep the parent's tags they already carry. A project's own setting (or **Follow the parent project**) overrides the parent's.
-- Records the **organisation** owns (an organisation persona, stakeholder, strategy and so on) use the organisation's tags, kept under **Org admin → Tags**, not a project's. Organisation admins have the same tools there, and a setting for who may add a new tag. You tag such a record from any project that shows it.
+- Records the **organisation** owns (an organisation persona, stakeholder, strategy and so on) use the organisation's tags, kept under **Organisation resources → Tags**, not a project's. Organisation admins have the same tools there, and a setting for who may add a new tag. You tag such a record from any project that shows it.
+
+| The organisation's own tags, under Organisation resources → Tags |
+| --- |
+| ![Tags section of Organisation resources with the section list on the left and the organisation's tag settings](../../static/img/screenshots/org-resources-tags.png) |
 
 ## Moving tags between projects
 

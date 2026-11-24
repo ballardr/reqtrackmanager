@@ -146,6 +146,14 @@ What triggers a transition in a state machine diagram, such as `overpressure`. S
 
 What happens each time a state is left, for example "stop the motor". It is drawn as an `exit /` line in the state. It is text for readers and is never run. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
+#### External reference
+
+A pointer from a record to an item in another tool, made of a system, a key and an optional link, role and note, for example the Jira ticket `PROJ-123` a requirement came from. Every record type can carry them. See [External references](../core-features/external-references.md).
+
+#### External system
+
+An outside tool (Jira, ServiceNow, GitHub or your own) that an external reference names, kept as a list by the organisation that each project can add to or hide from. A system can have a **link template**, an address with `{key}` in it that turns a bare key into a link. See [External references](../core-features/external-references.md#the-list-of-systems).
+
 #### Final state
 
 The ringed dot where a state machine diagram ends. A final state has no outgoing transitions and can carry a symbol label, text drawn inside the ring or beside it. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
@@ -206,6 +214,14 @@ What happens once a requirement reaches Approved or Completed: its edit form dis
 
 The colour of the band behind an organisation's or the platform's logo and name, so a logo that is white on a transparent background stays visible and the name reads as part of the logo. Its **Logo band text colour** sets the name's colour (empty is black or white by contrast). It is drawn across the top of the sign-in card, in the header of outgoing email and (once a colour is chosen) behind the logo on reports. Unset, it is the colour of the application's top bar. See [Server administration](../workflows/server-administration.md#server-management) and [Administering an organisation](../workflows/administering-an-organisation.md).
 
+#### Markdown
+
+The text format of every long text field: plain text with a few marks for headings, lists, tables, links, equations and diagrams. It is edited in a Visual, Write or Preview view. See [Writing with Markdown, equations and diagrams](../core-features/writing-with-markdown.md).
+
+#### Mermaid diagram
+
+A diagram written as text in a fenced `mermaid` block of a Markdown field and drawn as a picture on the page and in reports. See [Diagrams](../core-features/writing-with-markdown.md#diagrams).
+
 #### Module
 
 A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
@@ -225,6 +241,10 @@ The top-level container, owning users, groups, branding, SSO configuration, and 
 #### Organisation code
 
 A short upper-case code (letters and digits, no hyphen) that goes in front of the codes of records the organisation itself owns, such as `ACME-PER-001`. It never equals a project code in the organisation. See [Administering an organisation → Organisation code](../workflows/administering-an-organisation.md#organisation-code).
+
+#### Organisation resources
+
+The page where an organisation keeps what it owns and shares with its projects: the record lists of its modules, report layouts and tags. It sits beside Organisation settings, which holds configuration only. See [Administering an organisation](../workflows/administering-an-organisation.md#settings-resources-and-the-overview).
 
 #### Organisation role
 
@@ -293,6 +313,10 @@ A relation between two connections on different layers of the model: the connect
 #### Record code
 
 The short name of a record, such as `REQ-001` (requirement), `PP-001` (pain point), `OQ-001` (open question), `NEED-001` (stakeholder need), `EVD-001` (compliance evidence), `CR-001` (change request), or `PER-001` (Persona), `STK-001` (Stakeholder), `SGP-001` (Stakeholder group), `STR-001` (Strategy), `FUT-001` (Future State) and `GP-001` (Guiding Principle). Numbered per project, or per organisation for a record the organisation owns, and never reused. See [Qualified code](#qualified-code) for the form that is unambiguous across projects.
+
+#### Record code prefix
+
+The letters new records of a type are numbered with, such as `ADR` in `ADR-006`. An organisation or a project can choose it for each record type; records already issued keep their codes. See [Record code prefixes](../workflows/administering-an-organisation.md#record-code-prefixes).
 
 #### Requirement version
 

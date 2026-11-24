@@ -11,7 +11,7 @@ For example, a project team choosing between two authentication approaches recor
 | The Decisions list |
 | --- |
 | A project's Decisions, filterable by status and type — a mix of Superseded, Approved, and Draft in this example (clear **Open only** to see the Approved and Superseded ones) |
-| ![Decisions list for a project showing three Decisions in Superseded, Approved, and Draft status, with type and owner columns](../../../static/img/screenshots/decision-list.png) |
+| ![Decisions list for a project with Open only cleared, showing five Decisions in Superseded, Approved, Draft, Under review and Proposed status, with type and owner columns](../../../static/img/screenshots/decision-list.png) |
 
 The list opens on Decisions still to be made (Draft, Proposed and Under review): **Open only** is ticked, and clearing it adds the Approved, Rejected and Superseded ones. A link that names a status opens the list with that status and **Open only** off.
 
@@ -71,11 +71,11 @@ A **Decision Template** is an org-scoped, opt-in preset of guidance text applied
 | **MADR (Markdown Architectural Decision Records)** | The fuller ADR format — decision drivers, considered options, and pros/cons. |
 | **Y-Statement** | The compressed, single-sentence ADR form. |
 
-An organisation can also define its own custom templates alongside (or instead of) the seeded packs.
+An organisation can also define its own custom templates alongside (or instead of) the seeded packs. Templates are kept under **Organisation resources → Decision templates**, because they are authored content the organisation shares with its projects.
 
 | Managing an organisation's Decision Templates |
 | --- |
-| The org-scoped Decision Templates list, from Organisation Management |
+| The org-scoped Decision Templates list, under Organisation resources |
 | ![Decision Templates list for an organisation showing Nygard, MADR, and Y-Statement templates with their descriptions](../../../static/img/screenshots/decision-templates.png) |
 
 | Picking a template at creation time |

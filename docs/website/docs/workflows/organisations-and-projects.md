@@ -14,6 +14,10 @@ Click **Organisation settings** at the foot of the nav's Global section (or reac
 
 Organisation administrators choose **Customise** to place, resize, add and remove widgets with the same editor as a project, and the **Manage dashboards** icon beside the title adds further pages, renames, reorders and deletes them. A page can be limited to chosen people or organisation groups; anyone else does not see it in the menu, and its address returns them to the Overview. Organisation administrators always see every page. Like the organisations list above, it resolves straight to your one organisation if that's all you belong to. The **Organisation files** icon beside the title opens a list of the files of every project you can open (see [Organisation files](../core-features/file-attachments-and-shared-resources.md#organisation-files)). The **Organisation settings** icon beside the title opens [Organisation administration](./administering-an-organisation.md); the settings sections there are available according to your role.
 
+## Organisation resources
+
+**Organisation resources** in the nav, beside **Organisation overview**, holds what the organisation owns and shares with its projects: the record lists of the enabled modules, **Reports** and **Tags**. Organisation administrators use **Organisation settings** for configuration. See [Administering an organisation → Settings, resources and the overview](./administering-an-organisation.md#settings-resources-and-the-overview).
+
 ## Browsing and finding projects
 
 Open **Projects** in the nav. The list is filterable by active/archived status, by your role on the project, by the project's current stage status, and — if you belong to more than one organisation — by which organisation it's in, and is searchable by name or summary. Each card shows the project's organisation and how many requirements it currently has.

@@ -24,6 +24,18 @@ On every record's page (a requirement, action, change request, or a module recor
 
 A record that has states also shows its **lifecycle track** under the title, described in [The lifecycle track and Promote](#the-lifecycle-track-and-promote). You only see the menu items you are allowed to use; if you have none, there is no menu.
 
+## How a record page is laid out
+
+Every record page (a requirement, a Decision, a Risk, a Stakeholder and the rest) follows the same order, so the same card is in the same place on every page:
+
+1. The header: the title with the record's code after its last word, the [lifecycle track](#the-lifecycle-track-and-promote), the row of tags, components and [external references](../core-features/external-references.md) with its single **+**, and the actions menu.
+2. The record's own details, then the cards most relevant to the record's purpose (the Actions card on a requirement, for example).
+3. Organising information: Components and codes.
+4. Supporting information: Versions, Attachments and Evidence.
+5. **Comments** or **Discussion**, last, because a thread grows long.
+
+The page opens from a list at the place you left it: **Back** (labelled with the list's name, for example **Pain Points**) returns to the same rows at the same scroll position, filters and order. A record that cannot be loaded says so instead of showing a spinner.
+
 ## The lifecycle track and Promote
 
 A record with states (a requirement, change request, Decision, Risk, Persona and the like) shows a row of steps across the page under its title:
@@ -35,9 +47,17 @@ A record with states (a requirement, change request, Decision, Risk, Persona and
 - A padlock on the next step means you do not have permission to promote the record; the server checks the permission in every case.
 - On a narrow screen the track shows the current step and its position ("Step 2 of 4"); press it to see the whole track.
 
+| A Decision with its lifecycle track and the Promote popover on the next step |
+| --- |
+| ![Decision header with a track of Draft, Proposed, Under review and Approved steps and a popover offering to promote the record to Proposed](../../static/img/screenshots/lifecycle-promote.png) |
+
 ## Browsing every file in a project
 
-A project's **Files** page lists every file the project holds — attached to requirements, change requests and actions, on discussion comments, and in the report image library — in one combined list with previews, since a file has no single natural home of its own otherwise. Its filter panel narrows the list by file name, source, type, uploader and upload day; see [File attachments](../core-features/file-attachments-and-shared-resources.md#project-files).
+A project's **Files** page lists every file the project holds — attached to requirements, change requests and actions, on discussion comments, and in the report image library — in one combined list with previews, since a file has no single natural home of its own otherwise. Its filter panel narrows the list by file name, source, type, uploader and upload day; see [File attachments](../core-features/file-attachments-and-shared-resources.md#project-files). Press a picture's thumbnail to open a larger preview with the file name, a **Download** link and **Escape** to close; a file that is not a picture shows its type icon without a backdrop.
+
+| A picture's preview, opened from its thumbnail |
+| --- |
+| ![Preview dialog showing the picture bench-test-rig.png with a Download link and a close button](../../static/img/screenshots/picture-preview.png) |
 
 | Project files |
 | --- |

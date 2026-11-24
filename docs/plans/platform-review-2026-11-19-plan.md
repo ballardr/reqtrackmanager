@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 73, R and D done 2026-11-22 to 2026-11-25; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 73, R and D are done; phases 60 to 73 came from the review of 2026-11-24 (the user works them individually); W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 73, R, D and W done 2026-11-22 to 2026-11-25; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 73, R and D are done; phases 60 to 73 came from the review of 2026-11-24 (the user works them individually); S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-75 / 78 phases complete.
+76 / 78 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -85,7 +85,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 73 | Tile cards: Markdown text shown as plain text, equations drawn | The Specs tiles show a requirement's reasoning with its Markdown marks, cut by hand at 140 characters; they show plain text with equations drawn, through one shared summary component and the shared clamp, and every other place that shows a Markdown field raw is found and fixed | [x] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 73 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [x] |
 | D | Register clean-up | Each phase register was reconciled with the reviewed result, what is durable moved into the permanent docs and the code, and the eight registers removed (decided 2026-11-25); gates W | [x] |
-| W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
+| W | Website content | Update `docs/website/` for every user-visible change above, after the review | [x] |
 | S | Security review | Dependabot, CodeQL, `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, image scan; identify → verify → remediate on touched areas | [ ] |
 | C | Local CI test review | Every job in `.github/workflows/` run locally before the pull request exists | [ ] |
 
@@ -1072,6 +1072,7 @@ Five items from the user's review, each checked against the code (findings in ea
 
 - Review `docs/website/docs/` and update, with Mermaid diagrams where they clarify: signing in and return, notifications (what each opens), the Policies and Licences area and the licensing page, Org Resources versus Organisation Settings, record codes and per-project overrides, requirements in several components, external references and systems, writing with Markdown and Mermaid, Decisions documents, the glossary, and the Decisions and settings reference. Check `docs/user-guide.md`, `docs/modules.md`, `docs/mcp-server.md`, `docs/solution-architecture.md`, README and the performance pages if a measured number moved (a new core table and a lookup on every create).
 - Tests: the docs build and link check.
+- **Done 2026-11-25** (account in `docs/decisions.md`, "Phase W"): two new core pages (External references; Writing with Markdown, equations and diagrams), Org Resources against Settings, record code prefixes, notification targets, return after sign-in, the Structure tree, Decisions documents, record page order and the stale locations found fixed; `npm run build`, `check_doc_links.py` and the Mermaid parser pass. The performance pages are unchanged (no measured figure moved). The website screenshots were retaken and new ones added (the report designer and report output images were not, see the decision entry).
 
 ### Phase S — Security review
 

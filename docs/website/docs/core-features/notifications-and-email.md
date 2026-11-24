@@ -6,7 +6,7 @@ sidebar_position: 6
 
 ## In-app notifications
 
-The bell icon in the top bar shows recent notifications — project joins, stage transitions, change-request activity, password changes, permission grants, and more — with an unread-count badge. Clicking a notification marks it read and, for anything about a specific requirement, change request, or project, jumps straight to it; **Mark all read** clears every unread one without navigating anywhere. The full notification history — searchable, not limited to the dropdown's recent slice — lives on the **Notifications** page in the nav's Global section.
+The bell icon in the top bar shows recent notifications — project joins, stage transitions, change-request activity, password changes, permission grants, and more — with an unread-count badge. Clicking a notification marks it read and, for anything about a specific requirement, change request, or project, jumps straight to it; **Mark all read** clears every unread one without navigating anywhere. Every surface (the bell, the Notifications page, the email and the daily digest) opens the notification at one address, which marks it read and goes to the page it concerns; see [Workflows → Notifications](../workflows/notifications.md#what-a-notification-opens) for what each type opens. The full notification history — searchable, not limited to the dropdown's recent slice — lives on the **Notifications** page in the nav's Global section.
 
 A notification that names a record (a change request, a risk review, a requirement review, expiring evidence) carries its [qualified code](../reference/glossary.md#qualified-code), for example `ACME-CR-003 Wider doors`, because the list shows no project beside it.
 

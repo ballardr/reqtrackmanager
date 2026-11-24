@@ -34,6 +34,8 @@ Twenty-two read tools, always available:
 | `list_tags` | The project's tag vocabulary with usage counts, and whether new tags are free or limited to the list |
 | `get_artefact_tags` | The tags on one record of any type, whether the caller may change them, and the tags to choose from |
 | `find_artefacts_by_tag` | Records of every type that carry some tags (any or all), limited to those the caller can open |
+| `list_external_systems` / `list_organization_external_systems` | The outside tools (Jira, ServiceNow and so on) a record's external references can name, with each system's `id` and optional link template |
+| `get_artefact_external_references` / `find_artefacts_by_external_reference` | A record's external references and the systems it may name; the records carrying a key (exact, ignoring case), optionally in one system or record type |
 | `search_records` | Records of every type (and projects) found by text: code, title and tags by default, more fields on request; scoped to all projects, one project or a module's unit such as a Compliance standard. Only what the caller can open; the first 500 matches |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail, including the links it proposes (`proposed_links`) |
@@ -58,6 +60,7 @@ Plus these write tools, only when write mode is enabled. A requirement's `owner`
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
 | `add_artefact_tag` / `remove_artefact_tag` | Adds or removes one tag on a record, keeping the others |
+| `add_artefact_external_reference` / `update_artefact_external_reference` / `remove_artefact_external_reference` | Adds, edits (only the fields passed change) or removes an external reference on a record of any type; allowed on an approved requirement, since a reference is not record content |
 | `approve_requirement` | Approves a draft or reviewed requirement — only when AI approval is enabled for the project and its organisation |
 | `decide_change_request` | Approves or rejects a submitted change request — only when AI approval is enabled for the project and its organisation. `merge_link_ids` chooses which proposed links to create (omitted: every valid one; empty: none); a chosen link that is no longer valid fails the call with a conflict |
 | `complete_requirement` | Marks an approved requirement completed — only when AI approval is enabled for the project and its organisation |

@@ -8,6 +8,22 @@ sidebar_position: 10
 
 The bell icon in the top bar shows your recent notifications, with an unread count badge — see [Core Features → Notifications and email](../core-features/notifications-and-email.md) for the full list of what triggers one. Click a notification to mark it read and, for anything tied to a specific requirement, change request, or project, jump straight to it. **Mark all read** clears every unread one without navigating anywhere.
 
+## What a notification opens
+
+The bell, the Notifications page, the instant email and each item of the daily digest all open the same address, `/notifications/{id}`, which marks the notification read and goes to the page it concerns. **Back** returns to where you were. If you are signed out, you sign in first and then arrive at the notification (see [Signing in](./signing-in.md#returning-to-the-page-you-were-on)).
+
+| Notification about | Opens |
+| --- | --- |
+| A requirement, change request, risk, decision, comment or review | The record |
+| A stage or phase (a phase overdue, a stage moved) | **Delivery status** of the project. A person who may change stages and phases sees a settings (gear) link there to **Project Admin → Stages and phases** |
+| Access granted to an organisation, a project or a standard | That organisation, project or standard. If the access was later removed, the page says you no longer have access to it instead of showing an error |
+| A Compliance assignment, target date, project review or new standard version | The project's **Compliance** page |
+| A standard-level review or a standard access grant | The standard |
+| A policy | The [Policies page](./administering-an-organisation.md#policies) |
+| A message with no page of its own (a password change, storage warning, announcement) | The full message |
+
+A notification stored before its destination was known opens its full message. If the record was deleted, the record page says it was not found. A notification is only ever opened by the person it was sent to.
+
 ## The Notifications page
 
 For your full notification history — searchable, and not limited to the dropdown's recent slice — choose **View all** at the foot of the bell's dropdown in the header. The same click-to-open behaviour applies, plus an **Unread only** filter.

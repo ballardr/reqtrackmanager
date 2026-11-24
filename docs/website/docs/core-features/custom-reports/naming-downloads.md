@@ -6,9 +6,9 @@ sidebar_position: 6
 
 A downloaded or stored report is named by a **file name template**: text with `{{placeholders}}` that is filled in each time the report is produced, for example `{{project_code}}-{{report_title}}-{{generated_on}}` gives `ACME-Quarterly review-2026-10-29.pdf`. The extension always comes from the format, never from the template.
 
-| The organisation's Default report file name in Organisation Admin, Reports, Configuration, with a placeholder picker and a worked example |
+| The organisation's Default report file name in Organisation resources, Reports, Configuration, with a placeholder picker and a worked example |
 | --- |
-| ![The Configuration panel of Organisation Admin's Reports page with the Default report file name set to the project code, report title and generated date, an Insert placeholder list and an example file name](../../../static/img/screenshots/report-file-name-default.png) |
+| ![The Configuration panel of the Reports page of Organisation resources with the Default report file name set to the project code, report title and generated date, an Insert placeholder list and an example file name](../../../static/img/screenshots/report-file-name-default.png) |
 
 ```mermaid
 flowchart LR
@@ -21,7 +21,7 @@ flowchart LR
 A report uses the first of these that gives a name:
 
 1. **The layout's own File name** (in the designer's layout settings, or `@filename "…"` in the text view). A pack entry's own file name comes first for that entry.
-2. **The organisation's default** (Organisation Admin, Reports, Configuration). It also names the built-in reports, such as the requirements report, the compliance reports and the module reports.
+2. **The organisation's default** (Organisation resources, Reports, Configuration). It also names the built-in reports, such as the requirements report, the compliance reports and the module reports.
 3. **The built-in name**, as before: the project or organisation name, then the report's name.
 
 A **pack** has its own *Zip file name*; each report inside it is `NN-<name>.<ext>`, where the name is the entry's *File name*, else the layout's, else the layout's title.

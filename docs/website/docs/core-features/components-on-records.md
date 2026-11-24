@@ -66,6 +66,7 @@ flowchart LR
 
 ## Changing the tree
 
+- **Moving a category** to another component carries its records with it; see [Administering a project → Components and categories](../workflows/administering-a-project.md#components-and-categories).
 - **Deleting a category** moves every record placed in it to the category you choose to replace it; a record already there keeps one place.
 - **Deleting a component** is refused while records are placed in it, with a message to remove their places first.
 - A child project has its own tree and does not use its parent's.

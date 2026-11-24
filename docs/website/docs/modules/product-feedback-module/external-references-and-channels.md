@@ -8,6 +8,8 @@ Delivery stays in your own tracker. A request points to the work with **external
 
 ## External references
 
+External references are a core feature shared by every record type; see [External references](../../core-features/external-references.md) for the list of systems, link templates, filters and export. This page covers how Product Feedback uses them.
+
 A request can carry any number of references, each with:
 
 | Field | Meaning |

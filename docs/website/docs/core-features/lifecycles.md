@@ -30,6 +30,10 @@ A start state, an end state, a state outside the main path (Rejected, Withdrawn,
 
 A project administrator opens **Project administration, Lifecycles**. Each record type lists its optional states with a checkbox; clear one and the record moves past it. The track under the type shows the path that results.
 
+| Project Admin → Lifecycles: optional states per record type, each with its track |
+| --- |
+| ![Lifecycles page with a Use Proposed and a Use Under review checkbox for Decisions, and the resulting track of states under each record type](../../static/img/screenshots/project-admin-lifecycles.png) |
+
 - A record that already sits in a state you turn off can still be opened, edited and moved on. Turning the state back on restores it.
 - **Risks:** a step that is passed over still applies its checks. Moving a risk from Assessed to Mitigated with Treatment planned turned off still needs an owner and a treatment strategy.
 - A nested project that has no choice of its own uses its parent project's choice and says so. Its first change becomes its own choice.
@@ -37,6 +41,10 @@ A project administrator opens **Project administration, Lifecycles**. Each recor
 ## Requiring a state in an organisation
 
 An organisation administrator opens **Organisation administration, Lifecycles** and selects **Require** beside a state. No project of the organisation can turn it off, and a project that had turned it off uses it again from then on; its records are not changed. The project's row shows **Required by the organisation** and cannot be edited.
+
+| Organisation administration → Lifecycles |
+| --- |
+| ![Organisation Lifecycles page listing record types with their states and the Require setting](../../static/img/screenshots/org-admin-lifecycles.png) |
 
 To let one project keep its own choice, select **Exempt a project** under the type, choose the project and, if its nested projects are exempt too, **Include nested projects**. Removing the exemption makes the requirement bind the project again.
 

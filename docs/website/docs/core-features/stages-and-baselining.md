@@ -94,6 +94,8 @@ The **Delivery status** page in the project's navigation (shown only once the pr
 - the **Expected** range, from the earliest expected start to the latest expected end set in its phase schedule, or **No dates set** (nothing is inferred for a row without dates);
 - an **Overdue** badge when the current phase is not closed and its expected end is before your own day.
 
+A person who may change stages and phases also sees a settings (gear) link on the page that opens **Project Admin → Stages and phases**. A stage notification (a phase overdue, a stage moved) opens this page.
+
 | Delivery status |
 | --- |
 | Stages and component tracks with their current phase, progress and expected dates |

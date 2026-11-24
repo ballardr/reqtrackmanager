@@ -125,7 +125,7 @@ flowchart LR
 ```
 
 - **Only you can download it.** The file belongs to the person who asked for it; nobody else, including administrators, can fetch it. It is produced with your access at that moment, and downloading it re-checks that you still have access to what it covers.
-- **It is kept for a limited time.** An organisation administrator sets how many days a file is kept in **Org Admin → Reports → Configuration**, up to a maximum the platform sets; leave it blank to use the platform default (7 days). When the time passes the file is deleted. The record of the run (which layout and version, when, how many records) stays, as for any run.
+- **It is kept for a limited time.** An organisation administrator sets how many days a file is kept in **Organisation resources → Reports → Configuration**, up to a maximum the platform sets; leave it blank to use the platform default (7 days). When the time passes the file is deleted. The record of the run (which layout and version, when, how many records) stays, as for any run.
 - **Generate again is a fresh run, not the old file.** It runs the report's current version with today's data and your access at that moment, using the format and values of the earlier run, and notifies you again. The dialog tells you when the report was edited since the earlier run. It is refused if the report no longer exists or you can no longer run it.
 - At most five of your reports can be waiting or being prepared at once.
 - A report that is too large even for the background (or whose access you lose before it runs) shows as **Failed** with the reason.

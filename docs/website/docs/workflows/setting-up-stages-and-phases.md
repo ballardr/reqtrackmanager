@@ -20,7 +20,11 @@ flowchart TD
 
 ## 1. Choose or define a workflow
 
-Open **Stage workflows**. The organisation's workflows are listed with the project's own; **Standard** (Scoping, Review, Approved, Completed, Archived) is always available. Select **New workflow** to add a workflow of the project's own, or hide an organisation workflow the project does not use. Give each phase a name and a kind (Open, Review, Locked, On hold or Closed); the kind decides what entering the phase does. See [Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
+Open **Stage workflows**. The organisation's workflows are listed with the project's own; **Standard** (Scoping, Review, Approved, Completed, Archived) is always available. Select **New workflow** to add a workflow of the project's own, or hide an organisation workflow the project does not use. Give each phase a name and a kind (Open, Review, Locked, On hold or Closed); the kind decides what entering the phase does. In the dialog each phase is one line (its order, its name and its kind) with an actions menu to move it up or down or remove it; **Add phase** is beside the **Phases** label, and a phase cannot be removed while it is the only one. See [Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
+
+| Edit workflow: one line per phase, with an actions menu on each |
+| --- |
+| ![Edit workflow dialog listing six phases from Concept to Production release, each with an order number, a name, a kind and an actions menu](../../static/img/screenshots/stage-workflow-editor.png) |
 
 ## 2. Create the stages
 
