@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
-import { withToast } from "../../testing/storybook-helpers";
+import { buildUser, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildEngagement, buildFinding, buildPersona, buildStakeholder } from "./fixtures";
 import { ProjectEngagementsPage } from "./ProjectEngagementsPage";
 import type { Engagement } from "./types";
@@ -57,6 +57,7 @@ const meta: Meta<typeof ProjectEngagementsPage> = {
       </MemoryRouter>
     ),
     withToast(),
+    withStatefulAuth(buildUser()),
   ],
 };
 export default meta;

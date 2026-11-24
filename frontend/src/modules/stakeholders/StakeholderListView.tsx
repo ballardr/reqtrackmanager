@@ -18,6 +18,7 @@
  * The project page's "Show hidden" filter and Visibility column are `RecordListView`'s; the `includeHidden`,
  * `onIncludeHiddenChange` and `onShowHidden` props pass straight through.
  */
+import { CellText } from "../../components/CellText";
 import { useMemo, useState } from "react";
 
 import type { ScoringScheme } from "../../api/scoring";
@@ -150,7 +151,7 @@ export function StakeholderListView({
         typeName={(s) => s.stakeholder_type_name}
         nameIcon={() => <PeopleKindIcon kind="stakeholder" />}
         searchText={(s) => `${s.unique_code} ${s.name} ${s.role} ${s.organisation_group}`}
-        columnsBeforeType={[{ key: "role", label: "Role", sortable: true, sortValue: (s) => s.role || null, render: (s) => s.role || "—" }]}
+        columnsBeforeType={[{ key: "role", label: "Role", sortable: true, sortValue: (s) => s.role || null, render: (s) => (s.role ? <CellText lines={2} maxWidth="14rem">{s.role}</CellText> : "—") }]}
         columnsAfterScope={[
           { key: "cadence", label: "Cadence", sortable: true, sortValue: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : null), render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },
           ...(showLastEngaged

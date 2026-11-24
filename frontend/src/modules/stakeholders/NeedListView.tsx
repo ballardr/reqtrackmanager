@@ -6,6 +6,7 @@
  * scope column. Used by the People page for the Needs-only view; needs are created from its "New" menu, so
  * `onCreate` is optional here. Status renders through `NEED_STATUS_LABEL`.
  */
+import { CellText } from "../../components/CellText";
 import { NeedFormModal } from "./NeedFormModal";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
@@ -58,7 +59,7 @@ export function NeedListView({
       statusLabel={NEED_STATUS_LABEL}
       statusTone={NEED_STATUS_TONE}
       searchText={(n) => `${n.unique_code} ${n.name} ${n.description}`}
-      columnsBeforeType={[{ key: "need", label: "Need", sortable: true, sortValue: (n) => n.description || null, render: (n) => markdownPlainText(n.description) || "—" }]}
+      columnsBeforeType={[{ key: "need", label: "Need", sortable: true, hideBelow: false, sortValue: (n) => n.description || null, render: (n) => { const text = markdownPlainText(n.description); return text ? <CellText lines={3}>{text}</CellText> : "—"; } }]}
       columnsAfterScope={[]}
       includeArchived={includeArchived}
       onIncludeArchivedChange={onIncludeArchivedChange}

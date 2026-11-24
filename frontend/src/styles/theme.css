@@ -2730,6 +2730,38 @@ td:has(> .disclosure-toggle) {
   cursor: pointer;
 }
 
+/* `DirectoryTable` column options. A column with a floor width (the Name column) never shrinks below it, wraps its text
+   beyond it and stays at the left edge when the table scrolls sideways; a `hideBelow` column drops when the table is narrow. */
+.directory-table-floor {
+  overflow-wrap: anywhere;
+}
+td.directory-table-floor,
+th.directory-table-floor {
+  position: sticky;
+  left: 0;
+  background: var(--color-surface);
+}
+/* A record code stays whole up to 12rem, then breaks, so a long organisation-qualified code cannot widen its column. */
+.record-code-cell {
+  display: inline-block;
+  max-width: 12rem;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+/* A table with `hideBelow` columns measures the room it is given (the list column, which the filter panel narrows),
+   not the window's: under 40rem those columns drop so the Name column keeps its width. Below 720px every table
+   stacks its cells as a card (above) and there is nothing to squeeze, so nothing drops there. */
+.directory-table-scroll--responsive {
+  container-type: inline-size;
+}
+@media (min-width: 721px) {
+  @container (max-width: 40rem) {
+    .directory-table-wide {
+      display: none;
+    }
+  }
+}
+
 /* Bulk edit grid (components/RecordGrid): compact cells so a row of controls stays on one line; a changed cell is
    tinted and marked on its left edge (the tint alone would be the only cue), a locked value reads as plain text. */
 .record-grid td {

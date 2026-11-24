@@ -6,7 +6,9 @@
  * column from the title's row down. Anything above the list (a scoring-model switcher, a tab strip, a banner) is
  * part of `children`, so it cannot push the filter panel down.
  *
- * A list of records passes `records` and the layout adds the shared Export and Import menu.
+ * A list of records passes `records` and the layout adds the shared Export and Import menu. A list whose columns a
+ * person can choose passes `columnChooser` (from `useOptionalColumns`), drawn beside the actions menu as a view
+ * control, never as a second primary button.
  *
  * It keeps the list's place ("Pattern: list position"): scroll offset and loaded row count are saved on unmount
  * and restored on return, so a page passes only `ready` and, if paginated, `loadedRows`.
@@ -36,6 +38,7 @@ const strings = t();
  *   the list shows several kinds at once, each with a `kindLabel`).
  * @param menuItems The page's other actions (folders, an interchange file, a link to a related page): rows of the one
  *   actions menu, ahead of the export and import items. A page has one primary button in `actions` and this menu, never a row of buttons.
+ * @param columnChooser The column chooser (`useOptionalColumns`' `chooser`), shown after the actions menu; null or omitted when the list has none.
  * @param tabs A tab strip (`Tabs`) shown under the title and actions; the list column is then its panel.
  * @param filter The `FilterPanel` (side layout) for the list.
  * @param ready False while the list's rows are loading (default true): the position is saved and restored only once rows exist.
@@ -44,12 +47,13 @@ const strings = t();
  * @param children Everything else in the list column: switchers, chips, the list itself.
  */
 export function ListPageLayout({
-  title, actions, menuItems, records, tabs, filter, ready = true, loadedRows, contentProps, children,
+  title, actions, menuItems, records, columnChooser, tabs, filter, ready = true, loadedRows, contentProps, children,
 }: {
   title: ReactNode;
   actions?: ReactNode;
   menuItems?: ActionMenuItem[];
   records?: RecordListActions | RecordListActions[];
+  columnChooser?: ReactNode;
   tabs?: ReactNode;
   filter: ReactNode;
   ready?: boolean;
@@ -74,6 +78,7 @@ export function ListPageLayout({
                 {records && [records].flat().map((one) => <ListActions key={one.recordType} {...one} />)}
               </ListActionsMenu>
             )}
+            {columnChooser}
             {filterHidden && (
               <button type="button" className="btn row" aria-expanded={false} onClick={collapse.toggle} style={{ flexWrap: "nowrap" }}>
                 <PanelTopOpen size={16} aria-hidden="true" />

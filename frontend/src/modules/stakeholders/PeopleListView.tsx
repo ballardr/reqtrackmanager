@@ -8,6 +8,7 @@
  * filters (Stakeholders' influence and groups, Personas' weight) live in that kind's list, which the page
  * shows when just that kind is selected. Kind, status and scope render through their label maps.
  */
+import { CellText } from "../../components/CellText";
 import { Badge } from "../../components/Badge";
 import { PeopleKindIcon } from "./PeopleKindIcon";
 import { PEOPLE_KIND_LABEL, type PeopleRow } from "./peopleRows";
@@ -65,7 +66,7 @@ export function PeopleListView({
       searchText={(r) => `${r.unique_code} ${r.name} ${r.summary} ${PEOPLE_KIND_LABEL[r.kind]}`}
       columnsBeforeType={[
         { key: "kind", label: "Kind", sortable: true, sortValue: (r) => PEOPLE_KIND_LABEL[r.kind], render: (r) => <Badge>{PEOPLE_KIND_LABEL[r.kind]}</Badge> },
-        { key: "summary", label: "Details", sortable: true, sortValue: (r) => r.summary || null, render: (r) => markdownPlainText(r.summary) || "—" },
+        { key: "summary", label: "Details", sortable: true, sortValue: (r) => r.summary || null, render: (r) => { const text = markdownPlainText(r.summary); return text ? <CellText lines={2}>{text}</CellText> : "—"; } },
       ]}
       columnsAfterScope={[]}
       includeArchived={includeArchived}

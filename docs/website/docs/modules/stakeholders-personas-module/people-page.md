@@ -20,12 +20,19 @@ flowchart LR
 
 The chips above the list (Personas, Stakeholders, Groups) turn each kind on or off; all of them are on to begin with. The choice is kept in the page address, so a link or bookmark opens the same view, and at least one kind always stays on.
 
-- **Several kinds** share one table: Name, Code, Kind, Details (a role or short description), Type, Scope and Status. Each name has a small icon for its kind (a mask for a Persona, a handshake for a Stakeholder, a group of people for a Stakeholder group); hover over it, or read it with a screen reader, to get the kind's name. The chips carry the same icons.
+- **Several kinds** share one table: Name, Code, Kind, Details (a role or short description), Type and Status. **Scope** is available but not shown until you choose it (see [Choosing columns](#choosing-columns)); an organisation's record is already told apart by its code prefix. Each name has a small icon for its kind (a mask for a Persona, a handshake for a Stakeholder, a group of people for a Stakeholder group); hover over it, or read it with a screen reader, to get the kind's name. The chips carry the same icons.
 - **One kind** shows that kind's own list. Stakeholders keep their Influence, Interest, Cadence, Last engaged and Groups columns and the [group filters](./stakeholder-groups.md#using-groups-in-the-list); Personas keep their Weight column; Groups open the group manager.
 
 A kind whose [sub-component](./overview.md#enabling-the-module) is switched off for the project is not a chip and not in the New menu. The **People** entry itself goes from the navigation only when every sub-component it serves is off.
 
 Old links to the Personas and Stakeholders pages still work: they open People with that kind selected. An old link to Needs on People (`?kind=need`) opens the Needs tab.
+
+## Choosing columns
+
+The **Choose columns** button beside the list's actions menu opens a list of the columns you can show or hide. **Name**, **Code** and **Status** are always shown; every other column (Kind, Details, Type, **Scope** and a kind's own columns such as Role or Influence) can be switched off, and Scope starts switched off. **Show the default columns** returns the list to how it began. Your choice is kept for you on each list, and follows you to another browser.
+
+- **Name** keeps a readable width: a long name wraps rather than being squeezed, and the other columns give way first. When the list has little room (a narrow window with the filter panel open), the columns after Name, Code, Type and Status are left out until there is more room; collapse the filter panel to widen the list.
+- Hiding a column changes the screen only: **Sort by** still offers it, and **Export** still includes it.
 
 ## Needs
 

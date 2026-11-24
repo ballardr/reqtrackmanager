@@ -8,7 +8,11 @@
  * `sort` and passes new `rows` back. The first column's cell can be a keyboard-operable `<button>` (`onRowClick`) or
  * `<Link>` (`rowHref`, which wins: a link is bookmarkable), never a bare `<tr onClick>`. `selection` adds a leading
  * checkbox column whose header box selects every selectable row on the page and reports the chosen keys.
- * Excluded: a search box (`FilterPanel`'s own), `.side-grid` wrapping, an add slot and any fetch or mutate logic.
+ * A column can hold a floor width (`minWidth`, the Name column's 12rem: its text wraps beyond it and the other columns
+ * give way first, and it stays at the left edge when the table scrolls sideways), drop when the table is narrow (`hideBelow`)
+ * and be chosen by the person (`optional`, `defaultHidden`: see `useOptionalColumns`, which filters the columns
+ * before they reach this table). Excluded: a search box (`FilterPanel`'s own), `.side-grid` wrapping, an add slot and
+ * any fetch or mutate logic.
  */
 import { useEffect, useRef } from "react";
 import type { JSX, ReactNode } from "react";
@@ -55,6 +59,24 @@ export interface DirectoryColumn<Row> {
    * it has no effect on a `sortable` column. */
   width?: string;
   render: (row: Row) => ReactNode;
+  /** A floor width (a CSS length such as `"12rem"`) the column never shrinks below: the Name column's. The cell stays
+   * at the left edge when the table scrolls sideways, so it needs a first column. */
+  minWidth?: string;
+  /** Drops the column while the table has less than 40rem of room (stacked cards below 720px keep every column), so
+   * the columns that matter keep theirs. */
+  hideBelow?: boolean;
+  /** The person can show or hide this column (`useOptionalColumns`); a column that is not optional is always drawn. */
+  optional?: boolean;
+  /** An optional column that is off until the person chooses it. */
+  defaultHidden?: boolean;
+  /** The column's name in the column chooser when `label` is not plain text. */
+  chooserLabel?: string;
+}
+
+/** The class and inline style a column's header and body cells share (floor width, narrow-width drop). */
+function cellProps<Row>(column: DirectoryColumn<Row>): { className?: string; style?: { minWidth: string } } {
+  const classes = [column.minWidth ? "directory-table-floor" : "", column.hideBelow ? "directory-table-wide" : ""].filter(Boolean).join(" ");
+  return { className: classes || undefined, style: column.minWidth ? { minWidth: column.minWidth } : undefined };
 }
 
 /** The row ids on the page grouped by record type, for the Components column's read (one type unless the list mixes several). */
@@ -151,7 +173,7 @@ export function DirectoryTable<Row>({
 
   return (
     <div className="stack">
-      <div style={{ overflowX: "auto" }}>
+      <div className={columns.some((c) => c.hideBelow) ? "directory-table-scroll--responsive" : undefined} style={{ overflowX: "auto" }}>
         <table aria-label={ariaLabel}>
           <thead>
             <tr>
@@ -170,9 +192,9 @@ export function DirectoryTable<Row>({
               )}
               {columns.map((column) =>
                 column.sortable && onSort ? (
-                  <SortableHeader key={column.key} label={column.label} sortKey={column.key} sort={sort} onSort={onSort} action={column.headerAction} />
+                  <SortableHeader key={column.key} label={column.label} sortKey={column.key} sort={sort} onSort={onSort} action={column.headerAction} {...cellProps(column)} />
                 ) : (
-                  <th key={column.key} style={column.width ? { width: column.width } : undefined}>
+                  <th key={column.key} {...cellProps(column)} style={{ ...cellProps(column).style, ...(column.width ? { width: column.width } : {}) }}>
                     {column.headerAction ? <span className="th-with-action">{column.label}{column.headerAction}</span> : column.label}
                   </th>
                 )
@@ -200,7 +222,7 @@ export function DirectoryTable<Row>({
                   </td>
                 )}
                 {columns.map((column, index) => (
-                  <td key={column.key}>
+                  <td key={column.key} {...cellProps(column)}>
                     {index === 0
                       ? renderFirstCell({ row, content: column.render(row), onRowClick, rowHref })
                       : column.render(row)}

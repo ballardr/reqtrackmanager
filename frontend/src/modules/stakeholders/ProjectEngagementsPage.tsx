@@ -131,7 +131,7 @@ export function ProjectEngagementsPage() {
         typeLabel="Channel"
         searchText={(e) => `${e.unique_code} ${e.title} ${e.summary}`}
         columnsBeforeType={[
-          { key: "date", label: "Date", sortable: true, sortValue: (e) => e.engagement_date, render: (e) => e.engagement_date },
+          { key: "date", label: "Date", sortable: true, hideBelow: false, sortValue: (e) => e.engagement_date, render: (e) => e.engagement_date },
         ]}
         columnsAfterScope={[
           { key: "participants", label: "Participants", sortable: true, sortValue: (e) => e.participant_count + e.anonymous_participant_count, render: (e) => e.participant_count + e.anonymous_participant_count },

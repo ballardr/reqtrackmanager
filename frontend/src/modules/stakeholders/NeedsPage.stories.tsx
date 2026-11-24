@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
-import { withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildNeed, buildPersona } from "./fixtures";
 import { NeedsPage } from "./NeedsPage";
 import type { Need } from "./types";
@@ -35,7 +35,7 @@ const withNeedsRoute: Decorator = (Story, context) =>
 const meta: Meta<typeof NeedsPage> = {
   title: "Modules/Stakeholders/NeedsPage",
   component: NeedsPage,
-  decorators: [withNeedsRoute, withToast()],
+  decorators: [withNeedsRoute, withToast(), withStatefulAuth(buildUser())],
 };
 export default meta;
 

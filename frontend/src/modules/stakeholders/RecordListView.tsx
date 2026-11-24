@@ -31,7 +31,9 @@ import type { CollectedLink } from "../../api/artefactLinks";
 import { useState, type HTMLAttributes, type ReactNode } from "react";
 
 import type { BadgeTone } from "../../api/types";
+import { CellText } from "../../components/CellText";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
@@ -244,27 +246,30 @@ export function RecordListView<R extends ListedRecord, V>({
         .map((kind) => ({ ...kind, filters: exportFilters(kind) }))
     : undefined;
 
+  // Every column except Name, Code, Status and Visibility is optional and drops on a narrow screen; a kind's column
+  // can opt out of either (`optional: false`, `hideBelow: false`).
+  const callerColumn = (column: RecordColumn<R>): DirectoryColumn<R> => ({ optional: true, hideBelow: true, ...column });
   const columns: DirectoryColumn<R>[] = [
-    { key: "name", label: "Name", sortable: true, render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
-    { key: "code", label: "Code", sortable: true, render: (r) => <span className="text-muted" style={{ whiteSpace: "nowrap" }}><ScopedRecordCode record={r} /></span> },
-    ...columnsBeforeType,
+    { key: "name", label: "Name", sortable: true, minWidth: "12rem", render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
+    { key: "code", label: "Code", sortable: true, render: (r) => <span className="text-muted record-code-cell"><ScopedRecordCode record={r} /></span> },
+    ...columnsBeforeType.map(callerColumn),
     ...(typeName
       ? [{
-          key: "type", label: typeLabel, sortable: true,
+          key: "type", label: typeLabel, sortable: true, optional: true,
           render: (r: R) => {
             const name = typeName(r);
             return name ? (
               <FilterBadge active={typeFilter === name} onClick={() => setTypeFilter(typeFilter === name ? "" : name)}>
-                {name}
+                <CellText lines={3} maxWidth="6rem">{name}</CellText>
               </FilterBadge>
             ) : "—";
           },
         } as DirectoryColumn<R>]
       : []),
     ...(showScope && scopeLabels
-      ? [{ key: "scope", label: "Scope", sortable: true, render: (r: R) => (r.scope ? scopeLabels[r.scope] : "—") } as DirectoryColumn<R>]
+      ? [{ key: "scope", label: "Scope", sortable: true, optional: true, defaultHidden: true, hideBelow: true, render: (r: R) => (r.scope ? scopeLabels[r.scope] : "—") } as DirectoryColumn<R>]
       : []),
-    ...columnsAfterScope,
+    ...columnsAfterScope.map(callerColumn),
     ...(includeHidden && onShowHidden
       ? [{
           key: "visibility", label: "Visibility",
@@ -292,6 +297,7 @@ export function RecordListView<R extends ListedRecord, V>({
       : []),
   ];
 
+  const shown = useOptionalColumns(sectionKey, columns);
   const newButton = canCreate && (
     <button className="btn btn-primary" onClick={() => setCreating(true)}>
       {newLabel ?? `New ${noun}`}
@@ -335,7 +341,7 @@ export function RecordListView<R extends ListedRecord, V>({
   const table = (
         <DirectoryTable
           ariaLabel={ariaLabel}
-          columns={columns}
+          columns={shown.columns}
           rows={sortRows(filtered, listSort.sort, sortValues)}
           sort={listSort.sort}
           onSort={listSort.onHeaderSort}
@@ -355,6 +361,7 @@ export function RecordListView<R extends ListedRecord, V>({
           tabs={page.tabs}
           contentProps={page.contentProps}
           records={exportActions}
+          columnChooser={shown.chooser}
           filter={filterPanel}
         >
           {page.above}
@@ -362,7 +369,7 @@ export function RecordListView<R extends ListedRecord, V>({
         </ListPageLayout>
       ) : (
         <>
-          {(canCreate || toolbar || exportActions) && (
+          {(canCreate || toolbar || exportActions || shown.chooser) && (
             <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
               {newButton}
               {toolbar}
@@ -371,6 +378,7 @@ export function RecordListView<R extends ListedRecord, V>({
                   {exportActions.map((kind) => <ListActions key={kind.recordType} {...kind} />)}
                 </ListActionsMenu>
               )}
+              {shown.chooser}
             </div>
           )}
           <div className="side-grid">

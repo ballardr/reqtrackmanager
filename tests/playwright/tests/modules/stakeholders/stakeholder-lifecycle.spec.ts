@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { addDefinition, installCleanupHook, PASSWORD, selectOrgAdminGroup, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
+import { chooseColumn } from "../../columnChooser";
 import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -190,8 +191,9 @@ test.describe("Stakeholders & Personas: organisation Stakeholders, types and sco
       data: { name, stakeholder_type_id: types.find((t) => t.name === typeName)!.id },
     });
 
-    // --- From the project it appears with an Organisation scope badge, and opens read-only.
+    // --- From the project it appears with an Organisation scope badge (Scope is an optional column, so it is chosen first), and opens read-only.
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders`);
+    await chooseColumn(page, "Scope");
     const row = page.locator("tr", { hasText: name });
     await expect(row.getByText("Organisation", { exact: true })).toBeVisible();
     await expect(row.getByText(typeName)).toBeVisible();

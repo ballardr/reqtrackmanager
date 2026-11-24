@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildStakeholder, buildStakeholderScheme } from "./fixtures";
 import { OrgStakeholdersPanel } from "./OrgStakeholdersPanel";
 import type { PersonaTypeDefinition, Stakeholder } from "./types";
@@ -33,7 +33,7 @@ const meta: Meta<typeof OrgStakeholdersPanel> = {
   title: "Modules/Stakeholders/OrgStakeholdersPanel",
   component: OrgStakeholdersPanel,
   args: { orgId: ORG_ID },
-  decorators: [withRouter("/org-overview"), withToast()],
+  decorators: [withRouter("/org-overview"), withToast(), withStatefulAuth(buildUser())],
 };
 export default meta;
 

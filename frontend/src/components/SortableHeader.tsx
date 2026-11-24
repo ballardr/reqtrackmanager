@@ -21,6 +21,7 @@ export function SortableHeader<K extends string>({
   sort,
   onSort,
   style,
+  className,
   action,
 }: {
   label: ReactNode;
@@ -28,6 +29,8 @@ export function SortableHeader<K extends string>({
   sort: SortState<K> | null;
   onSort: (key: K) => void;
   style?: CSSProperties;
+  /** A class on the `<th>` (a column that drops at narrow widths or holds a floor width). */
+  className?: string;
   action?: ReactNode;
 }) {
   const direction = sort?.key === sortKey ? sort.direction : null;
@@ -40,7 +43,7 @@ export function SortableHeader<K extends string>({
     </button>
   );
   return (
-    <th style={style} aria-sort={ariaSort}>
+    <th style={style} className={className} aria-sort={ariaSort}>
       {/* No `aria-label` here: the WAI-ARIA APG "sortable table" pattern puts the sort state on the `<th>`'s `aria-sort`
           and leaves the button's accessible name as the plain column text. An `aria-label` on the button would replace
           that text in the `<th>`'s computed name and rename the columnheader (e.g. "ID" to "Sort by ID"). */}

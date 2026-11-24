@@ -8,6 +8,7 @@
  * column and the project's effective weight are shown, so those are props.
  * The "Show hidden" filter and Visibility column are `RecordListView`'s.
  */
+import { CellText } from "../../components/CellText";
 import { PersonaFormModal } from "./PersonaFormModal";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
@@ -80,7 +81,7 @@ export function PersonaListView({
       typeName={(p) => p.persona_type_name}
       nameIcon={() => <PeopleKindIcon kind="persona" />}
       searchText={(p) => `${p.unique_code} ${p.name} ${p.role_title}`}
-      columnsBeforeType={[{ key: "role", label: "Role", sortable: true, sortValue: (p) => p.role_title || null, render: (p) => p.role_title || "—" }]}
+      columnsBeforeType={[{ key: "role", label: "Role", sortable: true, sortValue: (p) => p.role_title || null, render: (p) => (p.role_title ? <CellText lines={2} maxWidth="14rem">{p.role_title}</CellText> : "—") }]}
       columnsAfterScope={[
         {
           key: "weight", label: "Weight", sortable: true,

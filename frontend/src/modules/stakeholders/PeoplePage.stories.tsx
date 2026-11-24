@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
@@ -105,6 +105,10 @@ export const ListsEveryKindTogether: Story = {
     for (const kind of ["Persona", "Stakeholder", "Stakeholder Group"]) {
       await expect(table.getAllByText(kind).length).toBeGreaterThan(0);
     }
+    // Scope is an optional column, off by default; once chosen it reads through its label map.
+    await expect(table.queryByRole("columnheader", { name: "Scope" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Scope" }));
     await expect(table.getByText("Organisation")).toBeInTheDocument();
     await expect(table.getByText("Draft")).toBeInTheDocument();
     await expect(canvas.queryByText("organization")).not.toBeInTheDocument();

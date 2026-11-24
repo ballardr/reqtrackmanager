@@ -383,3 +383,38 @@ export const LongText: Story = {
     await expectStressStable(canvasElement);
   },
 };
+
+/**
+ * A column with `minWidth` holds that floor and stays at the left edge when the table scrolls sideways (sortable or
+ * plain header alike); a `hideBelow` column drops while the table has under 40rem of room and returns when it has more.
+ */
+const floorAndDrop = (width: number): Story => ({
+  render: (args) => (
+    <div style={{ width }}>
+      <DirectoryTable
+        {...args}
+        columns={[
+          { key: "name", label: "Name", sortable: true, minWidth: "12rem", render: (row) => row.name },
+          { key: "email", label: "Email", hideBelow: true, render: (row) => row.email },
+          { key: "joined", label: "Joined", sortable: true, hideBelow: true, render: (row) => row.joined },
+        ]}
+        onSort={fn()}
+      />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const name = canvas.getByRole("columnheader", { name: "Name" });
+    await expect(name.getBoundingClientRect().width).toBeGreaterThanOrEqual(12 * 16 - 1);
+    await expect(name).toHaveClass("directory-table-floor");
+    await expect(getComputedStyle(name).position).toBe("sticky");
+    const dropped = width < 40 * 16;
+    await expect(canvas.queryAllByRole("columnheader", { name: "Email" })).toHaveLength(dropped ? 0 : 1);
+    await expect(canvas.queryAllByRole("columnheader", { name: "Joined" })).toHaveLength(dropped ? 0 : 1);
+  },
+});
+
+/** Under 40rem of room the `hideBelow` columns are dropped and Name keeps its floor. */
+export const FloorWidthAndNarrowDrop: Story = floorAndDrop(500);
+/** With room to spare every column is drawn. */
+export const FloorWidthAndRoomyTable: Story = floorAndDrop(900);

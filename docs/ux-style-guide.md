@@ -1660,7 +1660,17 @@ flowchart LR
 
 ## Pattern: column chooser
 
-A list with optional columns lets the person pick them with `ColumnChooser` (`frontend/src/components/ColumnChooser.tsx`): an icon button ("Choose columns") that opens a popover of checkboxes, with the Name column ticked and locked, and a reset to the defaults. The button gets an accent border when the choice differs from the defaults. `useColumnChoice(key, allIds, defaultIds)` remembers the choice per person in `ui_preferences` (`column_choice_<key>`), so it follows them between browsers. Choose defaults for what a person needs on most visits: a value already shown by an icon or by the nesting (a type, a folder) is off by default. First use: the report setup list.
+A list with optional columns lets the person pick them with `ColumnChooser` (`frontend/src/components/ColumnChooser.tsx`): an icon button ("Choose columns") that opens a popover of checkboxes, with the always-on columns (Name, Code, Status) ticked and locked, and a reset to the defaults. The button gets an accent border when the choice differs from the defaults. `useColumnChoice(key, allIds, defaultIds)` remembers the choice per person in `ui_preferences` (`column_choice_<key>`), so it follows them between browsers. Choose defaults for what a person needs on most visits: a value already shown by an icon, by the nesting (a type, a folder) or by the code (an organisation record's prefix) is off by default.
+
+A `DirectoryTable` list wires it in one step: mark each column the person may hide `optional` (and `defaultHidden` when it starts off), call `useOptionalColumns(key, columns)` with the **full** column set, draw the columns it returns and pass its `chooser` to `ListPageLayout`'s `columnChooser` (a view control beside the one primary button and the actions menu, never a second primary). The chooser is offered with two or more optional columns, or with one that starts off (it could not be reached otherwise). The rules:
+
+- **Identity is never hidden:** the Name, the Code and the Status are not optional, and neither is the row's actions menu.
+- **The screen only:** Sort by (built from the full column set), Export, Import and reports ignore the choice, so a hidden column still sorts and still travels in a file.
+- **A stored choice** naming a column since removed is ignored; a column added later appears only where its defaults show it.
+- **Name keeps its width:** the Name column passes `minWidth: "12rem"` (it wraps beyond that and stays at the left edge when the table scrolls sideways). A column that can give way passes `hideBelow`: it is left out while the table has under 40rem of room (the table measures its own container, so a side filter panel counts) and is never left out on the stacked card layout below 720px, where nothing is squeezed. A kind's own column with the list's content in it (a Need's description) sets `hideBelow: false`.
+- **Long text:** a table cell of user text uses `CellText` with two or more lines (a name wraps instead), and a record code breaks at 12rem (`.record-code-cell`), so no column takes its width from the text; the list's `LongText` story guards it (see [Pattern: long text in a grid or table](#pattern-long-text-in-a-grid-or-table)).
+
+Uses: the report setup list, the Product Feedback request lists and the record lists of the Stakeholders module (People, Personas, Stakeholders, Needs, Engagements: `RecordListView` makes every column except Name, Code, Status and Visibility optional, with Scope off).
 
 ## Pattern: item rows with a settings gear
 

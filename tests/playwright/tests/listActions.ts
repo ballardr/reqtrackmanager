@@ -9,7 +9,10 @@ import { clickMenuRow, openMenuParent } from "./menuTree";
  */
 export async function openListMenu(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "List actions", exact: true }).click();
-  return page.getByRole("dialog", { name: "List actions" });
+  const menu = page.getByRole("dialog", { name: "List actions" });
+  // The rows render a moment after the dialog opens; a caller looking for a row must not find the menu empty.
+  await expect(menu.getByRole("menuitem").first()).toBeVisible();
+  return menu;
 }
 
 /**
