@@ -25,6 +25,7 @@ from app.models.user import User
 from app.modules.registry import LifecycleDefinition
 from app.modules.risk_management import service as s
 from app.modules.risk_management.labels import RISK_STATUS_LABEL
+from app.modules.risk_management.models import Risk
 from app.services.lifecycles import table_from_enum
 
 
@@ -46,5 +47,6 @@ LIFECYCLES: dict[str, LifecycleDefinition] = {
         path=("identified", "assessed", "treatment_planned", "treatment_in_progress", "mitigated", "closed"),
         transitions=table_from_enum(s.RISK_ALLOWED_TRANSITIONS), labels=RISK_STATUS_LABEL,
         optional=("treatment_planned", "treatment_in_progress"), gated=("accepted",), entry_guard=_entry_guard,
+        record_model=Risk,
     ),
 }

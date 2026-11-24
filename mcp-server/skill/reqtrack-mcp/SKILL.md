@@ -127,6 +127,8 @@ Write tools exist only when the server runs with `MCP_WRITES_ENABLED`. If they a
 
 Never approve, decide or complete something on your own initiative. Only do it when the user has explicitly asked for that specific item.
 
+An approval can also be refused because a project or organisation requires a **separate approver**: you act as the signed-in person, so a record that person created cannot be approved by you ("A different person must approve this …"). Do not retry or work around it; tell the user another person must approve. Where the creator may approve, a self-approval can need a comment ("A comment is required to approve …"): pass the comment the user gave.
+
 Not available in any configuration: voting, commenting, recording a review outcome, deleting or archiving core records (a report layout is configuration, not a record), file upload, and role assignment.
 
 ## Using module tools

@@ -74,7 +74,7 @@ CORE_ACTION_KINDS: dict[str, str] = {
                      "activated", "retired", "superseded", "proposed", "accepted", "archived", "unarchived", "restored",
                      "investigating", "triaged", "ready_for_decision", "addressed", "workflow_changed", "reconciled",
                      "approval_invalidated", "draft_discarded", "acknowledged", "enabled", "disabled",
-                     "treatment_needs_reassessment", "steps_skipped"), STATUS),
+                     "treatment_needs_reassessment", "steps_skipped", "self_approved"), STATUS),
     **dict.fromkeys(("linked", "unlinked", "relationship_added", "relationship_removed", "requirement_linked",
                      "requirement_unlinked", "action_linked", "action_unlinked", "evidence_linked", "evidence_unlinked",
                      "file_attached", "file_linked", "file_unlinked", "comment_file_attached", "comment_file_removed",
@@ -130,7 +130,7 @@ CORE_METADATA_TYPES: dict[str, str] = {
     **dict.fromkeys((
         "project", "project_stage", "project_component", "project_category", "stage_workflow", "stage_phase_plan",
         "component_stage_state", "overview_layout", "nav_labels", "project_module", "project_module_subcomponent",
-        "tag_settings", "requirement_alias_settings", "lifecycle_settings", "pain_point_submission_settings",
+        "tag_settings", "requirement_alias_settings", "lifecycle_settings", "approval_separation", "pain_point_submission_settings",
         "project_feedback_settings", "record_sensitivity_policy",
         "scoring_model", "scoring_level", "scoring_axis", "scoring_threshold_set", "scoring_model_default",
         "scoring_enabled_models", "scoring_cell_rating_set", "scoring_band_set", "report_layout", "report_pack",

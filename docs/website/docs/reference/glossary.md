@@ -306,6 +306,14 @@ A Risk owner's judgement of whether one linked Requirement or Action actually re
 
 A line drawn at one level of a block diagram for connections between elements inside the boxes shown, for example a connection between two parts of a subsystem drawn as one line between the subsystems. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
 
+#### Self-approved
+
+A badge on a record whose latest approval was given by the person who created it. It appears where the project or organisation lets the creator approve (the default); a **separate approver** setting refuses the creator instead. See [Core Features → Lifecycles](../core-features/lifecycles.md#who-may-approve-the-creator-or-another-person).
+
+#### Separate approver
+
+A setting, for each record type with an approval step, that requires a person other than the record's creator to approve it. A project administrator sets it for the project and an organisation administrator can require it for every project. See [Core Features → Lifecycles](../core-features/lifecycles.md#who-may-approve-the-creator-or-another-person).
+
 #### Service user
 
 An account of one organisation that has no password and cannot sign in, used by an integration (an AI assistant, a build job) instead of a named person. An organisation administrator creates it, names who is responsible for it, and issues and revokes its [personal access tokens](../core-features/personal-access-tokens.md#service-users). Everything it does is recorded under its own name.

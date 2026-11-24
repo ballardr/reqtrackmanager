@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
+import { buildApprovalSeparationApi } from "../testing/approvalSeparationFixtures";
 import {
   buildDecisionLifecycle, buildLifecyclesApi, buildPainPointLifecycle, buildProjectLifecycles, buildProjectSkip,
 } from "../testing/lifecycleFixtures";
@@ -13,7 +14,7 @@ import { ProjectLifecyclesPanel } from "./ProjectLifecyclesPanel";
 const meta: Meta<typeof ProjectLifecyclesPanel> = {
   title: "Components/ProjectLifecyclesPanel",
   component: ProjectLifecyclesPanel,
-  args: { projectId: "project-1", api: buildLifecyclesApi() },
+  args: { projectId: "project-1", api: buildLifecyclesApi(), separationApi: buildApprovalSeparationApi() },
 };
 export default meta;
 

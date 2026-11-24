@@ -1,3 +1,4 @@
+import { useApprovalStatus } from "../hooks/useApprovalStatus";
 import { useMutation } from "../hooks/useMutation";
 import { useRecordCode } from "../hooks/useRecordCode";
 import { Bell, BellOff, FolderOpen, GitPullRequest, Plus, Trash2 } from "lucide-react";
@@ -96,6 +97,7 @@ export function RequirementDetailPage() {
   const canApprove = myRoles.includes("project_manager");
   const canEdit = canArchive || myRoles.includes("stakeholder");
   const [requirement, setRequirement] = useState<Requirement | null>(null);
+  const approval = useApprovalStatus(projectId ? { projectId } : null, "requirement", requirement?.id, requirement?.status);
   const [history, setHistory] = useState<RequirementVersionEntry[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [form, setForm] = useState<RequirementFieldValues & { changeNote: string }>({ ...EMPTY_REQUIREMENT_FIELDS, changeNote: "" });
@@ -554,7 +556,7 @@ export function RequirementDetailPage() {
   let nextPromotion: LifecyclePromote | undefined;
   if (requirement.requires_approval) {
     nextPromotion = canApprove
-      ? { to: "approved", onPromote: () => setApproving(true) }
+      ? approval.approve("approved", () => setApproving(true))
       : { to: "approved", blockedReason: strings.lifecycle.notPermitted(REQUIREMENT_STATUS_LABEL.approved) };
   } else if (requirement.status === "approved" && !requirement.is_completed) {
     nextPromotion = canArchive
@@ -591,6 +593,7 @@ export function RequirementDetailPage() {
         back={projectId ? { to: `/projects/${projectId}/requirements`, label: strings.requirements.title } : undefined}
         title={requirement.name}
         code={requirement.unique_code}
+        approval={approval.status}
         tags={projectId && requirementId ? <RecordTags projectId={projectId} artefactType="requirement" artefactId={requirementId} /> : undefined}
         badges={
           <>

@@ -8,6 +8,7 @@
  * {@link LifecyclesApi} is injectable so stories stay off the network.
  */
 import { api } from "./client";
+import type { Project } from "./types";
 
 /** One state of a record type's path. */
 export interface LifecycleState {
@@ -133,3 +134,10 @@ export const lifecyclesApi: LifecyclesApi = {
   removeExemption: (organizationId, artefactType, projectId) =>
     api.delete<OrgLifecycle[]>(`/api/v1/orgs/${organizationId}/lifecycles/${artefactType}/exemptions/${projectId}`),
 };
+
+/** Loads the organisation's projects for an exemption dialog. */
+export type LoadOrgProjects = (organizationId: string) => Promise<Array<Pick<Project, "id" | "name" | "code">>>;
+
+/** The live {@link LoadOrgProjects}. */
+export const loadOrgProjects: LoadOrgProjects = (organizationId) =>
+  api.get<Project[]>(`/api/v1/projects?organization_id=${organizationId}`);

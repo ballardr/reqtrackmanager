@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
+import { buildApprovalSeparationApi } from "../testing/approvalSeparationFixtures";
 import { buildLifecyclesApi, buildOrgLifecycle, buildOrgSkip, buildProjectLifecycles } from "../testing/lifecycleFixtures";
 import { expectStressStable, stressText } from "../testing/stressFixtures";
 import { TextStress } from "../testing/TextStress";
@@ -22,6 +23,7 @@ const meta: Meta<typeof OrgLifecyclesPanel> = {
     organizationId: "org-1",
     api: buildLifecyclesApi(buildProjectLifecycles([]), [buildOrgLifecycle()]),
     loadProjects: async () => projects,
+    separationApi: buildApprovalSeparationApi(),
   },
 };
 export default meta;

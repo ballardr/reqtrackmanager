@@ -51,6 +51,7 @@ import type {
 } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import { useSkipSteps } from "../../components/useSkipSteps";
 import { withLifecycleSkip } from "../../api/client";
@@ -107,6 +108,9 @@ export function GuidingPrincipleDetailPage() {
 
   const [guidingPrinciple, setGuidingPrinciple] = useState<GuidingPrinciple | null>(null);
   const lifecycle = useProjectLifecycle(projectId, "guiding_principle");
+  const approval = useApprovalStatus(
+    projectId ? { projectId } : organizationId ? { organizationId } : null, "guiding_principle", guidingPrinciple?.id, guidingPrinciple?.status,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<GuidingPrincipleVersion[] | null>(null);
   const [comments, setComments] = useState<GuidingPrincipleComment[] | null>(null);
@@ -238,7 +242,7 @@ export function GuidingPrincipleDetailPage() {
   if (next === "proposed") {
     promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, guidingPrinciple.id), "Guiding Principle proposed.") };
   } else if (next === "approved") {
-    promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
+    promote = approval.approve("approved", () => setTransitionAction("approve"));
   } else if (next === "active") {
     promote = { to: "active", onPromote: () => setTransitionAction("activate") };
   }
@@ -285,6 +289,7 @@ export function GuidingPrincipleDetailPage() {
         recordLabel="Guiding Principle"
         title={guidingPrinciple.name}
         code={guidingPrinciple.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} /> : undefined}
         codeOwner={codeOwner}
         back={{ to: backLink, label: "Guiding Principles" }}

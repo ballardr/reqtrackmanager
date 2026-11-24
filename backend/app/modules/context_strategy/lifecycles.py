@@ -29,6 +29,7 @@ from app.modules.context_strategy.labels import (
     OPEN_QUESTION_STATUS_LABEL,
     PAIN_POINT_STATUS_LABEL,
 )
+from app.modules.context_strategy.models import FutureState, GuidingPrinciple, Strategy
 from app.modules.registry import LifecycleDefinition
 from app.services.lifecycles import table_from_enum
 
@@ -115,16 +116,19 @@ LIFECYCLES: dict[str, LifecycleDefinition] = {
         label="Strategy", path=("draft", "proposed", "under_review", "approved", "active"),
         transitions=table_from_enum(s._ALLOWED_TRANSITIONS), labels=LIFECYCLE_STATUS_LABEL,
         optional=("proposed", "under_review"), gated=("approved",), entry_guard=_strategy_guard,
+        record_model=Strategy,
     ),
     s.FUTURE_STATE_ARTEFACT_TYPE: LifecycleDefinition(
         label="Future State", path=("draft", "proposed", "under_review", "approved", "active"),
         transitions=table_from_enum(s._FS_ALLOWED_TRANSITIONS), labels=LIFECYCLE_STATUS_LABEL,
         optional=("proposed", "under_review"), gated=("approved",), entry_guard=_future_state_guard,
+        record_model=FutureState,
     ),
     s.GUIDING_PRINCIPLE_ARTEFACT_TYPE: LifecycleDefinition(
         label="Guiding Principle", path=("draft", "proposed", "approved", "active"),
         transitions=table_from_enum(s._GP_ALLOWED_TRANSITIONS), labels=LIFECYCLE_STATUS_LABEL,
         optional=("proposed",), gated=("approved",), entry_guard=_guiding_principle_guard,
+        record_model=GuidingPrinciple,
     ),
     s.PAIN_POINT_ARTEFACT_TYPE: LifecycleDefinition(
         label="Pain Point", path=("submitted", "triaged", "accepted", "addressed", "closed"),

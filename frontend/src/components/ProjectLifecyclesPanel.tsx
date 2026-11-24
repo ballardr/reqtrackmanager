@@ -10,6 +10,7 @@
  * - Show a state the organisation requires as locked with its reason (never an editable box that fails on save), and a
  *   project the organisation exempts as free to turn it off.
  * - Offer the project's one switch for skipping steps on a record, locked when the organisation forbids it.
+ * - Show the Approval section (`ApprovalSeparationSection`) after the types.
  *
  * Design decisions: there is no Custom or reset control; a nested project that has made no choice shows a read-only note that it follows its parent, and its first change becomes its own choice. Only a type with at least one optional state is listed; an approval state is never offered. The
  * preview draws the steps that are on, so the person sees the path Promote will follow. The skipping switch is one
@@ -17,10 +18,12 @@
  */
 import { useCallback, useState } from "react";
 
+import { approvalSeparationApi, type ApprovalSeparationApi } from "../api/approvalSeparation";
 import { lifecyclesApi, type LifecyclesApi, type ProjectLifecycle, type ProjectLifecycles, type ProjectSkip } from "../api/lifecycles";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { ApprovalSeparationSection } from "./ApprovalSeparationSection";
 import { Badge } from "./Badge";
 import { CheckboxField } from "./FormFields";
 import { LifecycleTrack } from "./LifecycleTrack";
@@ -29,8 +32,11 @@ import { Spinner } from "./Spinner";
 /**
  * @param projectId The project whose lifecycles are configured.
  * @param api The calls (the live ones by default).
+ * @param separationApi The approval separation calls (the live ones by default).
  */
-export function ProjectLifecyclesPanel({ projectId, api = lifecyclesApi }: { projectId: string; api?: LifecyclesApi }) {
+export function ProjectLifecyclesPanel({
+  projectId, api = lifecyclesApi, separationApi = approvalSeparationApi,
+}: { projectId: string; api?: LifecyclesApi; separationApi?: ApprovalSeparationApi }) {
   const strings = useStrings();
   const text = strings.lifecycleSettings;
   const { showToast } = useToast();
@@ -76,6 +82,7 @@ export function ProjectLifecyclesPanel({ projectId, api = lifecyclesApi }: { pro
       {configurable.map((lifecycle) => (
         <LifecycleTypeRow key={lifecycle.artefact_type} lifecycle={lifecycle} canManage={data.can_manage} onSave={save} />
       ))}
+      <ApprovalSeparationSection projectId={projectId} api={separationApi} />
     </div>
   );
 }

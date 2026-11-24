@@ -3604,6 +3604,30 @@ const en = {
     skipInherited: "Inherited from parent project",
     skipExemptTitle: "Exempt a project from the ban on skipping steps",
   },
+  approvalSeparation: {
+    heading: "Approval",
+    loadFailed: "The approval settings could not be loaded.",
+    saved: "The approval settings were saved.",
+    noTypes: "No record type of an enabled module has an approval step.",
+    fieldLabel: (label: string) => `${label} approval`,
+    /** Project panel options. */
+    separate: "Separate approver required",
+    creatorWithComment: "Submitter may approve, with a comment",
+    byDefault: "Default: submitter may approve",
+    followParent: "Follow parent project",
+    /** Organisation panel options. */
+    projectDecides: "Project decides",
+    requiredEverywhere: "Required for every project",
+    requiredByOrganisation: "Required by the organisation",
+    exempt: "Exempt from the organisation's requirement",
+    inheritedParent: "Inherited from parent project",
+    exemptTitle: (type: string) => `Exempt a project from the ${type} approval requirement`,
+    /** Record pages. */
+    selfApproved: "Self-approved",
+    selfApprovedHelp: (name: string | null, when: string | null) =>
+      `Approved by its creator${name ? `, ${name}` : ""}${when ? ` on ${when}` : ""}.`,
+    needsOtherApprover: "A separate approver is required and you created this record, so a different person must approve it.",
+  },
   lifecycle: {
     /** Name of the track (a list of the record's states). */
     label: "Lifecycle",
@@ -3941,6 +3965,8 @@ const en = {
     lifecycleRequired: "Require a state to be used by every project of the organisation. A project cannot turn a required state off, and a project that had turned it off uses it again from now on; its records are not changed.\nA project listed under Exempt projects is not bound by the requirement.",
     lifecycleExemptProject: "The project that the requirement, or the ban on skipping steps, does not bind. Its own choice applies again.",
     lifecycleIncludeChildren: "Off: only this project is exempt.\nOn: its nested child projects are exempt too, including projects added to it later.",
+    approvalSeparationProject: "Whether the person who created a record may also approve it.\nDefault: the creator may approve without a comment. A nested project follows its parent project's choice.\nSubmitter may approve, with a comment: the creator may approve, and each such approval needs a comment.\nSeparate approver required: another person with the approval permission must approve the record.\nA record approved by its creator is marked Self-approved and the approval is recorded in its history. If the organisation requires a separate approver, this cannot be changed here.",
+    approvalSeparationOrganization: "Whether every project of the organisation needs a separate approver for this record type.\nProject decides: each project chooses; by default the creator may approve.\nRequired for every project: the creator may never approve their own record, and a project cannot relax it. A project listed under Exempt projects is not bound by the requirement.",
     requirementAliasMode: "Allowed: a requirement can be placed in further components and categories, each with a code of its own.\nDisabled: no new further places can be added; the ones that exist keep working and can be made independent.\nA project follows its parent project, then the organisation, until it sets its own value.\nA project that relies on traceability matrices and coverage figures reads them most clearly with one code per requirement: choose Disabled.",
     recordComponents: "The components and categories this record belongs to, for example Hardware or Hardware / Cooling. A record can belong to several, and every list can be filtered by them.",
     recordComponentsFilter: "Shows records placed in any chosen component or category.\nA component chosen alone matches the record whatever its category.",

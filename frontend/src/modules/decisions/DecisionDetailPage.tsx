@@ -25,6 +25,7 @@ import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import { useSkipSteps } from "../../components/useSkipSteps";
 import { withLifecycleSkip } from "../../api/client";
@@ -65,6 +66,7 @@ export function DecisionDetailPage() {
   const [decisionTypes, setDecisionTypes] = useState<DecisionTypeDefinition[]>([]);
   const [decision, setDecision] = useState<Decision | null>(null);
   const lifecycle = useProjectLifecycle(projectId, "decision");
+  const approval = useApprovalStatus(projectId ? { projectId } : null, "decision", decision?.id, decision?.status);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState(false);
@@ -161,7 +163,7 @@ export function DecisionDetailPage() {
   const promote: LifecyclePromote | undefined =
     next === "proposed" ? { to: "proposed", onPromote: () => void runTransition(() => decisionsApi.proposeDecision(projectId, decision.id), "Decision proposed.") }
     : next === "under_review" ? { to: "under_review", onPromote: () => void runTransition(() => decisionsApi.submitDecisionForReview(projectId, decision.id), "Decision submitted for review.") }
-    : next === "approved" ? { to: "approved", onPromote: () => setApproving(true) }
+    : next === "approved" ? approval.approve("approved", () => setApproving(true))
     : undefined;
   const offPathStep = decision.status === "rejected" || decision.status === "superseded" ? {
     key: decision.status,
@@ -210,6 +212,7 @@ export function DecisionDetailPage() {
         recordLabel="Decision"
         title={decision.title}
         code={decision.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="decision" artefactId={decision.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/decisions`, label: "Decisions" }}
         subtitle={decisionType?.name ?? "—"}

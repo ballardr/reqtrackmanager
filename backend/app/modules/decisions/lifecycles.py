@@ -24,6 +24,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.decisions import service as s
 from app.modules.decisions.labels import DECISION_STATUS_LABEL
+from app.modules.decisions.models import Decision
 from app.modules.registry import LifecycleDefinition
 from app.services.lifecycles import table_from_enum
 
@@ -52,5 +53,6 @@ LIFECYCLES: dict[str, LifecycleDefinition] = {
         label="Decision", path=("draft", "proposed", "under_review", "approved"),
         transitions=table_from_enum(s._ALLOWED_TRANSITIONS), labels=DECISION_STATUS_LABEL,
         optional=("proposed", "under_review"), gated=("approved",), entry_guard=_entry_guard,
+        record_model=Decision,
     ),
 }

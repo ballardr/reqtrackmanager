@@ -70,7 +70,7 @@ from app.schemas.type_vocabulary import (
     RestoreTypesOut,
     RestoreTypesRequest,
 )
-from app.services import scoring
+from app.services import approval_separation, scoring
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
 from app.services.lifecycles import lifecycle_for
@@ -299,6 +299,10 @@ def transition(
         if channel == "mcp":
             require_ai_approvals_enabled(db, project)
         sh.require_risk_accept(db, current_user, project)
+        approval_separation.enforce_record_approval(
+            db, user=current_user, artefact_type=RISK_ARTEFACT_TYPE, record=_get(db, project_id, risk_id),
+            comment=payload.comment,
+        )
     else:
         sh.require_risk_manage(db, current_user, project)
     return sh.transition_risk_from_payload(

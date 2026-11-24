@@ -38,6 +38,7 @@ import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_DESCRIPTION, STRATEGY_STATUS_L
 import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import { useSkipSteps } from "../../components/useSkipSteps";
 import { withLifecycleSkip } from "../../api/client";
@@ -97,6 +98,9 @@ export function StrategyDetailPage() {
 
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const lifecycle = useProjectLifecycle(projectId, "strategy");
+  const approval = useApprovalStatus(
+    projectId ? { projectId } : organizationId ? { organizationId } : null, "strategy", strategy?.id, strategy?.status,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<StrategyVersion[] | null>(null);
   const [comments, setComments] = useState<StrategyComment[] | null>(null);
@@ -201,7 +205,7 @@ export function StrategyDetailPage() {
   } else if (next === "under_review") {
     promote = { to: "under_review", onPromote: () => runTransition(() => scopedApi.submitForReview(scopeId, strategy.id), "Strategy submitted for review.") };
   } else if (next === "approved") {
-    promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
+    promote = approval.approve("approved", () => setTransitionAction("approve"));
   } else if (next === "active") {
     promote = { to: "active", onPromote: () => setTransitionAction("activate") };
   }
@@ -248,6 +252,7 @@ export function StrategyDetailPage() {
         recordLabel="Strategy"
         title={strategy.title}
         code={strategy.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="strategy" artefactId={strategy.id} /> : undefined}
         codeOwner={codeOwner}
         back={{ to: backLink, label: "Strategies" }}

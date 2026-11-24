@@ -1,3 +1,4 @@
+import { useApprovalStatus } from "../hooks/useApprovalStatus";
 import { useMutation } from "../hooks/useMutation";
 import { Bell, BellOff, MessageSquare } from "lucide-react";
 import { useState } from "react";
@@ -68,6 +69,7 @@ export function ChangeRequestDetailPage() {
   const canManageTasks = canDecide || myRoles.includes("project_administrator");
   const canVote = myRoles.includes("stakeholder") || canDecide;
   const [cr, setCr] = useState<ChangeRequest | null>(null);
+  const approval = useApprovalStatus(projectId ? { projectId } : null, "change_request", cr?.id, cr?.status);
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -323,7 +325,7 @@ export function ChangeRequestDetailPage() {
   if (cr.status === "draft") nextPromotion = { to: "submitted", onPromote: submit };
   else if (isDecidable) {
     nextPromotion = canDecide
-      ? { to: "approved", onPromote: () => approve(false) }
+      ? approval.approve("approved", () => approve(false))
       : { to: "approved", blockedReason: strings.lifecycle.notPermitted(CHANGE_REQUEST_STATUS_LABEL.approved) };
   }
 
@@ -341,6 +343,7 @@ export function ChangeRequestDetailPage() {
         back={projectId ? { to: `/projects/${projectId}/change-requests`, label: strings.changeRequests.title } : undefined}
         title={title}
         code={cr.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="change_request" artefactId={cr.id} /> : undefined}
         badges={cr.is_subscribed ? <Badge tone="info">{strings.requirements.subscribed}</Badge> : undefined}
         actions={[

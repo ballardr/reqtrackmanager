@@ -84,7 +84,7 @@ from app.models.requirement_alias import RequirementAlias
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.registry import get_all_module_project_bundle_hooks, get_all_registered_artefact_types
-from app.services import code_prefixes, lifecycles, nav_labels, overview_widgets
+from app.services import approval_separation, code_prefixes, lifecycles, nav_labels, overview_widgets
 from app.services.audit import log_event
 from app.services.bundle_approval_state import count_approval_state, strip_approval_state
 from app.services.bundle_common import (
@@ -563,6 +563,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "code_prefixes": code_prefixes.export_overrides(db, project),
         "lifecycles": lifecycles.export_project(db, project),
         "lifecycle_skip": lifecycles.export_project_skip(db, project),
+        "approval_separation": approval_separation.export_project(db, project),
         "external_systems": export_project_list(db, project, EXTERNAL_SYSTEMS),
         "custom_field_definitions": [
             {
@@ -736,6 +737,7 @@ def _apply_project_data(
     code_prefixes.import_overrides(db, project, data.get("code_prefixes"), current_user.id, warnings.add)
     lifecycles.import_project(db, project, data.get("lifecycles"), current_user.id, warnings.add)
     lifecycles.import_project_skip(db, project, data.get("lifecycle_skip"))
+    approval_separation.import_project(db, project, data.get("approval_separation"), warnings.add)
     import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_packs(db, project, data, current_user, warnings)
     import_project_snippets(db, project, data, current_user, warnings, file_bytes_by_ref)

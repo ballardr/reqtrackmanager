@@ -5,6 +5,7 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import { Badge } from "./Badge";
 import { RecordHeader } from "./RecordHeader";
 import { ReturnLink } from "./ReturnLink";
+import { buildApprovalStatus } from "../testing/approvalSeparationFixtures";
 import { orphanedControlViolations } from "../testing/orphanedControls";
 import { STRESS_TEXT, expectStressStable, stressText } from "../testing/stressFixtures";
 import { TextStress } from "../testing/TextStress";
@@ -211,6 +212,15 @@ export const TagsAfterTheBadgesAndVersion: Story = {
     await expect(line).toContainElement(canvas.getByText("Safety"));
     await expect(line).toContainElement(canvas.getByText("Active"));
     await expect(canvas.getByText("Version 3").compareDocumentPosition(canvas.getByText("Safety")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  },
+};
+
+/** A record whose latest approval was given by its creator carries the Self-approved marker on the badge line. */
+export const SelfApprovedMarker: Story = {
+  args: { approval: buildApprovalStatus({ self_approved: true, approved_by_name: "Ada Lovelace", approved_at: "2026-11-24T09:00:00Z" }) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Self-approved").closest(".record-header__line")).toContainElement(canvas.getByText("Active"));
   },
 };
 

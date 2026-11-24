@@ -30,7 +30,7 @@ from app.schemas.requirement import (
     RequirementReviewCreate,
     RequirementReviewOut,
 )
-from app.services import pubsub
+from app.services import approval_separation, pubsub
 from app.services.audit import log_event
 from app.services.lookups import project_or_404
 from app.services.principals import is_principal_member, label_of, principal_ref
@@ -179,6 +179,10 @@ def approve_requirement(
     if current_version.status not in REQUIRES_APPROVAL_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")
     comment = ((payload.comment if payload else None) or "").strip()
+    approval_separation.enforce_approval(
+        db, user=current_user, artefact_type="requirement", record_id=requirement.id, creator_id=requirement.creator_id,
+        organization_id=project_or_404(db, project_id).organization_id, project_id=project_id, comment=comment,
+    )
     note = "Approved via MCP" if channel == "mcp" else "Approved directly"
     new_version = apply_new_version(
         db, requirement, current_version, current_user,

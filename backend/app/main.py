@@ -36,6 +36,7 @@ from app.routers import (
     action_types,
     actions,
     announcements,
+    approval_separation,
     artefact_links,
     auth,
     auth_oidc,
@@ -395,6 +396,8 @@ app.include_router(artefact_links.router)
 app.include_router(placements.router)
 app.include_router(lifecycles.org_router)
 app.include_router(lifecycles.project_router)
+app.include_router(approval_separation.org_router)
+app.include_router(approval_separation.project_router)
 app.include_router(requirement_aliases.org_router)
 app.include_router(requirement_aliases.project_router)
 app.include_router(code_prefixes.org_router)

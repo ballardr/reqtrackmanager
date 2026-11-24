@@ -47,7 +47,7 @@ from app.schemas.requirement import (
     RequirementUpdate,
     RequirementVersionOut,
 )
-from app.services import component_stages, engagement, pubsub
+from app.services import approval_separation, component_stages, engagement, pubsub
 from app.services import requirement_aliases as alias_service
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
@@ -381,6 +381,12 @@ def update_requirement(
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     project = project_or_404(db, project_id)
+    if payload.status == RequirementStatus.APPROVED:
+        approval_separation.enforce_approval(
+            db, user=current_user, artefact_type="requirement", record_id=requirement.id,
+            creator_id=requirement.creator_id, organization_id=project.organization_id, project_id=project_id,
+            comment=payload.change_note,
+        )
     new_version = edit_requirement(
         db, project, requirement, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,

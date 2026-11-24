@@ -58,13 +58,31 @@ flowchart LR
 - The history names the steps skipped and shows the reason. The MCP server does not skip steps; a refused move lists the steps that are allowed.
 - An organisation administrator can select **Do not allow skipping steps** under **Organisation administration, Lifecycles**, which locks every project's switch ("Not allowed by the organisation"). **Exempt a project** lets a project, and optionally its nested projects, skip steps again.
 
+## Who may approve: the creator or another person
+
+Some steps need an approval: a change request, a requirement, a Decision, a Risk acceptance, and a Strategy, Future State or Guiding Principle. By default the person who created a record may approve it if they hold the approval permission, so a team of one can work. The record then shows a **Self-approved** badge, and the history records the approval as made by its creator.
+
+A project administrator can change this under **Project administration, Lifecycles, Approval**. Each record type with an approval step has three choices:
+
+| Choice | Meaning |
+|---|---|
+| Default | The creator may approve without a comment. A nested project follows its parent project. |
+| Submitter may approve, with a comment | The creator may approve, and each such approval needs a comment. |
+| Separate approver required | The creator cannot approve. Another person who holds the approval permission must approve, and the next step shows a lock with the reason. |
+
+An organisation administrator can select **Required for every project** under **Organisation administration, Lifecycles, Approval**. No project can relax it, and the project's row shows **Required by the organisation**. **Exempt a project** lets one project (and optionally its nested projects) choose again. A project's own choice is kept while the requirement applies and returns when it is removed.
+
+- The rule applies to the application, the API and the MCP server alike.
+- Turning on a separate approver does not change approvals that were already given.
+- Approving several requirements together through a stage baseline applies the rule to each requirement. If one was created by the person baselining and a separate approver is required, the baseline is refused.
+
 ## Permissions
 
 | Action | Permission |
 |---|---|
 | See a project's lifecycles | Any project member |
-| Change a project's choice | **Manage project lifecycles** (project administrators and managers, organisation administrators) |
-| Require a state, add an exemption | **Manage organisation lifecycles** (organisation administrators) |
+| Change a project's choice, including who may approve | **Manage project lifecycles** (project administrators and managers, organisation administrators) |
+| Require a state or a separate approver, add an exemption | **Manage organisation lifecycles** (organisation administrators) |
 
 Every change is recorded in the project's history (record type and state names only).
 

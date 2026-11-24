@@ -168,7 +168,8 @@ def validate_definition(definition: LifecycleDefinition) -> list[str]:
 
     Returns:
         A message per violation: an optional state that is the first or last of the path, off the path, gated or
-        unknown, a gated or path state missing from the table, a move to an unknown state.
+        unknown, a gated or path state missing from the table, a move to an unknown state, a gated type without a record
+        model that has a creator.
     """
     problems: list[str] = []
     known = set(definition.transitions) | {n for nexts in definition.transitions.values() for n in nexts}
@@ -186,6 +187,8 @@ def validate_definition(definition: LifecycleDefinition) -> list[str]:
     for state in known:
         if state not in definition.labels:
             problems.append(f"state {state!r} has no label")
+    if definition.gated and (definition.record_model is None or not hasattr(definition.record_model, "creator_id")):
+        problems.append("a type with a gated state needs a record_model with a creator_id")
     return problems
 
 
@@ -805,7 +808,7 @@ def organization_skip(db: Session, organization: Organization) -> dict:
     return {"forbidden": forbidden, "exemptions": exemptions}
 
 
-def _enabled_for_organization(db: Session, organization_id: uuid.UUID, artefact_type: str, module_key: str) -> bool:
+def enabled_for_organization(db: Session, organization_id: uuid.UUID, artefact_type: str, module_key: str) -> bool:
     """Whether the type's module (and the sub-component serving the type) is enabled for the organisation."""
     if not is_module_enabled(db, organization_id, module_key):
         return False
@@ -840,7 +843,7 @@ def organization_lifecycles(db: Session, organization: Organization) -> list[dic
             "exemptions": exemptions.get(artefact_type, []),
         }
         for artefact_type, (module_key, definition) in sorted(get_lifecycles().items())
-        if definition.optional and _enabled_for_organization(db, organization.id, artefact_type, module_key)
+        if definition.optional and enabled_for_organization(db, organization.id, artefact_type, module_key)
     ]
 
 

@@ -33,6 +33,7 @@ from app.modules.decisions.service import (
     reject_decision,
     submit_decision_for_review,
 )
+from app.services import approval_separation
 from app.services.lookups import project_or_404
 from app.services.permissions import encode_permission
 from app.services.principals import is_principal_member, principal_ref
@@ -140,6 +141,9 @@ def approve_decision_endpoint(
         require_ai_approvals_enabled(db, project)
     decision = _get_decision_in_project_for_update(db, project_id, decision_id)
     _require_approve_permission_for_decision(db, current_user, project_id, decision)
+    approval_separation.enforce_record_approval(
+        db, user=current_user, artefact_type=DECISION_ARTEFACT_TYPE, record=decision, comment=payload.comment,
+    )
     _apply_value_error_as_conflict(
         approve_decision, db, decision, current_user.id, comment=payload.comment, via_mcp=channel == "mcp",
     )

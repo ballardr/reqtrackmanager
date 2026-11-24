@@ -1812,6 +1812,9 @@ class LifecycleDefinition:
             not move this record into `state`, the same check the type's own move endpoint makes. A skip of steps
             runs it for every step passed over, so a person never skips into a step they could not enter in turn.
             A type without one cannot have steps skipped.
+        record_model: The SQLAlchemy model of the type (an `id`, a `creator_id` and a `project_id`), so the approval
+            separation rule can read who created a record (`services.approval_separation`). Required for a type with
+            a gated state.
     """
 
     label: str
@@ -1821,6 +1824,7 @@ class LifecycleDefinition:
     optional: tuple[str, ...] = ()
     gated: tuple[str, ...] = ()
     entry_guard: Callable[[Session, User, Project, uuid.UUID, str], None] | None = None
+    record_model: Any = None
 
 
 @dataclass(frozen=True)

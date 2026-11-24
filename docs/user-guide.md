@@ -56,6 +56,8 @@ stateDiagram-v2
     CRApproved --> Approved: applies proposed changes
 ```
 
+**Who may approve.** By default the person who created a requirement or change request may approve it if they hold the approval permission, and the record then shows a **Self-approved** badge. A project administrator can require a separate approver for each record type under **Project administration, Lifecycles, Approval**, and an organisation administrator can require one for every project under **Organisation administration, Lifecycles, Approval**; the creator is then refused and the next step shows a lock with the reason. The same setting covers Decisions, Risk acceptance, Strategies, Future States and Guiding Principles.
+
 ## Working with requirements
 
 Open a project and go to **Requirements**. From here you can:

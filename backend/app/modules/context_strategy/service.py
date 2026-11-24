@@ -68,7 +68,7 @@ from app.modules.context_strategy.models import (
 )
 from app.modules.registry import LinkTypeSeed
 from app.schemas.principal import PrincipalRef
-from app.services import definition_suppression
+from app.services import approval_separation, definition_suppression
 from app.services.audit import log_event
 from app.services.lifecycles import check_move
 from app.services.link_types import ensure_org_link_type
@@ -320,7 +320,10 @@ def send_strategy_back_to_draft(
 def approve_strategy(
     db: Session, strategy: Strategy, current_version: StrategyVersion, actor: User, *, comment: str | None = None
 ) -> StrategyVersion:
-    """`UNDER_REVIEW` -> `APPROVED`."""
+    """`UNDER_REVIEW` -> `APPROVED`; applies the approval separation rule first (`services.approval_separation`)."""
+    approval_separation.enforce_record_approval(
+        db, user=actor, artefact_type=STRATEGY_ARTEFACT_TYPE, record=strategy, comment=comment,
+    )
     return _transition(db, strategy, current_version, StrategyStatus.APPROVED, actor, action="approved", comment=comment)
 
 
@@ -615,7 +618,10 @@ def approve_future_state(
     db: Session, future_state: FutureState, current_version: FutureStateVersion, actor: User,
     *, comment: str | None = None,
 ) -> FutureStateVersion:
-    """`UNDER_REVIEW` -> `APPROVED`."""
+    """`UNDER_REVIEW` -> `APPROVED`; applies the approval separation rule first (`services.approval_separation`)."""
+    approval_separation.enforce_record_approval(
+        db, user=actor, artefact_type=FUTURE_STATE_ARTEFACT_TYPE, record=future_state, comment=comment,
+    )
     return _future_state_transition(
         db, future_state, current_version, FutureStateStatus.APPROVED, actor, action="approved", comment=comment,
     )
@@ -1539,7 +1545,10 @@ def approve_guiding_principle(
     db: Session, guiding_principle: GuidingPrinciple, current_version: GuidingPrincipleVersion, actor: User,
     *, comment: str | None = None,
 ) -> GuidingPrincipleVersion:
-    """`PROPOSED` -> `APPROVED`."""
+    """`PROPOSED` -> `APPROVED`; applies the approval separation rule first (`services.approval_separation`)."""
+    approval_separation.enforce_record_approval(
+        db, user=actor, artefact_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, record=guiding_principle, comment=comment,
+    )
     return _guiding_principle_transition(
         db, guiding_principle, current_version, GuidingPrincipleStatus.APPROVED, actor, action="approved",
         comment=comment,

@@ -35,7 +35,7 @@ from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.routers.change_requests.core import _latest_version, _to_out
 from app.schemas.change_request import ChangeRequestDecision, ChangeRequestOut, ProposedLinkPreviewOut
-from app.services import notifications, pubsub
+from app.services import approval_separation, notifications, pubsub
 from app.services.actions import generate_unique_code as generate_action_unique_code
 from app.services.audit import log_event
 from app.services.change_request_links import build_preview, decline_all, resolve_links
@@ -231,6 +231,11 @@ def decide_change_request(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
     if cr.status not in (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW):
         raise HTTPException(status.HTTP_409_CONFLICT, "Only submitted change requests can be decided.")
+    if payload.approve:
+        approval_separation.enforce_approval(
+            db, user=current_user, artefact_type="change_request", record_id=cr.id, creator_id=cr.creator_id,
+            organization_id=project_or_404(db, project_id).organization_id, project_id=project_id, comment=payload.note,
+        )
 
     version = _latest_version(db, cr)
     if payload.approve and payload.merge_link_ids is not None:

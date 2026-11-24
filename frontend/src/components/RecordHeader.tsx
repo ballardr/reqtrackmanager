@@ -20,18 +20,20 @@
  *   and with no actions the menu is not drawn. The page owns each action's confirmation dialog
  *   (`useConfirmedAction`).
  *
- * External dependencies: `ActionMenu`, `ItemRow`, `LifecycleTrack`, react-router `Link`.
+ * External dependencies: `ActionMenu`, `ItemRow`, `LifecycleTrack`, `SelfApprovedBadge`, react-router `Link`.
  */
 import { RecordCode } from "./RecordCode";
 import { Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import type { ApprovalStatus } from "../api/approvalSeparation";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { useNavLabelOverride } from "../context/NavLabelValue";
 import { listBackTarget } from "../hooks/useListPosition";
 import { ItemRow } from "./ItemRow";
 import { LifecycleTrack, type LifecycleTrackProps } from "./LifecycleTrack";
+import { SelfApprovedBadge } from "./SelfApprovedBadge";
 import { useStrings } from "../context/TerminologyContext";
 import { withDetailRank } from "./detailCardOrder";
 
@@ -46,6 +48,7 @@ const BACK_ARROW = "← ";
  * @param codeOwner The owning organisation's code for a record the organisation owns (`PER-001` becomes `ACME-PER-001`).
  * @param subtitle Secondary line under the title (type, owner, priority).
  * @param badges Status and scope pills, shown on the line under the title.
+ * @param approval The record's approval status (`useApprovalStatus`); a record whose latest approval was given by its creator shows a Self-approved marker beside the badges.
  * @param version The record's version number, for a versioned record; shown as "Version n" after the badges, never as its own line.
  * @param tags The record's tags, components and references (`RecordTags`), after the badges and the version on the line under the title (wrapping onto further lines of the same row). `RecordTags` draws nothing for a record with none that the viewer cannot add to, and an empty line is hidden, so the header carries no gap.
  * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself. The label is the destination's plural name ("Pain Points"); a name the project or organisation gave the destination's navigation entry replaces it. The header draws the leading arrow, so pages never type it.
@@ -63,6 +66,7 @@ export function RecordHeader({
   codeOwner,
   subtitle,
   badges,
+  approval,
   version,
   tags,
   back,
@@ -79,6 +83,7 @@ export function RecordHeader({
   codeOwner?: string | null;
   subtitle?: ReactNode;
   badges?: ReactNode;
+  approval?: ApprovalStatus | null;
   version?: number;
   tags?: ReactNode;
   back?: { to: string; label: string } | { onClick: () => void; label: string };
@@ -131,9 +136,10 @@ export function RecordHeader({
           {titleAddon && <>{" "}<span className="record-header__addon">{titleAddon}</span></>}
         </div>
       </ItemRow>
-      {(badges || version !== undefined || tags) && (
+      {(badges || approval?.self_approved || version !== undefined || tags) && (
         <div className="row record-header__line">
           {badges}
+          <SelfApprovedBadge status={approval ?? null} />
           {version !== undefined && (
             <span className="text-muted" style={{ fontSize: "0.85rem" }} title={`Version ${version} of this record`}>
               Version {version}

@@ -7,6 +7,7 @@ the states an organisation requires and the projects it exempts.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -166,3 +167,89 @@ class OrgSkipSet(BaseModel):
     """Whether the organisation forbids skipping steps."""
 
     forbidden: bool
+
+
+class ProjectSeparationOut(BaseModel):
+    """One record type's approval separation rule as it applies to a project.
+
+    Attributes:
+        artefact_type: The registered record type with an approval gate.
+        label: The record type's singular name.
+        module_key: The module that owns the type, empty for a core type.
+        module_name: That module's display name, empty for a core type.
+        own: The project's own choice, or `None` when it follows its ancestor (or the default).
+        chosen: The choice the project resolves to (own, else the nearest ancestor's, else the default).
+        source: Where the project's choice comes from: `project`, `parent_project` or `default`.
+        required: Whether the organisation requires a separate approver and binds this project.
+        exempt: Whether the organisation requires one but this project is exempt.
+        separate: Whether a person other than the creator must approve now.
+    """
+
+    artefact_type: str
+    label: str
+    module_key: str
+    module_name: str
+    own: bool | None
+    chosen: bool
+    source: Literal["project", "parent_project", "default"]
+    required: bool
+    exempt: bool
+    separate: bool
+
+
+class ProjectSeparationsOut(BaseModel):
+    """A project's approval separation rules and whether the caller may change them."""
+
+    can_manage: bool
+    has_parent: bool
+    types: list[ProjectSeparationOut]
+
+
+class ProjectSeparationSet(BaseModel):
+    """A project's choice for one type: `true` requires a separate approver, `false` lets the creator approve and
+    `null` follows the nearest ancestor project (else the default)."""
+
+    separate_approver: bool | None = None
+
+
+class OrgSeparationOut(BaseModel):
+    """One record type's organisation-level approval separation view.
+
+    Attributes:
+        artefact_type: The registered record type with an approval gate.
+        label: The record type's singular name.
+        module_key: The module that owns the type, empty for a core type.
+        module_name: That module's display name, empty for a core type.
+        required: Whether a separate approver is required in every project that is not exempt.
+        exemptions: The projects the requirement does not bind.
+    """
+
+    artefact_type: str
+    label: str
+    module_key: str
+    module_name: str
+    required: bool
+    exemptions: list[ExemptionOut]
+
+
+class OrgSeparationSet(BaseModel):
+    """Whether the organisation requires a separate approver for one type."""
+
+    required: bool
+
+
+class ApprovalStatusOut(BaseModel):
+    """What a record's page shows about approval separation.
+
+    Attributes:
+        self_approved: Whether the record's latest approval was given by the person who created it.
+        approved_by_name: Who gave it.
+        approved_at: When (UTC).
+        needs_other_approver: Whether the caller created the record and a separate approver is required, so approval
+            is unavailable to them.
+    """
+
+    self_approved: bool
+    approved_by_name: str | None = None
+    approved_at: datetime | None = None
+    needs_other_approver: bool

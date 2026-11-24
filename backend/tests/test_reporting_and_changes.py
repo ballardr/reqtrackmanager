@@ -184,13 +184,15 @@ def test_project_changes_has_no_duplicate_entries_for_version_bumping_actions(cl
     # collapse to the version-history "updated" entry (apply_new_version labels
     # every non-initial version "updated"): 2. `complete` and `uncomplete` do not
     # bump the version (C-G-11 overlay), so their AuditEvent passes through as
-    # "completed"/"uncompleted": 1 each. Total 5.
+    # "completed"/"uncompleted": 1 each. The admin created and approved the requirement, so the approval also writes
+    # one "self_approved" entry (the Self-approved mark in the history). Total 6.
     actions = [c["action"] for c in req_changes]
     assert actions.count("created") == 1
     assert actions.count("updated") == 2
     assert actions.count("completed") == 1
     assert actions.count("uncompleted") == 1
-    assert len(req_changes) == 5
+    assert actions.count("self_approved") == 1
+    assert len(req_changes) == 6
 
     assert [c["action"] for c in cr_changes].count("created") == 1
     assert len(cr_changes) == 1

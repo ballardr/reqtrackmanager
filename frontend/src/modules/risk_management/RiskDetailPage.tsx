@@ -49,6 +49,7 @@ import { RISK_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
 import type { ActionMenuItem } from "../../components/ActionMenu";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import { useSkipSteps } from "../../components/useSkipSteps";
 import { withLifecycleSkip } from "../../api/client";
@@ -88,6 +89,7 @@ export function RiskDetailPage() {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [riskTypes, setRiskTypes] = useState<{ id: string; name: string }[]>([]);
   const [risk, setRisk] = useState<Risk | null>(null);
+  const approval = useApprovalStatus(projectId ? { projectId } : null, "risk", risk?.id, risk?.status);
   const [versions, setVersions] = useState<RiskVersion[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -219,6 +221,7 @@ export function RiskDetailPage() {
         recordLabel="Risk"
         title={risk.title}
         code={risk.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="risk" artefactId={risk.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/risk_management/risks`, label: "Risks" }}
         badges={

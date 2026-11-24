@@ -36,6 +36,7 @@ import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE, FUTURE_STATE_STATU
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
 import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
 import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
 import { useSkipSteps } from "../../components/useSkipSteps";
 import { withLifecycleSkip } from "../../api/client";
@@ -93,6 +94,9 @@ export function FutureStateDetailPage() {
 
   const [futureState, setFutureState] = useState<FutureState | null>(null);
   const lifecycle = useProjectLifecycle(projectId, "future_state");
+  const approval = useApprovalStatus(
+    projectId ? { projectId } : organizationId ? { organizationId } : null, "future_state", futureState?.id, futureState?.status,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<FutureStateVersion[] | null>(null);
   const [comments, setComments] = useState<FutureStateComment[] | null>(null);
@@ -197,7 +201,7 @@ export function FutureStateDetailPage() {
   } else if (next === "under_review") {
     promote = { to: "under_review", onPromote: () => runTransition(() => scopedApi.submitForReview(scopeId, futureState.id), "Future State submitted for review.") };
   } else if (next === "approved") {
-    promote = { to: "approved", onPromote: () => setTransitionAction("approve") };
+    promote = approval.approve("approved", () => setTransitionAction("approve"));
   } else if (next === "active") {
     promote = { to: "active", onPromote: () => setTransitionAction("activate") };
   }
@@ -244,6 +248,7 @@ export function FutureStateDetailPage() {
         recordLabel="Future State"
         title={futureState.title}
         code={futureState.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="future_state" artefactId={futureState.id} /> : undefined}
         codeOwner={codeOwner}
         back={{ to: backLink, label: "Future States" }}

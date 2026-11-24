@@ -1987,6 +1987,15 @@ def exempt_project_from_lifecycle(headers: dict, org_id: str, artefact_type: str
     r.raise_for_status()
 
 
+def require_separate_approver(headers: dict, project_id: str, artefact_type: str) -> None:
+    """Makes the project require a separate approver (not the creator) for a record type."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/approval-separation/{artefact_type}", json={"separate_approver": True},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 def turn_off_lifecycle_states(headers: dict, project_id: str, artefact_type: str, states: list[str]) -> None:
     """Turns optional states of a record type off for one project (a record then moves past them)."""
     r = httpx.put(
@@ -4747,6 +4756,10 @@ def main() -> None:
     exempt_project_from_lifecycle(h_pm, org["id"], "pain_point", operator_app["id"])
     turn_off_lifecycle_states(h_pm, operator_app["id"], "pain_point", ["triaged"])
     allow_skipping_steps(h_pm, operator_app["id"])
+    # The pilot app's requirements, change requests and decisions need an approver other than their creator; the other
+    # projects keep the default, so the Self-approved marker shows on records that their creator approved.
+    for gated_type in ("requirement", "change_request", "decision"):
+        require_separate_approver(h_pm, operator_app["id"], gated_type)
     app_pain_point_types = list_effective_pain_point_types(h_pm, operator_app["id"])
     app_levels = get_pain_point_levels(h_pm, operator_app["id"])
     for title, description, point_type, scores in (

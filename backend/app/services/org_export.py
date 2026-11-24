@@ -51,6 +51,7 @@ from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
 from app.services import (
     announcements,
+    approval_separation,
     code_prefixes,
     lifecycles,
     nav_labels,
@@ -164,6 +165,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **org_policies.export_org(db, org.id),
         "code_prefixes": code_prefixes.export_overrides(db, org),
         **lifecycles.export_org(db, org, project_ref_by_id),
+        **approval_separation.export_org(db, org, project_ref_by_id),
         # Configuration only: never a token, a hash or an address (`services.service_users.export_org`).
         "service_users": service_users.export_org(db, org),
         "external_systems": export_org_list(db, org, EXTERNAL_SYSTEMS),
@@ -707,6 +709,7 @@ def import_org_bundle(
         hooks.import_(db, org, data, users, warnings, None)
     project_id_by_ref = _import_projects(db, org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=None)
     lifecycles.import_org(db, org, data, project_id_by_ref, acting_user.id, warnings.add)
+    approval_separation.import_org(db, org, data, project_id_by_ref, acting_user.id, warnings.add)
 
     template_ref = data.get("default_template_project_ref")
     if template_ref and template_ref in project_id_by_ref:
@@ -870,6 +873,7 @@ def merge_org_bundle(
         db, target_org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=resolutions,
     )
     lifecycles.import_org(db, target_org, data, project_id_by_ref, acting_user.id, warnings.add, keep_existing=True)
+    approval_separation.import_org(db, target_org, data, project_id_by_ref, acting_user.id, warnings.add)
 
     project_conflicts = [c for c in conflicts if c["kind"] == "project"]
     summary = {

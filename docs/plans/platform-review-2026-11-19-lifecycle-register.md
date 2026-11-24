@@ -58,3 +58,19 @@ A person may move one record to a later main-path step with a reason where the p
 | Product feedback request | Under review, Accepted | none | Feedback Triager |
 
 Status: closed 2026-11-24.
+
+## Approval separation (phase 68)
+
+Whether the person who created a record may approve it is a setting per type with an approval step, in the Lifecycles group (project and organisation). The default is that the creator may approve; the creator is the record's `creator_id`.
+
+| Type | Approval step | Where the rule is called | Marker and comment |
+|------|---------------|--------------------------|--------------------|
+| Requirement | Approved | approve endpoint, edit endpoint with status Approved, stage baseline | Self-approved badge; comment where set on purpose (a baseline's label stands for it) |
+| Change request | Approved | decision endpoint (approve only) | Self-approved badge; comment (the decision note) where set on purpose |
+| Decision | Approved | approve endpoint | Self-approved badge; comment where set on purpose |
+| Risk | Accepted | transition endpoint to Accepted | Self-approved badge; comment where set on purpose |
+| Strategy, Future state, Guiding principle | Approved | approve function (project and organisation routes) | Self-approved badge; comment where set on purpose |
+
+Not covered: the compliance assessment approval and Pain Point acceptance (no registered approval step).
+
+Status: closed 2026-11-24.

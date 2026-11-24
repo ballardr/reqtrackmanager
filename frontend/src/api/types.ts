@@ -309,6 +309,7 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   member_removed: "removed a member",
   status_changed: "changed status",
   steps_skipped: "skipped steps",
+  self_approved: "approved their own record",
   review_deadline_set: "set a review deadline",
   review_recorded: "recorded a review",
   file_attached: "attached a file",
