@@ -94,6 +94,9 @@ export const ActiveShowsFieldsAndLinks: Story = {
     await expect(canvas.getByRole("link", { name: "Pat Regulator" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/stakeholders/stakeholder-1`);
     await expect(canvas.getByRole("link", { name: "Field Technician" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/personas/persona-1`);
     await expect(canvas.getByRole("link", { name: "Remote diagnostics in 30 seconds" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements/req-1`);
+    // Each holder carries the icon of its kind; the Requirement is not a person and has none.
+    await expect(canvas.getByRole("img", { name: "Stakeholder" })).toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: "Persona" })).toBeInTheDocument();
     // The code is shown through the one display rule, beside the title rather than inside the link's name.
     await expect(canvas.getByText(/SW-PERF-001$/)).toBeInTheDocument();
   },

@@ -21,6 +21,7 @@ import { MultiSelectDropdown } from "../../components/MultiSelectDropdown";
 import { RemovableItemList } from "../../components/RemovableItemList";
 import { AnonymousParticipantChip, ANONYMOUS_LABEL_NOTE } from "./AnonymousParticipantChip";
 import { projectPersonaApi, projectStakeholderApi } from "./api";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 import { STAKEHOLDERS_HELP } from "./help";
 import type { AnonymousParticipantEntry, Stakeholder } from "./types";
 import { useResearchExtras } from "./useResearchExtras";
@@ -89,7 +90,7 @@ export function ParticipantsField({
     else onChange(value.filter((stakeholderId) => stakeholderId !== id));
   };
   const items = [
-    ...stakeholderItems.map((s) => ({ id: s.id, content: <span>{s.name}</span>, removeLabel: `Remove ${s.name}` })),
+    ...stakeholderItems.map((s) => ({ id: s.id, content: <PeopleKindLabel kind="stakeholder" name={s.name} />, removeLabel: `Remove ${s.name}` })),
     ...anonymous.map((p, index) => ({
       id: `${ANONYMOUS_PREFIX}${index}`,
       content: <AnonymousParticipantChip label={p.label} personaId={p.persona_id} personaOptions={personaChoices(p)} onPersonaChange={(id) => setPersona(index, id)} />,

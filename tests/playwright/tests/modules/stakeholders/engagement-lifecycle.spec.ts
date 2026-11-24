@@ -192,6 +192,9 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await page.keyboard.press("Escape");
     // The participants list and the Links panel both name Pat, so take the first.
     await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
+    // Every chip that names a person record carries the icon of its kind.
+    const chip = (name: string) => page.getByRole("listitem").filter({ has: page.getByRole("link", { name }) });
+    await expect(chip(patName).getByRole("img", { name: "Stakeholder" })).toBeVisible();
     // Pat takes part, so is no longer offered.
     await page.getByRole("button", { name: "Add to Participants" }).click();
     await expect(page.getByRole("checkbox", { name: `Participant ${samName}` })).toBeVisible();
@@ -203,6 +206,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await addPersona.getByLabel("Persona covered").selectOption({ label: personaName });
     await addPersona.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByRole("link", { name: personaName }).first()).toBeVisible();
+    await expect(chip(personaName).getByRole("img", { name: "Persona" })).toBeVisible();
 
     // --- The list filters by participant (applied by the API).
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
@@ -247,6 +251,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: samName }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: `Remove audience ${groupName}` })).toBeVisible();
+    await expect(page.getByRole("listitem").filter({ hasText: groupName }).getByRole("img", { name: "Stakeholder Group" })).toBeVisible();
 
     // --- A no-show is removed individually; removing the audience keeps everyone else.
     await page.getByRole("button", { name: `Remove ${samName}` }).click();
@@ -403,6 +408,8 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByText("Engagement updated.")).toBeVisible();
     await expect(page.getByText("Participant 2").first()).toBeVisible();
     await expect(page.getByText("via an anonymous participant")).toBeVisible();
+    // An anonymous participant has its own icon, apart from the Facilitators' user icon.
+    await expect(page.getByRole("listitem").filter({ hasText: "Participant 2" }).getByRole("img", { name: "Anonymous participant" })).toBeVisible();
     await page.reload();
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(page.getByRole("dialog", { name: /^Edit / }).getByLabel("Persona represented by Participant 1").locator("option:checked")).toHaveText(personaName);

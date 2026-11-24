@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 71 done 2026-11-22 to 2026-11-24 and 72 and 73 planned 2026-11-24; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 70 are done; phases 60 to 73 came from the review of 2026-11-24 (the user works them individually; 71 to 73 are planned, not started); R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 72 done 2026-11-22 to 2026-11-24 and 73 planned 2026-11-24; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 59 came from the review of 2026-11-23; 50 to 72 are done; phases 60 to 73 came from the review of 2026-11-24 (the user works them individually; 73 is planned, not started); R, D, W, S and C follow). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-71 / 78 phases complete.
+72 / 78 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -81,7 +81,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 69 | Group owners: no kind and member-count pill | A group shown as an owner, facilitator or any other person-valued field loses the large "Organisation group · 2 members" pill; the icon shows it is a group and the kind and member count move to a tooltip and the accessible name; one shared component, every use | [x] |
 | 70 | Record lists: names keep their width, optional columns | The People list (and every list on the shared record list view) stops squashing the Name column: Scope leaves the default columns and the optional columns are chosen with the existing shared column chooser, remembered per person; a decision gate first; decided 2026-11-24: Scope off, Kind, Details and Type optional and on, every `RecordListView` list | [x] |
 | 71 | Column choice on every list | Most lists get the column chooser (a register of each list's columns and defaults signed off first, a rule and a check script after), so a list shows the columns a person needs and a rarely needed one such as the Diagrams Switches count is off by default; builds on the mechanism of phase 70 | [x] |
-| 72 | Engagement page: a kind icon on every person chip | Participants, Personas covered and Audience groups draw the icon of their kind beside the name, as Facilitators already do; one shared label, and the same check on every other place these records are named | [ ] |
+| 72 | Engagement page: a kind icon on every person chip | Participants, Personas covered and Audience groups draw the icon of their kind beside the name, as Facilitators already do; one shared label, and the same check on every other place these records are named | [x] |
 | 73 | Tile cards: Markdown text shown as plain text, equations drawn | The Specs tiles show a requirement's reasoning with its Markdown marks, cut by hand at 140 characters; they show plain text with equations drawn, through one shared summary component and the shared clamp, and every other place that shows a Markdown field raw is found and fixed | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 73 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
@@ -1038,6 +1038,7 @@ Five items from the user's review, each checked against the code (findings in ea
 - **Check while there:** the Stakeholder group icon (`UsersRound`) and the organisation group icon (`Users`) of a facilitator group look alike on the same page. The gate checks whether the tooltips tell them apart well enough or one icon changes.
 - **Sweep ("everywhere"):** every other place that names a Persona, a Stakeholder or a Stakeholder group as a chip, link or table cell with no icon (a Need's stakeholder, a Pain Point's raised-by and the like) gets the shared label, or is listed with its reason. The Links panel rows, search results and report fields are different surfaces and stay as they are unless they draw such a chip. The result goes in `docs/decisions.md`.
 - **Docs:** the style guide's note on the People kind icon states where it is used; a `docs/decisions.md` entry.
+- **Done 2026-11-24** (gate answers and the sweep result are in `docs/decisions.md`, "Phase 72"): anonymous participant is `VenetianMask`, `UsersRound` stays for a Stakeholder group, the sweep covers every chip, link and name cell; the shared label is `PeopleKindLabel`. A flaky Playwright run found a real defect (Edit pressed before the research extras resolved opened the form without the anonymous participants), fixed in the same phase.
 - Tests: Storybook for the shared label (each kind, a long name with `LongText` and `expectStressStable`, with and without a link) and the Engagement page story showing an icon on every chip group; Playwright on an Engagement with a Stakeholder, an anonymous participant, a Persona covered and an Audience group: each chip has an icon with its kind as accessible name, and the removal controls still work.
 
 ### Phase 73 — Tile cards: Markdown text shown as plain text, equations drawn

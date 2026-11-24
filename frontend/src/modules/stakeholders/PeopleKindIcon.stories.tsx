@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
 import { PeopleKindIcon } from "./PeopleKindIcon";
-import { PEOPLE_KINDS, PEOPLE_KIND_LABEL } from "./peopleRows";
+import { PEOPLE_KINDS, PEOPLE_KIND_LABEL, PERSON_KIND_LABEL } from "./peopleRows";
 
 const meta: Meta<typeof PeopleKindIcon> = {
   title: "Modules/Stakeholders/PeopleKindIcon",
@@ -26,6 +26,20 @@ export const EveryKindIsNamed: Story = {
     }
     const shapes = Array.from(canvasElement.querySelectorAll("svg")).map((svg) => svg.innerHTML);
     await expect(new Set(shapes).size).toBe(PEOPLE_KINDS.length);
+  },
+};
+
+/** An anonymous participant has its own icon, apart from the three kinds of record. */
+export const AnonymousParticipantHasItsOwnIcon: Story = {
+  render: () => (
+    <div className="row">
+      {[...PEOPLE_KINDS, "anonymous" as const].map((kind) => <PeopleKindIcon key={kind} kind={kind} />)}
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByRole("img", { name: PERSON_KIND_LABEL.anonymous })).toBeInTheDocument();
+    const shapes = Array.from(canvasElement.querySelectorAll("svg")).map((svg) => svg.innerHTML);
+    await expect(new Set(shapes).size).toBe(PEOPLE_KINDS.length + 1);
   },
 };
 

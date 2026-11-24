@@ -34,6 +34,7 @@ export const PlacesStakeholdersInQuadrants: Story = {
       "href", "/projects/project-1/modules/stakeholders/stakeholders/sh-1",
     );
     await expect(within(manage).getByText("STK-001")).toBeInTheDocument();
+    await expect(within(manage).getByRole("img", { name: "Stakeholder" })).toBeInTheDocument();
     // An organisation-owned record arrives already qualified; the view shows the server's string.
     await expect(within(canvas.getByRole("region", { name: "Keep satisfied" })).getByText("ACME-STK-001")).toBeInTheDocument();
     await expect(within(canvas.getByRole("region", { name: "Keep satisfied" })).getByText("Pat Regulator")).toBeInTheDocument();

@@ -361,6 +361,7 @@ export function StakeholderDetailPage() {
 
           <RepresentationPanel
             heading="Represents these Personas"
+            kind="persona"
             emptyText="This Stakeholder does not represent any Persona yet."
             load={() => scopedApi.listPersonas(scopeId, stakeholder.id)}
             linkFor={(persona) =>

@@ -335,6 +335,7 @@ export function PersonaDetailPage() {
 
           <RepresentationPanel
             heading="Represented by"
+            kind="stakeholder"
             emptyText="No Stakeholder represents this Persona yet."
             load={() => scopedApi.listStakeholders(scopeId, persona.id)}
             linkFor={(stakeholder) => `${projectId ? "/projects" : "/orgs"}/${scopeId}/modules/stakeholders/stakeholders/${stakeholder.id}`}

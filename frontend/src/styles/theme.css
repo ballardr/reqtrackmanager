@@ -3397,6 +3397,8 @@ th.directory-table-floor {
   background: var(--color-surface-alt);
   padding: 0.1rem var(--space-1) 0.1rem 0.65rem;
   font-size: 0.9rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* The compact X that empties a value or removes an item (`ClearButton`). The ::after widens the
@@ -3750,6 +3752,27 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 }
 
 .people-kind-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+/* A person record named in a chip, list or cell (`PeopleKindLabel`): icon, optional code, name, optional note on one
+   line; only the name gives way. */
+.people-kind-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.people-kind-label > :not(.cell-text-trigger):not(.people-kind-label__name) {
+  flex: none;
+}
+
+.people-kind-label__name {
+  min-width: 0;
   display: inline-flex;
 }
 

@@ -42,6 +42,23 @@ export const ReadOnlyListLinksToEachRecord: Story = {
   },
 };
 
+/** A panel given a `kind` draws that kind's icon before each name; one without draws plain links. */
+export const KindDrawsItsIconBeforeEachName: Story = {
+  args: { kind: "persona" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getAllByRole("img", { name: "Persona" })).toHaveLength(2));
+  },
+};
+
+export const WithoutKindDrawsNoIcon: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Field Technician" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("img")).not.toBeInTheDocument();
+  },
+};
+
 /** A link that carries a code shows it beside the name: an organisation-owned record is always qualified by the organisation's code. */
 export const ShowsEachRecordsCode: Story = {
   args: {

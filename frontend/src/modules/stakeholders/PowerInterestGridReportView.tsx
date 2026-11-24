@@ -8,11 +8,11 @@
  * column to the generic tables. Each quadrant shows its first ten Stakeholders and puts the rest behind "Show all N", a
  * scrolling modal (`CappedList`), keeping the grid one screen tall.
  */
-import { Link } from "react-router-dom";
 
 import { CappedList } from "../../components/CappedList";
 import { ReportNothingToReport, ReportSectionTable, ReportSummary } from "../../components/ReportViewer";
 import type { ReportViewProps } from "../types";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 import { StakeholderReportGroupControls } from "./StakeholderReportGroupControls";
 import type { GridItem, PowerInterestGridData } from "./reportTypes";
 import { GRID_QUADRANT_LABEL, type GridQuadrant } from "./types";
@@ -54,7 +54,7 @@ function Quadrant({ quadrant, items }: { quadrant: GridQuadrant; items: GridItem
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>
                     {item.code}
                   </span>{" "}
-                  <Link to={`/projects/${item.project_id}/modules/stakeholders/stakeholders/${item.id}`}>{item.name}</Link>{" "}
+                  <PeopleKindLabel kind="stakeholder" name={item.name} to={`/projects/${item.project_id}/modules/stakeholders/stakeholders/${item.id}`} />{" "}
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>
                     {item.influence} influence, {item.interest} interest
                   </span>

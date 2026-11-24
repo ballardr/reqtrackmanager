@@ -40,6 +40,7 @@ export const ListsTheAudienceGroups: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Operations")).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Remove audience Operations" })).toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: "Stakeholder Group" })).toBeInTheDocument();
   },
 };
 

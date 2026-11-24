@@ -6,6 +6,9 @@
  * from the Stakeholder side). One component serves both so the ends cannot drift; only the heading, the link target
  * and whether `edit` is passed differ.
  *
+ * `kind` draws the icon of the kind of person the list names (`PeopleKindLabel`); a list of needs, engagements or
+ * requirements omits it.
+ *
  * The panel loads its own list and renders nothing if that load fails: the links ride on the other artefact's
  * sub-component, so an organisation that switched Stakeholders (or Personas) off sees no panel instead of an error.
  * Adding and removing each toast; removal sits behind a tier-1 `ConfirmDialog` (docs/ux-style-guide.md "confirmation,
@@ -22,6 +25,8 @@ import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { PeopleKindLabel } from "./PeopleKindLabel";
+import type { PeopleKind } from "./peopleRows";
 import type { RepresentedLink } from "./types";
 import { FormActions } from "../../components/FormActions";
 
@@ -37,6 +42,7 @@ export interface RepresentationEdit {
 
 export function RepresentationPanel({
   heading,
+  kind,
   emptyText,
   load,
   linkFor,
@@ -46,6 +52,8 @@ export function RepresentationPanel({
   showCodes = true,
 }: {
   heading: string;
+  /** The kind of record the list names, drawn as its icon before each name; omit for records that are not people (needs, engagements, requirements). */
+  kind?: PeopleKind;
   emptyText: string;
   load: () => Promise<RepresentedLink[]>;
   /** Route of a linked record's own detail page. */
@@ -128,17 +136,22 @@ export function RepresentationPanel({
         <RemovableItemList
           items={links.map((l) => ({
             id: l.link_id,
-            content: (
-              <>
-                {showCodes && l.unique_code && (
-                  <span className="text-muted" style={{ fontSize: "0.85rem" }}>
-                    <ScopedRecordCode record={{ unique_code: l.unique_code, scope: l.scope, organization_id: l.organization_id }} />{" "}
-                  </span>
-                )}
-                <Link to={linkFor(l)}>{l.name}</Link>
-                {l.via && <span className="text-muted" style={{ fontSize: "0.75rem" }}> {l.via}</span>}
-              </>
-            ),
+            content: (() => {
+              const code = showCodes && l.unique_code ? (
+                <span className="text-muted" style={{ fontSize: "0.85rem" }}>
+                  <ScopedRecordCode record={{ unique_code: l.unique_code, scope: l.scope, organization_id: l.organization_id }} />
+                </span>
+              ) : undefined;
+              const via = l.via ? <span className="text-muted" style={{ fontSize: "0.75rem" }}>{l.via}</span> : undefined;
+              if (kind) return <PeopleKindLabel kind={kind} name={l.name} to={linkFor(l)} before={code} after={via} />;
+              return (
+                <>
+                  {code && <>{code}{" "}</>}
+                  <Link to={linkFor(l)}>{l.name}</Link>
+                  {via && <> {via}</>}
+                </>
+              );
+            })(),
             removeLabel: `Remove ${l.name}`,
             removable: !l.via,
           }))}

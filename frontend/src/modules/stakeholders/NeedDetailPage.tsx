@@ -144,6 +144,7 @@ export function NeedDetailPage() {
   const holderPanel = (kind: NeedHolderKind, heading: string, emptyText: string, pickerLabel: string, options: Option[]) => (
     <RepresentationPanel
       heading={heading}
+      kind={kind}
       emptyText={emptyText}
       load={async () => (await projectNeedApi.listHolders(projectId, need.id)).filter((h) => h.kind === kind)}
       linkFor={(holder) => `/projects/${projectId}/modules/stakeholders/${kind === "stakeholder" ? "stakeholders" : "personas"}/${holder.id}`}

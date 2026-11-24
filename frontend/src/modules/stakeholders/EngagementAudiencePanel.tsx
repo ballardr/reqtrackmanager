@@ -20,6 +20,7 @@ import { TreeSelect } from "../../components/TreeSelect";
 import { Tooltip } from "../../components/Tooltip";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi } from "./api";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 import { allGroupSelectNodes, buildGroupTree, groupPath } from "./groupTree";
 import type { EngagementAudience, StakeholderGroup } from "./types";
 import { FormActions } from "../../components/FormActions";
@@ -127,7 +128,7 @@ export function EngagementAudiencePanel({
         <RemovableItemList
           items={audiences.map((a) => ({
             id: a.link_id,
-            content: <span title={groupPath(groups, a.group_id)}>{a.name}</span>,
+            content: <span title={groupPath(groups, a.group_id)}><PeopleKindLabel kind="group" name={a.name} /></span>,
             removeLabel: `Remove audience ${a.name}`,
           }))}
           onRemove={(id) => setRemoving(audiences.find((a) => a.link_id === id) ?? null)}

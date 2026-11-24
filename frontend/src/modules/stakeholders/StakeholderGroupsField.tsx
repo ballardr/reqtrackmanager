@@ -16,6 +16,7 @@ import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { buildGroupTree, groupPath, groupSelectNodes } from "./groupTree";
 import type { StakeholderGroup, StakeholderGroupRef } from "./types";
 import { Badge } from "../../components/Badge";
+import { PeopleKindIcon } from "./PeopleKindIcon";
 
 export function StakeholderGroupsField({
   current,
@@ -54,7 +55,7 @@ export function StakeholderGroupsField({
       ) : (
         <span className="row" style={{ gap: "var(--space-2)" }}>
           {current.map((g) => (
-            <Badge key={g.id} title={groupPath(groups, g.id)}>
+            <Badge key={g.id} title={groupPath(groups, g.id)} icon={<PeopleKindIcon kind="group" />}>
               {g.name}{" "}
               <span className="text-muted">
                 <ScopedRecordCode record={g} />

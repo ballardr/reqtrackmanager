@@ -9,6 +9,7 @@
  * this in `RemovableItemList`.
  */
 import { InlineSelect } from "../../components/LabeledSelect";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 
 /** Shown with the "Add as an anonymous participant" button each time it is offered: it stops a name being recorded where a label is meant. */
 export const ANONYMOUS_LABEL_NOTE =
@@ -30,7 +31,7 @@ export function AnonymousParticipantChip({
 }) {
   return (
     <span className="row" style={{ gap: "var(--space-2)", flexWrap: "nowrap" }}>
-      <span>{label} <span className="text-muted" style={{ fontSize: "0.75rem" }}>anonymous</span></span>
+      <PeopleKindLabel kind="anonymous" name={label} after={<span className="text-muted" style={{ fontSize: "0.75rem" }}>anonymous</span>} />
       {onPersonaChange && (
         <InlineSelect
           ariaLabel={`Persona represented by ${label}`}

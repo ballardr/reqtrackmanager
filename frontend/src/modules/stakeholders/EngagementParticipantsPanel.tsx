@@ -23,6 +23,7 @@ import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { AnonymousParticipantChip, ANONYMOUS_LABEL_NOTE } from "./AnonymousParticipantChip";
 import { projectEngagementApi, projectResearchApi } from "./api";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 import type { AnonymousParticipant, EngagementParticipant } from "./types";
 
 type Option = { value: string; label: string };
@@ -94,14 +95,16 @@ export function EngagementParticipantsPanel({
     ...stakeholders.map((p) => ({
       id: `stakeholder:${p.link_id}`,
       content: (
-        <>
-          {showCodes && p.unique_code && (
+        <PeopleKindLabel
+          kind="stakeholder"
+          name={p.name}
+          to={`/projects/${projectId}/modules/stakeholders/stakeholders/${p.stakeholder_id}`}
+          before={showCodes && p.unique_code ? (
             <span className="text-muted" style={{ fontSize: "0.85rem" }}>
-              <ScopedRecordCode record={{ unique_code: p.unique_code, scope: p.scope, organization_id: p.organization_id }} />{" "}
+              <ScopedRecordCode record={{ unique_code: p.unique_code, scope: p.scope, organization_id: p.organization_id }} />
             </span>
-          )}
-          <Link to={`/projects/${projectId}/modules/stakeholders/stakeholders/${p.stakeholder_id}`}>{p.name}</Link>
-        </>
+          ) : undefined}
+        />
       ),
       removeLabel: `Remove ${p.name}`,
     })),

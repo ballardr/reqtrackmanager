@@ -146,6 +146,7 @@ export const SelectingAGroupListsItsMembers: Story = {
     await waitFor(() => expect(within(region).getByText("Alex Acme")).toBeInTheDocument());
     await expect(within(region).getByText("Via a child group")).toBeInTheDocument();
     await expect(within(region).getByText("Direct")).toBeInTheDocument();
+    await expect(within(region).getAllByRole("img", { name: "Stakeholder" }).length).toBeGreaterThan(0);
     await expect(within(region).getByRole("button", { name: "Remove Alex Acme from Acme" })).toBeInTheDocument();
     // A member that is only in a child group cannot be removed here.
     await expect(within(region).queryByRole("button", { name: "Remove Fran Finance from Acme" })).not.toBeInTheDocument();

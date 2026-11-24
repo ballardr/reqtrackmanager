@@ -115,11 +115,18 @@ export function EngagementDetailPage() {
     }
   }
 
-  async function openEdit() {
-    if (!projectId || !engagementId) return;
-    setRecordedParticipants(await loadParticipantEntries(projectId, engagementId, researchExtras === true).catch(() => null));
-    setEditing(true);
-  }
+  // Edit waits until the research extras are known, so the form always holds the anonymous participants when there are any.
+  const [editRequested, setEditRequested] = useState(false);
+  useEffect(() => {
+    if (!editRequested || researchExtras === null || !projectId || !engagementId) return;
+    void loadParticipantEntries(projectId, engagementId, researchExtras)
+      .catch(() => null)
+      .then((entries) => {
+        setRecordedParticipants(entries);
+        setEditRequested(false);
+        setEditing(true);
+      });
+  }, [editRequested, researchExtras, projectId, engagementId]);
 
   async function saveEdit(values: EngagementCreateValues) {
     if (!projectId || !engagement) return;
@@ -196,7 +203,7 @@ export function EngagementDetailPage() {
           </>
         }
         subtitle={engagement.engagement_date}
-        onEdit={() => void openEdit()}
+        onEdit={() => setEditRequested(true)}
         actions={[
           {
             key: "toggle-codes", label: showCodes ? "Hide codes" : "Show codes",
@@ -239,6 +246,7 @@ export function EngagementDetailPage() {
 
             <RepresentationPanel
               heading="Personas covered"
+              kind="persona"
               showCodes={showCodes}
               onChanged={linksChanged}
               reloadKey={linksKey}

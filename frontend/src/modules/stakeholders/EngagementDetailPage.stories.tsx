@@ -49,13 +49,15 @@ const ANONYMOUS: AnonymousParticipant[] = [
 
 interface Mocks {
   researchExtras?: boolean;
+  /** Milliseconds the sub-component listing takes to answer (default none), so the research extras are unknown for a while. */
+  subcomponentsDelayMs?: number;
   /** The project's Stakeholders (default: Pat Regulator and Sam Client). */
   stakeholders?: ReturnType<typeof buildStakeholder>[];
 }
 
 function mockDetailApis(
   current: Engagement,
-  { researchExtras = false, stakeholders = [buildStakeholder(), buildStakeholder({ id: "stakeholder-2", name: "Sam Client" })] }: Mocks = {},
+  { researchExtras = false, subcomponentsDelayMs = 0, stakeholders = [buildStakeholder(), buildStakeholder({ id: "stakeholder-2", name: "Sam Client" })] }: Mocks = {},
 ) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
@@ -64,6 +66,7 @@ function mockDetailApis(
     if (path === "/api/v1/orgs/org-1/users") return ORG_USERS;
     if (path.startsWith("/api/v1/orgs/org-1/users/search")) return { members: ORG_USERS, external: null };
     if (path === `${BASE}/subcomponents`) {
+      if (subcomponentsDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, subcomponentsDelayMs));
       return [{ module_key: "stakeholders", subcomponent_key: "research_extras", name: "Research extras", effective_enabled: researchExtras }];
     }
     if (path === `${BASE}/stakeholders`) return stakeholders;
@@ -132,6 +135,19 @@ export const ShowsFieldsPeopleAndOutcomes: Story = {
     await expect(canvas.getByRole("link", { name: "Field Technician" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/personas/persona-1`);
     await waitFor(() => expect(canvas.getByText(/Raised · Pain Point:/)).toBeInTheDocument());
     await expect(canvas.getByText("Client")).toBeInTheDocument();
+  },
+};
+
+/** Every chip that names a person record carries the icon of its kind, beside the Facilitators' own icons. */
+export const EveryPersonChipShowsItsKindIcon: Story = {
+  beforeEach: () => mockDetailApis(buildEngagement({ anonymous_participant_count: 1 }), { researchExtras: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByText("Participant 1"));
+    await expect(canvas.getByRole("img", { name: "Stakeholder" })).toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: "Anonymous participant" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getAllByRole("img", { name: "Persona" }).length).toBeGreaterThan(0));
+    await waitFor(() => expect(canvas.getByRole("img", { name: "Stakeholder Group" })).toBeInTheDocument());
   },
 };
 
@@ -301,6 +317,18 @@ export const EditOpensThePrefilledForm: Story = {
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(EBASE, expect.objectContaining({ title: "Renamed review", channel: "meeting" })));
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Renamed review" })).toBeInTheDocument());
+  },
+};
+
+/** Pressing Edit before the research extras are known waits for them, so the form still holds the anonymous participants. */
+export const EditPressedEarlyStillHoldsAnonymousParticipants: Story = {
+  beforeEach: () => mockDetailApis(buildEngagement({ anonymous_participant_count: 1 }), { researchExtras: true, subcomponentsDelayMs: 400 }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Edit" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Edit" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Edit Quarterly review with the regulator" }));
+    await waitFor(() => expect(dialog.getByLabelText("Persona represented by Participant 1")).toHaveValue("persona-1"));
   },
 };
 

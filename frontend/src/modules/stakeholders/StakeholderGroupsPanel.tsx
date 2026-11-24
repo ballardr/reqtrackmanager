@@ -30,6 +30,7 @@ import { FolderTreeList, type FolderTreeColumn } from "../../components/FolderTr
 import { ListActions } from "../../components/ListActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 import { Spinner } from "../../components/Spinner";
 import { cycleSort } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -276,7 +277,7 @@ export function StakeholderGroupsPanel({
   }
 
   const memberColumns: DirectoryColumn<StakeholderGroupMember>[] = [
-    { key: "name", label: "Name", sortable: true, render: (m) => m.name },
+    { key: "name", label: "Name", sortable: true, render: (m) => <PeopleKindLabel kind="stakeholder" name={m.name} /> },
     { key: "membership", label: "Membership", sortable: true, render: membershipLabel },
     {
       key: "actions", label: <span className="sr-only">Actions</span>,
