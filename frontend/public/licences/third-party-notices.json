@@ -27009,6 +27009,23 @@
   {
    "images": [
     "backend",
+    "backup",
+    "converter",
+    "mcp-server"
+   ],
+   "licence": "BSD-3-Clause",
+   "name": "Zstandard",
+   "packages": [
+    "libzstd1"
+   ],
+   "reason": "Permissive (dual-licensed BSD-3-Clause or GPL-2.0; used under BSD-3-Clause).",
+   "role": "Compression library, named so the patched Debian release replaces the base image's copy.",
+   "source": "https://github.com/facebook/zstd",
+   "use": "library"
+  },
+  {
+   "images": [
+    "backend",
     "backup"
    ],
    "licence": "PostgreSQL",

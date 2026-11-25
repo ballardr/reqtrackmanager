@@ -1,8 +1,7 @@
 """Tests for the JWT helpers in `app.security` (`_encode_jwt`/`_decode_jwt`,
 built on joserfc): round-trip, and rejection of every malformed, tampered,
-expired, `exp`-less or wrong-algorithm token — the failure classes that
-motivated replacing python-jose (CVE-2024-33663 algorithm confusion, no
-patched release)."""
+expired, `exp`-less or wrong-algorithm token (including algorithm
+confusion)."""
 
 import base64
 import json

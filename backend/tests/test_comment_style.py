@@ -51,6 +51,7 @@ LONGER = "no lon" + "ger accepts"
 ASKED = "the user " + "asked for this"
 DATE = "2026-" + "10-04"
 PHASE = "Phas" + "e 12"
+ADVISORY = "CV" + "E-2026-12345"
 
 
 def test_python_comment_and_docstring_patterns_are_flagged():
@@ -62,8 +63,10 @@ def test_python_comment_and_docstring_patterns_are_flagged():
         f"x = 1  # {LONGER} a role\n"
         f"def f():\n"
         f'    """Does a thing ({PHASE})."""\n'
+        f"# patched ({ADVISORY})\n"
     )
     labels = _labels("mod.py", source)
+    assert "vulnerability identifier" in labels
     assert "history wording" in labels
     assert "conversational or review wording" in labels
     assert "date" in labels
