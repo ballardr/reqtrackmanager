@@ -145,7 +145,8 @@ test.describe("Context & Strategy: Reports UI", () => {
     const { project, question } = await setup(page, request);
     await page.goto(`/projects/${project.id}?reports=choose&report=open-question-register`);
 
-    const row = page.getByRole("row", { name: new RegExp(question.replace("?", "\\?")) });
+    // Within the dialog: the project's activity feed behind it also lists the question's creation.
+    const row = page.getByRole("dialog", { name: "Reports" }).getByRole("row", { name: new RegExp(question.replace("?", "\\?")) });
     await expect(row).toBeVisible();
     await expect(row.getByText("Overdue", { exact: true })).toBeVisible();
     await expect(row.getByText("Unowned", { exact: true })).toBeVisible();

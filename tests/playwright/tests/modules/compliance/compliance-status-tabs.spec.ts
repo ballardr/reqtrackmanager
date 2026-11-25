@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 import { roundButtonGeometry } from "../../../../../frontend/src/testing/roundButtons";
-import { loginAs, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
-import { createStandardWithVersion, openComplianceStatusTab } from "./helpers";
+import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { createStandardWithVersion, openComplianceStatusTab, publishAndAssignStandard } from "./helpers";
 
 /**
  * Job to be done: the organisation-wide compliance views (By standard, Outstanding) have one home, the Standards
@@ -61,7 +61,11 @@ test.describe("Compliance Module: status tabs of the Standards page", () => {
   test("By standard has one Organisation column for several organisations, none for one", async ({ page }) => {
     const suffix = Date.now();
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference: `OCA-${suffix}`, name: `E2E Org Column Alpha ${suffix}` });
+    const reference = `OCA-${suffix}`;
+    const name = `E2E Org Column Alpha ${suffix}`;
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name });
+    // The tab lists assignments, so the standard is assigned to a project of its own to have a row to show.
+    await publishAndAssignStandard(page, { reference, name, projectName: PROJECT_NAMES.alpha1 });
 
     await page.goto("/standards/by-standard");
     // Several organisations are read: an Organisation column of its own, and its header is left of the figures.

@@ -54,15 +54,17 @@ async function saveDrawing(page: Page) {
 }
 
 /**
- * Focuses a note and presses Enter until it is selected (its text field is in the Selection card). A box that has just been
- * redrawn (after Undo) can lose the focus between the two steps under load, and Delete acts on the selection, so the key is
- * pressed only once the selection has reached the page.
+ * Selects a note with the keyboard and presses Delete, repeating both until the note is gone. Delete is heard only while the
+ * focus is on the canvas, and a redraw of the box between the selection and the key moves the focus away, so the key and its
+ * effect are checked together; a key that was not heard leaves the note in place, so a repeat cannot delete anything twice.
  */
-async function selectNoteWithTheKeyboard(page: Page, note: Locator) {
+async function deleteNoteWithTheKeyboard(page: Page, note: Locator) {
   await expect(async () => {
     await note.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("textbox", { name: "Note text" })).toBeVisible({ timeout: 1500 });
+    await page.keyboard.press("Delete");
+    await expect(note).toHaveCount(0, { timeout: 1500 });
   }).toPass();
 }
 
@@ -137,14 +139,11 @@ test.describe("System Architecture: notes on a state machine diagram", () => {
     await saveDrawing(page);
 
     await test.step("Delete removes the note with no question, and Save stores the removal", async () => {
-      await selectNoteWithTheKeyboard(page, note);
-      await page.keyboard.press("Delete");
-      await expect(page.getByLabel("Temporary, node", { exact: true })).toHaveCount(0);
+      await deleteNoteWithTheKeyboard(page, note);
       await expect(page.getByRole("dialog")).toHaveCount(0);
       await page.getByRole("button", { name: "Undo", exact: true }).click();
       await expect(page.getByLabel("Temporary, node", { exact: true })).toBeVisible();
-      await selectNoteWithTheKeyboard(page, page.getByLabel("Temporary, node", { exact: true }));
-      await page.keyboard.press("Delete");
+      await deleteNoteWithTheKeyboard(page, page.getByLabel("Temporary, node", { exact: true }));
       await saveDrawing(page);
       expect((await model()).notes).toEqual([]);
     });

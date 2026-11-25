@@ -1,5 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
+import { openProject } from "../../e2e-workflows/helpers";
+
 /**
  * Creates a compliance standard together with its mandatory first (draft) version, through the `/standards`
  * page's "New standard" dialog. Every compliance spec that needs a fixture standard uses this one-step flow.
@@ -31,6 +33,37 @@ export async function createStandardWithVersion(
 
   await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+$/);
   await expect(page.getByRole("heading", { name: new RegExp(`${reference} — ${name}`) })).toBeVisible();
+}
+
+/**
+ * Publishes the open standard's first version (with one requirement, which publishing needs) and assigns it to a
+ * project, so the organisation-wide status tabs have a row of this spec's own to read instead of relying on
+ * assignments another spec left behind.
+ *
+ * Call it straight after `createStandardWithVersion` (the browser is on the standard's workspace).
+ */
+export async function publishAndAssignStandard(
+  page: Page,
+  { reference, name, projectName, versionLabel = "v1.0" }: { reference: string; name: string; projectName: string; versionLabel?: string }
+): Promise<void> {
+  await page.getByRole("link", { name: "Versions", exact: true }).click();
+  await page.getByRole("button", { name: versionLabel }).click();
+  await page.getByRole("button", { name: "Add requirement" }).click();
+  await page.getByLabel("Requirement name").fill(`${name} requirement`);
+  await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(`${name} requirement`)).toBeVisible();
+  await page.getByRole("button", { name: "Publish" }).click();
+  await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
+  await expect(page.getByText("Version published.")).toBeVisible();
+
+  await openProject(page, projectName);
+  await page.getByRole("link", { name: "Compliance", exact: true }).click();
+  await page.getByRole("button", { name: "Assign standard" }).click();
+  const dialog = page.getByRole("dialog", { name: "Assign compliance standard" });
+  await dialog.getByLabel("Standard", { exact: true }).selectOption({ label: `${reference} — ${name}` });
+  await dialog.getByLabel("Standard version").selectOption({ label: versionLabel });
+  await dialog.getByRole("button", { name: "Assign" }).click();
+  await expect(page.getByText(new RegExp(reference))).toBeVisible();
 }
 
 /**
