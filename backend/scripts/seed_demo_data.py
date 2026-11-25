@@ -1751,7 +1751,9 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
     project with one named exemption, a Default profile and an Opt-in profile offered to one project. The Enforced
     profile requires the Reviewed step of a requirement, lets Stakeholders decide change requests, sends a requirement's
     review reminder 14 days ahead with a 90-day review interval and refuses a stage baseline that holds a requirement
-    with no description or one the person taking the baseline may not approve; the Opt-in profile forbids skipping steps."""
+    with no description or one the person taking the baseline may not approve; the Opt-in profile forbids skipping steps.
+    The organisation keeps governance health as a snapshot refreshed every 12 hours, and the offered project keeps its own
+    as a snapshot recomputed after a change."""
     enable_module(headers, org_id, "traceability")
     base = f"{BASE}/orgs/{org_id}/modules/traceability/profiles"
     enforced = httpx.post(
@@ -1801,6 +1803,14 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
     safety.raise_for_status()
     httpx.put(
         f"{base}/{safety.json()['id']}/lifecycle/skip", json={"forbidden": True}, headers=headers, timeout=30,
+    ).raise_for_status()
+    httpx.put(
+        f"{BASE}/orgs/{org_id}/modules/traceability/health-defaults", json={"mode": "snapshot_interval", "interval_hours": 12},
+        headers=headers, timeout=30,
+    ).raise_for_status()
+    httpx.put(
+        f"{BASE}/projects/{offered_project_id}/modules/traceability/health/settings",
+        json={"mode": "snapshot_on_change", "interval_hours": None, "checks_runner_id": None}, headers=headers, timeout=30,
     ).raise_for_status()
 
 

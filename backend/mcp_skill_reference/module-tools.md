@@ -2304,3 +2304,208 @@ Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query
 State machines: The state machine diagrams of the elements, their states and transitions, and one diagram's drawing.
 
 Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `element` (string, in query), `state_machine` (string, in query)
+
+## Traceability & Governance (`traceability`)
+
+Governance: lifecycle, approval, review and baseline policy per record type, set by the organisation as profiles that can be enforced, defaulted or opted into, with a health view. Traceability: requirement types and rules for which links a record must carry, with status, exceptions, cross-project reach and matrices.
+
+### How to use these tools
+
+Configure a project's governance and read how healthy it is.
+
+Model: an organisation sets policy for its projects as **profiles** (named policy sets). A profile is **Enforced** (binds every project it reaches; only a named exemption lifts it), **Default** (applies unless a project opts out) or **Opt-in** (applies only where a project chooses it). A policy has four kinds: **lifecycle** (states a profile requires, no skipping steps), **approval** (roles that may also approve a record type), **review** (interval, reminder lead, default owner) and **baseline** (checks that run before a baseline and fields a record must have filled). A project's effective policy is the profiles that apply plus its own settings, and every read names where each value comes from. A policy only adds: it never removes a default approver, and no source relaxes another.
+
+Read workflow:
+1. `traceability_list_project_governance_profiles` for the profiles reaching a project; `traceability_get_project_approval_policies`, `traceability_get_project_review_policies` and `traceability_get_project_baseline_policy` for the effective policy and its sources.
+2. `traceability_get_governance_health` for the project's standing: per record category the share complete (`percent`, rounded down) or the count outstanding, reviews due, and the enabled baseline checks (records checked, failing, share passing). Only the record types you may read appear, so a missing category is not zero.
+3. `traceability_preview_baseline_checks` lists the failing records and checks a baseline taken now would be refused over; it writes nothing.
+
+Health modes: `on_demand` computes for you at each call (with baseline checks enabled it is slow above `on_demand_record_limit` records, so prefer a snapshot mode there; the settings read gives the limit and `checks_enabled`); `snapshot_interval` and `snapshot_on_change` serve a stored snapshot labelled with `computed_at`. In a snapshot, the baseline check results are run as the configured check runner, or only when a person refreshes: `checks.status` says `current`, `carried_forward` (older than the snapshot; `run_by` and `run_at` say whose and when), `not_run` or `runner_unavailable`. Do not treat a carried-forward result as current.
+
+Write workflow (needs write mode and the caller's own governance right):
+- Project: `traceability_set_governance_health_settings`, `traceability_set_project_governance_profile_choice`, `traceability_set_project_approval_policy`, `traceability_set_project_review_policy`, `traceability_set_project_baseline_policy`, `traceability_refresh_governance_health`.
+- Organisation: `traceability_create_governance_profile`, `traceability_update_governance_profile`, `traceability_set_governance_profile_targets`, `traceability_set_profile_lifecycle_required`, `traceability_set_profile_lifecycle_skip`, `traceability_set_profile_approval_policy`, `traceability_set_profile_review_policy`, `traceability_set_profile_baseline_policy` and `traceability_set_governance_health_defaults`.
+
+Rules and gotchas:
+- Changing an **Enforced** profile (creating one, editing its policy or targets, or setting its mode to Enforced) changes the rules for every project it reaches. Confirm with the user before doing it.
+- There is no tool to delete a profile or to add or remove an exemption: those lift a control an organisation enforces and stay a person's act in the application. There is no tool to approve, reject or finalise a baseline.
+- A policy tool names a record type by its registered type string and the read lists the valid ones; do not invent role keys or check keys, read the `role_options` and `check_options`.
+- A `roles: null`, `settings: null` or `mode: null` follows the default or the nearest ancestor project; an empty list or settings with nothing set is a choice of none and stops the ancestor applying.
+- `set_governance_health_settings` replaces every field: send the ones you want to keep. A check runner must be an active user holding a role in the project.
+- A sub-component that is switched off answers 404 for its tools.
+
+### Tool list
+
+#### `traceability_get_governance_health` (read)
+
+A project's governance health: the share complete (or the count outstanding) of each record category, reviews due, and the results of the enabled baseline checks, limited to the record types the caller may read. Live for the caller in `on_demand`, else the stored snapshot with the time it was read.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `traceability_refresh_governance_health` (write)
+
+Recomputes the project's stored health snapshot now (a snapshot mode only; the baseline checks run as the configured runner, else as the caller).
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `traceability_get_governance_health_settings` (read)
+
+How the project's health is kept: mode, snapshot interval, baseline check runner, where each comes from, and the size guidance.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `traceability_set_governance_health_settings` (write)
+
+Sets the project's own health mode, snapshot interval and baseline check runner (every field is replaced; null follows the organisation's default).
+
+Parameters: `project_id*` (uuid, in path), `mode` (string, in body), `interval_hours` (integer, in body), `checks_runner_id` (uuid, in body)
+
+#### `traceability_list_project_governance_profiles` (read)
+
+The organisation's governance profiles that reach the project and what each does for it (enforced, default, opted in or out, available).
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `traceability_set_project_governance_profile_choice` (write)
+
+Opts the project out of a Default profile or in to an Opt-in profile (an Enforced profile cannot be chosen away).
+
+Parameters: `project_id*` (uuid, in path), `profile_id*` (uuid, in path), `opted_in` (boolean, in body)
+
+#### `traceability_get_project_approval_policies` (read)
+
+The roles that may also approve each record type in the project, with where each comes from, and the roles a policy may name.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `traceability_set_project_approval_policy` (write)
+
+Sets the roles the project adds as approvers of one record type. This only adds approvers: it never removes a default approver and never performs an approval.
+
+Parameters: `project_id*` (uuid, in path), `artefact_type*` (string, in path), `roles` (array, in body)
+
+#### `traceability_get_project_review_policies` (read)
+
+The review interval, reminder lead and default owner of each record type with a review schedule in the project, with where each comes from.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `traceability_set_project_review_policy` (write)
+
+Sets the review settings the project gives one record type (`settings` null follows the nearest ancestor project; an object with nothing set is a choice of none).
+
+Parameters: `project_id*` (uuid, in path), `artefact_type*` (string, in path), `settings` (object, in body)
+
+#### `traceability_get_project_baseline_policy` (read)
+
+The checks that run before the project's baselines and the fields it requires, with where each comes from, and the options on offer.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `traceability_set_project_baseline_policy` (write)
+
+Sets the project's own baseline policy (`settings` null follows the nearest ancestor project; settings with no check is a choice of none).
+
+Parameters: `project_id*` (uuid, in path), `settings` (object, in body)
+
+#### `traceability_preview_baseline_checks` (read)
+
+Runs the enabled baseline checks against what a baseline taken now would hold and lists every failing record and check, writing nothing.
+
+Parameters: `project_id*` (uuid, in path), `kind*` (string, in query), `stage_id` (uuid, in query), `component_id` (uuid, in query)
+
+#### `traceability_get_governance_health_defaults` (read)
+
+The organisation's default way of keeping governance health (mode and snapshot interval).
+
+Parameters: `organization_id*` (uuid, in path)
+
+#### `traceability_set_governance_health_defaults` (write)
+
+Sets the default health mode and snapshot interval of every project that sets none of its own.
+
+Parameters: `organization_id*` (uuid, in path), `mode*` (string, in body), `interval_hours` (integer, in body)
+
+#### `traceability_list_governance_profiles` (read)
+
+The organisation's governance profiles with their mode, targets, exemptions and policy-row counts.
+
+Parameters: `organization_id*` (uuid, in path)
+
+#### `traceability_get_governance_profile` (read)
+
+One governance profile with the projects it binds, offers or has been opted out of.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path)
+
+#### `traceability_create_governance_profile` (write)
+
+Creates a governance profile. An Enforced profile binds every project it reaches as soon as it has policy rows.
+
+Parameters: `organization_id*` (uuid, in path), `name*` (string, in body), `mode*` (string, in body), `description` (string, in body), `target_kind` (string, in body), `targets` (array, in body)
+
+#### `traceability_update_governance_profile` (write)
+
+Renames a profile or changes its description or mode; a field left out is unchanged.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `mode` (string, in body)
+
+#### `traceability_set_governance_profile_targets` (write)
+
+Replaces the projects a profile reaches.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path), `target_kind*` (string, in body), `targets` (array, in body)
+
+#### `traceability_get_profile_lifecycle_policy` (read)
+
+The lifecycle states a profile requires of each record type and whether it forbids skipping steps.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path)
+
+#### `traceability_set_profile_lifecycle_required` (write)
+
+Sets the optional states a profile requires of one record type (`[]` removes the requirement).
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path), `artefact_type*` (string, in path), `required*` (array, in body)
+
+#### `traceability_set_profile_lifecycle_skip` (write)
+
+Sets whether a profile forbids skipping steps of a record's lifecycle.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path), `forbidden*` (boolean, in body)
+
+#### `traceability_get_profile_approval_policy` (read)
+
+The roles a profile adds as approvers of each record type, with the roles a policy may name.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path)
+
+#### `traceability_set_profile_approval_policy` (write)
+
+Sets the roles a profile adds as approvers of one record type. This only adds approvers and never performs an approval.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path), `artefact_type*` (string, in path), `roles*` (array, in body)
+
+#### `traceability_get_profile_review_policy` (read)
+
+The review interval, reminder lead and default owner a profile gives each record type with a review schedule.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path)
+
+#### `traceability_set_profile_review_policy` (write)
+
+Sets the review settings a profile gives one record type (nothing set removes them).
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path), `artefact_type*` (string, in path), `interval_days` (integer, in body), `lead_days` (integer, in body), `default_owner` (object, in body)
+
+#### `traceability_get_profile_baseline_policy` (read)
+
+The baseline checks and required fields a profile asks of its projects, with the check options.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path)
+
+#### `traceability_set_profile_baseline_policy` (write)
+
+Sets the baseline policy a profile gives its projects.
+
+Parameters: `organization_id*` (uuid, in path), `profile_id*` (uuid, in path), `applies_to_stage` (boolean, in body), `applies_to_manual` (boolean, in body), `notify_managers` (boolean, in body), `checks` (array, in body), `required_fields` (array, in body)

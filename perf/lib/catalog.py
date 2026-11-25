@@ -97,6 +97,7 @@ CATALOG: dict = {
         ScenarioSpec("export_by_type", "heavy", "each other record type's list as a CSV", users_quick=(1,), users_full=(1,), min_requests=3, heavy=True),
         ScenarioSpec("import_preview_by_type", "heavy", "preview of a CSV import of each other importable type's own export", users_quick=(1,), users_full=(1,), min_requests=2, heavy=True, max_requirements=IMPORT_ROW_LIMIT),
         ScenarioSpec("org_bundle_export", "heavy", "the whole organisation's export bundle (every project, with the links)", users_quick=(1,), users_full=(1,), min_requests=1, max_seconds=1800, heavy=True),
+        ScenarioSpec("governance_health", "read", "a project's governance health computed on demand, and its settings", users_quick=(2,), users_full=(1, 4)),
         ScenarioSpec("project_scope", "read", "a parent's widened list and dashboard over its descendants", users_quick=(2,), users_full=(1, 4), needs_nested=True),
         ScenarioSpec(
             "capacity", "capacity", "steps the number of simulated connections up until the stack saturates or fails (one tier)",

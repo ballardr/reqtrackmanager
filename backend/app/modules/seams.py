@@ -8,7 +8,8 @@ can own.
 
 Responsibilities:
 - Define the frozen dataclasses `ModuleDefinition` carries (`administrative_permissions`, `record_subtypes`,
-  `review_adapters`, `baseline_check_providers`, `policy_resolvers`, `profile_contributors`); `registry.py` merges them
+  `review_adapters`, `baseline_check_providers`, `policy_resolvers`, `profile_contributors`, `health_providers`);
+  `registry.py` merges them
   and `services.governance_seams` resolves them for a project.
 
 Design decisions:
@@ -346,6 +347,48 @@ class ProfileContributor:
     count_rows: Callable[[Session, Sequence[uuid.UUID]], dict[uuid.UUID, int]]
     export_rows: Callable[[Session, uuid.UUID], list[dict[str, Any]]]
     import_rows: Callable[[Session, uuid.UUID, Sequence[dict[str, Any]], Callable[[str], None]], None]
+    sub_component: str | None = None
+
+
+@dataclass(frozen=True)
+class HealthMeasure:
+    """How far one record type has got in one project, as two counts.
+
+    Attributes:
+        total: The records that count (live records: archived and terminally set-aside ones are left out by the provider).
+        done: How many of them have reached the provider's settled outcome. Never above `total`.
+    """
+
+    total: int
+    done: int
+
+    @property
+    def outstanding(self) -> int:
+        """The records that have not reached the settled outcome."""
+        return self.total - self.done
+
+
+@dataclass(frozen=True)
+class HealthProvider:
+    """How a record type reports its progress to the governance health view (a share complete, or a count outstanding).
+
+    Attributes:
+        key: Stable identifier, unique within its module; the registry namespaces it as `<module_key>:<key>`.
+        label: Formal plural display name of the category (`"Requirements"`).
+        artefact_type: The registered type the figures describe. The view shows the category only to a person who may
+            read the type (`view`) in the project, so a figure never reveals records they cannot open.
+        kind: `completion` headlines the share that is done; `outstanding` headlines the count that is not (a question
+            still open).
+        measure: `measure(db, project_id)` returns the project's own records of the type (never a related project's) as a
+            `HealthMeasure`. It reads in bulk, never commits and never lists records one at a time.
+        sub_component: As `PolicyResolver.sub_component`.
+    """
+
+    key: str
+    label: str
+    artefact_type: str
+    kind: Literal["completion", "outstanding"]
+    measure: Callable[[Session, uuid.UUID], HealthMeasure]
     sub_component: str | None = None
 
 

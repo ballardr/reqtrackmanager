@@ -38,6 +38,9 @@ rules:
   - {match: "(has comments", class: list}
   - {match: "POST /search", class: list}
   - {match: "project_scope", class: list}
+  # Governance health on demand counts every governed type and runs the enabled baseline checks for the caller: judged like
+  # the other whole-project reads (provisional, Decided by: Agent). A stored snapshot is a single-row read and stays interactive.
+  - {match: "traceability/health (on demand)", class: list}
   - {match: "GET /projects/{id}/requirements (page of 50)", class: interactive}
   - {match: "GET /projects/{id}/requirements/{id}", class: interactive}
   - {match: "POST /projects/{id}/requirements", class: interactive}

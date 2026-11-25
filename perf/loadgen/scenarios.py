@@ -450,6 +450,22 @@ class ListsByType(_TypeReads):
     """Every record type's list, a record and its comments, equally weighted across the types the dataset holds."""
 
 
+class GovernanceHealth(PerfUser):
+    """Reading a project's governance health computed on demand (the default mode), which counts every governed type and
+    runs the enabled baseline checks as the caller, and its settings. The figure that sets the guidance in the health
+    settings (`ON_DEMAND_GUIDANCE_RECORDS`) is where this request leaves the list budget."""
+
+    wait_time = constant_throughput(1)
+
+    @task(4)
+    def health(self) -> None:
+        self.get(f"{self.base}/modules/traceability/health", "GET /projects/{id}/modules/traceability/health (on demand)", timeout=LONG_TIMEOUT)
+
+    @task(1)
+    def settings(self) -> None:
+        self.get(f"{self.base}/modules/traceability/health/settings", "GET /projects/{id}/modules/traceability/health/settings")
+
+
 class _LinkReads(PerfUser):
     """The link system's reads across types: the graph from a hub or an ordinary record at depth 1 to 3, link candidates
     and the browse step for a type pair, the link types a record offers, and the activity timeline (which reads the
@@ -718,4 +734,5 @@ SCENARIOS: dict[str, type[PerfUser]] = {
     "import_preview_by_type": ImportPreviewByType,
     "org_bundle_export": OrgBundleExport,
     "capacity_mixed": CapacityMixed,
+    "governance_health": GovernanceHealth,
 }

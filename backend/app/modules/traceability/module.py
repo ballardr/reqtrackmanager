@@ -6,6 +6,9 @@ sub-components in two halves, the permission atoms and roles that administer the
 organisation and project APIs and bundles, and the engine registration points the later parts plug into.
 
 Registered contributions:
+- Governance health (`health`, `health_router`): the project's figures per record category, reviews due and baseline check
+  results, live or from a snapshot; the hourly `health_snapshots` job refreshes interval snapshots. MCP tools and guidance
+  (`mcp_tools`, `mcp_guidance.md`) configure governance and read the health.
 - Sub-components: Governance (`lifecycle_policies`, `approval_policies`, `review_policies`, `baseline_policies`,
   `governance_health`) and Traceability (`requirement_types`, `traceability_rules`, `traceability_exceptions`,
   `traceability_matrices`, `cross_project_traceability`). An exception and cross-project traceability `require`
@@ -37,6 +40,8 @@ Dependencies: `modules.registry`, `modules.seams`.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter
 
 from app.models.enums import OrgRole, ProjectRole
@@ -45,6 +50,7 @@ from app.modules.registry import (
     ModuleOrgBundleHooks,
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
+    ModuleScheduledJob,
     ModuleSubComponentDefinition,
     PrincipalReference,
 )
@@ -60,6 +66,7 @@ from app.modules.traceability import (
     baseline_checks,
     baseline_policy,
     bundle,
+    health,
     lifecycle_policy,
     review_policy,
 )
@@ -85,7 +92,11 @@ from app.modules.traceability._shared import (
     TRACEABILITY_ORG_MANAGER_ROLE,
     TRACEABILITY_RULES,
 )
+from app.modules.traceability.mcp_tools import build_mcp_tools
 from app.modules.traceability.models import GovernanceReviewPolicy
+
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
 
 
 def get_router() -> APIRouter | None:
@@ -127,7 +138,14 @@ MODULE_DEFINITION = ModuleDefinition(
         export=bundle.export_project_data, import_=bundle.import_project_data,
         template_configuration_keys=frozenset({
             bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY, bundle.BASELINE_POLICY_KEY,
+            bundle.HEALTH_SETTINGS_KEY,
         }),
+        template_excluded={
+            bundle.HEALTH_RUNNER_KEY: (
+                "A named person who runs the baseline checks is not copied: they must hold a role in the project that is "
+                "made from the template, which names its own."
+            ),
+        },
     ),
     sub_components=(
         ModuleSubComponentDefinition(key=LIFECYCLE_POLICIES, name="Lifecycle policies"),
@@ -197,8 +215,12 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     activity_metadata_types={
         "governance_profile": "structure", "governance_approval_policy": "structure", "governance_review_policy": "structure",
-        "governance_baseline_policy": "structure",
+        "governance_baseline_policy": "structure", "governance_health_settings": "structure",
+        "governance_health_default": "structure", "governance_health": "structure",
     },
+    scheduled_jobs=(ModuleScheduledJob(job_id="health_snapshots", hour=None, minute=7, run=health.run_scheduled_refresh),),
+    mcp_tools=build_mcp_tools(),
+    mcp_guidance=_MCP_GUIDANCE,
     administrative_permissions=(
         ModuleAdministrativePermission(
             key=MANAGE_ORG_GOVERNANCE, label="Manage organisation governance",

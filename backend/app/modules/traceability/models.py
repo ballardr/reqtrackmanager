@@ -32,6 +32,11 @@ Design decisions:
   the owner's checks run before a stage baseline, a manual baseline or both; they stay with the owner's checks, so a profile
   that asks for a stage check never makes a project's manual check run before stage baselines. A project's row with no
   checks is a choice that stops the nearest ancestor's applying.
+- Governance health keeps three small tables: the organisation's default mode (`governance_health_defaults`), a project's
+  own mode, interval and check runner (`governance_health_settings`, a null mode or interval meaning "follow the
+  organisation") and the project's latest snapshot (`governance_health_snapshots`, one row, derived data). A snapshot holds
+  counts only, never a record's code or content, so one row can serve every viewer once their own rights are applied. The
+  check runner and the person who ran the stored check results are users whose deletion clears the reference.
 - Choices do not fall back to an ancestor project: reach down the project tree is the organisation's decision
   (`include_children` on a target), and a manager of a parent project must not decide for children they may not manage.
 """
@@ -39,9 +44,11 @@ Design decisions:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -329,3 +336,75 @@ class GovernanceBaselineRequiredField(UUIDPKMixin, TimestampMixin, Base):
     )
     artefact_type: Mapped[str] = mapped_column(String(64))
     field_key: Mapped[str] = mapped_column(String(100))
+
+
+class GovernanceHealthDefault(UUIDPKMixin, TimestampMixin, Base):
+    """The organisation's default way of keeping governance health, followed by every project that sets none of its own.
+
+    Attributes:
+        organization_id: The organisation (one row at most).
+        mode: A `HealthMode` value.
+        interval_hours: The refresh interval of `snapshot_interval`, one of `HEALTH_INTERVAL_HOURS`.
+    """
+
+    __tablename__ = "governance_health_defaults"
+    __table_args__ = (UniqueConstraint("organization_id", name="uq_governance_health_defaults_org"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    mode: Mapped[str] = mapped_column(String(24))
+    interval_hours: Mapped[int] = mapped_column(Integer, default=24)
+
+
+class GovernanceHealthSettings(UUIDPKMixin, TimestampMixin, Base):
+    """A project's own choices about its governance health; an unset value follows the organisation's default.
+
+    Attributes:
+        project_id: The project (one row at most).
+        mode: A `HealthMode` value, or `None` to follow the organisation's default.
+        interval_hours: The interval of `snapshot_interval`, or `None` to follow the organisation's default.
+        checks_runner_id: The person whose view the baseline checks of a snapshot are run as, or `None` when only a person who
+            presses Refresh now runs them. Cleared when the user is deleted.
+    """
+
+    __tablename__ = "governance_health_settings"
+    __table_args__ = (
+        UniqueConstraint("project_id", name="uq_governance_health_settings_project"),
+        CheckConstraint("interval_hours IS NULL OR interval_hours >= 1", name="ck_governance_health_settings_interval"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    interval_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    checks_runner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class GovernanceHealthSnapshot(UUIDPKMixin, TimestampMixin, Base):
+    """The project's latest stored governance health.
+
+    Attributes:
+        project_id: The project (one row at most).
+        computed_at: The UTC instant the figures were read; taken before reading, so a change made while it ran leaves the
+            snapshot stale.
+        payload: The figures (`health.HealthSnapshotData`) as counts only.
+        refreshed_by_id: The person who pressed Refresh now, or `None` for a refresh the system made.
+        checks_run_by_id: The person the baseline check results were run as, or `None` when none were run or the person was deleted.
+        checks_run_at: The UTC instant those results were computed; older than `computed_at` when they were carried forward.
+    """
+
+    __tablename__ = "governance_health_snapshots"
+    __table_args__ = (UniqueConstraint("project_id", name="uq_governance_health_snapshots_project"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    refreshed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    checks_run_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    checks_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

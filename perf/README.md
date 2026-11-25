@@ -323,6 +323,7 @@ probe, and each project's `type_samples` and `type_hubs`), so a type a module ad
 | `search_all_types` | search across all types in a project, one type, three types, and every project |
 | `export_by_type`, `import_preview_by_type` | each type's list as a CSV, and a dry-run import of its own export (heavy) |
 | `org_bundle_export` | the whole organisation's export bundle, every project with its links (heavy) |
+| `governance_health` | a project's governance health computed on demand, and its settings; the size at which it leaves the list budget is the guidance shown beside the health mode setting |
 | `capacity_mixed` | `capacity` with roughly a third of the requests being the type lists, records, comments and link reads above; kept apart from `capacity` so that scenario's numbers stay comparable with earlier runs (heavy) |
 
 Requests are named after the type (`GET risk (list)`), so `analyse.py` reports a scaling curve per type and endpoint.

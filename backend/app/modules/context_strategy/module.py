@@ -25,6 +25,7 @@ from app.modules.context_strategy._shared import (
 from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSION as _OPEN_QUESTION_RESOLVE_PERMISSION
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
+from app.modules.context_strategy.health import HEALTH_PROVIDERS
 from app.modules.context_strategy.lifecycles import LIFECYCLES
 from app.modules.context_strategy.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.context_strategy.models import GuidingPrincipleVersion, OpenQuestion, PainPoint
@@ -966,6 +967,7 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     principal_references=_principal_references(),
     mcp_guidance=_MCP_GUIDANCE,
+    health_providers=HEALTH_PROVIDERS,
     mcp_tools=_build_mcp_tools(),
     scoring_schemes=(PAIN_POINT_SCORING_SCHEME,),
 )

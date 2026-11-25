@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.modules.decisions import activity_links as _activity_links
 from app.modules.decisions import export as bundle_export
+from app.modules.decisions.health import HEALTH_PROVIDERS
 from app.modules.decisions.lifecycles import LIFECYCLES
 from app.modules.decisions.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.decisions.models import Decision
@@ -298,6 +299,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
     ),
     mcp_guidance=_MCP_GUIDANCE,
+    health_providers=HEALTH_PROVIDERS,
     reports=REPORT_DEFINITIONS,
     mcp_tools=(
         McpToolDefinition(

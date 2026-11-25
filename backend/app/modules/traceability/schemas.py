@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.modules.traceability.enums import ProfileMode, ProfileOutcome, ProfileTargetKind
+from app.modules.traceability.enums import DEFAULT_HEALTH_INTERVAL_HOURS, HealthMode, ProfileMode, ProfileOutcome, ProfileTargetKind
 from app.modules.traceability.models import (
     EXEMPTION_REASON_MAX_LENGTH,
     PROFILE_DESCRIPTION_MAX_LENGTH,
@@ -684,3 +684,144 @@ class BaselinePreviewOut(BaseModel):
     kind: Literal["stage", "manual"]
     checks: list[dict[str, str]]
     failures: list[BaselineFailureOut]
+
+
+class HealthSettingsIn(BaseModel):
+    """A project's own health settings (every field replaced; `null` follows the organisation's default, and no runner).
+
+    Attributes:
+        mode: `on_demand`, `snapshot_interval` or `snapshot_on_change`, or `null` to follow the organisation's default.
+        interval_hours: The snapshot interval in hours (1, 6, 12, 24 or 2, 3, 5, 7, 10, 14 days), or `null` to follow the default.
+        checks_runner_id: The person the baseline checks of a snapshot run as, or `null` for only when a person presses Refresh now.
+    """
+
+    mode: HealthMode | None = None
+    interval_hours: int | None = None
+    checks_runner_id: UUID | None = None
+
+
+class HealthDefaultIn(BaseModel):
+    """The organisation's default way of keeping governance health.
+
+    Attributes:
+        mode: `on_demand`, `snapshot_interval` or `snapshot_on_change`.
+        interval_hours: The snapshot interval in hours for `snapshot_interval`.
+    """
+
+    mode: HealthMode
+    interval_hours: int = DEFAULT_HEALTH_INTERVAL_HOURS
+
+
+class HealthDefaultOut(HealthDefaultIn):
+    """The organisation's default, with the intervals on offer."""
+
+    interval_options: list[int]
+
+
+class HealthRunnerOut(BaseModel):
+    """The person a snapshot's baseline checks run as."""
+
+    id: UUID
+    name: str
+
+
+class HealthSettingsOut(BaseModel):
+    """A project's health settings and what is in force.
+
+    Attributes:
+        can_manage: Whether the caller may change the settings and refresh.
+        mode: The mode in force; `mode_source` is `project`, `organization` or `default`.
+        interval_hours: The interval in force; `interval_source` likewise.
+        own_mode, own_interval_hours: The project's own choices, `null` where it follows the default.
+        organization_mode, organization_interval_hours: The organisation's default.
+        checks_runner: The configured runner, `null` when only a person who presses Refresh now runs the checks.
+        runner_problem: Why the configured runner cannot run the checks now, `null` when they can.
+        interval_options: The intervals on offer, in hours.
+        on_demand_record_limit: The number of records above which a snapshot mode is advised while baseline checks are enabled
+            (without checks, on demand stays fast at any size measured).
+        checks_enabled: Whether the project's baseline policy enables any check, so the limit applies.
+    """
+
+    can_manage: bool
+    mode: HealthMode
+    mode_source: Literal["project", "organization", "default"]
+    interval_hours: int
+    interval_source: Literal["project", "organization", "default"]
+    own_mode: HealthMode | None
+    own_interval_hours: int | None
+    organization_mode: HealthMode
+    organization_interval_hours: int
+    checks_runner: HealthRunnerOut | None
+    runner_problem: str | None
+    interval_options: list[int]
+    on_demand_record_limit: int
+    checks_enabled: bool
+
+
+class HealthCategoryOut(BaseModel):
+    """One record category's progress: `percent` (rounded down) for `completion`, `outstanding` for `outstanding`."""
+
+    key: str
+    label: str
+    artefact_type: str
+    kind: Literal["completion", "outstanding"]
+    total: int
+    done: int
+    outstanding: int
+    percent: int | None
+
+
+class HealthReviewOut(BaseModel):
+    """Reviews due on or before the day compared, for one record type."""
+
+    artefact_type: str
+    label: str
+    due: int
+
+
+class HealthCheckTypeOut(BaseModel):
+    """One baseline check's result for one record type: records covered, failing and the share passing (rounded down)."""
+
+    artefact_type: str
+    checked: int
+    failing: int
+    percent_passing: int | None
+
+
+class HealthCheckOut(BaseModel):
+    """One enabled baseline check with its per-type results."""
+
+    key: str
+    name: str
+    types: list[HealthCheckTypeOut]
+
+
+class HealthChecksOut(BaseModel):
+    """The baseline check section; `status` says whether the results are current, carried forward or absent."""
+
+    status: Literal["not_enabled", "current", "carried_forward", "not_run", "runner_unavailable"]
+    run_by: HealthRunnerOut | None
+    run_at: datetime | None
+    checks: list[HealthCheckOut]
+
+
+class HealthOut(BaseModel):
+    """A project's governance health as one viewer may see it.
+
+    Attributes:
+        mode: The mode in force.
+        source: `live` (computed for this request) or `snapshot`.
+        computed_at: When the figures were read.
+        stale: A change is not yet reflected because another refresh is running.
+        can_refresh: Whether the caller may press Refresh now (a snapshot mode and `manage_project_governance`).
+        categories, reviews, checks: Only the types the viewer may read.
+    """
+
+    mode: HealthMode
+    source: Literal["live", "snapshot"]
+    computed_at: datetime
+    stale: bool
+    can_refresh: bool
+    categories: list[HealthCategoryOut]
+    reviews: list[HealthReviewOut]
+    checks: HealthChecksOut

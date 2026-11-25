@@ -392,6 +392,7 @@ class ModuleDefinition:
     baseline_check_providers: tuple[BaselineCheckProvider, ...] = ()  # checks run before a baseline (§4l16)
     policy_resolvers: tuple[PolicyResolver, ...] = ()  # which policy applies at each core engine seam (§4l16)
     profile_contributors: tuple[ProfileContributor, ...] = ()  # policy tables a governance profile can own (§4l17)
+    health_providers: tuple[HealthProvider, ...] = ()  # how your record types report progress to governance health (§4l17)
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     demand_party_providers: dict[str, Callable[[Session, UUID, Sequence[UUID]], dict[UUID, list[DemandParty]]]] = {}  # who a record stands for (§4e2)
@@ -416,7 +417,7 @@ class ModuleDefinition:
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
     on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None  # react to another module's artefact changing (§4h)
-    scheduled_jobs: tuple[ModuleScheduledJob, ...] = ()  # daily sweeps core's scheduler runs for you
+    scheduled_jobs: tuple[ModuleScheduledJob, ...] = ()  # sweeps core's scheduler runs for you: daily, or hourly with hour=None
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     mcp_guidance: str = ""  # agent usage guidance, required when mcp_tools is non-empty
@@ -1617,6 +1618,28 @@ flowchart TD
 ```
 
   The module's policy (`governance_baseline_policies`, `_checks`, `_required_fields`; profile or project owned) holds `applies_to_stage` (default), `applies_to_manual` and `notify_managers` (managers are told when the review-deadline sweep is refused; default on, on when any applying policy asks) per owner; each source keeps its own kinds when merged by union. Two built-in checks: **required fields** (a field is one of the type's list columns, so every baseline type and a project's custom fields are covered; a project accepts only its own columns, a profile any key and offers `GET /profiles/{id}/baseline/fields?project_id=`) and **required approvals** (a stage baseline needs a person who may approve requirements and whom approval separation lets approve each draft they created, because the stage baseline is itself the approval; a manual baseline needs requirements already approved). Routes: organisation `/profiles/{id}/baseline`, project `/baseline-policy`, and `GET /baseline-checks?kind=` which previews the failures and writes nothing. A stage the review-deadline sweep cannot approve because a check fails stays in review, is retried daily and its managers are notified once per distinct set of failures (`stage_baseline_refused`).
+- **Governance health (Phase 6).** What the project has achieved against its own configuration, in three parts, served live or from a stored snapshot (`modules/traceability/health.py`, `health_router.py`; the `governance_health` part).
+
+```mermaid
+flowchart TD
+    V["viewer opens health"] --> M{"mode (project, else organisation, else on demand)"}
+    M -->|on_demand| L["compute now: categories, reviews due, checks run as the viewer"]
+    M -->|snapshot_on_change| S{"audit event of a governed type after computed_at?"}
+    S -->|yes| R["recompute under the project's advisory lock"]
+    S -->|no| T["serve the stored snapshot"]
+    M -->|snapshot_interval| T
+    J["hourly job (ModuleScheduledJob hour=None)"] -->|"interval elapsed"| R
+    R --> T
+    L --> F["restrict to the types the viewer may read"]
+    T --> F
+```
+
+  - **Categories** come from `HealthProvider`s (`modules/seams.py`, `ModuleDefinition.health_providers`, read through `registry.get_health_providers`): `measure(db, project_id) -> HealthMeasure(total, done)`, one grouped statement per type, the project's own live records only. `kind` is `completion` (a share done, rounded down so it never shows 100 before the last record) or `outstanding` (a count still open). Core registers the Requirement (approved share) and the Change Request (decisions outstanding) in `services/health_core.py` with module key `""`; Decisions, Risk and Context & Strategy (strategy, future state, guiding principle, open question) register their own in `<module>/health.py`. A new record type adds a provider and nothing else. **Reviews due** read `review_engine.due_reviews` per type with a review schedule (a calendar date compared with the caller's day, or the UTC date when stored). **Checks** run the project's enabled baseline checks through `services.baseline.evaluate_checks`, which reads them as baseline readiness: each check runs as the kind of baseline it is enabled for, over every record the person could baseline now, and the result is records checked and records failing per check and type.
+  - **Counts only.** A snapshot holds numbers and keys, never a code or a title, so one stored row serves every viewer. `restrict_to_viewer` then drops every category, review row and check type the viewer lacks `view` on (`record_counts.readable_provider`), so a number never reveals records they cannot open. The failing records come from the baseline preview, which needs `manage_project_governance`.
+  - **Who runs the checks.** A check lists a type through a person's own view, so it never runs as nobody. On demand: the viewer. In a snapshot: the project's configured **check runner** (an active user holding a role in the project; checked at every refresh), else only a person who presses Refresh now. Any other refresh carries the last results forward with `checks.status` `carried_forward` and who ran them and when; `not_run` and `runner_unavailable` say why there are none. A group cannot be a runner: it is an acting identity, not an assignee.
+  - **Modes.** `governance_health_defaults` (organisation) and `governance_health_settings` (project; a null mode or interval follows the organisation) hold the choice; `governance_health_snapshots` holds one row per project. `snapshot_on_change` finds a change from the audit trail (an event of a provider's type or a governance policy change newer than `computed_at`, which is taken before reading) and recomputes lazily on the next read; `snapshot_interval` is refreshed by the hourly `health_snapshots` job when `interval_hours` (1, 6, 12, 24, 48, 72, 120, 168, 240 or 336) has elapsed. A refresh takes `pg_try_advisory_xact_lock` for the project, and a reader that cannot take it serves the stored snapshot flagged `stale`. The system's own refresh writes no audit event (derived data); a person's Refresh now and every settings change do.
+  - **API** (module on, `governance_health` on): organisation `GET`/`PUT /health-defaults` (`manage_org_governance`); project `GET /health` (any member), `POST /health/refresh` (`manage_project_governance`; 409 on demand or while another refresh runs), `GET`/`PUT /health/settings` (`PUT` replaces every field; `manage_project_governance`). The settings read carries `on_demand_record_limit` (300) and `checks_enabled`: with baseline checks enabled, on demand leaves the 1 s list budget at about 300 records (the checks capture every baseline record, about 3 ms each: 8 s at 2,500 records, 40 s at 12,000, 150 s at 50,000), while the figures alone stay under 0.5 s at 50,000 records, so a snapshot mode is advised for a larger project with checks (`health.ON_DEMAND_GUIDANCE_RECORDS`; the `governance_health` perf scenario re-measures it). Project bundle keys `governance_health_settings` (template configuration) and `governance_health_runner` (the person's email; excluded from templates; applied on import only to a member of the project), organisation bundle key `governance_health_default` (a merge keeps the organisation's own).
+  - **MCP.** `modules/traceability/mcp_tools.py` declares 29 tools (health, project policy, the organisation's profiles and policy) with `mcp_guidance.md`. Deleting a profile and adding or removing an exemption have no tool (they lift an enforced control and stay a person's act); no tool approves or finalises a baseline.
 - **Not built yet:** the profile screens (frontend), enforcement by the Requirement and Change Request endpoints of the lifecycle policy (their migration step), and the interval's use by Risk and the requirement review route (Phases 7a and 7d).
 
 ### 4l13. External references on every record

@@ -89,7 +89,7 @@ def start_scheduler() -> None:
     _scheduler.add_job(_run_credential_token_purge, CronTrigger(hour=1, minute=30), id="credential_token_purge")
     for module_key, job in get_all_module_scheduled_jobs():
         _scheduler.add_job(
-            _run_module_job, CronTrigger(hour=job.hour, minute=job.minute),
+            _run_module_job, CronTrigger(hour="*" if job.hour is None else job.hour, minute=job.minute),
             args=[job], id=f"{module_key}_{job.job_id}",
         )
     _scheduler.start()

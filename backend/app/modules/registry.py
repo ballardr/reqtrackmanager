@@ -35,6 +35,7 @@ from app.models.enums import LinkFlow, LinkNestingScope
 from app.modules.seams import (
     BaselineCheckProvider,
     GovernanceSeam,
+    HealthProvider,
     ModuleAdministrativePermission,
     PolicyResolver,
     ProfileContributor,
@@ -486,14 +487,15 @@ class ModuleScheduledJob:
         job_id: Short module-unique identifier; `start_scheduler` prefixes it
             with the module's `key` for APScheduler, so ids never collide.
         hour / minute: When the job runs, in the container's local time. Stagger
-            against existing jobs to avoid a load spike (not enforced).
+            against existing jobs to avoid a load spike (not enforced). An `hour` of `None` runs the job every hour,
+            at `minute` past, for a sweep that decides for itself which rows are due.
         run: A callable taking one open `Session` and performing the sweep, as
             `services.reviews.send_due_review_reminders` does;
             `start_scheduler` opens and closes the session.
     """
 
     job_id: str
-    hour: int
+    hour: int | None
     minute: int
     run: Callable[[Session], None]
 
@@ -2589,6 +2591,8 @@ class ModuleDefinition:
             (`services.governance_seams.resolve_policy`).
         profile_contributors: `ProfileContributor`s: tables of policy rows a governance profile can own, counted, exported
             and imported by the profile mechanism without per-table code (`get_profile_contributors`).
+        health_providers: `HealthProvider`s: how each of the module's record types reports its progress to the
+            governance health view (`get_health_providers`; core registers the Requirement's and the Change Request's).
     """
 
     key: str
@@ -2678,6 +2682,7 @@ class ModuleDefinition:
     baseline_check_providers: tuple[BaselineCheckProvider, ...] = field(default=())
     policy_resolvers: tuple[PolicyResolver, ...] = field(default=())
     profile_contributors: tuple[ProfileContributor, ...] = field(default=())
+    health_providers: tuple[HealthProvider, ...] = field(default=())
 
     def __post_init__(self) -> None:
         """Rejects a sub-component `requires` list that names an unknown key, the sub-component itself or forms a cycle,
@@ -2699,12 +2704,16 @@ class ModuleDefinition:
         named = [(p.sub_component, "policy resolver") for p in self.policy_resolvers]
         named += [(c.sub_component, f"baseline check {c.key!r}") for c in self.baseline_check_providers]
         named += [(c.sub_component, f"profile contributor {c.key!r}") for c in self.profile_contributors]
+        named += [(h.sub_component, f"health provider {h.key!r}") for h in self.health_providers]
         for sub_key, what in named:
             if sub_key is not None and sub_key not in declared:
                 raise ValueError(f"Module {self.key!r}: {what} names undeclared sub-component {sub_key!r}.")
         check_keys = [c.key for c in self.baseline_check_providers]
         if len(set(check_keys)) != len(check_keys):
             raise ValueError(f"Module {self.key!r}: duplicate baseline check key.")
+        health_keys = [h.key for h in self.health_providers]
+        if len(set(health_keys)) != len(health_keys):
+            raise ValueError(f"Module {self.key!r}: duplicate health provider key.")
         contributor_keys = [c.key for c in self.profile_contributors]
         if len(set(contributor_keys)) != len(contributor_keys):
             raise ValueError(f"Module {self.key!r}: duplicate profile contributor key.")
@@ -4838,6 +4847,16 @@ def get_review_adapters() -> dict[str, tuple[str, ReviewAdapter]]:
 def get_baseline_check_providers() -> list[tuple[str, BaselineCheckProvider]]:
     """Every module's `baseline_check_providers` as `(module_key, provider)` in registry order."""
     return [(key, provider) for key, definition in get_module_registry().items() for provider in definition.baseline_check_providers]
+
+
+def get_health_providers() -> list[tuple[str, HealthProvider]]:
+    """The health providers of every record type as `(module_key, provider)`: the core types' (module key `""`,
+    `services.health_core`) first, then each module's `health_providers` in registry order."""
+    from app.services.health_core import CORE_HEALTH_PROVIDERS
+
+    providers: list[tuple[str, HealthProvider]] = [("", p) for p in CORE_HEALTH_PROVIDERS]
+    providers.extend((key, p) for key, definition in get_module_registry().items() for p in definition.health_providers)
+    return providers
 
 
 def get_profile_contributors() -> list[tuple[str, ProfileContributor]]:

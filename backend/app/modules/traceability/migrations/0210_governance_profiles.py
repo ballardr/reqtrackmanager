@@ -4,9 +4,9 @@ Revision ID: 0210
 Revises: 0209
 Create Date: 2026-11-26
 
-Organisation policy sets with their targets, exemptions and per-project choices, and the policy tables a profile or a
-project owns. Nothing is seeded: with no profile every project's governance is unchanged. Guarded so a database built from the current
-models passes.
+Organisation policy sets with their targets, exemptions and per-project choices, the policy tables a profile or a
+project owns, and governance health's defaults, settings and snapshots. Nothing is seeded: with no profile every
+project's governance is unchanged. Guarded so a database built from the current models passes.
 """
 
 from collections.abc import Sequence
@@ -214,9 +214,61 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS ix_governance_baseline_required_fields_policy_id "
         "ON governance_baseline_required_fields (policy_id)"
     )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_health_defaults (
+            id UUID PRIMARY KEY,
+            organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            mode VARCHAR(24) NOT NULL,
+            interval_hours INTEGER NOT NULL DEFAULT 24,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_governance_health_defaults_org UNIQUE (organization_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_health_defaults_organization_id ON governance_health_defaults (organization_id)"
+    )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_health_settings (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            mode VARCHAR(24),
+            interval_hours INTEGER,
+            checks_runner_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_governance_health_settings_project UNIQUE (project_id),
+            CONSTRAINT ck_governance_health_settings_interval CHECK (interval_hours IS NULL OR interval_hours >= 1)
+        )
+        """
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_health_settings_project_id ON governance_health_settings (project_id)")
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_health_snapshots (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            computed_at TIMESTAMPTZ NOT NULL,
+            payload JSONB NOT NULL,
+            refreshed_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            checks_run_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            checks_run_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_governance_health_snapshots_project UNIQUE (project_id)
+        )
+        """
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_health_snapshots_project_id ON governance_health_snapshots (project_id)")
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS governance_health_snapshots")
+    op.execute("DROP TABLE IF EXISTS governance_health_settings")
+    op.execute("DROP TABLE IF EXISTS governance_health_defaults")
     op.execute("DROP TABLE IF EXISTS governance_baseline_required_fields")
     op.execute("DROP TABLE IF EXISTS governance_baseline_checks")
     op.execute("DROP TABLE IF EXISTS governance_baseline_policies")

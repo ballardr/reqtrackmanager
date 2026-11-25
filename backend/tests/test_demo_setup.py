@@ -320,7 +320,8 @@ def test_the_message_can_be_skipped(routed, admin_token, stand_in_seed, dirs):
 
 
 def test_a_schedule_adds_a_non_dismissable_warning_for_the_hour_before_the_reset(routed, admin_token, stand_in_seed, dirs):
-    assert _run("--demo", "--reset-at", "00:00", *_confirm(), *dirs) == 0
+    reset_at = (datetime.now(UTC) + timedelta(hours=3)).strftime("%H:%M")
+    assert _run("--demo", "--reset-at", reset_at, *_confirm(), *dirs) == 0
     by_title = {m["title"]: m for m in _messages(routed, admin_token)}
     warning = by_title[rules.RESET_WARNING_TITLE]
     assert warning["dismissible"] is False and warning["severity"] == "warning"

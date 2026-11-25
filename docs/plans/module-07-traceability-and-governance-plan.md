@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4 and 5 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-7 / 19 phases complete. Phase 6 is next.
+8 / 22 phases complete. Phase 7 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -28,7 +28,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 3 | Approval policies (one check seam plus approver roles) | Governance | [x] Done 2026-11-26 |
 | 4 | Review policies (engine extracted from Requirement and Risk reviews) | Governance | [x] Done 2026-11-26 |
 | 5 | Baseline policies and the check-provider extension point | Governance | [x] Done 2026-11-26 |
-| 6 | Governance Health (on demand and two snapshot modes) + Governance MCP tools | Governance | [ ] Not started |
+| 6 | Governance Health (on demand and two snapshot modes) + Governance MCP tools | Governance | [x] Done 2026-11-26 |
 | 7 | Move existing types onto the engine: 7a Risk reviews, 7b Decisions, 7c Context & Strategy, 7d Requirements, 7e Compliance approval (last, optional) | Governance | [ ] Not started |
 | 8 | Governance frontend UI | Governance | [ ] Not started |
 | 9 | Governance docs website coverage | Governance | [ ] Not started — depends on Phase 8 |
@@ -40,6 +40,9 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 15 | Matrices, coverage + Traceability MCP tools | Traceability | [ ] Not started |
 | 16 | Traceability frontend UI | Traceability | [ ] Not started |
 | 17 | Traceability docs website coverage | Traceability | [ ] Not started — depends on Phase 16 |
+| 18 | Performance testing, review and fixes (both halves) | both | [ ] Not started — depends on Phase 16 |
+| 19 | Security review | both | [ ] Not started |
+| 20 | Local CI test review (last; before the pull request) | both | [ ] Not started |
 
 The Governance half comes first because the baseline policy's check-provider
 extension point (Phase 5) is what Traceability's "Required" level plugs into
@@ -498,7 +501,7 @@ baselining. Without it Traceability would be purely informational.
   default, whole-baseline refusal, single capture, kinds, preview, the sweep and its notice); the existing baseline, stage,
   component stage, approval and seam suites pass.
 
-## Phase 6 — Governance Health (`governance_health`) + Governance MCP tools
+## Phase 6 — Governance Health (`governance_health`) + Governance MCP tools (done 2026-11-26)
 
 **Scope** (§35): percentage complete per governed category, open-question count, plus the
 results of whichever check providers are enabled. Three modes (Q8, Q26): on-demand, snapshot at an interval, and snapshot
@@ -515,6 +518,18 @@ finalises a blocked baseline or transition, is marked
 `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`, which excludes it from the manifest wherever
 it physically lives. Update the module's `mcp_guidance.md` and run
 `python scripts/generate_mcp_module_tools_reference.py` in `backend/`.
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 6"; contract in `docs/modules.md` §4l17):**
+
+- **Categories are a registration point.** `modules/seams.py` `HealthProvider` / `HealthMeasure` and `ModuleDefinition.health_providers` (read through `registry.get_health_providers`): one grouped statement per type, the project's own live records, `completion` (share done, rounded down) or `outstanding` (count open). Core registers the Requirement and the Change Request (`services/health_core.py`); Decisions, Risk and Context & Strategy (strategy, future state, guiding principle, open question) register their own in `<module>/health.py`, so a new type adds a provider and nothing else.
+- **Three modes** (Q8, Q26): `governance_health_defaults` (organisation), `governance_health_settings` (project; null follows the organisation) and `governance_health_snapshots` (one row per project, counts only), in unreleased migration `0210`. `snapshot_on_change` finds a change from the audit trail (an event of a governed type newer than `computed_at`) and recomputes lazily under a per-project advisory lock; `snapshot_interval` is refreshed by the hourly `health_snapshots` job (`ModuleScheduledJob.hour` may now be `None`), with the intervals 1, 6, 12, 24 hours and 2, 3, 5, 7, 10, 14 days (**Decided by: User**, with the day steps). A reader that cannot take the lock is served the stored snapshot flagged stale.
+- **Baseline checks run as a person (Decided by: User, 2026-11-26).** Asked how a snapshot, which has no person, handles the check results, the answer was a configured runner or person-run only. `GovernanceHealthSettings.checks_runner_id` names an active user with a role in the project (re-checked at every refresh); with none, only Refresh now runs the checks (as the caller) and any other refresh carries the last results forward with `run_by`, `run_at` and a `carried_forward` status. `services.baseline.evaluate_checks` reads a project's checks as baseline readiness. The control sits in the health settings, which the Phase 8 screen places beside the baseline checks.
+- **Counts only, then the viewer's rights (F10).** A snapshot never holds a code or title; `restrict_to_viewer` drops every category, review row and check type the viewer lacks `view` on.
+- **MCP.** 29 tools (`mcp_tools.py`, `mcp_guidance.md`, `module-tools.md` regenerated) covering health, a project's profile choice and approval, review and baseline policy with the check preview, and the organisation's profiles and policy. Deleting a profile and adding or removing an exemption have no tool (**Decided by: Agent**: each lifts a control an organisation enforces); no tool approves or finalises a baseline.
+- **Perf.** Scenario `governance_health` (`perf/loadgen/scenarios.py`, `perf/lib/catalog.py`, a list-class rule in `perf/budgets.yaml`); the guidance threshold shown beside the mode setting is `health.ON_DEMAND_GUIDANCE_RECORDS` (300 records while checks are enabled; measurement in the decisions entry).
+- **Deviations from this plan's wording (Decided by: Agent):** the per-category "percentage complete" is the share of a type's live records at its settled outcome (each provider documents it), and a count outstanding for the Change Request and the Open Question; a core type is a `HealthProvider` too, so Health works with the types of any module that is on; the core Requirement and Change Request endpoints are untouched.
+- Not built here, by design: the screens (Phase 8), the docs website page (Phase 9), the traceability and compliance results in Health (they register check providers in Phase 12 and Module 9 and appear with no further edit).
+- Tests: `modules/traceability/tests/test_governance_health.py` (gating, permissions, settings, live figures, viewer restriction, reviews against the caller's day, both snapshot modes, the lock, the sweep, runner and carried-forward checks, bundles, MCP), `test_governance_health_categories.py` (each module's categories), `tests/test_health_core.py` (the registration point and `evaluate_checks` with no module); the bundle template test and the MCP reference test pass.
 
 ## Phase 7 — Move existing types onto the engine
 
@@ -689,6 +704,78 @@ Tracked as its own phase (**Decided by: User**, 2026-09-21; scope **Decided by: 
   status indicator, the matrix and coverage dashboard.
 
 **Status:** not started; depends on Phase 16 and on Phase 9 for the cross-link.
+
+## Phase 18 — Performance testing, review and fixes (both halves)
+
+**Scope:** measure the finished module at scale, review what the numbers show and fix every finding, before the docs
+website phases quote any figure. It runs after Phase 16 (and so after the docs phases, whose pages quote no figure from it) so that rule evaluation, status in lists, matrices, coverage,
+exceptions and cross-project reach are all in place, and the Governance engine seams are on the types Phase 7 moved. The
+tooling and its rules are `perf/README.md` and `docs/performance.md`; this phase applies them and does not change them.
+
+- **Scenarios** (`perf/loadgen/scenarios.py`, `perf/lib/catalog.py`, a rule in `perf/budgets.yaml` for each): the Governance
+  scenario from Phase 6 (`governance_health`, on demand and snapshot read) plus, as each exists, a requirement list that
+  carries traceability status and the orphan filter, the per-record status and its leaf results, a matrix and the coverage
+  view at depth and breadth, rule evaluation after a link change, the baseline refusal path with checks enabled (stage and
+  manual), an exception request, and a parent project's cross-project traceability over its descendants. The exception type
+  already has its scaling probe and dataset generator (standing checklist); confirm both still pass.
+- **Measure** at T2 and T3 (and T4 where a request is the heavy one), at the breadth and density profiles the README names, on
+  the performance stack, in dedicated mode. Compare with the earlier runs of the other scenarios so a regression elsewhere
+  shows.
+- **Review and fix, none deferred.** Every request over its budget, every statement count that grows with the data
+  (`tests/test_scaling_shapes.py`, `KNOWN_GROWING` stays empty) and every superlinear curve is a finding: written to the
+  findings register with its guard and fixed in this phase. Known starting points: the baseline checks capture every record's
+  content to learn its id (about 3 ms a record, measured in Phase 6; an ids-only capture on the snapshot provider contract,
+  with each module's provider updated, makes the checks flat and lifts the on-demand Health guidance), and the rule-status
+  read per list page, which must read links and leaf results in bulk, never per record.
+- **Settle the guidance.** Re-set `health.ON_DEMAND_GUIDANCE_RECORDS` from the measured figure, and state the figure and its
+  commit in `docs/decisions.md`.
+- **Docs:** `docs/performance.md` and `docs/website/docs/reference/performance-testing-method.md` /
+  `docs/website/docs/installation-deployment/sizing-and-performance.mdx` where a measured number moved (`python3
+  perf/plot_results.py` for the figures); `docs/modules.md` for any contract changed by a fix.
+
+**Why / risk / outcome:** a rule evaluated per record, a status read per list row and a baseline check that reads whole
+records are the shapes that surface as a user's slow screen at 5,000 records. Measuring after the last feature phase and
+fixing in the same phase means the module ships with numbers that are true and no tracked slowness.
+
+**Exit criteria:** every new scenario passes its budget at T2 and T3 or its finding is fixed; `test_scaling_shapes.py`,
+`test_perf_dataset.py` and `test_perf_runner.py` pass with `KNOWN_GROWING` empty; the guidance threshold is set from a
+measurement; the performance docs are current.
+
+## Phase 19 — Security review
+
+**Scope:** a sweep of the repository's security issues and vulnerabilities, done before the plan is closed (`CLAUDE.md`, "Plan
+Lifecycle"). It covers the whole repository, not only this module's files.
+
+- Open Dependabot alerts, code-scanning (CodeQL) alerts and the dependency and image scan findings: `pip-audit`, `npm audit`,
+  Bandit, Semgrep, Gitleaks and the image scan. Upgrade each vulnerable dependency to a supported version (never pin an
+  older one), and fix each finding in code. Dependabot opens no pull requests, so this phase is how dependency and GitHub
+  Action updates, pinned action SHAs included, are made.
+- The identify, verify, remediate review the change-management policy requires for every area this plan touched: access
+  control (the five administrative atoms, approval policy roles, the stage-lock gate, the health check runner, MCP write
+  tools over governance policy), audit and logging (every mutation through `services/audit.py`, counts and keys only), data
+  classification (no Restricted value in a snapshot, an export or a log), multi-tenant isolation (profiles, rules, matrices
+  and cross-project reach), and bundle import (an import never relaxes an Enforced profile or an approval gate).
+- Record each outcome in `docs/decisions.md`, and update the SOC 2 policies' Known Gaps and the control matrix where a gap
+  closes.
+
+**Exit criteria:** no open alert or scan finding that is not fixed or recorded as a documented false positive with its reason;
+the decisions entry lists what was found and what was done.
+
+## Phase 20 — Local CI test review
+
+**Scope:** the plan's last phase, run before the pull request is created. Run every check the pipeline defines, locally,
+against the plan's branch, never by pushing and reading GitHub runs: every job in `.github/workflows/` (backend, frontend,
+Storybook, Playwright, lint, type-check, docs, security scans).
+
+- Run each job with `act` where it works (`docs/development.md`, "Testing the pipeline locally with `act`"). For a job `act`
+  cannot run, read the workflow and run the same commands directly: the project scripts, `pytest`, `vitest`, Playwright, the
+  `scripts/check_*.py` guards, the linters, `mypy` and the scanners. Run backend `pytest` invocations one at a time.
+- Skip only what cannot run locally (Dependabot, registry pushes, the `docker-publish` job) and list each skipped job with its
+  reason in the close-out note.
+- Fix every failure within the phase without asking for further approval, until every runnable check passes. A flake is
+  diagnosed to its root cause (never a timeout bump or a re-run as the fix), and a failure unrelated to the plan is fixed too.
+
+**Exit criteria:** every runnable check passes; the close-out note lists the skipped jobs and why.
 
 ## Standing checklist per phase
 

@@ -235,12 +235,67 @@ def preview_checks(
         providers = enabled_snapshot_providers(db, project)
         requirement_ids = [r.id for r in requirements]
     else:
-        types = manual_baseline_types(db, project, actor)
-        context = BaselineSnapshotContext(kind="manual", stage_id=None, component_id=None, actor_id=actor.id)
-        providers = {t: p for t, p in enabled_snapshot_providers(db, project).items() if t in types}
-        requirement_ids = _manual_requirement_rows(db, project)[0] if REQUIREMENT_ITEM_TYPE in types else []
+        context, providers, requirement_ids = _manual_scope(db, project, actor)
     captured = _capture_module_records(db, project, context, providers)
     return checks, check_baseline(db, project, kind, actor.id, _record_ids(requirement_ids, captured), checks=checks)
+
+
+def _manual_scope(
+    db: Session, project: Project, actor: User,
+) -> tuple[BaselineSnapshotContext, dict[str, BaselineSnapshotProvider], list[UUID]]:
+    """What a manual baseline taken by `actor` would hold: its context, the snapshot providers of the types they may
+    snapshot, and the requirement ids (shared by `preview_checks` and `evaluate_checks`)."""
+    types = manual_baseline_types(db, project, actor)
+    context = BaselineSnapshotContext(kind="manual", stage_id=None, component_id=None, actor_id=actor.id)
+    providers = {t: p for t, p in enabled_snapshot_providers(db, project).items() if t in types}
+    requirement_ids = _manual_requirement_rows(db, project)[0] if REQUIREMENT_ITEM_TYPE in types else []
+    return context, providers, requirement_ids
+
+
+@dataclass(frozen=True)
+class CheckEvaluation:
+    """The enabled checks run over the records a project holds as they stand.
+
+    Attributes:
+        checks: The checks that ran, `(namespaced key, provider)`, in registry order.
+        records: How many records `actor` could baseline, by registered type.
+        failures: Every failure of every check.
+    """
+
+    checks: list[tuple[str, BaselineCheckProvider]]
+    records: dict[str, int]
+    failures: list[BaselineFailure]
+
+
+def evaluate_checks(db: Session, project: Project, actor: User) -> CheckEvaluation:
+    """Runs every check the project's baseline policy enables over the records `actor` could put in a manual baseline now,
+    writing nothing. The governance health view reads it as baseline readiness: each check runs as the kind of baseline it
+    is enabled for (a check enabled for both runs as both), over every record as it stands, so a failure is a record a
+    baseline taken now would be refused over.
+
+    Args:
+        db: An active database session (read only).
+        project: The project.
+        actor: The person whose view of each type's records the checks read, and who would take the baseline.
+
+    Returns:
+        The checks, the records they covered and the failures (each once); empty when the policy enables no check.
+    """
+    stage = active_checks(db, project, "stage")
+    manual = active_checks(db, project, "manual")
+    chosen = list({key: provider for key, provider in [*stage, *manual]}.items())
+    if not chosen:
+        return CheckEvaluation([], {}, [])
+    context, providers, requirement_ids = _manual_scope(db, project, actor)
+    ids = _record_ids(requirement_ids, _capture_module_records(db, project, context, providers))
+    found: dict[tuple[str, str, UUID, str], BaselineFailure] = {}
+    by_kind: list[tuple[BaselineKindName, list[tuple[str, BaselineCheckProvider]]]] = [("stage", stage), ("manual", manual)]
+    for kind, checks in by_kind:
+        if checks:
+            for failure in check_baseline(db, project, kind, actor.id, ids, checks=checks):
+                found.setdefault((failure.check_key, failure.artefact_type, failure.artefact_id, failure.message), failure)
+    failures = sorted(found.values(), key=lambda f: (f.check_key, f.artefact_type, f.code, str(f.artefact_id)))
+    return CheckEvaluation(chosen, {t: len(v) for t, v in ids.items()}, failures)
 
 
 def create_baseline_for_stage(

@@ -35,6 +35,7 @@ from app.modules.registry import (
 from app.modules.risk_management import export as risk_export
 from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MANAGE_PERMISSION
 from app.modules.risk_management.alerts import NOTIFICATION_TYPES
+from app.modules.risk_management.health import HEALTH_PROVIDERS
 from app.modules.risk_management.lifecycles import LIFECYCLES
 from app.modules.risk_management.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.risk_management.mcp_tools import build_mcp_tools
@@ -211,6 +212,7 @@ MODULE_DEFINITION = ModuleDefinition(
     principal_references=_principal_references(),
     mcp_tools=build_mcp_tools(),
     mcp_guidance=_MCP_GUIDANCE,
+    health_providers=HEALTH_PROVIDERS,
     roles=(
         ModuleRoleDefinition(
             role_key="risk_manager", name="Risk Manager",

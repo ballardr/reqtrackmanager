@@ -12,10 +12,13 @@ Responsibilities:
   exemptions when every project exists. A merge keeps the organisation's own profile of the same name and adds only the
   names it lacks.
 - Project export and import: the project's own choices, by profile name, its own approval policy rows (roles by kind
-  and key, a custom role by name), its own review policy rows (the default owner by email or group name) and its own
-  baseline policy (check keys and required field keys).
-- Template copy: the choices and approval, review and baseline policy rows are project configuration, copied unchanged to a project made from a
-  template.
+  and key, a custom role by name), its own review policy rows (the default owner by email or group name), its own
+  baseline policy (check keys and required field keys) and its governance health settings (mode and interval, and the
+  baseline check runner by email).
+- Organisation export and import also carry the organisation's default health mode and interval.
+- Template copy: the choices and approval, review, baseline and health settings rows are project configuration, copied
+  unchanged to a project made from a template. The check runner is a named person and is not copied: it is excluded from
+  a template and the project that is made from it names its own.
 
 Design decisions:
 - An import never relaxes an Enforced profile: a project bundle carries no exemption (exemptions are organisation
@@ -25,6 +28,9 @@ Design decisions:
 - The profiles imported by the first phase are remembered on the session (`db.info`) so the second phase writes
   targets only for those, never for a profile the merge kept.
 - Policy rows travel with their contributor; one it does not know (a module not installed here) is reported and skipped.
+- A health check runner is applied only to a person who is a member of the organisation (never an imported stand-in) and holds
+  a role in the project; anyone else is reported and skipped, so an import never nominates an identity to run checks as.
+- A merge keeps the organisation's own health default and adds one only where it has none.
 
 Dependencies: `modules.traceability.profiles` (writes, audit), `modules.registry` (contributors), `services.bundle_common`.
 """
@@ -36,15 +42,15 @@ from collections.abc import Mapping
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.organization import Organization
+from app.models.organization import Organization, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
 from app.modules import registry
-from app.modules.traceability import approval_policy, baseline_policy, profiles, review_policy
-from app.modules.traceability.enums import ProfileMode, ProfileTargetKind
+from app.modules.traceability import approval_policy, baseline_policy, health, profiles, review_policy
+from app.modules.traceability.enums import HEALTH_INTERVAL_HOURS, HealthMode, ProfileMode, ProfileTargetKind
 from app.modules.traceability.models import (
     GovernanceProfile,
     GovernanceProfileChoice,
@@ -60,6 +66,9 @@ CHOICES_KEY = "governance_profile_choices"
 APPROVAL_POLICIES_KEY = approval_policy.PROJECT_ROWS_KEY
 REVIEW_POLICIES_KEY = review_policy.PROJECT_ROWS_KEY
 BASELINE_POLICY_KEY = baseline_policy.PROJECT_ROW_KEY
+HEALTH_SETTINGS_KEY = "governance_health_settings"
+HEALTH_RUNNER_KEY = "governance_health_runner"
+HEALTH_DEFAULT_KEY = "governance_health_default"
 _IMPORTED_INFO_KEY = "governance_profiles_imported"
 
 
@@ -85,7 +94,12 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
         contributions = {key: c.export_rows(db, profile.id) for key, c in contributors}
         entry["contributions"] = {key: rows for key, rows in contributions.items() if rows}
         entries.append(entry)
-    return {PROFILES_KEY: entries}
+    mode, interval = health.organization_default(db, org.id)
+    has_default = health.org_default_row(db, org.id) is not None
+    return {
+        PROFILES_KEY: entries,
+        HEALTH_DEFAULT_KEY: {"mode": mode.value, "interval_hours": interval} if has_default else None,
+    }
 
 
 def export_org_project_data(db: Session, org: Organization, project_ref_by_id: Mapping[uuid.UUID, str]) -> dict[str, Any]:
@@ -115,6 +129,7 @@ def import_org_data(
     """`ModuleOrgBundleHooks.import_`: creates the bundle's profiles and their policy rows. A name the organisation
     already has is kept as it is (only a merge can meet one)."""
     contributors = {f"{module_key}:{c.key}": c for module_key, c in registry.get_profile_contributors()}
+    _import_health_default(db, org, data.get(HEALTH_DEFAULT_KEY), users, warnings)
     imported: dict[str, uuid.UUID] = db.info.setdefault(_IMPORTED_INFO_KEY, {})
     imported.clear()
     for entry in data.get(PROFILES_KEY) or []:
@@ -142,6 +157,21 @@ def import_org_data(
                 warnings.add(f"The {key!r} policy of the governance profile {name!r} was not imported: it is not available here.")
                 continue
             contributor.import_rows(db, profile.id, rows, warnings.add)
+
+
+def _import_health_default(
+    db: Session, org: Organization, entry: Any, users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    """Applies the bundle's health default when the organisation has none; an organisation's own default is kept."""
+    if not isinstance(entry, Mapping) or health.org_default_row(db, org.id) is not None:
+        return
+    try:
+        health.set_organization_default(
+            db, organization=org, mode=HealthMode(str(entry.get("mode", ""))),
+            interval_hours=int(entry.get("interval_hours") or 0), actor_id=users.importing_user_id,
+        )
+    except (ValueError, HTTPException):
+        warnings.add("The organisation's governance health default in the bundle was not imported: it is not valid here.")
 
 
 def import_org_project_data(
@@ -193,7 +223,54 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         APPROVAL_POLICIES_KEY: approval_policy.export_project_rows(db, project),
         REVIEW_POLICIES_KEY: review_policy.export_project_rows(db, project),
         BASELINE_POLICY_KEY: baseline_policy.export_project_row(db, project),
+        **_export_health_settings(db, project),
     }, {}
+
+
+def _export_health_settings(db: Session, project: Project) -> dict[str, Any]:
+    """The project's own health settings (null when it follows the organisation) and its check runner by email."""
+    row = health.project_settings_row(db, project.id)
+    runner = None if row is None or row.checks_runner_id is None else db.get(User, row.checks_runner_id)
+    return {
+        HEALTH_SETTINGS_KEY: None if row is None else {"mode": row.mode, "interval_hours": row.interval_hours},
+        HEALTH_RUNNER_KEY: None if runner is None else {"email": runner.email},
+    }
+
+
+def _organization_member_id(db: Session, organization_id: uuid.UUID, email: str) -> uuid.UUID | None:
+    """The id of the organisation's own member with this address; never an imported stand-in."""
+    user = db.scalar(
+        select(User).join(UserOrgRole, UserOrgRole.user_id == User.id)
+        .where(func.lower(User.email) == email.strip().lower(), UserOrgRole.organization_id == organization_id,
+               User.imported_organization_id.is_(None))
+        .limit(1)
+    )
+    return None if user is None else user.id
+
+
+def _import_health_settings(db: Session, project: Project, data: dict[str, Any], current_user: User, warnings: BundleImportWarnings) -> None:
+    """Applies the bundle's health settings and, when it names one, a check runner who is a member of the project."""
+    entry = data.get(HEALTH_SETTINGS_KEY)
+    runner_entry = data.get(HEALTH_RUNNER_KEY)
+    if not isinstance(entry, Mapping) and not isinstance(runner_entry, Mapping):
+        return
+    entry = entry if isinstance(entry, Mapping) else {}
+    runner_id: uuid.UUID | None = None
+    if isinstance(runner_entry, Mapping) and runner_entry.get("email"):
+        runner_id = _organization_member_id(db, project.organization_id, str(runner_entry["email"]))
+        if runner_id is None or health.runner_problem(db, project, runner_id) is not None:
+            warnings.add("The governance health check runner in the bundle is not a member of this project and was not applied.")
+            runner_id = None
+    try:
+        mode = HealthMode(str(entry["mode"])) if entry.get("mode") else None
+        interval = int(entry["interval_hours"]) if entry.get("interval_hours") else None
+        if interval is not None and interval not in HEALTH_INTERVAL_HOURS:
+            raise ValueError(interval)
+        health.set_project_settings(
+            db, project=project, mode=mode, interval_hours=interval, checks_runner_id=runner_id, actor_id=current_user.id,
+        )
+    except (ValueError, HTTPException):
+        warnings.add("The project's governance health settings in the bundle were not imported: they are not valid here.")
 
 
 def import_project_data(
@@ -208,6 +285,7 @@ def import_project_data(
     approval_policy.import_project_rows(db, project, data.get(APPROVAL_POLICIES_KEY) or [], warnings.add)
     review_policy.import_project_rows(db, project, data.get(REVIEW_POLICIES_KEY) or [], warnings.add)
     baseline_policy.import_project_row(db, project, data.get(BASELINE_POLICY_KEY), warnings.add)
+    _import_health_settings(db, project, data, current_user, warnings)
     for entry in data.get(CHOICES_KEY) or []:
         name = str(entry.get("profile", ""))
         profile = profiles.find_profile_by_name(db, project.organization_id, name)
