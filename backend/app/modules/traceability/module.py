@@ -2,8 +2,8 @@
 Module: modules.traceability.module
 
 Registers the Traceability & Governance module through `MODULE_DEFINITION`: ten independently switchable
-sub-components in two halves, the permission atoms and roles that administer them and the engine registration points the
-later parts plug into.
+sub-components in two halves, the permission atoms and roles that administer them, governance profiles with their
+organisation and project APIs and bundles, and the engine registration points the later parts plug into.
 
 Registered contributions:
 - Sub-components: Governance (`lifecycle_policies`, `approval_policies`, `review_policies`, `baseline_policies`,
@@ -16,7 +16,11 @@ Registered contributions:
   role also holds the project atom, so it manages every project's policy).
 
 Design decisions:
-- The module stores nothing yet, so it declares why it has no bundle hooks; each part that adds tables adds its own.
+- Governance profiles (organisation-owned policy sets, `profiles`, `profile_resolution`) are module-level: they serve
+  every policy sub-component, so they need only the module to be on. Each later policy table joins a profile through a
+  registered `ProfileContributor`, so the profile screens and bundles need no per-table code. Profiles, targets and
+  exemptions travel in the organisation bundle; a project's choices in the project bundle (project configuration,
+  copied to a project made from a template).
 - `default_enabled=False`: an organisation opts in; a fresh install is switched on through the server default table.
 - The engine seams live in core `services/` with each type's current behaviour as the default; this module only
   registers resolvers, checks and adapters on top (`modules.seams`), so core never imports it.
@@ -29,8 +33,15 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.models.enums import OrgRole, ProjectRole
-from app.modules.registry import ModuleDefinition, ModuleRoleDefinition, ModuleSubComponentDefinition
+from app.modules.registry import (
+    ModuleDefinition,
+    ModuleOrgBundleHooks,
+    ModuleProjectBundleHooks,
+    ModuleRoleDefinition,
+    ModuleSubComponentDefinition,
+)
 from app.modules.seams import ModuleAdministrativePermission
+from app.modules.traceability import bundle
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
     APPROVE_TRACEABILITY_EXCEPTIONS,
@@ -56,8 +67,19 @@ from app.modules.traceability._shared import (
 
 
 def get_router() -> APIRouter | None:
-    """The module's organisation-scoped router; none until a part adds endpoints."""
-    return None
+    """The module's organisation-scoped router (governance profiles). Imported inside the function so the module's
+    own registration cannot form an import cycle."""
+    from app.modules.traceability.router import router
+
+    return router
+
+
+def get_project_router() -> APIRouter | None:
+    """The module's project-scoped router (a project's view of the profiles that reach it and its choices), imported
+    lazily for the same reason as `get_router`."""
+    from app.modules.traceability.project_router import router
+
+    return router
 
 
 MODULE_DEFINITION = ModuleDefinition(
@@ -72,8 +94,17 @@ MODULE_DEFINITION = ModuleDefinition(
     default_enabled=False,
     implemented=True,
     get_router=get_router,
-    no_org_bundle="The module stores no organisation data yet.",
-    no_project_bundle="The module stores no project data yet.",
+    get_project_router=get_project_router,
+    models_import_path="app.modules.traceability.models",
+    migrations_dir="app/modules/traceability/migrations",
+    org_bundle_hooks=ModuleOrgBundleHooks(
+        export=bundle.export_org_data, import_=bundle.import_org_data,
+        export_with_projects=bundle.export_org_project_data, import_with_projects=bundle.import_org_project_data,
+    ),
+    project_bundle_hooks=ModuleProjectBundleHooks(
+        export=bundle.export_project_data, import_=bundle.import_project_data,
+        template_configuration_keys=frozenset({bundle.CHOICES_KEY}),
+    ),
     sub_components=(
         ModuleSubComponentDefinition(key=LIFECYCLE_POLICIES, name="Lifecycle policies"),
         ModuleSubComponentDefinition(key=APPROVAL_POLICIES, name="Approval policies"),

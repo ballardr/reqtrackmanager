@@ -37,6 +37,7 @@ from app.modules.seams import (
     GovernanceSeam,
     ModuleAdministrativePermission,
     PolicyResolver,
+    ProfileContributor,
     RecordSubtypeResolver,
     ReviewAdapter,
 )
@@ -531,6 +532,17 @@ class ModuleOrgBundleHooks:
             warnings) -> None`, called just before `import_` with the embedded
             bytes (keyed by `file_ref`). It treats every file it stores as
             untrusted input.
+        export_with_projects: Optional `(db, org, project_ref_by_id) -> dict` for
+            content that names the organisation's projects (a profile's targets
+            and exemptions): `project_ref_by_id` maps each project id to the
+            bundle's portable reference (`P-1`), and the returned sections are
+            merged into `org_json` after `export`.
+        import_with_projects: Optional `(db, org, data, project_id_by_ref, users,
+            warnings, resolutions) -> None`, called after every project of the
+            bundle has been imported, with the new project id of each bundle
+            reference (a project skipped by a merge is absent). `resolutions` is
+            `None` for a fresh organisation and a conflict-id -> value map for a
+            merge, so a hook can tell the two apart.
     """
 
     export: Callable[[Session, Organization], dict[str, Any]]
@@ -542,6 +554,14 @@ class ModuleOrgBundleHooks:
     summarize_merge: Callable[[dict[str, Any], list[dict[str, Any]], dict[str, str]], dict[str, int]] | None = None
     export_files: Callable[[Session, Organization, dict[uuid.UUID, FileAsset]], dict[str, Any]] | None = None
     import_files: Callable[[Session, Organization, dict[str, Any], dict[str, bytes], User, BundleImportWarnings], None] | None = None
+    export_with_projects: Callable[[Session, Organization, Mapping[uuid.UUID, str]], dict[str, Any]] | None = None
+    import_with_projects: (
+        Callable[
+            [Session, Organization, dict[str, Any], Mapping[str, uuid.UUID], UserResolver, BundleImportWarnings, dict[str, str] | None],
+            None,
+        ]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -2567,6 +2587,8 @@ class ModuleDefinition:
             (`services.governance_seams.baseline_checks_for_project`).
         policy_resolvers: `PolicyResolver`s answering which policy applies at each core `GovernanceSeam`
             (`services.governance_seams.resolve_policy`).
+        profile_contributors: `ProfileContributor`s: tables of policy rows a governance profile can own, counted, exported
+            and imported by the profile mechanism without per-table code (`get_profile_contributors`).
     """
 
     key: str
@@ -2655,6 +2677,7 @@ class ModuleDefinition:
     review_adapters: dict[str, ReviewAdapter] = field(default_factory=dict)
     baseline_check_providers: tuple[BaselineCheckProvider, ...] = field(default=())
     policy_resolvers: tuple[PolicyResolver, ...] = field(default=())
+    profile_contributors: tuple[ProfileContributor, ...] = field(default=())
 
     def __post_init__(self) -> None:
         """Rejects a sub-component `requires` list that names an unknown key, the sub-component itself or forms a cycle,
@@ -2675,12 +2698,16 @@ class ModuleDefinition:
                 raise ValueError(f"Module {self.key!r}: sub-component {sub.key!r} is part of a requires cycle.")
         named = [(p.sub_component, "policy resolver") for p in self.policy_resolvers]
         named += [(c.sub_component, f"baseline check {c.key!r}") for c in self.baseline_check_providers]
+        named += [(c.sub_component, f"profile contributor {c.key!r}") for c in self.profile_contributors]
         for sub_key, what in named:
             if sub_key is not None and sub_key not in declared:
                 raise ValueError(f"Module {self.key!r}: {what} names undeclared sub-component {sub_key!r}.")
         check_keys = [c.key for c in self.baseline_check_providers]
         if len(set(check_keys)) != len(check_keys):
             raise ValueError(f"Module {self.key!r}: duplicate baseline check key.")
+        contributor_keys = [c.key for c in self.profile_contributors]
+        if len(set(contributor_keys)) != len(contributor_keys):
+            raise ValueError(f"Module {self.key!r}: duplicate profile contributor key.")
         atom_keys = [a.key for a in self.administrative_permissions]
         if len(set(atom_keys)) != len(atom_keys):
             raise ValueError(f"Module {self.key!r}: duplicate administrative permission key.")
@@ -4807,6 +4834,11 @@ def get_review_adapters() -> dict[str, tuple[str, ReviewAdapter]]:
 def get_baseline_check_providers() -> list[tuple[str, BaselineCheckProvider]]:
     """Every module's `baseline_check_providers` as `(module_key, provider)` in registry order."""
     return [(key, provider) for key, definition in get_module_registry().items() for provider in definition.baseline_check_providers]
+
+
+def get_profile_contributors() -> list[tuple[str, ProfileContributor]]:
+    """Every module's `profile_contributors` as `(module_key, contributor)` in registry order."""
+    return [(key, c) for key, definition in get_module_registry().items() for c in definition.profile_contributors]
 
 
 def get_policy_resolvers(seam: GovernanceSeam) -> list[tuple[str, PolicyResolver]]:

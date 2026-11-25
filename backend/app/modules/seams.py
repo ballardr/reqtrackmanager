@@ -2,13 +2,14 @@
 Module: modules.seams
 
 Contracts for the registration points a module uses to take part in core behaviour it does not own: a permission atom
-it contributes, the sub-type of a record, a review schedule, a pre-baseline check and a policy for one of the core
-engine seams (lifecycle move, approval check, review, baseline check).
+it contributes, the sub-type of a record, a review schedule, a pre-baseline check, a policy for one of the core
+engine seams (lifecycle move, approval check, review, baseline check) and a table of policy rows a governance profile
+can own.
 
 Responsibilities:
 - Define the frozen dataclasses `ModuleDefinition` carries (`administrative_permissions`, `record_subtypes`,
-  `review_adapters`, `baseline_check_providers`, `policy_resolvers`); `registry.py` merges them and
-  `services.governance_seams` resolves them for a project.
+  `review_adapters`, `baseline_check_providers`, `policy_resolvers`, `profile_contributors`); `registry.py` merges them
+  and `services.governance_seams` resolves them for a project.
 
 Design decisions:
 - Each seam lives in core `services/` with the type's own behaviour as the built-in default; a module only registers what
@@ -172,6 +173,36 @@ class BaselineCheckProvider:
     name: str
     artefact_types: tuple[str, ...]
     check: Callable[[Session, BaselineCheckContext, dict[str, Sequence[uuid.UUID]]], Sequence[BaselineCheckFailure]]
+    sub_component: str | None = None
+
+
+@dataclass(frozen=True)
+class ProfileContributor:
+    """A table of policy rows a governance profile can own, so the profile screens, counts and bundles need no per-table
+    code.
+
+    The table carries a `profile_id` column (a foreign key to `governance_profiles.id` with `ON DELETE CASCADE`, so
+    deleting a profile removes its rows) beside its own columns; a row with no profile belongs to a project.
+
+    Attributes:
+        key: Stable identifier, unique within its module; the registry namespaces it as `<module_key>:<key>`.
+        name: Formal display name of the kind of policy shown beside a profile (for example "Approval policies").
+        count_rows: `count_rows(db, profile_ids)` returns the number of rows each profile holds, keyed by profile id
+            (a profile with none may be absent). It reads in bulk.
+        export_rows: `export_rows(db, profile_id)` returns the profile's rows as JSON-serialisable bundle entries,
+            ordered stably, referring to other records by portable key.
+        import_rows: `import_rows(db, profile_id, rows, warn)` writes bundle entries into the profile, reporting an
+            entry it cannot apply through `warn` and never failing the import for one. It flushes and never commits.
+        sub_component: The sub-component of the registering module the rows belong to. The profile screens list the
+            kind only while it is in effect for the organisation; the data is kept and still travels in bundles when
+            it is off.
+    """
+
+    key: str
+    name: str
+    count_rows: Callable[[Session, Sequence[uuid.UUID]], dict[uuid.UUID, int]]
+    export_rows: Callable[[Session, uuid.UUID], list[dict[str, Any]]]
+    import_rows: Callable[[Session, uuid.UUID, Sequence[dict[str, Any]], Callable[[str], None]], None]
     sub_component: str | None = None
 
 

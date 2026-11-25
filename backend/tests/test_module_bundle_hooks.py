@@ -49,7 +49,10 @@ def test_module_bundle_sections_do_not_collide_with_each_other_or_core(client, a
         exporter = db.query(User).first()
 
         project_keys = {key: set(hooks.export(db, project)[0]) for key, hooks in get_all_module_project_bundle_hooks()}
-        org_keys = {key: set(hooks.export(db, org)) for key, hooks in get_all_module_org_bundle_hooks()}
+        org_keys = {
+            key: set(hooks.export(db, org)) | set(hooks.export_with_projects(db, org, {}) if hooks.export_with_projects else ())
+            for key, hooks in get_all_module_org_bundle_hooks()
+        }
 
         monkeypatch.setattr(project_export, "get_all_module_project_bundle_hooks", lambda: [])
         monkeypatch.setattr(org_export, "get_all_module_org_bundle_hooks", lambda: [])

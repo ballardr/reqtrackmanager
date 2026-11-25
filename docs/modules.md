@@ -391,6 +391,7 @@ class ModuleDefinition:
     review_adapters: dict[str, ReviewAdapter] = {}  # {artefact type: how the review engine reads its schedule} (§4l16)
     baseline_check_providers: tuple[BaselineCheckProvider, ...] = ()  # checks run before a baseline (§4l16)
     policy_resolvers: tuple[PolicyResolver, ...] = ()  # which policy applies at each core engine seam (§4l16)
+    profile_contributors: tuple[ProfileContributor, ...] = ()  # policy tables a governance profile can own (§4l17)
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     demand_party_providers: dict[str, Callable[[Session, UUID, Sequence[UUID]], dict[UUID, list[DemandParty]]]] = {}  # who a record stands for (§4e2)
@@ -1339,6 +1340,7 @@ Rules for a hook (reference implementations: `modules/risk_management/export.py`
 - Add the export and import for a new table or column in the same change, with a round-trip test (export, import into a fresh project or organisation, compare).
 - Classify every key the project export returns for **template projects**: `template_configuration_keys` (vocabularies, hidden defaults, scoring definitions, settings), `template_record_keys` (starter records and the links among them) or `template_excluded` with a reason (the template's own lifecycle state or people). A project created from a template (`services/template_content.py`) exports through these hooks, keeps the configuration and record keys, calls `template_reset` (`services.template_reset.fresh_drafts` plus the module's initial status; no approval, review, vote or score state) and imports the result, so a module needs no clone code. `backend/tests/test_template_content.py` fails for an unclassified key, a key in two classes, record keys with no reset and an exclusion with no reason.
 - An organisation-level section that embeds files (the Architecture symbol library) sets the optional `ModuleOrgBundleHooks.export_files` (returns more `org.json` sections and adds each `FileAsset` to the bundle) and `import_files` (runs just before `import_`, receives the embedded bytes). A project hook already receives them. A file read from a bundle is untrusted input: check and sanitise it as an upload is, accept no database id from the bundle, and name another record (a type's symbol) by tier and name so the target resolves it.
+- An organisation-level section that names projects (a governance profile's targets and exemptions) sets the optional `ModuleOrgBundleHooks.export_with_projects` (receives each project's portable reference, `P-1`, and returns more `org.json` sections) and `import_with_projects` (runs after every project of the bundle has been imported, receives the new project id of each reference and, as `resolutions`, `None` for a fresh organisation or the conflict map for a merge). `import_` still runs first, so a project's own bundle can already name what `import_` created.
 - A project's own scoring configuration (default model, offered models, bands, level thresholds, cell ratings, for every registered scheme) is core, not a module hook: `services/scoring_config.py` exports it as the project bundle's `scoring_configuration` key and imports it after every module (a custom model or axis is created afresh with a new key, so the bundle carries its label and the import matches by label). A template copies it the same way. A level is matched by scheme, axis and name; one the target organisation lacks is skipped with a warning.
 
 ```mermaid
@@ -1527,6 +1529,42 @@ flowchart LR
 - **A registration applies to a project only while its module is on and, when it names a `sub_component`, that one is in effect** (`governance_seams.registration_active`), so switching a part off removes its contribution. `ModuleDefinition` rejects a registration that names a sub-component the module does not declare, and a duplicate check or atom key.
 - **Administrative atoms** are bare lower-case keys (no `:`), unique across core's `ADMINISTRATIVE_PERMISSIONS` and every module (`get_module_administrative_permissions` skips a duplicate with a warning, so a module can never widen who holds a core atom). The roles a `ModuleAdministrativePermission` names hold it in their organisation (`org_roles`, organisation administrators by default, in every project) or their own project (`project_roles`); a module role or custom role can list it in `permissions` as for any atom. Core's list never names a module's atom.
 - **A contract holds only what every registrant needs now.** The phase that builds a seam extends its contract and the policy object it returns.
+
+### 4l17. Governance profiles (Traceability & Governance Phase 1b)
+
+An organisation sets governance policy for its projects through **profiles**: named sets of policy that bind, default or are offered to the projects they reach. `modules/traceability/` owns the tables (`governance_profiles`, `governance_profile_targets`, `governance_profile_exemptions`, `governance_profile_choices`); a profile holds no policy itself, each later policy table carries a `profile_id` and registers a `ProfileContributor`.
+
+| Mode | Applies to a reached project | A project may |
+|---|---|---|
+| Enforced | always, unless the project is exempt | nothing; only the organisation exempts (a named exemption, optionally with nested children, with a reason) |
+| Default | unless the project opts out | opt out |
+| Opt-in | only where the project opts in | opt in |
+
+A profile reaches **all projects** or **selected projects**, each optionally with its nested children (so "a project with its children" is one selected target). A project's own choice never covers its children: reach down the tree is the organisation's decision, so a manager of a parent project cannot decide for children they may not manage.
+
+```mermaid
+flowchart TD
+    P["profile and project"] --> R{"reaches the project?"}
+    R -->|no| N["not_targeted"]
+    R -->|yes| M{"mode"}
+    M -->|enforced| E{"exempt?"}
+    E -->|yes| X["exempt"]
+    E -->|no| F["enforced"]
+    M -->|default| D{"opted out?"}
+    D -->|yes| O["opted_out"]
+    D -->|no| DF["default"]
+    M -->|opt_in| I{"opted in?"}
+    I -->|yes| OI["opted_in"]
+    I -->|no| A["available"]
+```
+
+`enforced`, `default` and `opted_in` mean the profile's policy applies. `profile_resolution.outcome_for` is the one rule behind the project view, the organisation's impact view and `applicable_profiles(db, project_id)`, which returns the applying profiles Enforced first, then Default, then Opt-in, each by name. A policy kind's resolver reads that list, then the project's own rows, then the nearest ancestor project's, then the built-in default, and states its own merge rule where two profiles set the same policy. A choice or exemption left from an earlier mode is ignored and kept.
+
+- **`ProfileContributor(key, name, count_rows, export_rows, import_rows, sub_component)`** (`modules/seams.py`, `ModuleDefinition.profile_contributors`, read through `registry.get_profile_contributors`): a policy table with a `profile_id` foreign key (`ON DELETE CASCADE`). The profile screens, row counts and bundles call it, so a policy table needs no per-table profile code. A kind whose sub-component is off for the organisation is not listed, its rows are kept and still travel in bundles.
+- **API.** Organisation, `/api/v1/orgs/{organization_id}/modules/traceability/profiles` (list, create, read, rename and change mode, delete, `PUT .../targets`, `POST` and `DELETE .../exemptions`): the module on and `manage_org_governance`, with no server-administrator bypass. Project, `/api/v1/projects/{project_id}/modules/traceability/profiles` (the profiles reaching the project and what each does; `PUT .../{profile_id}/choice`): reading for any member, choosing needs `manage_project_governance`. A project is told only about profiles that reach it.
+- **Audit.** One `governance_profile` event per change (`created`, `updated`, `targets_set`, `deleted`, `exemption_added`, `exemption_removed`, `choice_set`, `choice_cleared`) carrying keys, modes and counts, never a description, reason or policy content.
+- **Bundles.** The organisation bundle carries profiles, targets and exemptions (by project reference) and every contributor's rows; the project bundle carries the project's choices by profile name (template configuration). An import never relaxes an Enforced profile: a project bundle holds no exemption, a choice for an Enforced profile is refused, and a merge keeps the organisation's own profile of the same name. A profile a merge adds keeps its mode, and an Enforced one is reported in the warnings.
+- **Not built yet:** the profile screens (frontend), and every policy table and resolver that reads a profile (the later parts of the module).
 
 ### 4l13. External references on every record
 

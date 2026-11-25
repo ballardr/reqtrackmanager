@@ -12,18 +12,18 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phase 1 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phase 1 and Phase 1b done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-2 / 19 phases complete. Phase 1b is next.
+3 / 19 phases complete. Phase 2 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
 | 0 | Exploratory: audit of existing approval, review and lifecycle code; remaining decisions | both | [x] Done 2026-11-25 |
 | 1 | Module skeleton, sub-components, `requires`, engine registration points | shared | [x] Done 2026-11-26 |
-| 1b | Governance profiles: organisation policy sets that enforce, default or opt in per project | Governance | [ ] Not started |
+| 1b | Governance profiles: organisation policy sets that enforce, default or opt in per project | Governance | [x] Done 2026-11-26 |
 | 2 | Lifecycle policies (extend the shipped lifecycle engine) | Governance | [ ] Not started |
 | 3 | Approval policies (one check seam plus approver roles) | Governance | [ ] Not started |
 | 4 | Review policies (engine extracted from Requirement and Risk reviews) | Governance | [ ] Not started |
@@ -344,6 +344,23 @@ bundles (an import never relaxes an Enforced profile); profiles are organisation
 
 **Why:** the organisation needs one place to say "every regulated project runs these policies, some projects are exempt,
 others may choose them", without repeating targeting on each table. The profile screens themselves ship in Phase 8.
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 1b"; contract in `docs/modules.md` §4l17):**
+
+- `modules/traceability/`: `models.py` (`governance_profiles`, `_targets`, `_exemptions`, `_choices`), migration `0210`,
+  `profile_resolution.py` (the one outcome rule: `enforced`, `exempt`, `default`, `opted_out`, `opted_in`, `available`,
+  `not_targeted`; `applicable_profiles`), `profiles.py` (writes, one audit event each), `router.py` (organisation API,
+  `manage_org_governance`), `project_router.py` (a project's view and choices, `manage_project_governance`), `bundle.py`.
+- **Deviations from this plan's wording (Decided by: Agent):** two target kinds (`all_projects`, `selected_projects`) with
+  `include_children` per target express the three targets; exemptions belong to Enforced profiles only and choices to
+  Default (opt out) and Opt-in (opt in) only; a project's choice never reaches its children; a profile may be targeted at
+  no project yet.
+- Generic extension points: `ModuleDefinition.profile_contributors` (`ProfileContributor`) and
+  `ModuleOrgBundleHooks.export_with_projects` / `import_with_projects` (organisation content that names projects).
+- Not built here, by design: the profile screens, their stories and Playwright specs (Phase 8), the policy tables that
+  register a contributor (Phases 2 to 5), MCP tools (Phase 6) and the docs website page (Phase 9).
+- Tests: `modules/traceability/tests/test_governance_profiles.py` (API, permissions, outcomes, order, audit, contributors)
+  and `test_governance_profiles_bundle.py` (organisation round trip, merge, project choices, Enforced never relaxed).
 
 ## Phase 2 — Lifecycle policies (`lifecycle_policies`)
 

@@ -174,6 +174,8 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         module_bundle_json.update(hooks.export(db, org))
         if hooks.export_files is not None:
             module_bundle_json.update(hooks.export_files(db, org, file_assets_by_id))
+        if hooks.export_with_projects is not None:
+            module_bundle_json.update(hooks.export_with_projects(db, org, project_ref_by_id))
 
     member_rows = list(
         db.execute(
@@ -710,6 +712,9 @@ def import_org_bundle(
     project_id_by_ref = _import_projects(db, org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=None)
     lifecycles.import_org(db, org, data, project_id_by_ref, acting_user.id, warnings.add)
     approval_separation.import_org(db, org, data, project_id_by_ref, acting_user.id, warnings.add)
+    for _module_key, hooks in get_all_module_org_bundle_hooks():
+        if hooks.import_with_projects is not None:
+            hooks.import_with_projects(db, org, data, project_id_by_ref, users, warnings, None)
 
     template_ref = data.get("default_template_project_ref")
     if template_ref and template_ref in project_id_by_ref:
@@ -874,6 +879,9 @@ def merge_org_bundle(
     )
     lifecycles.import_org(db, target_org, data, project_id_by_ref, acting_user.id, warnings.add, keep_existing=True)
     approval_separation.import_org(db, target_org, data, project_id_by_ref, acting_user.id, warnings.add)
+    for _module_key, hooks in get_all_module_org_bundle_hooks():
+        if hooks.import_with_projects is not None:
+            hooks.import_with_projects(db, target_org, data, project_id_by_ref, users, warnings, resolutions)
 
     project_conflicts = [c for c in conflicts if c["kind"] == "project"]
     summary = {

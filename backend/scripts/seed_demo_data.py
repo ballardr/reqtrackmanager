@@ -1746,6 +1746,37 @@ def enable_module(headers: dict, org_id: str, module_key: str) -> None:
     r.raise_for_status()
 
 
+def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str, offered_project_id: str) -> None:
+    """Switches on Traceability & Governance and creates one profile of each mode: an Enforced profile reaching every
+    project with one named exemption, a Default profile and an Opt-in profile offered to one project."""
+    enable_module(headers, org_id, "traceability")
+    base = f"{BASE}/orgs/{org_id}/modules/traceability/profiles"
+    enforced = httpx.post(
+        base, json={
+            "name": "Regulated programmes", "description": "Policy every project of the organisation follows.",
+            "mode": "enforced", "target_kind": "all_projects",
+        }, headers=headers, timeout=30,
+    )
+    enforced.raise_for_status()
+    httpx.post(
+        f"{base}/{enforced.json()['id']}/exemptions",
+        json={"project_id": exempt_project_id, "include_children": False, "reason": "Covered by the parent project's own controls."},
+        headers=headers, timeout=30,
+    ).raise_for_status()
+    httpx.post(
+        base, json={
+            "name": "Engineering baseline", "description": "Shared practice a project may leave.",
+            "mode": "default", "target_kind": "all_projects",
+        }, headers=headers, timeout=30,
+    ).raise_for_status()
+    httpx.post(
+        base, json={
+            "name": "Safety case", "description": "Extra policy a project may choose.", "mode": "opt_in",
+            "target_kind": "selected_projects", "targets": [{"project_id": offered_project_id, "include_children": True}],
+        }, headers=headers, timeout=30,
+    ).raise_for_status()
+
+
 def list_decision_types(headers: dict, project_id: str) -> dict[str, dict]:
     r = httpx.get(f"{BASE}/projects/{project_id}/modules/decisions/decision-types", headers=headers, timeout=30)
     r.raise_for_status()
@@ -3749,6 +3780,8 @@ def main() -> None:
     # default_enabled=False — an org must opt in explicitly, same as a real admin would
     # from Org Admin's Modules tab.
     enable_module(h_pm, org["id"], "decisions")
+    print("Seeding governance profiles — one Enforced (with an exemption), one Default and one Opt-in...")
+    seed_governance_profiles(h_pm, org["id"], exempt_project_id=avionics["id"], offered_project_id=drone["id"])
     # The Decision register is only a known report once the module is on for the organisation.
     print("Arranging the Reports list: the organisation files the Decision register under Governance/Decisions...")
     r = httpx.put(
