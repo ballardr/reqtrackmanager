@@ -2,7 +2,7 @@
 """
 Module: check-playwright-image-sync
 
-Fails when a Playwright container image tag in .github/workflows/ci.yml does
+Fails when a Playwright container image tag in .github/workflows/ci.yml or flake-hunt.yml does
 not match the `playwright-core` version resolved by the lockfile of the
 project that runs in that container.
 
@@ -27,12 +27,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+WORKFLOWS = [ROOT / ".github" / "workflows" / "ci.yml", ROOT / ".github" / "workflows" / "flake-hunt.yml"]
 
 # CI job key -> lockfile of the project whose tests run in that job's image.
 JOB_LOCKFILES = {
     "frontend": ROOT / "frontend" / "package-lock.json",
     "frontend-shard": ROOT / "frontend" / "package-lock.json",
+    "stories-shuffled-under-load": ROOT / "frontend" / "package-lock.json",
     "e2e-tests": ROOT / "tests" / "playwright" / "package-lock.json",
 }
 
@@ -60,38 +61,40 @@ def locked_version(lockfile: Path) -> str:
 
 def main() -> int:
     """
-    Compares every Playwright image tag in ci.yml with its job's lockfile.
+    Compares every Playwright image tag in the workflows with its job's lockfile.
 
     Returns:
         0 if every tag matches, 1 if any mismatches or sits in an unmapped job.
     """
     problems: list[str] = []
     found = 0
-    job = ""
-    for number, line in enumerate(WORKFLOW.read_text().splitlines(), start=1):
-        key = JOB_KEY.match(line)
-        if key:
-            job = key.group(1)
-        tag = IMAGE_TAG.search(line)
-        if not tag or line.lstrip().startswith("#"):
-            continue
-        found += 1
-        lockfile = JOB_LOCKFILES.get(job)
-        if lockfile is None:
-            problems.append(
-                f"ci.yml:{number}: Playwright image in job '{job}' has no lockfile mapped "
-                f"in scripts/check-playwright-image-sync.py (JOB_LOCKFILES)."
-            )
-            continue
-        locked = locked_version(lockfile)
-        if tag.group(1) != locked:
-            problems.append(
-                f"ci.yml:{number}: job '{job}' uses Playwright image v{tag.group(1)}, but "
-                f"{lockfile.relative_to(ROOT)} resolves playwright-core {locked}. "
-                f"Change the image tag to v{locked}-noble (or re-sync the lockfile)."
-            )
+    for workflow in WORKFLOWS:
+        job = ""
+        for number, line in enumerate(workflow.read_text().splitlines(), start=1):
+            key = JOB_KEY.match(line)
+            if key:
+                job = key.group(1)
+            tag = IMAGE_TAG.search(line)
+            if not tag or line.lstrip().startswith("#"):
+                continue
+            found += 1
+            where = f"{workflow.name}:{number}"
+            lockfile = JOB_LOCKFILES.get(job)
+            if lockfile is None:
+                problems.append(
+                    f"{where}: Playwright image in job '{job}' has no lockfile mapped "
+                    f"in scripts/check-playwright-image-sync.py (JOB_LOCKFILES)."
+                )
+                continue
+            locked = locked_version(lockfile)
+            if tag.group(1) != locked:
+                problems.append(
+                    f"{where}: job '{job}' uses Playwright image v{tag.group(1)}, but "
+                    f"{lockfile.relative_to(ROOT)} resolves playwright-core {locked}. "
+                    f"Change the image tag to v{locked}-noble (or re-sync the lockfile)."
+                )
     if found == 0:
-        problems.append("No Playwright image tags found in ci.yml; update this check if the CI layout changed.")
+        problems.append("No Playwright image tags found in the workflows; update this check if the CI layout changed.")
     for problem in problems:
         print(problem, file=sys.stderr)
     if not problems:

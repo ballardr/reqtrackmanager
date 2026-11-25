@@ -10,6 +10,7 @@ Dockerfile, TOML, INI, Caddyfile):
 - conversational or review wording ("the user asked", "as discussed", "found in review");
 - a calendar date or a month and year ("2026-11-23", "Nov 2026");
 - history wording ("previously", "used to", "no longer", "was changed from", "the fix for");
+- a vulnerability identifier ("CVE-2026-12345", "GHSA-xxxx-xxxx-xxxx"), which goes stale once the dependency is patched;
 - a plan document or phase reference (also enforced by check_doc_links.py).
 
 A comment that must keep one of these words for a real reason (a domain term such as a user
@@ -122,6 +123,10 @@ RULES: list[tuple[str, re.Pattern[str]]] = [
             r")\b",
             re.I,
         ),
+    ),
+    (
+        "vulnerability identifier",
+        re.compile(r"\b(?:CVE-\d{4}-\d{4,}|GHSA(?:-[0-9a-z]{4}){3})\b", re.I),
     ),
     (
         "plan or phase reference",

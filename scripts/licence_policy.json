@@ -54,6 +54,8 @@
      "reason": "Data files read by Ghostscript in the converter container; the font exception keeps documents that embed them out of the licence's scope (Debian copyright file: AGPL-3 with Font exception)."},
     {"name": "zlib", "packages": ["zlib1g"], "images": ["backend", "backup", "converter", "mcp-server"], "licence": "Zlib", "source": "https://zlib.net/", "use": "library",
      "role": "Compression library, named so the patched Debian release replaces the base image's copy.", "reason": "Permissive."},
+    {"name": "Zstandard", "packages": ["libzstd1"], "images": ["backend", "backup", "converter", "mcp-server"], "licence": "BSD-3-Clause", "source": "https://github.com/facebook/zstd", "use": "library",
+     "role": "Compression library, named so the patched Debian release replaces the base image's copy.", "reason": "Permissive (dual-licensed BSD-3-Clause or GPL-2.0; used under BSD-3-Clause)."},
     {"name": "PostgreSQL client libraries", "packages": ["libpq-dev", "postgresql-client-16"], "images": ["backend", "backup"], "licence": "PostgreSQL", "source": "https://www.postgresql.org/", "use": "library",
      "role": "Client library for the database driver build, and pg_dump for the backup image.", "reason": "Permissive (PostgreSQL licence); the Debian copyright file also lists BSD-3-Clause parts."},
     {"name": "GCC", "packages": ["gcc"], "images": ["backend", "backup"], "licence": "GPL-3.0-or-later WITH GCC-exception-3.1", "source": "https://gcc.gnu.org/", "use": "build-tool",

@@ -15,9 +15,9 @@ ENV APP_VERSION=${APP_VERSION} \
 WORKDIR /app
 
 # EPS and PDF logos are converted by the separate converter service (../converter), not by tools in this image.
-# zlib1g is named so the patched release replaces the one the base image ships (CVE-2026-76844, CVE-2026-85091).
+# zlib1g and libzstd1 are named so the patched releases replace the ones the base image ships.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc curl zlib1g \
+    libpq-dev gcc curl zlib1g libzstd1 \
     && rm -rf /var/lib/apt/lists/*
 
 # pip is removed once the dependencies are installed: the base image's pip vendors msgpack, urllib3 and setuptools
