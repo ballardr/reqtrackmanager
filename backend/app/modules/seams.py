@@ -26,8 +26,8 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 from typing import Any, Literal
@@ -78,6 +78,22 @@ class GovernanceSeam(str, Enum):
 
 
 @dataclass(frozen=True)
+class LifecyclePolicy:
+    """What governance policy adds to a project's lifecycles: the answer of `GovernanceSeam.LIFECYCLE`
+    (`services.lifecycles` reads it for every type and for the rule on skipping steps).
+
+    Attributes:
+        required: `{artefact type: {state: names of the profiles that require it}}`. A required state binds the project
+            like an organisation's requirement: it cannot be turned off. Policies of several profiles are merged by
+            union, so one profile never relaxes another.
+        skip_forbidden_by: Names of the profiles that forbid skipping steps; any one forbids it for the project.
+    """
+
+    required: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+    skip_forbidden_by: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class PolicyResolver:
     """A module's answer to "which policy applies" for one core seam.
 
@@ -85,14 +101,26 @@ class PolicyResolver:
         seam: The seam it answers for.
         resolve: `resolve(db, project_id, artefact_type)` returns the seam's policy object for the type in the project,
             or `None` when the module has no policy there, in which case the next resolver or the type's built-in default
-            applies. It reads only and never commits. The policy object's shape belongs to the seam.
+            applies. It reads only and never commits. The policy object's shape belongs to the seam. Used by a seam that
+            asks one type at a time (approval, review).
         sub_component: The sub-component of the registering module that must be effective in the project for the resolver
             to be asked; `None` means the whole module being on is enough.
+        resolve_project: `resolve_project(db, project_id)` returns the seam's policy for the whole project (every type at
+            once), or `None`. Used by a seam that reads all types in one pass (lifecycle), so the answer costs a fixed
+            number of statements however many types are registered.
+
+    Raises:
+        ValueError: If neither or both of `resolve` and `resolve_project` are given.
     """
 
     seam: GovernanceSeam
-    resolve: Callable[[Session, uuid.UUID, str], Any | None]
+    resolve: Callable[[Session, uuid.UUID, str], Any | None] | None = None
     sub_component: str | None = None
+    resolve_project: Callable[[Session, uuid.UUID], Any | None] | None = None
+
+    def __post_init__(self) -> None:
+        if (self.resolve is None) == (self.resolve_project is None):
+            raise ValueError("A policy resolver gives exactly one of resolve and resolve_project.")
 
 
 @dataclass(frozen=True)

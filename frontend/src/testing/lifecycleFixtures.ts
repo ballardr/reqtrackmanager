@@ -25,7 +25,7 @@ export function buildPainPointLifecycle(overrides: Partial<ProjectLifecycle> = {
       state("addressed", "Addressed"), state("closed", "Closed"),
     ],
     off_path: [state("rejected", "Rejected"), state("duplicate", "Duplicate")],
-    own_disabled: disabled.length > 0 ? disabled : null, disabled, required: [], exempt: false,
+    own_disabled: disabled.length > 0 ? disabled : null, disabled, required: [], required_by_profiles: {}, exempt: false,
     source: disabled.length > 0 ? "project" : "default", transitions, skip_transitions: {}, ...overrides,
   };
 }
@@ -49,7 +49,7 @@ export function buildDecisionLifecycle(overrides: Partial<ProjectLifecycle> = {}
     artefact_type: "decision", label: "Decision", module_key: "decisions", module_name: "Decision Management",
     path: [state("draft", "Draft"), state("proposed", "Proposed", true), state("under_review", "Under review", true), state("approved", "Approved", false, true)],
     off_path: [state("rejected", "Rejected"), state("superseded", "Superseded")],
-    own_disabled: null, disabled: [], required: [], exempt: false, source: "default",
+    own_disabled: null, disabled: [], required: [], required_by_profiles: {}, exempt: false, source: "default",
     transitions: { draft: ["proposed"], proposed: ["under_review", "rejected"], under_review: ["approved", "rejected"], approved: ["superseded"] },
     skip_transitions: {},
     ...overrides,
@@ -58,7 +58,7 @@ export function buildDecisionLifecycle(overrides: Partial<ProjectLifecycle> = {}
 
 /** Skipping steps as a project sees it: off by default; pass `{ chosen: true, own: true, allowed: true }` to allow it. */
 export function buildProjectSkip(overrides: Partial<ProjectSkip> = {}): ProjectSkip {
-  return { allowed: false, own: null, chosen: false, source: "default", forbidden: false, exempt: false, ...overrides };
+  return { allowed: false, own: null, chosen: false, source: "default", forbidden: false, exempt: false, forbidden_by_profiles: [], ...overrides };
 }
 
 export function buildProjectLifecycles(lifecycles: ProjectLifecycle[], overrides: Partial<ProjectLifecycles> = {}): ProjectLifecycles {

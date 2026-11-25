@@ -26,6 +26,7 @@ from app.modules.seams import (
     BaselineCheckProvider,
     DueReview,
     GovernanceSeam,
+    LifecyclePolicy,
     PolicyResolver,
     ReviewAdapter,
 )
@@ -42,6 +43,10 @@ def _lifecycle_policy(db, project_id, artefact_type):
 
 def _approval_policy(db, project_id, artefact_type):
     return "approval-policy"
+
+
+def _project_policy(db, project_id):
+    return LifecyclePolicy(required={"decision": {"proposed": ("Fake profile",)}}, skip_forbidden_by=("Fake profile",))
 
 
 def _check(db, context, record_ids):
@@ -70,6 +75,7 @@ def _definition(**overrides) -> ModuleDefinition:
         policy_resolvers=(
             PolicyResolver(seam=GovernanceSeam.LIFECYCLE, resolve=_lifecycle_policy, sub_component="policies"),
             PolicyResolver(seam=GovernanceSeam.APPROVAL, resolve=_approval_policy),
+            PolicyResolver(seam=GovernanceSeam.BASELINE, resolve_project=_project_policy, sub_component="policies"),
         ),
         baseline_check_providers=(
             BaselineCheckProvider(key="fake_check", name="Fake check", artefact_types=("decision",), check=_check, sub_component="checks"),
@@ -110,6 +116,13 @@ def test_duplicate_baseline_check_keys_are_rejected():
         _definition(baseline_check_providers=(provider, provider))
 
 
+def test_a_resolver_gives_exactly_one_way_to_answer():
+    with pytest.raises(ValueError, match="exactly one"):
+        PolicyResolver(seam=GovernanceSeam.LIFECYCLE)
+    with pytest.raises(ValueError, match="exactly one"):
+        PolicyResolver(seam=GovernanceSeam.LIFECYCLE, resolve=_approval_policy, resolve_project=_project_policy)
+
+
 # --- policy resolution -----------------------------------------------------------------
 
 
@@ -125,6 +138,27 @@ def test_policy_resolution_asks_only_resolvers_in_effect(client, admin_token, or
         assert governance_seams.resolve_policy(db, project_id, GovernanceSeam.APPROVAL, "decision") == "approval-policy"
         # No resolver registered for the seam: the built-in default applies.
         assert governance_seams.resolve_policy(db, project_id, GovernanceSeam.BASELINE, "decision") is None
+    finally:
+        db.close()
+
+
+def test_a_project_level_policy_is_answered_by_its_own_call_only(client, admin_token, org_id, fake_module):
+    project_id = uuid_lib.UUID(create_project(client, admin_token, org_id, "Seam Project Policy Project")["id"])
+    db = SessionLocal()
+    try:
+        policy = governance_seams.resolve_project_policy(db, project_id, GovernanceSeam.BASELINE)
+        assert isinstance(policy, LifecyclePolicy) and policy.skip_forbidden_by == ("Fake profile",)
+        # Neither call answers for the other kind of resolver.
+        assert governance_seams.resolve_policy(db, project_id, GovernanceSeam.BASELINE, "decision") is None
+        assert governance_seams.resolve_project_policy(db, project_id, GovernanceSeam.APPROVAL) is None
+        # A seam with no project-level resolver falls back to the built-in default.
+        assert governance_seams.resolve_project_policy(db, project_id, GovernanceSeam.REVIEW) is None
+        db.add(OrganizationModuleSubComponentDefault(
+            organization_id=uuid_lib.UUID(org_id), module_key=KEY, subcomponent_key="policies", enabled=False,
+            default_project_enabled=False,
+        ))
+        db.commit()
+        assert governance_seams.resolve_project_policy(db, project_id, GovernanceSeam.BASELINE) is None
     finally:
         db.close()
 

@@ -35,9 +35,11 @@ export interface ProjectLifecycle {
   own_disabled: string[] | null;
   /** The states that are off here. */
   disabled: string[];
-  /** The states the organisation requires and that bind this project. */
+  /** The states that must stay on: the organisation's (unless it is exempt) and those the governance profiles require. */
   required: string[];
   exempt: boolean;
+  /** `{state: names of the governance profiles requiring it}`, to name the source of a requirement. */
+  required_by_profiles: Record<string, string[]>;
   source: LifecycleSource;
   /** Every state's legal next states with the turned-off states stepped over. */
   transitions: Record<string, string[]>;
@@ -54,10 +56,12 @@ export interface ProjectSkip {
   own: boolean | null;
   chosen: boolean;
   source: LifecycleSource;
-  /** The organisation forbids skipping and binds this project. */
+  /** Skipping is forbidden for this project, by the organisation or by a governance profile. */
   forbidden: boolean;
-  /** The organisation forbids skipping but this project is exempt. */
+  /** The organisation forbids skipping but this project is exempt (and no profile forbids it). */
   exempt: boolean;
+  /** Names of the governance profiles that forbid skipping for this project. */
+  forbidden_by_profiles: string[];
 }
 
 /** A project's lifecycles and whether the caller may change them. */

@@ -12,19 +12,19 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phase 1 and Phase 1b done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b and 2 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-3 / 19 phases complete. Phase 2 is next.
+4 / 19 phases complete. Phase 3 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
 | 0 | Exploratory: audit of existing approval, review and lifecycle code; remaining decisions | both | [x] Done 2026-11-25 |
 | 1 | Module skeleton, sub-components, `requires`, engine registration points | shared | [x] Done 2026-11-26 |
 | 1b | Governance profiles: organisation policy sets that enforce, default or opt in per project | Governance | [x] Done 2026-11-26 |
-| 2 | Lifecycle policies (extend the shipped lifecycle engine) | Governance | [ ] Not started |
+| 2 | Lifecycle policies (extend the shipped lifecycle engine) | Governance | [x] Done 2026-11-26 |
 | 3 | Approval policies (one check seam plus approver roles) | Governance | [ ] Not started |
 | 4 | Review policies (engine extracted from Requirement and Risk reviews) | Governance | [ ] Not started |
 | 5 | Baseline policies and the check-provider extension point | Governance | [ ] Not started |
@@ -370,6 +370,27 @@ and the path, optional states and gated state are declared from the code the aud
 (optional states, organisation requirements, exemptions, skip steps) in the Governance settings and Health. Custom
 user-defined states are out: each type's state enum drives guards, locks and content checks. The organisation tier is the
 shipped requirement-plus-exemption pattern (Q24); a profile (Phase 1b) may carry the same settings as part of a set.
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 2"; contract in `docs/modules.md` §4l15 and §4l17):**
+
+- `services/lifecycles_core.py` registers `requirement` (Draft, Reviewed optional, Approved gated; Archived off the path) and
+  `change_request` (Draft, Submitted, Approved gated; Rejected, Withdrawn and In review off the path; no optional state), merged by
+  `get_lifecycles` with module key `""`. Their transition tables are the moves the endpoints allow, pinned by
+  `tests/test_core_lifecycles.py`, which drives the real API.
+- **Enforcement waits for 7d** (**Decided by: User**, "we aren't shipping prior"): neither type's endpoints call `check_move` yet,
+  so a requirement's Reviewed switch is stored and has no effect until Phase 7d.
+- **Profiles carry lifecycle policy** (**Decided by: User**): `governance_lifecycle_requirements` and
+  `governance_lifecycle_skip_policies` (added to unreleased migration `0210`; a local database that already ran it needs a reset),
+  `modules/traceability/lifecycle_policy.py` (writes, the seam answer, the `lifecycle` `ProfileContributor`) and
+  `GET`/`PUT /profiles/{id}/lifecycle[/{type}|/skip]` under `manage_org_governance` and the `lifecycle_policies` part.
+- **Seam contract reshaped** (Agent): `PolicyResolver` gives exactly one of `resolve` and `resolve_project`; `LifecyclePolicy` and
+  `governance_seams.resolve_project_policy` are the lifecycle answer. `services.lifecycles` unions the organisation's and every
+  applicable profile's required states and bans on skipping; the project response names the sources (`required_by_profiles`,
+  `skip.forbidden_by_profiles`).
+- **Deviation from this plan's wording:** "surface in the Governance settings and Health" is the API and the typed response fields;
+  the screens are Phase 8 and Health is Phase 6.
+- Tests: `modules/traceability/tests/test_governance_lifecycle_policy.py`, `tests/test_core_lifecycles.py`, the extended
+  `tests/test_governance_seams.py`; the existing lifecycle, approval separation and profile suites pass.
 
 ## Phase 3 — Approval policies (`approval_policies`)
 

@@ -98,6 +98,7 @@ def _project_out(resolved: ResolvedLifecycle, skip_allowed: bool) -> ProjectLife
         own_disabled=None if resolved.own is None else [s for s in definition.optional if s in resolved.own],
         disabled=[s for s in definition.optional if s in resolved.disabled],
         required=[s for s in definition.optional if s in resolved.enforced], exempt=resolved.exempt,
+        required_by_profiles={s: list(resolved.profile_required[s]) for s in definition.optional if s in resolved.profile_required},
         source=resolved.source, transitions=lifecycles.effective_transitions(resolved),
         skip_transitions=lifecycles.effective_skip_transitions(resolved) if skip_allowed else {},
     )
@@ -115,7 +116,8 @@ def _project_response(db: Session, project: Project, user: User) -> ProjectLifec
         has_parent=project.parent_project_id is not None,
         skip=ProjectSkipOut(
             allowed=policy.allowed, own=policy.own, chosen=policy.chosen, source=policy.source,
-            forbidden=policy.enforced, exempt=policy.forbidden and policy.exempt,
+            forbidden=policy.enforced, exempt=policy.forbidden and policy.exempt and not policy.profile_forbidden_by,
+            forbidden_by_profiles=list(policy.profile_forbidden_by),
         ),
         lifecycles=[
             _project_out(r, policy.allowed) for _, r in sorted(resolved.items())

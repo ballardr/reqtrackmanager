@@ -88,7 +88,12 @@ def test_profile_mode_is_off_by_default_and_the_application_registers_nothing_fo
 
     dispatchers = [getattr(m.kwargs.get("dispatch"), "__name__", "") for m in app.user_middleware]
     assert "profile_middleware" not in dispatchers
-    assert not [r for r in app.routes if "profil" in getattr(r, "path", "")], "profile mode adds no endpoint"
+    # The governance profile API (`/modules/traceability/profiles`) is a product feature, not developer profiling.
+    profiling_routes = [
+        r for r in app.routes
+        if "profil" in getattr(r, "path", "") and "/modules/traceability/profiles" not in getattr(r, "path", "")
+    ]
+    assert not profiling_routes, "profile mode adds no endpoint"
 
 
 def test_profile_mode_is_read_from_the_environment(monkeypatch):

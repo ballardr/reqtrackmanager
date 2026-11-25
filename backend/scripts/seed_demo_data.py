@@ -1748,7 +1748,8 @@ def enable_module(headers: dict, org_id: str, module_key: str) -> None:
 
 def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str, offered_project_id: str) -> None:
     """Switches on Traceability & Governance and creates one profile of each mode: an Enforced profile reaching every
-    project with one named exemption, a Default profile and an Opt-in profile offered to one project."""
+    project with one named exemption, a Default profile and an Opt-in profile offered to one project. The Enforced
+    profile requires the Reviewed step of a requirement and the Opt-in profile forbids skipping steps."""
     enable_module(headers, org_id, "traceability")
     base = f"{BASE}/orgs/{org_id}/modules/traceability/profiles"
     enforced = httpx.post(
@@ -1763,17 +1764,24 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
         json={"project_id": exempt_project_id, "include_children": False, "reason": "Covered by the parent project's own controls."},
         headers=headers, timeout=30,
     ).raise_for_status()
+    httpx.put(
+        f"{base}/{enforced.json()['id']}/lifecycle/requirement", json={"required": ["reviewed"]}, headers=headers, timeout=30,
+    ).raise_for_status()
     httpx.post(
         base, json={
             "name": "Engineering baseline", "description": "Shared practice a project may leave.",
             "mode": "default", "target_kind": "all_projects",
         }, headers=headers, timeout=30,
     ).raise_for_status()
-    httpx.post(
+    safety = httpx.post(
         base, json={
             "name": "Safety case", "description": "Extra policy a project may choose.", "mode": "opt_in",
             "target_kind": "selected_projects", "targets": [{"project_id": offered_project_id, "include_children": True}],
         }, headers=headers, timeout=30,
+    )
+    safety.raise_for_status()
+    httpx.put(
+        f"{base}/{safety.json()['id']}/lifecycle/skip", json={"forbidden": True}, headers=headers, timeout=30,
     ).raise_for_status()
 
 

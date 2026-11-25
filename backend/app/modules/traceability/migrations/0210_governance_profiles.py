@@ -1,4 +1,4 @@
-"""Governance profiles: organisation policy sets with their targets, exemptions and per-project choices
+"""Governance profiles: organisation policy sets with their targets, exemptions, per-project choices and lifecycle policy
 
 Revision ID: 0210
 Revises: 0209
@@ -61,7 +61,44 @@ def upgrade() -> None:
         op.execute(f"CREATE INDEX IF NOT EXISTS ix_{table}_project_id ON {table} (project_id)")
 
 
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_lifecycle_requirements (
+            id UUID PRIMARY KEY,
+            profile_id UUID NOT NULL REFERENCES governance_profiles(id) ON DELETE CASCADE,
+            artefact_type VARCHAR(64) NOT NULL,
+            state VARCHAR(64) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_governance_lifecycle_requirements UNIQUE (profile_id, artefact_type, state)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_lifecycle_requirements_profile_id "
+        "ON governance_lifecycle_requirements (profile_id)"
+    )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_lifecycle_skip_policies (
+            id UUID PRIMARY KEY,
+            profile_id UUID NOT NULL REFERENCES governance_profiles(id) ON DELETE CASCADE,
+            forbidden BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_governance_lifecycle_skip_policies UNIQUE (profile_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_lifecycle_skip_policies_profile_id "
+        "ON governance_lifecycle_skip_policies (profile_id)"
+    )
+
+
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS governance_lifecycle_skip_policies")
+    op.execute("DROP TABLE IF EXISTS governance_lifecycle_requirements")
     for table in ("governance_profile_choices", "governance_profile_exemptions", "governance_profile_targets"):
         op.execute(f"DROP TABLE IF EXISTS {table}")
     op.execute("DROP TABLE IF EXISTS governance_profiles")

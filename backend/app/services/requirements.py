@@ -25,6 +25,7 @@ from app.models.engagement import Subscription
 from app.models.enums import (
     ChangeRequestStatus,
     PrincipalType,
+    ProjectRole,
     RequirementLevel,
     RequirementStatus,
     ReviewTargetType,
@@ -48,6 +49,9 @@ from app.services.rbac import lock_project_for_update, lock_row_for_update
 
 if TYPE_CHECKING:
     from app.services.placements import PlacementPair
+
+# The project roles that may edit a requirement (a status change to Approved additionally needs the manager role).
+CAN_EDIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
 
 # C-G-11: completion is an overlay marker on APPROVED (`Requirement.is_completed`), not a separate status,
 # so a completed requirement is still APPROVED and this set has one member.

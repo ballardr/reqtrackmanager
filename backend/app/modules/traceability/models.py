@@ -2,11 +2,14 @@
 Module: modules.traceability.models
 
 Tables of the Traceability & Governance module: governance profiles (organisation-owned named policy sets), the projects
-a profile targets, the projects exempt from an Enforced profile and each project's opt-in or opt-out.
+a profile targets, the projects exempt from an Enforced profile, each project's opt-in or opt-out and the lifecycle policy
+rows a profile owns (the states it requires and whether it forbids skipping steps).
 
 Design decisions:
-- A profile holds no policy itself. Each policy table of a later part carries a `profile_id` (a
-  `modules.seams.ProfileContributor`), so the profile mechanism needs no per-table code.
+- A profile holds no policy itself. Each policy table carries a `profile_id` (a `modules.seams.ProfileContributor`),
+  so the profile mechanism needs no per-table code.
+- A profile's required lifecycle state is one row per `(profile, type, state)`, as an organisation's requirement is
+  (`models.lifecycle`); its ban on skipping steps is one row per profile. Both go with the profile when it is deleted.
 - `mode` and `target_kind` are plain strings validated against `modules.traceability.enums`, not database enums.
 - Targets, exemptions and choices are one row per `(profile, project)`; a project's deletion removes its rows. A target
   or exemption may cover the project's nested children (`include_children`).
@@ -119,3 +122,39 @@ class GovernanceProfileChoice(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     opted_in: Mapped[bool] = mapped_column(Boolean)
+
+
+class GovernanceLifecycleRequirement(UUIDPKMixin, TimestampMixin, Base):
+    """A lifecycle state a profile requires every project it applies to to keep on.
+
+    Attributes:
+        profile_id: The profile.
+        artefact_type: The registered record type.
+        state: The required state key (an optional state of the type).
+    """
+
+    __tablename__ = "governance_lifecycle_requirements"
+    __table_args__ = (UniqueConstraint("profile_id", "artefact_type", "state", name="uq_governance_lifecycle_requirements"),)
+
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_profiles.id", ondelete="CASCADE"), index=True
+    )
+    artefact_type: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(64))
+
+
+class GovernanceLifecycleSkipPolicy(UUIDPKMixin, TimestampMixin, Base):
+    """Whether a profile forbids skipping steps of a record's lifecycle in the projects it applies to.
+
+    Attributes:
+        profile_id: The profile (one row at most).
+        forbidden: Whether skipping is forbidden.
+    """
+
+    __tablename__ = "governance_lifecycle_skip_policies"
+    __table_args__ = (UniqueConstraint("profile_id", name="uq_governance_lifecycle_skip_policies"),)
+
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_profiles.id", ondelete="CASCADE"), index=True
+    )
+    forbidden: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -2,7 +2,7 @@
 Module: modules.traceability.schemas
 
 Request and response models of the governance profile API (`router` for the organisation, `project_router` for a
-project).
+project), including a profile's lifecycle policy.
 """
 
 from __future__ import annotations
@@ -192,3 +192,52 @@ class ProjectProfilesOut(BaseModel):
 
     can_manage: bool
     profiles: list[ProjectProfileOut]
+
+
+class LifecycleStateOut(BaseModel):
+    """One optional state of a lifecycle that a profile may require."""
+
+    key: str
+    label: str
+
+
+class LifecycleTypePolicyOut(BaseModel):
+    """A profile's requirement for one record type.
+
+    Attributes:
+        artefact_type: The registered record type.
+        label: The type's singular name.
+        module_key: The module that owns the type, empty for a core type.
+        states: The optional states of the type, in path order.
+        required: The states the profile requires.
+    """
+
+    artefact_type: str
+    label: str
+    module_key: str
+    states: list[LifecycleStateOut]
+    required: list[str]
+
+
+class ProfileLifecycleOut(BaseModel):
+    """A profile's lifecycle policy.
+
+    Attributes:
+        types: Every record type with optional states that the organisation can use.
+        skip_forbidden: Whether the profile forbids skipping steps.
+    """
+
+    types: list[LifecycleTypePolicyOut]
+    skip_forbidden: bool
+
+
+class LifecycleRequiredSet(BaseModel):
+    """The states a profile requires of one record type; an empty list removes the requirement."""
+
+    required: list[str] = Field(default_factory=list, max_length=50)
+
+
+class LifecycleSkipSet(BaseModel):
+    """Whether a profile forbids skipping steps."""
+
+    forbidden: bool

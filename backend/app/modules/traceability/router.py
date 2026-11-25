@@ -3,7 +3,7 @@ Module: modules.traceability.router
 
 Organisation-scoped API of governance profiles, mounted at `/api/v1/orgs/{organization_id}/modules/traceability`:
 create, read, rename and delete a profile, set the projects it reaches, add and remove exemptions from an Enforced
-profile, and see which projects a profile binds, offers or has been opted out of.
+profile, see which projects a profile binds, offers or has been opted out of, and set a profile's lifecycle policy.
 
 Design decisions:
 - Every route needs the module to be on for the organisation (404 otherwise, as for any disabled module) and the
@@ -26,17 +26,22 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.organization import Organization
 from app.models.user import User
-from app.modules.traceability import profile_resolution, profiles
-from app.modules.traceability._shared import MANAGE_ORG_GOVERNANCE, TRACEABILITY_MODULE_KEY
+from app.modules.traceability import lifecycle_policy, profile_resolution, profiles
+from app.modules.traceability._shared import LIFECYCLE_POLICIES, MANAGE_ORG_GOVERNANCE, TRACEABILITY_MODULE_KEY
 from app.modules.traceability.enums import ProfileMode, ProfileOutcome, ProfileTargetKind
 from app.modules.traceability.models import GovernanceProfile
 from app.modules.traceability.profiles import TargetSpec
 from app.modules.traceability.schemas import (
     ExemptionSet,
+    LifecycleRequiredSet,
+    LifecycleSkipSet,
+    LifecycleStateOut,
+    LifecycleTypePolicyOut,
     ProfileContributionOut,
     ProfileCreate,
     ProfileDetailOut,
     ProfileExemptionOut,
+    ProfileLifecycleOut,
     ProfileOut,
     ProfileProjectOut,
     ProfileTargetIn,
@@ -44,13 +49,14 @@ from app.modules.traceability.schemas import (
     ProfileTargetsSet,
     ProfileUpdate,
 )
-from app.services.rbac import require_org_module_enabled, require_permission
+from app.services.rbac import require_org_module_enabled, require_org_subcomponent_enabled, require_permission
 
 router = APIRouter(prefix=f"/api/v1/orgs/{{organization_id}}/modules/{TRACEABILITY_MODULE_KEY}", tags=["traceability"])
 
 _module_on = require_org_module_enabled(TRACEABILITY_MODULE_KEY)
 _manage = require_permission(MANAGE_ORG_GOVERNANCE, server_admin_bypass=False)
 _guards = [Depends(_module_on)]
+_lifecycle_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, LIFECYCLE_POLICIES))]
 
 
 def _org_or_404(db: Session, organization_id: UUID) -> Organization:
@@ -214,3 +220,54 @@ def remove_profile_exemption(
     profiles.remove_exemption(db, profile=profile, project_id=project_id, actor_id=current_user.id)
     db.commit()
     return _detail(db, profile)
+
+
+def _lifecycle_out(db: Session, profile: GovernanceProfile) -> ProfileLifecycleOut:
+    """The profile's lifecycle policy as the API shape."""
+    org = _org_or_404(db, profile.organization_id)
+    policy = lifecycle_policy.profile_policy(db, org, profile)
+    return ProfileLifecycleOut(
+        types=[
+            LifecycleTypePolicyOut(
+                artefact_type=t.artefact_type, label=t.definition.label, module_key=t.module_key,
+                states=[LifecycleStateOut(key=k, label=t.definition.labels.get(k, k)) for k in t.definition.optional],
+                required=t.required,
+            )
+            for t in policy.types
+        ],
+        skip_forbidden=policy.skip_forbidden,
+    )
+
+
+@router.get("/profiles/{profile_id}/lifecycle", response_model=ProfileLifecycleOut, dependencies=_lifecycle_guards)
+def get_profile_lifecycle(
+    organization_id: UUID, profile_id: UUID, current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileLifecycleOut:
+    """The states a profile requires of each record type and whether it forbids skipping steps."""
+    return _lifecycle_out(db, _profile_or_404(db, organization_id, profile_id))
+
+
+@router.put("/profiles/{profile_id}/lifecycle/skip", response_model=ProfileLifecycleOut, dependencies=_lifecycle_guards)
+def set_profile_lifecycle_skip(
+    organization_id: UUID, profile_id: UUID, payload: LifecycleSkipSet,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileLifecycleOut:
+    """Sets whether a profile forbids skipping steps in the projects it applies to."""
+    profile = _profile_or_404(db, organization_id, profile_id)
+    lifecycle_policy.set_skip_forbidden(db, profile=profile, forbidden=payload.forbidden, actor_id=current_user.id)
+    db.commit()
+    return _lifecycle_out(db, profile)
+
+
+@router.put("/profiles/{profile_id}/lifecycle/{artefact_type}", response_model=ProfileLifecycleOut, dependencies=_lifecycle_guards)
+def set_profile_lifecycle_required(
+    organization_id: UUID, profile_id: UUID, artefact_type: str, payload: LifecycleRequiredSet,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileLifecycleOut:
+    """Sets the states a profile requires of one record type (an empty list removes the requirement)."""
+    profile = _profile_or_404(db, organization_id, profile_id)
+    lifecycle_policy.set_required(
+        db, profile=profile, artefact_type=artefact_type, required=payload.required, actor_id=current_user.id,
+    )
+    db.commit()
+    return _lifecycle_out(db, profile)

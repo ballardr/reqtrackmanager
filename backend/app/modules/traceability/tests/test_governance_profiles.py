@@ -417,6 +417,11 @@ def test_a_contributor_cannot_name_an_undeclared_sub_component_or_repeat_a_key()
         _fake_definition(profile_contributors=(contributor, contributor))
 
 
+def _fake_contributions(profile: dict) -> list[dict]:
+    """The profile's listed contributions that belong to the fake module (the real module's own kinds are listed too)."""
+    return [c for c in profile["contributions"] if c["key"].startswith(f"{FAKE_KEY}:")]
+
+
 def test_a_profile_lists_the_policy_rows_of_each_contributor_in_effect(client, admin_token):
     rows: dict[uuid_lib.UUID, list[dict]] = {}
     module_registry.INSTALLED_MODULES.append(_fake_definition(profile_contributors=(_fake_contributor(rows),)))
@@ -426,7 +431,7 @@ def test_a_profile_lists_the_policy_rows_of_each_contributor_in_effect(client, a
         profile = _create(client, token, org["id"], "With things")
         rows[uuid_lib.UUID(profile["id"])] = [{"a": 1}, {"a": 2}]
         listing = client.get(BASE.format(org=org["id"]) + "/profiles", headers=auth_headers(token)).json()
-        assert listing[0]["contributions"] == [{"key": f"{FAKE_KEY}:things", "name": "Fake things", "count": 2}]
+        assert _fake_contributions(listing[0]) == [{"key": f"{FAKE_KEY}:things", "name": "Fake things", "count": 2}]
 
         db = SessionLocal()
         try:
@@ -438,7 +443,7 @@ def test_a_profile_lists_the_policy_rows_of_each_contributor_in_effect(client, a
         finally:
             db.close()
         listing = client.get(BASE.format(org=org["id"]) + "/profiles", headers=auth_headers(token)).json()
-        assert listing[0]["contributions"] == []  # a kind whose sub-component is off is not listed; its rows are kept
+        assert _fake_contributions(listing[0]) == []  # a kind whose sub-component is off is not listed; its rows are kept
         assert rows[uuid_lib.UUID(profile["id"])] == [{"a": 1}, {"a": 2}]
     finally:
         module_registry.INSTALLED_MODULES[:] = [m for m in module_registry.INSTALLED_MODULES if m.key != FAKE_KEY]

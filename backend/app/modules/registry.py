@@ -4443,9 +4443,11 @@ def get_scaling_probes() -> dict[str, ScalingProbe]:
 
 
 def get_lifecycles() -> dict[str, tuple[str, LifecycleDefinition]]:
-    """`{artefact type: (module key, LifecycleDefinition)}` for every type a module gave a lifecycle. A type claimed
-    twice keeps the first registration."""
-    merged: dict[str, tuple[str, LifecycleDefinition]] = {}
+    """`{artefact type: (module key, LifecycleDefinition)}` for every type with a lifecycle: the core types' (module key
+    `""`, `services.lifecycles_core`) and each module's `lifecycles`. A type claimed twice keeps the first."""
+    from app.services.lifecycles_core import CORE_LIFECYCLES
+
+    merged: dict[str, tuple[str, LifecycleDefinition]] = {t: ("", d) for t, d in CORE_LIFECYCLES.items()}
     for key, definition in get_module_registry().items():
         for artefact_type, lifecycle in definition.lifecycles.items():
             merged.setdefault(artefact_type, (key, lifecycle))

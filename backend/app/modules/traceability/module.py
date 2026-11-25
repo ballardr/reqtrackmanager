@@ -12,6 +12,8 @@ Registered contributions:
   `traceability_rules`: they have no effect while it is off, and their settings are kept.
 - `administrative_permissions`: `manage_org_governance`, `manage_project_governance`, `manage_org_traceability`,
   `manage_project_traceability` and `approve_traceability_exceptions`.
+- `policy_resolvers` and `profile_contributors`: the lifecycle policy of governance profiles (`lifecycle_policy`), in
+  force while `lifecycle_policies` is effective.
 - Roles: Governance Manager and Traceability Manager, each as a project role and an organisation role (the organisation
   role also holds the project atom, so it manages every project's policy).
 
@@ -40,8 +42,8 @@ from app.modules.registry import (
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
 )
-from app.modules.seams import ModuleAdministrativePermission
-from app.modules.traceability import bundle
+from app.modules.seams import GovernanceSeam, ModuleAdministrativePermission, PolicyResolver, ProfileContributor
+from app.modules.traceability import bundle, lifecycle_policy
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
     APPROVE_TRACEABILITY_EXCEPTIONS,
@@ -119,6 +121,19 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleSubComponentDefinition(key=TRACEABILITY_MATRICES, name="Traceability matrices"),
         ModuleSubComponentDefinition(
             key=CROSS_PROJECT_TRACEABILITY, name="Cross-project traceability", requires=(TRACEABILITY_RULES,),
+        ),
+    ),
+    policy_resolvers=(
+        PolicyResolver(
+            seam=GovernanceSeam.LIFECYCLE, resolve_project=lifecycle_policy.resolve_project_policy,
+            sub_component=LIFECYCLE_POLICIES,
+        ),
+    ),
+    profile_contributors=(
+        ProfileContributor(
+            key="lifecycle", name="Lifecycle policy", count_rows=lifecycle_policy.count_rows,
+            export_rows=lifecycle_policy.export_rows, import_rows=lifecycle_policy.import_rows,
+            sub_component=LIFECYCLE_POLICIES,
         ),
     ),
     administrative_permissions=(

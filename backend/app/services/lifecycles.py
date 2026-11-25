@@ -7,7 +7,8 @@ organisation requires, and which moves are therefore legal.
 Responsibilities:
 - Resolve the effective configuration of a project for every registered lifecycle (`resolve_project_lifecycles`): the
   project's own choice, else the nearest ancestor project's, else every state on, with the organisation's required
-  states added back unless the project is exempt.
+  states added back unless the project is exempt, and the states the governance profiles that apply to the project
+  require (`modules.seams.LifecyclePolicy`, read through `services.governance_seams`).
 - Work out the legal moves from a state with turned-off states stepped over (`effective_moves`) and enforce them
   (`check_move`), so the UI, the API and MCP share one rule; the skipped states come back so a type can still apply
   the checks of a state a move passes over.
@@ -27,12 +28,16 @@ Design decisions:
 - An organisation requirement beats a project's choice; an exemption (per type, per project, optionally with nested
   children) lifts the requirement for that project only. The project's stored choice is kept, so a requirement later
   removed gives the project's own choice back.
+- A governance profile's requirement binds the same way and is lifted only by the profile's own exemption or opt-out
+  (decided when the profile is resolved, never here). The organisation's requirement and the profiles' are merged by
+  union, so no source relaxes another; a ban on skipping steps by the organisation or by any applicable profile binds.
 - A skip is one more legal move through the same rule, never a second transition table: the type's own move endpoint
   runs, the skip request (reason, person) rides on the session, and `check_move` accepts the move and records one
   `steps_skipped` audit event naming the steps passed over.
 - Resolution reads a few small tables per call and never loops per record; list responses read it once per request.
 
-Dependencies: `modules.registry` (definitions), `services.project_hierarchy` (ancestor chain), `services.audit`.
+Dependencies: `modules.registry` (definitions), `services.governance_seams` (profile policy),
+`services.project_hierarchy` (ancestor chain), `services.audit`.
 """
 
 from __future__ import annotations
@@ -41,7 +46,7 @@ import enum
 import uuid
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from fastapi import HTTPException, status
@@ -68,7 +73,9 @@ from app.modules.registry import (
     is_org_module_subcomponent_enabled,
     subcomponent_serving,
 )
+from app.modules.seams import GovernanceSeam, LifecyclePolicy
 from app.services.audit import log_event
+from app.services.governance_seams import resolve_project_policy
 from app.services.project_hierarchy import get_project_chain_ids
 
 AUDIT_ENTITY_TYPE = "lifecycle_settings"
@@ -103,6 +110,7 @@ class SkipPolicy:
         source: Where `chosen` came from.
         forbidden: Whether the organisation forbids skipping.
         exempt: Whether the organisation's ban does not bind this project.
+        profile_forbidden_by: Names of the governance profiles that forbid skipping for this project.
     """
 
     own: bool | None
@@ -110,11 +118,12 @@ class SkipPolicy:
     source: Source
     forbidden: bool
     exempt: bool
+    profile_forbidden_by: tuple[str, ...] = ()
 
     @property
     def enforced(self) -> bool:
-        """Whether the organisation's ban binds this project."""
-        return self.forbidden and not self.exempt
+        """Whether a ban on skipping binds this project: the organisation's (unless exempt) or a profile's."""
+        return (self.forbidden and not self.exempt) or bool(self.profile_forbidden_by)
 
     @property
     def allowed(self) -> bool:
@@ -136,6 +145,8 @@ class ResolvedLifecycle:
         required: The states the organisation requires.
         exempt: Whether the organisation's requirement does not bind this project.
         disabled: The states that are off in this project (`chosen` without the enforced required states).
+        profile_required: `{state: names of the governance profiles requiring it}` for the optional states of the type;
+            these bind the project whatever the organisation's exemption says.
     """
 
     artefact_type: str
@@ -147,11 +158,13 @@ class ResolvedLifecycle:
     required: frozenset[str]
     exempt: bool
     disabled: frozenset[str]
+    profile_required: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def enforced(self) -> frozenset[str]:
-        """The required states that bind this project (none when it is exempt)."""
-        return frozenset() if self.exempt else self.required
+        """The required states that bind this project: the organisation's (none when the project is exempt) and those
+        the applicable governance profiles require."""
+        return (frozenset() if self.exempt else self.required) | frozenset(self.profile_required)
 
 
 def table_from_enum[S: enum.Enum](table: Mapping[S, Iterable[S]]) -> dict[str, frozenset[str]]:
@@ -297,7 +310,8 @@ def effective_skip_transitions(resolved: ResolvedLifecycle) -> dict[str, dict[st
 
 def resolve_skip_policy(db: Session, project: Project) -> SkipPolicy:
     """Whether records of `project` may skip steps: the project's choice (own, else the nearest ancestor's, else off)
-    unless the organisation forbids skipping and the project is not exempt.
+    unless the organisation forbids skipping and the project is not exempt, or a governance profile that applies to the
+    project forbids it.
 
     Args:
         db: Active session (read only).
@@ -330,7 +344,11 @@ def resolve_skip_policy(db: Session, project: Project) -> SkipPolicy:
                 )
             )
         )
-    return SkipPolicy(own=rows.get(project.id), chosen=chosen, source=source, forbidden=forbidden, exempt=exempt)
+    profile = resolve_project_policy(db, project.id, GovernanceSeam.LIFECYCLE)
+    return SkipPolicy(
+        own=rows.get(project.id), chosen=chosen, source=source, forbidden=forbidden, exempt=exempt,
+        profile_forbidden_by=profile.skip_forbidden_by if isinstance(profile, LifecyclePolicy) else (),
+    )
 
 
 def request_skip(db: Session, user: User, reason: str) -> None:
@@ -386,6 +404,9 @@ def resolve_project_lifecycles(db: Session, project: Project) -> dict[str, Resol
         if ex.project_id == project.id or ex.include_children:
             exempt_types.add(ex.artefact_type)
 
+    profile = resolve_project_policy(db, project.id, GovernanceSeam.LIFECYCLE)
+    profile_required = profile.required if isinstance(profile, LifecyclePolicy) else {}
+
     resolved: dict[str, ResolvedLifecycle] = {}
     for artefact_type, (module_key, definition) in definitions.items():
         optional = frozenset(definition.optional)
@@ -399,10 +420,12 @@ def resolve_project_lifecycles(db: Session, project: Project) -> dict[str, Resol
                 break
         needed = frozenset(required.get(artefact_type, ())) & optional
         exempt = artefact_type in exempt_types
+        from_profiles = {state: names for state, names in profile_required.get(artefact_type, {}).items() if state in optional}
+        enforced = (frozenset() if exempt else needed) | frozenset(from_profiles)
         resolved[artefact_type] = ResolvedLifecycle(
             artefact_type=artefact_type, module_key=module_key, definition=definition,
             own=None if own is None else own & optional, chosen=chosen, source=source, required=needed, exempt=exempt,
-            disabled=chosen if exempt else chosen - needed,
+            disabled=chosen - enforced, profile_required=from_profiles,
         )
     return resolved
 
@@ -517,7 +540,7 @@ def check_move(
     raise ValueError(head)
 
 
-def _validated_type(artefact_type: str) -> tuple[str, LifecycleDefinition]:
+def validated_type(artefact_type: str) -> tuple[str, LifecycleDefinition]:
     """The module key and definition of a registered lifecycle.
 
     Raises:
@@ -529,7 +552,7 @@ def _validated_type(artefact_type: str) -> tuple[str, LifecycleDefinition]:
     return found
 
 
-def _validated_states(definition: LifecycleDefinition, states: Iterable[str]) -> list[str]:
+def validated_states(definition: LifecycleDefinition, states: Iterable[str]) -> list[str]:
     """`states` deduplicated in path order, each an optional state of the type.
 
     Raises:
@@ -560,7 +583,7 @@ def set_project_disabled(
     Raises:
         HTTPException: 404 unknown type, 422 a state that is not optional, 409 a state the organisation requires.
     """
-    _, definition = _validated_type(artefact_type)
+    _, definition = validated_type(artefact_type)
     row = db.scalar(
         select(ProjectLifecycleSetting).where(
             ProjectLifecycleSetting.project_id == project.id, ProjectLifecycleSetting.artefact_type == artefact_type
@@ -571,7 +594,7 @@ def set_project_disabled(
             db.delete(row)
         states: list[str] | None = None
     else:
-        states = _validated_states(definition, disabled)
+        states = validated_states(definition, disabled)
         blocked = sorted(set(states) & resolve_project_lifecycles(db, project)[artefact_type].enforced)
         if blocked:
             raise HTTPException(
@@ -605,8 +628,8 @@ def set_org_required(
     Raises:
         HTTPException: 404 unknown type, 422 a state that is not optional.
     """
-    _, definition = _validated_type(artefact_type)
-    states = _validated_states(definition, required)
+    _, definition = validated_type(artefact_type)
+    states = validated_states(definition, required)
     rows = {
         row.state: row for row in db.scalars(
             select(OrganizationLifecycleRequirement).where(
@@ -637,7 +660,7 @@ def add_exemption(
     Raises:
         HTTPException: 404 unknown type, 422 a project of another organisation.
     """
-    _validated_type(artefact_type)
+    validated_type(artefact_type)
     if project.organization_id != organization.id:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The project belongs to another organisation.")
     row = db.scalar(
@@ -809,7 +832,10 @@ def organization_skip(db: Session, organization: Organization) -> dict:
 
 
 def enabled_for_organization(db: Session, organization_id: uuid.UUID, artefact_type: str, module_key: str) -> bool:
-    """Whether the type's module (and the sub-component serving the type) is enabled for the organisation."""
+    """Whether the type's module (and the sub-component serving the type) is enabled for the organisation; a core type
+    (`module_key` empty) always is."""
+    if not module_key:
+        return True
     if not is_module_enabled(db, organization_id, module_key):
         return False
     definition = artefact_type_module(artefact_type)

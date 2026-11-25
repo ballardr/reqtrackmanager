@@ -42,8 +42,10 @@ class ProjectLifecycleOut(BaseModel):
         off_path: States outside the main path (rejected, retired and similar).
         own_disabled: The project's own turned-off states, or `None` when it follows its ancestor (or the default).
         disabled: The states that are off here (own or inherited, without the states the organisation requires).
-        required: The states the organisation requires and that bind this project.
+        required: The states that must stay on in this project: the organisation's (unless it is exempt) and those the
+            governance profiles that apply to the project require.
         exempt: Whether the organisation's requirement does not bind this project.
+        required_by_profiles: `{state: names of the governance profiles requiring it}`, so a screen names the source.
         source: Where the project's choice comes from: `project`, `parent_project` or `default`.
         transitions: Every state's legal next states with the turned-off states stepped over.
         skip_transitions: `{state: {target: [states passed over]}}` for the later steps a record may be moved to by
@@ -60,6 +62,7 @@ class ProjectLifecycleOut(BaseModel):
     disabled: list[str]
     required: list[str]
     exempt: bool
+    required_by_profiles: dict[str, list[str]] = Field(default_factory=dict)
     source: Literal["project", "parent_project", "default"]
     transitions: dict[str, list[str]]
     skip_transitions: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
@@ -73,8 +76,9 @@ class ProjectSkipOut(BaseModel):
         own: The project's own choice, or `None` when it has none.
         chosen: The project's choice (own, else the nearest ancestor's, else off).
         source: Where `chosen` comes from: `project`, `parent_project` or `default`.
-        forbidden: Whether the organisation forbids skipping and binds this project.
-        exempt: Whether the organisation forbids skipping but this project is exempt.
+        forbidden: Whether skipping is forbidden for this project, by the organisation or by a governance profile.
+        exempt: Whether the organisation forbids skipping but this project is exempt (and no profile forbids it).
+        forbidden_by_profiles: Names of the governance profiles that forbid skipping for this project.
     """
 
     allowed: bool
@@ -83,6 +87,7 @@ class ProjectSkipOut(BaseModel):
     source: Literal["project", "parent_project", "default"]
     forbidden: bool
     exempt: bool
+    forbidden_by_profiles: list[str] = Field(default_factory=list)
 
 
 class ProjectLifecyclesOut(BaseModel):

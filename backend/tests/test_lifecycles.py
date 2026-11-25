@@ -332,7 +332,9 @@ def test_organisation_endpoints_validate_and_reach_only_their_own_organisation(c
     assert client.get(f"/api/v1/orgs/{org['id']}/lifecycles", headers=auth_headers(other_token)).status_code in (403, 404)
     listing = client.get(f"/api/v1/orgs/{org['id']}/lifecycles", headers=auth_headers(token))
     assert listing.status_code == 200
-    assert {x["artefact_type"] for x in listing.json()} == {"pain_point", "open_question", "strategy", "future_state", "guiding_principle"}
+    assert {x["artefact_type"] for x in listing.json()} == {
+            "requirement", "pain_point", "open_question", "strategy", "future_state", "guiding_principle",
+        }
     assert other_org["id"] != org["id"]
 
 

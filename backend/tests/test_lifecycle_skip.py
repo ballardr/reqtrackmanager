@@ -150,6 +150,7 @@ def test_skipping_is_off_by_default_and_a_project_administrator_turns_it_on(clie
     payload = _get_lifecycles(client, token, project["id"])
     assert payload["skip"] == {
         "allowed": False, "own": None, "chosen": False, "source": "default", "forbidden": False, "exempt": False,
+        "forbidden_by_profiles": [],
     }
     assert all(entry["skip_transitions"] == {} for entry in payload["lifecycles"])
 

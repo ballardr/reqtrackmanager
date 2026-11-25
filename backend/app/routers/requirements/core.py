@@ -61,6 +61,7 @@ from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirement_aliases import active_aliases
 from app.services.requirements import (
+    CAN_EDIT_ROLES,
     OPEN_CR_STATUSES,
     ROW_ORDER_COLUMNS,
     ROW_TEXT_SORTS,
@@ -84,8 +85,6 @@ from app.services.requirements import (
 from app.services.stage_workflows import current_stage_kind
 
 router = APIRouter(tags=["requirements-core"])
-
-CAN_EDIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
 
 
 def _require_edit_role(db: Session, user: User, project_id: UUID) -> None:

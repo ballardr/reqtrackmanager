@@ -8,8 +8,8 @@ Responsibilities:
 - Filter the registry's registrations (`modules.registry.get_policy_resolvers`, `get_baseline_check_providers`,
   `get_review_adapters`) to those active in the project: the owning module is on and, when the registration names a
   sub-component, that sub-component is in effect.
-- Answer "which policy applies" (`resolve_policy`): the first active resolver that returns one, else `None` so the
-  caller applies the type's built-in default.
+- Answer "which policy applies" (`resolve_policy` for one type, `resolve_project_policy` for a seam that reads every
+  type at once): the first active resolver that returns one, else `None` so the caller applies the built-in default.
 
 Design decisions:
 - A seam never depends on a module being present: with no active registration every function here returns nothing
@@ -61,9 +61,30 @@ def resolve_policy(db: Session, project_id: uuid.UUID, seam: GovernanceSeam, art
         the type's built-in default applies.
     """
     for module_key, resolver in registry.get_policy_resolvers(seam):
-        if not registration_active(db, project_id, module_key, resolver.sub_component):
+        if resolver.resolve is None or not registration_active(db, project_id, module_key, resolver.sub_component):
             continue
         policy = resolver.resolve(db, project_id, artefact_type)
+        if policy is not None:
+            return policy
+    return None
+
+
+def resolve_project_policy(db: Session, project_id: uuid.UUID, seam: GovernanceSeam) -> Any | None:
+    """The policy that applies to the whole project at `seam`, for a seam that reads every type in one pass.
+
+    Args:
+        db: An active database session.
+        project_id: The project.
+        seam: The engine seam asking.
+
+    Returns:
+        The first active project-level resolver's non-`None` answer, in registry order; `None` when no resolver
+        answers, which means the built-in default applies.
+    """
+    for module_key, resolver in registry.get_policy_resolvers(seam):
+        if resolver.resolve_project is None or not registration_active(db, project_id, module_key, resolver.sub_component):
+            continue
+        policy = resolver.resolve_project(db, project_id)
         if policy is not None:
             return policy
     return None
