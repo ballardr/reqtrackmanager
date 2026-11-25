@@ -7,24 +7,32 @@ Project stage business logic added for Massif (v3): the review-deadline
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import ProjectRole, RequirementStatus, StagePhaseKind, StageReviewResponseChoice
-from app.models.notification import NotificationType
+from app.models.notification import Notification, NotificationType
 from app.models.project import Project, ProjectStage, StageReviewResponse
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.stage_workflow import ComponentStageState, StageWorkflowPhase
 from app.models.user import User
+from app.modules.seams import BaselinePolicy, GovernanceSeam
+from app.services import governance_seams
 from app.services.audit import log_event
+from app.services.baseline import BaselineRefused
+from app.services.codes import qualify
 from app.services.component_stages import tracked_component_ids
 from app.services.lookups import project_or_404
 from app.services.notifications import notify
 from app.services.rbac import get_effective_project_managers, get_project_member_user_ids
 from app.services.stage_workflows import first_phase_of_kind, move_stage, phases_of
+
+logger = logging.getLogger(__name__)
 
 
 def auto_approve_overdue_stage_reviews(db: Session) -> None:
@@ -35,7 +43,9 @@ def auto_approve_overdue_stage_reviews(db: Session) -> None:
     explicit rejection blocks the auto-approval so a raised objection is never
     silently overridden; the stage is left in review for a project manager to
     resolve manually. A workflow with no locked phase has nothing to approve
-    into, so its stages are left alone.
+    into, so its stages are left alone. A stage whose move is refused by a check of the project's baseline policy
+    (`services.baseline.BaselineRefused`) is left in review with nothing approved, retried by the next sweep, and its
+    project managers are told once for each distinct set of failures (`_notify_baseline_refused`).
     """
     now = datetime.now(UTC)
     overdue_stages = db.scalars(
@@ -71,10 +81,20 @@ def auto_approve_overdue_stage_reviews(db: Session) -> None:
         target = first_phase_of_kind(phases, StagePhaseKind.LOCKED, current.sort_order if current else -1)
         if target is None:
             continue
-        move_stage(
-            db, project, stage, target, actor, actor_roles={ProjectRole.PROJECT_MANAGER},
-            reason="review_deadline_passed_no_rejection",
-        )
+        try:
+            with db.begin_nested():
+                move_stage(
+                    db, project, stage, target, actor, actor_roles={ProjectRole.PROJECT_MANAGER},
+                    reason="review_deadline_passed_no_rejection",
+                )
+        except BaselineRefused as refused:
+            if _managers_are_notified(db, project):
+                _notify_baseline_refused(db, project, stage, target, refused, manager_ids)
+            continue
+        except HTTPException as refusal:
+            # The approval rules (such as a separate approver) refuse the acting manager for one stage; the others still run.
+            logger.warning("Automatic approval of stage %s was refused: %s", stage.id, refusal.detail)
+            continue
         for user_id in get_project_member_user_ids(db, project.id):
             member = db.get(User, user_id)
             if member is not None:
@@ -85,6 +105,62 @@ def auto_approve_overdue_stage_reviews(db: Session) -> None:
                 )
 
     db.commit()
+
+
+def _managers_are_notified(db: Session, project: Project) -> bool:
+    """Whether the project's baseline policy asks for managers to be told of a refused automatic approval.
+
+    Args:
+        db: An active database session.
+        project: The project.
+
+    Returns:
+        The policy's `notify_managers`; true when no policy answers the baseline seam.
+    """
+    policy = governance_seams.resolve_project_policy(db, project.id, GovernanceSeam.BASELINE)
+    return not isinstance(policy, BaselinePolicy) or policy.notify_managers
+
+
+def _notify_baseline_refused(
+    db: Session, project: Project, stage: ProjectStage, target: StageWorkflowPhase, refused: BaselineRefused,
+    manager_ids: set[UUID],
+) -> None:
+    """Tells a project's managers that the automatic approval of `stage` was refused by a baseline check.
+
+    The notice is sent once for each distinct set of failures: when the stage already has a notice of this type with the
+    same text, the daily retry stays silent, and a changed set of failures notifies again. Each manager's own
+    notification preference for the type applies on top of the policy's `notify_managers`. Flushed, not committed.
+
+    Args:
+        db: An active database session.
+        project: The project.
+        stage: The stage that stays in review.
+        target: The locked phase it was to enter.
+        refused: The refusal, whose failures name records by code and carry no personal data.
+        manager_ids: The project's managers.
+    """
+    shown = refused.failures[:10]
+    lines = [f"{qualify(project.code, f.code) if f.code else f.artefact_type}: {f.message} ({f.check_name})" for f in shown]
+    if len(refused.failures) > len(shown):
+        lines.append(f"{len(refused.failures) - len(shown)} further failures are not listed.")
+    body = "\n".join([str(refused), *lines])
+    already = db.scalar(
+        select(Notification.id).where(
+            Notification.type == NotificationType.STAGE_BASELINE_REFUSED.value,
+            Notification.entity_id == str(stage.id), Notification.body == body,
+        ).limit(1)
+    )
+    if already is not None:
+        return
+    for user_id in sorted(manager_ids):
+        manager = db.get(User, user_id)
+        if manager is not None:
+            notify(
+                db, manager, notification_type=NotificationType.STAGE_BASELINE_REFUSED,
+                title=f"{project.name}: {stage.name} stays in review, a baseline check failed before {target.name}",
+                body=body, project_id=project.id, entity_type="project_stage", entity_id=str(stage.id),
+            )
+    db.flush()
 
 
 def complete_stage(

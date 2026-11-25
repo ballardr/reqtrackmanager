@@ -241,6 +241,30 @@ class ReviewAdapter:
 
 
 @dataclass(frozen=True)
+class BaselinePolicy:
+    """What governance policy asks of a project's baselines: the answer of `GovernanceSeam.BASELINE`
+    (`services.baseline` reads it before a baseline is written).
+
+    Attributes:
+        stage_checks: Namespaced keys (`<module key>:<check key>`) of the checks that run before a stage baseline, the one
+            written when a stage enters a locked phase.
+        manual_checks: The keys of the checks that run before a manual baseline.
+        notify_managers: Whether the project's managers are told when the automatic approval of a stage is refused by a
+            check (the review-deadline sweep, which retries daily).
+        A check key names a registered `BaselineCheckProvider`; one that is not registered or not in effect for the project
+        is skipped. The checks of several sources are merged by union, so no source relaxes another.
+    """
+
+    stage_checks: tuple[str, ...] = ()
+    manual_checks: tuple[str, ...] = ()
+    notify_managers: bool = True
+
+    def checks_for(self, kind: Literal["stage", "manual"]) -> tuple[str, ...]:
+        """The check keys that run before a baseline of `kind`."""
+        return self.stage_checks if kind == "stage" else self.manual_checks
+
+
+@dataclass(frozen=True)
 class BaselineCheckContext:
     """What a baseline check is told about the baseline being written.
 
@@ -263,13 +287,15 @@ class BaselineCheckFailure:
         artefact_type: The failing record's registered type.
         artefact_id: The failing record's id.
         check_key: The `BaselineCheckProvider.key` that failed.
-        message: Formal sentence naming what is missing; carries no personal data.
+        message: Formal sentence naming what is missing; carries no personal data and does not repeat the code.
+        code: The record's own code (`REQ-001`), shown beside the message; empty for a record with none.
     """
 
     artefact_type: str
     artefact_id: uuid.UUID
     check_key: str
     message: str
+    code: str = ""
 
 
 @dataclass(frozen=True)
@@ -279,7 +305,8 @@ class BaselineCheckProvider:
     Attributes:
         key: Stable identifier, unique within its module; the registry namespaces it as `<module_key>:<key>`.
         name: Formal display name shown where a failure is listed.
-        artefact_types: The registered types the check inspects, so a baseline that holds none of them skips it.
+        artefact_types: The registered types the check inspects, so a baseline that holds none of them skips it. Empty
+            means every type the baseline holds (a check that reads each type through its own record table).
         check: `check(db, context, record_ids)` takes the baseline's records of `artefact_types` keyed by type and returns
             every failure. It reads only and never commits.
         sub_component: As `PolicyResolver.sub_component`.

@@ -35,6 +35,7 @@ from app.schemas.stage_workflow import (
 )
 from app.services import approval_policy
 from app.services import component_stages as cs
+from app.services.baseline import BaselineRefused, refusal_detail
 from app.services.principals import is_principal_member, principal_labels, principal_ref
 from app.services.rbac import (
     can_manage_project_settings,
@@ -194,6 +195,8 @@ def transition_component_track(
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     except WorkflowConflict as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except BaselineRefused as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, refusal_detail(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     db.commit()

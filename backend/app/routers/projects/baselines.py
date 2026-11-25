@@ -21,7 +21,7 @@ from app.models.user import User
 from app.modules.registry import get_all_registered_artefact_types
 from app.schemas.baseline import BaselineOut, ManualBaselineCreate
 from app.services.audit import log_event
-from app.services.baseline import create_manual_baseline, manual_baseline_types
+from app.services.baseline import BaselineRefused, create_manual_baseline, manual_baseline_types, refusal_detail
 from app.services.lookups import get_or_404
 from app.services.rbac import require_project_view
 
@@ -105,7 +105,8 @@ def create_baseline(
 
     Raises:
         HTTPException: 422 for a type that is not registered, 403 when the caller may snapshot none of the types
-            asked for (or none at all).
+            asked for (or none at all), 409 when a check of the project's baseline policy fails (the body lists
+            every failure).
     """
     project = get_or_404(db, Project, project_id, "Project")
     allowed = manual_baseline_types(db, project, current_user)
@@ -120,7 +121,10 @@ def create_baseline(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions to baseline one of those types.")
     if not chosen:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions to take a baseline.")
-    baseline, counts = create_manual_baseline(db, project, current_user, payload.label, chosen)
+    try:
+        baseline, counts = create_manual_baseline(db, project, current_user, payload.label, chosen)
+    except BaselineRefused as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, refusal_detail(exc)) from exc
     log_event(
         db, entity_type="baseline", entity_id=baseline.id, action="created", actor_id=current_user.id,
         organization_id=project.organization_id, project_id=project.id, detail={"kind": "manual", "counts": counts},

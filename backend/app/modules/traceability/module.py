@@ -13,9 +13,12 @@ Registered contributions:
 - `administrative_permissions`: `manage_org_governance`, `manage_project_governance`, `manage_org_traceability`,
   `manage_project_traceability` and `approve_traceability_exceptions`.
 - `policy_resolvers` and `profile_contributors`: the lifecycle policy (`lifecycle_policy`), the approval policy
-  (`approval_policy`: the roles that may also approve a record type) and the review policy (`review_policy`: the interval,
-  reminder lead and default owner of a record type) of governance profiles and projects, each in force while its
+  (`approval_policy`: the roles that may also approve a record type), the review policy (`review_policy`: the interval,
+  reminder lead and default owner of a record type) and the baseline policy (`baseline_policy`: the checks that run before
+  a baseline and the fields a record must have filled) of governance profiles and projects, each in force while its
   sub-component is effective.
+- `baseline_check_providers`: the required-fields and required-approvals checks (`baseline_checks`); a check runs only where
+  a baseline policy enables it.
 - Roles: Governance Manager and Traceability Manager, each as a project role and an organisation role (the organisation
   role also holds the project atom, so it manages every project's policy).
 
@@ -45,8 +48,21 @@ from app.modules.registry import (
     ModuleSubComponentDefinition,
     PrincipalReference,
 )
-from app.modules.seams import GovernanceSeam, ModuleAdministrativePermission, PolicyResolver, ProfileContributor
-from app.modules.traceability import approval_policy, bundle, lifecycle_policy, review_policy
+from app.modules.seams import (
+    BaselineCheckProvider,
+    GovernanceSeam,
+    ModuleAdministrativePermission,
+    PolicyResolver,
+    ProfileContributor,
+)
+from app.modules.traceability import (
+    approval_policy,
+    baseline_checks,
+    baseline_policy,
+    bundle,
+    lifecycle_policy,
+    review_policy,
+)
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
     APPROVE_TRACEABILITY_EXCEPTIONS,
@@ -109,7 +125,9 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle.export_project_data, import_=bundle.import_project_data,
-        template_configuration_keys=frozenset({bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY}),
+        template_configuration_keys=frozenset({
+            bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY, bundle.BASELINE_POLICY_KEY,
+        }),
     ),
     sub_components=(
         ModuleSubComponentDefinition(key=LIFECYCLE_POLICIES, name="Lifecycle policies"),
@@ -136,6 +154,20 @@ MODULE_DEFINITION = ModuleDefinition(
             seam=GovernanceSeam.APPROVAL, resolve=approval_policy.resolve_policy, sub_component=APPROVAL_POLICIES,
         ),
         PolicyResolver(seam=GovernanceSeam.REVIEW, resolve=review_policy.resolve_policy, sub_component=REVIEW_POLICIES),
+        PolicyResolver(
+            seam=GovernanceSeam.BASELINE, resolve_project=baseline_policy.resolve_project_policy, sub_component=BASELINE_POLICIES,
+        ),
+    ),
+    baseline_check_providers=(
+        BaselineCheckProvider(
+            key=baseline_checks.REQUIRED_FIELDS_KEY, name="Required fields", artefact_types=(),
+            check=baseline_checks.check_required_fields, sub_component=BASELINE_POLICIES,
+        ),
+        BaselineCheckProvider(
+            key=baseline_checks.REQUIRED_APPROVALS_KEY, name="Required approvals",
+            artefact_types=baseline_checks.APPROVAL_CHECKED_TYPES, check=baseline_checks.check_required_approvals,
+            sub_component=BASELINE_POLICIES,
+        ),
     ),
     profile_contributors=(
         ProfileContributor(
@@ -152,6 +184,10 @@ MODULE_DEFINITION = ModuleDefinition(
             key="review", name="Review policy", count_rows=review_policy.count_rows,
             export_rows=review_policy.export_rows, import_rows=review_policy.import_rows, sub_component=REVIEW_POLICIES,
         ),
+        ProfileContributor(
+            key="baseline", name="Baseline policy", count_rows=baseline_policy.count_rows,
+            export_rows=baseline_policy.export_rows, import_rows=baseline_policy.import_rows, sub_component=BASELINE_POLICIES,
+        ),
     ),
     principal_references=(
         PrincipalReference(
@@ -161,6 +197,7 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     activity_metadata_types={
         "governance_profile": "structure", "governance_approval_policy": "structure", "governance_review_policy": "structure",
+        "governance_baseline_policy": "structure",
     },
     administrative_permissions=(
         ModuleAdministrativePermission(

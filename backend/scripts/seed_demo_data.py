@@ -1749,8 +1749,9 @@ def enable_module(headers: dict, org_id: str, module_key: str) -> None:
 def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str, offered_project_id: str) -> None:
     """Switches on Traceability & Governance and creates one profile of each mode: an Enforced profile reaching every
     project with one named exemption, a Default profile and an Opt-in profile offered to one project. The Enforced
-    profile requires the Reviewed step of a requirement, lets Stakeholders decide change requests and sends a requirement's
-    review reminder 14 days ahead with a 90-day review interval; the Opt-in profile forbids skipping steps."""
+    profile requires the Reviewed step of a requirement, lets Stakeholders decide change requests, sends a requirement's
+    review reminder 14 days ahead with a 90-day review interval and refuses a stage baseline that holds a requirement
+    with no description or one the person taking the baseline may not approve; the Opt-in profile forbids skipping steps."""
     enable_module(headers, org_id, "traceability")
     base = f"{BASE}/orgs/{org_id}/modules/traceability/profiles"
     enforced = httpx.post(
@@ -1774,6 +1775,15 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
     ).raise_for_status()
     httpx.put(
         f"{base}/{enforced.json()['id']}/review/requirement", json={"interval_days": 90, "lead_days": 14},
+        headers=headers, timeout=30,
+    ).raise_for_status()
+    httpx.put(
+        f"{base}/{enforced.json()['id']}/baseline",
+        json={
+            "applies_to_stage": True, "applies_to_manual": False, "notify_managers": True,
+            "checks": ["traceability:required_fields", "traceability:required_approvals"],
+            "required_fields": [{"artefact_type": "requirement", "field_key": "description"}],
+        },
         headers=headers, timeout=30,
     ).raise_for_status()
     httpx.post(

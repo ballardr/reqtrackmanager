@@ -229,6 +229,6 @@ def test_choices_and_policy_rows_are_template_configuration():
     assert definition is not None
     hooks = definition.project_bundle_hooks
     assert hooks is not None and hooks.template_configuration_keys == {
-        bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY,
+        bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY, bundle.BASELINE_POLICY_KEY,
     }
     assert not hooks.template_record_keys and not hooks.template_excluded

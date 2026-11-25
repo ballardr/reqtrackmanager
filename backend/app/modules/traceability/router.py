@@ -3,10 +3,11 @@ Module: modules.traceability.router
 
 Organisation-scoped API of governance profiles, mounted at `/api/v1/orgs/{organization_id}/modules/traceability`:
 create, read, rename and delete a profile, set the projects it reaches, add and remove exemptions from an Enforced
-profile, see which projects a profile binds, offers or has been opted out of, and set a profile's lifecycle policy.
+profile, see which projects a profile binds, offers or has been opted out of, and set a profile's lifecycle, approval,
+review and baseline policy.
 
 Design decisions:
-- A profile's lifecycle and approval policy routes also need their sub-component to be in effect for the organisation.
+- A profile's lifecycle, approval, review and baseline policy routes also need their sub-component to be in effect for the organisation.
 - Every route needs the module to be on for the organisation (404 otherwise, as for any disabled module) and the
   `manage_org_governance` permission, with no server-administrator bypass: the policy belongs to the customer's process.
 - A profile of another organisation is a 404, never a 403, so its existence is not disclosed.
@@ -26,11 +27,20 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.organization import Organization
+from app.models.project import Project
 from app.models.user import User
 from app.modules.seams import ApproverRole
-from app.modules.traceability import approval_policy, lifecycle_policy, profile_resolution, profiles, review_policy
+from app.modules.traceability import (
+    approval_policy,
+    baseline_policy,
+    lifecycle_policy,
+    profile_resolution,
+    profiles,
+    review_policy,
+)
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
+    BASELINE_POLICIES,
     LIFECYCLE_POLICIES,
     MANAGE_ORG_GOVERNANCE,
     REVIEW_POLICIES,
@@ -43,6 +53,12 @@ from app.modules.traceability.schemas import (
     ApprovalRolesSet,
     ApproverRoleOptionOut,
     ApproverRoleOut,
+    BaselineCheckOptionOut,
+    BaselineFieldOptionOut,
+    BaselineFieldsOut,
+    BaselineSettingsIn,
+    BaselineSettingsOut,
+    BaselineTypeOut,
     ExemptionSet,
     LifecycleRequiredSet,
     LifecycleSkipSet,
@@ -50,6 +66,7 @@ from app.modules.traceability.schemas import (
     LifecycleTypePolicyOut,
     ProfileApprovalOut,
     ProfileApprovalTypeOut,
+    ProfileBaselineOut,
     ProfileContributionOut,
     ProfileCreate,
     ProfileDetailOut,
@@ -63,6 +80,7 @@ from app.modules.traceability.schemas import (
     ProfileTargetOut,
     ProfileTargetsSet,
     ProfileUpdate,
+    RequiredFieldIn,
     ReviewSettingsIn,
     ReviewSettingsOut,
 )
@@ -78,6 +96,7 @@ _guards = [Depends(_module_on)]
 _lifecycle_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, LIFECYCLE_POLICIES))]
 _approval_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, APPROVAL_POLICIES))]
 _review_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, REVIEW_POLICIES))]
+_baseline_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, BASELINE_POLICIES))]
 
 
 def _org_or_404(db: Session, organization_id: UUID) -> Organization:
@@ -388,3 +407,80 @@ def set_profile_review(
     )
     db.commit()
     return _review_out(db, profile)
+
+
+def baseline_settings_out(settings: baseline_policy.BaselineSettings) -> BaselineSettingsOut:
+    """Baseline settings as the API shape."""
+    return BaselineSettingsOut(
+        applies_to_stage=settings.applies_to_stage, applies_to_manual=settings.applies_to_manual,
+        notify_managers=settings.notify_managers, checks=list(settings.checks),
+        required_fields=[RequiredFieldIn(artefact_type=f.artefact_type, field_key=f.field_key) for f in settings.required_fields],
+    )
+
+
+def baseline_check_options_out(options: Sequence[baseline_policy.CheckOption]) -> list[BaselineCheckOptionOut]:
+    """The checks an organisation can enable as the API shape."""
+    return [
+        BaselineCheckOptionOut(key=o.key, name=o.name, module_key=o.module_key, artefact_types=list(o.artefact_types))
+        for o in options
+    ]
+
+
+def baseline_types_out(types: Sequence[baseline_policy.BaselineType]) -> list[BaselineTypeOut]:
+    """The record types a baseline can hold as the API shape."""
+    return [BaselineTypeOut(artefact_type=t.artefact_type, label=t.label, module_key=t.module_key) for t in types]
+
+
+def baseline_fields_out(options: dict[str, list[baseline_policy.FieldOption]]) -> dict[str, list[BaselineFieldOptionOut]]:
+    """The requirable fields of each type as the API shape."""
+    return {t: [BaselineFieldOptionOut(key=o.key, label=o.label) for o in fields] for t, fields in options.items()}
+
+
+def _baseline_out(db: Session, profile: GovernanceProfile) -> ProfileBaselineOut:
+    """The profile's baseline policy as the API shape."""
+    return ProfileBaselineOut(
+        settings=baseline_settings_out(baseline_policy.profile_policy(db, profile)),
+        check_options=baseline_check_options_out(baseline_policy.check_options(db, profile.organization_id)),
+        types=baseline_types_out(baseline_policy.baseline_types(db, profile.organization_id)),
+    )
+
+
+@router.get("/profiles/{profile_id}/baseline", response_model=ProfileBaselineOut, dependencies=_baseline_guards)
+def get_profile_baseline(
+    organization_id: UUID, profile_id: UUID, current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileBaselineOut:
+    """The checks a profile enables before baselines, the baseline kinds they run before and the fields it requires."""
+    return _baseline_out(db, _profile_or_404(db, organization_id, profile_id))
+
+
+@router.put("/profiles/{profile_id}/baseline", response_model=ProfileBaselineOut, dependencies=_baseline_guards)
+def set_profile_baseline(
+    organization_id: UUID, profile_id: UUID, payload: BaselineSettingsIn,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileBaselineOut:
+    """Sets a profile's baseline policy (one that enables no check and requires no field removes it)."""
+    profile = _profile_or_404(db, organization_id, profile_id)
+    baseline_policy.set_profile_settings(
+        db, profile=profile, actor_id=current_user.id,
+        settings=baseline_policy.BaselineSettings(
+            payload.applies_to_stage, payload.applies_to_manual, tuple(payload.checks),
+            tuple(baseline_policy.RequiredField(f.artefact_type, f.field_key) for f in payload.required_fields),
+            payload.notify_managers,
+        ),
+    )
+    db.commit()
+    return _baseline_out(db, profile)
+
+
+@router.get("/profiles/{profile_id}/baseline/fields", response_model=BaselineFieldsOut, dependencies=_baseline_guards)
+def get_profile_baseline_fields(
+    organization_id: UUID, profile_id: UUID, project_id: UUID, current_user: User = Depends(_manage),
+    db: Session = Depends(get_db),
+) -> BaselineFieldsOut:
+    """The fields each baseline type offers in one of the organisation's projects, for choosing a profile's required fields
+    (a profile's fields are not checked against any project, since custom fields differ between projects)."""
+    _profile_or_404(db, organization_id, profile_id)
+    project = db.get(Project, project_id)
+    if project is None or project.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return BaselineFieldsOut(types=baseline_fields_out(baseline_policy.field_options(db, project)))

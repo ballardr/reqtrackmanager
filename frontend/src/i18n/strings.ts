@@ -38,6 +38,7 @@ const en = {
       comment_added: "New comment on a followed item",
       requirement_review_due: "{Requirement} review due",
       stage_review_auto_approved: "{Stage} review deadline passed — auto-approved",
+      stage_baseline_refused: "{Stage} approval refused by a baseline check",
       stage_phase_upcoming: "{Stage} phase starting soon",
       stage_phase_overdue: "{Stage} phase overdue",
       stage_phase_completed: "{Stage} phase completed",

@@ -479,6 +479,7 @@ export type CoreNotificationType =
   | "comment_added"
   | "requirement_review_due"
   | "stage_review_auto_approved"
+  | "stage_baseline_refused"
   | "stage_phase_upcoming"
   | "stage_phase_overdue"
   | "stage_phase_completed"

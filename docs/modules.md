@@ -1521,7 +1521,7 @@ flowchart LR
 | Field on `ModuleDefinition` | Contract | Read through |
 |---|---|---|
 | `policy_resolvers` | `PolicyResolver(seam, resolve(db, project_id, type) or resolve_project(db, project_id), sub_component)` (exactly one of the two); `seam` is a `GovernanceSeam` (`lifecycle`, `approval`, `review`, `baseline`) | `governance_seams.resolve_policy` (a type at a time) and `resolve_project_policy` (the whole project, for a seam that reads every type at once): first active resolver with a non-`None` answer, else `None` (the built-in default applies) |
-| `baseline_check_providers` | `BaselineCheckProvider(key, name, artefact_types, check(db, context, ids_by_type) -> failures, sub_component)` | `governance_seams.baseline_checks_for_project`, keyed `<module>:<key>`; one failing check refuses the whole baseline |
+| `baseline_check_providers` | `BaselineCheckProvider(key, name, artefact_types, check(db, context, ids_by_type) -> failures, sub_component)`; empty `artefact_types` means every type the baseline holds | `governance_seams.baseline_checks_for_project`, keyed `<module>:<key>`, chosen by the project's `BaselinePolicy`; one failing check refuses the whole baseline (§4l17) |
 | `review_adapters` | `ReviewAdapter(schedule, due_reviews(db, project_id, as_of), pending_reminders, mark_reminded, notification_type)`; `schedule` is `review_record` (a review row clears the due list) or `next_review_date` (a review writes the next date); the three reminder parts are given together or not at all (§4l17) | `governance_seams.review_adapter_for_project`, `services.review_engine` |
 | `record_subtypes` | `resolver(db, project_id, ids) -> {id: sub-type key}`, in bulk | `registry.resolve_record_subtypes`; core registers the requirement action's type in `services/record_subtypes_core.py` |
 | `administrative_permissions` | `ModuleAdministrativePermission(key, label, org_roles, project_roles)` | `get_all_permissions` (vocabulary) and `get_effective_permissions` (holders) |
@@ -1603,7 +1603,21 @@ flowchart TD
     O -->|"none: project managers"| N
 ```
 
-- **Not built yet:** the profile screens (frontend), enforcement by the Requirement and Change Request endpoints of the lifecycle policy (their migration step), the interval's use by Risk and the requirement review route (Phases 7a and 7d), and the baseline policy table.
+- **Baseline policy (Phase 5).** Core `services/baseline.py` runs the checks a project's policy enables before a stage baseline (a stage entering a locked phase) or a manual one, over the records the baseline would hold. `GovernanceSeam.BASELINE` answers a `BaselinePolicy(stage_checks, manual_checks)` of namespaced check keys; a `BaselineCheckProvider` (`key`, `name`, `artefact_types`, `check(db, context, ids_by_type) -> failures`) is the check itself, registered by any module, so Traceability's "Required" level (Phase 12) and Compliance plug in with no core edit. An empty `artefact_types` means every type the baseline holds. One failing check refuses the **whole** baseline with every failure listed (`BaselineRefused`, a 409 whose `detail` is `{message, failures[]}`): nothing is approved, locked or stored. With no policy no check runs. When a check is enabled the module records are captured once and the same capture is stored if the baseline is written.
+
+```mermaid
+flowchart TD
+    B["stage enters a locked phase, or a manual baseline"] --> P{"policy enables checks for this kind?<br/>(profiles + own row or nearest ancestor's)"}
+    P -->|no| W["write the baseline as before"]
+    P -->|yes| C["capture module records once"]
+    C --> K["run each enabled check over the records the baseline would hold"]
+    K --> F{"any failure?"}
+    F -->|no| W
+    F -->|yes| R["refuse the whole baseline: 409 with every failure<br/>nothing approved, locked or stored"]
+```
+
+  The module's policy (`governance_baseline_policies`, `_checks`, `_required_fields`; profile or project owned) holds `applies_to_stage` (default), `applies_to_manual` and `notify_managers` (managers are told when the review-deadline sweep is refused; default on, on when any applying policy asks) per owner; each source keeps its own kinds when merged by union. Two built-in checks: **required fields** (a field is one of the type's list columns, so every baseline type and a project's custom fields are covered; a project accepts only its own columns, a profile any key and offers `GET /profiles/{id}/baseline/fields?project_id=`) and **required approvals** (a stage baseline needs a person who may approve requirements and whom approval separation lets approve each draft they created, because the stage baseline is itself the approval; a manual baseline needs requirements already approved). Routes: organisation `/profiles/{id}/baseline`, project `/baseline-policy`, and `GET /baseline-checks?kind=` which previews the failures and writes nothing. A stage the review-deadline sweep cannot approve because a check fails stays in review, is retried daily and its managers are notified once per distinct set of failures (`stage_baseline_refused`).
+- **Not built yet:** the profile screens (frontend), enforcement by the Requirement and Change Request endpoints of the lifecycle policy (their migration step), and the interval's use by Risk and the requirement review route (Phases 7a and 7d).
 
 ### 4l13. External references on every record
 

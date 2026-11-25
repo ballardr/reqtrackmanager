@@ -1,10 +1,11 @@
-"""Governance profiles: organisation policy sets with their targets, exemptions, per-project choices and lifecycle policy
+"""Governance profiles and their lifecycle, approval, review and baseline policy rows
 
 Revision ID: 0210
 Revises: 0209
 Create Date: 2026-11-26
 
-Nothing is seeded: with no profile every project's governance is unchanged. Guarded so a database built from the current
+Organisation policy sets with their targets, exemptions and per-project choices, and the policy tables a profile or a
+project owns. Nothing is seeded: with no profile every project's governance is unchanged. Guarded so a database built from the current
 models passes.
 """
 
@@ -163,9 +164,62 @@ def upgrade() -> None:
     )
     op.execute("CREATE INDEX IF NOT EXISTS ix_governance_review_policies_profile_id ON governance_review_policies (profile_id)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_governance_review_policies_project_id ON governance_review_policies (project_id)")
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_baseline_policies (
+            id UUID PRIMARY KEY,
+            profile_id UUID REFERENCES governance_profiles(id) ON DELETE CASCADE,
+            project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+            applies_to_stage BOOLEAN NOT NULL,
+            applies_to_manual BOOLEAN NOT NULL,
+            notify_managers BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT ck_governance_baseline_policies_one_owner CHECK ((profile_id IS NULL) <> (project_id IS NULL)),
+            CONSTRAINT ck_governance_baseline_policies_applies CHECK (applies_to_stage OR applies_to_manual),
+            CONSTRAINT uq_governance_baseline_policies_profile UNIQUE (profile_id),
+            CONSTRAINT uq_governance_baseline_policies_project UNIQUE (project_id)
+        )
+        """
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_baseline_policies_profile_id ON governance_baseline_policies (profile_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_baseline_policies_project_id ON governance_baseline_policies (project_id)")
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_baseline_checks (
+            id UUID PRIMARY KEY,
+            policy_id UUID NOT NULL REFERENCES governance_baseline_policies(id) ON DELETE CASCADE,
+            check_key VARCHAR(200) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_governance_baseline_checks UNIQUE (policy_id, check_key)
+        )
+        """
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_baseline_checks_policy_id ON governance_baseline_checks (policy_id)")
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_baseline_required_fields (
+            id UUID PRIMARY KEY,
+            policy_id UUID NOT NULL REFERENCES governance_baseline_policies(id) ON DELETE CASCADE,
+            artefact_type VARCHAR(64) NOT NULL,
+            field_key VARCHAR(100) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_governance_baseline_required_fields UNIQUE (policy_id, artefact_type, field_key)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_baseline_required_fields_policy_id "
+        "ON governance_baseline_required_fields (policy_id)"
+    )
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS governance_baseline_required_fields")
+    op.execute("DROP TABLE IF EXISTS governance_baseline_checks")
+    op.execute("DROP TABLE IF EXISTS governance_baseline_policies")
     op.execute("DROP TABLE IF EXISTS governance_review_policies")
     op.execute("DROP TABLE IF EXISTS governance_approval_policy_roles")
     op.execute("DROP TABLE IF EXISTS governance_approval_policies")

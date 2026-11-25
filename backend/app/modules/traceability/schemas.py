@@ -2,7 +2,7 @@
 Module: modules.traceability.schemas
 
 Request and response models of the governance profile API (`router` for the organisation, `project_router` for a
-project), including a profile's lifecycle policy and the approval and review policy of a profile or a project.
+project), including a profile's lifecycle policy and the approval, review and baseline policy of a profile or a project.
 """
 
 from __future__ import annotations
@@ -472,3 +472,215 @@ class ProjectReviewOut(BaseModel):
 
     can_manage: bool
     types: list[ProjectReviewTypeOut]
+
+
+class RequiredFieldIn(BaseModel):
+    """A field a record of a type must have filled.
+
+    Attributes:
+        artefact_type: The registered record type a baseline can hold.
+        field_key: The key of one of the type's list columns (as the export names it).
+    """
+
+    artefact_type: str = Field(min_length=1, max_length=64)
+    field_key: str = Field(min_length=1, max_length=100)
+
+
+class BaselineSettingsIn(BaseModel):
+    """The baseline policy of a profile or a project.
+
+    Attributes:
+        applies_to_stage: Whether the checks run before a stage baseline (a stage entering a locked phase).
+        applies_to_manual: Whether the checks run before a manual baseline. At least one of the two must be true.
+        notify_managers: Whether the project's managers are told when a check refuses the automatic approval of a stage.
+        checks: The namespaced keys (`<module key>:<check key>`) of the checks to run.
+        required_fields: The fields the required-fields check demands.
+    """
+
+    applies_to_stage: bool = True
+    applies_to_manual: bool = False
+    notify_managers: bool = True
+    checks: list[str] = Field(default_factory=list, max_length=100)
+    required_fields: list[RequiredFieldIn] = Field(default_factory=list, max_length=500)
+
+
+class BaselineSettingsOut(BaseModel):
+    """The baseline policy one owner gives."""
+
+    applies_to_stage: bool
+    applies_to_manual: bool
+    notify_managers: bool
+    checks: list[str]
+    required_fields: list[RequiredFieldIn]
+
+
+class BaselineCheckOptionOut(BaseModel):
+    """A baseline check the organisation can enable.
+
+    Attributes:
+        key: The namespaced check key.
+        name: Display name.
+        module_key: The module that registered it.
+        artefact_types: The types it inspects; empty for every type the baseline holds.
+    """
+
+    key: str
+    name: str
+    module_key: str
+    artefact_types: list[str]
+
+
+class BaselineTypeOut(BaseModel):
+    """A record type a baseline can hold.
+
+    Attributes:
+        artefact_type: The registered record type.
+        label: Its singular name.
+        module_key: The module that owns it, empty for a core type.
+    """
+
+    artefact_type: str
+    label: str
+    module_key: str
+
+
+class BaselineFieldOptionOut(BaseModel):
+    """A field of a record type that can be required: a list column's key and name."""
+
+    key: str
+    label: str
+
+
+class BaselineFieldsOut(BaseModel):
+    """The fields each baseline type offers in one project.
+
+    Attributes:
+        types: `{record type: its fillable list columns}`; a type with none is absent.
+    """
+
+    types: dict[str, list[BaselineFieldOptionOut]]
+
+
+class ProfileBaselineOut(BaseModel):
+    """A profile's baseline policy.
+
+    Attributes:
+        settings: What the profile gives.
+        check_options: The checks the organisation can enable.
+        types: The record types a baseline can hold that the organisation can use.
+    """
+
+    settings: BaselineSettingsOut
+    check_options: list[BaselineCheckOptionOut]
+    types: list[BaselineTypeOut]
+
+
+class ProjectBaselineSet(BaseModel):
+    """A project's baseline policy.
+
+    Attributes:
+        settings: The policy; one that enables no check is a choice of no baseline checks (the nearest ancestor project's
+            stops applying); `null` removes the project's row so it follows the nearest ancestor's.
+    """
+
+    settings: BaselineSettingsIn | None = None
+
+
+class EffectiveBaselineCheckOut(BaseModel):
+    """One check that applies to a project.
+
+    Attributes:
+        key: The namespaced check key.
+        name: Display name, `null` when no provider is registered under the key.
+        available: Whether the check is registered and in effect for the project, so it runs.
+        stage: Whether it runs before a stage baseline.
+        manual: Whether it runs before a manual baseline.
+        sources: Profile names, then `project` or `parent_project`, that enable it.
+    """
+
+    key: str
+    name: str | None
+    available: bool
+    stage: bool
+    manual: bool
+    sources: list[str]
+
+
+class EffectiveBaselineFieldOut(BaseModel):
+    """One required field that applies to a project.
+
+    Attributes:
+        artefact_type: The record type.
+        field_key: The list column's key.
+        field_label: The column's name in this project, `null` when the type has no such column here (the field is skipped).
+        stage: Whether it is demanded before a stage baseline.
+        manual: Whether it is demanded before a manual baseline.
+        sources: Profile names, then `project` or `parent_project`, that name it.
+    """
+
+    artefact_type: str
+    field_key: str
+    field_label: str | None
+    stage: bool
+    manual: bool
+    sources: list[str]
+
+
+class ProjectBaselineOut(BaseModel):
+    """A project's baseline policy.
+
+    Attributes:
+        can_manage: Whether the caller may change the project's own policy.
+        own: The project's own policy, `null` when it has no row.
+        inherited_from: Name of the ancestor project whose row applies, `null` when none does.
+        checks: Every check that applies, with its sources.
+        required_fields: Every required field that applies, with its sources.
+        notify_managers: Whether the managers are told when a check refuses the automatic approval of a stage.
+        check_options: The checks the organisation can enable.
+        types: The record types a baseline can hold.
+        field_options: `{record type: fields it offers in this project}`.
+    """
+
+    can_manage: bool
+    own: BaselineSettingsOut | None
+    inherited_from: str | None
+    checks: list[EffectiveBaselineCheckOut]
+    required_fields: list[EffectiveBaselineFieldOut]
+    notify_managers: bool
+    check_options: list[BaselineCheckOptionOut]
+    types: list[BaselineTypeOut]
+    field_options: dict[str, list[BaselineFieldOptionOut]]
+
+
+class BaselineFailureOut(BaseModel):
+    """One reason a baseline would be refused.
+
+    Attributes:
+        check_key: The namespaced check key.
+        check_name: The check's display name.
+        artefact_type: The failing record's type.
+        artefact_id: The failing record's id.
+        code: The record's own code, empty when it has none.
+        message: What is missing.
+    """
+
+    check_key: str
+    check_name: str
+    artefact_type: str
+    artefact_id: UUID
+    code: str
+    message: str
+
+
+class BaselinePreviewOut(BaseModel):
+    """What the enabled checks say about a baseline taken now, with nothing written.
+
+    Attributes:
+        kind: `stage` or `manual`.
+        checks: The checks that would run, as `{key, name}`.
+        failures: Every failure of every check; empty when the baseline would be written.
+    """
+
+    kind: Literal["stage", "manual"]
+    checks: list[dict[str, str]]
+    failures: list[BaselineFailureOut]

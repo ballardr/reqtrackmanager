@@ -12,8 +12,9 @@ Responsibilities:
   exemptions when every project exists. A merge keeps the organisation's own profile of the same name and adds only the
   names it lacks.
 - Project export and import: the project's own choices, by profile name, its own approval policy rows (roles by kind
-  and key, a custom role by name) and its own review policy rows (the default owner by email or group name).
-- Template copy: the choices and approval and review policy rows are project configuration, copied unchanged to a project made from a
+  and key, a custom role by name), its own review policy rows (the default owner by email or group name) and its own
+  baseline policy (check keys and required field keys).
+- Template copy: the choices and approval, review and baseline policy rows are project configuration, copied unchanged to a project made from a
   template.
 
 Design decisions:
@@ -42,7 +43,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules import registry
-from app.modules.traceability import approval_policy, profiles, review_policy
+from app.modules.traceability import approval_policy, baseline_policy, profiles, review_policy
 from app.modules.traceability.enums import ProfileMode, ProfileTargetKind
 from app.modules.traceability.models import (
     GovernanceProfile,
@@ -58,6 +59,7 @@ EXEMPTIONS_KEY = "governance_profile_exemptions"
 CHOICES_KEY = "governance_profile_choices"
 APPROVAL_POLICIES_KEY = approval_policy.PROJECT_ROWS_KEY
 REVIEW_POLICIES_KEY = review_policy.PROJECT_ROWS_KEY
+BASELINE_POLICY_KEY = baseline_policy.PROJECT_ROW_KEY
 _IMPORTED_INFO_KEY = "governance_profiles_imported"
 
 
@@ -190,6 +192,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         CHOICES_KEY: [{"profile": name, "opted_in": opted_in} for name, opted_in in rows],
         APPROVAL_POLICIES_KEY: approval_policy.export_project_rows(db, project),
         REVIEW_POLICIES_KEY: review_policy.export_project_rows(db, project),
+        BASELINE_POLICY_KEY: baseline_policy.export_project_row(db, project),
     }, {}
 
 
@@ -201,9 +204,10 @@ def import_project_data(
     name. A name the organisation lacks, an Enforced profile and a choice the profile's mode does not take are reported
     and skipped, so an import never relaxes what the organisation enforces. The project's own approval policy rows are
     written as exported; they only add approvers, so no organisation policy is relaxed. The review policy rows likewise only
-    tighten (the shortest interval and longest lead apply)."""
+    tighten (the shortest interval and longest lead apply). The baseline policy only adds checks and required fields."""
     approval_policy.import_project_rows(db, project, data.get(APPROVAL_POLICIES_KEY) or [], warnings.add)
     review_policy.import_project_rows(db, project, data.get(REVIEW_POLICIES_KEY) or [], warnings.add)
+    baseline_policy.import_project_row(db, project, data.get(BASELINE_POLICY_KEY), warnings.add)
     for entry in data.get(CHOICES_KEY) or []:
         name = str(entry.get("profile", ""))
         profile = profiles.find_profile_by_name(db, project.organization_id, name)

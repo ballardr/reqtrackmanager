@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3 and 4 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4 and 5 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-6 / 19 phases complete. Phase 5 is next.
+7 / 19 phases complete. Phase 6 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -27,7 +27,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 2 | Lifecycle policies (extend the shipped lifecycle engine) | Governance | [x] Done 2026-11-26 |
 | 3 | Approval policies (one check seam plus approver roles) | Governance | [x] Done 2026-11-26 |
 | 4 | Review policies (engine extracted from Requirement and Risk reviews) | Governance | [x] Done 2026-11-26 |
-| 5 | Baseline policies and the check-provider extension point | Governance | [ ] Not started |
+| 5 | Baseline policies and the check-provider extension point | Governance | [x] Done 2026-11-26 |
 | 6 | Governance Health (on demand and two snapshot modes) + Governance MCP tools | Governance | [ ] Not started |
 | 7 | Move existing types onto the engine: 7a Risk reviews, 7b Decisions, 7c Context & Strategy, 7d Requirements, 7e Compliance approval (last, optional) | Governance | [ ] Not started |
 | 8 | Governance frontend UI | Governance | [ ] Not started |
@@ -455,7 +455,7 @@ date at UTC+10 and UTC-8).
   hours, interval and lead rules, a second schedule model through a fake adapter); the existing review, principal, lifecycle,
   approval and seam suites pass.
 
-## Phase 5 — Baseline policies and check providers (`baseline_policies`)
+## Phase 5 — Baseline policies and check providers (`baseline_policies`) (done 2026-11-26)
 
 **Scope** (§34): configurable pre-baseline checks (required fields, required approvals,
 traceability, verification, compliance), none mandatory per project, resolved through the
@@ -468,6 +468,35 @@ nothing). What "required approvals" means in a stage baseline is Result 2 F4. St
 
 **Why:** the rule says a link is required; the baseline policy says a missing link blocks
 baselining. Without it Traceability would be purely informational.
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 5"; contract in `docs/modules.md` §4l17):**
+
+- Core `services/baseline.py`: `active_checks`, `check_baseline`, `preview_checks` (reused by Phase 6), `BaselineRefused` and
+  `refusal_detail`. Stage and manual baselines run the enabled checks before anything is approved or written; a failure is a 409
+  whose `detail` is `{message, failures[]}` from the stage transition, the component track transition and the manual baseline
+  route. With checks enabled the module records are captured once and the same capture is stored.
+- Seam: `BaselinePolicy(stage_checks, manual_checks)` through `GovernanceSeam.BASELINE`; `BaselineCheckFailure.code`; an empty
+  `BaselineCheckProvider.artefact_types` means every type the baseline holds.
+- Module: tables `governance_baseline_policies`, `_checks` and `_required_fields` (unreleased migration `0210`, edited in place:
+  a local database that already ran it needs the three tables), `baseline_policy.py` (writes with audit, resolver, `baseline`
+  contributor, project bundle row `governance_baseline_policy`, template configuration), `baseline_checks.py` (the two checks),
+  profile routes `/profiles/{id}/baseline[/fields]`, project routes `/baseline-policy` and the preview `/baseline-checks`.
+- **Required fields are any type's list columns (Decided by: User)**, custom fields included; **the review-deadline sweep skips a
+  refused stage, retries daily and notifies the managers once per distinct set of failures (Decided by: User)**, through the new
+  notification type `stage_baseline_refused`, switched by the baseline policy's `notify_managers` flag (default on, any
+  applying policy asking for it keeps it on) and then each person's own preference for it.
+- **Required approvals (Decided by: Agent, F4):** a stage baseline checks that the person may approve requirements and that
+  separation allows each draft they created; a manual baseline needs approved requirements. A guard test fails when a type gains
+  both an approval gate and a snapshot provider without an entry.
+- **Deviations from this plan's wording (Decided by: Agent):** a policy keeps `applies_to_stage` / `applies_to_manual` per source
+  (stage by default); a preview route is added for the screens and Health; a defect found on the way is fixed: one stage the
+  approval rules refused (a required separate approver) stopped the whole review-deadline sweep.
+- Not built here, by design: the screens (Phase 8), the check providers of Traceability (Phase 12) and Compliance (Module 9), MCP
+  tools (Phase 6), the docs website page (Phase 9), and moving the stage baseline's own approval onto the engine (7d).
+- Tests: `modules/traceability/tests/test_governance_baseline_policy.py` (routes, validation, merge, nested fallback, both checks
+  end to end, kinds, preview, bundles) and `tests/test_baseline_checks.py` (the core seam with a fake module and no Governance:
+  default, whole-baseline refusal, single capture, kinds, preview, the sweep and its notice); the existing baseline, stage,
+  component stage, approval and seam suites pass.
 
 ## Phase 6 — Governance Health (`governance_health`) + Governance MCP tools
 

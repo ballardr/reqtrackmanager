@@ -37,6 +37,7 @@ from app.schemas.project import (
 from app.schemas.stage_workflow import StageTransitionRequest, StageUsageOut
 from app.services import approval_policy
 from app.services.audit import log_event
+from app.services.baseline import BaselineRefused, refusal_detail
 from app.services.notifications import notify
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import (
@@ -298,6 +299,8 @@ def transition_stage(
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     except WorkflowConflict as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except BaselineRefused as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, refusal_detail(exc)) from exc
     _notify_stage_transition(db, project, stage, current_user.id)
     db.commit()
     db.refresh(stage)

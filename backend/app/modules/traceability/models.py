@@ -5,7 +5,8 @@ Tables of the Traceability & Governance module: governance profiles (organisatio
 a profile targets, the projects exempt from an Enforced profile, each project's opt-in or opt-out and the lifecycle policy
 rows a profile owns (the states it requires and whether it forbids skipping steps), the approval policy rows a
 profile or a project owns (the roles that may also approve a record type) and the review policy rows a profile or a
-project owns (the review interval, reminder lead and default owner of a record type).
+project owns (the review interval, reminder lead and default owner of a record type) and the baseline policy rows a
+profile or a project owns (which checks run before a baseline, and which fields a record must have filled).
 
 Design decisions:
 - A profile holds no policy itself. Each policy table carries a `profile_id` (a `modules.seams.ProfileContributor`),
@@ -26,6 +27,11 @@ Design decisions:
 - A review policy is one row per `(owner, record type)` with the same owner rule as an approval policy. Its three settings
   are each optional; a row with none set is a choice that stops the nearest ancestor's row applying. The default owner is a
   principal (`models.principal`), declared as a `PrincipalReference` so deleting the group clears it.
+- A baseline policy is one row per owner (a profile or a project) with child rows for its enabled checks and its required
+  fields, because a baseline is a whole-project act and not one per record type. The two `applies_to` flags choose whether
+  the owner's checks run before a stage baseline, a manual baseline or both; they stay with the owner's checks, so a profile
+  that asks for a stage check never makes a project's manual check run before stage baselines. A project's row with no
+  checks is a choice that stops the nearest ancestor's applying.
 - Choices do not fall back to an ancestor project: reach down the project tree is the organisation's decision
   (`include_children` on a target), and a manager of a parent project must not decide for children they may not manage.
 """
@@ -253,3 +259,73 @@ class GovernanceReviewPolicy(UUIDPKMixin, TimestampMixin, Base):
     lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     default_owner_type: Mapped[str | None] = principal_type_column(nullable=True)
     default_owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+
+
+class GovernanceBaselinePolicy(UUIDPKMixin, TimestampMixin, Base):
+    """Which checks run before a project's baselines, set by a profile or by a project.
+
+    Attributes:
+        profile_id: The owning profile, or `None` for a project's own policy.
+        project_id: The owning project, or `None` for a profile's policy.
+        applies_to_stage: Whether the checks run before a stage baseline (a stage entering a locked phase).
+        applies_to_manual: Whether the checks run before a manual baseline.
+        notify_managers: Whether the project's managers are told when the automatic approval of a stage is refused by a check.
+    """
+
+    __tablename__ = "governance_baseline_policies"
+    __table_args__ = (
+        CheckConstraint("(profile_id IS NULL) <> (project_id IS NULL)", name="ck_governance_baseline_policies_one_owner"),
+        CheckConstraint("applies_to_stage OR applies_to_manual", name="ck_governance_baseline_policies_applies"),
+        UniqueConstraint("profile_id", name="uq_governance_baseline_policies_profile"),
+        UniqueConstraint("project_id", name="uq_governance_baseline_policies_project"),
+    )
+
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_profiles.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    applies_to_stage: Mapped[bool] = mapped_column(Boolean, default=True)
+    applies_to_manual: Mapped[bool] = mapped_column(Boolean, default=False)
+    notify_managers: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class GovernanceBaselineCheck(UUIDPKMixin, TimestampMixin, Base):
+    """One check a baseline policy enables.
+
+    Attributes:
+        policy_id: The policy.
+        check_key: The namespaced check key (`<module key>:<check key>`, `modules.seams.BaselineCheckProvider`). A key whose
+            provider is no longer registered is kept and runs nothing.
+    """
+
+    __tablename__ = "governance_baseline_checks"
+    __table_args__ = (UniqueConstraint("policy_id", "check_key", name="uq_governance_baseline_checks"),)
+
+    policy_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_baseline_policies.id", ondelete="CASCADE"), index=True
+    )
+    check_key: Mapped[str] = mapped_column(String(200))
+
+
+class GovernanceBaselineRequiredField(UUIDPKMixin, TimestampMixin, Base):
+    """A field a record of one type must have filled for the required-fields check to pass.
+
+    Attributes:
+        policy_id: The policy.
+        artefact_type: The registered record type.
+        field_key: The key of one of the type's list columns (`RecordColumn.key`), including a project's custom fields
+            (`cf_<name>`); a key the project's type has no column for is skipped when the check runs.
+    """
+
+    __tablename__ = "governance_baseline_required_fields"
+    __table_args__ = (
+        UniqueConstraint("policy_id", "artefact_type", "field_key", name="uq_governance_baseline_required_fields"),
+    )
+
+    policy_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_baseline_policies.id", ondelete="CASCADE"), index=True
+    )
+    artefact_type: Mapped[str] = mapped_column(String(64))
+    field_key: Mapped[str] = mapped_column(String(100))
