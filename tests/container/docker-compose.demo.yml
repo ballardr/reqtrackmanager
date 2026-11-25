@@ -122,6 +122,8 @@ services:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
   keycloak:
+    # Started only by `scripts/demo.sh --sso`: the identity provider is for the single sign-on test, not the demonstration.
+    profiles: ["sso"]
     logging: *bounded_logs
     ports: !override
       - "127.0.0.1:8080:8080"

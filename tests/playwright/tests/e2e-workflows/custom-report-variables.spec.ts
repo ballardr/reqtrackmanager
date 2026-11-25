@@ -84,7 +84,7 @@ test.describe("Custom report variables", () => {
       await page.goto(`/projects/${project.id}?reports=choose`);
       await chooseReport(page, name);
       await expect(page.getByText("Choose a value for Categories to run this report.")).toBeVisible();
-      await expect(page.getByRole("cell", { name: requirements.Security })).toHaveCount(0);
+      await expect(page.getByRole("cell", { name: requirements.Security, exact: true })).toHaveCount(0);
       await expect(reportDownloadButton(page)).toBeDisabled();
     });
 
@@ -96,9 +96,9 @@ test.describe("Custom report variables", () => {
 
     await test.step("choosing two categories shows exactly their requirements and names them in the options order", async () => {
       await choose(page, "Security", "Billing");
-      await expect(page.getByRole("cell", { name: requirements.Security })).toBeVisible();
-      await expect(page.getByRole("cell", { name: requirements.Billing })).toBeVisible();
-      await expect(page.getByRole("cell", { name: requirements.Usability })).toHaveCount(0);
+      await expect(page.getByRole("cell", { name: requirements.Security, exact: true })).toBeVisible();
+      await expect(page.getByRole("cell", { name: requirements.Billing, exact: true })).toBeVisible();
+      await expect(page.getByRole("cell", { name: requirements.Usability, exact: true })).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "Requirements for Billing, Security" })).toBeVisible();
     });
 
@@ -115,8 +115,8 @@ test.describe("Custom report variables", () => {
     await test.step("another choice gives another report from the same layout", async () => {
       await choose(page, "Security", "Billing"); // unchecks both
       await choose(page, "Usability");
-      await expect(page.getByRole("cell", { name: requirements.Usability })).toBeVisible();
-      await expect(page.getByRole("cell", { name: requirements.Security })).toHaveCount(0);
+      await expect(page.getByRole("cell", { name: requirements.Usability, exact: true })).toBeVisible();
+      await expect(page.getByRole("cell", { name: requirements.Security, exact: true })).toHaveCount(0);
     });
   });
 
@@ -128,8 +128,8 @@ test.describe("Custom report variables", () => {
     await page.goto(`/projects/${project.id}?reports=choose`);
     await chooseReport(page, name);
 
-    await expect(page.getByRole("cell", { name: requirements.Usability })).toBeVisible();
-    await expect(page.getByRole("cell", { name: requirements.Security })).toHaveCount(0);
+    await expect(page.getByRole("cell", { name: requirements.Usability, exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: requirements.Security, exact: true })).toHaveCount(0);
     await expect(page.getByText("Choose a value for Categories")).toHaveCount(0);
   });
 

@@ -71,7 +71,7 @@ test.describe("server admin manages an organisation's lifecycle", () => {
       await row.getByRole("button", { name: `${orgName} actions` }).click();
       await rowActionsMenu.getByRole("menuitem", { name: "Administration" }).click();
       await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-      await expect(page.getByText(orgName)).toBeVisible();
+      await expect(page.getByRole("heading", { name: orgName })).toBeVisible();
 
       await page.goBack();
       // Back returns to the list as it was left: the "All" status filter is kept in the URL.

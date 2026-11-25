@@ -20313,3 +20313,48 @@ No dependency needed an upgrade, so none was moved or pinned.
 **SOC 2.** No control changed, so the control matrix's Status column is unchanged. The scoped-token statement in the access control policy (item 8) already says a token's limits apply to personal reads; finding 2 makes the code match it.
 
 **Documented false positives and ignored findings:** none added except the one `nosemgrep` above.
+
+## Demonstration defaults: published images, one worker, no Keycloak
+
+- **Change (Decided by: User).** `scripts/demo.sh` pulls the published images by default (`--no-pull` builds the working tree), starts one backend worker (`BACKEND_WORKERS` overrides it) and leaves Keycloak out (`--sso` starts it). The demonstration overlay puts `keycloak` in the `sso` Compose profile; the developer and test stack keeps it always on. `--schedule` builds the working tree, because the in-container scheduler cannot be combined with an image update; an explicit `--pull --schedule` is still refused.
+- **Reason.** The demonstration is run on small hosts. Four workers and Keycloak's development server dominate its memory, and the single sign-on test is the only user of Keycloak. Building the frontend and documentation images on a small host is slower and can run out of memory.
+- **Consequences.** A run on a developer machine now pulls `latest` and prunes dangling images and week-old build cache host-wide after an update (`--no-prune` or `--no-pull` avoids it). `--sso` serves the sign-in test on the local machine only, because Keycloak advertises `http://localhost:8080`. A Keycloak container left running by an earlier run keeps running until stopped. The demonstration's own memory footprint has not been measured. Time shapes: none. SOC 2: no control changed.
+
+## Platform review 2026-11-19, Phase C: local CI test review (2026-11-25)
+
+Every job in `.github/workflows/ci.yml` that can run on a developer host was run against the branch, directly (not through `act`, which cannot run the Compose-driven jobs without a nested Docker daemon), and every failure was fixed in this phase (**Decided by: Agent**; the phase's scope is the plan's own).
+
+| Job | Result |
+| --- | --- |
+| Documentation (`check_doc_links`, `check_comment_style`, `check_health_probes`, type check, skill downloads, Docusaurus build) | Pass |
+| Static analysis (Bandit, Semgrep) and secret scan (Gitleaks over history) | Pass, no finding |
+| Gitleaks over the working tree | Pass for tracked files; 21 hits are all git-ignored local files (`.pytest_cache`, `__pycache__`, `storybook-static`, `graphify-out`, `tests/container/.demo-secrets.env`) that a checkout does not contain |
+| Dependency scan (`pip-audit` for backend, mcp-server and converter; `npm audit` for the frontend and Playwright) | Pass, no vulnerability |
+| Licence guard (`check_licences.py --live`), Playwright image sync, shard coverage, Mermaid lazy loading, performance scrub check | Pass |
+| Frontend (lint, type check and build, Storybook with coverage) | Pass: 658 files, 5,521 tests |
+| Backend (pytest `-n 4` with coverage, ruff, mypy, converter tests, backup-image tests, promtool) | Pass after one fix: 9,136 passed, coverage 95.7% against the 93.2% floor |
+| mcp-server (pytest, ruff) | Pass after two fixes |
+| Playwright (`global-state-mutators`, then `default`) | 30 serial tests pass; `default` had 14 failing or flaky specs, all fixed (below) |
+| Image scan (six images built, Trivy HIGH and CRITICAL with fixes, docs image smoke test) and the backend image smoke test | Pass, no finding |
+| Disaster-recovery restore self-check (`restore-test-selfcheck.sh`) | Pass |
+
+**Skipped, with the reason.** `version` (GitVersion needs the pull request's history), `docker-build` and `docker-publish` (registry credentials and an arm64 runner; the amd64 backend image smoke test was run instead), `cla` (pull requests only), `publish-badges` and `docs-deploy` (publishing), the Dependabot and CodeQL alert lists (held on the repository's GitHub security tab and not queried in this phase; phase S recorded their review and the pipeline's own scanners were re-run here), and `dynamic-scan.yml` (scheduled ZAP baseline, not part of the pull request pipeline). Playwright ran at 2 workers on one host, unsharded, with the shard coverage check passing separately.
+
+**Defects found and fixed**
+
+| Finding | Cause | Fix |
+| --- | --- | --- |
+| `test_models_and_migrations_have_not_drifted` failed | The index on `organization_approval_separation_requirements.organization_id` had a generated name of 66 characters; PostgreSQL stores 63, so the migration and the model disagreed | The model declares an explicit short index name (`ix_org_approval_separation_requirements_org_id`) and the unreleased migration `0209` creates the same name. A local database that already ran `0209` keeps the truncated name until it is reset |
+| mcp-server `test_tools_are_discoverable` failed | `WRITE_TOOLS` omitted four tools added earlier (`remove_requirement_alias`, `promote_requirement_alias`, `make_requirement_alias_independent`, `move_category_to_component`) | The four are listed |
+| mcp-server `ruff` E501 | A 157-character line in `test_alias_tools.py` | Wrapped |
+| `report-setup-list`: two "Choose columns" buttons | The Report snippets list has its own chooser | The spec scopes the button to the Reports list |
+| `record-list-report`, `custom-report-variables`, `report-table-alignment`: a record name or a table matched twice | The project overview's activity table also names the record and is a table | The specs match the report table's cell exactly, or exclude the activity table |
+| `module-contributed-roles`: 4 and 5 roles expected, 5 and 7 shown | The System Architecture module contributes Architecture Org Admin, Architect and Architecture Admin | The counts and the named roles are updated |
+| `project-actions-list-sorting`: `aria-sort="none"` expected | A header click toggles direction and the default order is a choice in Sort by, so a list is never unsorted | The spec asserts the toggle back to ascending |
+| `project-files-filters`: no `img` named in the row | The thumbnail is a button named "Preview <file>" | The spec looks for the button |
+| `review-scheduling`: first combobox expected to read "Hardware" | The component and category are one place picker button | The spec reads the picker |
+| `connection-default-protocol`: protocol not in the list | Protocol is off by default on the connections list | The spec chooses the column first |
+| `pelion-v2`: `SW-PERF-001` matched the code, the toast text and its action | The code carries the project prefix and the toast names it | The spec matches the code cell exactly, with or without a prefix |
+| `nav-labels`, `server-org-lifecycle` (flaky, passed alone) | A non-exact link name also matched "Requirements due for review" when that entry showed; the organisation name was read on the list page while the administration page was still loading | The spec matches the link name exactly; the spec waits for the administration page's heading |
+
+No timeout was raised, no retry or database reseed was used as a fix, and no check was baselined or suppressed. Time shapes: none. SOC 2: no control changed.

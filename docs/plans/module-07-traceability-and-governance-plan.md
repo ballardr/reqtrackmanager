@@ -390,7 +390,7 @@ separately maintained structure; saved definitions and ad hoc views (Q12); cover
 **Aliases and carried-over links (cross-reference).** A requirement can sit in several components
 with an alias code each, and making an alias independent copies the original's links onto a new
 draft with `ArtefactLink.note` set to "Copied from REQ-001"
-([platform-review-2026-11-19-plan.md](platform-review-2026-11-19-plan.md), phase 20; **Decided by:
+([platform-review-2026-11-19-plan.md](completed/platform-review-2026-11-19-plan.md), phase 20; **Decided by:
 User**, 2026-11-21). Coverage counts a record once under all its codes, and a record whose
 verification links all carry that note reads "verification inherited", not verified, until a person
 confirms or replaces them: a status input registered through this module's own extension point,

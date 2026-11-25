@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: ProjectActionsPage's table headers cycle unsorted, ascending, descending, unsorted on click.
+ * Job to be done: ProjectActionsPage's table headers sort ascending, then toggle to descending and back on repeated clicks.
  * Unlike RequirementsPage/ChangeRequestsPage, this list has no backend pagination (`routers/actions.py::list_actions`
  * returns every match), so sorting reorders the loaded rows client-side and a header click makes no network request.
  *
@@ -48,7 +48,8 @@ test.describe("project actions list sorting", () => {
     await expect(titleHeaderCell).toHaveAttribute("aria-sort", "descending");
     expect(await rowIndexOf(secondTitle)).toBeLessThan(await rowIndexOf(firstTitle));
 
+    // There is no unsorted state: the same header toggles its direction, and the default order (Code) is a choice in Sort by.
     await titleHeader.click();
-    await expect(titleHeaderCell).toHaveAttribute("aria-sort", "none");
+    await expect(titleHeaderCell).toHaveAttribute("aria-sort", "ascending");
   });
 });

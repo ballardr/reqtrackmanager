@@ -22,9 +22,10 @@ test.describe("module-contributed roles: Compliance's real org/project roles", (
     await rolesButton.click();
     const rolesGroup = page.getByRole("group", { name: `${PERSONAS.memberAlphaBeta.name}'s roles` });
 
-    // The three fixed OrgRole options plus Compliance's organisation-scoped module role, shown as
-    // "Compliance Manager (Compliance)": the role name plus its owning module's display name.
-    await expect(rolesGroup.getByRole("checkbox")).toHaveCount(4);
+    // The three fixed OrgRole options plus the organisation-scoped module roles (Compliance's and System Architecture's),
+    // each shown as the role name plus its owning module's display name.
+    await expect(rolesGroup.getByRole("checkbox")).toHaveCount(5);
+    await expect(rolesGroup.getByText("Architecture Org Admin (System Architecture)", { exact: true })).toBeVisible();
     await expect(rolesGroup.getByText("Member", { exact: true })).toBeVisible();
     await expect(rolesGroup.getByText("Project creator", { exact: true })).toBeVisible();
     await expect(rolesGroup.getByText("Org admin", { exact: true })).toBeVisible();
@@ -73,10 +74,12 @@ test.describe("module-contributed roles: Compliance's real org/project roles", (
     await rolesButton.click();
     const rolesGroup = page.getByRole("group", { name: `${PERSONAS.orgAdminAlphaBeta.name}'s roles` });
 
-    // The four fixed ProjectRole options plus Compliance's project-scoped module role; `ProjectMembersTable.tsx`
-    // renders a module role's `name` with no owning-module suffix, unlike the organisation surface above.
-    await expect(rolesGroup.getByRole("checkbox")).toHaveCount(5);
-    await expect(rolesGroup.getByText("Compliance Officer", { exact: true })).toBeVisible();
+    // The four fixed ProjectRole options plus the project-scoped module roles (Compliance's and System Architecture's);
+    // `ProjectMembersTable.tsx` renders a module role's `name` with no owning-module suffix, unlike the organisation surface above.
+    await expect(rolesGroup.getByRole("checkbox")).toHaveCount(7);
+    for (const role of ["Compliance Officer", "Architect", "Architecture Admin"]) {
+      await expect(rolesGroup.getByText(role, { exact: true })).toBeVisible();
+    }
     await page.keyboard.press("Escape");
   });
 });

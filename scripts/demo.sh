@@ -8,7 +8,10 @@
 #   scripts/demo.sh --rotate-passwords   a new random password for every account (default: DemoDemo123!)
 #   scripts/demo.sh --allow-uploads      keep file uploads enabled (default: the demonstration disables them)
 #   scripts/demo.sh --clarity <id>       also load Microsoft Clarity (project id from your Clarity dashboard)
-#   scripts/demo.sh --schedule           also start the daily reset (DEMO_RESET_AT, DEMO_RESET_TZ; default 00:00 UTC)
+#   scripts/demo.sh --schedule           also start the daily reset (DEMO_RESET_AT, DEMO_RESET_TZ; default 00:00 UTC);
+#                                        builds the working tree, as --no-pull
+#   scripts/demo.sh --sso                also start Keycloak, the OIDC identity provider for the single sign-on test (off by default)
+#   scripts/demo.sh --no-pull            build the images from the working tree instead of pulling the published ones
 #   scripts/demo.sh --no-metrics         do not start the usage-metrics Prometheus (started by default)
 #   scripts/demo.sh --export-metrics [path] [--since 7d] [--no-snapshot]
 #                                        write a metrics bundle (.tar.gz) for a developer to review; starts nothing
@@ -16,17 +19,21 @@
 #   scripts/demo.sh --purge-metrics      stop Prometheus and remove the collected metrics (a reset keeps them)
 #   scripts/demo.sh --trust-local-ca     print how to trust the local certificate authority (localhost or an IP address)
 #   scripts/demo.sh --purge-certificates stop the proxy and remove its certificates (a reset keeps them)
-#   scripts/demo.sh --no-prune           with --pull: keep dangling images and old build cache (a host shared with other projects)
-#   scripts/demo.sh --pull               first pull the published images and recreate the services whose image changed
-#                                        (for the host timer: scripts/demo.sh --pull --reset; refused with --schedule)
+#   scripts/demo.sh --no-prune           keep dangling images and old build cache after an image update (a host shared with other projects)
+#   scripts/demo.sh --pull               the default: first pull the published images and recreate the services whose image
+#                                        changed (for the host timer: scripts/demo.sh --reset; refused with --schedule)
+#
+# Defaults: the published images, one backend worker (BACKEND_WORKERS overrides it) and no Keycloak, which is the smallest
+# footprint (a host with 4 GiB of memory runs it). Keycloak advertises http://localhost:8080, so --sso serves the sign-in
+# test on the local machine only.
 #
 # HTTPS: the Caddy proxy (tests/container/caddy) is the only published listener. DEMO_PUBLIC_HOST (default localhost)
 # names the host: a DNS name gets a certificate from a public authority (ports 80 and 443 must be reachable; the MCP
 # server is served on mcp.<host>, or on DEMO_MCP_HOST, or not at all when DEMO_MCP_HOST=off); localhost or an IP address
 # uses Caddy's local authority. DEMO_ACME_EMAIL registers a contact address with the public authority.
 #
-# Images: --pull uses the images CI publishes (tests/container/docker-compose.demo-images.yml; IMAGE_TAG defaults to
-# latest, a commit SHA or version pins one) instead of building the working tree. A failed pull keeps the images already
+# Images: unless --no-pull is given, the run uses the images CI publishes (tests/container/docker-compose.demo-images.yml;
+# IMAGE_TAG defaults to latest, a commit SHA or version pins one) instead of building the working tree. A failed pull keeps the images already
 # present and the run carries on; an unhealthy new image stops the run (exit 1) with no automatic rollback, because
 # migrations only go forward. The previous image of each updated service stays tagged :previous; after a healthy update
 # dangling images and week-old build cache are pruned (--no-prune skips it). DEMO_RESET_AT and
@@ -89,9 +96,14 @@ else
 fi
 if [ -n "${DEMO_ACME_EMAIL:-}" ] && [ "$DEMO_TLS_MODE" = public ]; then export DEMO_ACME_MODE=email; fi
 
+# One worker is about one core of the API (docs/performance.md); the demonstration host is small.
+export BACKEND_WORKERS="${BACKEND_WORKERS:-1}"
+
 schedule=false
 metrics=true
-pull=false
+sso=false
+pull=true
+pull_explicit=false
 prune=true
 pass=()
 while [ $# -gt 0 ]; do
@@ -102,7 +114,9 @@ while [ $# -gt 0 ]; do
       export DEMO_CLARITY_PROJECT_ID="$2"; shift 2 ;;
     --allow-uploads) export DEMO_ALLOW_UPLOADS=1; pass+=("$1"); shift ;;
     --schedule) schedule=true; shift ;;
-    --pull) pull=true; shift ;;
+    --pull) pull=true; pull_explicit=true; shift ;;
+    --no-pull) pull=false; shift ;;
+    --sso) sso=true; shift ;;
     --no-prune) prune=false; shift ;;
     --trust-local-ca)
       cat <<'TEXT'
@@ -125,14 +139,17 @@ TEXT
   esac
 done
 
-if [ "$pull" = true ] && [ "$schedule" = true ]; then
+if [ "$pull_explicit" = true ] && [ "$schedule" = true ]; then
   echo "demo: --pull and --schedule cannot be combined: the in-container scheduler cannot replace its own image, and a host" >&2
   echo "      timer running --pull would reset a second time. Use the host timer alone (docs/demo.md, \"Daily reset\")." >&2
   exit 2
 fi
+# The scheduler service is built from the working tree, so it runs beside images built the same way.
+if [ "$schedule" = true ]; then pull=false; fi
 
 profiles=()
 if [ "$metrics" = true ]; then profiles+=(--profile demo-metrics); fi
+if [ "$sso" = true ]; then profiles+=(--profile sso); fi
 
 # Environment the reset needs inside the container (the compose service does not receive the host's).
 exec_env=(-e "DEMO_ADMIN_PASSWORD=$DEMO_ADMIN_PASSWORD")

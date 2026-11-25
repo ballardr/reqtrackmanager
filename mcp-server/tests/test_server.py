@@ -63,7 +63,8 @@ READ_ONLY_TOOLS = {
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",
     "create_component", "update_component", "move_component", "delete_component",
-    "create_category", "update_category", "move_category", "delete_category",
+    "create_category", "update_category", "move_category", "move_category_to_component", "delete_category",
+    "remove_requirement_alias", "promote_requirement_alias", "make_requirement_alias_independent",
     "set_artefact_tags", "add_artefact_tag", "remove_artefact_tag",
     "add_artefact_external_reference", "update_artefact_external_reference", "remove_artefact_external_reference",
     "create_report_layout", "save_report_layout_version", "update_report_layout", "delete_report_layout",

@@ -26,7 +26,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -181,10 +181,12 @@ class OrganizationApprovalSeparationRequirement(UUIDPKMixin, TimestampMixin, Bas
     __tablename__ = "organization_approval_separation_requirements"
     __table_args__ = (
         UniqueConstraint("organization_id", "artefact_type", name="uq_org_approval_separation_requirements"),
+        # The generated name would exceed PostgreSQL's 63-character identifier limit.
+        Index("ix_org_approval_separation_requirements_org_id", "organization_id"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
     artefact_type: Mapped[str] = mapped_column(String(64))
 

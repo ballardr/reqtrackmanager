@@ -113,7 +113,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByPlaceholder("Name", { exact: true }).fill("Ship the widget");
     await page.getByLabel("Priority").fill("High");
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByText("SW-PERF-001")).toBeVisible();
+    await expect(page.getByText(/^(\S+-)?SW-PERF-001$/)).toBeVisible();
 
     await page.getByText("Ship the widget").click();
     await expect(page.getByLabel("Priority")).toHaveValue("High");

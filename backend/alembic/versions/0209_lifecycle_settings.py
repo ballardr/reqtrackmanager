@@ -159,7 +159,7 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_organization_approval_separation_requirements_organization_id "
+        "CREATE INDEX IF NOT EXISTS ix_org_approval_separation_requirements_org_id "
         "ON organization_approval_separation_requirements (organization_id)"
     )
     op.execute(

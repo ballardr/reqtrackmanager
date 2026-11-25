@@ -45,7 +45,7 @@ test.describe("project files: report image library, search and filters", () => {
     await test.step("the picture is listed as a report image library file, with a preview and its origin", async () => {
       await expect(row).toBeVisible();
       await expect(row.getByText("Report image library")).toBeVisible();
-      await expect(row.getByRole("img", { name: picture })).toBeVisible();
+      await expect(row.getByRole("button", { name: `Preview ${picture}` })).toBeVisible();
       await expect(row.getByRole("link", { name: "Report setup" })).toHaveAttribute("href", `/projects/${projectId}/admin/reportSetup`);
     });
 

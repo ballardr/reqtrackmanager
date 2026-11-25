@@ -16,6 +16,14 @@ import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 test.describe("Record list report", () => {
   installCleanupHook();
 
+  /** The record's name cell in the report table; the overview's activity table beside it names the record too. */
+  function reportRow(page: import("@playwright/test").Page, name: string) {
+    return page
+      .getByRole("table")
+      .filter({ has: page.getByRole("columnheader", { name: "Code", exact: true }) })
+      .getByRole("cell", { name, exact: true });
+  }
+
   async function projectWithRequirement(page: import("@playwright/test").Page, label: string) {
     const project = await createDisposableProject(page.request, PERSONAS.orgAdminAlphaBeta.email, label);
     const name = `E2E Record List ${Date.now()}`;
@@ -34,15 +42,15 @@ test.describe("Record list report", () => {
 
     await test.step("the first type is run and its rows are shown, code first", async () => {
       await expect(page.getByLabel("Record type")).toHaveValue("requirement");
-      await expect(page.getByRole("cell", { name: project.requirementName })).toBeVisible();
-      await expect(page.getByRole("columnheader", { name: "Code" })).toBeVisible();
+      await expect(reportRow(page, project.requirementName)).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Code", exact: true })).toBeVisible();
     });
 
     await test.step("another type is a different table", async () => {
       await page.getByLabel("Record type").selectOption("requirement_action");
-      await expect(page.getByRole("cell", { name: project.requirementName })).toHaveCount(0);
+      await expect(reportRow(page, project.requirementName)).toHaveCount(0);
       await page.getByLabel("Record type").selectOption("requirement");
-      await expect(page.getByRole("cell", { name: project.requirementName })).toBeVisible();
+      await expect(reportRow(page, project.requirementName)).toBeVisible();
     });
 
     await test.step("Word download is a real document", async () => {

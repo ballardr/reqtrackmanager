@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { chooseColumn } from "../../columnChooser";
 import { installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 
@@ -59,6 +60,7 @@ test.describe("System Architecture: a connection type's default protocol", () =>
       await expect(dialog.getByLabel("Protocol", { exact: true })).toHaveValue("SPI mode 0");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
       await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
+      await chooseColumn(page, "Protocol");
       await expect(page.locator("tr", { hasText: `Gateway ${suffix}` }).getByText("SPI mode 0", { exact: true })).toBeVisible();
     });
 

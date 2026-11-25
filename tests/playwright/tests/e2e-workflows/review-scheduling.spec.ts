@@ -21,13 +21,9 @@ test.describe("requirement review scheduling", () => {
       await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
-      // The create form is a `Modal` portalled to the end of
-      // `document.body` — scope to it rather than an unscoped
-      // `getByRole("combobox").first()`, which would otherwise resolve to
-      // the filter sidebar's own Status select (it precedes the panel in
-      // DOM order once the form is a portal instead of an inline block).
+      // The create form is a `Modal` portalled to the end of `document.body`; the place picker shows the first component.
       const panel = page.getByRole("dialog", { name: "New Requirement" });
-      await expect(panel.getByRole("combobox").first()).toContainText("Hardware");
+      await expect(panel.getByRole("button", { name: "Component and category", exact: true })).toContainText("Hardware");
       await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await openRequirementByName(page, reqName);

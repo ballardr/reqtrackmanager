@@ -92,7 +92,8 @@ test.describe("Report table alignment", () => {
     const { project, layoutName } = await setup(page, request);
     await page.goto(`/projects/${project.id}?reports=choose`);
     await chooseReport(page, layoutName);
-    const tables = page.getByRole("table");
+    // The overview's activity table sits beside the report; its Record(s) column tells them apart.
+    const tables = page.getByRole("table").filter({ hasNot: page.getByRole("columnheader", { name: "Record(s)" }) });
     await expect(tables).toHaveCount(2);
     const [first, second] = [await headingWidths(tables.nth(0).locator("th")), await headingWidths(tables.nth(1).locator("th"))];
     expect(first.length).toBeGreaterThan(5);

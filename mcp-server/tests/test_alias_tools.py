@@ -66,7 +66,9 @@ _SCRIPT = textwrap.dedent(
         await t["make_requirement_alias_independent"](P, requirement_id=R, alias_id=A, related_link_type_id=L)
         errors = []
         for label, call in (
-            ("bad place", t["create_requirement"](P, name="x", component_id=C, category_id=K, additional_places=[{"component_id": "no", "category_id": K}])),
+            ("bad place", t["create_requirement"](
+                P, name="x", component_id=C, category_id=K,
+                additional_places=[{"component_id": "no", "category_id": K}])),
             ("bad alias", t["remove_requirement_alias"](P, requirement_id=R, alias_id="nope")),
             ("bad link type", t["make_requirement_alias_independent"](P, requirement_id=R, alias_id=A, related_link_type_id="nope")),
         ):

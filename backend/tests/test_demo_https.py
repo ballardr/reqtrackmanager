@@ -63,6 +63,7 @@ def fake_docker(tmp_path):
     script.write_text(
         "#!/bin/sh\n"
         f'echo "ENV $COMPOSE_FILE|$DEMO_TLS_MODE|$DEMO_PUBLIC_URL|$DEMO_MCP_MODE|$DEMO_MCP_HOST|$DEMO_MCP_URL|$DEMO_ACME_MODE" >> "{log}"\n'
+        f'echo "WORKERS $BACKEND_WORKERS" >> "{log}"\n'
         f'echo "$@" >> "{log}"\n'
         'case "$*" in\n'
         '  *"config --format json"*) echo \'{"name":"container"}\' ;;\n'
@@ -73,6 +74,8 @@ def fake_docker(tmp_path):
     script.chmod(0o755)
     env = {k: v for k, v in os.environ.items() if not k.startswith("DEMO_")}
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["DEMO_HOST_STATE_DIR"] = str(tmp_path / "host")
+    env.pop("BACKEND_WORKERS", None)
     return log, env
 
 
@@ -107,8 +110,15 @@ def test_the_proxy_is_the_only_service_published_to_every_interface():
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
 def test_the_merged_configuration_publishes_only_the_proxy_and_loopback():
     env = {**os.environ, "DEMO_PUBLIC_URL": "https://localhost", "COMPOSE_FILE": "docker-compose.yml:docker-compose.demo.yml"}
-    done = subprocess.run(["docker", "compose", "--profile", "demo-metrics", "--profile", "demo-schedule", "config", "--format", "json"],
-                          cwd=CONTAINER, capture_output=True, text=True, env=env, timeout=60, check=False)
+    done = subprocess.run(
+        ["docker", "compose", "--profile", "demo-metrics", "--profile", "demo-schedule", "config", "--format", "json"],
+        cwd=CONTAINER,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+        check=False,
+    )
     if done.returncode != 0:
         pytest.skip(f"docker compose cannot render the configuration here: {done.stderr[-200:]}")
     services = json.loads(done.stdout)["services"]
@@ -157,8 +167,27 @@ def _adapt(host: str, mode: str, mcp: str = "off") -> str | None:
         return None
     env = {"DEMO_PUBLIC_HOST": host, "DEMO_TLS_MODE": mode, "DEMO_MCP_MODE": mcp, "DEMO_MCP_HOST": f"mcp.{host}"}
     flags = [part for key, value in env.items() for part in ("-e", f"{key}={value}")]
-    done = subprocess.run(["docker", "run", "--rm", "--pull", "never", "-v", f"{CADDY_DIR}:/etc/caddy:ro", *flags, "caddy:2.10-alpine",
-                           "caddy", "adapt", "--config", "/etc/caddy/Caddyfile"], capture_output=True, text=True, timeout=120, check=False)
+    done = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--pull",
+            "never",
+            "-v",
+            f"{CADDY_DIR}:/etc/caddy:ro",
+            *flags,
+            "caddy:2.10-alpine",
+            "caddy",
+            "adapt",
+            "--config",
+            "/etc/caddy/Caddyfile",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
     return done.stdout if done.returncode == 0 else None
 
 
@@ -212,7 +241,7 @@ def test_the_proxy_overwrites_forwarded_headers_and_logs_no_query():
 
 def test_localhost_uses_the_local_authority_and_the_mcp_server_gets_mcp_localhost(fake_docker):
     log, env = fake_docker
-    assert _demo(env).returncode == 0
+    assert _demo(env, "--no-pull").returncode == 0
     files, tls, url, mcp_mode, mcp_host, mcp_url, acme = _first_env(log)
     assert files == "docker-compose.yml:docker-compose.demo.yml"
     assert (tls, url, mcp_mode, mcp_host, mcp_url, acme) == ("internal", "https://localhost", "on", "mcp.localhost", "https://mcp.localhost", "")
@@ -287,3 +316,54 @@ def test_the_proxy_scrape_keeps_only_request_series():
     assert job["static_configs"][0]["targets"] == ["caddy:9180"]
     relabel = job["metric_relabel_configs"][0]
     assert relabel["action"] == "keep" and relabel["regex"].startswith("caddy_http_"), "Go runtime series never reach a bundle"
+
+
+# ---- defaults and their switches ---------------------------------------------------------------------------------
+
+
+def _calls(log: Path) -> list[str]:
+    return [line for line in log.read_text().splitlines() if line.startswith("compose ")]
+
+
+def test_the_defaults_pull_the_published_images_run_one_worker_and_leave_keycloak_out(fake_docker):
+    log, env = fake_docker
+    assert _demo(env).returncode == 0
+    calls = _calls(log)
+    assert any(call.startswith("compose pull") for call in calls), "the published images are pulled"
+    up = next(call for call in calls if " up " in call)
+    assert "--no-build" in up and "--profile sso" not in up
+    assert not any("--profile sso" in call for call in calls)
+    assert "WORKERS 1" in log.read_text().splitlines()
+
+
+def test_no_pull_builds_the_working_tree(fake_docker):
+    log, env = fake_docker
+    assert _demo(env, "--no-pull").returncode == 0
+    calls = _calls(log)
+    assert not any(call.startswith("compose pull") for call in calls)
+    assert any(" up " in call and "--build" in call and "--no-build" not in call for call in calls)
+
+
+def test_sso_starts_keycloak(fake_docker):
+    log, env = fake_docker
+    assert _demo(env, "--sso").returncode == 0
+    assert any("--profile sso" in call and " up " in call for call in _calls(log))
+
+
+def test_the_worker_count_can_be_overridden(fake_docker):
+    log, env = fake_docker
+    assert _demo(env, BACKEND_WORKERS="2").returncode == 0
+    assert "WORKERS 2" in log.read_text().splitlines()
+
+
+def test_the_in_container_scheduler_builds_the_working_tree_instead_of_pulling(fake_docker):
+    log, env = fake_docker
+    assert _demo(env, "--schedule").returncode == 0
+    calls = _calls(log)
+    assert not any(call.startswith("compose pull") for call in calls)
+    assert any("demo-schedule" in call and "--build" in call for call in calls)
+
+
+def test_keycloak_belongs_to_the_sso_profile_in_the_demonstration_overlay_only():
+    assert _load(OVERLAY)["services"]["keycloak"]["profiles"] == ["sso"]
+    assert "profiles" not in _load(BASE)["services"]["keycloak"], "developer and test runs keep it"
