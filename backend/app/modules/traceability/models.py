@@ -3,7 +3,8 @@ Module: modules.traceability.models
 
 Tables of the Traceability & Governance module: governance profiles (organisation-owned named policy sets), the projects
 a profile targets, the projects exempt from an Enforced profile, each project's opt-in or opt-out and the lifecycle policy
-rows a profile owns (the states it requires and whether it forbids skipping steps).
+rows a profile owns (the states it requires and whether it forbids skipping steps) and the approval policy rows a
+profile or a project owns (the roles that may also approve a record type).
 
 Design decisions:
 - A profile holds no policy itself. Each policy table carries a `profile_id` (a `modules.seams.ProfileContributor`),
@@ -16,6 +17,11 @@ Design decisions:
 - A choice records `opted_in` explicitly. Only an opt-out of a Default profile and an opt-in to an Opt-in profile have
   an effect; a row left from before the profile's mode changed is ignored when policy is resolved and is kept so
   that changing the mode back restores it.
+- An approval policy is one row per `(owner, record type)` with child rows for its roles. The owner is a profile or a
+  project (a check constraint admits exactly one), so the organisation tier and a project's own choice share a table and
+  a type's resolution reads one shape. A project's row with no roles is a choice: it stops the nearest ancestor's roles
+  applying. A role that is a custom role also carries a foreign key, so deleting the custom role removes it from every
+  policy with no code in the custom-role module.
 - Choices do not fall back to an ancestor project: reach down the project tree is the organisation's decision
   (`include_children` on a target), and a manager of a parent project must not decide for children they may not manage.
 """
@@ -24,7 +30,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -158,3 +164,51 @@ class GovernanceLifecycleSkipPolicy(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("governance_profiles.id", ondelete="CASCADE"), index=True
     )
     forbidden: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class GovernanceApprovalPolicy(UUIDPKMixin, TimestampMixin, Base):
+    """The roles that may also approve one record type, set by a profile or by a project.
+
+    Attributes:
+        profile_id: The owning profile, or `None` for a project's own policy.
+        project_id: The owning project, or `None` for a profile's policy.
+        artefact_type: The registered record type (one with an approval gate).
+    """
+
+    __tablename__ = "governance_approval_policies"
+    __table_args__ = (
+        CheckConstraint("(profile_id IS NULL) <> (project_id IS NULL)", name="ck_governance_approval_policies_one_owner"),
+        UniqueConstraint("profile_id", "artefact_type", name="uq_governance_approval_policies_profile"),
+        UniqueConstraint("project_id", "artefact_type", name="uq_governance_approval_policies_project"),
+    )
+
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_profiles.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    artefact_type: Mapped[str] = mapped_column(String(64))
+
+
+class GovernanceApprovalPolicyRole(UUIDPKMixin, TimestampMixin, Base):
+    """One role an approval policy names.
+
+    Attributes:
+        policy_id: The policy.
+        role_kind: `project`, `module` or `custom` (`modules.seams.ApproverRole.kind`).
+        role_key: The role within its kind: a project role value, `<module key>:<role key>`, or the custom role's id.
+        custom_role_id: Set for a `custom` role: a foreign key that removes the row with the custom role.
+    """
+
+    __tablename__ = "governance_approval_policy_roles"
+    __table_args__ = (UniqueConstraint("policy_id", "role_kind", "role_key", name="uq_governance_approval_policy_roles"),)
+
+    policy_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_approval_policies.id", ondelete="CASCADE"), index=True
+    )
+    role_kind: Mapped[str] = mapped_column(String(16))
+    role_key: Mapped[str] = mapped_column(String(200))
+    custom_role_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("custom_role_definitions.id", ondelete="CASCADE"), index=True, nullable=True
+    )

@@ -437,15 +437,20 @@ def test_the_self_approval_mark_is_replaced_by_each_approval(client, admin_token
     try:
         record_id = uuid.UUID(requirement)
         assert db.query(RecordSelfApproval).filter_by(record_id=record_id).count() == 1
-        kwargs = {
-            "artefact_type": "requirement", "record_id": record_id, "creator_id": uuid.UUID(me),
-            "organization_id": uuid.UUID(org["id"]), "project_id": uuid.UUID(project["id"]),
-        }
-        assert enforce_approval(db, user=db.get(User, uuid.UUID(them)), comment=None, **kwargs) is False
+        creator, other = db.get(User, uuid.UUID(me)), db.get(User, uuid.UUID(them))
+        assert creator is not None and other is not None
+
+        def enforce(user: User) -> bool:
+            return enforce_approval(
+                db, user=user, artefact_type="requirement", record_id=record_id, creator_id=uuid.UUID(me),
+                organization_id=uuid.UUID(org["id"]), project_id=uuid.UUID(project["id"]), comment=None,
+            )
+
+        assert enforce(other) is False
         db.commit()
         assert db.query(RecordSelfApproval).filter_by(record_id=record_id).count() == 0
-        assert enforce_approval(db, user=db.get(User, uuid.UUID(me)), comment=None, **kwargs) is True
-        assert enforce_approval(db, user=db.get(User, uuid.UUID(me)), comment=None, **kwargs) is True
+        assert enforce(creator) is True
+        assert enforce(creator) is True
         db.commit()
         assert db.query(RecordSelfApproval).filter_by(record_id=record_id).count() == 1
     finally:
@@ -543,6 +548,7 @@ def test_a_decision_follows_the_setting(client, admin_token):
     db = SessionLocal()
     try:
         decision = db.get(Decision, decision_id)
+        assert decision is not None
         propose_decision(db, decision, user_id)
         submit_decision_for_review(db, decision, user_id)
         db.commit()

@@ -2,8 +2,9 @@
 Module: modules.traceability.project_router
 
 Project-scoped API of governance profiles, mounted at `/api/v1/projects/{project_id}/modules/traceability`: which
-profiles reach the project and what each does for it, and the project's opt-out of a Default profile or opt-in to an
-Opt-in profile.
+profiles reach the project and what each does for it, the project's opt-out of a Default profile or opt-in to an
+Opt-in profile, and the project's approval policy (the roles that may also approve a record type, with where each comes
+from).
 
 Design decisions:
 - Reading is open to every member of a project the module is on for, because a person asking why a policy applies needs
@@ -11,6 +12,7 @@ Design decisions:
 - A project sees only the profiles that reach it; a profile that does not is not listed, so the organisation's other
   profiles are not disclosed.
 - An Enforced profile is listed with its outcome (`enforced` or `exempt`) and no choice: only the organisation lifts it.
+- The approval policy routes also need the `approval_policies` part to be in effect for the project (404 otherwise).
 
 Dependencies: `modules.traceability.profiles` (choices), `profile_resolution` (effects), `services.rbac` (gates).
 """
@@ -25,23 +27,37 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
-from app.modules.traceability import profile_resolution, profiles
-from app.modules.traceability._shared import MANAGE_PROJECT_GOVERNANCE, TRACEABILITY_MODULE_KEY
+from app.modules.seams import ApproverRole
+from app.modules.traceability import approval_policy, profile_resolution, profiles
+from app.modules.traceability._shared import APPROVAL_POLICIES, MANAGE_PROJECT_GOVERNANCE, TRACEABILITY_MODULE_KEY
 from app.modules.traceability.enums import ProfileMode, ProfileOutcome
 from app.modules.traceability.models import GovernanceProfile
-from app.modules.traceability.schemas import ChoiceSet, ProjectProfileOut, ProjectProfilesOut
+from app.modules.traceability.schemas import (
+    ApproverRoleOptionOut,
+    ApproverRoleOut,
+    ChoiceSet,
+    ProjectApprovalOut,
+    ProjectApprovalRolesSet,
+    ProjectApprovalTypeOut,
+    ProjectProfileOut,
+    ProjectProfilesOut,
+    RoleSourceOut,
+)
+from app.services import approval_policy as core_approval
 from app.services.lookups import project_or_404
 from app.services.rbac import (
     get_effective_permissions,
     permission_satisfied,
     require_permission,
     require_project_module_enabled,
+    require_project_subcomponent_enabled,
 )
 
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{TRACEABILITY_MODULE_KEY}", tags=["traceability"])
 
 _view = require_project_module_enabled(TRACEABILITY_MODULE_KEY)
 _manage = require_permission(MANAGE_PROJECT_GOVERNANCE, server_admin_bypass=False)
+_approval_view = require_project_subcomponent_enabled(TRACEABILITY_MODULE_KEY, APPROVAL_POLICIES)
 
 
 def _response(db: Session, project: Project, user: User) -> ProjectProfilesOut:
@@ -84,3 +100,55 @@ def set_project_profile_choice(
     profiles.set_choice(db, profile=profile, project=project, opted_in=payload.opted_in, actor_id=current_user.id)
     db.commit()
     return _response(db, project, current_user)
+
+
+def _approval_response(db: Session, project: Project, user: User) -> ProjectApprovalOut:
+    """The project's approval policy for each record type, with the roles a policy may name."""
+    held = get_effective_permissions(db, user.id, project_id=project.id)
+    options = core_approval.role_options(db, project.organization_id)
+    labels = {(o.role.kind, o.role.key): o.label for o in options}
+
+    def outs(roles: list[ApproverRole]) -> list[ApproverRoleOut]:
+        return [ApproverRoleOut(kind=r.kind, key=r.key, label=labels.get((r.kind, r.key), r.key)) for r in roles]
+
+    return ProjectApprovalOut(
+        can_manage=permission_satisfied(held, MANAGE_PROJECT_GOVERNANCE),
+        types=[
+            ProjectApprovalTypeOut(
+                artefact_type=p.gate.artefact_type, label=p.gate.label, module_key=p.gate.module_key,
+                own=None if p.own is None else outs(p.own), inherited_from=p.inherited_from,
+                effective=[RoleSourceOut(role=outs([e.role])[0], sources=list(e.sources)) for e in p.effective],
+            )
+            for p in approval_policy.project_policy(db, project)
+        ],
+        role_options=[
+            ApproverRoleOptionOut(kind=o.role.kind, key=o.role.key, label=o.label, scope=o.scope) for o in options
+        ],
+    )
+
+
+@router.get("/approval-policies", response_model=ProjectApprovalOut, dependencies=[Depends(_approval_view)])
+def get_project_approval_policies(
+    project_id: UUID, current_user: User = Depends(_view), db: Session = Depends(get_db),
+) -> ProjectApprovalOut:
+    """The roles that may also approve each record type in the project, with where each comes from."""
+    return _approval_response(db, project_or_404(db, project_id), current_user)
+
+
+@router.put(
+    "/approval-policies/{artefact_type}", response_model=ProjectApprovalOut, dependencies=[Depends(_approval_view)],
+)
+def set_project_approval_policy(
+    project_id: UUID, artefact_type: str, payload: ProjectApprovalRolesSet,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProjectApprovalOut:
+    """Sets the roles the project adds as approvers of one record type: a list (empty for none), or `null` to follow the
+    nearest ancestor project."""
+    project = project_or_404(db, project_id)
+    approval_policy.set_project_roles(
+        db, project=project, artefact_type=artefact_type,
+        roles=None if payload.roles is None else [ApproverRole(kind=r.kind, key=r.key) for r in payload.roles],
+        actor_id=current_user.id,
+    )
+    db.commit()
+    return _approval_response(db, project, current_user)

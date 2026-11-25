@@ -6,6 +6,7 @@ create, read, rename and delete a profile, set the projects it reaches, add and 
 profile, see which projects a profile binds, offers or has been opted out of, and set a profile's lifecycle policy.
 
 Design decisions:
+- A profile's lifecycle and approval policy routes also need their sub-component to be in effect for the organisation.
 - Every route needs the module to be on for the organisation (404 otherwise, as for any disabled module) and the
   `manage_org_governance` permission, with no server-administrator bypass: the policy belongs to the customer's process.
 - A profile of another organisation is a 404, never a 403, so its existence is not disclosed.
@@ -26,17 +27,23 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.organization import Organization
 from app.models.user import User
-from app.modules.traceability import lifecycle_policy, profile_resolution, profiles
-from app.modules.traceability._shared import LIFECYCLE_POLICIES, MANAGE_ORG_GOVERNANCE, TRACEABILITY_MODULE_KEY
+from app.modules.seams import ApproverRole
+from app.modules.traceability import approval_policy, lifecycle_policy, profile_resolution, profiles
+from app.modules.traceability._shared import APPROVAL_POLICIES, LIFECYCLE_POLICIES, MANAGE_ORG_GOVERNANCE, TRACEABILITY_MODULE_KEY
 from app.modules.traceability.enums import ProfileMode, ProfileOutcome, ProfileTargetKind
 from app.modules.traceability.models import GovernanceProfile
 from app.modules.traceability.profiles import TargetSpec
 from app.modules.traceability.schemas import (
+    ApprovalRolesSet,
+    ApproverRoleOptionOut,
+    ApproverRoleOut,
     ExemptionSet,
     LifecycleRequiredSet,
     LifecycleSkipSet,
     LifecycleStateOut,
     LifecycleTypePolicyOut,
+    ProfileApprovalOut,
+    ProfileApprovalTypeOut,
     ProfileContributionOut,
     ProfileCreate,
     ProfileDetailOut,
@@ -49,6 +56,7 @@ from app.modules.traceability.schemas import (
     ProfileTargetsSet,
     ProfileUpdate,
 )
+from app.services import approval_policy as core_approval
 from app.services.rbac import require_org_module_enabled, require_org_subcomponent_enabled, require_permission
 
 router = APIRouter(prefix=f"/api/v1/orgs/{{organization_id}}/modules/{TRACEABILITY_MODULE_KEY}", tags=["traceability"])
@@ -57,6 +65,7 @@ _module_on = require_org_module_enabled(TRACEABILITY_MODULE_KEY)
 _manage = require_permission(MANAGE_ORG_GOVERNANCE, server_admin_bypass=False)
 _guards = [Depends(_module_on)]
 _lifecycle_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, LIFECYCLE_POLICIES))]
+_approval_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, APPROVAL_POLICIES))]
 
 
 def _org_or_404(db: Session, organization_id: UUID) -> Organization:
@@ -271,3 +280,53 @@ def set_profile_lifecycle_required(
     )
     db.commit()
     return _lifecycle_out(db, profile)
+
+
+def approver_role_outs(roles: Sequence[ApproverRole], labels: dict[tuple[str, str], str]) -> list[ApproverRoleOut]:
+    """The roles with their display names (the key for a role that is no longer offered)."""
+    return [ApproverRoleOut(kind=r.kind, key=r.key, label=labels.get((r.kind, r.key), r.key)) for r in roles]
+
+
+def role_option_outs(db: Session, organization_id: UUID) -> tuple[list[ApproverRoleOptionOut], dict[tuple[str, str], str]]:
+    """The roles a policy of the organisation may name, and their labels by `(kind, key)`."""
+    options = core_approval.role_options(db, organization_id)
+    outs = [ApproverRoleOptionOut(kind=o.role.kind, key=o.role.key, label=o.label, scope=o.scope) for o in options]
+    return outs, {(o.role.kind, o.role.key): o.label for o in options}
+
+
+def _approval_out(db: Session, profile: GovernanceProfile) -> ProfileApprovalOut:
+    """The profile's approval policy as the API shape."""
+    options, labels = role_option_outs(db, profile.organization_id)
+    return ProfileApprovalOut(
+        types=[
+            ProfileApprovalTypeOut(
+                artefact_type=gate.artefact_type, label=gate.label, module_key=gate.module_key,
+                roles=approver_role_outs(roles, labels),
+            )
+            for gate, roles in approval_policy.profile_policy(db, profile)
+        ],
+        role_options=options,
+    )
+
+
+@router.get("/profiles/{profile_id}/approval", response_model=ProfileApprovalOut, dependencies=_approval_guards)
+def get_profile_approval(
+    organization_id: UUID, profile_id: UUID, current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileApprovalOut:
+    """The roles a profile adds as approvers of each record type, with the roles a policy may name."""
+    return _approval_out(db, _profile_or_404(db, organization_id, profile_id))
+
+
+@router.put("/profiles/{profile_id}/approval/{artefact_type}", response_model=ProfileApprovalOut, dependencies=_approval_guards)
+def set_profile_approval(
+    organization_id: UUID, profile_id: UUID, artefact_type: str, payload: ApprovalRolesSet,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileApprovalOut:
+    """Sets the roles a profile adds as approvers of one record type (an empty list removes them)."""
+    profile = _profile_or_404(db, organization_id, profile_id)
+    approval_policy.set_profile_roles(
+        db, profile=profile, artefact_type=artefact_type,
+        roles=[ApproverRole(kind=r.kind, key=r.key) for r in payload.roles], actor_id=current_user.id,
+    )
+    db.commit()
+    return _approval_out(db, profile)

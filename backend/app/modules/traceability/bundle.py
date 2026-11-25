@@ -11,8 +11,10 @@ Responsibilities:
 - Organisation import: create the profiles first (projects import afterwards and name them), then add their targets and
   exemptions when every project exists. A merge keeps the organisation's own profile of the same name and adds only the
   names it lacks.
-- Project export and import: the project's own choices, by profile name.
-- Template copy: the choices are project configuration, copied unchanged to a project made from a template.
+- Project export and import: the project's own choices, by profile name, and its own approval policy rows (roles by kind
+  and key, a custom role by name).
+- Template copy: the choices and approval policy rows are project configuration, copied unchanged to a project made from a
+  template.
 
 Design decisions:
 - An import never relaxes an Enforced profile: a project bundle carries no exemption (exemptions are organisation
@@ -40,7 +42,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules import registry
-from app.modules.traceability import profiles
+from app.modules.traceability import approval_policy, profiles
 from app.modules.traceability.enums import ProfileMode, ProfileTargetKind
 from app.modules.traceability.models import (
     GovernanceProfile,
@@ -54,6 +56,7 @@ PROFILES_KEY = "governance_profiles"
 TARGETS_KEY = "governance_profile_targets"
 EXEMPTIONS_KEY = "governance_profile_exemptions"
 CHOICES_KEY = "governance_profile_choices"
+APPROVAL_POLICIES_KEY = approval_policy.PROJECT_ROWS_KEY
 _IMPORTED_INFO_KEY = "governance_profiles_imported"
 
 
@@ -182,7 +185,10 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         .where(GovernanceProfileChoice.project_id == project.id)
         .order_by(GovernanceProfile.name)
     ).tuples().all()
-    return {CHOICES_KEY: [{"profile": name, "opted_in": opted_in} for name, opted_in in rows]}, {}
+    return {
+        CHOICES_KEY: [{"profile": name, "opted_in": opted_in} for name, opted_in in rows],
+        APPROVAL_POLICIES_KEY: approval_policy.export_project_rows(db, project),
+    }, {}
 
 
 def import_project_data(
@@ -191,7 +197,9 @@ def import_project_data(
 ) -> None:
     """`ModuleProjectBundleHooks.import_`: records the bundle's choices against the organisation's profiles of the same
     name. A name the organisation lacks, an Enforced profile and a choice the profile's mode does not take are reported
-    and skipped, so an import never relaxes what the organisation enforces."""
+    and skipped, so an import never relaxes what the organisation enforces. The project's own approval policy rows are
+    written as exported; they only add approvers, so no organisation policy is relaxed."""
+    approval_policy.import_project_rows(db, project, data.get(APPROVAL_POLICIES_KEY) or [], warnings.add)
     for entry in data.get(CHOICES_KEY) or []:
         name = str(entry.get("profile", ""))
         profile = profiles.find_profile_by_name(db, project.organization_id, name)

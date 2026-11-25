@@ -47,7 +47,7 @@ from app.schemas.requirement import (
     RequirementUpdate,
     RequirementVersionOut,
 )
-from app.services import approval_separation, component_stages, engagement, pubsub
+from app.services import approval_policy, approval_separation, component_stages, engagement, pubsub
 from app.services import requirement_aliases as alias_service
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
@@ -98,6 +98,21 @@ def _require_edit_role(db: Session, user: User, project_id: UUID) -> None:
 
 
 REQUIRES_APPROVAL_STATUSES = {RequirementStatus.DRAFT, RequirementStatus.REVIEWED}
+
+
+def require_requirement_approver(db: Session, user: User, project: Project) -> None:
+    """403 unless `user` may approve requirements of the project: a project manager, a holder of the requirement
+    `approve_baseline` permission, or a holder of a role the project's approval policy names
+    (`services.approval_policy`). Shared by every direct approval path of a requirement.
+
+    Raises:
+        HTTPException: 403 when the person may not approve.
+    """
+    approval_policy.require_approver(
+        db, user, artefact_type="requirement", organization_id=project.organization_id, project_id=project.id,
+        default=ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, user.id, project.id),
+        denied="Only a project manager can approve a requirement.",
+    )
 
 
 def _has_open_change_request(db: Session, requirement_id: UUID) -> bool:
@@ -381,8 +396,7 @@ def update_requirement(
         # approval of project requirements"), as `decide_change_request` enforces for change requests. Without
         # this check any of the CAN_EDIT_ROLES (including a plain Stakeholder) could set status="approved"
         # here, become the requirement's approval_authority, and self-approve and lock it.
-        if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
+        require_requirement_approver(db, current_user, project_or_404(db, project_id))
     # `COMPLETED` is not a `RequirementStatus` value (C-G-11: completion is the `Requirement.is_completed`
     # overlay marker), so enum validation rejects it before this handler runs.
     requirement = db.get(Requirement, requirement_id)

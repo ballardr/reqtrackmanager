@@ -2125,6 +2125,30 @@ def require_project_view_or_manage(
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this project.")
 
 
+def _manageable_project(
+    project_id: UUID, request: Request, current_user: User, db: Session,
+    also_admits: Callable[[Session, User, Project], bool] | None,
+) -> Project:
+    """The project when the caller may manage it, or `also_admits` answers true for them (see `require_project_manage`
+    and `require_project_manage_or`).
+
+    Raises:
+        HTTPException: 404 for an unknown project; 403 when neither holds.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    check_pat_scope(request, project.organization_id)
+    check_pat_project_scope(request, project.id)
+    _require_org_active(db, project.organization_id)
+    _require_org_2fa(db, project.organization_id, current_user)
+    if not can_manage_project_settings(db, current_user, project) and not (
+        also_admits is not None and also_admits(db, current_user, project)
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
+    return project
+
+
 def require_project_manage(
     project_id: UUID,
     request: Request,
@@ -2138,16 +2162,31 @@ def require_project_manage(
     C-U-03 clarification). Server admins do not bypass this (I-M-05).
     Returns the Project so callers avoid a second lookup.
     """
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    check_pat_scope(request, project.organization_id)
-    check_pat_project_scope(request, project.id)
-    _require_org_active(db, project.organization_id)
-    _require_org_2fa(db, project.organization_id, current_user)
-    if not can_manage_project_settings(db, current_user, project):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
-    return project
+    return _manageable_project(project_id, request, current_user, db, None)
+
+
+def require_project_manage_or(also_admits: Callable[[Session, User, Project], bool]):
+    """FastAPI dependency factory like `require_project_manage` that also admits a caller for whom `also_admits(db, user,
+    project)` is true, for a route that is open to those who manage the project and to a role-based group of people the
+    route's own rule names (the route then limits what the second group may do).
+
+    Args:
+        also_admits: Reads only; called after the project checks (organisation active, two-factor, token scope) have passed.
+
+    Returns:
+        A dependency returning the `Project`.
+    """
+
+    def _dependency(
+        project_id: UUID,
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> Project:
+        """See the enclosing `require_project_manage_or` factory's docstring."""
+        return _manageable_project(project_id, request, current_user, db, also_admits)
+
+    return _dependency
 
 
 def require_ai_approvals_enabled(db: Session, project: Project) -> None:
@@ -2687,6 +2726,49 @@ def user_satisfies_module_role(
     return False
 
 
+def user_holds_module_role(
+    db: Session, user_id: UUID, module_key: str, role_key: str, *, organization_id: UUID, project_id: UUID | None,
+) -> bool:
+    """Whether a person holds module role `(module_key, role_key)` itself: a direct grant or one through an organisation
+    group, at the scope the role declares, or a grant of a role named in the role's `overridden_by`.
+
+    Unlike `user_satisfies_module_role`, no administrator or manager composes into the answer (not a server
+    administrator, an organisation administrator or a project manager): the caller asks who was given the role, as a
+    policy that names a role as one more approver needs, and an unregistered role or an entity-scoped role is held by
+    nobody.
+
+    Args:
+        db: Active session (read only).
+        user_id: The person.
+        module_key: The module that contributes the role.
+        role_key: The role.
+        organization_id: The organisation.
+        project_id: The project, for a project-scoped role.
+
+    Returns:
+        `True` when the person holds the role at the role's scope.
+    """
+    definition = get_module(module_key)
+    role = None if definition is None else next((r for r in definition.roles if r.role_key == role_key), None)
+    if role is None or role.scope not in ("org", "project") or (role.scope == "project" and project_id is None):
+        return False
+    scope_project = project_id if role.scope == "project" else None
+    if _has_module_role_grant(
+        db, user_id, module_key, role_key, organization_id=organization_id, project_id=scope_project,
+    ):
+        return True
+    for override_scope, override_role_key in role.overridden_by:
+        if override_scope == "org" and _has_module_role_grant(
+            db, user_id, module_key, override_role_key, organization_id=organization_id
+        ):
+            return True
+        if override_scope == "project" and project_id is not None and _has_module_role_grant(
+            db, user_id, module_key, override_role_key, project_id=project_id
+        ):
+            return True
+    return False
+
+
 def require_module_role(module_key: str, role_key: str):
     """FastAPI dependency factory requiring a specific module-contributed
     role, granted via `UserModuleRole`.
@@ -3181,6 +3263,39 @@ def _custom_role_ids_for_entity_scope(
     return set(db.scalars(query).all())
 
 
+def _all_org_group_ids(db: Session, user_id: UUID, organization_id: UUID) -> set[UUID]:
+    """The organisation groups a person belongs to, directly or through a nested group."""
+    direct_group_ids, inherited_group_ids = get_user_org_group_ids(db, user_id, organization_id)
+    return direct_group_ids | inherited_group_ids
+
+
+def held_custom_role_ids(db: Session, user_id: UUID, *, organization_id: UUID, project_id: UUID | None) -> set[UUID]:
+    """The ids of the custom roles a person holds in the organisation, at organisation scope and, with `project_id`, at
+    that project's scope: a direct grant or one given to an organisation group the person belongs to (nested groups
+    included). Entity-scoped grants are not included.
+
+    Args:
+        db: Active session (read only).
+        user_id: The person.
+        organization_id: The organisation; a grant of another organisation is never returned.
+        project_id: The project whose project-scoped grants also count, or `None`.
+
+    Returns:
+        The held `CustomRoleDefinition` ids.
+    """
+    role_ids = _custom_role_ids_for_scope(
+        db, UserCustomRoleGrant, UserCustomRoleGrant.user_id == user_id,
+        organization_id=organization_id, project_id=project_id,
+    )
+    all_group_ids = _all_org_group_ids(db, user_id, organization_id)
+    if all_group_ids:
+        role_ids |= _custom_role_ids_for_scope(
+            db, GroupCustomRoleGrant, GroupCustomRoleGrant.org_group_id.in_(all_group_ids),
+            organization_id=organization_id, project_id=project_id,
+        )
+    return role_ids
+
+
 def _custom_role_permission_grants(
     db: Session,
     user_id: UUID,
@@ -3203,18 +3318,9 @@ def _custom_role_permission_grants(
     Principle 2: a custom role must never be resolvable outside the
     organisation that defined it).
     """
-    role_ids = _custom_role_ids_for_scope(
-        db, UserCustomRoleGrant, UserCustomRoleGrant.user_id == user_id,
-        organization_id=organization_id, project_id=project_id,
-    )
-    direct_group_ids, inherited_group_ids = get_user_org_group_ids(db, user_id, organization_id)
-    all_group_ids = direct_group_ids | inherited_group_ids
-    if all_group_ids:
-        role_ids |= _custom_role_ids_for_scope(
-            db, GroupCustomRoleGrant, GroupCustomRoleGrant.org_group_id.in_(all_group_ids),
-            organization_id=organization_id, project_id=project_id,
-        )
+    role_ids = held_custom_role_ids(db, user_id, organization_id=organization_id, project_id=project_id)
     if entity_id is not None and entity_scope is not None:
+        all_group_ids = _all_org_group_ids(db, user_id, organization_id)
         role_ids |= _custom_role_ids_for_entity_scope(
             db, UserCustomRoleGrant, UserCustomRoleGrant.user_id == user_id,
             organization_id=organization_id, entity_scope=entity_scope, entity_id=entity_id,

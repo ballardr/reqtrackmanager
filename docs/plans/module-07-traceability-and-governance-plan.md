@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b and 2 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2 and 3 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-4 / 19 phases complete. Phase 3 is next.
+5 / 19 phases complete. Phase 4 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -25,7 +25,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 1 | Module skeleton, sub-components, `requires`, engine registration points | shared | [x] Done 2026-11-26 |
 | 1b | Governance profiles: organisation policy sets that enforce, default or opt in per project | Governance | [x] Done 2026-11-26 |
 | 2 | Lifecycle policies (extend the shipped lifecycle engine) | Governance | [x] Done 2026-11-26 |
-| 3 | Approval policies (one check seam plus approver roles) | Governance | [ ] Not started |
+| 3 | Approval policies (one check seam plus approver roles) | Governance | [x] Done 2026-11-26 |
 | 4 | Review policies (engine extracted from Requirement and Risk reviews) | Governance | [ ] Not started |
 | 5 | Baseline policies and the check-provider extension point | Governance | [ ] Not started |
 | 6 | Governance Health (on demand and two snapshot modes) + Governance MCP tools | Governance | [ ] Not started |
@@ -406,6 +406,16 @@ separation, the MCP gate and `APPROVAL_ACTION_ROUTE_EXTRA` stay where they are a
 
 **Why:** without centralising this, each approval path keeps drifting independently. **Security:** the access-control policy
 is re-read first, and the F3 change and the identify, verify, remediate review go in `docs/decisions.md`.
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 3"; contract in `docs/modules.md` §4l17):**
+
+- Core `services/approval_policy.py`: `require_approver` / `may_approve` (the caller's default, then the type's `approve_baseline` atom, then the policy's roles), `holds_role` (project, module, custom; held, never composed, through new `rbac.user_holds_module_role` and `held_custom_role_ids`), the role vocabulary (`role_options`, `validate_roles`). `seams.ApproverRole` and `ApprovalPolicy` are the seam's answer.
+- Paths on the check, each keeping its default and message: Requirement `approve` and edit-to-Approved (`require_requirement_approver`), Change Request decision and preview, Decision, Strategy, Future State, Guiding Principle, Risk acceptance. F3 is closed: the atom is consulted for Requirements and Change Requests.
+- **Stage locking (Decided by: User):** policy roles for `requirement` may also enter or leave a locked phase of a stage or component track, and make no other move (`stage_workflows.may_lock_phases`, `rbac.require_project_manage_or`, `ProjectStageOut.can_lock`). This was the agent's recommendation to refuse; recorded for review.
+- Module: tables `governance_approval_policies` and `_roles` (unreleased migration `0210`, edited in place: a local database that already ran it needs the two tables), `approval_policy.py` (writes with audit, `GovernanceSeam.APPROVAL` resolver, `approval` contributor, project bundle rows), profile and project routes, `activity_metadata_types`, `template_configuration_keys` extended.
+- **Deviations from this plan's wording (Decided by: Agent):** no minimum-approvals feature (as Q22); a project's own row (not only a profile's) carries roles, with the nested fallback per type; pain points and open questions have no approval gate and are unchanged.
+- Not built here, by design: the screens, their stories and Playwright specs (Phase 8), MCP tools (Phase 6), the docs website page (Phase 9), moving each type's own checks into one registry (Phase 7).
+- Tests: `modules/traceability/tests/test_governance_approval_policy.py` (routes, validation, every path, separation, held roles, profile tiers, nested fallback, stage and track locking, bundles), `tests/test_approval_policy_seam.py` (the seam with no Governance module); the existing approval, stage, baseline, decision, risk and strategy suites pass unchanged.
 
 ## Phase 4 — Review policies (`review_policies`)
 

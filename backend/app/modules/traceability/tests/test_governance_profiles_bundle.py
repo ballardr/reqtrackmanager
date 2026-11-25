@@ -224,9 +224,9 @@ def test_a_project_import_never_relaxes_an_enforced_profile(client, admin_token)
         db.close()
 
 
-def test_choices_are_template_configuration():
+def test_choices_and_approval_rows_are_template_configuration():
     definition = get_module("traceability")
     assert definition is not None
     hooks = definition.project_bundle_hooks
-    assert hooks is not None and hooks.template_configuration_keys == {bundle.CHOICES_KEY}
+    assert hooks is not None and hooks.template_configuration_keys == {bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY}
     assert not hooks.template_record_keys and not hooks.template_excluded

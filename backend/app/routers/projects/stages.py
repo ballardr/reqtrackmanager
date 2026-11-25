@@ -35,16 +35,26 @@ from app.schemas.project import (
     StageReviewResponseOut,
 )
 from app.schemas.stage_workflow import StageTransitionRequest, StageUsageOut
+from app.services import approval_policy
 from app.services.audit import log_event
 from app.services.notifications import notify
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
-from app.services.rbac import get_effective_project_roles, get_project_member_user_ids, require_project_manage, require_project_view
+from app.services.rbac import (
+    can_manage_project_settings,
+    get_effective_project_roles,
+    get_project_member_user_ids,
+    require_project_manage,
+    require_project_manage_or,
+    require_project_view,
+)
 from app.services.stage_usage import stages_in_use
 from app.services.stage_workflows import (
     WorkflowConflict,
     default_workflow,
     effective_workflows,
+    may_lock_phases,
     move_stage,
+    move_touches_locked_phase,
     new_stage,
     phase_index,
     phase_kind_of,
@@ -54,14 +64,26 @@ from app.services.stage_workflows import (
 router = APIRouter(tags=["projects-stages"])
 
 
+def _holds_lock_policy_role(db: Session, user: User, project: Project) -> bool:
+    """Whether an approval policy of the project names a role `user` holds for requirements (it admits them to the
+    locked-phase moves of a stage)."""
+    return approval_policy.policy_allows(
+        db, user, artefact_type="requirement", organization_id=project.organization_id, project_id=project.id,
+    )
+
+
+_manage_or_lock = require_project_manage_or(_holds_lock_policy_role)
+
+
 def _stages_out(db: Session, stages: list[ProjectStage], viewer: User | None = None) -> list[ProjectStageOut]:
     """Stage responses with each stage's workflow and phase names, read in two queries.
 
     With a `viewer`, each carries whether that person may enter or leave a locked phase (`can_lock`).
     """
+    project = db.get(Project, stages[0].project_id) if viewer is not None and stages else None
     can_lock = bool(
-        viewer is not None and stages
-        and ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, viewer.id, stages[0].project_id)
+        viewer is not None and project is not None
+        and may_lock_phases(db, viewer, project, get_effective_project_roles(db, viewer.id, project.id))
     )
     phases = phase_index(db, {s.phase_id for s in stages})
     workflow_ids = {s.workflow_id for s in stages}
@@ -242,7 +264,7 @@ def transition_stage(
     project_id: UUID,
     stage_id: UUID,
     payload: StageTransitionRequest,
-    project: Project = Depends(require_project_manage),
+    project: Project = Depends(_manage_or_lock),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -256,12 +278,16 @@ def transition_stage(
     (C-P-03). Entering or leaving a locked phase requires the project manager
     role (C-U-03 clarification), checked before the state so an unauthorised
     caller always gets a uniform 403 rather than a 409 that would leak the
-    stage's current phase.
+    stage's current phase. A holder of a role the project's approval policy names for requirements may make only the
+    moves into or out of a locked phase (`stage_workflows.may_lock_phases`); every other move needs the right to manage
+    the project.
     """
     stage = _get_stage(db, project, stage_id)
     phase = db.get(StageWorkflowPhase, payload.phase_id)
     if phase is None or phase.workflow_id != stage.workflow_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "phase_id must be a phase of the stage's workflow.")
+    if not can_manage_project_settings(db, current_user, project) and not move_touches_locked_phase(db, stage.phase_id, phase):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
     try:
         move_stage(
             db, project, stage, phase, current_user,

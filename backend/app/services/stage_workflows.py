@@ -14,6 +14,8 @@ Design decisions:
 - Behaviour is read from `StagePhaseKind`, never a phase name (**Decided by: User**).
 - Moves are free in either direction; entering or leaving a locked phase needs the project manager role, since leaving
   would unlock requirements outside the change-request process (**Decided by: Agent**; the entering rule is the user's).
+  A role the project's approval policy names for requirements also admits its holders to the locked phases
+  (**Decided by: User**).
 - Nested projects use the `resolve_effective_action_types` shape plus the additive organisation tier (**Decided by: Agent**).
 - A workflow in use cannot be deleted; a phase in use can be renamed but not removed or given another kind.
 """
@@ -21,7 +23,7 @@ Design decisions:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -32,7 +34,7 @@ from app.models.enums import ProjectRole, StagePhaseKind
 from app.models.project import Project, ProjectStage
 from app.models.stage_workflow import MAX_WORKFLOW_NAME_LENGTH, ComponentStageState, StageWorkflow, StageWorkflowPhase
 from app.models.user import User
-from app.services import definition_suppression
+from app.services import approval_policy, definition_suppression
 from app.services.audit import log_event
 from app.services.project_hierarchy import get_project_chain_ids
 
@@ -368,6 +370,33 @@ def first_phase_of_kind(phases: Sequence[StageWorkflowPhase], kind: StagePhaseKi
 PhaseHolder = ProjectStage | ComponentStageState
 
 
+def may_lock_phases(
+    db: Session, user: User, project: Project, roles: Collection[ProjectRole],
+) -> bool:
+    """Whether `user` may enter or leave a locked phase, which approves the stage's drafts: a project manager, or a holder
+    of a role the project's approval policy names for requirements (`services.approval_policy.policy_allows`). The
+    requirement `approve_baseline` permission atom alone does not admit them: only the policy extends this right.
+
+    Args:
+        db: Active session (read only).
+        user: The person moving the stage or track.
+        project: The project.
+        roles: The person's effective project roles.
+    """
+    if ProjectRole.PROJECT_MANAGER in roles:
+        return True
+    return approval_policy.policy_allows(
+        db, user, artefact_type="requirement", organization_id=project.organization_id, project_id=project.id,
+    )
+
+
+def move_touches_locked_phase(db: Session, current_phase_id: uuid.UUID, target: StageWorkflowPhase) -> bool:
+    """Whether a move from the phase `current_phase_id` to `target` enters or leaves a locked phase."""
+    if target.kind == StagePhaseKind.LOCKED:
+        return True
+    return db.scalar(select(StageWorkflowPhase.kind).where(StageWorkflowPhase.id == current_phase_id)) == StagePhaseKind.LOCKED
+
+
 def move_stage(
     db: Session, project: Project, stage: ProjectStage, phase: StageWorkflowPhase, actor: User, *,
     actor_roles: frozenset[ProjectRole] | set[ProjectRole], cascade_to_requirements: bool = False,
@@ -385,7 +414,7 @@ def move_stage(
         WorkflowConflict: `phase` is the current phase.
     """
     apply_phase_move(
-        db, project, stage, stage, phase, actor, can_lock=ProjectRole.PROJECT_MANAGER in actor_roles,
+        db, project, stage, stage, phase, actor, can_lock=may_lock_phases(db, actor, project, actor_roles),
         cascade_to_requirements=cascade_to_requirements, reason=reason,
     )
 

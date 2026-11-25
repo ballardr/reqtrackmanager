@@ -35,7 +35,7 @@ from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.routers.change_requests.core import _latest_version, _to_out
 from app.schemas.change_request import ChangeRequestDecision, ChangeRequestOut, ProposedLinkPreviewOut
-from app.services import approval_separation, notifications, pubsub
+from app.services import approval_policy, approval_separation, notifications, pubsub
 from app.services.actions import generate_unique_code as generate_action_unique_code
 from app.services.audit import log_event
 from app.services.change_request_links import build_preview, decline_all, resolve_links
@@ -165,10 +165,16 @@ def withdraw_change_request(
     return _to_out(db, cr, _latest_version(db, cr), current_user.id)
 
 
-def _require_project_manager(db: Session, user: User, project_id: UUID) -> None:
-    """403 unless `user` is a project manager of the project (the role that decides change requests)."""
-    if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, user.id, project_id):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can decide change requests.")
+def _require_decider(db: Session, user: User, project_id: UUID) -> None:
+    """403 unless `user` may decide change requests of the project: a project manager, a holder of the change request
+    `approve_baseline` permission or a holder of a role the project's approval policy names
+    (`services.approval_policy`)."""
+    project = project_or_404(db, project_id)
+    approval_policy.require_approver(
+        db, user, artefact_type="change_request", organization_id=project.organization_id, project_id=project_id,
+        default=ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, user.id, project_id),
+        denied="Only a project manager can decide change requests.",
+    )
 
 
 def _stale_selection(preview: ProposedLinkPreviewOut) -> HTTPException:
@@ -194,9 +200,9 @@ def preview_change_request_links(
     of a decided request are shown with the outcome they ended in.
 
     Raises:
-        HTTPException: 403 unless the caller is a project manager; 404 unknown change request.
+        HTTPException: 403 unless the caller may decide change requests; 404 unknown change request.
     """
-    _require_project_manager(db, current_user, project_id)
+    _require_decider(db, current_user, project_id)
     cr = db.get(ChangeRequest, cr_id)
     if cr is None or cr.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
@@ -210,7 +216,8 @@ def decide_change_request(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Approves or rejects a submitted change request (C-U-03: project manager only).
+    """Approves or rejects a submitted change request (C-U-03: a project manager, or a holder of the change request
+    `approve_baseline` permission or of a role the project's approval policy names).
 
     Approval applies the proposed change immediately: for a modification a new requirement version is
     created via the change-request path; for a new requirement it is created directly in approved state.
@@ -219,7 +226,7 @@ def decide_change_request(
     organisation to have enabled AI approval (see `requirements.approve_requirement` and docs/decisions.md's
     "AI approval via MCP" entry); a UI/API call is unaffected.
     """
-    _require_project_manager(db, current_user, project_id)
+    _require_decider(db, current_user, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project_or_404(db, project_id))
 

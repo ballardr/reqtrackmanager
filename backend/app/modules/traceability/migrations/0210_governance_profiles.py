@@ -94,9 +94,53 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS ix_governance_lifecycle_skip_policies_profile_id "
         "ON governance_lifecycle_skip_policies (profile_id)"
     )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_approval_policies (
+            id UUID PRIMARY KEY,
+            profile_id UUID REFERENCES governance_profiles(id) ON DELETE CASCADE,
+            project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+            artefact_type VARCHAR(64) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT ck_governance_approval_policies_one_owner CHECK ((profile_id IS NULL) <> (project_id IS NULL)),
+            CONSTRAINT uq_governance_approval_policies_profile UNIQUE (profile_id, artefact_type),
+            CONSTRAINT uq_governance_approval_policies_project UNIQUE (project_id, artefact_type)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_approval_policies_profile_id ON governance_approval_policies (profile_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_approval_policies_project_id ON governance_approval_policies (project_id)"
+    )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_approval_policy_roles (
+            id UUID PRIMARY KEY,
+            policy_id UUID NOT NULL REFERENCES governance_approval_policies(id) ON DELETE CASCADE,
+            role_kind VARCHAR(16) NOT NULL,
+            role_key VARCHAR(200) NOT NULL,
+            custom_role_id UUID REFERENCES custom_role_definitions(id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_governance_approval_policy_roles UNIQUE (policy_id, role_kind, role_key)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_approval_policy_roles_policy_id ON governance_approval_policy_roles (policy_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_approval_policy_roles_custom_role_id "
+        "ON governance_approval_policy_roles (custom_role_id)"
+    )
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS governance_approval_policy_roles")
+    op.execute("DROP TABLE IF EXISTS governance_approval_policies")
     op.execute("DROP TABLE IF EXISTS governance_lifecycle_skip_policies")
     op.execute("DROP TABLE IF EXISTS governance_lifecycle_requirements")
     for table in ("governance_profile_choices", "governance_profile_exemptions", "governance_profile_targets"):

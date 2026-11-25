@@ -54,6 +54,7 @@ from app.modules.risk_management.service import (
 )
 from app.modules.risk_management.treatment import effective_treatment_counts
 from app.schemas.principal import PrincipalOut
+from app.services import approval_policy
 from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.client_date import effective_today
@@ -198,22 +199,21 @@ def require_risk_manage(db: Session, current_user: User, project: Project) -> No
 
 
 def require_risk_accept(db: Session, current_user: User, project: Project) -> None:
-    """Gate for moving a risk to `ACCEPTED`: the project `risk_acceptor` role
-    (composing with server admin, org admin and project manager) or an FGAC
-    `(risk, approve_baseline)` grant. `risk_manager` alone does not suffice:
-    accepting residual risk is a separate sign-off from managing the risk.
+    """Gate for moving a risk to `ACCEPTED`, made through `services.approval_policy`: the project `risk_acceptor` role
+    (composing with server admin, org admin and project manager), an FGAC `(risk, approve_baseline)` grant or a role the
+    project's approval policy names. `risk_manager` alone does not suffice: accepting residual risk is a separate
+    sign-off from managing the risk.
 
     Raises:
-        HTTPException: 403 if neither holds.
+        HTTPException: 403 if none holds.
     """
-    if user_satisfies_module_role(
-        db, current_user, RISK_MODULE_KEY, "risk_acceptor", organization_id=project.organization_id, project_id=project.id,
-    ):
-        return
-    held = get_effective_permissions(db, current_user.id, organization_id=project.organization_id, project_id=project.id)
-    if permission_satisfied(held, RISK_ACCEPT_PERMISSION):
-        return
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Risk Acceptor (or admin/manager) may accept a risk.")
+    approval_policy.require_approver(
+        db, current_user, artefact_type=RISK_ARTEFACT_TYPE, organization_id=project.organization_id, project_id=project.id,
+        default=user_satisfies_module_role(
+            db, current_user, RISK_MODULE_KEY, "risk_acceptor", organization_id=project.organization_id, project_id=project.id,
+        ),
+        denied="Only a Risk Acceptor (or admin/manager) may accept a risk.",
+    )
 
 
 def require_risk_type_admin(db: Session, current_user: User, *, organization_id: uuid.UUID) -> None:

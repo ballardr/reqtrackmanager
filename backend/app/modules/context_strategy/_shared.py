@@ -74,6 +74,7 @@ from app.modules.context_strategy.service import (
     is_pain_point_locked,
 )
 from app.schemas.principal import PrincipalOut
+from app.services import approval_policy
 from app.services.current_versions import current_versions
 from app.services.permissions import encode_permission
 from app.services.principals import principal_labels, principal_ref
@@ -84,22 +85,23 @@ MODULE_KEY = "context_strategy"
 # Resolved display data for owners, keyed by `(owner_type, owner_id)` (`services.principals.principal_labels`).
 OwnerLabels = dict[tuple[str, uuid.UUID], PrincipalOut]
 
-# The unscoped `(strategy, approve_baseline)` permission atom checked by `require_approve_permission`: the only scope
-# dimension (organisation or project) is structural, so there is no per-instance sub-type to resolve.
+# The unscoped `(strategy, approve_baseline)` permission atom a Strategy approver role carries
+# (`module.py`) and `services.approval_policy` consults: the only scope dimension (organisation or project) is
+# structural, so there is no per-instance sub-type to resolve.
 STRATEGY_APPROVE_PERMISSION = encode_permission(STRATEGY_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 # Future State's unscoped `(future_state, approve_baseline)` atom, for the same reason.
 FUTURE_STATE_APPROVE_PERMISSION = encode_permission(FUTURE_STATE_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
-# Pain Point's unscoped `(pain_point, approve_baseline)` atom, for the decide-tier actions
-# (`require_pain_point_decide_permission`); it uses the `APPROVE_BASELINE` tier name as this artefact's "finalise the
-# outcome" level.
-PAIN_POINT_DECIDE_PERMISSION = encode_permission(PAIN_POINT_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
-
 # Guiding Principle's unscoped `(guiding_principle, approve_baseline)` atom, for the same reason as Strategy's.
 GUIDING_PRINCIPLE_APPROVE_PERMISSION = encode_permission(
     GUIDING_PRINCIPLE_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value
 )
+
+# Pain Point's unscoped `(pain_point, approve_baseline)` atom, for the decide-tier actions
+# (`require_pain_point_decide_permission`); it uses the `APPROVE_BASELINE` tier name as this artefact's "finalise the
+# outcome" level.
+PAIN_POINT_DECIDE_PERMISSION = encode_permission(PAIN_POINT_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 # Open Question's unscoped `(open_question, approve_baseline)` atom, for the `resolve` transition only
 # (`require_open_question_resolve_permission`), standing in for §9.4's "Decision Maker" tier.
@@ -214,27 +216,18 @@ def require_approve_permission(
     organization_id: uuid.UUID,
     project_id: uuid.UUID | None,
 ) -> None:
-    """Gate for approve/activate/supersede/retire — satisfied by (in
-    order): server admin; the scope's own `..._approver` module role
-    (which itself composes with `OrgRole.ORG_ADMIN`/`ProjectRole.
-    PROJECT_MANAGER`); or a Fine-Grained Access Control custom-role grant
-    of the unscoped `(strategy, approve_baseline)` permission atom. The
-    permission-atom check additionally covers a caller with a narrower
-    custom-role grant but no flat module role — mirroring Decision
-    Management's own approve gate, without that module's later sub-type
-    scoping (Strategy has no sub-type dimension for this atom to narrow
-    against)."""
-    if current_user.is_server_admin:
-        return
-    if user_satisfies_module_role(
-        db, current_user, MODULE_KEY, _APPROVER_ROLE_KEY[scope],
-        organization_id=organization_id, project_id=project_id,
-    ):
-        return
-    held = get_effective_permissions(db, current_user.id, organization_id=organization_id, project_id=project_id)
-    if permission_satisfied(held, STRATEGY_APPROVE_PERMISSION):
-        return
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+    """Gate for approve/activate/supersede/retire, made through `services.approval_policy`: satisfied by a server
+    administrator, the scope's own `..._approver` module role (which itself composes with `OrgRole.ORG_ADMIN`/
+    `ProjectRole.PROJECT_MANAGER`), a custom-role grant of the unscoped `(strategy, approve_baseline)` permission atom,
+    or (in a project) a role the project's approval policy names. Strategy has no sub-type dimension for the atom to
+    narrow against."""
+    approval_policy.require_approver(
+        db, current_user, artefact_type=STRATEGY_ARTEFACT_TYPE, organization_id=organization_id, project_id=project_id,
+        default=current_user.is_server_admin or user_satisfies_module_role(
+            db, current_user, MODULE_KEY, _APPROVER_ROLE_KEY[scope], organization_id=organization_id, project_id=project_id,
+        ),
+        denied="Insufficient permissions.",
+    )
 
 
 def apply_value_error_as_conflict(fn, *args, **kwargs):
@@ -331,17 +324,13 @@ def require_future_state_approve_permission(
 ) -> None:
     """Gate for approve/activate/supersede/retire on a Future State — exact
     mirror of `require_approve_permission`."""
-    if current_user.is_server_admin:
-        return
-    if user_satisfies_module_role(
-        db, current_user, MODULE_KEY, _FS_APPROVER_ROLE_KEY[scope],
-        organization_id=organization_id, project_id=project_id,
-    ):
-        return
-    held = get_effective_permissions(db, current_user.id, organization_id=organization_id, project_id=project_id)
-    if permission_satisfied(held, FUTURE_STATE_APPROVE_PERMISSION):
-        return
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+    approval_policy.require_approver(
+        db, current_user, artefact_type=FUTURE_STATE_ARTEFACT_TYPE, organization_id=organization_id, project_id=project_id,
+        default=current_user.is_server_admin or user_satisfies_module_role(
+            db, current_user, MODULE_KEY, _FS_APPROVER_ROLE_KEY[scope], organization_id=organization_id, project_id=project_id,
+        ),
+        denied="Insufficient permissions.",
+    )
 
 
 # --- Pain Points ---------------------------------------------------
@@ -593,17 +582,13 @@ def require_guiding_principle_approve_permission(
     """Gate for approve/activate/supersede/retire on a Guiding Principle —
     exact mirror of `require_approve_permission`/`require_future_state_
     approve_permission`."""
-    if current_user.is_server_admin:
-        return
-    if user_satisfies_module_role(
-        db, current_user, MODULE_KEY, _GP_APPROVER_ROLE_KEY[scope],
-        organization_id=organization_id, project_id=project_id,
-    ):
-        return
-    held = get_effective_permissions(db, current_user.id, organization_id=organization_id, project_id=project_id)
-    if permission_satisfied(held, GUIDING_PRINCIPLE_APPROVE_PERMISSION):
-        return
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+    approval_policy.require_approver(
+        db, current_user, artefact_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, organization_id=organization_id, project_id=project_id,
+        default=current_user.is_server_admin or user_satisfies_module_role(
+            db, current_user, MODULE_KEY, _GP_APPROVER_ROLE_KEY[scope], organization_id=organization_id, project_id=project_id,
+        ),
+        denied="Insufficient permissions.",
+    )
 
 
 # --- Open Questions -------------------------------------------------

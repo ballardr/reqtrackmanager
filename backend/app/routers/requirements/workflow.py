@@ -22,7 +22,7 @@ from app.models.enums import PrincipalType, ProjectRole, RequirementReviewOutcom
 from app.models.project import Project, ProjectComponent
 from app.models.requirement import Requirement, RequirementReview
 from app.models.user import User
-from app.routers.requirements.core import REQUIRES_APPROVAL_STATUSES, _to_out
+from app.routers.requirements.core import REQUIRES_APPROVAL_STATUSES, _to_out, require_requirement_approver
 from app.schemas.requirement import (
     RequirementApproveRequest,
     RequirementDueForReviewOut,
@@ -158,9 +158,10 @@ def approve_requirement(
     (`update_requirement`). This single-purpose action matches `complete`/`uncomplete` below, so the frontend
     need not resend the whole edit payload to change status.
 
-    Gate: project manager only (C-U-03's clarification: Project Managers provide approvals for change requests
-    and for project requirements from scoping review), the check `decide_change_request` and
-    `update_requirement`'s status=approved branch use. Through the MCP server (`channel == "mcp"`) the project
+    Gate: project manager (C-U-03's clarification: Project Managers provide approvals for change requests
+    and for project requirements from scoping review), a holder of the requirement `approve_baseline` permission or
+    a role the project's approval policy names (`require_requirement_approver`, the check `decide_change_request`'s
+    twin and `update_requirement`'s status=approved branch use). Through the MCP server (`channel == "mcp"`) the project
     and its organisation must also have enabled AI approval (docs/decisions.md's "AI approval via MCP" entry);
     a UI/API call is unaffected.
 
@@ -168,20 +169,20 @@ def approve_requirement(
     `detail.comment` and appended to the version's change note, so it shows in the Activity tab and the
     Versions table.
     """
-    if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
+    project = project_or_404(db, project_id)
+    require_requirement_approver(db, current_user, project)
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     if channel == "mcp":
-        require_ai_approvals_enabled(db, project_or_404(db, project_id))
+        require_ai_approvals_enabled(db, project)
     current_version = get_current_version_for_update(db, requirement.id)
     if current_version.status not in REQUIRES_APPROVAL_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")
     comment = ((payload.comment if payload else None) or "").strip()
     approval_separation.enforce_approval(
         db, user=current_user, artefact_type="requirement", record_id=requirement.id, creator_id=requirement.creator_id,
-        organization_id=project_or_404(db, project_id).organization_id, project_id=project_id, comment=comment,
+        organization_id=project.organization_id, project_id=project_id, comment=comment,
     )
     note = "Approved via MCP" if channel == "mcp" else "Approved directly"
     new_version = apply_new_version(

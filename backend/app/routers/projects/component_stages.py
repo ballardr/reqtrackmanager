@@ -7,7 +7,8 @@ the phases of its workflow (`services.component_stages`).
 Design decisions:
 - Reading is for any project member; changing a track's workflow, owner or applicability, and the switch,
   is for those who manage the project; moving a track is also open to the track's owner (a user or a
-  member of the owner group), who may reach locked phases too (`component_stages.may_move_locked`).
+  member of the owner group), who may reach locked phases too (`component_stages.may_move_locked`); a holder of a role the
+  project's approval policy names for requirements may make only the moves into or out of a locked phase.
 - The same transition request shape as a stage (`StageTransitionRequest`), so the screen reuses it.
 """
 
@@ -32,6 +33,7 @@ from app.schemas.stage_workflow import (
     ComponentTrackUpdate,
     StageTransitionRequest,
 )
+from app.services import approval_policy
 from app.services import component_stages as cs
 from app.services.principals import is_principal_member, principal_labels, principal_ref
 from app.services.rbac import (
@@ -40,7 +42,7 @@ from app.services.rbac import (
     require_project_manage,
     require_project_view,
 )
-from app.services.stage_workflows import WorkflowConflict, phase_index
+from app.services.stage_workflows import WorkflowConflict, move_touches_locked_phase, phase_index, start_phase
 
 router = APIRouter(tags=["projects-component-stages"])
 
@@ -169,11 +171,19 @@ def transition_component_track(
     component = _component(db, project, component_id)
     stage = _stage(db, project, stage_id)
     state = cs.get_state(db, component.id, stage.id)
-    if not (can_manage_project_settings(db, current_user, project) or is_principal_member(db, cs.owner_of(state), current_user.id)):
+    may_manage = can_manage_project_settings(db, current_user, project)
+    is_owner = is_principal_member(db, cs.owner_of(state), current_user.id)
+    holds_lock_policy = not (may_manage or is_owner) and approval_policy.policy_allows(
+        db, current_user, artefact_type="requirement", organization_id=project.organization_id, project_id=project.id,
+    )
+    if not (may_manage or is_owner or holds_lock_policy):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager or the track's owner can move it.")
     phase = db.get(StageWorkflowPhase, body.phase_id)
     if phase is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "phase_id must be a phase of the track's workflow.")
+    current_phase_id = state.phase_id if state is not None else start_phase(db, stage.workflow_id).id
+    if holds_lock_policy and not move_touches_locked_phase(db, current_phase_id, phase):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager or the track's owner can move it.")
     try:
         cs.move_track(
             db, project, component, stage, phase, current_user,

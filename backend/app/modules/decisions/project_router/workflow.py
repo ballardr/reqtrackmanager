@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_request_channel
-from app.models.enums import PermissionLevel
 from app.models.project import Project
 from app.models.user import User
 from app.modules.decisions.models import Decision, DecisionTypeDefinition
@@ -33,11 +32,10 @@ from app.modules.decisions.service import (
     reject_decision,
     submit_decision_for_review,
 )
-from app.services import approval_separation
+from app.services import approval_policy, approval_separation
 from app.services.lookups import project_or_404
-from app.services.permissions import encode_permission
 from app.services.principals import is_principal_member, principal_ref
-from app.services.rbac import get_effective_permissions, permission_satisfied, require_ai_approvals_enabled
+from app.services.rbac import require_ai_approvals_enabled
 
 router = APIRouter(tags=["decisions-workflow"])
 
@@ -45,20 +43,18 @@ router = APIRouter(tags=["decisions-workflow"])
 def _require_approve_permission_for_decision(
     db: Session, current_user: User, project_id: UUID, decision: Decision,
 ) -> None:
-    """Sub-type-scoped `(decision, approve_baseline, subtype=<this
-    decision's own Decision Type name>)` check (Fine-Grained Access
-    Control) — see this module's own docstring above for why this
-    is a direct `get_effective_permissions`/`permission_satisfied` call
-    rather than a `require_permission` `Depends`. Server admin bypasses,
-    consistent with every existing `require_*` check in `rbac.py`."""
-    if current_user.is_server_admin:
-        return
+    """Sub-type-scoped `(decision, approve_baseline, subtype=<this decision's own Decision Type name>)` check (Fine-Grained
+    Access Control), made through `services.approval_policy` so a role the project's approval policy names also
+    satisfies it. The sub-type is known only from the loaded row, so this is a direct call rather than a
+    `require_permission` `Depends`. A server administrator is admitted, consistent with the other `require_*` checks in
+    `rbac.py`."""
     decision_type = db.get(DecisionTypeDefinition, decision.decision_type_id)
-    subtype = decision_type.name if decision_type is not None else None
-    held = get_effective_permissions(db, current_user.id, project_id=project_id)
-    required = encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value, subtype)
-    if not permission_satisfied(held, required):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+    project = project_or_404(db, project_id)
+    approval_policy.require_approver(
+        db, current_user, artefact_type=DECISION_ARTEFACT_TYPE, organization_id=project.organization_id,
+        project_id=project_id, subtype=decision_type.name if decision_type is not None else None,
+        default=current_user.is_server_admin, denied="Insufficient permissions.",
+    )
 
 
 def _require_owner_of_decision_or_role(db: Session, current_user: User, project: Project, decision: Decision) -> None:

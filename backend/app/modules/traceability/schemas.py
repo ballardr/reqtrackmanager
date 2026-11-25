@@ -2,12 +2,13 @@
 Module: modules.traceability.schemas
 
 Request and response models of the governance profile API (`router` for the organisation, `project_router` for a
-project), including a profile's lifecycle policy.
+project), including a profile's lifecycle policy and the approval policy of a profile or a project.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -241,3 +242,122 @@ class LifecycleSkipSet(BaseModel):
     """Whether a profile forbids skipping steps."""
 
     forbidden: bool
+
+
+class ApproverRoleIn(BaseModel):
+    """A role an approval policy names.
+
+    Attributes:
+        kind: `project` (a fixed project role), `module` (a role a module contributes) or `custom` (an organisation's
+            custom role).
+        key: The role within its kind: the project role value, `<module key>:<role key>`, or the custom role's id.
+    """
+
+    kind: Literal["project", "module", "custom"]
+    key: str = Field(min_length=1, max_length=200)
+
+
+class ApproverRoleOut(ApproverRoleIn):
+    """A role with its display name (`label` is the key when the role is no longer offered)."""
+
+    label: str
+
+
+class ApproverRoleOptionOut(ApproverRoleOut):
+    """A role a policy may name.
+
+    Attributes:
+        scope: `project` when the role is granted within a project, `org` when it is granted for the organisation.
+    """
+
+    scope: Literal["org", "project"]
+
+
+class ApprovalRolesSet(BaseModel):
+    """The roles a profile adds as approvers of one record type; an empty list removes the profile's policy for it."""
+
+    roles: list[ApproverRoleIn] = Field(default_factory=list, max_length=100)
+
+
+class ProjectApprovalRolesSet(BaseModel):
+    """The roles a project adds as approvers of one record type.
+
+    Attributes:
+        roles: The roles; an empty list is a choice of no extra approvers (the nearest ancestor project's roles stop
+            applying); `null` removes the project's row so it follows the nearest ancestor's.
+    """
+
+    roles: list[ApproverRoleIn] | None = Field(default=None, max_length=100)
+
+
+class ApprovalTypeOut(BaseModel):
+    """A record type with an approval gate.
+
+    Attributes:
+        artefact_type: The registered record type.
+        label: The type's singular name.
+        module_key: The module that owns the type, empty for a core type.
+    """
+
+    artefact_type: str
+    label: str
+    module_key: str
+
+
+class ProfileApprovalTypeOut(ApprovalTypeOut):
+    """A profile's roles for one record type."""
+
+    roles: list[ApproverRoleOut]
+
+
+class ProfileApprovalOut(BaseModel):
+    """A profile's approval policy.
+
+    Attributes:
+        types: Every record type with an approval gate that the organisation can use.
+        role_options: The roles the policy may name.
+    """
+
+    types: list[ProfileApprovalTypeOut]
+    role_options: list[ApproverRoleOptionOut]
+
+
+class RoleSourceOut(BaseModel):
+    """An effective role with where it comes from.
+
+    Attributes:
+        role: The role.
+        sources: Names of the profiles that give it, then `project` and `parent_project` when the project's own or the
+            nearest ancestor's row does.
+    """
+
+    role: ApproverRoleOut
+    sources: list[str]
+
+
+class ProjectApprovalTypeOut(ApprovalTypeOut):
+    """A project's approval policy for one record type.
+
+    Attributes:
+        own: The project's own roles, `null` when it has no row.
+        inherited_from: Name of the ancestor project whose row applies, `null` when none does.
+        effective: Every role that applies, with its sources.
+    """
+
+    own: list[ApproverRoleOut] | None
+    inherited_from: str | None
+    effective: list[RoleSourceOut]
+
+
+class ProjectApprovalOut(BaseModel):
+    """A project's approval policy.
+
+    Attributes:
+        can_manage: Whether the caller may change the project's own roles.
+        types: Every record type with an approval gate that the project's organisation can use.
+        role_options: The roles the policy may name.
+    """
+
+    can_manage: bool
+    types: list[ProjectApprovalTypeOut]
+    role_options: list[ApproverRoleOptionOut]

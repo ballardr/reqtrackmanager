@@ -94,6 +94,34 @@ class LifecyclePolicy:
 
 
 @dataclass(frozen=True)
+class ApproverRole:
+    """A role a policy names as one more way to satisfy a record type's approval check.
+
+    Attributes:
+        kind: `project` (a fixed project role such as `project_manager`), `module` (a role a module contributes, with the
+            key written `<module key>:<role key>`) or `custom` (an organisation's custom role, with the key its id).
+        key: The role within its kind.
+    """
+
+    kind: Literal["project", "module", "custom"]
+    key: str
+
+
+@dataclass(frozen=True)
+class ApprovalPolicy:
+    """What governance policy adds to the approval check of one record type in one project: the answer of
+    `GovernanceSeam.APPROVAL` (`services.approval_policy` reads it at every approval path).
+
+    Attributes:
+        roles: Roles whose holders may also approve the type, beside whoever the type's own check already admits. A
+            policy only adds ways to satisfy the check: it never removes the type's default approvers, and the approval
+            separation rule still applies to everyone it admits. The roles of several sources are merged by union.
+    """
+
+    roles: tuple[ApproverRole, ...] = ()
+
+
+@dataclass(frozen=True)
 class PolicyResolver:
     """A module's answer to "which policy applies" for one core seam.
 

@@ -50,6 +50,7 @@ from app.services.stage_workflows import (
     WorkflowConflict,
     apply_phase_move,
     effective_workflows,
+    may_lock_phases,
     phase_index,
     start_phase,
 )
@@ -334,12 +335,16 @@ def owner_of(state: ComponentStageState | None) -> PrincipalRef | None:
     return principal_ref(state.owner_type, state.owner_id) if state is not None else None
 
 
-def may_move_locked(db: Session, state: ComponentStageState | None, user_id: uuid.UUID, roles: set[ProjectRole] | frozenset[ProjectRole]) -> bool:
-    """True when the user may move the track into or out of a locked phase: a project manager, or a member of
-    the track's owner (a user, or a group by effective membership)."""
-    if ProjectRole.PROJECT_MANAGER in roles:
+def may_move_locked(
+    db: Session, state: ComponentStageState | None, user: User, project: Project,
+    roles: set[ProjectRole] | frozenset[ProjectRole],
+) -> bool:
+    """True when the user may move the track into or out of a locked phase: a project manager, a holder of a role the
+    project's approval policy names for requirements (`stage_workflows.may_lock_phases`), or a member of the track's
+    owner (a user, or a group by effective membership)."""
+    if may_lock_phases(db, user, project, roles):
         return True
-    return is_principal_member(db, owner_of(state), user_id)
+    return is_principal_member(db, owner_of(state), user.id)
 
 
 def move_track(
@@ -363,7 +368,7 @@ def move_track(
     if state.not_applicable:
         raise WorkflowConflict("This stage is not applicable to the component, so its phase cannot change.")
     apply_phase_move(
-        db, project, stage, state, phase, actor, can_lock=may_move_locked(db, state, actor.id, roles),
+        db, project, stage, state, phase, actor, can_lock=may_move_locked(db, state, actor, project, roles),
         cascade_to_requirements=cascade_to_requirements, component_id=component.id,
     )
     return state

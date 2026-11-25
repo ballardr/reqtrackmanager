@@ -1575,7 +1575,21 @@ flowchart LR
     EN --> D
 ```
 
-- **Not built yet:** the profile screens (frontend), enforcement by the Requirement and Change Request endpoints (their migration step), and the approval, review and baseline policy tables.
+- **Approval policy (Phase 3).** One core check, `services/approval_policy.require_approver`, which every approval path calls: the Requirement (`approve`, the edit with status Approved, and the stage baseline's lock), the Change Request decision, a Decision, a Strategy, Future State or Guiding Principle, and a Risk acceptance. The caller passes its own default (what it admitted before the seam, so each type's rule and its 403 message are unchanged); the seam then admits a holder of the type's `approve_baseline` permission atom (new for Requirements and Change Requests: only project managers hold it among the fixed roles) and a holder of a role an approval policy names. A policy **only adds approvers**: it never removes a default approver, and approval separation, the MCP gate (`require_ai_approvals_enabled`), `APPROVAL_ACTION_ROUTE_EXTRA` and the row lock stay at their call sites. Tables (in migration `0210`): `governance_approval_policies` (one row per owner and type; the owner is a profile or a project, one of the two by a check constraint) and `governance_approval_policy_roles` (kind `project`, `module` or `custom`; a custom role also carries a cascading foreign key, so deleting the role removes it from every policy). A role is **held, never composed**: `rbac.user_holds_module_role` is a direct or group grant (or a role the module declares as overriding it), so a server, organisation or project administrator is not admitted by a role they merely compose with elsewhere; a role of a module that is off for the project, or unknown, admits nobody. Roles are held through groups by effective membership (`get_effective_project_roles`, `held_custom_role_ids`). The `approval` contributor and the `GovernanceSeam.APPROVAL` resolver return an `ApprovalPolicy(roles)`: the union of the roles of the profiles that apply (Enforced, Default not opted out, opted in) and the project's own row, else the nearest ancestor project's (an empty own row is a choice of none and stops the ancestor's applying; it never removes a profile's role). API (module on, `approval_policies` part on): organisation `GET /profiles/{id}/approval`, `PUT /profiles/{id}/approval/{type}` (`manage_org_governance`); project `GET /approval-policies` (any member; each effective role names its sources: profile names, `project`, `parent_project`), `PUT /approval-policies/{type}` (`manage_project_governance`; `roles: null` follows the ancestor). A type's role options (`role_options`) are the fixed project roles, the organisation- and project-scoped roles of the modules on for the organisation, and its custom roles of those scopes. One `approval_updated` (profile) or `governance_approval_policy` `updated` (project) event per change, with the type and role keys only. A project's own rows travel in its bundle (`governance_approval_policies`, a custom role by name; template configuration); a profile's rows travel as the `traceability:approval` contribution. **Stage locking:** a holder of a role the policy names for `requirement` may also enter or leave a locked phase of a stage or a component track (`stage_workflows.may_lock_phases`), and only those moves; the permission atom alone does not admit them.
+
+```mermaid
+flowchart TD
+    A["person approves a record"] --> D{"type's own default admits?"}
+    D -->|yes| OK["admitted"]
+    D -->|no| T{"holds the type's approve_baseline atom?"}
+    T -->|yes| OK
+    T -->|no| P{"holds a role the project's policy names?<br/>(profiles + own row or nearest ancestor's)"}
+    P -->|yes| OK
+    P -->|no| NO["403 with the type's own message"]
+    OK --> S["then: approval separation, MCP gate, row lock"]
+```
+
+- **Not built yet:** the profile screens (frontend), enforcement by the Requirement and Change Request endpoints of the lifecycle policy (their migration step), and the review and baseline policy tables.
 
 ### 4l13. External references on every record
 
