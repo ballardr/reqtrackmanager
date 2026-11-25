@@ -3,8 +3,9 @@ Module: modules.traceability.models
 
 Tables of the Traceability & Governance module: governance profiles (organisation-owned named policy sets), the projects
 a profile targets, the projects exempt from an Enforced profile, each project's opt-in or opt-out and the lifecycle policy
-rows a profile owns (the states it requires and whether it forbids skipping steps) and the approval policy rows a
-profile or a project owns (the roles that may also approve a record type).
+rows a profile owns (the states it requires and whether it forbids skipping steps), the approval policy rows a
+profile or a project owns (the roles that may also approve a record type) and the review policy rows a profile or a
+project owns (the review interval, reminder lead and default owner of a record type).
 
 Design decisions:
 - A profile holds no policy itself. Each policy table carries a `profile_id` (a `modules.seams.ProfileContributor`),
@@ -22,6 +23,9 @@ Design decisions:
   a type's resolution reads one shape. A project's row with no roles is a choice: it stops the nearest ancestor's roles
   applying. A role that is a custom role also carries a foreign key, so deleting the custom role removes it from every
   policy with no code in the custom-role module.
+- A review policy is one row per `(owner, record type)` with the same owner rule as an approval policy. Its three settings
+  are each optional; a row with none set is a choice that stops the nearest ancestor's row applying. The default owner is a
+  principal (`models.principal`), declared as a `PrincipalReference` so deleting the group clears it.
 - Choices do not fall back to an ancestor project: reach down the project tree is the organisation's decision
   (`include_children` on a target), and a manager of a parent project must not decide for children they may not manage.
 """
@@ -30,12 +34,13 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 PROFILE_NAME_MAX_LENGTH = 200
 PROFILE_DESCRIPTION_MAX_LENGTH = 500
@@ -212,3 +217,39 @@ class GovernanceApprovalPolicyRole(UUIDPKMixin, TimestampMixin, Base):
     custom_role_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("custom_role_definitions.id", ondelete="CASCADE"), index=True, nullable=True
     )
+
+
+class GovernanceReviewPolicy(UUIDPKMixin, TimestampMixin, Base):
+    """How often one record type is reviewed and who is reminded, set by a profile or by a project.
+
+    Attributes:
+        profile_id: The owning profile, or `None` for a project's own policy.
+        project_id: The owning project, or `None` for a profile's policy.
+        artefact_type: The registered record type (one with a review adapter).
+        interval_days: The longest gap between reviews in days, or `None` for no interval.
+        lead_days: Days before the due date that the reminder is sent, or `None` to keep the project's default.
+        default_owner_type, default_owner_id: Who is reminded when a record has no reviewer (`models.principal`), both
+            `None` for the project managers.
+    """
+
+    __tablename__ = "governance_review_policies"
+    __table_args__ = (
+        CheckConstraint("(profile_id IS NULL) <> (project_id IS NULL)", name="ck_governance_review_policies_one_owner"),
+        CheckConstraint("interval_days IS NULL OR interval_days BETWEEN 1 AND 3650", name="ck_governance_review_policies_interval"),
+        CheckConstraint("lead_days IS NULL OR lead_days BETWEEN 0 AND 365", name="ck_governance_review_policies_lead"),
+        principal_check_constraint("default_owner", nullable=True),
+        UniqueConstraint("profile_id", "artefact_type", name="uq_governance_review_policies_profile"),
+        UniqueConstraint("project_id", "artefact_type", name="uq_governance_review_policies_project"),
+    )
+
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_profiles.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    artefact_type: Mapped[str] = mapped_column(String(64))
+    interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    default_owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)

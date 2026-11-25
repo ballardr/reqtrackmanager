@@ -36,12 +36,15 @@ def registration_active(db: Session, project_id: uuid.UUID, module_key: str, sub
     Args:
         db: An active database session.
         project_id: The project.
-        module_key: The module that registered it.
+        module_key: The module that registered it, or `""` for a core registration, which is always in effect.
         sub_component: The module's sub-component it depends on, or `None` for the whole module.
 
     Returns:
-        `True` when the module is on for the project and the named sub-component, if any, is in effect.
+        `True` for a core registration, else when the module is on for the project and the named sub-component, if any,
+        is in effect.
     """
+    if module_key == "":
+        return True
     if sub_component is None:
         return registry.is_module_enabled_for_project(db, project_id, module_key)
     return registry.is_module_subcomponent_enabled(db, project_id, module_key, sub_component)

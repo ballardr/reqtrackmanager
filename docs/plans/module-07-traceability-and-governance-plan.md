@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2 and 3 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3 and 4 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-5 / 19 phases complete. Phase 4 is next.
+6 / 19 phases complete. Phase 5 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -26,7 +26,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 1b | Governance profiles: organisation policy sets that enforce, default or opt in per project | Governance | [x] Done 2026-11-26 |
 | 2 | Lifecycle policies (extend the shipped lifecycle engine) | Governance | [x] Done 2026-11-26 |
 | 3 | Approval policies (one check seam plus approver roles) | Governance | [x] Done 2026-11-26 |
-| 4 | Review policies (engine extracted from Requirement and Risk reviews) | Governance | [ ] Not started |
+| 4 | Review policies (engine extracted from Requirement and Risk reviews) | Governance | [x] Done 2026-11-26 |
 | 5 | Baseline policies and the check-provider extension point | Governance | [ ] Not started |
 | 6 | Governance Health (on demand and two snapshot modes) + Governance MCP tools | Governance | [ ] Not started |
 | 7 | Move existing types onto the engine: 7a Risk reviews, 7b Decisions, 7c Context & Strategy, 7d Requirements, 7e Compliance approval (last, optional) | Governance | [ ] Not started |
@@ -428,6 +428,32 @@ Requirement leaves the date and relies on a later review, Risk writes the next d
 existing models are expressible. The default policy has no interval, so Requirements keep today's behaviour; an interval is
 optional and additive. The core reminder sweep becomes one job over the registered adapters. Test the boundary hours (a due
 date at UTC+10 and UTC-8).
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 4"; contract in `docs/modules.md` §4l17):**
+
+- Core `services/review_engine.py`: `review_policy` (the seam answer, default none), `due_reviews`, `send_review_reminders` (the one
+  sweep over adapters: record's reviewer, else the policy's default owner, else the project managers), `next_due_date`,
+  `check_next_review_date`, `reminder_lead_days`, `reminder_open`. `ReviewAdapter` gained `pending_reminders`, `mark_reminded`
+  and `notification_type`; `ReviewPolicy` and `ReviewReminder` are new. The requirement's adapter is core
+  (`services/reviews.py`, `CORE_REVIEW_ADAPTERS`, module key `""`); the existing requirement review tests pass unchanged.
+- Module: `GovernanceReviewPolicy` (unreleased migration `0210`, edited in place: a local database that already ran it needs the
+  table), `review_policy.py` (writes with audit, the `GovernanceSeam.REVIEW` resolver, the `review` contributor, project bundle
+  rows), profile and project routes, a `PrincipalReference` for the default owner.
+- **The interval is engine-only until 7a and 7d (Decided by: User, 2026-11-26).** The policy stores and merges it and the engine
+  offers the scheduling rules, but no shipped type applies it yet. The policy also carries a reminder lead and a default owner
+  (Decided by: User), which take effect on requirements now.
+- **Defect fixed:** a review was compared as an instant with the due date as UTC midnight, leaving a requirement reviewed on its due
+  morning at UTC+10 overdue; a review now clears a due date once the date has begun anywhere (UTC+14). The due lists compare with
+  `effective_today()`, the sweep with the UTC date.
+- **Deviations from this plan's wording (Decided by: Agent):** Risk keeps its own reminder sweep and registers no adapter until 7a
+  (its "due soon" and "overdue" notices, once per date, extend the contract then); the requirement review route and the
+  requirement's review-date writes stay where they are until 7d.
+- Not built here, by design: the screens (Phase 8), MCP tools (Phase 6), the docs website page (Phase 9), moving Risk (7a) and the
+  requirement review route (7d).
+- Tests: `modules/traceability/tests/test_governance_review_policy.py` (routes, validation, merge, nested fallback, the sweep's lead
+  and default owner, audit, bundles); `tests/test_review_engine.py` (the core engine without the module: default sweep, boundary
+  hours, interval and lead rules, a second schedule model through a fake adapter); the existing review, principal, lifecycle,
+  approval and seam suites pass.
 
 ## Phase 5 — Baseline policies and check providers (`baseline_policies`)
 

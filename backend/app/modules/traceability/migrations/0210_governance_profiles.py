@@ -136,9 +136,37 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS ix_governance_approval_policy_roles_custom_role_id "
         "ON governance_approval_policy_roles (custom_role_id)"
     )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS governance_review_policies (
+            id UUID PRIMARY KEY,
+            profile_id UUID REFERENCES governance_profiles(id) ON DELETE CASCADE,
+            project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+            artefact_type VARCHAR(64) NOT NULL,
+            interval_days INTEGER,
+            lead_days INTEGER,
+            default_owner_type VARCHAR(20),
+            default_owner_id UUID,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT ck_governance_review_policies_one_owner CHECK ((profile_id IS NULL) <> (project_id IS NULL)),
+            CONSTRAINT ck_governance_review_policies_interval CHECK (interval_days IS NULL OR interval_days BETWEEN 1 AND 3650),
+            CONSTRAINT ck_governance_review_policies_lead CHECK (lead_days IS NULL OR lead_days BETWEEN 0 AND 365),
+            CONSTRAINT ck_default_owner_principal CHECK (
+                (default_owner_type IS NULL OR default_owner_type IN ('user', 'org_group', 'project_group'))
+                AND (default_owner_type IS NULL) = (default_owner_id IS NULL)
+            ),
+            CONSTRAINT uq_governance_review_policies_profile UNIQUE (profile_id, artefact_type),
+            CONSTRAINT uq_governance_review_policies_project UNIQUE (project_id, artefact_type)
+        )
+        """
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_review_policies_profile_id ON governance_review_policies (profile_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_review_policies_project_id ON governance_review_policies (project_id)")
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS governance_review_policies")
     op.execute("DROP TABLE IF EXISTS governance_approval_policy_roles")
     op.execute("DROP TABLE IF EXISTS governance_approval_policies")
     op.execute("DROP TABLE IF EXISTS governance_lifecycle_skip_policies")

@@ -28,8 +28,14 @@ from app.database import get_db
 from app.models.organization import Organization
 from app.models.user import User
 from app.modules.seams import ApproverRole
-from app.modules.traceability import approval_policy, lifecycle_policy, profile_resolution, profiles
-from app.modules.traceability._shared import APPROVAL_POLICIES, LIFECYCLE_POLICIES, MANAGE_ORG_GOVERNANCE, TRACEABILITY_MODULE_KEY
+from app.modules.traceability import approval_policy, lifecycle_policy, profile_resolution, profiles, review_policy
+from app.modules.traceability._shared import (
+    APPROVAL_POLICIES,
+    LIFECYCLE_POLICIES,
+    MANAGE_ORG_GOVERNANCE,
+    REVIEW_POLICIES,
+    TRACEABILITY_MODULE_KEY,
+)
 from app.modules.traceability.enums import ProfileMode, ProfileOutcome, ProfileTargetKind
 from app.modules.traceability.models import GovernanceProfile
 from app.modules.traceability.profiles import TargetSpec
@@ -51,12 +57,17 @@ from app.modules.traceability.schemas import (
     ProfileLifecycleOut,
     ProfileOut,
     ProfileProjectOut,
+    ProfileReviewOut,
+    ProfileReviewTypeOut,
     ProfileTargetIn,
     ProfileTargetOut,
     ProfileTargetsSet,
     ProfileUpdate,
+    ReviewSettingsIn,
+    ReviewSettingsOut,
 )
 from app.services import approval_policy as core_approval
+from app.services.principals import principal_out
 from app.services.rbac import require_org_module_enabled, require_org_subcomponent_enabled, require_permission
 
 router = APIRouter(prefix=f"/api/v1/orgs/{{organization_id}}/modules/{TRACEABILITY_MODULE_KEY}", tags=["traceability"])
@@ -66,6 +77,7 @@ _manage = require_permission(MANAGE_ORG_GOVERNANCE, server_admin_bypass=False)
 _guards = [Depends(_module_on)]
 _lifecycle_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, LIFECYCLE_POLICIES))]
 _approval_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, APPROVAL_POLICIES))]
+_review_guards = [Depends(_module_on), Depends(require_org_subcomponent_enabled(TRACEABILITY_MODULE_KEY, REVIEW_POLICIES))]
 
 
 def _org_or_404(db: Session, organization_id: UUID) -> Organization:
@@ -330,3 +342,49 @@ def set_profile_approval(
     )
     db.commit()
     return _approval_out(db, profile)
+
+
+def review_settings_out(db: Session, settings: review_policy.ReviewSettings) -> ReviewSettingsOut:
+    """Review settings with the default owner resolved for display."""
+    owner = settings.default_owner
+    return ReviewSettingsOut(
+        interval_days=settings.interval_days, lead_days=settings.lead_days,
+        default_owner=None if owner is None else principal_out(db, owner.type.value, owner.id),
+    )
+
+
+def _review_out(db: Session, profile: GovernanceProfile) -> ProfileReviewOut:
+    """The profile's review policy as the API shape."""
+    return ProfileReviewOut(
+        types=[
+            ProfileReviewTypeOut(
+                artefact_type=t.artefact_type, label=t.label, module_key=t.module_key,
+                settings=review_settings_out(db, settings),
+            )
+            for t, settings in review_policy.profile_policy(db, profile)
+        ],
+    )
+
+
+@router.get("/profiles/{profile_id}/review", response_model=ProfileReviewOut, dependencies=_review_guards)
+def get_profile_review(
+    organization_id: UUID, profile_id: UUID, current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileReviewOut:
+    """The review interval, reminder lead and default owner a profile gives each record type with a review schedule."""
+    return _review_out(db, _profile_or_404(db, organization_id, profile_id))
+
+
+@router.put("/profiles/{profile_id}/review/{artefact_type}", response_model=ProfileReviewOut, dependencies=_review_guards)
+def set_profile_review(
+    organization_id: UUID, profile_id: UUID, artefact_type: str, payload: ReviewSettingsIn,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileReviewOut:
+    """Sets the review settings a profile gives one record type (settings with nothing set remove them)."""
+    profile = _profile_or_404(db, organization_id, profile_id)
+    review_policy.set_profile_settings(
+        db, profile=profile, artefact_type=artefact_type,
+        settings=review_policy.ReviewSettings(payload.interval_days, payload.lead_days, payload.default_owner),
+        actor_id=current_user.id,
+    )
+    db.commit()
+    return _review_out(db, profile)

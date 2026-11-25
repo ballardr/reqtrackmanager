@@ -388,7 +388,7 @@ class ModuleDefinition:
     sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
     administrative_permissions: tuple[ModuleAdministrativePermission, ...] = ()  # bare permission atoms the module adds (§4l16)
     record_subtypes: dict[str, RecordSubtypeResolver] = {}  # {artefact type: record -> sub-type key} (§4l16)
-    review_adapters: dict[str, ReviewAdapter] = {}  # {artefact type: how the review engine reads its schedule} (§4l16)
+    review_adapters: dict[str, ReviewAdapter] = {}  # {artefact type: how the review engine reads its schedule and reminds} (§4l16, §4l17)
     baseline_check_providers: tuple[BaselineCheckProvider, ...] = ()  # checks run before a baseline (§4l16)
     policy_resolvers: tuple[PolicyResolver, ...] = ()  # which policy applies at each core engine seam (§4l16)
     profile_contributors: tuple[ProfileContributor, ...] = ()  # policy tables a governance profile can own (§4l17)
@@ -1522,7 +1522,7 @@ flowchart LR
 |---|---|---|
 | `policy_resolvers` | `PolicyResolver(seam, resolve(db, project_id, type) or resolve_project(db, project_id), sub_component)` (exactly one of the two); `seam` is a `GovernanceSeam` (`lifecycle`, `approval`, `review`, `baseline`) | `governance_seams.resolve_policy` (a type at a time) and `resolve_project_policy` (the whole project, for a seam that reads every type at once): first active resolver with a non-`None` answer, else `None` (the built-in default applies) |
 | `baseline_check_providers` | `BaselineCheckProvider(key, name, artefact_types, check(db, context, ids_by_type) -> failures, sub_component)` | `governance_seams.baseline_checks_for_project`, keyed `<module>:<key>`; one failing check refuses the whole baseline |
-| `review_adapters` | `ReviewAdapter(schedule, due_reviews(db, project_id, as_of))`; `schedule` is `review_record` (a review row clears the due list) or `next_review_date` (a review writes the next date) | `governance_seams.review_adapter_for_project` |
+| `review_adapters` | `ReviewAdapter(schedule, due_reviews(db, project_id, as_of), pending_reminders, mark_reminded, notification_type)`; `schedule` is `review_record` (a review row clears the due list) or `next_review_date` (a review writes the next date); the three reminder parts are given together or not at all (§4l17) | `governance_seams.review_adapter_for_project`, `services.review_engine` |
 | `record_subtypes` | `resolver(db, project_id, ids) -> {id: sub-type key}`, in bulk | `registry.resolve_record_subtypes`; core registers the requirement action's type in `services/record_subtypes_core.py` |
 | `administrative_permissions` | `ModuleAdministrativePermission(key, label, org_roles, project_roles)` | `get_all_permissions` (vocabulary) and `get_effective_permissions` (holders) |
 
@@ -1589,7 +1589,21 @@ flowchart TD
     OK --> S["then: approval separation, MCP gate, row lock"]
 ```
 
-- **Not built yet:** the profile screens (frontend), enforcement by the Requirement and Change Request endpoints of the lifecycle policy (their migration step), and the review and baseline policy tables.
+- **Review policy (Phase 4).** One core engine, `services/review_engine.py`, reads a type's schedule through its `ReviewAdapter` and applies the project's `ReviewPolicy` (`modules/seams.py`): an `interval_days` (the longest gap between reviews), a `lead_days` (how early the reminder is sent) and a `default_owner` (a user or group). Core registers the requirement's adapter (`services/reviews.py`, module key `""`, `schedule="review_record"`); a module registers its own in `ModuleDefinition.review_adapters`, and a type with an adapter is configurable with no further code. The daily sweep (`review_engine.send_review_reminders`, the scheduler's one review job) asks every adapter that hands over `pending_reminders`: a record whose reminder window has opened (`reminder_open`: today is `lead` days before the due date or later) is reminded once per due date, and the recipients are the record's own reviewer (every active member of a group), else the policy's default owner, else the project managers. The lead is the record's own, else the policy's, else the project's default, else 7 days. A project where the adapter's module is off is skipped. Dates: a due date is a calendar date; lists compare with the caller's day (`effective_today()`), the sweep with the UTC date; a review clears a due date once it falls on or after the moment that date begins anywhere on Earth (UTC+14). The engine also offers `next_due_date` and `check_next_review_date` for a type that sets its next date on a review (no shipped type calls them until Phases 7a and 7d, so an interval has no visible effect yet), and `due_reviews(db, project, as_of)` for the Health view. Tables (migration `0210`): `governance_review_policies` (one row per owner and type, a profile or a project by a check constraint, with the default owner as a `PrincipalReference` so deleting the group clears it). The `review` contributor and the `GovernanceSeam.REVIEW` resolver return a `ReviewPolicy`: **only tightening** across sources, the shortest interval, the longest lead and the first default owner in precedence order (profiles, then the project's own row, else the nearest ancestor's; an empty own row is a choice and removes no profile setting). A profile may name a user or an organisation group as default owner; only a project's own row may name a project group. API (module on, `review_policies` part on): organisation `GET /profiles/{id}/review`, `PUT /profiles/{id}/review/{type}` (`manage_org_governance`); project `GET /review-policies` (any member; each setting names its source) and `PUT /review-policies/{type}` (`manage_project_governance`; `settings: null` follows the ancestor). One `review_updated` (profile) or `governance_review_policy` `updated` (project) event per change, with the values and the owner's type only. A project's own rows travel in its bundle (`governance_review_policies`, template configuration); a profile's as the `traceability:review` contribution.
+
+```mermaid
+flowchart TD
+    S["daily sweep"] --> A["each registered adapter with reminders"]
+    A --> P["pending reminders: records not yet reminded for their due date"]
+    P --> L{"window open?<br/>today >= due - lead<br/>(record, policy, project, 7 days)"}
+    L -->|no| W["wait"]
+    L -->|yes| O{"recipients"}
+    O -->|"record's reviewer"| N["notify, mark reminded"]
+    O -->|"none: policy default owner"| N
+    O -->|"none: project managers"| N
+```
+
+- **Not built yet:** the profile screens (frontend), enforcement by the Requirement and Change Request endpoints of the lifecycle policy (their migration step), the interval's use by Risk and the requirement review route (Phases 7a and 7d), and the baseline policy table.
 
 ### 4l13. External references on every record
 

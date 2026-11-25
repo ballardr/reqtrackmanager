@@ -28,13 +28,14 @@ import re
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
 from app.models.enums import OrgRole, ProjectRole
+from app.schemas.principal import PrincipalRef
 
 _ATOM_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 
@@ -152,16 +153,61 @@ class PolicyResolver:
 
 
 @dataclass(frozen=True)
+class ReviewPolicy:
+    """What governance policy adds to the review of one record type in one project: the answer of
+    `GovernanceSeam.REVIEW` (`services.review_engine` reads it).
+
+    Attributes:
+        interval_days: The longest gap between two reviews, in days. A record's next review falls due no later than this
+            many days after the last one (`review_engine.next_due_date`, `check_next_review_date`). `None` sets no
+            interval, so each type keeps the schedule it has.
+        lead_days: Days before the due date that the reminder is sent, for a record that sets no lead of its own. `None`
+            leaves the project's default lead.
+        default_owner: Who is reminded, and may record the review, for a record that has no reviewer of its own: a user or a
+            group. `None` leaves the project managers as the fallback.
+    """
+
+    interval_days: int | None = None
+    lead_days: int | None = None
+    default_owner: PrincipalRef | None = None
+
+
+@dataclass(frozen=True)
 class DueReview:
     """One record whose review falls due.
 
     Attributes:
         artefact_id: The record's id.
         due_on: The calendar date the review is due.
+        owner: The record's own reviewer, or `None` when it has none.
     """
 
     artefact_id: uuid.UUID
     due_on: date
+    owner: PrincipalRef | None = None
+
+
+@dataclass(frozen=True)
+class ReviewReminder:
+    """One record whose reminder has not yet been sent for its current due date.
+
+    Attributes:
+        artefact_id: The record's id.
+        project_id: The project that holds the record.
+        due_on: The calendar date the review is due.
+        title: The record's name, shown in the notification title.
+        code: The record's code as it reads outside its project (qualified), shown in the notification body.
+        owner: The record's own reviewer, or `None` when it has none.
+        lead_days: The record's own reminder lead in days, or `None` to follow the policy and the project.
+    """
+
+    artefact_id: uuid.UUID
+    project_id: uuid.UUID
+    due_on: date
+    title: str
+    code: str
+    owner: PrincipalRef | None = None
+    lead_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -174,10 +220,24 @@ class ReviewAdapter:
             the record's next review date (risks). The engine supports both.
         due_reviews: `due_reviews(db, project_id, as_of)` returns the project's records whose review is due on or before
             `as_of`, oldest first. It reads only.
+        pending_reminders: `pending_reminders(db)` returns, across every project, the records whose reminder has not been
+            sent for their current due date and that are open to review (not archived or closed). It reads only. `None`
+            leaves the type's own sweep in charge of its reminders.
+        mark_reminded: `mark_reminded(db, artefact_ids, when)` records that the reminder for each record's current due date
+            has been sent. It flushes and never commits.
+        notification_type: The registered notification type of the reminder; required with `pending_reminders`.
     """
 
     schedule: Literal["review_record", "next_review_date"]
     due_reviews: Callable[[Session, uuid.UUID, date], Sequence[DueReview]]
+    pending_reminders: Callable[[Session], Sequence[ReviewReminder]] | None = None
+    mark_reminded: Callable[[Session, Sequence[uuid.UUID], datetime], None] | None = None
+    notification_type: str | None = None
+
+    def __post_init__(self) -> None:
+        reminding = (self.pending_reminders, self.mark_reminded, self.notification_type)
+        if any(x is None for x in reminding) and any(x is not None for x in reminding):
+            raise ValueError("A review adapter gives pending_reminders, mark_reminded and notification_type together.")
 
 
 @dataclass(frozen=True)

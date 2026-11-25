@@ -2,7 +2,7 @@
 Module: modules.traceability.schemas
 
 Request and response models of the governance profile API (`router` for the organisation, `project_router` for a
-project), including a profile's lifecycle policy and the approval policy of a profile or a project.
+project), including a profile's lifecycle policy and the approval and review policy of a profile or a project.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from app.modules.traceability.models import (
     PROFILE_DESCRIPTION_MAX_LENGTH,
     PROFILE_NAME_MAX_LENGTH,
 )
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 
 class ProfileTargetIn(BaseModel):
@@ -361,3 +362,113 @@ class ProjectApprovalOut(BaseModel):
     can_manage: bool
     types: list[ProjectApprovalTypeOut]
     role_options: list[ApproverRoleOptionOut]
+
+
+class ReviewSettingsIn(BaseModel):
+    """The review settings of one record type; each is optional and an unset one changes nothing.
+
+    Attributes:
+        interval_days: The longest gap between reviews in days.
+        lead_days: Days before the due date that the reminder is sent.
+        default_owner: A user or a group reminded when a record has no reviewer (a project group only in a project's own
+            policy).
+    """
+
+    interval_days: int | None = Field(default=None, ge=1, le=3650)
+    lead_days: int | None = Field(default=None, ge=0, le=365)
+    default_owner: PrincipalRef | None = None
+
+
+class ReviewSettingsOut(BaseModel):
+    """The review settings one owner gives a record type, with the default owner resolved for display."""
+
+    interval_days: int | None
+    lead_days: int | None
+    default_owner: PrincipalOut | None
+
+
+class ProjectReviewSettingsSet(BaseModel):
+    """A project's review settings for one record type.
+
+    Attributes:
+        settings: The settings; one with nothing set is a choice of no review policy (the nearest ancestor project's
+            stops applying); `null` removes the project's row so it follows the nearest ancestor's.
+    """
+
+    settings: ReviewSettingsIn | None = None
+
+
+class ReviewTypeOut(BaseModel):
+    """A record type with a review schedule.
+
+    Attributes:
+        artefact_type: The registered record type.
+        label: The type's singular name.
+        module_key: The module that owns the type, empty for a core type.
+    """
+
+    artefact_type: str
+    label: str
+    module_key: str
+
+
+class ProfileReviewTypeOut(ReviewTypeOut):
+    """A profile's review settings for one record type."""
+
+    settings: ReviewSettingsOut
+
+
+class ProfileReviewOut(BaseModel):
+    """A profile's review policy.
+
+    Attributes:
+        types: Every record type with a review schedule that the organisation can use.
+    """
+
+    types: list[ProfileReviewTypeOut]
+
+
+class EffectiveReviewOut(BaseModel):
+    """What review policy applies to a record type in a project, with where each setting comes from.
+
+    Attributes:
+        interval_days: The shortest interval any source gives, `null` for none.
+        interval_source: The source of the interval: a profile name, `project` or `parent_project`.
+        lead_days: The longest reminder lead any source gives, `null` for none.
+        lead_source: The source of the lead.
+        default_owner: The first default owner in precedence order, `null` for none.
+        owner_source: The source of the default owner.
+    """
+
+    interval_days: int | None
+    interval_source: str | None
+    lead_days: int | None
+    lead_source: str | None
+    default_owner: PrincipalOut | None
+    owner_source: str | None
+
+
+class ProjectReviewTypeOut(ReviewTypeOut):
+    """A project's review policy for one record type.
+
+    Attributes:
+        own: The project's own settings, `null` when it has no row.
+        inherited_from: Name of the ancestor project whose row applies, `null` when none does.
+        effective: What applies, with its sources.
+    """
+
+    own: ReviewSettingsOut | None
+    inherited_from: str | None
+    effective: EffectiveReviewOut
+
+
+class ProjectReviewOut(BaseModel):
+    """A project's review policy.
+
+    Attributes:
+        can_manage: Whether the caller may change the project's own settings.
+        types: Every record type with a review schedule that the project's organisation can use.
+    """
+
+    can_manage: bool
+    types: list[ProjectReviewTypeOut]

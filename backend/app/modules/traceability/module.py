@@ -12,9 +12,10 @@ Registered contributions:
   `traceability_rules`: they have no effect while it is off, and their settings are kept.
 - `administrative_permissions`: `manage_org_governance`, `manage_project_governance`, `manage_org_traceability`,
   `manage_project_traceability` and `approve_traceability_exceptions`.
-- `policy_resolvers` and `profile_contributors`: the lifecycle policy (`lifecycle_policy`) and the approval policy
-  (`approval_policy`: the roles that may also approve a record type) of governance profiles and projects, each in force
-  while its sub-component is effective.
+- `policy_resolvers` and `profile_contributors`: the lifecycle policy (`lifecycle_policy`), the approval policy
+  (`approval_policy`: the roles that may also approve a record type) and the review policy (`review_policy`: the interval,
+  reminder lead and default owner of a record type) of governance profiles and projects, each in force while its
+  sub-component is effective.
 - Roles: Governance Manager and Traceability Manager, each as a project role and an organisation role (the organisation
   role also holds the project atom, so it manages every project's policy).
 
@@ -42,9 +43,10 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
+    PrincipalReference,
 )
 from app.modules.seams import GovernanceSeam, ModuleAdministrativePermission, PolicyResolver, ProfileContributor
-from app.modules.traceability import approval_policy, bundle, lifecycle_policy
+from app.modules.traceability import approval_policy, bundle, lifecycle_policy, review_policy
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
     APPROVE_TRACEABILITY_EXCEPTIONS,
@@ -67,6 +69,7 @@ from app.modules.traceability._shared import (
     TRACEABILITY_ORG_MANAGER_ROLE,
     TRACEABILITY_RULES,
 )
+from app.modules.traceability.models import GovernanceReviewPolicy
 
 
 def get_router() -> APIRouter | None:
@@ -106,7 +109,7 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle.export_project_data, import_=bundle.import_project_data,
-        template_configuration_keys=frozenset({bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY}),
+        template_configuration_keys=frozenset({bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY}),
     ),
     sub_components=(
         ModuleSubComponentDefinition(key=LIFECYCLE_POLICIES, name="Lifecycle policies"),
@@ -132,6 +135,7 @@ MODULE_DEFINITION = ModuleDefinition(
         PolicyResolver(
             seam=GovernanceSeam.APPROVAL, resolve=approval_policy.resolve_policy, sub_component=APPROVAL_POLICIES,
         ),
+        PolicyResolver(seam=GovernanceSeam.REVIEW, resolve=review_policy.resolve_policy, sub_component=REVIEW_POLICIES),
     ),
     profile_contributors=(
         ProfileContributor(
@@ -144,8 +148,20 @@ MODULE_DEFINITION = ModuleDefinition(
             export_rows=approval_policy.export_rows, import_rows=approval_policy.import_rows,
             sub_component=APPROVAL_POLICIES,
         ),
+        ProfileContributor(
+            key="review", name="Review policy", count_rows=review_policy.count_rows,
+            export_rows=review_policy.export_rows, import_rows=review_policy.import_rows, sub_component=REVIEW_POLICIES,
+        ),
     ),
-    activity_metadata_types={"governance_profile": "structure", "governance_approval_policy": "structure"},
+    principal_references=(
+        PrincipalReference(
+            model=GovernanceReviewPolicy, field="default_owner", label="governance review policy default owners",
+            audit_entity_type=review_policy.PROJECT_AUDIT_ENTITY_TYPE,
+        ),
+    ),
+    activity_metadata_types={
+        "governance_profile": "structure", "governance_approval_policy": "structure", "governance_review_policy": "structure",
+    },
     administrative_permissions=(
         ModuleAdministrativePermission(
             key=MANAGE_ORG_GOVERNANCE, label="Manage organisation governance",

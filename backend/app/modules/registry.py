@@ -4824,9 +4824,11 @@ def resolve_record_subtypes(
 
 
 def get_review_adapters() -> dict[str, tuple[str, ReviewAdapter]]:
-    """`{artefact type: (module key, ReviewAdapter)}` for every type a module registered a review schedule for. A type
-    claimed twice keeps the first registration."""
-    merged: dict[str, tuple[str, ReviewAdapter]] = {}
+    """`{artefact type: (module key, ReviewAdapter)}` for every type with a review schedule: the core types' (module key
+    `""`, `services.reviews`) and each module's `review_adapters`. A type claimed twice keeps the first."""
+    from app.services.reviews import CORE_REVIEW_ADAPTERS
+
+    merged: dict[str, tuple[str, ReviewAdapter]] = {t: ("", a) for t, a in CORE_REVIEW_ADAPTERS.items()}
     for key, definition in get_module_registry().items():
         for artefact_type, adapter in definition.review_adapters.items():
             merged.setdefault(artefact_type, (key, adapter))
