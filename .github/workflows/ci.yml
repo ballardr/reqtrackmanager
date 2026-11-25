@@ -1028,9 +1028,14 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO_OWNER: ${{ github.repository_owner }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          gh api -H "Accept: application/vnd.github.raw" "repos/${REPO}/contents/.github/cla-signatories.json?ref=${BASE_SHA}" > "${RUNNER_TEMP}/base-signatories.json"
+          # A base branch with no signatories file yet (the pull request that introduces it) trusts only the
+          # repository owner, which the event supplies and the pull request cannot change.
+          if ! gh api -H "Accept: application/vnd.github.raw" "repos/${REPO}/contents/.github/cla-signatories.json?ref=${BASE_SHA}" > "${RUNNER_TEMP}/base-signatories.json" 2>/dev/null; then
+            printf '{"maintainers": ["%s"], "automation": ["dependabot[bot]"], "signatories": []}\n' "${REPO_OWNER}" > "${RUNNER_TEMP}/base-signatories.json"
+          fi
           # The person who opened the pull request is authenticated by GitHub; a commit's author is only an attribution
           # (anyone can write another person's email into a commit), so both are checked.
           mapfile -t AUTHORS < <({ echo "${PR_AUTHOR}"; gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" --jq '.[].author.login // ""'; } | sort -u)

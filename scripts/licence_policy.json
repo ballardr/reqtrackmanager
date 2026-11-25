@@ -31,6 +31,8 @@
     "python:tinycss2": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE is the BSD 3-Clause text; the metadata gives only the BSD classifier."},
     "python:webencodings": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE is the BSD 3-Clause text; the metadata gives only the BSD classifier."},
     "npm:khroma": {"licence": "MIT", "evidence": "Installed licence file is the MIT text; package.json declares no licence."},
+    "npm:eval": {"licence": "MIT", "evidence": "package.json declares MIT only in the legacy `licenses` array, which the lockfile omits; the installed LICENSE is the MIT text."},
+    "npm:format": {"licence": "MIT", "evidence": "package.json declares MIT only in the legacy `licenses` array, which the lockfile omits."},
     "npm:require-like": {"licence": "MIT", "evidence": "Installed License file is the MIT permission notice; package.json declares no licence."}
   },
   "base_images": {

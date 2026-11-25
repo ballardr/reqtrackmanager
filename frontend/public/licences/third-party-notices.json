@@ -6537,7 +6537,7 @@
    "components": [
     "frontend"
    ],
-   "direct": false,
+   "direct": true,
    "ecosystem": "npm",
    "licence": "MIT",
    "licence_source": "metadata",
@@ -13179,7 +13179,7 @@
    "direct": false,
    "ecosystem": "npm",
    "licence": "MIT",
-   "licence_source": "package.json",
+   "licence_source": "override",
    "link": "https://www.npmjs.com/package/eval/v/0.1.8",
    "name": "eval",
    "review": "none",
@@ -13579,7 +13579,7 @@
    "direct": false,
    "ecosystem": "npm",
    "licence": "MIT",
-   "licence_source": "package.json",
+   "licence_source": "override",
    "link": "https://www.npmjs.com/package/format/v/0.2.2",
    "name": "format",
    "review": "none",
@@ -24570,13 +24570,13 @@
    "ecosystem": "python",
    "licence": "BSD-3-Clause",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/authlib/1.9.9/",
+   "link": "https://pypi.org/project/authlib/1.9.10/",
    "name": "authlib",
    "review": "none",
    "texts": [
     "8e1b48518de9"
    ],
-   "version": "1.9.9"
+   "version": "1.9.10"
   },
   {
    "components": [
@@ -24701,13 +24701,13 @@
    "ecosystem": "python",
    "licence": "MPL-2.0",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/certifi/2026.10.23/",
+   "link": "https://pypi.org/project/certifi/2026.11.20/",
    "name": "certifi",
    "review": "notice",
    "texts": [
     "e93716da6b9c"
    ],
-   "version": "2026.10.23"
+   "version": "2026.11.20"
   },
   {
    "components": [
@@ -24734,13 +24734,13 @@
    "ecosystem": "python",
    "licence": "MIT",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/charset-normalizer/3.5.2/",
+   "link": "https://pypi.org/project/charset-normalizer/3.5.3/",
    "name": "charset-normalizer",
    "review": "none",
    "texts": [
     "6d0d41bfe170"
    ],
-   "version": "3.5.2"
+   "version": "3.5.3"
   },
   {
    "components": [
@@ -24767,14 +24767,14 @@
    "ecosystem": "python",
    "licence": "Apache-2.0",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/coverage/7.17.3/",
+   "link": "https://pypi.org/project/coverage/7.17.5/",
    "name": "coverage",
    "review": "none",
    "texts": [
     "0d542e0c8804",
     "80e177ab397d"
    ],
-   "version": "7.17.3"
+   "version": "7.17.5"
   },
   {
    "components": [
@@ -24819,13 +24819,13 @@
    "ecosystem": "python",
    "licence": "Apache-2.0",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/cyclopts/5.5.2/",
+   "link": "https://pypi.org/project/cyclopts/5.5.3/",
    "name": "cyclopts",
    "review": "none",
    "texts": [
     "f14b20048c12"
    ],
-   "version": "5.5.2"
+   "version": "5.5.3"
   },
   {
    "components": [
@@ -25648,7 +25648,7 @@
    "ecosystem": "python",
    "licence": "Apache-2.0 OR BSD-2-Clause",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/packaging/26.3/",
+   "link": "https://pypi.org/project/packaging/26.4/",
    "name": "packaging",
    "review": "none",
    "texts": [
@@ -25656,7 +25656,7 @@
     "b70e7e9b742f",
     "cad1ef5bd340"
    ],
-   "version": "26.3"
+   "version": "26.4"
   },
   {
    "components": [
@@ -25730,13 +25730,13 @@
    "ecosystem": "python",
    "licence": "MIT",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/platformdirs/4.14.7/",
+   "link": "https://pypi.org/project/platformdirs/4.14.8/",
    "name": "platformdirs",
    "review": "none",
    "texts": [
     "29e0fd62e929"
    ],
-   "version": "4.14.7"
+   "version": "4.14.8"
   },
   {
    "components": [
@@ -26197,8 +26197,7 @@
   },
   {
    "components": [
-    "backend",
-    "mcp-server"
+    "backend"
    ],
    "direct": true,
    "ecosystem": "python",
@@ -26211,6 +26210,22 @@
     "8d3928f9dc44"
    ],
    "version": "6.0.3"
+  },
+  {
+   "components": [
+    "mcp-server"
+   ],
+   "direct": false,
+   "ecosystem": "python",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://pypi.org/project/pyyaml/6.0.4/",
+   "name": "pyyaml",
+   "review": "none",
+   "texts": [
+    "8d3928f9dc44"
+   ],
+   "version": "6.0.4"
   },
   {
    "components": [
@@ -26449,14 +26464,14 @@
    "ecosystem": "python",
    "licence": "BSD-3-Clause",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/sse-starlette/3.7.0/",
+   "link": "https://pypi.org/project/sse-starlette/3.7.1/",
    "name": "sse-starlette",
    "review": "none",
    "texts": [
     "80af6bfccbeb",
     "c2ff63d2ecf1"
    ],
-   "version": "3.7.0"
+   "version": "3.7.1"
   },
   {
    "components": [
