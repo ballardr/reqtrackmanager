@@ -4,36 +4,21 @@ Revision ID: 0034
 Revises: 0033
 Create Date: 2026-09-09
 
-Adds `user_module_roles.scope_entity_id` (`app.models.module_role.
-UserModuleRole`) — the generalised sibling of `project_id` for a
-module-owned entity scope (any `ModuleRoleDefinition.scope` value other
-than the two core-recognised `"org"`/`"project"` literals), added by
- so compliance's own new
-per-`ComplianceStandard` `standards_manager`/`standards_contributor` roles
-(and any future module's own first-class-entity role) don't need a
-bespoke grant table of their own. This is a core, module-system-generic
-change (`app.models.module_role`, `app.services.rbac`), not a
-compliance-specific one — see docs/decisions.md for why it lives in the core Alembic chain
-(`backend/alembic/versions/`) rather than the Compliance module's own
-`app/modules/compliance/migrations/` directory, even though this revision
-number continues directly on from that module's own most recent one
-(0033) in the single merged chain `app.modules.registry.
-configure_alembic_version_locations` builds.
+Adds `user_module_roles.scope_entity_id` (`app.models.module_role.UserModuleRole`), the generalised
+sibling of `project_id` for a module-owned entity scope (any `ModuleRoleDefinition.scope` other than the
+core `"org"`/`"project"` literals). It serves, for example, compliance's per-`ComplianceStandard`
+`standards_manager`/`standards_contributor` roles without a bespoke grant table. This is a core,
+module-generic change (`app.models.module_role`, `app.services.rbac`); docs/decisions.md explains why it
+sits in the core Alembic chain (`backend/alembic/versions/`) rather than the Compliance module's
+`app/modules/compliance/migrations/` directory, although the revision number continues that module's
+0033 in the merged chain `app.modules.registry.configure_alembic_version_locations` builds.
 
-Deliberately a bare, un-indexed-by-FK `UUID` column (nullable, `NULL` for
-every existing `"org"`/`"project"` grant) — like `module_key`/`role_key`,
-this column records a grant against a scope whose meaning (which table it
-points into) is owned by the declaring module, not this core table; see
-`UserModuleRole.scope_entity_id`'s own docstring. The existing unique
-constraint is widened to include it, matching how `project_id` was already
-included, even though (per that constraint's own pre-existing docstring
-note) Postgres's NULL-distinctness means it remains a backstop, not the
-actual dedup mechanism — app-level existing-row checks still do that work,
-unchanged.
+The column is a nullable `UUID` with no foreign key, `NULL` for every `"org"`/`"project"` grant: which
+table it points into is owned by the declaring module (see `UserModuleRole.scope_entity_id`). The unique
+constraint is widened to include it; Postgres treats NULLs as distinct, so the constraint is a backstop
+and application-level existing-row checks do the deduplication.
 
-No backfill needed: every existing `user_module_roles` row is `"org"`- or
-`"project"`-scoped and gets `scope_entity_id = NULL`, which is exactly
-what those scopes' resolution path already expects.
+No backfill: existing rows are `"org"`- or `"project"`-scoped and get `NULL`.
 """
 
 from collections.abc import Sequence
@@ -51,11 +36,8 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_user_module_roles_scope_entity_id ON user_module_roles (scope_entity_id)"
     )
-    # Drop the old 5-part unique constraint 0025 created with no explicit
-    # name (Postgres auto-generates one, which can be silently truncated —
-    # located by column membership rather than a guessed literal name, the
-    # same precedent 0012's own migration already set for this exact
-    # situation; see that revision's module docstring).
+    # Drop the old 5-part unique constraint 0025 created without a name, by column membership because
+    # Postgres truncates its generated name (see 0012).
     op.execute(
         """
         DO $$

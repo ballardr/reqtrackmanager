@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { requiredCaptions } from "../testing/requiredMarkers";
 import { expectHeaderSorts } from "../testing/sortHelpers";
 import { withToast } from "../testing/storybook-helpers";
 import { buildAdminApi, buildTag, buildUsage, buildVocabulary } from "../testing/tagsFixtures";
@@ -8,7 +9,7 @@ import { TagAdminPanel } from "./TagAdminPanel";
 
 /**
  * The tag administration surface (Project Admin and Org Admin): the mode, the vocabulary with its
- * per-tag tools, and one usage table per kind of record.
+ * per-tag tools, and a per-tag usage dialog opened from the record count.
  */
 const meta: Meta<typeof TagAdminPanel> = {
   title: "Components/TagAdminPanel",
@@ -22,16 +23,77 @@ type Story = StoryObj<typeof TagAdminPanel>;
 
 const body = () => within(document.body);
 
-export const ShowsTheVocabularyAndUsageTables: Story = {
+/** The page lists the vocabulary only; where a tag is used is a dialog, never a permanent section. */
+export const ShowsTheVocabularyWithoutUsageTables: Story = {
   args: { api: buildAdminApi() },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const vocabulary = await canvas.findByRole("table", { name: "Tags" });
-    await expect(within(vocabulary).getByText("3 records")).toBeInTheDocument();
-    const requirements = canvas.getByRole("table", { name: "Where tags are used: Requirement" });
-    await expect(within(requirements).getAllByRole("row")).toHaveLength(3);
-    await expect(canvas.getByRole("table", { name: "Where tags are used: Pain Point" })).toBeInTheDocument();
-    await expect(canvas.getByText("Archive")).toBeInTheDocument();
+    await expect(within(vocabulary).getByRole("button", { name: "Show where Safety is used" })).toHaveTextContent("3 records");
+    await expect(canvas.queryByText("Where tags are used")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("table", { name: /Where tags are used/ })).not.toBeInTheDocument();
+  },
+};
+
+/** The count opens a dialog titled with the tag, one row per kind of record that carries it. */
+export const TheCountOpensWhereTheTagIsUsed: Story = {
+  args: { api: buildAdminApi() },
+  play: async ({ canvasElement }) => {
+    const vocabulary = await within(canvasElement).findByRole("table", { name: "Tags" });
+    await userEvent.click(within(vocabulary).getByRole("button", { name: "Show where Safety is used" }));
+    const dialog = await body().findByRole("dialog", { name: 'Where "Safety" is used' });
+    const table = within(dialog).getByRole("table", { name: 'Where "Safety" is used' });
+    await expect(within(table).getAllByRole("row")).toHaveLength(3);
+    await expect(within(table).getByText("Requirement")).toBeInTheDocument();
+    await expect(within(table).getByText("2 records")).toBeInTheDocument();
+    await expect(within(table).getByText("Pain Point")).toBeInTheDocument();
+    await expect(within(table).getByText("1 record")).toBeInTheDocument();
+    // Another tag's rows are not listed.
+    await expect(within(dialog).queryByText("Release 2")).not.toBeInTheDocument();
+  },
+};
+
+/** A tag no record carries shows a plain count, not a button. */
+export const AZeroCountIsPlainText: Story = {
+  args: { api: buildAdminApi(buildVocabulary({ tags: [buildTag("Archive", { usage_count: 0 })] })) },
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Tags" });
+    await expect(within(table).getByText("0 records")).toBeInTheDocument();
+    await expect(within(table).queryByRole("button", { name: /Show where/ })).not.toBeInTheDocument();
+  },
+};
+
+/** Many kinds of record: every one the tag is used on is a row. */
+export const ManyKindsOfRecord: Story = {
+  args: {
+    api: buildAdminApi(buildVocabulary({ tags: [buildTag("Safety", { usage_count: 12 })] }), {
+      usage: fn(async () => buildUsage({
+        tables: ["Requirement", "Pain Point", "Decision", "Risk", "Finding", "Persona", "Stakeholder", "Strategy"].map((label, index) => ({
+          artefact_type: label.toLowerCase().replace(" ", "_"), label,
+          rows: [{ tag_id: "tag-safety", name: "Safety", colour: "#c53030", count: index + 1, last_used: "2026-10-18T09:00:00Z" }],
+        })),
+      })),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Tags" });
+    await userEvent.click(within(table).getByRole("button", { name: "Show where Safety is used" }));
+    const dialog = await body().findByRole("dialog", { name: 'Where "Safety" is used' });
+    await expect(within(dialog).getAllByRole("row")).toHaveLength(9);
+  },
+};
+
+/** A list inherited from a parent project is read-only here, so the dialog offers no Reclassify. */
+export const AnInheritedTagsUsageHasNoReclassify: Story = {
+  args: {
+    api: buildAdminApi(buildVocabulary({ inherited: true, has_parent: true, tags: [buildTag("Safety", { usage_count: 3, editable: false })] })),
+  },
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Tags" });
+    await userEvent.click(within(table).getByRole("button", { name: "Show where Safety is used" }));
+    const dialog = await body().findByRole("dialog", { name: 'Where "Safety" is used' });
+    await expect(within(dialog).getByText("Requirement")).toBeInTheDocument();
+    await expect(within(dialog).queryByRole("button", { name: /Reclassify/ })).not.toBeInTheDocument();
   },
 };
 
@@ -65,16 +127,36 @@ export const AnOrganisationCannotInheritTheMode: Story = {
   },
 };
 
+/** The page shows no creation fields until "New tag" is pressed. */
+export const NoCreationFieldsUntilNewTagIsPressed: Story = {
+  args: { api: buildAdminApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Tags" });
+    await expect(canvas.queryByRole("textbox", { name: /Tag name|^Name/ })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("textbox", { name: /Colour/ })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "New tag" }));
+    const dialog = within(await body().findByRole("dialog", { name: "New tag" }));
+    await expect(dialog.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
+    await expect(requiredCaptions(document.body)).toEqual(["Name"]);
+    await userEvent.click(within(await body().findByRole("dialog")).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(body().queryByRole("dialog")).not.toBeInTheDocument());
+  },
+};
+
 export const AddingATag: Story = {
   args: { api: buildAdminApi() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("textbox", { name: "New tag" }), "Q4 audit");
-    await userEvent.click(canvas.getByRole("button", { name: "Blue" }));
-    await expect(canvas.getByRole("textbox", { name: "Colour (hex code)" })).toHaveValue("#2b6cb0");
-    await userEvent.click(canvas.getByRole("button", { name: "Add tag" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "New tag" }));
+    const dialog = within(await body().findByRole("dialog", { name: "New tag" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Q4 audit");
+    await userEvent.click(dialog.getByRole("button", { name: "Blue" }));
+    await expect(dialog.getByRole("textbox", { name: "Colour (hex code)" })).toHaveValue("#2b6cb0");
+    await userEvent.click(dialog.getByRole("button", { name: "Add tag" }));
     await waitFor(() => expect(args.api!.create).toHaveBeenCalledWith("Q4 audit", "#2b6cb0"));
     await expect(await body().findByText("Tag added.")).toBeInTheDocument();
+    await waitFor(() => expect(body().queryByRole("dialog")).not.toBeInTheDocument());
   },
 };
 
@@ -82,9 +164,11 @@ export const ABadNameCannotBeAdded: Story = {
   args: { api: buildAdminApi() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("textbox", { name: "New tag" }), "a,b");
-    await expect(canvas.getByRole("alert")).toHaveTextContent("cannot contain a comma");
-    await expect(canvas.getByRole("button", { name: "Add tag" })).toBeDisabled();
+    await userEvent.click(await canvas.findByRole("button", { name: "New tag" }));
+    const dialog = within(await body().findByRole("dialog", { name: "New tag" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "a,b");
+    await expect(dialog.getByRole("alert")).toHaveTextContent("cannot contain a comma");
+    await expect(dialog.getByRole("button", { name: "Add tag" })).toBeDisabled();
     await expect(args.api!.create).not.toHaveBeenCalled();
   },
 };
@@ -200,44 +284,20 @@ export const ReclassifyingPreviewsThenApplies: Story = {
   },
 };
 
-/** A usage-table row can launch reclassify for one kind of record only. */
+/** A row of the usage dialog launches reclassify for that kind of record only. */
 export const ReclassifyFromAUsageRowIsLimitedToThatType: Story = {
   args: { api: buildAdminApi() },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const table = await canvas.findByRole("table", { name: "Where tags are used: Pain Point" });
-    await userEvent.click(within(table).getByRole("button", { name: /Reclassify records tagged Safety \(Pain Point\)/ }));
+    const table = await within(canvasElement).findByRole("table", { name: "Tags" });
+    await userEvent.click(within(table).getByRole("button", { name: "Show where Safety is used" }));
+    const usage = await body().findByRole("dialog", { name: 'Where "Safety" is used' });
+    await userEvent.click(within(usage).getByRole("button", { name: /Reclassify records tagged Safety \(Pain Point\)/ }));
     const dialog = await body().findByRole("dialog", { name: /Reclassify records tagged "Safety"/ });
     await expect(within(dialog).getByRole("combobox", { name: "Only these record types" })).toHaveValue("pain_point");
+    await expect(body().queryByRole("dialog", { name: 'Where "Safety" is used' })).not.toBeInTheDocument();
   },
 };
 
-/** Ticking a tag hides it from the usage tables while the rest are reviewed; "Show all" brings it back. */
-export const TickingATagHidesItFromTheUsageTables: Story = {
-  args: { api: buildAdminApi() },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const table = await canvas.findByRole("table", { name: "Where tags are used: Requirement" });
-    await userEvent.click(within(table).getByRole("checkbox", { name: "Hide Safety from the tables" }));
-    await expect(within(canvas.getByRole("table", { name: "Where tags are used: Requirement" })).queryByRole("checkbox", { name: "Hide Safety from the tables" })).not.toBeInTheDocument();
-    await expect(canvas.getByText("1 hidden")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Show all" }));
-    await expect(await canvas.findAllByRole("checkbox", { name: "Hide Safety from the tables" })).toHaveLength(2);
-  },
-};
-
-export const TheFilterBoxNarrowsATable: Story = {
-  args: { api: buildAdminApi() },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("textbox", { name: "Filter tags (Requirement)" }), "rel");
-    const table = canvas.getByRole("table", { name: "Where tags are used: Requirement" });
-    await expect(within(table).queryByText("Safety")).not.toBeInTheDocument();
-    await expect(within(table).getByText("Release 2")).toBeInTheDocument();
-  },
-};
-
-/** A child project that follows its parent's list sees it but cannot change it here. */
 export const AnInheritedListIsReadOnly: Story = {
   args: {
     api: buildAdminApi(buildVocabulary({
@@ -262,14 +322,16 @@ export const AFailedLoadSaysSo: Story = {
   },
 };
 
-export const ARefusedChangeIsToastedAndLeavesTheScreenAlone: Story = {
+export const ARefusedChangeStaysInTheDialog: Story = {
   args: { api: buildAdminApi(undefined, { create: fn(async () => { throw new Error("The tag 'Safety' already exists."); }) }) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("textbox", { name: "New tag" }), "safety");
-    await userEvent.click(canvas.getByRole("button", { name: "Add tag" }));
-    await expect(await body().findByText("The tag 'Safety' already exists.")).toBeInTheDocument();
-    await expect(canvas.getByRole("textbox", { name: "New tag" })).toHaveValue("safety");
+    await userEvent.click(await canvas.findByRole("button", { name: "New tag" }));
+    const dialog = within(await body().findByRole("dialog", { name: "New tag" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "safety");
+    await userEvent.click(dialog.getByRole("button", { name: "Add tag" }));
+    await expect(await dialog.findByText("The tag 'Safety' already exists.")).toBeInTheDocument();
+    await expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("safety");
   },
 };
 

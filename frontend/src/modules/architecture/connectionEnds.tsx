@@ -2,7 +2,7 @@
  * Module: modules/architecture/connectionEnds
  *
  * How a connection names its two ends in lists and on its page. An end the viewer can read shows its code and name; an
- * end they can no longer read (`locked`) shows only its code, so a connection to an element that stopped being shared is
+ * end they cannot read (`locked`) shows only its code, so a connection to an element that is not shared with them is
  * still understood without revealing the element.
  */
 import { RecordCode } from "../../components/RecordCode";

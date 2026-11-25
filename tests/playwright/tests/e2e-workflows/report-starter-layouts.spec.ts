@@ -4,7 +4,7 @@ import zlib from "node:zlib";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { chooseReport } from "./reportPicker";
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, searchReportSetup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 const STARTERS = ["Business Requirements Document", "Engineering Specification", "Review Package", "Requirements by Component", "Project Workbook"];
@@ -72,8 +72,7 @@ test.describe("Report starter layouts", () => {
   }
 
   async function openOrgLayouts(page: Page, orgId: string) {
-    await page.goto(`/orgs/${orgId}/admin`);
-    await selectOrgAdminGroup(page, "Reports");
+    await page.goto(`/orgs/${orgId}/resources/reports`);
     await ensureExpanded(page, "Report layouts");
   }
 

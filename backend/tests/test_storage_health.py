@@ -2,14 +2,13 @@
 its server-admin endpoint.
 
 Covers: the probe (healthy, write failure, read-back mismatch), the alert rules
-(server admins notified once when an outage is confirmed and once on recovery, a dropped probe ignored, the open outage surviving a restart,
-ERROR logged on every failing check, the Prometheus gauge), the local disk
-monitor also notifying admins, and `GET /api/v1/system/storage-health`.
+(server admins notified once on a confirmed outage and once on recovery, a dropped
+probe ignored, the open outage surviving a restart, ERROR logged on every failing
+check, the Prometheus gauge), the local disk monitor notifying admins, and
+`GET /api/v1/system/storage-health`.
 
-`test_real_configured_storage_accepts_writes` is also the canary for the test
-environment itself: if the storage this suite runs against is full or
-unreachable it fails here, naming the cause, instead of as an unexplained 500
-in some upload test later.
+`test_real_configured_storage_accepts_writes` doubles as the canary for the test
+environment: full or unreachable storage fails here with the cause named.
 """
 
 from __future__ import annotations

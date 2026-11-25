@@ -1,37 +1,17 @@
 """
 Module: modules.product_feedback.schemas
 
-Pydantic request/response schemas for Product Feedback's routers: request create / update / out,
-version history, lifecycle transitions, comments and the project settings.
-
-`RequestUpdate` is partial: only fields present in the request body change, so a nullable field
-(the owner) can be cleared by sending an explicit `null`. `status` is not
-editable here (the transition endpoint owns it).
-
-Scoring levels are a map of axis key to level id (`levels`), optional and clearable per axis (an axis sent as `null`
-is cleared, one not mentioned is kept). A response carries them with the scores derived under each model scored
-(`scores`; `score` / `scoring_model_key` are the primary one; null while an axis the model needs is unset), and
-`derived_levels` for an axis read from the request's demand.
-
-A request also reports its place in a merge (`merged_into`, `merged_count`), its demand
-(`requester_count`, `weighted_demand`; see `demand.py`), the problems and work it is linked to (`pain_point_count`,
-`requirement_count`; `relationships.py`) and how many requesters were told its outcome (`informed_count`,
-`loop_open_count`; `loop.py`). All are derived, never written here.
-
-External references are a list of their own (`ExternalRefIn` / `ExternalRefOut`): a create payload may carry the
-initial ones, later changes use the reference endpoints and are not versions of the request. The single
-`external_ref_url` / `external_ref_key` pair older clients send is still accepted on create and update, as a delivery
-reference on the "Other" system, and is never returned.
-
-`owner` is a principal: a user, an organisation group or a project group. Requests send a
-`PrincipalRef` (`{type, id}`; null clears it) and responses return a resolved `PrincipalOut`.
+Pydantic schemas for request create/update/out, versions, transitions,
+comments and project settings. `RequestUpdate` is partial (an explicit `null`
+clears a nullable field); `status` changes only through the transition
+endpoint. Scoring `levels` map axis key to level id; merge, demand, link and
+informed counts are derived. `owner` is a principal (`PrincipalRef` in, `PrincipalOut` out).
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated
-from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
@@ -45,21 +25,7 @@ from app.modules.product_feedback.enums import (
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
-
-
-def check_web_url(value: str | None) -> str | None:
-    """Accepts only an absolute `http` or `https` URL (or nothing). The reference is rendered as a link, and a
-    `javascript:` or `data:` URL stored there would run in the viewer's browser or in an export.
-
-    Raises:
-        ValueError: If a non-empty value is not an http(s) URL with a host.
-    """
-    if not value:
-        return value
-    parts = urlsplit(value.strip())
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise ValueError("A link must be an http or https URL.")
-    return value.strip()
+from app.services.external_references import check_web_url
 
 
 class ExternalRefIn(BaseModel):
@@ -92,7 +58,8 @@ class ExternalRefUpdate(BaseModel):
 
 
 class ExternalRefOut(BaseModel):
-    """A reference with its system's name. `system_id` is accepted back by the request's tier's system picker."""
+    """A reference with its system's name. `system_id` is accepted back by the request's tier's system picker; `link` is
+    `url` or, without one, the system's link template with the key in it."""
 
     id: UUID
     request_id: UUID
@@ -100,6 +67,7 @@ class ExternalRefOut(BaseModel):
     system_name: str
     key: str
     url: str | None = None
+    link: str | None = None
     role: ExternalRefRole
     created_by: UUID
     created_at: datetime

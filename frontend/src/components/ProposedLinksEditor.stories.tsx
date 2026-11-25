@@ -19,9 +19,8 @@ function Harness({ initial = [], ...rest }: Omit<React.ComponentProps<typeof Pro
 }
 
 /**
- * The "Proposed links" section of the form that drafts a new or modify-requirement change
- * request. It collects links; the
- * form sends them with the request and creates nothing here.
+ * The "Proposed links" section of the form that drafts a new or modify-requirement change request. It collects
+ * links; the form sends them with the request and creates nothing here.
  */
 const meta: Meta<typeof Harness> = {
   title: "Components/ProposedLinksEditor",

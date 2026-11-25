@@ -1,17 +1,12 @@
 """
 Module: models.requirement
 
-Defines requirements and their supporting structures: versioned content
-(temporal history, C-A-02), keywords (C-M-01, stored as tags: `models.tag`), and per-stage approval
-baselines (C-G-10).
+Defines requirements and their supporting structures: versioned content (temporal history, C-A-02),
+keywords (C-M-01, stored as tags: `models.tag`), and per-stage approval baselines (C-G-10).
 
-Traceability links (C-G-09) used to live here as `RequirementLink`, and
-action membership as `RequirementActionLink` (`models.requirement_action`).
-Both were folded into the generic
-polymorphic `ArtefactLink` (`models.relationship`) — a requirement-to-
-requirement traceability link is now an `ArtefactLink` row with
-`source_type`/`target_type` both `ArtefactType.REQUIREMENT` and a non-null
-`link_type_id`; see that module's docstring for the full design.
+Traceability links (C-G-09) and action membership (`models.requirement_action`) are rows of the generic
+polymorphic `ArtefactLink` (`models.relationship`): a requirement-to-requirement link has
+`source_type`/`target_type` both `ArtefactType.REQUIREMENT` and a non-null `link_type_id`.
 
 Design decision: rather than a single mutable row with valid_from/valid_to
 columns, the `Requirement` row holds only stable identity fields
@@ -49,24 +44,15 @@ class Requirement(UUIDPKMixin, TimestampMixin, Base):
         is_archived: Soft-delete flag; archived requirements are hidden from
             default views but their full version history is preserved
             (C-A-06).
-        is_completed: Overlay marker (C-G-11) — "independently of lifecycle
-            state, a requirement may be marked completed... subject to the
-            potential of periodic review where it may later be reversed to
-            non-compliant." Deliberately not a `RequirementStatus` value:
-            completion sits on top of the `approved` lifecycle status rather
-            than replacing it, so a completed requirement's `status` stays
-            `approved` throughout (see `services.requirements.LOCKED_STATUSES`
-            and `routers.requirements.complete_requirement`/
-            `uncomplete_requirement`, which set/clear these three fields
-            directly rather than writing a new `RequirementVersion` — marking
-            something complete doesn't change its content). `completed_at`/
-            `completed_by` mirror `archived_at`/`archived_by`'s own shape.
-            Cleared automatically when a `FAILED` review outcome is recorded
-            against a completed requirement (`record_review_outcome`) — the
-            concrete mechanism behind C-G-11's "reversed to non-compliant...
-            when a review/audit occurs" — or explicitly by a project manager
-            approving a change request with `clear_completion=True`
-            (`decide_change_request`).
+        is_completed: Overlay marker (C-G-11): completion is independent of lifecycle state and may be
+            reversed to non-compliant by periodic review. It is not a `RequirementStatus` value: it sits
+            on top of `approved`, so `status` stays `approved` (see
+            `services.requirements.LOCKED_STATUSES`). `routers.requirements.complete_requirement`/
+            `uncomplete_requirement` set and clear these three fields directly without writing a
+            `RequirementVersion`, as completion changes no content. `completed_at`/`completed_by` mirror
+            `archived_at`/`archived_by`. Cleared when a `FAILED` review outcome is recorded against a
+            completed requirement (`record_review_outcome`, C-G-11's reversal on review) or when a project
+            manager approves a change request with `clear_completion=True` (`decide_change_request`).
     """
 
     __tablename__ = "requirements"
@@ -136,25 +122,16 @@ class RequirementVersion(UUIDPKMixin, Base):
     name: Mapped[str] = mapped_column(String(500))
     reasoning: Mapped[str] = mapped_column(Text, default="")
     clarification: Mapped[str] = mapped_column(Text, default="")
-    # Free-text elaboration, distinct from reasoning (why the requirement
-    # exists) and clarification (scope/edge-case notes) — optional, blank by
-    # default. Governed by the same creation-or-change-request-only rule as
-    # every other content field once a requirement is locked (C-G-12).
+    # Free-text elaboration, distinct from reasoning (why it exists) and clarification (scope and edge-case
+    # notes); blank by default. Once a requirement is locked, creation or a change request is the only way to
+    # change it, as for every content field (C-G-12).
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[RequirementStatus] = mapped_column(str_enum(RequirementStatus, 20), default=RequirementStatus.DRAFT)
-    # Which project stage/release this content is targeted at, and whether it's
-    # mandatory or advisory (mock's "Target"/"Level" fields) — display/planning
-    # metadata on the version, not gating logic. target_stage_id is mandatory
-    # (a requirement must always be targeted at some stage), so its FK can no
-    # longer be ON DELETE SET NULL (that would itself violate the NOT NULL
-    # constraint). CASCADE instead: there is no API path that ever deletes a
-    # single ProjectStage row on its own (no DELETE /stages/{id} endpoint
-    # exists) — the only way one is ever removed is as part of its whole
-    # project/organisation being deleted, at which point every
-    # RequirementVersion referencing it is being deleted in that same
-    # cascade anyway (see services/org_deletion.py's module docstring for
-    # why this codebase leans on DB-level cascades for exactly this kind of
-    # bulk teardown).
+    # The project stage/release this content targets, and whether it is mandatory or advisory (the "Target"
+    # and "Level" fields): planning metadata, not gating logic. target_stage_id is mandatory, so its FK is
+    # ON DELETE CASCADE, not SET NULL (which would violate NOT NULL). No endpoint deletes a single
+    # ProjectStage; one is removed only with its project or organisation, when every RequirementVersion
+    # referencing it is deleted in the same cascade (see services/org_deletion.py).
     target_stage_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE"), nullable=False
     )
@@ -166,10 +143,8 @@ class RequirementVersion(UUIDPKMixin, Base):
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Values for this project's custom attribute definitions (C-C-01, C-C-02),
-    # keyed by CustomFieldDefinition id. Stored here rather than in a separate
-    # versioned table so custom-field changes are captured by the same
-    # version-history/change-log mechanism as the standard fields.
+    # Values for this project's custom attribute definitions (C-C-01, C-C-02), keyed by
+    # CustomFieldDefinition id; stored here so the version history and change log capture them as standard fields.
     custom_fields: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     change_request_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -177,10 +152,8 @@ class RequirementVersion(UUIDPKMixin, Base):
     )
     change_note: Mapped[str] = mapped_column(Text, default="")
 
-    # Massif (v3) review scheduling (C-R-06/08/10). These live on the
-    # versioned table, not the Requirement identity row, because C-R-06's
-    # clarification requires them to only change on creation or via a change
-    # request — the same CR-gated path already used by name/reasoning/etc.
+    # Review scheduling (C-R-06/08/10). On the versioned table, not the identity row, because C-R-06 allows
+    # them to change only on creation or through a change request, as name and reasoning.
     review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     review_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reviewer_type: Mapped[str | None] = principal_type_column(nullable=True)

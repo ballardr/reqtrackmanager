@@ -80,35 +80,28 @@ function mockOrgOverviewApis(
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/overview-stats")) return overrides.stats ?? fullTotalStats;
     if (path.includes("/modules")) return overrides.modules ?? [];
-    // `EntitySwitcher`'s own sibling-org fetch — a single-org
-    // default means every other story here renders no switcher chevron.
+    // `EntitySwitcher`'s sibling-organisation fetch: a single-organisation default renders no switcher chevron.
     if (path === "/api/v1/orgs?mine=true") return overrides.myOrgs ?? [org];
     throw new Error(`unmocked path: ${path}`);
   });
 }
 
 /**
- * A fixture module registered directly into the real `installedModules`
- * (mirroring `OrgAdminPage.stories.tsx`'s own `FIXTURE_ORG_MODULE_KEY`
- * convention) — proves the generic `orgOverviewSections`/`orgOverviewWidgets`
- * merge-and-render mechanisms `OrgOverviewPage.tsx` uses work for a module
- * other than Compliance, without this story file depending on Compliance's
- * own behaviour. Nothing renders it unless a story's own
- * `mockOrgOverviewApis({ modules: [...] })` explicitly reports this key as
- * enabled, so its permanent presence here causes no cross-story
- * interference (same reasoning `OrgAdminPage.stories.tsx` already
- * documents for its own permanently-pushed fixture).
+ * A fixture module registered into the real `installedModules` (as in `OrgAdminPage.stories.tsx`) proves the
+ * generic `orgOverviewWidgets` merge-and-render works for a module other than Compliance. Nothing renders it
+ * unless a story's `mockOrgOverviewApis({ modules: [...] })` reports this key as enabled, so its permanent
+ * presence does not affect other stories. It also declares an Org Resources section, which the Overview never lists.
  */
 const FIXTURE_ORG_MODULE_KEY = "fake_org_overview_fixture_module";
-const FIXTURE_ORG_OVERVIEW_SECTION_KEY = "fixture-overview-section";
+const FIXTURE_ORG_RESOURCE_SECTION_KEY = "fixture-overview-section";
 
 installedModules.push({
   key: FIXTURE_ORG_MODULE_KEY,
-  orgOverviewSections: [
+  orgResourceSections: [
     {
-      key: FIXTURE_ORG_OVERVIEW_SECTION_KEY,
-      label: "Fixture overview section",
-      render: ({ orgId }) => <div>Fixture overview section content for org {orgId}</div>,
+      key: FIXTURE_ORG_RESOURCE_SECTION_KEY,
+      label: "Fixture resource section",
+      render: ({ orgId }) => <div>Fixture resource section content for org {orgId}</div>,
     },
   ],
   // A widget the module contributes to the organisation dashboards, drawn by the page without importing the module.
@@ -120,7 +113,7 @@ installedModules.push({
 function fixtureOrgModule(overrides: Partial<OrgModule> = {}): OrgModule {
   return {
     module_key: FIXTURE_ORG_MODULE_KEY, name: "Fixture Org Module",
-    description: "A fixture module used only by this story file's own org-overview-section assertions.",
+    description: "A fixture module used only by this story file's own org-overview widget assertions.",
     version: "0.1.0", implemented: true, entitled: true, enabled: true, default_project_enabled: true,
     default_enabled: true, frontend_manifest: null, ...overrides,
   };
@@ -150,7 +143,6 @@ export const DashboardShowsTheHeadlineFigures: Story = {
     await expect(canvas.getByText("6")).toBeInTheDocument();
     await expect(canvas.getByText("12")).toBeInTheDocument();
     await expect(canvas.getByText("4.3 MB")).toBeInTheDocument();
-    await expect(canvas.queryByText("Fixture overview section content for org org-1")).not.toBeInTheDocument();
     await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
     // Neither the Customise action nor the page list is offered to a plain member.
     await expect(canvas.queryByRole("button", { name: "Customise" })).not.toBeInTheDocument();
@@ -159,6 +151,18 @@ export const DashboardShowsTheHeadlineFigures: Story = {
 };
 
 /** The dashboards the person may see are menu entries, the built-in Overview first; another page keeps its own address. */
+/** A refused read shows what failed with Retry, not a spinner that never ends. */
+export const FailedLoadOffersRetry: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockRejectedValue(new Error("The server is down."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The organisation overview could not be loaded.");
+    await expect(canvas.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  },
+};
+
 export const ExtraDashboardPagesAreMenuEntries: Story = {
   beforeEach: () => mockOrgOverviewApis({ pages: [page(), page({ id: "page-2", name: "Risk board", is_default: false })] }),
   play: async ({ canvasElement }) => {
@@ -187,35 +191,17 @@ export const ScopedTotalsForAPlainMember: Story = {
   },
 };
 
-export const WithModuleContributedSection: Story = {
+/** A module's widget is drawn by the page from the registry, beside the core figures; the module's Org Resources
+ * section is not an Overview entry, so with one dashboard the menu chrome stays hidden. */
+export const ModuleWidgetShowsAndItsResourceSectionDoesNot: Story = {
   beforeEach: () => mockOrgOverviewApis({
     modules: [fixtureOrgModule()],
     widgets: [...builtInWidgets, { id: "fixture", type: `${FIXTURE_ORG_MODULE_KEY}:card`, title: null, width: 12, height: 2, scope: null, visible: true, config: {} }],
   }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // "Overview" is the always-present, default-selected first group; a module's own section is an additional group, not
-    // the default, so its content isn't shown until its link is clicked.
-    await expect(await canvas.findByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
-    await expect(canvas.getByRole("link", { name: "Fixture overview section" })).toBeInTheDocument();
-    await expect(canvas.queryByText("Fixture overview section content for org org-1")).not.toBeInTheDocument();
-    // The module's widget is drawn by the page from the registry, beside the core figures.
     await expect(await canvas.findByText("Fixture widget for org org-1")).toBeInTheDocument();
-
-    await userEvent.click(canvas.getByRole("link", { name: "Fixture overview section" }));
-    await expect(canvas.getByText("Fixture overview section content for org org-1")).toBeInTheDocument();
-    await expect(canvas.queryByText("Fixture widget for org org-1")).not.toBeInTheDocument();
-  },
-};
-
-export const ModuleSectionHiddenWhenModuleDisabled: Story = {
-  beforeEach: () => mockOrgOverviewApis({ modules: [fixtureOrgModule({ enabled: false })] }),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.queryByRole("link", { name: "Fixture overview section" })).not.toBeInTheDocument();
-    await expect(canvas.queryByText("Fixture headline tile for org org-1")).not.toBeInTheDocument();
-    // With the module disabled, "Overview" is once again the
-    // only group, so the menu-strip chrome is hidden entirely.
+    await expect(canvas.queryByRole("link", { name: "Fixture resource section" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
   },
 };

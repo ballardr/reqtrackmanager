@@ -1,33 +1,29 @@
 """
 Module: modules.architecture.state_machines
 
-The rules for state machine diagrams and what they hold: create, edit, move between statuses, archive and delete a
-state machine diagram; add, change and delete its states and transitions; save its layout. The modelling checks are in
-`state_machine_checks`.
+The rules for state machine diagrams and what they hold: create, edit, change status, archive and delete a diagram; add,
+change and delete its states and transitions; save its layout. The modelling checks are in `state_machine_checks`.
 
 Responsibilities:
-- Validate every reference a change stores: the element described (one the viewer may read), a state's parent, a
-  transition's two states.
-- Advance the diagram's `version` on every change to the diagram or to anything it holds, and write one audit event per
-  change holding ids, counts and field names, never names or text.
+- Validate every stored reference: the element described (one the viewer may read), a state's parent, a transition's
+  two states.
+- Advance the diagram's `version` on every change to it or anything it holds and write one audit event per change
+  holding ids, counts and field names, never names or text.
 - Refuse the move to `active` while the checks find an error (`ActivationRefused`); an edit to an active diagram that
-  introduces an error is saved and shown, never refused, so a record is never locked out of repair.
-- Read lists in bulk (`state_machine_outs`, `state_outs`): one statement per kind of related row however many rows.
+  introduces an error is saved and shown, so a record is never locked out of repair.
+- Read lists in bulk (`state_machine_outs`, `state_outs`): one statement per kind of related row.
 
 Design decisions:
-- **One lock for the whole diagram.** A change to a state or a transition quotes the diagram's `version`, and the diagram
-  row is locked while it is checked, so two editors cannot both overwrite the drawing.
-- **Visibility follows the element.** A state machine diagram is the project's own record, but it describes an element
-  that may belong to another owner; every read and write goes through `visibility`, and a diagram whose element the
-  person cannot read answers 404, like the element itself.
-- **A state follows its diagram.** A state has no status or lock of its own; its code is project-scoped and never
-  reused. A state with child states cannot be deleted (move or delete the children first); deleting a state removes its
-  transitions (a database cascade) and the links, tags and places that name it.
-- **Nesting** is a tree of at most `MAX_STATE_DEPTH` levels whose parents are ordinary states of the same diagram
-  (a marker cannot contain anything).
+- One lock for the whole diagram: a state or transition change quotes the diagram's `version` and the diagram row is
+  locked while checked, so two editors cannot both overwrite the drawing.
+- Visibility follows the element: every read and write goes through `visibility`, and a diagram whose element the person
+  cannot read answers 404, like the element.
+- A state has no status or lock of its own; its code is project-scoped and never reused. A state with child states
+  cannot be deleted; deleting one removes its transitions (cascade) and the links, tags and places naming it.
+- Nesting is a tree of at most `MAX_STATE_DEPTH` levels whose parents are ordinary states (a marker holds nothing).
 
-Dependencies: `records` (the shared rule errors, version lock and audit helpers), `visibility`, `service`, core
-`services.sequences`, `services.audit`, `services.relationships`.
+Dependencies: `records` (rule errors, version lock, audit helpers), `visibility`, `service`, core `services.sequences`,
+`services.audit`, `services.relationships`.
 """
 
 from __future__ import annotations

@@ -3,15 +3,11 @@ import { expect, test } from "@playwright/test";
 import { ensureExpanded, loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
 
 /**
- * Job to be done: an org admin can see what a single user actually has
- * access to — which projects, which role(s) on each, and which org groups
- * they directly belong to — without reconstructing the answer by hand
- * from every project's own membership list.
+ * Job to be done: an org admin can see what a single user has access to (which projects, which role(s) on each, and
+ * which org groups they directly belong to) without reconstructing the answer from every project's membership list.
  *
- * Views the logged-in org admin's own row rather than a second persona's,
- * to avoid depending on exactly which orgs/projects a shared seed persona
- * (e.g. memberAlphaBeta) is a member of beyond what's already documented
- * for this one: OrgAdminAlphaBeta is org_admin of Alpha, PM on both of
+ * Views the logged-in org admin's own row rather than a second persona's, to avoid depending on which orgs/projects a
+ * shared seed persona (e.g. memberAlphaBeta) belongs to: OrgAdminAlphaBeta is org_admin of Alpha, PM on both of
  * Alpha's projects.
  */
 test.describe("view a user's access", () => {
@@ -44,13 +40,9 @@ test.describe("view a user's access", () => {
       expect(panelBox!.width).toBeGreaterThanOrEqual(wrapperBox!.width - 1);
     });
 
-    // the members/groups directory rework (docs/decisions.md)
-    // consolidated the Users table's previously-bare "View {name}'s access"
-    // button into the row's `ActionMenu` — reachable via its kebab trigger
-    // (`${display name}'s actions`), then the `menuitem` inside the
-    // `Popover` it opens (waiting for the menu itself before clicking an
-    // item, same pattern org-merge-import.spec.ts's own `ActionMenu` call
-    // site uses, since the popover repositions after mount).
+    // The row's `ActionMenu` holds "View {name}'s access": open it through its kebab trigger (`${display name}'s
+    // actions`), then the `menuitem` in the `Popover` (waiting for the menu itself, since the popover repositions after
+    // mount), as org-merge-import.spec.ts does.
     const row = page.locator("tr", { hasText: PERSONAS.orgAdminAlphaBeta.email });
     const menuTriggerName = `${PERSONAS.orgAdminAlphaBeta.name}'s actions`;
     await row.getByRole("button", { name: menuTriggerName }).click();
@@ -70,12 +62,9 @@ test.describe("view a user's access", () => {
 });
 
 /**
- * Column-header sorting — the Users table is backend-paginated (search + `limit`/
- * `offset` shipped in an earlier roadmap pass), so a header click has to
- * refetch with `sort`/`order` query params rather than reordering just the
- * loaded page. Same "Users" section this file already reaches for the
- * access-panel test above, so it lives alongside it rather than in a new
- * file.
+ * Column-header sorting: the Users table is backend-paginated (search + `limit`/`offset`), so a header click refetches
+ * with `sort`/`order` query params rather than reordering the loaded page. It shares the "Users" section the
+ * access-panel test above reaches, so it lives alongside it.
  */
 test.describe("org admin users table sorting", () => {
   test("sort by email ascending and descending via the column header", async ({ page }) => {

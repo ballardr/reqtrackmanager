@@ -1,17 +1,14 @@
 /**
  * Module: modules/stakeholders/types
  *
- * Frontend types for the Stakeholders & Personas module (Persona and
- * Stakeholder) — the wire shapes of `backend/app/modules/
- * stakeholders/schemas.py` plus the label/tone maps every rendered enum value
- * must go through (UX style guide principle 12).
+ * Frontend types for the Stakeholders & Personas module (Persona and Stakeholder): the wire shapes of
+ * `backend/app/modules/stakeholders/schemas.py` plus the label and tone maps every rendered enum value must go
+ * through (UX style guide principle 12).
  *
- * Neither artefact has an approval gate, so each lifecycle is the three-state
- * `draft | active | retired`. `PersonaFieldValues`/`StakeholderFieldValues`
- * deliberately exclude the people fields (`owner`, `champion`, `user_id`): the
- * detail pages assign those through `RecordPrincipalField`, the same split
- * Guiding Principle makes for its owner. `owner` and `champion` are principals
- * (a user, an organisation group or a project group), returned resolved.
+ * Neither artefact has an approval gate, so each lifecycle is the three-state `draft | active | retired`.
+ * `PersonaFieldValues` / `StakeholderFieldValues` exclude the people fields (`owner`, `champion`, `user_id`): the
+ * detail pages assign those through `RecordPrincipalField`, as Guiding Principle does for its owner. `owner` and
+ * `champion` are principals (a user, an organisation group or a project group), returned resolved.
  */
 import type { BadgeTone, Principal } from "../../api/types";
 import type { ProjectScopedRow } from "../../api/projectScope";
@@ -23,6 +20,13 @@ export const PERSONA_STATUS_LABEL: Record<PersonaStatus, string> = {
   draft: "Draft",
   active: "Active",
   retired: "Retired",
+};
+
+/** What each state means, the tooltip of its step in the lifecycle track. */
+export const PERSONA_STATUS_DESCRIPTION: Record<PersonaStatus, string> = {
+  draft: "Being written. It is not yet offered as a target when scoring.",
+  active: "Offered as a target when scoring.",
+  retired: "No longer offered when scoring. Its history is kept and it can be reactivated.",
 };
 
 export const PERSONA_STATUS_TONE: Record<PersonaStatus, BadgeTone> = {
@@ -165,6 +169,13 @@ export const STAKEHOLDER_STATUS_LABEL: Record<StakeholderStatus, string> = {
   draft: "Draft",
   active: "Active",
   retired: "Retired",
+};
+
+/** What each state means, the tooltip of its step in the lifecycle track. */
+export const STAKEHOLDER_STATUS_DESCRIPTION: Record<StakeholderStatus, string> = {
+  draft: "Being written. It is not yet part of the current stakeholder register.",
+  active: "Part of the current stakeholder register.",
+  retired: "No longer part of the current register. Its history is kept and it can be reactivated.",
 };
 
 export const STAKEHOLDER_STATUS_TONE: Record<StakeholderStatus, BadgeTone> = {
@@ -361,6 +372,13 @@ export const NEED_STATUS_LABEL: Record<NeedStatus, string> = {
   draft: "Draft",
   active: "Active",
   retired: "Retired",
+};
+
+/** What each state means, the tooltip of its step in the lifecycle track. */
+export const NEED_STATUS_DESCRIPTION: Record<NeedStatus, string> = {
+  draft: "Being written. It is not yet part of the current set of stakeholder needs.",
+  active: "Part of the current set of stakeholder needs.",
+  retired: "No longer current. Its history and links are kept and it can be reactivated.",
 };
 
 export const NEED_STATUS_TONE: Record<NeedStatus, BadgeTone> = {

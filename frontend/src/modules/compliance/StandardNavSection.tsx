@@ -1,68 +1,31 @@
 /**
  * Module: modules/compliance/StandardNavSection
  *
- * The "Standard" left-nav section
- * — Overview/Details, Versions, History — registered via `module.ts`'s
- * `standaloneWorkspaces` (`modules/types.ts`), rendered by `Layout.tsx` as a
- * sibling structural pattern to its own "Project" section whenever the
- * current path matches `/standards/(?!settings/)([^/]+)` (this module's own
- * declared `matchPath`, not a pattern `Layout.tsx` hardcodes). Never
- * imported by `Layout.tsx` directly — only through that declarative
- * registration, the same boundary `orgAdminSections` already enforces for
- * `OrgAdminPage.tsx`.
- *
- * Uses `NavRailLink`, exported from `components/Layout.tsx` for exactly
- * this kind of module-owned reuse, so these links render indistinguishably
- * from every core rail entry (including the project section's own).
- *
- * This is this app's first **expandable nav-rail group**: the
- * "Versions" entry has a disclosure toggle (the same `ChevronDown`/
- * `ChevronUp` pair `CollapsibleSection` already uses for the same meaning
- * elsewhere, though not `CollapsibleSection` itself — its card chrome
- * doesn't fit a nav-rail row) that, when expanded, lists one link per
- * version underneath, so a user can jump straight to a specific version's
- * workspace instead of always landing on the version list first. Expanded/
- * collapsed state persists per-user via `useUiPreference`, the same
- * mechanism `nav_rail_collapsed`/`section_collapsed:*` already use.
- * Documented as a reusable pattern in docs/ux-style-guide.md's "Pattern:
- * expandable nav-rail group" for the next project-like drill-down entity
- * with its own many-child collection.
- *
- * Behaviours of that group:
- * - Landing directly on `/standards/:id/versions/:versionId`
- *   (bookmark, link, refresh) now force-expands the group so the "which
- *   version am I on" context is visible without an extra click. This is a
- *   local, render-time override (`routeForcesExpand`), not a `setExpanded`
- *   write-through to the persisted `useUiPreference` value — the route's
- *   own opinion and the user's own manual collapse/expand choice must not
- *   clobber each other. `autoExpandSuppressed` lets a manual click on the
- *   toggle actually collapse the group while a route is still forcing it
- *   open, without touching the persisted preference either; it resets
- *   whenever the route changes so the next version page auto-expands fresh.
- * - The "Versions" `NavRailLink`/row uses an exact match
- *   (`location.pathname === versionsBase`) instead of the default
- *   startsWith match, so it no longer stays highlighted alongside the
- * specific version's own row underneath it (the same fix as in
- * `ComplianceGlobalNavLink.tsx` for the identical
- *   "parent stays highlighted under a child route" shape).
- * - The disclosure toggle does not render as a separately
- *   bordered `.btn` chip. `.nav-link-row` (theme.css) carries the row's
- *   hover/active background instead of the inner link, so hovering
- *   anywhere in the row — including the toggle's own area — highlights
- *   the whole row as one surface, while the link and the toggle stay two
- *   separately focusable/clickable controls (a `<div>` wrapping a real
- *   `<Link>` plus a real `<button>`, not nested `<button>`s).
- *
- * Only `entityId` (the standard id) and `railCollapsed` are passed down by
- * `standaloneWorkspaces`' render contract — this component resolves its
- * own `organization_id` via the global, no-org-in-path `getStandardById`
- * the same way `StandardWorkspacePage.tsx` does, rather than that contract
- * growing an org-id field no other workspace needs.
+ * The "Standard" left-nav section (Overview/Details, Versions, History), registered through `module.ts`'s `standaloneWorkspaces`
+ * (`modules/types.ts`) and rendered by `Layout.tsx` as a sibling of its "Project" section when the path matches
+ * `/standards/(?!settings/)([^/]+)` (this module's declared `matchPath`). `Layout.tsx` never imports it. It uses `NavRailLink`
+ * (exported from `components/Layout.tsx`) so links match core rail entries. It is a foldable `NavGroup` (`containsActive`: it
+ * renders only on a standard's routes), so folding leaves just the current page's entry.
+ * The "Versions" entry is an **expandable nav-rail group** (docs/ux-style-guide.md, "Pattern: expandable nav-rail group"): a
+ * disclosure toggle (the `ChevronDown`/`ChevronUp` pair of `CollapsibleSection`, whose card chrome does not fit a rail row) lists
+ * one link per version, so a person can jump to a version's workspace. The expanded state persists per user with `useUiPreference`
+ * (as `nav_rail_collapsed` and `section_collapsed:*`).
+ * - Landing on `/standards/:id/versions/:versionId` expands the group through a render-time override (`routeForcesExpand`), not a
+ *   write to the persisted preference, so the route and the person's own choice do not overwrite each other.
+ *   `autoExpandSuppressed` lets a click collapse the group while a route forces it open and resets on route change.
+ * - The "Versions" row matches its exact path (`location.pathname === versionsBase`), so it is not highlighted beside the
+ *   version's own row (as in `ComplianceGlobalNavLink.tsx`).
+ * - The toggle is not a bordered `.btn` chip: `.nav-link-row` (theme.css) carries the row's hover and active background, so the
+ *   whole row highlights as one surface while the link and the toggle stay two focusable controls (a `<div>` wrapping a real
+ *   `<Link>` and a real `<button>`, not nested buttons).
+ * - Only `entityId` (the standard id) and `railCollapsed` are passed by the render contract, so the component resolves its
+ *   `organization_id` through the global `getStandardById`, as `StandardWorkspacePage.tsx` does.
  */
 import { ChevronDown, ChevronRight, History, LayoutDashboard, ListChecks, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
+import { NavGroup } from "../../components/NavGroup";
 import { NavRailLink } from "../../components/NavRailLink";
 import { useUiPreference } from "../../hooks/useUiPreference";
 import * as complianceApi from "./api";
@@ -108,51 +71,52 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
 
   return (
     <>
-      <div className="nav-section-label">Standard</div>
-      <NavRailLink to={`/standards/${entityId}`} exact label="Overview" icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
-      {canExpand ? (
-        <div className={`nav-link-row${onVersionsListExact ? " active" : ""}`}>
-          <Link to={versionsBase} className="nav-link-row-link" aria-label="Versions">
-            <ListChecks size={16} /> <span className="nav-label">Versions</span>
-          </Link>
-          <button
-            type="button"
-            className="nav-link-row-toggle"
-            aria-label={effectiveExpanded ? "Collapse versions" : "Expand versions"}
-            aria-expanded={effectiveExpanded}
-            onClick={toggleExpanded}
-          >
-            {effectiveExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        </div>
-      ) : (
-        <NavRailLink to={versionsBase} exact label="Versions" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
-      )}
-      {canExpand && effectiveExpanded && versions && (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {versions.map((version) => {
-            const to = `${versionsBase}/${version.id}`;
-            const active = location.pathname === to;
-            return (
-              <li key={version.id}>
-                <Link
-                  to={to}
-                  className={`nav-link${active ? " active" : ""}`}
-                  style={{ paddingLeft: "2rem", fontSize: "0.85rem" }}
-                >
-                  <span className="nav-label">
-                    {version.version_label} ({COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]})
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {/* This standard's own standards_manager/standards_contributor
-          working group. */}
-      <NavRailLink to={`/standards/${entityId}/members`} label="Members" icon={<Users size={16} />} railCollapsed={railCollapsed} />
-      <NavRailLink to={`/standards/${entityId}/history`} label="History" icon={<History size={16} />} railCollapsed={railCollapsed} />
+      <NavGroup groupKey="standard" label="Standard" railCollapsed={railCollapsed} containsActive>
+        <NavRailLink to={`/standards/${entityId}`} exact label="Overview" icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
+        {canExpand ? (
+          <div className={`nav-link-row${onVersionsListExact ? " active" : ""}`}>
+            <Link to={versionsBase} className="nav-link-row-link" aria-label="Versions">
+              <ListChecks size={16} /> <span className="nav-label">Versions</span>
+            </Link>
+            <button
+              type="button"
+              className="nav-link-row-toggle"
+              aria-label={effectiveExpanded ? "Collapse versions" : "Expand versions"}
+              aria-expanded={effectiveExpanded}
+              onClick={toggleExpanded}
+            >
+              {effectiveExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+          </div>
+        ) : (
+          <NavRailLink to={versionsBase} exact label="Versions" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
+        )}
+        {canExpand && effectiveExpanded && versions && (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {versions.map((version) => {
+              const to = `${versionsBase}/${version.id}`;
+              const active = location.pathname === to;
+              return (
+                <li key={version.id}>
+                  <Link
+                    to={to}
+                    className={`nav-link${active ? " active" : ""}`}
+                    style={{ paddingLeft: "2rem", fontSize: "0.85rem" }}
+                  >
+                    <span className="nav-label">
+                      {version.version_label} ({COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]})
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {/* This standard's own standards_manager/standards_contributor
+            working group. */}
+        <NavRailLink to={`/standards/${entityId}/members`} label="Members" icon={<Users size={16} />} railCollapsed={railCollapsed} />
+        <NavRailLink to={`/standards/${entityId}/history`} label="History" icon={<History size={16} />} railCollapsed={railCollapsed} />
+      </NavGroup>
     </>
   );
 }

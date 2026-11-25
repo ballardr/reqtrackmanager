@@ -72,7 +72,7 @@ export function ReportLayoutJsonField({
 
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
-      <TextAreaField
+      <TextAreaField plainText="JSON, not prose"
         label={text.jsonFieldLabel(label)} value={typed} onChange={edit} rows={4} disabled={disabled} help={help} required={required}
         inputProps={{ spellCheck: false }}
       />

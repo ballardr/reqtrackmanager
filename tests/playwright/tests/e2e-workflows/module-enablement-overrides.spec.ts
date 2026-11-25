@@ -13,16 +13,13 @@ function moduleRow(page: Page, name: string) {
 }
 
 /**
- * Job to be done: module/sub-component availability across org and project
- * (Decided by: User, 2026-10-04 — see `docs/decisions.md`):
- * - an org "Off" reaches every project immediately and can't be overridden;
- * - an org default only applies to projects that get the module afterwards
- *   — changing it never flips an existing project;
+ * Job to be done: module/sub-component availability across organisation and project (see `docs/decisions.md`):
+ * - an organisation "Off" reaches every project immediately and cannot be overridden;
+ * - an organisation default applies only to projects that get the module afterwards, and never flips an existing one;
  * - a project may opt in to a module that is available but off by default.
  *
- * Uses Context & Strategy (registry default off, the only module with
- * sub-components) on a disposable org + projects created via the API, per
- * the repo's test-idempotency rule.
+ * Uses Context & Strategy (default off, the only module with sub-components) on a disposable organisation and
+ * projects created through the API.
  */
 /** Creates a disposable org with its own org admin (API), plus a
  * `createProject` helper, and logs that admin into the UI. */

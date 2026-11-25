@@ -76,7 +76,7 @@ class RequirementFile(UUIDPKMixin, Base):
     requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"))
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    # Defaulted (2026-10-05): bundle import created links without it, a 500.
+    # Defaulted so a bundle import that creates links without it succeeds.
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -91,7 +91,7 @@ class RequirementActionFile(UUIDPKMixin, Base):
     action_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirement_actions.id", ondelete="CASCADE"))
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    # Defaulted (2026-10-05): bundle import created links without it, a 500.
+    # Defaulted so a bundle import that creates links without it succeeds.
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

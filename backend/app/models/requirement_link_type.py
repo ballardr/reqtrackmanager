@@ -1,14 +1,10 @@
 """
 Module: models.requirement_link_type
 
-Org-definable, bidirectional traceability relationship types between
-requirements (C-G-09), replacing the previous fixed `RequirementLinkType`
-enum (relates_to/depends_on/derived_from). An organisation gets 12 seeded
-defaults (forward/reverse pairs — e.g. "Derives from" / "Is the source of")
-covering the common traceability vocabulary, and may add its own beyond
-that with no artificial cap, matching how this codebase already treats
-seeded `ProjectGroup`s and default report templates as ordinary, renamable/
-deletable rows rather than protected "builtin" ones.
+Org-definable, bidirectional traceability relationship types between requirements (C-G-09). An organisation
+gets 12 seeded defaults (forward/reverse pairs, for example "Derives from" / "Is the source of") covering
+the common traceability vocabulary, and may add its own with no cap. Seeded types are ordinary, renamable
+and deletable rows, not protected built-ins, as default report templates are.
 """
 
 from __future__ import annotations
@@ -63,10 +59,8 @@ class RequirementLinkTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
             ancestor or descendant, and which end may sit higher
             (`models.enums.LinkNestingScope`). Enforced at link creation only
             (`services.link_nesting`); `UPSTREAM_IN_ANCESTOR` requires a `flow`.
-        project_id: `None` for an organisation-wide type (the default and the
-            only kind before project-level link types existed); a project's
-            id for a type its project admin defined, usable in that project
-            and every descendant. Local types keep `organization_id` set so
+        project_id: `None` for an organisation-wide type; a project's id for a type its project admin
+            defined, usable in that project and every descendant. Local types keep `organization_id` set so
             org deletion and the same-organisation checks still cover them.
             Name uniqueness is per scope (see `__table_args__`); the
             cross-scope "ancestor wins" rule is service-level
@@ -74,10 +68,8 @@ class RequirementLinkTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "requirement_link_type_definitions"
-    # Two partial unique indexes replace the original (organization_id,
-    # forward_name) constraint: an org-wide type is unique per organisation,
-    # a project-local one per project, so two projects can each own a type
-    # with the same name.
+    # Two partial unique indexes: an org-wide type is unique per organisation and a project-local one per
+    # project, so two projects can each own a type with the same name.
     __table_args__ = (
         Index(
             "uq_requirement_link_type_definitions_org_forward", "organization_id", "forward_name",

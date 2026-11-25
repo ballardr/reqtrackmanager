@@ -6,6 +6,8 @@ import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures"
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
 import type { FutureState } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
 
 const PROJECT_ID = "project-1";
 const FUTURE_STATE_ID = "future-state-1";
@@ -36,11 +38,7 @@ function mockDetailApis(current: FutureState) {
   });
 }
 
-/**
- * A real routed page — stories go through `withRouter`/`withAuth` rather
- * than passing props directly, mirroring `StrategyDetailPage.stories.tsx`'s
- * own identical convention.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props, as in `StrategyDetailPage.stories.tsx`. */
 const meta: Meta<typeof FutureStateDetailPage> = {
   title: "Modules/ContextStrategy/FutureStateDetailPage",
   component: FutureStateDetailPage,
@@ -57,33 +55,51 @@ export default meta;
 
 type Story = StoryObj<typeof FutureStateDetailPage>;
 
-export const UnderReviewShowsApproveAndSendBack: Story = {
+export const UnderReviewOffersApproveAndSendBack: Story = {
   beforeEach: () => mockDetailApis(futureState()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Regional #1 by 2028" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Send back" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Future State");
+    await expect(names[0]).toBe("Promote to Approved");
+    await expect(names).toContain("Send back");
+    await expect(currentLifecycleStep(canvasElement)).toBe("Under review");
     await expect(canvas.getByText(/Target date 2028-06-30/)).toBeInTheDocument();
   },
 };
 
-export const DraftShowsPropose: Story = {
+export const DraftOffersPropose: Story = {
   beforeEach: () => mockDetailApis(futureState({ status: "draft" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Propose" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Proposed" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Future State");
+    await expect(names[0]).toBe("Promote to Proposed");
+    await expect(names).not.toContain("Send back");
   },
 };
 
-export const ActiveShowsSupersedeAndRetire: Story = {
+export const ActiveOffersSupersedeAndRetire: Story = {
   beforeEach: () => mockDetailApis(futureState({ status: "active", is_locked: true })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Supersede" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Future State actions" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Future State");
+    await expect(names).toEqual(expect.arrayContaining(["Supersede", "Retire"]));
+    await expect(names.some((name) => name.startsWith("Promote to"))).toBe(false);
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     await expect(canvas.getByText(/new attachments can no longer be added/)).toBeInTheDocument();
+    await expect(canvas.getAllByRole("img", { name: /^Locked/ }).length).toBeGreaterThan(0);
+  },
+};
+
+export const SupersededShowsTheEndStep: Story = {
+  beforeEach: () => mockDetailApis(futureState({ status: "superseded", is_locked: true })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Superseded"));
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
   },
 };
 
@@ -100,8 +116,8 @@ export const SendBackRequiresComment: Story = {
   beforeEach: () => mockDetailApis(futureState()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Send back" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Send back" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Future State actions" }));
+    await chooseRecordAction(canvas, "Future State", "Send back");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Send this Future State back to Draft?" }));
     await expect(dialog.getByRole("button", { name: "Send back" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText("Send-back comment"), "Needs a firmer target date first.");
@@ -119,8 +135,9 @@ export const ApproveFutureState: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Approve" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Approve" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Approved" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Approved" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Promote to Approved" }));
     const dialog = within(within(document.body).getByRole("dialog", { name: "Approve this Future State?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
 
@@ -128,12 +145,28 @@ export const ApproveFutureState: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/future-states/${FUTURE_STATE_ID}/approve`,
       { comment: null }
     ));
-    await waitFor(() => expect(canvas.getByText("Approved")).toBeInTheDocument());
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Approved"));
   },
 };
 
-export const LightTheme: Story = { ...UnderReviewShowsApproveAndSendBack };
-export const DarkTheme: Story = { ...UnderReviewShowsApproveAndSendBack, globals: { theme: "dark" } };
+export const PromoteFromTheActionsMenuProposesADraft: Story = {
+  beforeEach: () => {
+    mockDetailApis(futureState({ status: "draft" }));
+    spyOn(api, "post").mockResolvedValue(futureState({ status: "proposed" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Future State actions" }));
+    await chooseRecordAction(canvas, "Future State", "Promote to Proposed");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/future-states/${FUTURE_STATE_ID}/propose`,
+    ));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Proposed"));
+  },
+};
+
+export const LightTheme: Story = { ...UnderReviewOffersApproveAndSendBack };
+export const DarkTheme: Story = { ...UnderReviewOffersApproveAndSendBack, globals: { theme: "dark" } };
 
 /** Links live in the shared Links panel beside the page; the page adds only what is specific to it. */
 export const LinksPanelShowsLinks: Story = {

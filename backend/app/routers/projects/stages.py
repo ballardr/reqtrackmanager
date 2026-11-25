@@ -196,20 +196,14 @@ def delete_stage(
     project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Deletes a stage, reassigning every requirement version and
-    change-request proposal that ever targeted it to `reassign_to` first —
-    `RequirementVersion.target_stage_id` is mandatory (never null), so this
-    isn't optional the way unlinking a file is.
+    """Deletes a stage, first reassigning every requirement version and change-request proposal that targeted
+    it to `reassign_to` (`RequirementVersion.target_stage_id` is mandatory).
 
-    Refuses to delete a stage any approved baseline snapshots (C-G-10):
-    a `Baseline` is documented as an *immutable* record of what a specific
-    stage's approved requirements looked like, and silently repointing it
-    at a different stage would quietly rewrite what that snapshot means.
-    Archiving/renaming is always available instead; only a stage with no
-    baseline history can be removed outright. `reassign_to` must be a
-    different, existing stage in the same project — if this is the
-    project's only stage, no valid target exists and deletion is refused
-    (a project must always have at least one stage).
+    Refuses to delete a stage any approved baseline snapshots (C-G-10): a `Baseline` is an immutable record of
+    what a stage's approved requirements looked like, and repointing it would rewrite what it means. A stage
+    with no baseline history can be removed; archiving and renaming are always available. `reassign_to` must be
+    a different, existing stage in the same project; a project's only stage cannot be deleted (a project always
+    has at least one stage).
     """
     stage = db.get(ProjectStage, stage_id)
     if stage is None or stage.project_id != project.id:
@@ -357,19 +351,13 @@ _STAGE_NOTIFICATION_TYPES = {
 
 
 def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage, actor_id: UUID) -> None:
-    """Notifies all project members of stage transitions (C-N-01), including
-    a newly created stage entering scoping.
+    """Notifies all project members of stage transitions (C-N-01), including a newly created stage entering
+    scoping.
 
-    Per the requirement's "unless brand new project" clarification, a brand
-    new *project's* very first stage must not notify — but that stage is
-    created directly in `create_project` (never through this function), so
-    every actual caller of `_notify_stage_transition` (a subsequent stage
-    being created via `create_stage`, or an existing stage transitioning via
-    `transition_stage`) is, by construction, never that excluded case.
+    A new project's very first stage does not notify; it is created directly in `create_project`, never
+    through this function, so every caller (`create_stage`, `transition_stage`) is a non-excluded case.
 
-    `actor_id` is whoever created the stage or triggered the transition —
-    excluded from this broadcast so they're not told about the very change
-    they just made (e.g. the project manager who approved the stage).
+    `actor_id` is whoever created the stage or triggered the transition and is excluded from the broadcast.
     """
     phase = db.get(StageWorkflowPhase, stage.phase_id)
     notification_type = _STAGE_NOTIFICATION_TYPES.get(phase.kind) if phase is not None else None

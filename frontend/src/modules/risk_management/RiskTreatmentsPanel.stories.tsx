@@ -56,6 +56,18 @@ export const NeedsReassessmentShowsWhy: Story = {
   },
 };
 
+/** The rationale is shown as words without its Markdown marks. */
+export const RationaleIsShownWithoutMarks: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue(list([buildTreatment({ status: "effective", rationale: "Passed the **audit** and the *retest*." })]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/Passed the audit and the retest\./)).toBeInTheDocument());
+    await expect(canvas.queryByText(/\*\*/)).not.toBeInTheDocument();
+  },
+};
+
 export const EffectiveCountsAndHiddenLinksAreCounted: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockResolvedValue(list([buildTreatment({ status: "effective", rationale: "Reviewed by the owner." })], { hidden_count: 2 }));

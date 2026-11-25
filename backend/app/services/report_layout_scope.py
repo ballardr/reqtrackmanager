@@ -4,22 +4,15 @@ Module: services.report_layout_scope
 Which report layouts a project can see, and hiding or restoring the inherited ones.
 
 Responsibilities:
-- `resolve_project_layouts`: the layouts a project can reach, each with where it comes from.
-- `hide_layout` / `restore_layouts`: a project hides an inherited layout and brings it back.
-- `list_org_layouts`: an organisation's own layouts.
+- `resolve_project_layouts`, `hide_layout` / `restore_layouts`, `list_org_layouts`.
 
 Design decisions:
-- **Visibility is additive.** A project sees its own layouts, its ancestors' (nearest first) and the
-  organisation's, de-duplicated by name (case-insensitively) with the nearest owner winning. The Action
-  Types rule ("own rows, else the nearest ancestor's") would hide every inherited layout the moment a
-  project made one of its own, so it is not used here. A name that a nearer layout shadows is not
-  listed and cannot be hidden separately.
-- **Hiding is a tombstone** (`ProjectDefinitionSuppression`, kind `report_layout`), per project and not
-  inherited downwards, exactly as the other organisation defaults. Only an inherited layout can be
-  hidden; a project removes its own by deleting it. A hidden layout keeps its name, so it does not let a
-  farther layout of the same name show through.
-- Platform starter layouts are added to this resolution when they exist; they will be a further,
-  read-only tier below the organisation.
+- Visibility is additive: a project sees its own layouts, its ancestors' (nearest first) and the organisation's,
+  de-duplicated by case-insensitive name with the nearest owner winning. The action-type rule (own rows, else the
+  nearest ancestor's) would hide every inherited layout once a project made one.
+- Hiding is a per-project tombstone (`ProjectDefinitionSuppression`, kind `report_layout`), not inherited downwards;
+  only an inherited layout can be hidden, and a hidden layout keeps its name so a farther one does not show through.
+- Platform starter layouts join this resolution as a read-only tier below the organisation.
 
 Dependencies: `models.report_layout`, `services.project_hierarchy`, `services.definition_suppression`.
 """

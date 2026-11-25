@@ -1,44 +1,25 @@
 """
 Module: services.report_fonts
 
-Lets PDF reports print text the built-in Helvetica cannot: Cyrillic, Polish and other Latin
-Extended letters, Greek and anything else DejaVu Sans covers.
+Lets PDF reports print text the built-in Helvetica cannot (Cyrillic, Latin Extended, Greek, anything DejaVu Sans covers)
+and defines the closed table of document font families.
 
 Responsibilities:
-- Register the bundled DejaVu Sans (regular, bold, italic and bold italic) with ReportLab once.
-- `FAMILIES` / `get_family`: the closed table of document font families (Sans, Serif, Mono, Unicode Sans),
-  each with the PDF face files and the names Word, OpenDocument and HTML are told. Nothing reads it for
-  drawing yet; renderers adopt it one at a time.
-- `register_family`, `pdf_face`, `covers`: register a family's four faces with ReportLab, name the face for
-  a weight and slant, and say whether a family's face has a glyph for a character.
-- `mark_fallback`: wrap each run of characters Helvetica cannot encode in a `<font>` tag for the
-  Paragraph markup `report_document.safe` produces.
-- `text_width`, `draw_aligned` and `draw_centred`: measure and draw mixed text where markup is not available
-  (column sizing, the page footer).
-- `needs_fallback`: tell a plain table cell that must become a Paragraph from one that can stay a string.
-- `using_family`: draw and measure in a document font family for the duration of one render (a layout's body font);
-  with none active everything is Helvetica as before.
+- Register the bundled DejaVu Sans with ReportLab once; `FAMILIES` / `get_family` (Sans, Serif, Mono, Unicode Sans, with
+  the PDF face files and the names Word, OpenDocument and HTML are told); `register_family`, `pdf_face`, `covers`.
+- `mark_fallback`, `needs_fallback`, `text_width`, `draw_aligned`, `draw_centred` for mixed text; `using_family`
+  draws and measures in a layout's font for one render.
 
 Design decisions:
-- A family's PDF faces are metric-compatible with the name Word/ODT/HTML ask for (Liberation Sans for
-  Arial, Liberation Serif for Times New Roman, Liberation Mono for Courier New), so a line breaks the same
-  in all four formats when the reader has the named font or a metric-compatible one. Measured, with the
-  numbers, in docs/decisions.md (the custom reports fonts spike entry). A reader with neither substitutes a
-  different-width face and reflows; the generic fallback names below limit but do not remove that.
-- Fonts offered are a closed list: the four bundled families and the families a server administrator
-  mounts. Organisation-uploaded fonts are refused on purpose (untrusted bytes, unknown licence).
-- Text Helvetica can encode (Windows-1252, the encoding ReportLab's built-in fonts use) is left
-  exactly as it was, so the look of existing reports is unchanged; only other characters switch font.
-- A fallback run inside a bold or italic style keeps that style because the caller says so (`bold`, `italic`): a
-  `<font>` tag replaces the style's font name, so weight and slant cannot be inherited.
-- The active family is a context variable, not a parameter, because `safe` and `text_width` are called from a hundred
-  places that do not know the layout; `render_pdf_document` sets it once around a whole render.
-- ReportLab does not shape or reorder text, so Arabic and Indic scripts remain unsupported in PDFs,
-  and CJK needs a font this module does not ship (those characters print as the font's missing-glyph
-  box, as before). DOCX, ODT and HTML are unaffected.
+- A family's PDF faces are metric-compatible with the name Word/ODT/HTML ask for (Liberation for Arial, Times New Roman,
+  Courier New), so a line breaks the same in all formats (measurements in docs/decisions.md, report fonts spike).
+- Fonts offered are the four bundled families and the administrator's mounted ones; organisation uploads are refused
+  (untrusted bytes, unknown licence).
+- Text Helvetica can encode (Windows-1252) is left alone; a fallback run keeps bold and italic because the caller says so.
+- The active family is a context variable because `safe` and `text_width` are called from many places that do not know
+  the layout. ReportLab does not shape text, so Arabic and Indic scripts are unsupported in PDFs and CJK needs a font.
 
-Dependencies: ReportLab (also reads each face's glyph coverage); the font files in `app/assets/fonts` (DejaVu Sans) and
-`app/assets/report_fonts` (Liberation Sans, Serif and Mono), each with its licence alongside.
+Dependencies: ReportLab; font files in `app/assets/fonts` (DejaVu Sans) and `app/assets/report_fonts` (Liberation).
 """
 
 from __future__ import annotations

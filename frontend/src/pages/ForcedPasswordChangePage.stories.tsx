@@ -4,12 +4,13 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../api/client";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
+import { clearReturnTo, peekReturnTo } from "../utils/returnTo";
 import { ForcedPasswordChangePage } from "./ForcedPasswordChangePage";
 
 const meta: Meta<typeof ForcedPasswordChangePage> = {
   title: "Pages/ForcedPasswordChangePage",
   component: ForcedPasswordChangePage,
-  decorators: [withAuth(buildUser({ must_change_password: true })), withRouter("/")],
+  decorators: [withAuth(buildUser({ must_change_password: true })), withRouter("/projects/p1/requirements?status=open")],
 };
 export default meta;
 
@@ -40,6 +41,23 @@ export const ChangesThePassword: Story = {
         new_password: "Chosen-By-Person-7!",
       }),
     );
+  },
+};
+
+/** The change ends the session; the page the person was on is remembered so that signing in returns them to it. */
+export const RemembersThePageForTheNextSignIn: Story = {
+  beforeEach: () => {
+    clearReturnTo();
+    spyOn(api, "post").mockResolvedValue(undefined);
+    return clearReturnTo;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByLabelText(/^Current password/), "Given-By-Admin-1!");
+    await userEvent.type(canvas.getByLabelText(/^New password/), "Chosen-By-Person-7!");
+    await userEvent.type(canvas.getByLabelText(/^Confirm new password/), "Chosen-By-Person-7!");
+    await userEvent.click(canvas.getByRole("button", { name: "Change password" }));
+    await waitFor(() => expect(peekReturnTo()).toBe("/projects/p1/requirements?status=open"));
   },
 };
 

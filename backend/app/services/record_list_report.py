@@ -1,30 +1,21 @@
 """
 Module: services.record_list_report
 
-The **Record list** report: the table of any record type that has a `RecordTableProvider`, as an on-screen
-report, PDF, Word or CSV, so a person can produce "all Pain Points" from the Reports page without hunting for a
-list page, and a list page's Export menu can offer the same PDF and Word with its own filters.
+The **Record list** report: the table of any record type with a `RecordTableProvider`, as an on-screen report, PDF,
+Word or CSV, also offered by a list page's Export menu with its filters.
 
 Responsibilities:
-- Turn a `RecordTable` (`services.record_tables.build_table`) into a `ReportResult`: the provider's visible
-  column labels, the filtered rows, a note naming the scope, the filters applied and any columns the
-  personal-data policy left out, and per-cell tones for the columns that colour their cells on screen.
-- List the record types a caller can run it for (`available_types`) and describe the report to the catalogue
-  (`catalogue_entry`), since it is not a module's report and so is not in `ModuleDefinition.reports`.
+- Turn a `RecordTable` (`services.record_tables.build_table`) into a `ReportResult`: visible columns, filtered rows,
+  a scope note and per-cell tones. List the types a caller can run it for and describe it to the catalogue.
 
 Design decisions:
-- One report with a `record_type` parameter, not one per type: the catalogue and the MCP tool stay one entry each
-  while every type that gains a provider gains the report with no further code.
-- The rows, the columns and the access rule are the export's, produced by the same functions
-  (`build_table`, `resolve_export_columns`, `require_view`), so the report can never show a column or a record
-  the CSV export would not; the CSV format of the report is the export's import file, byte for byte.
-- A file (PDF, Word, CSV) is an export and audited as one (`records_exported`, counts and keys only); the
-  on-screen run is a view of what the list shows and is not.
-- Large documents are refused rather than laid out (`MAX_DOCUMENT_ROWS`): a PDF or Word of many thousands of rows
-  holds a worker for a long time and cannot be read; the CSV has no such limit.
+- One report with a `record_type` parameter, so every type with a provider gains it without further code.
+- Rows, columns and access come from the export's own functions, so the report never shows more than the CSV export;
+  a Markdown cell shows plain text here and its source in the CSV.
+- A file is an export and audited as one (counts and keys only); documents over `MAX_DOCUMENT_ROWS` are refused
+  because a PDF or Word of many thousands of rows holds a worker; the CSV has no limit.
 
-Dependencies: `services.record_tables` (the table), `services.report_framework` (result shapes and renderers),
-`modules.registry` (the providers).
+Dependencies: `services.record_tables`, `services.report_framework`, `modules.registry`.
 """
 
 from __future__ import annotations
@@ -37,6 +28,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import artefact_type_enabled_for_project, get_record_table_providers
 from app.services.link_nesting import ProjectRelation, related_projects
+from app.services.markdown_text import plain_text
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, permission_satisfied
 from app.services.record_tables import RecordTable
@@ -144,6 +136,11 @@ def collect(scope_label: str, label: str, table: RecordTable, *, scope_name: str
         A one-section report; the first column of every row is the record's code.
     """
     keys = [key for key, _ in table.columns]
+    markdown_keys = {column.key for column in table.kept if column.markdown}
+    rows = [
+        [plain_text(cell) if key in markdown_keys and cell else cell for key, cell in zip(keys, row, strict=True)]
+        for row in table.rows
+    ]
     tone_grid = [
         [table.tones[key].get(cell) if key in table.tones else None for key, cell in zip(keys, row, strict=True)]
         for row in table.rows
@@ -156,7 +153,7 @@ def collect(scope_label: str, label: str, table: RecordTable, *, scope_name: str
     if table.omitted:
         notes.append(PERSONAL_DATA_NOTE)
     section = ReportSection(
-        key="records", title=label, columns=[column_label for _, column_label in table.columns], rows=table.rows,
+        key="records", title=label, columns=[column_label for _, column_label in table.columns], rows=rows,
         tones=tone_grid if any(tone is not None for row in tone_grid for tone in row) else None,
     )
     return ReportResult(

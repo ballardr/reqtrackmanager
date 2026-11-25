@@ -1,15 +1,12 @@
 """
 Tests for merging an organisation export bundle into an *existing*
-organisation (`POST /orgs/{id}/import/preview`, `POST
-/orgs/{id}/import/merge`, `services.org_export.detect_merge_conflicts`/
-`merge_org_bundle`) — as opposed to `POST /orgs/import`
-(`test_org_export_import.py`), which always creates a brand-new
-organisation. Covers: no-conflict merge (users/groups/projects/report
-templates all added), a project-name collision resolved both ways
-(skip/import-as-copy), the target's report look left alone
-(keep-existing/use-import), that the target organisation's own profile
-(branding/SMTP/SSO) is never touched, and the 400s for an incomplete or
-invalid `resolutions` payload.
+organisation (`POST /orgs/{id}/import/preview`, `POST /orgs/{id}/import/merge`,
+`services.org_export.detect_merge_conflicts`/`merge_org_bundle`); `POST /orgs/import`
+(`test_org_export_import.py`) always creates a new organisation. Covers: no-conflict
+merge (users/groups/projects/report templates all added), a project-name collision
+resolved both ways (skip/import-as-copy), the target's report look left alone
+(keep-existing/use-import), the target organisation's profile (branding/SMTP/SSO)
+never touched, and the 400s for an incomplete or invalid `resolutions` payload.
 """
 
 import io
@@ -239,24 +236,15 @@ def test_merge_requires_org_admin_of_the_target_organisation(client, admin_token
 
 
 def test_merge_does_not_grant_a_role_or_group_membership_to_a_banned_member(client, admin_token, org_id):
-    """Hardening-review finding: `_import_members`/`_import_org_groups` are
-    a third and fourth way to hand out org access (alongside
-    `assign_org_role` and `assign_project_role_by_email`), and neither
-    originally checked `User.is_banned` — a target org_admin could
-    otherwise use a merge to quietly let a banned account back in (an org
-    role directly, or project access via an org group nested into a
-    `ProjectGroup`), bypassing the ban the same way `assign_org_role`
-    itself refuses to.
+    """`_import_members`/`_import_org_groups` hand out org access, as `assign_org_role`
+    and `assign_project_role_by_email` do, so they check `User.is_banned`: a merge must not
+    let a banned account back in (an org role, or project access via an org group nested
+    into a `ProjectGroup`), as `assign_org_role` refuses to.
 
-    Exported *before* the account is orphaned/banned (both `ban` and
-    `add_org_group_member` require the target to currently have — or, for
-    `add_org_group_member`, to still have — real org membership, so the
-    only way to get a real bundle containing this member/group state at
-    all is to capture it first, then have the account leave and get
-    banned afterwards) — which is also the realistic shape of this gap: an
-    org exported for backup/migration today, and one of its members banned
-    tomorrow, must not let that ban be silently undone by merging in the
-    now-stale bundle next week.
+    The bundle is exported before the account is orphaned and banned, because `ban` and
+    `add_org_group_member` require real org membership. This is also the realistic case:
+    an org exported for backup whose member is banned later must not have the ban undone
+    by merging the stale bundle.
     """
     banned_email = "merge-banned-member@example.com"
     source_org, source_token = create_org_admin_in(client, admin_token, "Merge Banned Member Source")
@@ -294,15 +282,10 @@ def test_merge_does_not_grant_a_role_or_group_membership_to_a_banned_member(clie
 
 
 def test_merge_skips_an_invalid_granted_org_role_with_a_warning_instead_of_500ing(client, admin_token):
-    """Hardening-review finding: `_import_org_groups` parsed a bundle
-    group's `granted_org_role` with a bare `OrgRole(...)` call and no
-    error handling, unlike every other untrusted-bundle-content case in
-    the same function (a name collision on `idp_synced_group_name`, a
-    cycle-forming nested edge, a banned member — all skipped with a
-    warning rather than raised). A hand-crafted or corrupted bundle
-    carrying a `granted_org_role` that isn't a real `OrgRole` value used
-    to 500 the whole merge instead of being reported like any other
-    malformed field; this pins the fix."""
+    """`_import_org_groups` skips a bundle group whose `granted_org_role` is not an
+    `OrgRole` value with a warning, like the other untrusted-bundle cases in that function
+    (an `idp_synced_group_name` collision, a cycle-forming nested edge, a banned member),
+    instead of failing the whole merge with a 500."""
     import json
 
     target_org, target_token = create_org_admin_in(client, admin_token, "Invalid Granted Role Target")
@@ -362,9 +345,8 @@ def test_merge_rejects_a_bundle_of_the_wrong_kind(client, admin_token, org_id):
 
 def test_merge_and_import_carry_requirement_attachments(client, admin_token):
     """A bundle whose requirements have attachments merges (and imports as a
-    new org) with each attachment linked to a real file. Merging used to 500:
-    the re-uploaded file wasn't flushed, so its link got a null `file_id`
-    (found 2026-10-05 merging a real exported org)."""
+    new org) with each attachment linked to a real file: the re-uploaded file is
+    flushed before its link is written, so `file_id` is never null."""
     source_org, source_token = create_org_admin_in(client, admin_token, "Merge Attachment Source")
     project = create_project(client, source_token, source_org["id"], name="Attachment Project")
     component_id, category_id = create_component_and_category(client, source_token, project["id"])

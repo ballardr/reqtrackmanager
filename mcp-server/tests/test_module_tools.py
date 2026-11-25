@@ -1,28 +1,17 @@
 """
 Module: tests.test_module_tools
 
-Unit tests for the module-contributed MCP tools mechanism (see server.py's own "Module-contributed tools"
-section) — parsing the backend's manifest, building/registering a
-`_DeclarativeModuleTool`, path/query/body param mapping (including that a
-path-location value is URL-encoded, not trusted as a bare path segment),
-the `MCP_WRITES_ENABLED` gate on mutating tools, and the add/remove diffing
-`_apply_module_tool_manifest` performs across refreshes.
+Unit tests for the module-contributed MCP tools mechanism (server.py, "Module-contributed tools"): manifest parsing,
+building and registering a `_DeclarativeModuleTool`, path/query/body parameter mapping (a path value is URL-encoded),
+the `MCP_WRITES_ENABLED` gate on mutating tools, and the add/remove diff `_apply_module_tool_manifest` performs
+across refreshes.
 
-Unlike `test_server.py`, these tests need no running backend at all: the
-backend's `GET /api/v1/system/modules/mcp-tools` response is faked directly
-(`server.httpx.AsyncClient` is patched), and `server._call_backend` is
-patched directly wherever a proxied call's own request shape is being
-checked. This mirrors the backend's own `test_module_mcp_tools.py`, which
-similarly proves the manifest-building side of this same mechanism without
-needing a live `mcp-server` process.
+No running backend is needed: the manifest response is faked (`server.httpx.AsyncClient` is patched) and
+`server._call_backend` is patched where a proxied request shape is checked.
 
-Every test resets `server`'s module-level registration state
-(`_registered_module_tools`, `_module_tools_last_refresh`) in teardown, and
-explicitly deregisters any tool it added — this module's tool registry is
-process-global, shared with `test_server.py` if both run in the same
-`pytest` invocation, so leaking a registered fixture tool would leak into
-that file's own `test_tools_are_discoverable` (which asserts an *exact*
-tool-name set)."""
+Every test resets the module-level registration state (`_registered_module_tools`, `_module_tools_last_refresh`) and
+deregisters the tools it added: the tool registry is process-global and shared with `test_server.py`, whose
+`test_tools_are_discoverable` asserts an exact tool-name set."""
 
 from __future__ import annotations
 

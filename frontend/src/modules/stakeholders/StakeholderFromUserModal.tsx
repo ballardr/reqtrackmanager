@@ -50,7 +50,7 @@ export function StakeholderFromUserModal({
           </FormGridFull>
           <PrincipalFormField helpNotNeeded required
             label="Organisation user" kinds={["user"]} orgUsers={orgUsers} value={userPrincipal(userId)}
-            onChange={(principal) => setUserId(principal?.id ?? null)} ariaLabel="Organisation user" placeholder="Search users…"
+            onChange={(principal) => setUserId(principal?.id ?? null)} ariaLabel="Organisation user"
           />
           <LabeledSelect helpNotNeeded label="Type" value={typeId} onChange={setTypeId} options={typeOptions} placeholder="No type" />
           <TextField helpNotNeeded label="Role" value={role} onChange={setRole} />

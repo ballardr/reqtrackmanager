@@ -33,16 +33,10 @@ function pcr(overrides: Partial<ProjectComplianceRequirement> = {}): ProjectComp
 }
 
 /**
- * `ApplicabilityTree` proves §9's hierarchical-applicability requirement
- * end to end: a parent marked Not Applicable, a child inheriting that (no
- * explicit decision), and a sibling child explicitly overridden back to
- * Applicable — all three visible together, each with its own distinct
- * `ApplicabilityBadge` treatment (that component's own stories prove the
- * badge in isolation; this proves it wired to real tree data). Clicking a
- * row opens `RequirementAssessmentPanel` — its own nested fetches
- * (required actions, evidence) are mocked to resolve empty so drilling in
- * here settles cleanly; that panel's own deeper behaviour is covered in
- * `RequirementAssessmentPanel.stories.tsx`.
+ * `ApplicabilityTree` wired to real tree data: a parent marked Not Applicable, a child inheriting that and a sibling child
+ * explicitly overridden back to Applicable, each with its own `ApplicabilityBadge` treatment. Clicking a row opens
+ * `RequirementAssessmentPanel`, whose nested fetches (required actions, evidence) resolve empty here so drilling in settles;
+ * that panel's behaviour is covered in `RequirementAssessmentPanel.stories.tsx`.
  */
 function mockApis(requirements: ComplianceRequirement[], pcrs: ProjectComplianceRequirement[]) {
   let currentPcrs = pcrs;

@@ -1,21 +1,14 @@
 /**
  * Module: components/GraphNodeBadges
  *
- * The small buttons a consumer puts on a canvas node's corner (`GraphNodeBadge`): a sign that the node has something
- * more elsewhere (a state machine diagram, a sub-process, a glossary term) and one click to reach it.
+ * The small buttons a consumer puts on a canvas node's corner (`GraphNodeBadge`): a sign that the node has more
+ * elsewhere (a state machine diagram, a sub-process, a glossary term) and one click to reach it. Each is a real
+ * button (icon, optional count) named by its label, also its tooltip. One target is called at once; several open
+ * a `Popover` list. A press, double-click or key on a badge never drags, selects or opens the node beneath it.
  *
- * Responsibilities:
- * - Draw each badge as a real button (icon, optional count) named by its label, which is also its tooltip.
- * - A badge with one target calls it at once; a badge with several opens a small list (`Popover`) of buttons.
- * - Keep the canvas's own behaviour out of the way: a press, double-click or key on a badge never drags, selects or
- *   opens the node beneath it.
- *
- * Design decisions:
- * - A badge sits inside the node's frame, at its top left, so it never changes the node's size, never covers an attach
- *   point (the corner handles) and never meets a comment pin (top right corner). It is drawn beside the node's clipped
- *   body, not inside it, so a resize cannot cut it.
- * - It is a sibling of the box in the DOM, so Tab reaches it right after the box.
- * - Generic: nothing here knows what a badge means; the consumer supplies the icon, names and callbacks.
+ * A badge sits inside the node's frame at its top left, beside the clipped body, so it never changes the node's
+ * size, covers an attach point or meets a comment pin (top right), and a resize cannot cut it. It is a DOM sibling
+ * of the box, so Tab reaches it right after the box. Generic: the consumer supplies icon, names and callbacks.
  *
  * Dependencies: `Popover`, `Tooltip`. It does not import `@xyflow/react`.
  */

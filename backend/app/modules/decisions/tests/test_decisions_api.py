@@ -1,17 +1,12 @@
-"""Tests for Decision Management's backend API — the real HTTP
-endpoints (`project_router.py`/`router.py`), through the `client` fixture,
-mirroring `test_compliance_standards_api.py`'s own "go through the real API,
-not direct ORM manipulation" convention now that one exists for this module.
+"""
+Tests for Decision Management's API through the real HTTP endpoints
+(`project_router.py`/`router.py`).
 
-Covers: Decision CRUD, list/filter, the content lock once `APPROVED`/
-`SUPERSEDED` (409), lifecycle-transition endpoints (including the
-mandatory-comment-on-reject rule and an illegal-transition 409), the RBAC
-composition (`decision_owner`/`decision_approver`/owner-or-role for
-propose, disabled-module-is-404-not-403 vs. wrong-role-is-403), relationship
-endpoints (supersession, Decision<->Requirement, Decision<->Decision),
-comments/comment-files, direct file attachments (with the same lock
-check), Decision Type CRUD + delete-with-reassignment, cross-project 404s,
-and the org-scoped Decision Template CRUD.
+Covers Decision CRUD and list/filter, the content lock once `APPROVED`/
+`SUPERSEDED` (409), lifecycle endpoints (mandatory reject comment, illegal
+transition 409), RBAC (owner/approver roles, disabled module 404 vs wrong role
+403), relationships, comments, files, Decision Type CRUD with reassignment,
+cross-project 404s and org-scoped Decision Template CRUD.
 """
 
 from __future__ import annotations
@@ -299,17 +294,9 @@ def test_approve_and_reject_require_decision_approver_role(client, admin_token):
     assert approved.json()["status"] == "approved"
 
 
-# --- `require_permission` migration ----
-# — approve/reject's
-# gate is now the `(decision, approve_baseline)` permission atom rather than
-# the flat `decision_approver` module role directly; the test above already
-# pins that a `decision_approver` grant still works unchanged (via that
-# role's own `permissions` declaration, `module.py`). The two tests below
-# pin the two things that migration could plausibly have broken: a
-# Fine-Grained custom-role grant reaching this endpoint at all (the actual
-# new capability), and the pre-existing disabled-module 404 gate still
-# firing now that it's a second, separate `Depends` rather than folded into
-# the old `require_module_role`'s own composite check.
+# --- `require_permission` gate ----
+# Approve/reject need `(decision, approve_baseline)`; a custom-role grant reaches
+# them and a disabled module still returns 404.
 
 
 def test_approve_reachable_via_custom_role_grant_of_approve_baseline_permission(client, admin_token):
@@ -363,25 +350,17 @@ def test_approve_still_404s_when_module_disabled_after_reaching_under_review(cli
     )
     assert disable_resp.status_code == 200, disable_resp.text
 
-    # `org_admin_token` is this project's own `PROJECT_MANAGER` and would
-    # otherwise hold `(decision, approve_baseline)` outright (Design
-    # Principle 3's mapping table) — the disabled module must still 404
-    # before that permission is ever considered.
+    # `org_admin_token` is this project's `PROJECT_MANAGER` and would hold
+    # `(decision, approve_baseline)`; the disabled module must still 404 first.
     resp = client.post(
         f"{_base(project['id'])}/{decision['id']}/approve", json={"comment": "OK"}, headers=auth_headers(org_admin_token)
     )
     assert resp.status_code == 404
 
 
-# --- per-decision-type approver ------
-# binding —
-# approve/reject's permission check now composes the decision's own
-# Decision Type name as a permission sub-type: `(decision, approve_
-# baseline, subtype=<type name>)`. The tests above already pin
-# that the wildcard (`subtype=None`) grant — the flat `decision_approver`
-# role and an unscoped custom-role grant alike — keeps satisfying every
-# specific type unchanged; the tests below pin the new, narrower
-# capability itself, and its isolation from a *different* type.
+# --- per-decision-type approver binding ------
+# Approve/reject check `(decision, approve_baseline, subtype=<type name>)`; a
+# wildcard grant satisfies every type, a per-type grant only its own.
 
 
 def _decision_type_id_by_name(client, token, project_id, name) -> str:

@@ -3,10 +3,8 @@
  *
  * A list of short texts edited as one entry per line (file-name patterns, file types).
  *
- * Responsibilities:
- * - Show a list as lines in a growing text area and report the list back as the person types: blank lines and
- *   surrounding spaces are dropped from the reported list.
- * - Keep what is typed (including a blank line the person has just started) until the list is changed from outside.
+ * Responsibilities: show the list as lines in a growing text area and report it back as the person types, dropping blank
+ * lines and surrounding spaces; keep what is typed (including a just-started blank line) until the list changes from outside.
  *
  * Design decisions: it wraps `TextAreaField`, so help, required marking and growth are the shared ones. The draft is
  * local because splitting on every keystroke would remove the newline just typed.
@@ -45,7 +43,7 @@ export function TextListField({
     if (JSON.stringify(linesToList(draft)) !== JSON.stringify(value)) setDraft(value.join("\n"));
   }
   return (
-    <TextAreaField
+    <TextAreaField plainText="One entry per line, not prose"
       label={label} value={draft} disabled={disabled} hint={hint} help={help} required={required} rows={2}
       inputProps={{ spellCheck: false }}
       onChange={(text) => {

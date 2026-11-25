@@ -1,21 +1,17 @@
 /**
  * Module: pages/SearchPage
  *
- * The global search results page (`/search`). Everything the viewer sets (text, scope, filters, the
- * fields searched, sort) lives in the URL, so a search can be shared, bookmarked and reached with Back;
- * the API call itself is a POST so the text never reaches an access log.
- *
- * - Scope is the first filter: every scope that matched where the search started (they travel with the
- *   navigation from the header box) plus All projects; changing it re-runs the search.
- * - The Organisation filter appears only for a viewer who belongs to more than one organisation.
- * - "Search in" is a filterable multi-select over the fields the viewer's record types declare; the
- *   viewer's default (Preferences) applies until they choose here, and a choice here is this search only.
- * - Results are one `ItemRow` link per hit (`SearchHitSummary`), most relevant first, loaded 25 at a time
- *   up to the server's depth limit.
- * - Types the selected fields cannot search are named, never silently left out.
- *
- * A late response never overwrites a newer one (an `AbortController` per request), and the previous
- * results stay on screen, dimmed, while a new search runs.
+ * The global search results page (`/search`). Text, scope, filters, searched
+ * fields and sort live in the URL, so a search can be shared and bookmarked;
+ * the API call is a POST so the text never reaches an access log.
+ * - Scope: every scope that matched where the search started, plus All
+ *   projects; the Organisation filter shows only for multi-organisation viewers.
+ * - "Search in" is a multi-select over the fields the record types declare; the
+ *   Preferences default applies until the viewer chooses here (this search only).
+ * - Results are one `ItemRow` link per hit, most relevant first, 25 at a time
+ *   up to the server's depth limit; types the fields cannot search are named.
+ * A late response never overwrites a newer one (an `AbortController` per
+ * request); previous results stay dimmed while a new search runs.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";

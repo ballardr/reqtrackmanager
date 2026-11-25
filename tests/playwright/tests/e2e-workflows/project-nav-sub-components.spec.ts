@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { expect, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup } from "./helpers";
@@ -28,7 +30,7 @@ async function navLinkNames(page: Page): Promise<string[]> {
  * via the API per the repo's test-idempotency rule.
  */
 async function setupProject(page: Page) {
-  const suffix = Date.now();
+  const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const adminEmail = `e2e-navsub-admin-${suffix}@example.com`;
   const serverAdminToken = (
     await (
@@ -109,7 +111,7 @@ test.describe("project nav: sub-components, order and scrolling", () => {
       const geometry = await page.evaluate(() => {
         const scroll = document.querySelector(".nav-rail-scroll") as HTMLElement;
         const rail = document.querySelector(".nav-rail") as HTMLElement;
-        const toggle = document.querySelector(".nav-rail-toggle") as HTMLElement;
+        const toggle = document.querySelector(".nav-rail-toggle-wrapper button") as HTMLElement;
         return {
           overflows: scroll.scrollHeight > scroll.clientHeight,
           railScrolls: getComputedStyle(rail).overflowY !== "visible" && rail.scrollHeight > rail.clientHeight,

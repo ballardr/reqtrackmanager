@@ -3,19 +3,19 @@
  *
  * Edits the columns of a table or sheet block, and a sheet's joins.
  *
- * Responsibilities:
- * - Columns: an ordered list of `{field, label?, from?, width?}` shown as a short list (`ItemRowList`): one row per
- *   column with its name, move, remove and a gear whose popover holds the rest (field, heading, width, link, images
- *   settings; a new column's opens at once). The field is chosen from the fields of the block's record type, and in a sheet with joins a column also says which record it reads (`from`). An **images column**
- *   (`{images: {...}, label?, from?}`) shows the pictures attached to each row's record; its settings are the server's
- *   `image_column_fields`, drawn by the caller's `renderImageField` with the shared field forms.
+ * - Columns: an ordered `{field, label?, from?, width?}` list (`ItemRowList`), one row per column with its name,
+ *   move, remove and a gear whose popover holds the rest (field, heading, width, link, images settings; a new
+ *   column's opens at once). The field is chosen from the fields of the block's record type and, in a sheet with
+ *   joins, a column also says which record it reads (`from`). An **images column** (`{images: {...}, label?, from?}`)
+ *   shows the pictures attached to each row's record; its settings are the server's `image_column_fields`, drawn by
+ *   the caller's `renderImageField`.
  * - Links (sheets only): a column can open the row of its record on another sheet of the layout that lists the same
  *   record type (`link: {sheet}`); the choice offers only those sheets.
- * - Joins: up to a few linked record types added to a sheet, each named and following a link from an earlier
- *   name in the sheet (the root records or an earlier join).
+ * - Joins: up to a few linked record types added to a sheet, each named and following a link from a name already in
+ *   scope in the sheet (the root records or a previous join).
  *
- * Design decisions: the editor lists only fields the field catalogue offers for the type, so a column cannot name
- * a Restricted or consent-sensitive field; the server still validates every name.
+ * The editor lists only fields the catalogue offers for the type, so a column cannot name a Restricted or
+ * consent-sensitive field; the server still validates every name.
  */
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useState, type ReactNode } from "react";

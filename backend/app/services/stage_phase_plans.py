@@ -4,33 +4,23 @@ Module: services.stage_phase_plans
 The schedule of a stage's phases, and the reminders about it.
 
 Responsibilities:
-- Read and write a phase's expected completion range (`StagePhasePlan`), for a project stage's own phase
-  or for one component's track within the stage (`services.component_stages`).
-- Record the actual start and completion of a phase whenever a stage or a track moves
-  (`record_move`, called by `stage_workflows.apply_phase_move`), and tell the recipients when a scheduled
-  phase completes.
-- The daily sweep (`send_phase_reminders`): an "upcoming" reminder before a phase's expected start and an
-  "overdue" reminder when the current phase passes its expected end.
-- Resolve the project's reminder lead time (own setting, else the nearest ancestor's, else the default).
+- Read and write a phase's expected completion range (`StagePhasePlan`), for a stage or one component's track
+  (`services.component_stages`); record actual start and completion when a stage or track moves
+  (`record_move`, from `stage_workflows.apply_phase_move`) and notify recipients when a scheduled phase completes.
+- `send_phase_reminders`: the daily sweep ("upcoming" before the expected start, "overdue" after the expected end);
+  resolve the lead time (own, nearest ancestor's, default).
 
 Design decisions:
-- Time shapes: `expected_from`/`expected_to` are calendar dates in the planner's own day; `started_at` and
-  `completed_at` are past instants in UTC. The sweep has no caller, so no local day exists: "upcoming" compares
-  against the latest calendar day anywhere (UTC+14) so nobody is reminded late, and "overdue" requires the
-  date to have passed everywhere (UTC-12) so nobody is told a deadline was missed while it is still that day
-  (Decided by: Agent).
-- Each date is reminded once: the marker columns hold the date notified, so moving a date re-arms its reminder
-  and a repeated sweep sends nothing.
-- Recipients are the owner (a user, or every member of a group), else the project managers (Decided by: User).
-  Addressing only, not authorisation. The actor of a move is never told about their own move.
-- A phase completes when the stage or track leaves it forward or enters a closed phase; moving back to it
-  reopens it. The completion reminder is sent only for a phase that was given dates, so an unscheduled
-  stage adds no notifications beyond the stage ones that already exist (Decided by: Agent).
-- Component plans are inert while component phases are off (their rows are kept), as the tracks are.
-- Nested projects: plan rows are state with no fallback; only the lead time inherits.
+- `expected_from`/`expected_to` are calendar dates in the planner's day; `started_at`/`completed_at` are UTC instants.
+  The sweep has no caller day, so "upcoming" compares against the latest day anywhere (UTC+14) and "overdue" needs the
+  date to have passed everywhere (UTC-12) (**Decided by: Agent**).
+- Each date is reminded once (marker columns hold the date notified); moving a date re-arms it.
+- Recipients are the owner (a user, or every member of a group), else the project managers (**Decided by: User**); the
+  actor of a move is not told. A phase completes when its stage or track leaves it forward or enters a closed phase;
+  moving back reopens it. Only phases with dates send completion reminders (**Decided by: Agent**).
+- Component plans are inert, but kept, while component phases are off. Plan rows do not inherit; only the lead time does.
 
-Dependencies: `services.stage_workflows`, `services.component_stages`, `services.principals`,
-`services.notifications`, `services.rbac`.
+Dependencies: `stage_workflows`, `component_stages`, `principals`, `notifications`, `rbac`.
 """
 
 from __future__ import annotations

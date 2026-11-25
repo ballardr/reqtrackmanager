@@ -1,52 +1,12 @@
 """
 Module: modules.context_strategy.pain_point_scores
 
-Pain Point scoring: persisting a Pain Point's ratings (`PainPointScore`, one
-`PainPointScoreAxis` row per scoring axis) and rolling them up into one score
-and a Blocker flag under a model and roll-up method chosen when viewing.
-
-Responsibilities:
-- `set_pain_point_scores`: validates and replaces a Pain Point's score set (a
-  General row plus the personas that differ from it).
-- `score_level_ids` / `assign_score_level_ids`: the one place that knows how a
-  row stores its levels; every reader and writer goes through them.
-- `load_scoring_context` / `summarise` / `build_pain_point_scoring`: the
-  roll-up maths, built on core's generic `services.scoring` (levels, bands,
-  `compute_score`), the *effective* scheme (`services.scoring_custom`, so an
-  organisation's or project's own criteria score like the registered ones) and
-  the generic `registry.get_scoring_targets` hook, so this module never
-  imports Stakeholders & Personas.
-- The scheme's `count_level_usage`/`reassign_level_usage` hooks live in
-  `scoring.py` (they need only the model); the maths live here.
-
-Design decisions (all Decided by: Agent unless stated; the General row, the
-unscored-persona rule and the roll-up scope are Decided by: User):
-- Each criterion is scored either per persona or for the whole Pain Point
-  (`ScoringAxisDefinition.per_target`). The General row holds every
-  whole-Pain-Point value and the default for per-persona criteria; a persona
-  row holds per-persona criteria only and overrides General for that persona,
-  so the panel lists only the personas that differ (User). A persona's score is
-  its own value on a per-persona criterion, else General's; a whole-Pain-Point
-  criterion is General's for every persona.
-- Roll-up methods: weighted average (default), worst case, plain average.
-  Only personas scored under the chosen model count; an unscored persona is
-  excluded, never zero, so one scored persona of five shows that persona's
-  value (User). With no persona rows, or only retired ones, the General row is
-  the score.
-- A persona with no weight among others that have one gets the mean of the
-  set weights (neutral), so it neither dominates nor vanishes; if none has a
-  weight, all are equal.
-- A retired persona (`ScoringTarget.is_active` false) stays visible but is
-  skipped by the roll-up and the Blocker flag. A target the provider no
-  longer lists (persona deleted/hidden, or the Stakeholders module off) is `unavailable`:
-  it still counts, unweighted and unlabelled, and the summary reports
-  `personas_degraded` so the UI/reports can say so.
-- The Blocker flag keys off the top Severity level on any counted score row,
-  independent of the model and roll-up, so it can't be averaged away.
-- A level stored on a criterion that has since been hidden is kept on save and
-  ignored by the maths.
-- Scoring is a manager-tier action (the router enforces it): Pain Point
-  creation is broad, but prioritisation isn't.
+Pain Point scoring: persists ratings (`PainPointScore`, one `PainPointScoreAxis`
+row per axis) and rolls them into one score and a Blocker flag.
+- A General row holds whole-Pain-Point values and per-persona defaults; a
+  persona row overrides it. Unscored and retired personas are excluded.
+- Methods: weighted average (default), worst case, plain average.
+- The Blocker flag keys off the top Severity level on any counted row.
 """
 
 from __future__ import annotations
@@ -355,8 +315,7 @@ def set_pain_point_scores(
     General row (`target_id` None) may hold any criterion; a persona row only
     the criteria scored per persona. A persona must be one of the project's
     current scoring targets, and a retired one can only be kept if it already
-    has a row. Levels stored on a criterion the project no longer offers
-    (hidden) are kept.
+    has a row. Levels on a hidden criterion are kept.
 
     Raises:
         HTTPException: 400 for a duplicate target, a whole-Pain-Point criterion
@@ -427,8 +386,8 @@ def set_pain_point_scores(
 
 
 def _levels_weights(ctx: ScoringContext, levels: Mapping[str, uuid.UUID]) -> dict[str, Decimal | None]:
-    """Maps each criterion of the scheme to the weight of the chosen level (`None` = unscored); a level stored on
-    a criterion the scheme no longer offers is ignored."""
+    """Maps each criterion of the scheme to the weight of the chosen level (`None` = unscored); a level on
+    a criterion the scheme does not offer is ignored."""
     out: dict[str, Decimal | None] = {}
     for axis in ctx.scheme.axes:
         level_id = levels.get(axis.key)

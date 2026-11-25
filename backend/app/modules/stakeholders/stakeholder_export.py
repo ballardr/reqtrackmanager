@@ -1,32 +1,24 @@
 """
 Module: modules.stakeholders.stakeholder_export
 
-The Stakeholder half of this module's contribution to the core org/project
-bundle export/import (`export.py` holds the Persona half; `module.py` composes
-the two into the single `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`).
+The Stakeholder half of this module's org/project bundle export/import (`export.py` holds the Persona
+half; `module.py` composes them).
 
 - Org level: the Stakeholder type vocabulary and org-scoped stakeholders.
-- Project level: project-scoped stakeholders (with direct file attachments)
-  and the project's Stakeholder type overrides/local types.
-- Stakeholder groups, at both levels: each group is keyed by its
-  name path from the root (every element carries its scope, since a project
-  group may sit under an org group), with its members by stakeholder name and
-  scope. Importing merges into an existing group of the same path and warns
-  and skips a group or member it cannot place.
+- Project level: project-scoped stakeholders (with direct file attachments) and the project's type
+  overrides/local types.
+- Stakeholder groups at both levels, keyed by name path from the root (each element carries its scope),
+  with members by stakeholder name and scope. Import merges into an existing group of the same path and
+  skips, with a warning, a group or member it cannot place.
 
 Design decisions:
-- Same carry-over rules as the Persona bundle: current content and status
-  only, no version history, comments or comment attachments; cross-references
-  use portable keys (a type's name, a user's email, a scoring level's name, a
-  persona's name and scope), never database ids; org-level files cannot travel;
-  merging into an existing org skips a same-named stakeholder/type.
-- A bundle holds Confidential personal data (contact info, names). It is an
-  explicit operator-initiated backup and sits under the same handling rules as
-  any other export (data classification policy); nothing here widens who can
-  read it.
-- "Represents" links are exported by persona name and resolved after the
-  Persona half has imported, so `module.py` always runs that half first. A
-  persona the target lacks is skipped with a warning.
+- Current content and status only, no version history, comments or comment attachments; cross-references
+  use portable keys, never ids; org-level files cannot travel; merging into an existing org skips a
+  same-named stakeholder or type.
+- A bundle holds Confidential personal data (contact info, names); it is an operator-initiated backup under
+  the data classification policy's handling rules, and nothing here widens who can read it.
+- "Represents" links are exported by persona name and resolved after the Persona half imports, so
+  `module.py` runs that half first; a persona the target lacks is skipped with a warning.
 """
 
 from __future__ import annotations
@@ -70,6 +62,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
@@ -127,6 +120,7 @@ def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UU
         "archived_at": _j(stakeholder.archived_at), "created_at": _j(stakeholder.created_at),
         "tags": record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
         "placements": record_placements(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
+        "external_references": record_references(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
         "represents": [
             {"persona_name": get_current_persona_version(db, p.id).name, "persona_scope": p.scope.value}
             for _, p in list_represented_personas(db, stakeholder, organization_id)
@@ -315,6 +309,10 @@ def _create_stakeholder_from_json(
         db, project_id=project_id, actor_id=creator_id,
         artefact_type=STAKEHOLDER_ARTEFACT_TYPE, artefact_id=stakeholder.id, entries=data.get("placements"),
     )
+    restore_record_references(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=STAKEHOLDER_ARTEFACT_TYPE, artefact_id=stakeholder.id, entries=data.get("external_references"),
+    )
     for rep in data.get("represents", []):
         persona_id = personas.get((rep["persona_name"], rep["persona_scope"]))
         persona = db.get(Persona, persona_id) if persona_id else None
@@ -391,6 +389,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_links(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_record_placements(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
+    prime_record_references(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_file_links(db, StakeholderFile, "stakeholder_id", ids)
     emails = _stakeholder_emails(db, stakeholders)
     stakeholders_json = []

@@ -1,22 +1,16 @@
 """
 Module: modules.stakeholders.need_export
 
-The Stakeholder Need part of this module's project bundle export/import
-(`export.py` and `stakeholder_export.py` hold the Persona and Stakeholder
-halves; `module.py` composes the three). A Need is project-scoped, so there is
-no org-level half.
+The Stakeholder Need part of this module's project bundle export/import (`export.py` and
+`stakeholder_export.py` hold the other halves; `module.py` composes them). A Need is project-scoped, so
+there is no org-level half.
 
 Design decisions:
-- Same carry-over rules as the other halves: current content and status only,
-  no version history or comments; cross-references use portable keys (a user's
-  email, a Stakeholder/Persona's name and scope, a Requirement's unique code),
-  never database ids.
-- Needs import after the Persona and Stakeholder halves (so "has need" holders
-  resolve) and, since the core import creates Requirements first, after
-  Requirements too. A holder or Requirement the target lacks is skipped with a
-  warning rather than failing the import.
-- A Need can quote what a person said, so a bundle holding Needs is treated as
-  Confidential like the Stakeholder half.
+- Current content and status only, no version history or comments; cross-references use portable keys
+  (a user's email, a Stakeholder or Persona's name and scope, a Requirement's unique code), never ids.
+- Needs import after the Persona and Stakeholder halves and after core Requirements; a holder or
+  Requirement the target lacks is skipped with a warning.
+- A Need can quote what a person said, so a bundle holding Needs is treated as Confidential.
 """
 
 from __future__ import annotations
@@ -49,6 +43,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
@@ -87,6 +82,7 @@ def _need_json(db: Session, need: StakeholderNeed, project: Project, emails: dic
         "archived_at": _j(need.archived_at), "created_at": _j(need.created_at), "holders": holders,
         "requirement_unique_codes": codes, "tags": record_tag_names(db, NEED_ARTEFACT_TYPE, need.id),
         "placements": record_placements(db, NEED_ARTEFACT_TYPE, need.id),
+        "external_references": record_references(db, NEED_ARTEFACT_TYPE, need.id),
     }
 
 
@@ -103,6 +99,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_links(db, NEED_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, NEED_ARTEFACT_TYPE, ids)
     prime_record_placements(db, NEED_ARTEFACT_TYPE, ids)
+    prime_record_references(db, NEED_ARTEFACT_TYPE, ids)
     prime_file_links(db, StakeholderNeedFile, "need_id", ids)
     out = []
     for need in needs:
@@ -167,6 +164,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=creator_id,
             artefact_type=NEED_ARTEFACT_TYPE, artefact_id=need.id, entries=n.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=NEED_ARTEFACT_TYPE, artefact_id=need.id, entries=n.get("external_references"),
         )
         for holder in n.get("holders", []):
             lookup = stakeholders if holder["kind"] == STAKEHOLDER_ARTEFACT_TYPE else personas

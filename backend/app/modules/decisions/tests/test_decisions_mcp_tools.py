@@ -1,23 +1,10 @@
-"""Tests for Decision Management's MCP tools (the 2026-09-21 read-only tools; the 2026-09-22
-"Decision Management MCP approval gate" follow-up adds two more).
-
-Mirrors `backend/tests/test_module_mcp_tools.py`'s own "against the REAL
-registry" integration section (written against Compliance, the only prior
-precedent) — Decision Management is already a real, permanent
-`INSTALLED_MODULES` entry with real routers, so this proves the nine
-declared `McpToolDefinition`s in `module.py` actually resolve against real
-routes (not just that the declared strings look right). No `fake_module`
-fixture / `INSTALLED_MODULES` mutation is needed, same reasoning as the
-Compliance integration test this mirrors.
-
-`approve_decision`/`reject_decision` no longer carry `APPROVAL_ACTION_
-ROUTE_EXTRA` (removed from `project_router.py` as part of the 2026-09-22
-gate) — they resolve as real, mutating tools here; the actual "is an
-MCP-originated call to either one still blocked without the org+project
-`allow_ai_approvals` opt-in" behaviour is covered by `test_decisions_ai_
-approvals_via_mcp.py`, not this file (this file only proves the manifest
-shape, the same division of labour `test_compliance_ai_approvals_via_mcp.py`
-uses for Compliance)."""
+"""
+Tests for Decision Management's MCP tools against the real registry: each
+`McpToolDefinition` in `module.py` (the read tools plus `approve_decision`/
+`reject_decision`) resolves to a real route. The approve/reject tools resolve as
+ordinary mutating tools here; the `allow_ai_approvals` gate is covered by
+`test_decisions_ai_approvals_via_mcp.py`.
+"""
 
 from __future__ import annotations
 
@@ -99,10 +86,8 @@ def test_decisions_mcp_tools_resolve_against_the_real_registry():
 
 def test_decisions_mcp_manifest_declares_no_other_mutating_tool():
     """Beyond the two approval-gated tools above, no other mutating tool is
-    declared for this module — create/update/archive/unarchive/propose/
-    submit-for-review/supersede/link/comment/file-attach all stay off the
-    MCP tool surface (2026-09-22: only approve/reject
-    were asked for)."""
+    declared: create/update/archive/propose/submit-for-review/supersede/link/
+    comment/file-attach stay off the MCP tool surface."""
     tools = build_mcp_tool_manifest()
     by_name = {t.name: t for t in tools}
     mutating_decisions_tools = {name for name, tool in by_name.items() if name.startswith("decisions_") and tool.mutates}

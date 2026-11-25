@@ -63,7 +63,7 @@ export const ListWithFilters: Story = {
     await expect(table.getByText("Completed")).toBeInTheDocument();
     // A group assignee shows its name, kind and member count rather than a person's name.
     await expect(table.getByText("QA Team")).toBeInTheDocument();
-    await expect(table.getByText("Organisation group · 3 members")).toBeInTheDocument();
+    await expect(table.getByText("Organisation group, 3 members")).toBeInTheDocument();
   },
 };
 
@@ -79,15 +79,11 @@ export const ExportAndImportAreOnTheTitleRow: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement_action/export"));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement_action/export?sort=unique_code&order=asc"));
   },
 };
 
-/** The outcome badge in the results table doubles as a filter shortcut —
- * `FilterBadge`, the same component `RequirementsPage`'s status badge uses
- * (style guide "Every badge that names a filterable value is a `FilterBadge`,
- * not a plain `.badge`"). Clicking it sets the Outcome filter in the side
- * panel to match. */
+/** The outcome badge is a `FilterBadge` (style guide: a badge naming a filterable value); clicking it sets the Outcome filter. */
 export const FilterByOutcomeBadge: Story = {
   beforeEach: () => mockProjectActionsApis(),
   play: async ({ canvasElement }) => {
@@ -100,9 +96,7 @@ export const FilterByOutcomeBadge: Story = {
   },
 };
 
-/** A slow, stale response must not overwrite a newer one: the initial
- * (active-only) load resolves *after* the "Include archived" reload, and
- * the archived row must still be shown. */
+/** A stale response must not overwrite a newer one: the initial load resolves after the "Include archived" reload and the archived row stays. */
 export const StaleResponseIsIgnored: Story = {
   beforeEach: () => {
     const archived = buildRequirementAction({ id: "act3", unique_code: "ACT-003", title: "Archived action", is_archived: true });
@@ -140,7 +134,7 @@ export const StaleResponseIsIgnored: Story = {
 export const CreateAssignedToAGroup: Story = {
   beforeEach: () => {
     mockProjectActionsApis();
-    spyOn(api, "post").mockResolvedValue({ id: "action-new" } as never);
+    spyOn(api, "post").mockResolvedValue({ id: "action-new", unique_code: "ACT-007" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -164,7 +158,7 @@ export const CreateAssignedToAGroup: Story = {
 export const CreateNewAction: Story = {
   beforeEach: () => {
     mockProjectActionsApis();
-    spyOn(api, "post").mockResolvedValue({ id: "action-new" } as never);
+    spyOn(api, "post").mockResolvedValue({ id: "action-new", unique_code: "ACT-007" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -179,16 +173,13 @@ export const CreateNewAction: Story = {
         expect.objectContaining({ title: "Verify audit log retention", action_type_id: "at1" })
       )
     );
-    // Principle 7 — every mutation ends with feedback. This page
-    // got real interaction-model work
-    // without picking up Toast, so create still just silently re-rendered.
-    await expect(within(document.body).getByText("Action created")).toBeInTheDocument();
+    // Principle 7: every mutation ends with feedback.
+    await expect(within(document.body).getByText("Action ACT-007 created.")).toBeInTheDocument();
+    await expect(within(document.body).getByRole("button", { name: "Open ACT-007" })).toBeInTheDocument();
   },
 };
 
-/** Column-header sorting — this list has no
- * backend pagination, so sorting is a client-side `useMemo` over the
- * already-loaded rows. Clicking "Title" once sorts ascending. */
+/** The list is not paginated, so sorting is client-side over the loaded rows; one click on "Title" sorts ascending. */
 export const SortedByTitleAscending: Story = {
   beforeEach: () => mockProjectActionsApis(),
   play: async ({ canvasElement }) => {

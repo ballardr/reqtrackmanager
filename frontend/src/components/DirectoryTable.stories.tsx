@@ -8,7 +8,11 @@ import { DirectoryTable } from "./DirectoryTable";
 import type { SortState } from "./sortState";
 import { orphanedControlViolations } from "../testing/orphanedControls";
 import { buildPlace, buildPlacementsApi, PLACEMENTS_PROJECT_ID } from "../testing/placementsFixtures";
+import { buildReference, buildReferencesApi } from "../testing/referencesFixtures";
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { Badge } from "./Badge";
+import { CellText } from "./CellText";
 
 interface DemoRow {
   id: string;
@@ -58,11 +62,8 @@ export default meta;
 
 type Story = StoryObj<typeof DirectoryTable<DemoRow>>;
 
-/** A live sort demo: two sortable columns (Name, Email) alongside one
- * non-sortable badge column (Status) — clicking a sortable header cycles
- * `aria-sort` via the shared `SortableHeader`/`cycleSort`, exactly the
- * contract this component hands back to its caller (it never sorts `rows`
- * itself). */
+/** A live sort demo: two sortable columns (Name, Email) and one non-sortable badge column (Status); a header
+ * click cycles `aria-sort` via `SortableHeader`/`cycleSort`, and the table never sorts `rows` itself. */
 function SortDemo() {
   const [sort, setSort] = useState<SortState | null>(null);
   const sorted = sort
@@ -161,6 +162,40 @@ export const NoComponentsColumnWhenNothingIsPlaced: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(args.placements!.api!.page).toHaveBeenCalled());
     await expect(canvas.queryByRole("columnheader", { name: "Components" })).not.toBeInTheDocument();
+  },
+};
+
+/** An External references column appears when a row on the page has a reference; a key with a link opens the item. */
+export const ReferencesColumnShowsTheOutsideItemsOfRows: Story = {
+  args: {
+    placements: {
+      projectId: PLACEMENTS_PROJECT_ID, artefactType: "pain_point", rowId: (row: DemoRow) => row.id,
+      api: buildPlacementsApi(),
+      referencesApi: buildReferencesApi(undefined, {
+        page: fn(async () => ({ "u-alex": [buildReference(), buildReference({ key: "REQ-9", link: null }, "s-doors")] })),
+      }),
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("columnheader", { name: "External references" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Open Jira: PROJ-1 in a new tab" })).toHaveAttribute("href", "https://tracker.example/browse/PROJ-1");
+    await expect(canvas.getByText(/DOORS:/)).toBeInTheDocument();
+    await expect(args.placements!.referencesApi!.page).toHaveBeenCalledWith(PLACEMENTS_PROJECT_ID, "pain_point", ["u-alex", "u-priya", "u-jordan"]);
+  },
+};
+
+/** No column when no row has a reference. */
+export const NoReferencesColumnWhenNothingIsReferenced: Story = {
+  args: {
+    placements: {
+      projectId: PLACEMENTS_PROJECT_ID, artefactType: "pain_point", rowId: (row: DemoRow) => row.id,
+      api: buildPlacementsApi(), referencesApi: buildReferencesApi(),
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    await waitFor(() => expect(args.placements!.referencesApi!.page).toHaveBeenCalled());
+    await expect(within(canvasElement).queryByRole("columnheader", { name: "External references" })).not.toBeInTheDocument();
   },
 };
 
@@ -314,3 +349,72 @@ export const SelectionColumnSelectsRowsAndTheHeaderSelectsAllThatCanBe: Story = 
 };
 
 const selectionChanged = fn();
+
+/**
+ * Long text in several cells of several rows: a 200-character name, a 60-character word and a long email in a
+ * table that also holds a badge and a button. The columns stay in line, nothing overflows the table and the
+ * button stays on its row.
+ */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      width={520}
+      render={(long) => (
+        <DirectoryTable<DemoRow>
+          ariaLabel="Long text directory"
+          rowKey={(row) => row.id}
+          emptyState={null}
+          rows={[
+            { id: "a", name: stressText(long, "Alex Morgan"), email: stressText(long, "alex@example.com", "word"), status: "active", joined: "2026-01-14" },
+            { id: "b", name: "Priya Shah", email: "priya@example.com", status: "invited", joined: "2026-03-02" },
+            { id: "c", name: stressText(long, "Jordan Lee", "word"), email: stressText(long, "jordan@example.com", "summary"), status: "active", joined: "2026-08-20" },
+          ]}
+          columns={[
+            { key: "name", label: "Name", sortable: true, render: (row) => <CellText lines={2}>{row.name}</CellText> },
+            { key: "email", label: "Email", sortable: true, render: (row) => <CellText lines={2}>{row.email}</CellText> },
+            { key: "status", label: "Status", render: (row) => <Badge>{row.status === "active" ? "Active" : "Invited"}</Badge> },
+            { key: "actions", label: "", render: (row) => <button className="btn" aria-label={`Edit ${row.id}`}>Edit</button> },
+          ]}
+        />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
+  },
+};
+
+/**
+ * A column with `minWidth` holds that floor and stays at the left edge when the table scrolls sideways (sortable or
+ * plain header alike); a `hideBelow` column drops while the table has under 40rem of room and returns when it has more.
+ */
+const floorAndDrop = (width: number): Story => ({
+  render: (args) => (
+    <div style={{ width }}>
+      <DirectoryTable
+        {...args}
+        columns={[
+          { key: "name", label: "Name", sortable: true, minWidth: "12rem", render: (row) => row.name },
+          { key: "email", label: "Email", hideBelow: true, render: (row) => row.email },
+          { key: "joined", label: "Joined", sortable: true, hideBelow: true, render: (row) => row.joined },
+        ]}
+        onSort={fn()}
+      />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const name = canvas.getByRole("columnheader", { name: "Name" });
+    await expect(name.getBoundingClientRect().width).toBeGreaterThanOrEqual(12 * 16 - 1);
+    await expect(name).toHaveClass("directory-table-floor");
+    await expect(getComputedStyle(name).position).toBe("sticky");
+    const dropped = width < 40 * 16;
+    await expect(canvas.queryAllByRole("columnheader", { name: "Email" })).toHaveLength(dropped ? 0 : 1);
+    await expect(canvas.queryAllByRole("columnheader", { name: "Joined" })).toHaveLength(dropped ? 0 : 1);
+  },
+});
+
+/** Under 40rem of room the `hideBelow` columns are dropped and Name keeps its floor. */
+export const FloorWidthAndNarrowDrop: Story = floorAndDrop(500);
+/** With room to spare every column is drawn. */
+export const FloorWidthAndRoomyTable: Story = floorAndDrop(900);

@@ -8,21 +8,15 @@ installCleanupHook();
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: a user can enrol in TOTP two-factor authentication
- * (C-U-14), scanning a real QR-code-backed secret (captured from the
- * enroll response rather than parsing the rendered QR image) and
- * confirming with a live computed code; login then requires a second
- * step; and 2FA can be disabled again with a fresh code.
+ * Job to be done: a user can enrol in TOTP two-factor authentication (C-U-14), scanning a real QR-code-backed secret
+ * (captured from the enroll response rather than parsing the rendered QR image) and confirming with a live computed
+ * code; login then requires a second step; and 2FA can be disabled again with a fresh code.
  *
- * Uses a fresh, disposable, zero-org-membership user — created via the API
- * then immediately made to leave via `DELETE .../membership`, the same
- * recipe backend/scripts/seed_e2e_dataset.py itself uses to construct
- * PERSONAS.orphan — rather than the orphan persona itself, so
- * enabling/disabling 2FA here can't collide with org-login-2fa-handoff.
- * spec.ts or user-directory-and-bans.spec.ts also touching orphan's
- * session/account state concurrently. The test always ends with 2FA disabled again, but that's
- * now for tidiness rather than to avoid breaking a shared persona's later
- * plain `loginAs()`.
+ * Uses a fresh, disposable, zero-org-membership user (created via the API then made to leave via
+ * `DELETE .../membership`, as backend/scripts/seed_e2e_dataset.py does for PERSONAS.orphan) rather than the orphan
+ * persona, so enabling/disabling 2FA cannot collide with org-login-2fa-handoff.spec.ts or
+ * user-directory-and-bans.spec.ts touching orphan's session/account state concurrently. The test ends with 2FA
+ * disabled again, for tidiness.
  */
 test.describe("two-factor authentication enrollment", () => {
   test("enrol, log in with a code, then disable", async ({ page }) => {

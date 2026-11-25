@@ -32,20 +32,16 @@ import { useServerAccess } from "../hooks/useServerAccess";
 import { useUrlChoice, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
 
 /**
- * Server-admin console listing every organisation on the deployment
- * (`GET /orgs` already returns all orgs for a server admin, scoped to the
- * caller's own memberships for everyone else) plus creation, and the two
- * lifecycle actions available for an existing one:
- *
- * - **Disable/enable**: reversible, no data touched — blocks every org/
- *   project-scoped request for everyone, including the org's own admins,
- *   until re-enabled (e.g. a hosting customer stopped paying).
- * - **Storage**: the organisation's own file upload switch and storage limit, for a Platform subscription manager or
- *   server administrator (`OrgStorageDialog`).
- * - **Delete**: irreversible, gated behind typing the organisation's exact
- *   name to confirm — permanently removes everything it owns (projects,
- *   requirements, files, ...). See docs/decisions.md's "Organisation
- *   disable and hard delete" section for the full design.
+ * Server-admin console listing every organisation on the deployment (`GET /orgs`
+ * returns all for a server admin, the caller's memberships otherwise), plus
+ * creation and the lifecycle actions of an existing one:
+ * - **Disable/enable**: reversible, no data touched; blocks every org/project
+ *   request for everyone, including the org's admins, until re-enabled.
+ * - **Storage**: the file upload switch and storage limit, for a Platform
+ *   subscription manager or server administrator (`OrgStorageDialog`).
+ * - **Delete**: irreversible, confirmed by typing the organisation's exact name;
+ *   removes everything it owns. See docs/decisions.md "Organisation disable and
+ *   hard delete".
  */
 type StatusFilter = "active" | "disabled" | "all";
 const STATUS_PARAMS: readonly StatusFilter[] = ["disabled", "all"];
@@ -77,11 +73,8 @@ export function ServerOrganisationsPage() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [showImportForm, setShowImportForm] = useState(false);
-  // Every registered module's
-  // optional org-creation seeding choices (e.g. Decision Management's ADR
-  // template packs), fetched once and rendered generically; this page has
-  // no hardcoded knowledge of what any of them are. `null` selected keys
-  // means "not yet initialised from the fetched defaults."
+  // Every module's optional org-creation seeding choices, fetched once and
+  // rendered generically (no hardcoded knowledge of any module).
   const [creationChoices, setCreationChoices] = useState<OrgCreationChoice[] | null>(null);
   const [selectedChoiceKeys, setSelectedChoiceKeys] = useState<Set<string> | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -101,11 +94,8 @@ export function ServerOrganisationsPage() {
   useLoadOnChange(reload, []);
 
   useEffect(() => {
-    // Fetched once, independent of the modal opening — the checkboxes only
-    // need to be ready by the time the "New Org" form opens, and this page's
-    // own load is a rare, admin-only action so the extra request is not worth
-    // deferring behind `showNewForm`. Only a caller who may create reads it
-    // (a Subscription removal authority is refused).
+    // Fetched once, independent of the modal opening. Only a caller who may
+    // create reads it (a Subscription removal authority is refused).
     if (!canCreate) return;
     api.get<OrgCreationChoice[]>("/api/v1/orgs/creation-choices").then((choices) => {
       setCreationChoices(choices);
@@ -139,11 +129,10 @@ export function ServerOrganisationsPage() {
   }
 
   /**
-   * Full-fidelity organisation bundle import (`services.org_export`): creates a brand-new organisation from an
-   * exported bundle (settings, members, report layouts and every project's structure and history), for backup
-   * restore, offboarding or cross-instance migration. Module-contributed creation choices do not apply: the
-   * bundle carries its own settings, so there is nothing fresh to seed. An error is thrown to
-   * `BundleImportDialog`, which shows it.
+   * Full-fidelity organisation bundle import (`services.org_export`): creates a
+   * new organisation from an exported bundle, for restore, offboarding or
+   * cross-instance migration. Module creation choices do not apply because the
+   * bundle carries its own settings. Errors are thrown to `BundleImportDialog`.
    */
   async function importOrg(file: File, skipFiles: boolean) {
     const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", file, {

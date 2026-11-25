@@ -8,21 +8,13 @@ installCleanupHook();
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: module system — Org Admin's "Modules" resource-menu group (`GET /orgs/{id}/modules`).
+ * Job to be done: Org Admin's "Modules" resource-menu group (`GET /orgs/{id}/modules`).
  *
- * Compliance (`default_enabled=True`, `implemented=True`) is the real first-party module
- * this spec exercises; `backend/app/modules/registry.py`'s `INSTALLED_MODULES` list only
- * reflects what's actually running, so a stale backend container would not show it.
+ * Compliance (`default_enabled=True`, `implemented=True`) is the real first-party module exercised; the registry's
+ * `INSTALLED_MODULES` reflects only what is running, so a stale backend container would not show it.
  *
- * Uses a brand-new, disposable organisation + admin created via the API
- * (mirroring org-admin-project-statuses-and-link-types.spec.ts), not the
- * shared "E2E Gamma Labs" org/PERSONAS.orgAdminGamma this spec previously
- * ran against — this spec's own toggle-off-then-back-on already restores
- * Gamma's enablement state for *order* independence, but under real
- * concurrency another spec
- * reading/writing Gamma (e.g. org-security-controls.spec.ts) could still
- * observe the module disabled mid-window. A disposable org removes that
- * collision entirely.
+ * Uses a disposable organisation and admin created through the API: toggling the module off and on in a shared
+ * organisation would let a concurrent spec (e.g. `org-security-controls.spec.ts`) see it disabled.
  */
 test.describe("org admin: Modules section", () => {
   test("shows the Compliance module on by default, with one availability control and no column headers", async ({ page }) => {

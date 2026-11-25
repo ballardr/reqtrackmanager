@@ -1,19 +1,13 @@
 /**
  * Module: modules/artefactPaths
  *
- * Resolves the page of a record from its artefact type, so one module's UI
- * (the links panel, Stakeholders' relationship list) can link to another's
- * records (a Pain Point, a Decision) without importing that module or
- * hardcoding its URLs. Two sources, merged like `entityAccentColor.ts`: the
- * core-owned types (`requirement`, `requirement_action`, `change_request`), and every installed
- * module's own `TierAModuleDefinition.artefactPaths`. Every artefact type the
- * backend registers must resolve here, or it could be linked yet unreachable
- * (`artefactPaths.stories.tsx` guards this).
+ * Resolves the page of a record from its artefact type, so one module's UI (the links panel, Stakeholders' relationship list)
+ * can link to another's records without importing that module or hardcoding its URLs. Two sources, merged like
+ * `entityAccentColor.ts`: the core-owned types (`requirement`, `requirement_action`, `change_request`) and every installed
+ * module's `TierAModuleDefinition.artefactPaths`. Every artefact type the backend registers must resolve here, or it could be
+ * linked yet unreachable (`artefactPaths.stories.tsx` guards this).
  */
-import {
-  CHANGE_REQUEST_STATUS_LABEL, notificationLink, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_STATUS_LABEL,
-  type Notification,
-} from "../api/types";
+import { CHANGE_REQUEST_STATUS_LABEL, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { installedModules } from "./registry";
 
 /** The detail route a module declares for `artefactType` in `projectId`, or `null` when none does. */
@@ -69,20 +63,6 @@ export function getSearchHitPath(hit: {
     }
   }
   return null;
-}
-
-/**
- * Where clicking a notification navigates: a notification about a record a module owns (its
- * `entity_type` is that module's registered artefact type) opens that record's page via the
- * module's `artefactPaths`; anything else keeps the core resolution (`notificationLink`).
- * `null` means the notification is not navigable.
- */
-export function getNotificationLink(n: Notification): string | null {
-  if (n.project_id && n.entity_type && n.entity_id) {
-    const modulePath = getModuleArtefactPath(n.entity_type, n.project_id, n.entity_id);
-    if (modulePath) return modulePath;
-  }
-  return notificationLink(n);
 }
 
 const CORE_STATUS_LABELS: Record<string, Record<string, string>> = {

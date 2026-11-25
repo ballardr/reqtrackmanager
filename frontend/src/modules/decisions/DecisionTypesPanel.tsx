@@ -1,25 +1,14 @@
 /**
  * Module: modules/decisions/DecisionTypesPanel
  *
- * This project's Decision Type vocabulary (§13/10.2) — a
- * plain, ordered, flat "definition" list, so this reuses `DefinitionList`
- * verbatim, the same way `modules/compliance/ActionTypesPanel.tsx` reuses it
- * for its own org-scoped action-type vocabulary (style guide "one component
- * per pattern" principle). Decision Types are project-scoped (mirrors
- * `ActionTypeDefinition` exactly, including its
- * nested-project inheritance fallback —
- * `listDecisionTypes` already returns the effective, possibly-inherited
- * set, so this panel just displays whatever the API gives it).
+ * The project's Decision Type vocabulary: a plain, ordered, flat definition list, so it reuses `DefinitionList` as
+ * `modules/compliance/ActionTypesPanel.tsx` does (style guide "one component per pattern"). Decision Types are
+ * project-scoped like `ActionTypeDefinition`, including the nested-project fallback: `listDecisionTypes` returns the
+ * effective, possibly inherited set and the panel displays it.
  *
- * Moved from a tab on `ProjectDecisionsPage.tsx` to Project Admin's own
- * `projectAdminSections` contribution (2026-09-22) — grouped with
- * the project's other definition-table settings (Action Types, Custom
- * Fields) rather than the module's day-to-day working page, matching where
- * Action Types themselves already live. Since `render({projectId})` hands
- * this panel no parent-owned state (unlike the old tab, which shared
- * `ProjectDecisionsPage`'s own `decisionTypes` state), it now fetches and
- * reloads its own list — the same self-contained shape
- * `DecisionTemplatesPanel.tsx` already uses for org templates.
+ * It is a `projectAdminSections` entry, grouped with the project's other definition-table settings (Action Types,
+ * Custom Fields). `render({projectId})` passes no parent state, so the panel fetches and reloads its own list, as
+ * `DecisionTemplatesPanel.tsx` does.
  */
 import { useState } from "react";
 

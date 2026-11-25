@@ -28,8 +28,8 @@ function Harness({ startFolded = false }: { startFolded?: boolean }) {
 }
 
 /**
- * The report designer's right-hand panel: tabs over the tools of the view being edited, folded to a rail with the same toggle
- * the detail page's aside uses. Below 1100px it stacks under the editor and has no toggle.
+ * The report designer's right-hand panel: tabs over the tools of the view being edited, folded to a rail with the
+ * detail page's aside toggle. Below 1100px it stacks under the editor with no toggle.
  */
 const meta: Meta<typeof Harness> = {
   title: "Components/DesignerSidePanel",

@@ -1,17 +1,11 @@
-"""Tests for groups as Risk owners (users and groups on parity, Risk "5b" —
-).
+"""
+Tests for groups as Risk owners.
 
-Covers: each principal kind on create/update/clear with the group's display
-fields; the owner on every version so history shows who owned each one;
-validation (a foreign organisation's group or user, another project's group, an
-unknown id); the owner gate (a member of an owner group may assess a treatment
-and record a review, a non-member or a removed member may not); the review
-sweep and change-detection notifications reaching every group member, and the
-Risk Managers fallback for a group with nobody to notify; deleting a group that
-owns risks (usage counts only current versions, blocked, reassigned, cleared, the
-audit event names the risk, older versions keep a deleted group); the register
-report printing the owner with its kind; bundle export/import round trip and
-fallbacks; and the migration backfilling existing rows to `user`.
+Covers each principal kind on create/update/clear, the owner on every version,
+validation (foreign or wrong-scope groups and users), the owner gate (a member
+of an owner group may assess and review), notifications reaching every group
+member with the Risk Managers fallback, deleting a group that owns risks,
+report output, bundle round trip and the migration backfilling to `user`.
 """
 
 from __future__ import annotations
@@ -105,7 +99,10 @@ def test_a_risk_takes_each_principal_kind_and_shows_a_group_by_name(client, admi
     unowned = create_risk(client, token, project["id"])
     assert unowned["owner"] is None
     by_org = create_risk(client, token, project["id"], owner=_org_ref(team))
-    assert by_org["owner"] == {"type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False}
+    assert by_org["owner"] == {
+        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1,
+        "exists": True, "imported": False, "service": False,
+    }
     by_project = create_risk(client, token, project["id"], owner=_project_ref(squad))
     assert by_project["owner"]["label"] == "Squad" and by_project["owner"]["type"] == "project_group"
     by_user = create_risk(client, token, project["id"], owner=user_ref(member_id))

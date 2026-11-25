@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ScoringScheme } from "../api/scoring";
-import { buildCustomCriteriaScheme, buildScoringScheme, buildUser, expandScoringLevels, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import {buildCustomCriteriaScheme, buildScoringScheme, buildUser, expandScoringLevels, withStatefulAuth, withToast, openAddDialog } from "../testing/storybook-helpers";
 import { ScoringSchemeEditor } from "./ScoringSchemeEditor";
 
 const ORG_ID = "org-1";
@@ -76,13 +76,10 @@ export const AddLevel: Story = {
     await canvas.findByRole("heading", { name: "Levels" });
     await expandScoringLevels(canvas);
     await waitFor(() => canvas.getByDisplayValue("Blocker"));
-    const names = canvas.getAllByRole("textbox", { name: "Confidence level name" });
-    const name = names[names.length - 1];
-    await userEvent.type(name, "Medium");
-    const weights = canvas.getAllByRole("spinbutton", { name: "Confidence level weight" });
-    const weight = weights[weights.length - 1];
-    await userEvent.type(weight, "0.8");
-    await userEvent.click(canvas.getByRole("button", { name: "Add Confidence level" }));
+    const dialog = await openAddDialog(canvas, "Add Confidence level");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Level" }), "Medium");
+    await userEvent.type(dialog.getByRole("spinbutton", { name: "Weight" }), "0.8");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/axes/confidence/levels`, {
       name: "Medium", weight: 0.8, description: null,
     }));
@@ -180,16 +177,14 @@ export const DerivedAxisLevelsHaveAThreshold: Story = {
     const canvas = within(canvasElement);
     await canvas.findByRole("heading", { name: "Criteria" });
     await expandScoringLevels(canvas);
-    await expect(canvas.getAllByRole("spinbutton", { name: "Demand level threshold" })).toHaveLength(4); // 3 levels + the add row
+    await expect(canvas.getAllByRole("spinbutton", { name: "Demand level threshold" })).toHaveLength(3);
     await expect(canvas.queryByRole("spinbutton", { name: "Impact level threshold" })).not.toBeInTheDocument();
-    const names = canvas.getAllByRole("textbox", { name: "Demand level name" });
-    await userEvent.type(names[names.length - 1], "Huge");
-    const weights = canvas.getAllByRole("spinbutton", { name: "Demand level weight" });
-    await userEvent.type(weights[weights.length - 1], "4");
-    await expect(canvas.getByRole("button", { name: "Add Demand level" })).toBeDisabled(); // no threshold yet
-    const thresholds = canvas.getAllByRole("spinbutton", { name: "Demand level threshold" });
-    await userEvent.type(thresholds[thresholds.length - 1], "25");
-    await userEvent.click(canvas.getByRole("button", { name: "Add Demand level" }));
+    const dialog = await openAddDialog(canvas, "Add Demand level");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Level" }), "Huge");
+    await userEvent.type(dialog.getByRole("spinbutton", { name: "Weight" }), "4");
+    await expect(dialog.getByRole("button", { name: "Add" })).toBeDisabled(); // no threshold yet
+    await userEvent.type(dialog.getByRole("spinbutton", { name: "From" }), "25");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/scoring-schemes/enhancement_request/axes/demand/levels`,
       { name: "Huge", weight: 4, description: null, threshold: 25 },

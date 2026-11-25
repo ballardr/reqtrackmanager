@@ -1,29 +1,26 @@
 """
 Module: services.dr_schedule
 
-The in-container backup schedule: a small long-running loop that runs `run_backup` at each scheduled time, so
-a deployment with no cron or systemd on the host still takes backups.
+The in-container backup schedule: a long-running loop that runs `run_backup` at each scheduled time, so a
+deployment with no host cron or systemd still takes backups.
 
-Responsibilities:
-- Parse `BACKUP_SCHEDULE` (`HH:MM` daily in `BACKUP_SCHEDULE_TIMEZONE`, or `every Nh` for an N that divides 24)
-  and work out the next and previous slot.
-- Run a backup at each slot, catch up once at start when the last success is older than the previous slot,
-  and retry a failed run after a delay (bounded, and never past the next slot).
-- Publish a heartbeat textfile (`reqtrack-backup-scheduler.prom`) from a separate thread, so a backup that
-  runs for hours is not mistaken for a dead scheduler, and answer the container health probe from it.
+Responsibilities: parse `BACKUP_SCHEDULE` (`HH:MM` daily in `BACKUP_SCHEDULE_TIMEZONE`, or `every Nh` for an N
+dividing 24) and compute the next and previous slot; run a backup at each slot, catch up once at start when
+the last success is older than the previous slot, and retry a failed run after a bounded delay never past the
+next slot; publish a heartbeat textfile (`reqtrack-backup-scheduler.prom`) from a separate thread, so a
+multi-hour backup is not mistaken for a dead scheduler, and answer the container health probe from it.
 
 Design decisions:
-- A daily time is a future, scheduled wall-clock time: it is kept as local time plus an IANA zone name and
-  resolved to a UTC instant only when the next wait is computed, so "02:30 Australia/Sydney" stays 02:30
-  across a daylight-saving change. A local time that does not exist that day (spring forward) runs an
-  hour later on the wall clock; an ambiguous one (fall back) runs at its first occurrence.
-- `every Nh` slots are aligned to UTC midnight; they carry no zone because an interval has no wall clock.
-- The run itself is `run_backup` unchanged (same lock, same status file and metrics), so a scheduled run and
-  a hand-started one cannot overlap and look identical to the monitoring.
-- Nothing here talks to Docker, so the container needs no socket. The restore-test cannot run here for that
-  reason and is scheduled from the host.
+- A daily time is a scheduled future wall-clock time: kept as local time plus an IANA zone and resolved to
+  UTC only when the next wait is computed, so "02:30 Australia/Sydney" stays 02:30 across daylight saving.
+  A nonexistent local time (spring forward) runs an hour later on the wall clock; an ambiguous one (fall
+  back) runs at its first occurrence.
+- `every Nh` slots align to UTC midnight and carry no zone, since an interval has no wall clock.
+- The run is `run_backup` unchanged (same lock, status file and metrics), so a scheduled and a manual run
+  cannot overlap and look identical to monitoring.
+- Nothing here talks to Docker, so the container needs no socket; the restore-test is scheduled from the host.
 
-Dependencies: `services.dr_backup` (the run), the standard library (`zoneinfo`, `threading`).
+Dependencies: `services.dr_backup`, the standard library (`zoneinfo`, `threading`).
 """
 
 from __future__ import annotations

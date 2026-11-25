@@ -34,13 +34,10 @@ import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { DetailCard } from "../components/DetailCard";
 
 /**
- * Detail view for a single requirement action: an editable outcome-status
- * control (transitioning away from "pending" stamps `completed_at`/
- * `completed_by` server-side — see `RequirementActionUpdate`'s docstring),
- * the list of requirements this action is linked to (the reverse of
- * `RequirementDetailPage.tsx`'s Actions card), its own file attachments
- * (`FileAttachmentList`, always enabled — actions have no lock concept the
- * way a requirement does), and a reused `CommentThread` discussion.
+ * Detail view for a single requirement action: an editable outcome-status control (a transition away from "pending"
+ * stamps `completed_at` / `completed_by` server-side, see `RequirementActionUpdate`), the requirements this action is
+ * linked to (the reverse of `RequirementDetailPage.tsx`'s Actions card), its file attachments (`FileAttachmentList`,
+ * always enabled: actions have no lock concept) and a reused `CommentThread`.
  */
 export function ActionDetailPage() {
   const run = useMutation();
@@ -59,15 +56,10 @@ export function ActionDetailPage() {
     title: string; description: string; actionTypeId: string; assignee: PrincipalRef | null; dueDate: string;
   }>({ title: "", description: "", actionTypeId: "", assignee: null, dueDate: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
-  // Guards `form` against `reload()` — called after every unrelated
-  // mutation on this page (posting a comment, uploading a file, linking a
-  // requirement, ...) and not awaited by its callers, so it can still be
-  // mid-flight when the user edits and saves this form right after
-  // triggering one of those other actions, clobbering the edit back to
-  // its last-saved value before Save is even clicked. Same real,
-  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
-  // own comment and docs/decisions.md. Set by every field's onChange via
-  // `updateForm` below, cleared once `save()` succeeds.
+  // Guards `form` against `reload()`, which runs after every unrelated mutation on this page (comment, file upload,
+  // requirement link) and is not awaited, so it can still be in flight when the form is edited and saved and would
+  // reset the edit to its last-saved value before Save is clicked (the race `advancedDirtyRef` in OrgAdminPage.tsx
+  // guards, see docs/decisions.md). Set by every field's onChange via `updateForm`, cleared once `save()` succeeds.
   const formDirtyRef = useRef(false);
 
   function updateForm(updater: (f: typeof form) => typeof form) {
@@ -169,10 +161,8 @@ export function ActionDetailPage() {
     }
   }
 
-  // Restore: no `ConfirmDialog` (unlike archive above) — mirrors
-  // `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
-  // immediately, since restoring is reversible again (archive it right
-  // back) rather than a Tier-1-confirmed action.
+  // Restore has no `ConfirmDialog` (unlike archive), as `ProjectAdminPage.tsx`'s unarchive button: restoring is
+  // reversible (archive it again), so it is not a Tier-1-confirmed action.
   async function restore() {
     try {
       await api.post(`/api/v1/projects/${projectId}/actions/${actionId}/unarchive`);
@@ -186,6 +176,13 @@ export function ActionDetailPage() {
   async function uploadFile(file: File) {
     if (!(await run(() => api.postFile(`/api/v1/projects/${projectId}/actions/${actionId}/files`, file), "upload", "file"))) return;
     reload();
+  }
+
+  /** Attaches a picture file to this record for a Markdown field's Picture button; resolves to the new attachment. */
+  async function attachPicture(file: File): Promise<FileAsset> {
+    const asset = await api.postFile<FileAsset>(`/api/v1/projects/${projectId}/actions/${actionId}/files`, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
   }
 
   async function removeFile(fileId: string) {
@@ -237,6 +234,7 @@ export function ActionDetailPage() {
 
   return (
     <DetailLayout
+      pictures={{ files, upload: attachPicture }}
       activity={projectId && actionId ? <RecordActivity projectId={projectId} artefactType="requirement_action" artefactId={actionId} refreshToken={recordActivityKey(action)} /> : undefined}
       contained={false}
       aside={
@@ -256,7 +254,6 @@ export function ActionDetailPage() {
       />
       {archiveAction.dialog}
 
-      <div className="stack">
           <DetailCard>
             <ActionFields
               values={form}
@@ -292,11 +289,11 @@ export function ActionDetailPage() {
             )}
           </DetailCard>
 
-          <DetailCard heading={strings.requirements.attachments}>
+          <DetailCard heading={strings.requirements.attachments} rank="supporting">
             <FileAttachmentList files={files} onUpload={uploadFile} onRemove={removeFile} />
           </DetailCard>
 
-          <DetailCard heading={strings.requirements.discussion}>
+          <DetailCard heading={strings.requirements.discussion} rank="discussion">
             <CommentThread
               comments={comments}
               onPost={postComment}
@@ -307,7 +304,6 @@ export function ActionDetailPage() {
               currentUserId={user?.id}
             />
           </DetailCard>
-      </div>
     </DetailLayout>
   );
 }

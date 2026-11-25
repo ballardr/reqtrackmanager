@@ -3,7 +3,7 @@
  *
  * Frontend vocabulary for the Product Feedback module: the wire values of the module's enums with their display
  * label and badge-tone maps, and the response/request shapes of `backend/app/modules/product_feedback/schemas.py`.
- * Mirrors that package's `enums.py`/`labels.py`/`schemas.py` by hand; any place that shows an enum value goes
+ * Mirrors that package's `enums.py`/`labels.py`/`schemas.py` manually; any place that shows an enum value goes
  * through its label map, never the raw string.
  */
 import type { BadgeTone, FileAsset, Principal, PrincipalRef } from "../../api/types";
@@ -19,6 +19,19 @@ export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
   declined: "Declined",
   duplicate: "Duplicate",
 };
+
+/** What each status means, the tooltip of its step in the lifecycle track. */
+export const REQUEST_STATUS_DESCRIPTION: Record<RequestStatus, string> = {
+  new: "Submitted and awaiting triage.",
+  under_review: "Being assessed by a triager.",
+  accepted: "Accepted for delivery and awaiting delivery.",
+  delivered: "Delivered; the requesters can be informed.",
+  declined: "Not taken forward. The reason is recorded with the request.",
+  duplicate: "Merged into another request, whose demand now includes this one.",
+};
+
+/** The statuses of a request's main path, in order. */
+export const REQUEST_MAIN_PATH: readonly RequestStatus[] = ["new", "under_review", "accepted", "delivered"];
 
 /** Tone of a status badge: working states informational, the favourable outcomes green, the closed-out rest muted. */
 export const REQUEST_STATUS_TONE: Record<RequestStatus, BadgeTone> = {
@@ -53,6 +66,8 @@ export interface ExternalRef {
   system_name: string;
   key: string;
   url: string | null;
+  /** What the reference opens: `url`, else the system's link template with the key in it, else null. */
+  link?: string | null;
   role: ExternalRefRole;
   created_by: string;
   created_at: string;

@@ -1,13 +1,11 @@
-"""Tests for groups as Decision owners and decision makers (users and groups
-on parity).
+"""
+Tests for groups as Decision owners and decision makers.
 
-Covers: each principal kind on create and update, cross-organisation and
-cross-project rejection, the owner gate for a direct owner / org-group member /
-nested-group member / project-group member / non-member / removed member (and
-that a group confers no approval right), the owner and decision-maker filters
-including "mine", deleting a group that owns Decisions (blocked, then
-reassigned, optional maker cleared), the D1/D2/D3 reports naming a group, and
-the migration backfill of existing rows to `user`.
+Covers each principal kind on create and update, cross-organisation and
+cross-project rejection, the owner gate (direct, org-group, nested-group,
+project-group, non-member, removed member; a group confers no approval right),
+owner and decision-maker filters including "mine", deleting a group that owns
+Decisions, the D1/D2/D3 reports naming a group and the migration backfill to `user`.
 """
 
 from __future__ import annotations
@@ -80,7 +78,7 @@ def test_create_with_each_principal_kind_and_group_display(client, admin_token):
         decision_maker={"type": "project_group", "id": squad},
     )
     assert by_org_group["owner"] == {
-        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False,
+        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False, "service": False,
     }
     assert by_org_group["decision_maker"]["label"] == "Squad"
     assert by_org_group["decision_maker"]["type"] == "project_group"

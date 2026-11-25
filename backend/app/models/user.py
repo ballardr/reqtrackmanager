@@ -36,14 +36,11 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             sourced entirely from an external auth backend.
         auth_backend: Identifies which AuthBackend authenticates this user
             (e.g. "native", "oidc"), supporting pluggable identity backends
-            (C-U-06). A third sentinel, "invited", marks a user pre-provisioned
-            by an admin invite into an `sso_only` organisation
-            (`services/invites.py`) before their first SSO login: it never
-            matches `NativeAuthBackend.name`, so native login is rejected
-            for it even though `password_hash` is also `None` — the row
-            exists purely so `oidc_provisioning.find_or_provision_user`'s
-            existing_by_email match can adopt it (and its already-granted
-            roles) on that first SSO login, flipping this to "oidc".
+            (C-U-06). The sentinel "invited" marks a user pre-provisioned by an admin invite into an
+            `sso_only` organisation (`services/invites.py`) before the first SSO login. It never matches
+            `NativeAuthBackend.name`, so native login is rejected, and
+            `oidc_provisioning.find_or_provision_user`'s existing_by_email match adopts the row (and its
+            granted roles) on that login, setting this to "oidc".
         external_subject: Opaque subject identifier from an external auth
             backend, when applicable.
         is_active: Whether the user can currently authenticate (C-U-04).
@@ -53,30 +50,22 @@ class User(UUIDPKMixin, TimestampMixin, Base):
         is_server_admin: Grants the cross-tenant server admin role, which can
             create organisations and organisation users but has no access to
             organisation data (I-M-05).
-        is_banned: Set by a server admin from the access review (C-A-13),
-            distinct from an ordinary deactivation: also blocks
-            `assign_org_role` from granting this account a role in any
-            organisation going forward, so a known-bad actor's account
-            can't quietly be let back in through a different org's admin
-            once flagged, without a server admin needing to intervene again
-            per org. Implies `is_active = False`, but is tracked separately
-            so "banned" survives even if something else were to flip
-            `is_active` back on.
+        is_service_account: A service user: no password, no sign-in, tokens issued by an organisation administrator;
+            otherwise an ordinary user (roles, groups, ownership, audit).
+        is_banned: Set by a server admin from the access review (C-A-13). Unlike an ordinary deactivation it
+            also blocks `assign_org_role` from granting the account a role in any organisation, so another
+            org's admin cannot let it back in. Implies `is_active = False` but is tracked separately so the
+            ban survives `is_active` being set again.
         imported_organization_id / imported_key: Mark an imported person (see the column notes below).
         banned_at / banned_by: Set when `is_banned` transitions to True;
             cleared on unban.
         landing_preference: Where the user is sent after login ("auto",
             "overview", or a specific project id) (U-U-03).
         theme_preference: UI theme choice ("light", "dark", or "system").
-        ui_preferences: General-purpose bag for lightweight UI display
-            preferences that don't (yet, or ever) warrant their own typed
-            column — e.g. per-list tile/list view mode, keyed
-            `view_mode:<page>` (`"view_mode:requirements": "tiles"`).
-            Deliberately generic ("structured but open-ended, rarely queried"
-            per-row data) so a future preference of this same low-stakes,
-            display-only shape is just a new key, not a schema change —
-            synced across devices/sessions, unlike equivalent client-only
-            localStorage.
+        ui_preferences: Open-ended bag of display-only UI preferences that do not warrant a typed column,
+            for example the per-list tile/list mode keyed `view_mode:<page>`
+            (`"view_mode:requirements": "tiles"`). A new preference is a new key, not a schema change; it
+            syncs across devices, unlike `localStorage`.
         pronouns: Optional self-set pronouns (C-U-18).
         avatar_file_id: Optional uploaded avatar image (C-U-18). Uses
             `use_alter` since `file_assets` itself references `users`
@@ -85,41 +74,23 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             longer change their own display name (C-U-16).
         is_2fa_enabled: Whether TOTP two-factor auth is active for this
             user (C-U-14). Only meaningful for the native auth backend.
-        totp_secret: The TOTP secret, set on enrollment and only "live"
-            once `is_2fa_enabled` is True; never returned via the API.
-            Encrypted at rest at the application layer (`EncryptedString`,
-            SOC 2 hardening pass) — the column stores Fernet ciphertext, not
-            the plaintext secret, so a database compromise alone doesn't
-            expose it.
-        failed_2fa_attempts: Count of consecutive failed `/2fa/verify`
-            codes since the last success (or the last lockout). Hardening
-            review finding: a stolen password plus an unthrottled 2FA
-            challenge (6-digit TOTP, a bounded keyspace, re-mintable via a
-            fresh `/login` call every time the 5-minute challenge token
-            expires) let an attacker converge toward a near-certain bypass
-            given enough repeated windows. This is a per-*account* counter,
-            not per-challenge-token, so restarting the login flow for a
-            fresh token does not reset it.
-        failed_2fa_locked_until: Set once `failed_2fa_attempts` crosses the
-            threshold (see `verify_2fa`); further 2FA verification is
-            rejected outright until this time passes, regardless of code
-            correctness or how many new challenge tokens are minted.
+        totp_secret: The TOTP secret, set on enrollment and live once `is_2fa_enabled` is True; never
+            returned via the API. Encrypted at rest (`EncryptedString`): the column holds Fernet
+            ciphertext, so a database compromise alone does not expose it.
+        failed_2fa_attempts: Consecutive failed `/2fa/verify` codes since the last success or lockout. The
+            6-digit TOTP keyspace is bounded and a fresh `/login` mints a new 5-minute challenge token, so
+            without a limit a stolen password converges to a 2FA bypass. The counter is per account, not
+            per challenge token, so restarting the login flow does not reset it.
+        failed_2fa_locked_until: Set once `failed_2fa_attempts` crosses the threshold (see `verify_2fa`);
+            2FA verification is rejected until this time passes, whatever the code or challenge token.
         email_digest_mode: Whether email notifications are sent instantly,
             batched into a daily digest, or not at all (C-N-05).
-        token_version: Access tokens are stateless JWTs with no revocation
-            list, so without this, a token issued before a password change
-            or 2FA disable would keep working until its own natural expiry
-            even after the user "locks out" a compromised session by
-            changing credentials. Embedded in every issued token as `tv`;
-            incremented on password change and 2FA disable, immediately
-            invalidating every token issued before the increment — including
-            the very token used to make that change, deterministically,
-            with no clock-precision ambiguity (a wall-clock timestamp
-            comparison was tried first and rejected: JWT `iat` is only
-            second-precision, so a token issued in the same second as its
-            own revocation would otherwise compare as still-valid). Also
-            the credential epoch: a password reset and a forced credential
-            reset (`services/credential_reset.py`) increment it too.
+        token_version: Access tokens are stateless JWTs with no revocation list, so a token issued before
+            a password change or 2FA disable would otherwise work until it expired. It is embedded in every
+            token as `tv` and incremented on password change, 2FA disable, password reset and forced
+            credential reset (`services/credential_reset.py`), invalidating every earlier token, including
+            the one that made the change. A counter is used because JWT `iat` has only second precision, so a
+            token issued in the same second as its revocation would still compare as valid.
         must_reset_credentials: Set by a forced credential reset. While set,
             native sign-in is refused even with the correct password (the old
             password is suspect), until the person redeems a reset link,
@@ -140,17 +111,18 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     auth_backend: Mapped[str] = mapped_column(String(50), default="native")
     external_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Per OIDC spec, `sub` is only guaranteed unique *within a single
-    # issuer*, not globally — this is matched alongside external_subject so
-    # two different, unrelated IdPs (e.g. different orgs' independently
-    # configured providers) can never collide on the same subject value and
-    # resolve to the same account (E-U-01 hardening).
+    # OIDC `sub` is unique only within one issuer; it is matched with external_subject so unrelated IdPs
+    # (for example different orgs' providers) cannot collide on a subject and resolve to one account (E-U-01).
     oidc_issuer: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_server_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: True for a service user (`services.service_users`): an organisation's integration identity with no password and
+    #: no interactive sign-in, which holds personal access tokens an administrator issues. Its `auth_backend` is
+    #: `service_users.SERVICE_AUTH_BACKEND`, which no sign-in backend matches.
+    is_service_account: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     #: Set only on an imported person: a stand-in for someone named in an import bundle who is not a member of the
     #: organisation it was imported into (`services.imported_people`). The row is always inactive and archived, holds
     #: no password and a synthetic non-routable address, and belongs to exactly this organisation.

@@ -1,25 +1,19 @@
 /**
  * Module: testing/iconSizes
  *
- * The shared "is every icon the size its button says?" assertion. Button icons are sized by CSS
- * (`.btn svg` 16px, `.btn-sm svg` 14px; see style guide "Pattern: button sizes"), so a per-call
- * `size` prop can no longer drift, but a rule that overrides the CSS, a new button class that is not
- * `.btn`, or an SVG that ignores it would. This reads the computed size of every icon inside a
- * button and returns what is wrong, so Storybook play functions and Playwright specs fail instead of
- * someone spotting a stray 14px pencil beside a 16px one.
+ * The shared "is every icon the size its button says?" assertion. CSS sizes
+ * button icons (`.btn svg` 16px, `.btn-sm svg` 14px; style guide "Pattern:
+ * button sizes"); this reads the computed size of every icon inside a button
+ * and returns what is wrong, for Storybook play functions and Playwright specs.
+ * Self-contained (no imports, helpers inside the function) so Playwright can
+ * ship it with `page.evaluate`, like `orphanedControls`.
  *
- * Self-contained on purpose (no imports, helpers inside the function) so Playwright can ship it into
- * the page with `page.evaluate`, the same as `orphanedControls`.
- *
- * Rules (an ancestor with `data-icon-size-ok` opts out; the scale is in the style guide, "Icons"):
- * - an `svg` inside a `.btn-sm` is 14px square;
- * - an `svg` inside any other `.btn` is 16px square;
- * - an `svg` inside a `.badge` is 12px square;
- * - an `svg` inside a link of the collapsed (icon-only) nav rail is 14px square;
- * - an `svg` inside any other nav-rail link is square and a whole number of pixels (a long label
- *   must not squeeze it; its size is 16px, or 14px for the disclosure chevron).
- * Icons elsewhere are measured and reported but not enforced: beside text they are 14px (caption or
- * small text, chevrons, menu items) or 16px (body text, headings).
+ * Rules (an ancestor with `data-icon-size-ok` opts out; scale in the style guide, "Icons"):
+ * - an `svg` in a `.btn-sm` is 14px square; in any other `.btn`, 16px square;
+ * - in a `.badge`, 12px square; in a collapsed (icon-only) nav-rail link, 14px;
+ * - in any other nav-rail link, square and a whole number of pixels (16px, or
+ *   14px for the disclosure chevron), so a long label cannot squeeze it.
+ * Icons elsewhere are measured and reported but not enforced.
  */
 
 /** One row of the measurement table: an icon and the container that sizes it. */

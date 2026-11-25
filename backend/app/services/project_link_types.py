@@ -1,32 +1,23 @@
 """
 Module: services.project_link_types
 
-Writes for the project level of the link-type vocabulary: a project's own link
-types, its hide/show choices, and the organisation switch that forbids all of it.
+Writes for the project level of the link-type vocabulary: a project's own link types, its hide/show choices,
+and the organisation switch that forbids all of it.
 
-Responsibilities:
-- Create, rename and re-order a project's local link types, rejecting a name the
-  organisation or an ancestor already provides (`create_project_link_type`,
-  `update_project_link_type`).
-- Hide or re-show a link type for a project (`set_visibility`).
-- Read and set the organisation's customisation locks (`get_lock_summary`,
-  `set_customisation_locks`).
-- Refuse every project-level write while the organisation has locked
-  customisation (`assert_not_locked`).
+Responsibilities: create, rename and re-order a project's local types, rejecting a name the organisation or an
+ancestor already provides (`create_project_link_type`, `update_project_link_type`); hide or re-show a type
+(`set_visibility`); read and set the organisation's customisation locks (`get_lock_summary`,
+`set_customisation_locks`); refuse project-level writes while locked (`assert_not_locked`).
 
 Design decisions:
-- A name is unique within one scope (project, or organisation-wide) and, at
-  creation, also against what the organisation and ancestors already provide:
-  creating a clashing name is rejected up front, so shadowing only arises when an
-  ancestor later adds a name a descendant already uses (and then the ancestor's
-  admin learns nothing about the descendant).
+- A name is unique within one scope and, at creation, also against what the organisation and ancestors provide,
+  so shadowing arises only when an ancestor later adds a name a descendant uses (and the ancestor's admin
+  learns nothing about the descendant).
 - Hiding never deletes: a visibility row only removes the type from pickers.
-- The lock is a list of keys (`PROJECT_CUSTOMISATION_LOCK_KEYS`), not a boolean per
-  vocabulary, so the same switch can later cover other vocabularies. Locking leaves
-  every project-level row dormant and unlocking restores it.
+- The lock is a list of keys (`PROJECT_CUSTOMISATION_LOCK_KEYS`), not a boolean, so one switch can cover other
+  vocabularies. Locking leaves project-level rows dormant and unlocking restores them.
 
-Dependencies: `services.link_type_scope` (scope resolution), `services.link_types`
-(restriction validation), `services.audit`.
+Dependencies: `services.link_type_scope`, `services.link_types`, `services.audit`.
 """
 
 from __future__ import annotations

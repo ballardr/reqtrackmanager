@@ -3,15 +3,12 @@
 # pinned in frontend/.nvmrc, which matches .github/workflows/ci.yml and
 # frontend/Dockerfile.
 #
-# Why this matters: a locally-installed Node on a different major version
-# bundles a different npm major version, which can resolve transitive
-# optional dependencies differently and silently write a package-lock.json
-# that installs fine locally but fails CI's `npm ci` with "Missing: <pkg>
-# from lock file". See docs/decisions.md ("PR #8 CI failure...").
+# A Node on a different major version bundles a different npm major version, which can resolve transitive
+# optional dependencies differently and write a package-lock.json that installs locally but fails CI's `npm ci`
+# with "Missing: <pkg> from lock file" (see docs/decisions.md).
 #
-# Run this after any change to frontend/package.json (adding, removing, or
-# bumping a dependency) before committing package-lock.json. Extra
-# arguments are passed through to `npm install`, e.g.:
+# Run this after any change to frontend/package.json (adding, removing or bumping a dependency) before
+# committing package-lock.json. Extra arguments are passed through to `npm install`, e.g.:
 #   frontend/scripts/sync-lockfile.sh some-new-package@1.2.3
 set -euo pipefail
 cd "$(dirname "$0")/.."

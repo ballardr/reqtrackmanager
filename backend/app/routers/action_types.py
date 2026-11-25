@@ -125,16 +125,11 @@ def delete_action_type(
     project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Deletes an action type, applying the shared rename/delete/reassign
-    rules (§4.0): refuses to leave a *root* project with zero action types
-    (409) — a project with a parent may always be emptied of its own,
-    since it falls back to its nearest ancestor's
-    (`services.project_hierarchy.resolve_effective_action_types`) — and
-    requires an explicit `reassign_to_id` to delete a type that's currently
-    in use by any `RequirementAction` (409 naming the count if omitted;
-    bulk-reassigns then deletes if provided) — see
-    `services.definitions.delete_definition_with_reassignment`'s docstring
-    for the exact behaviour.
+    """Deletes an action type under the shared rename/delete/reassign rules: refuses to leave a *root*
+    project with zero action types (409; a child project may be emptied because it falls back to its
+    nearest ancestor's, `resolve_effective_action_types`) and requires `reassign_to_id` to delete a type
+    in use by any `RequirementAction` (409 naming the count if omitted; otherwise bulk-reassigns then
+    deletes). See `services.definitions.delete_definition_with_reassignment`.
     """
     delete_definition_with_reassignment(
         db, definition_model=ActionTypeDefinition, scope_column=ActionTypeDefinition.project_id, scope_id=project.id,

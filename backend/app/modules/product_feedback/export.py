@@ -1,45 +1,12 @@
 """
 Module: modules.product_feedback.export
 
-This module's contribution to the core org/project bundle export/import (`services.org_export` /
-`project_export`), registered through `ModuleOrgBundleHooks` / `ModuleProjectBundleHooks` on `MODULE_DEFINITION`
-rather than those core files importing this module.
-
-- Org level: the organisation's inbox requests and the active merges between them.
-- Project level: the project's submission policy and its requests (current content and status, tags,
-  evidence attachments, their "Requested by" and "Addresses" links, the requesters told the outcome, the active
-  merge of a duplicate) and the links to Requirements and other requests.
-
-Design decisions (all Decided by: Agent):
-- A request's scoring levels (one per axis) travel by *axis and name* and are matched to the target organisation's
-  `enhancement_request` levels; one the target lacks is left unset with a warning, so the request is "not
-  scored" on that axis rather than silently re-scored. The score is derived and never exported; a project's
-  own scoring configuration travels in the core project bundle (`services.scoring_config`); the organisation's levels do not.
-- A request travels as its *current* content and status only. Version history, comments and comment
-  attachments are not carried: a bundle is a migration artefact, and the imported request starts at version 1
-  attributed to the importer where the author cannot be matched.
-- The `ENH-nnn` code is carried as information only; an import numbers its records afresh from the target's
-  counter, so a restored project can never collide with a code it already uses.
-- An owner is `{type, email | name}` (`services.principals`); one the target cannot match is left unset with a
-  warning. Org-level files cannot travel (the org hook receives no bytes).
-- Requesters and merges refer to other records by portable keys, never ids (`import_late_project_data`, run
-  after every module's own import so the Stakeholders, Personas and Engagements exist): a requester is its
-  type and title (`services.codes.label_title`; a code is renumbered on import), a merge names the canonical
-  request by its exported code. Only active merges travel; ended ones are history, like versions. A requester
-  that matches no record, or more than one, is skipped with a warning rather than guessed at. A Pain Point an
-  request addresses travels the same way (type and title), and so does an informed requester (type, title, when,
-  who and the note; the person who recorded it is matched by e-mail, else the importer).
-- External references travel with their request by *system name* (`vocabulary_bundle.NameResolver`): a name the target
-  organisation lacks becomes an entry of the target project's own, with a warning, so a reference is never dropped.
-  The organisation's two lists (external systems, request channels) travel in the organisation bundle and a project's
-  own rows and hidden defaults in the project bundle; a requester's channel is replayed in `import_late_project_data`
-  with the requester, by type, title and channel name.
-- Links to Requirements and to other requests travel through the shared `services.bundle_links` (a Requirement by
-  its code, which the core import keeps); a link to another module's record is carried by type and title above.
-- The org-level merge skips an inbox request whose title and description the organisation already holds, so a
-  re-import is idempotent.
-
-Dependencies: `services.bundle_common`, `services.principals`, `services.tags`, this module's models and service.
+Contributes enhancement requests to the org/project bundle export and import
+(`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`): the organisation's inbox
+requests and merges; the project's submission policy, requests (current
+content, tags, evidence, links, informed requesters, active merges).
+Scoring levels travel by axis and name; codes are information only; requesters,
+merges and references use portable keys, replayed in `import_late_project_data`.
 """
 
 from __future__ import annotations
@@ -65,12 +32,10 @@ from app.modules.product_feedback.demand import REQUESTED_BY_FORWARD, REQUESTED_
 from app.modules.product_feedback.enums import (
     EnhancementRequestScope,
     EnhancementRequestStatus,
-    ExternalRefRole,
     SubmissionPolicy,
 )
 from app.modules.product_feedback.models import (
     EnhancementRequest,
-    EnhancementRequestExternalRef,
     EnhancementRequestFile,
     EnhancementRequestInformed,
     EnhancementRequestMerge,
@@ -90,17 +55,12 @@ from app.modules.product_feedback.service import (
     set_submission_policy,
     version_levels,
 )
-from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, REQUEST_CHANNELS
-from app.modules.product_feedback.vocabulary_bundle import (
-    NameResolver,
-    export_org_list,
-    export_project_list,
-    import_org_list,
-)
+from app.modules.product_feedback.vocabularies import REQUEST_CHANNELS
 from app.modules.registry import ScoringSchemeDefinition, get_artefact_summaries_in_project
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.codes import label_title
+from app.services.external_references import EXTERNAL_SYSTEMS, import_record_references
 from app.services.link_types import ensure_org_link_type
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
@@ -111,6 +71,7 @@ from app.services.scoring_custom import effective_scheme, export_definitions, im
 from app.services.sequences import code_owner, generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 from app.services.template_reset import fresh_drafts
+from app.services.vocabulary_bundle import NameResolver, export_org_list, export_project_list, import_org_list
 
 _PENDING_CODES = "product_feedback_imported_codes"
 _LINKS_KEY = "enhancement_request_links"
@@ -260,15 +221,12 @@ def _import_request(
     for axis_key, level_id in levels.items():
         db.add(EnhancementRequestVersionScore(version_id=version.id, axis_key=axis_key, level_id=level_id))
     db.flush()
-    for ref in entry.get("references", [])[: refs.MAX_REFERENCES]:
-        system_id = systems.row_id(ref.get("system"))
-        if system_id is None or not (ref.get("key") or ref.get("url")):
-            continue
-        db.add(EnhancementRequestExternalRef(
-            request_id=request.id, org_system_id=system_id if holder.project_id is None else None,
-            project_system_id=system_id if holder.project_id is not None else None, key=ref.get("key") or "",
-            url=ref.get("url") or None, role=ExternalRefRole(ref.get("role", "delivery")), created_by=creator_id,
-        ))
+    import_record_references(
+        db, artefact_type=REQUEST_ARTEFACT_TYPE, artefact_id=request.id, organization_id=holder.organization_id,
+        project=None if holder.project_id is None else db.get(Project, holder.project_id),
+        entries=[{**ref, "role": ref.get("role") or "delivery"} for ref in entry.get("references", [])],
+        systems=systems, actor_id=creator_id,
+    )
     db.flush()
     restore_record_tags(
         db, organization_id=holder.organization_id, record_project_id=holder.project_id, actor_id=creator_id,
@@ -315,7 +273,6 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     return {
         "enhancement_requests": entries,
         "scoring_definitions": export_definitions(db, org.id, REQUEST_SCORING_SCHEME, None),
-        "external_systems": export_org_list(db, org, EXTERNAL_SYSTEMS),
         "request_channels": export_org_list(db, org, REQUEST_CHANNELS),
     }
 
@@ -326,7 +283,6 @@ def import_org_data(
 ) -> None:
     """`ModuleOrgBundleHooks.import_`: recreates the organisation's two lists and the inbox requests, skipping one
     the organisation already holds."""
-    import_org_list(db, org, EXTERNAL_SYSTEMS, data.get("external_systems", []))
     import_org_list(db, org, REQUEST_CHANNELS, data.get("request_channels", []))
     existing = {
         (v.title, v.description)
@@ -381,7 +337,6 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "enhancement_requests": entries,
         _LINKS_KEY: export_artefact_links(db, project, {REQUEST_ARTEFACT_TYPE: {r.id: r.unique_code for r, _ in pairs}}),
         "scoring_definitions": export_definitions(db, project.organization_id, REQUEST_SCORING_SCHEME, project.id),
-        "external_systems": export_project_list(db, project, EXTERNAL_SYSTEMS),
         "request_channels": export_project_list(db, project, REQUEST_CHANNELS),
     }, assets
 
@@ -534,15 +489,12 @@ def import_project_data(
     level_ids = _level_ids(db, project.organization_id) if requests else {}
     scheme = effective_scheme(db, project.organization_id, REQUEST_SCORING_SCHEME, project.id)
     systems = NameResolver(db, EXTERNAL_SYSTEMS, project.organization_id, project, warnings, "external system")
-    systems.import_project_rows(data.get("external_systems", {}).get("rows", []))
     for entry in requests:
         request = _import_request(
             db, holder, entry, users, warnings, current_user, file_bytes_by_ref, level_ids, scheme, axis_map, systems,
         )
         if entry.get("unique_code"):
             imported[entry["unique_code"]] = request.id
-    # Hidden last: a request above may use a system the project hides, which needs its row created first.
-    systems.hide(data.get("external_systems", {}).get("hidden", []))
     db.info[(_PENDING_CODES, project.id)] = imported
     db.flush()
 

@@ -1,11 +1,10 @@
 /**
  * Module: modules/context_strategy/CreatePainPointDialog
  *
- * A self-contained "New Pain Point" dialog for another record's Links panel (registered as
- * `TierAModuleDefinition.linkedRecordCreators.pain_point`): it loads the project's Pain Point types, shows the same
- * `PainPointFormModal` the Pain Points list uses, creates the record (with its quick links and tags) and reports its
- * id so the panel can link it. Scoring is left to the Pain Point's own page, since the form offers it only to someone
- * who may score and that check belongs to the list page (**Decided by: Agent**).
+ * A "New Pain Point" dialog for another record's Links panel (`TierAModuleDefinition.linkedRecordCreators.pain_point`):
+ * loads the project's Pain Point types, shows the list page's `PainPointFormModal`, creates the record with its quick
+ * links and tags and reports its id so the panel can link it. Scoring is left to the Pain Point's own page, because
+ * the form offers it only to someone who may score and that check belongs to the list page.
  */
 import { useEffect, useState } from "react";
 

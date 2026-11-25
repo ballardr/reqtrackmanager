@@ -1,17 +1,12 @@
 /**
  * Module: modules/context_strategy/GuidingPrincipleFormModal
  *
- * Create/edit dialog for a Guiding Principle's content fields — mirrors
- * `StrategyFormModal.tsx`'s exact "shared by create and edit, distinguished
- * by whether `initial` is passed" convention and `docs/ux-style-guide.md`'s
- * "create-as-a-layer" principle.
+ * Create/edit dialog for a Guiding Principle's content fields. Shared by create and edit (edit when `initial` is
+ * passed), as `StrategyFormModal.tsx` is, following the create-as-a-layer principle in `docs/ux-style-guide.md`.
  *
- * Fewer fields than `StrategyFormModal.tsx` — no `time_horizon` equivalent,
- * and `owner` is deliberately **not** a field here (see `types.ts`'s own
- * docstring on `GuidingPrincipleFieldValues` — `GuidingPrincipleDetailPage.tsx`'s
- * dedicated `RecordPrincipalField` assigns it directly, mirroring
- * `PainPointFormModal.tsx`'s identical exclusion). `change_note` only
- * renders in edit mode, same asymmetry as `StrategyFormModal.tsx`.
+ * Fewer fields than `StrategyFormModal.tsx`: no `time_horizon`, and `owner` is not a field (see `types.ts`
+ * `GuidingPrincipleFieldValues`; `GuidingPrincipleDetailPage.tsx` assigns it through `RecordPrincipalField`).
+ * `change_note` renders in edit mode only.
  */
 import { useState } from "react";
 
@@ -83,7 +78,7 @@ export function GuidingPrincipleFormModal({
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded required={f.key === "principle_statement"}
+              <TextAreaField markdown helpNotNeeded required={f.key === "principle_statement"}
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />

@@ -1,16 +1,13 @@
 /**
  * Module: modules/context_strategy/PainPointScoreFields
  *
- * The score grid shared by the Pain Point detail page's `PainPointScoringPanel` and the create
- * form: a General group holding every scoring criterion (the whole-Pain-Point ones, and the default
- * for the per-persona ones), then a group for each persona that differs from it, holding the
- * per-persona criteria only. Personas are added one at a time, so the grid stays short however many
- * personas the project has. The page owns the draft (`painPointScoreDraft`) and the buttons; this
- * component only edits it. Saved rows (detail page only) show their score beside the name through
- * `saved`.
+ * The score grid shared by `PainPointScoringPanel` and the create form: a General group holding every criterion (the
+ * default for the per-persona ones), then a group per persona that differs, holding the per-persona criteria only.
+ * Personas are added one at a time, so the grid stays short. The page owns the draft (`painPointScoreDraft`) and the
+ * buttons; this component only edits it. `saved` (detail page only) shows saved scores beside the name.
  *
- * Personas come from the caller (`personaRows`), so this module never knows the Stakeholders module
- * exists; with none offered, only the General scores can be set.
+ * Personas come from the caller (`personaRows`), so this module never depends on the Stakeholders module; with none
+ * offered, only the General scores can be set.
  */
 import { X } from "lucide-react";
 

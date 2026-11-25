@@ -4,7 +4,7 @@ Revision ID: 0187
 Revises: 0186
 Create Date: 2026-11-14
 
-A baseline can now be taken manually (no stage) and can hold a module's records as well as requirements. `kind` is
+A baseline can be taken manually (no stage) and can hold a module's records as well as requirements. `kind` is
 `stage` for every existing row. A `baseline_items` row gains `item_type` (`requirement` for every existing row),
 `item_id` (backfilled from `requirement_id`) and a JSON `snapshot`; the two requirement columns become nullable, and a
 check constraint keeps the two shapes apart. Constraints are dropped first so a database built from the current models

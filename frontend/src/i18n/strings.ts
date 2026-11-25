@@ -1,9 +1,7 @@
 /**
- * Centralised UI string table (U-U-02): the UI must be designed to allow
- * ease of language translation. Ossa (v1) ships English only, but every
- * screen looks strings up through `t()` instead of hardcoding text inline,
- * so adding a translated locale later is a matter of adding another table
- * here (or loading one from a file) rather than touching every component.
+ * Centralised UI string table (U-U-02): every screen looks strings up through `t()` instead of hardcoding text, so a
+ * translated locale is another table here (or one loaded from a file) rather than a change to every component.
+ * Only English is provided.
  */
 
 const en = {
@@ -16,6 +14,9 @@ const en = {
     search: "Search notifications",
     unreadOnly: "Unread only",
     markAllReadToast: "All notifications marked as read",
+    notFound: "This notification was not found.",
+    loadFailed: "Could not load the notification.",
+    subjectUnavailable: "You no longer have access to the page this notification refers to.",
     preferencesTitle: "Notification preferences",
     ui: "In-app",
     email: "Email",
@@ -83,16 +84,18 @@ const en = {
     addExisting: (email: string, org: string) => `Add ${email} (existing account, not yet in this ${org})`,
     inviteNew: "Invite {email}",
     canInviteHint: "Not a member yet? Type their email to invite them.",
-    // the members/groups directory rework — the visible badge
-    // distinguishing an org-group match from a user match in the same
-    // dropdown. Tightened from the original bare "Group" to "Organisation group"
-    // when a second, similarly-named match kind was added below — bare
-    // "Group" would read as ambiguous next to "Project group".
+    // Badge distinguishing an organisation-group match from a user match in the dropdown.
     groupBadge: "Organisation group",
-    // the members/groups directory rework — the visible badge
-    // distinguishing a project-group match (local to this one project)
-    // from an org-group match (org-wide) in the same dropdown.
+    // Badge distinguishing a project-group match (local to this project) from an organisation-group match.
     projectGroupBadge: "Project group",
+  },
+  principalBadge: {
+    // Spoken and tooltip description of a group: its kind, then how many people it stands for.
+    groupDetail: (kind: string, members: number | null) =>
+      members === null ? kind : `${kind}, ${members} ${members === 1 ? "member" : "members"}`,
+    // A group that no longer exists but is still named by a history row.
+    deletedGroupDetail: (kind: string) => `${kind}, deleted`,
+    deleted: "Deleted",
   },
   signup: {
     title: "Create an account",
@@ -200,6 +203,7 @@ const en = {
     signOut: "Sign out",
     myReviews: "My reviews due",
     orgOverview: (orgCap: string) => `${orgCap} overview`,
+    orgResources: (orgCap: string) => `${orgCap} resources`,
     orgSettings: (orgCap: string) => `${orgCap} settings`,
     favourites: "Favourites",
     serverManagement: "Server management",
@@ -306,6 +310,8 @@ const en = {
     projectActivity: "{Project} activity",
   },
   requirements: {
+    sortComponentOrder: "Component and category",
+    sortComponentOrderHelp: "Component and category: by component, then category, then the project's own order. This order has no direction.",
     title: "{Requirements}",
     recordLabel: "{Requirement}",
     newRequirement: "New {requirement}",
@@ -330,18 +336,24 @@ const en = {
     owner: "Owner",
     ownerDefaultsToYou: "Defaults to you",
     keywords: "Keywords",
-    locked: "Locked (approved)",
+    /** The padlock's reason on a step in which the {requirement} cannot be edited directly. */
+    lockedReason: "Locked: use a {changeRequest} to modify.",
     lockedNotice: "use a {changeRequest} to modify",
+    /** What each state means, the tooltip of its step in the lifecycle track. */
+    stateDescription: {
+      draft: "Being written. It can be edited directly.",
+      reviewed: "A reviewer has recorded an outcome. It can still be edited directly.",
+      approved: "Approved by a project manager. Changes are made through the {changeRequest} process.",
+      completed: "The work is done. Changes are made through the {changeRequest} process.",
+      archived: "Moved out of the active list. Its history and links are kept.",
+    },
     archive: "Archive",
     archiveTitle: "Archive this {requirement}?",
     archiveConfirm: "It moves out of the active list, but its history and links are kept.",
     archived: "{Requirement} archived",
     archivedBadge: "Archived",
     includeArchived: "Include archived",
-    // No `ConfirmDialog` here, unlike Archive: mirrors `ProjectAdminPage.tsx`'s
-    // existing unarchive button, which also fires immediately — restoring is
-    // reversible again (archive it right back), unlike the Tier-1-confirmed
-    // archive action itself.
+    // No `ConfirmDialog`: restoring is reversible (archive it again), unlike the confirmed archive action.
     restore: "Restore",
     restored: "{Requirement} restored",
     save: "Save",
@@ -359,10 +371,8 @@ const en = {
     unlinkAction: "Unlink",
     unlinkActionTitle: "Unlink this action?",
     unlinkActionConfirm: "The action itself is not affected — it just stops appearing on this {requirement}'s Actions card.",
-    // `unlink_action` previously had no
-    // lock check at all, an asymmetry with the already-gated add side;
-    // unconditional across every {project}, unlike the
-    // traceability-link strings above.
+    // Unlinking an action is subject to the same lock check as adding one; unconditional across every {project},
+    // unlike the traceability-link strings above.
     unlinkActionViaChangeRequestTitle: "Unlink this action via change request?",
     unlinkActionViaChangeRequestConfirm:
       "This {requirement} is approved — unlinking an action requires a change request. The action itself is not affected either way; it just stops appearing on this {requirement}'s Actions card once approved.",
@@ -413,17 +423,13 @@ const en = {
     level: "Level",
     attachmentsLockedNotice: "This {requirement} is approved — new attachments must be added via a {changeRequest}.",
     created: "{Requirement} created",
-    // Create-modal step 2 (UX review: attach files during creation, not only
-    // afterwards from the detail page). Links are chosen in step 1.
+    // Create-modal step 2 attaches files; links are chosen in step 1.
     attachFilesAndLinks: "Attach files",
     createAndAttach: "Create & attach files",
     finish: "Finish",
-    // Bulk operations (list/table view only) — style guide "Pattern: bulk
-    // operations on a list". `bulkSelectRow`/`bulkSelectAll` label the
-    // checkbox column (accessible-name parity with the reorder buttons'
-    // existing aria-label convention); the `bulk*Title`/`bulk*Confirm`
-    // pairs follow the same split as the single-row `archiveTitle`/
-    // `archiveConfirm` above, just pluralised and count-bearing.
+    // Bulk operations (list/table view only; style guide "Pattern: bulk operations on a list"). `bulkSelectRow`/`bulkSelectAll`
+    // label the checkbox column; the `bulk*Title`/`bulk*Confirm` pairs follow the single-row `archiveTitle`/`archiveConfirm`
+    // split, pluralised and count-bearing.
     bulkSelectAll: "Select all",
     bulkSelectRow: (label: string) => `Select ${label}`,
     bulkSelectedCount: (n: number) => `${n} selected`,
@@ -444,14 +450,14 @@ const en = {
     bulkResultPartial: (n: number, failed: number) => `${n} updated, ${failed} failed`,
   },
   watchers: {
-    title: "Watching groups",
-    explanation: "Everyone in these groups who can view this project is told about new comments.",
-    none: "No group is watching.",
-    add: "Add a group…",
-    added: "Watching group added.",
-    removed: "Watching group removed.",
-    addFailed: "Could not add the group.",
-    removeFailed: "Could not remove the group.",
+    title: "Watching",
+    caption: "Notified of new comments",
+    none: "No one is watching.",
+    add: "Add watching user or group",
+    added: "Watcher added.",
+    removed: "Watcher removed.",
+    addFailed: "Could not add the watcher.",
+    removeFailed: "Could not remove the watcher.",
     stopWatching: "Stop watching",
   },
   reviews: {
@@ -467,6 +473,7 @@ const en = {
   },
   changeRequests: {
     title: "{ChangeRequests}",
+    recordLabel: "{ChangeRequest}",
     // Matches proposed name, reason, and the target requirement's name/ID.
     search: "Search by name, reason or {requirement} ID",
     newChangeRequest: "New {changeRequest}",
@@ -506,11 +513,18 @@ const en = {
     reason: "Reason for change",
     submit: "Submit",
     withdraw: "Withdraw",
+    /** What each state means, the tooltip of its step in the lifecycle track. */
+    stateDescription: {
+      draft: "Being written by the requester. It can be withdrawn.",
+      submitted: "Sent for a decision. Approvers can approve or reject it.",
+      in_review: "Under review by approvers. Approvers can approve or reject it.",
+      approved: "Approved. The proposed change has been applied.",
+      rejected: "Rejected by an approver. No change was applied.",
+      withdrawn: "Withdrawn by the requester. No change was applied.",
+    },
     approve: "Approve",
-    // C-G-11: shown alongside plain "Approve" only when the target
-    // {requirement} is currently completed — an explicit, opt-in second
-    // action for the approver, distinct from the default carry-forward
-    // behaviour a plain Approve keeps.
+    // C-G-11: shown beside plain "Approve" only when the target {requirement} is completed; an opt-in second action,
+    // distinct from the carry-forward that a plain Approve keeps.
     approveAndClearCompletion: "Approve and clear completion",
     reject: "Reject",
     decisionNote: "Decision note",
@@ -535,9 +549,7 @@ const en = {
     fieldsToChange: "Fields to change",
     fieldsToChangeHint: "Select which fields this {changeRequest} proposes to change — values are pre-filled from the {requirement}'s current content. Unselected fields are left untouched when approved.",
     selectARequirement: "Select a {requirement}",
-    // A modify {changeRequest} can only target an already-approved
-    // {requirement} — a
-    // still-draft/reviewed one is edited directly instead.
+    // A modify {changeRequest} can only target an approved {requirement}; a draft or reviewed one is edited directly.
     noLockableRequirements: "No {requirements} are approved yet — approve one first, or edit a draft {requirement} directly.",
     selectAtLeastOneField: "Select at least one field to change.",
     attachments: "Attachments",
@@ -556,29 +568,19 @@ const en = {
   },
   admin: {
     settings: "{Project} settings",
-    // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
-    // — Project Admin converted from Tabs to ResourceMenu for cross-page
-    // consistency with the other admin-tier pages (docs/decisions.md).
+    // Resource-menu accessible name, matching `orgAdmin.sectionsNav`.
     sectionsNav: "{Project} admin sections",
     name: "Name",
     summary: "Summary",
     allowMemberChangeRequests: "Allow members to submit {changeRequests}",
-    // When the organisation's own
-    // `force_require_change_request_for_approved_links` is active and this
-    // {project} isn't exempt, this checkbox renders checked-and-disabled
-    // (the `disabled`+`title` "why is this checked and I can't touch it"
-    // convention `ProjectMembersTable.tsx` already establishes) with the
-    // Forced hint below explaining why, rather than silently ignoring the
-    // {project}'s own (irrelevant, in that case) stored value.
+    // When the organisation's `force_require_change_request_for_approved_links` is active and this {project} is not
+    // exempt, the checkbox is checked and disabled, with the Forced hint below explaining why.
     requireChangeRequestForApprovedLinks: "Require a change request to add/remove links on approved {requirements}",
     requireChangeRequestForApprovedLinksForcedByOrg:
       "Required by this organisation's policy — see the Advanced settings of organisation administration. Mark this {project} exempt below to opt it out.",
     exemptFromOrgLinkLock: "Exempt this {project} from the organisation's change-request-for-links policy",
-    // AI approval via MCP (docs/decisions.md). Both this AND the
-    // organisation's own toggle (Advanced settings of organisation administration) must be on
-    // for an AI assistant acting through the MCP server to approve,
-    // decide, or complete anything in this {project} — see
-    // orgAdmin.allowAiApprovals's own comment for the org-level half.
+    // AI approval via MCP (docs/decisions.md). This and the organisation's toggle must both be on for an AI assistant
+    // acting through the MCP server to approve, decide or complete anything in this {project} (see `orgAdmin.allowAiApprovals`).
     allowAiApprovals: "Allow AI approval via MCP for this {project}",
     allowAiApprovalsAckTitle: "Allow AI approval for this {project}?",
     allowAiApprovalsAckBody:
@@ -586,9 +588,8 @@ const en = {
     allowAiApprovalsAckCheckbox: "I understand this and want to allow it for this {project} anyway.",
     allowAiApprovalsAckConfirm: "Allow AI approval",
     isTemplate: "Usable as a {project} template",
-    // Hierarchical projects (docs/decisions.md): opt-in eligibility gate —
-    // other {projects}' managers can only select this one as a parent once
-    // this is enabled.
+    // Hierarchical projects (docs/decisions.md): opt-in eligibility gate; other {projects}' managers can select this one
+    // as a parent only when it is enabled.
     canBeParent: "Allow this {project} to be a parent",
     visibility: "Visibility",
     visibilityOnlySpecified: "Only specified",
@@ -606,9 +607,7 @@ const en = {
     memberSourceModeSelect: "Mirror mode",
     memberSourceFilterRoleSelect: "Mirrored role",
     projectReferenceSelect: "Referenced {project}",
-    // Effective-members-derived "Members" section heading/hint — since default project groups no
-    // longer exist, no title collision risk remains with a
-    // group literally named "Members" the way there once was.
+    // Heading and hint of the effective-members section.
     effectiveMembers: "Members",
     effectiveMembersHint: "Everyone with access to this {project}, direct or inherited — add, edit, and invite from this one table.",
     materializeAll: "Convert all inherited access to direct roles",
@@ -616,17 +615,9 @@ const en = {
     email: "Email",
     terminology: "Terminology",
     terminologyHint: "Override how these terms are labelled in this {project}'s UI. Leave blank to use the default.",
-    // Row labels for the terminology-override list above — one per
-    // `TERMINOLOGY_KEYS` entry (`ProjectAdminPage.tsx`). Previously derived
-    // from the raw key via CSS `text-transform: capitalize` + a manual
-    // `.replace("_", " ")` rather than a real label map — exactly the
-    // pattern this repo's own rule on rendering enum/derived-string values
-    // forbids (a sibling element two lines away already does this
-    // correctly for role/status values). A plain literal label map, not
-    // run through the `{project}`-style terminology-substitution system:
-    // these rows *are* the canonical default term names being configured,
-    // so substituting them through the not-yet-applied override they name
-    // would be circular.
+    // Row labels for the terminology-override list, one per `TERMINOLOGY_KEYS` entry (`ProjectAdminPage.tsx`). A literal label
+    // map, not run through the `{project}`-style substitution: these rows are the canonical default term names being
+    // configured, so substituting them through the override they name would be circular.
     terminologyKeyLabel: {
       project: "Project",
       stage: "Stage",
@@ -635,11 +626,8 @@ const en = {
       requirement: "Requirement",
       change_request: "Change Request",
     } as Record<"project" | "stage" | "component" | "category" | "requirement" | "change_request", string>,
-    // Distinct from `saveSettings` only because Terminology's Save button
-    // now shares a screen with Overview's own "Save settings" button
-    // — two identically-labelled
-    // buttons on one view is an accessible-naming collision (style guide
-    // Principle 8), not just a test-locator inconvenience.
+    // Distinct from `saveSettings` because Terminology's Save button shares a screen with Overview's "Save settings"
+    // button, and two identically labelled buttons on one view collide in accessible naming (style guide Principle 8).
     saveTerminology: "Save terminology",
     archiveProject: "Archive {project}",
     unarchiveProject: "Unarchive {project}",
@@ -649,13 +637,10 @@ const en = {
     customFields: "Custom fields",
     newCustomField: "New field",
     reportSetup: "Reports",
-    // Project Admin's own
-    // "Modules" tab: a project's whole-module enablement override and,
-    // for a module with sub-components, its own per-sub-component
-    // override — one level below Org Admin's `orgAdmin.modules*` (which
-    // sets the organisation's own default rather than one project's
-    // override of it).
+    // Project Admin's "Modules" tab: a project's whole-module enablement override and, for a module with sub-components,
+    // its per-sub-component override (one level below `orgAdmin.modules*`, which sets the organisation's default).
     modulesNav: "Modules",
+    lifecyclesNav: "Lifecycles",
     tagsNav: "Tags",
     modulesDescription:
       "Turn modules on or off for this {project}. New {project}s start with the organisation's defaults; later changes to those defaults do not affect existing {project}s.",
@@ -696,43 +681,30 @@ const en = {
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Reviewers",
     groupRole: "Role",
-    // the members/groups directory rework — the Groups tab's
-    // per-row `MultiSelectDropdown` and the group's own `SidePanel` role
-    // editor share these two: the dropdown's accessible name/title, and its
-    // closed-state summary when the group holds no role at all yet.
+    // Shared by the Groups tab's per-row `MultiSelectDropdown` and the group's `SidePanel` role editor: the dropdown's
+    // accessible name/title, and its closed-state summary when the group holds no role.
     groupRolesFor: (name: string) => `${name}'s roles`,
     noRolesAssigned: "No roles assigned",
     // Column header for the `DirectoryTable` row-count column — distinct from `memberCount(n)`
     // below, which renders the actual "N member(s)" cell content.
     groupMembersColumn: "Members",
     groupCreated: "Group created",
-    // the members/groups directory rework — the Groups tab's
-    // `DirectoryTable` now mixes two row kinds (a real `ProjectGroup` and a
-    // `ProjectMemberSource`, moved here from the Overview tab); this column
-    // and its two badge values are what tells them apart. "Project" (not
-    // "Organisation group") for a member-source row is deliberate — it names another
-    // whole {project} this one mirrors members *from*, not an org group —
-    // see docs/ux-style-guide.md's "Pattern: type-badged mixed rows in a
-    // single directory".
+    // The Groups tab's `DirectoryTable` mixes two row kinds (a `ProjectGroup` and a `ProjectMemberSource`); this column and
+    // its two badge values tell them apart. "Project" (not "Organisation group") names another whole {project} this one
+    // mirrors members from (docs/ux-style-guide.md, "Pattern: type-badged mixed rows in a single directory").
     groupTypeColumn: "Type",
     groupTypeBadgeGroup: "{Project} group",
     groupTypeBadgeMemberSource: "{Project}",
     addMember: "Add member",
     addMemberPlaceholder: "Type a name or email to add…",
     addOrInviteMemberPlaceholder: "Type a name to add, or an email to invite…",
-    // the members/groups directory rework: the "Add member"
-    // modal's autocomplete also matches this project's own groups
-    // (`UserAutocomplete`'s `projectGroups` prop) — picking one switches
-    // the same modal into this second step instead of granting a role
-    // directly, since a project group's roles are separate, possibly-zero,
-    // possibly-multiple grants unaffected by who joins it.
+    // The "Add member" modal's autocomplete also matches this project's groups (`UserAutocomplete`'s `projectGroups` prop);
+    // picking one switches the modal to this second step instead of granting a role directly, since a project group's
+    // roles are separate grants unaffected by who joins it.
     addMemberToGroupTitle: (groupName: string) => `Add to "${groupName}"`,
     addMemberToGroupHint: (groupName: string) =>
       `Adding someone here makes them a member of "${groupName}" — it does not grant a role by itself. The group's own role(s), if any, apply to everyone in it.`,
-    // `AddMembersModal` (staged multi-add, replacing the old immediate-
-    // submit-per-selection flow both `OrgAdminPage.tsx` and
-    // `ProjectAdminPage.tsx` used to hand-roll) — the empty-staged-list
-    // hint and the per-row controls' accessible names.
+    // `AddMembersModal` (staged multi-add): the empty-staged-list hint and the per-row controls' accessible names.
     addMembersStagedEmpty: 'Search above to add people — nothing is granted until you press "Add member(s)".',
     roleForStagedMember: (label: string) => `Role for ${label}`,
     removeStagedMember: (label: string) => `Remove ${label}`,
@@ -745,13 +717,8 @@ const en = {
       `${email} was added and will get the '${role}' role next time they sign in via SSO.`,
     externalAddError: "Could not add this user.",
     memberCount: (n: number) => `${n} member(s)`,
-    // Pending invites (docs/decisions.md): originally their own
-    // small, self-contained section (`components/PendingInvitesSection.tsx`)
-    // — folded into the unified `ProjectMembersTable` as a per-row status
-    // instead — these four
-    // "Resend" strings are still shared with Org Admin's own org-level
-    // resend flow, so they stay here rather than
-    // moving into `membersTable`'s own namespace.
+    // Pending invites (docs/decisions.md): these four "Resend" strings are shared with Org Admin's organisation-level
+    // resend flow, so they stay here rather than in `membersTable`'s namespace.
     resendInvite: "Resend",
     resendInviteAria: (email: string) => `Resend invite to ${email}`,
     resendInviteSuccess: (email: string) => `Invite resent to ${email}.`,
@@ -789,7 +756,7 @@ const en = {
     deleteComponentConfirm: (name: string) => `Delete the component "${name}"? This cannot be undone.`,
     deleteInUseTitle: (name: string) => `Delete “${name}”?`,
     deleteStageReassignSummary: "Every {requirement} and pending {changeRequest} targeting this {stage} moves to the one you choose, with its full history.",
-    deleteCategoryReassignSummary: "Every {requirement} in this {category} moves to the one you choose.",
+    deleteCategoryConfirm: (name: string) => `Delete the {category} "${name}"? This cannot be undone.`,
     deleteInUseMoveHeading: "Move what uses it to another one",
     deleteInUseMoveHint: "Everything that uses it is switched to the one you choose, then it is deleted.",
     deleteInUseNoCandidates: "There is nothing to move them to — create another first.",
@@ -805,12 +772,8 @@ const en = {
     removeNestedGroup: (label: string) => `Remove ${label}`,
     deleteCustomField: (name: string) => `Delete ${name}`,
     deleteCustomFieldConfirm: (name: string) => `This removes the "${name}" field and its values from every {requirement}/{changeRequest} that has it set. This cannot be undone.`,
-    // (docs/decisions.md): "Members" split out of the old combined
-    // "Project groups" tab into its own resource-menu section. Rebuilt
-    // again: the editable
-    // users+groups table, the effective-members audit table, and pending
-    // invites — three sections doing one job — became the single unified
-    // `ProjectMembersTable` (`components/ProjectMembersTable.tsx`).
+    // "Members" resource-menu section: the single unified `ProjectMembersTable` (`components/ProjectMembersTable.tsx`)
+    // holds the editable users and groups, the effective members and the pending invites.
     membersNav: "Members",
     // "Groups" keeps `groups`/`newGroup`/`searchGroups`/`groupCreated`
     // above for its own heading/create-modal copy — these are its
@@ -831,23 +794,15 @@ const en = {
     groupInUseClearDescription: "Optional fields that name this group are left empty. Required fields cannot be cleared.",
     groupInUseClearBlocked: "Some of these fields are required, so a replacement is needed.",
     groupInUseClearConfirm: (name: string) => `Type the group's name to delete “${name}” and leave the optional fields empty.`,
-    // member_source_project_ids groups — extends the existing
-    // `viaProjectMembers` line with a link to the referenced {project}'s
-    // own new Members page and a clarifying sentence that this isn't a
-    // fixed list (`docs/ux-style-guide.md`'s addendum).
+    // For member_source_project_ids groups: extends `viaProjectMembers` with a link to the referenced {project}'s Members
+    // page and a sentence that this is not a fixed list (`docs/ux-style-guide.md`).
     viaProjectMembersLinkLabel: "View members",
     viaProjectMembersHint: "Live — always mirrors that {project}'s own current direct members, not a fixed list captured at the time it was added.",
   },
   membersTable: {
-    // frontend/src/components/ProjectMembersTable.tsx — the unified
-    // "effective members, editable, with pending invites folded in" table
-    // (docs/decisions.md) that
-    // replaced `MemberRoleTable`/`PendingInvitesSection`: one call site on
-    // Project Admin's own "Members" section (`ProjectAdminPage.tsx`), one
-    // inside Org Admin's "Manage users" modal (`OrgAdminPage.tsx`).
-    // Deliberately its own top-level namespace, not nested under `admin`/
-    // `orgAdmin`, since both pages share this exact copy verbatim — the
-    // same reasoning `MemberRoleTable`'s own now-retired namespace had.
+    // `components/ProjectMembersTable.tsx`: the unified effective-members table (editable, with pending invites folded in;
+    // docs/decisions.md), used in Project Admin's "Members" section (`ProjectAdminPage.tsx`) and Org Admin's "Manage users"
+    // modal (`OrgAdminPage.tsx`). A top-level namespace, not under `admin`/`orgAdmin`, because both pages share this copy.
     name: "Name",
     email: "Email",
     role: "Role",
@@ -859,92 +814,58 @@ const en = {
     noRoles: "No roles",
     grantRole: (role: string, name: string) => `Grant ${role} to ${name}`,
     revokeRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
-    // Client-side hint only — a fast approximation of C-U-08 ("a project
-    // must always have at least one manager"), sourced from `direct_role`-
-    // kind entries only (the `kind` split — see `MemberSourceProvenanceKind`'s
-    // own doc comment), not the old collapsed `direct` bucket, since a
-    // manager whose role actually comes from a group or org-wide
-    // visibility would otherwise misreport here. The backend guard
-    // (`DELETE .../roles/{user_id}/{role}`) is authoritative either way,
-    // so this can be wrong in edge cases (e.g. a manager inherited from a
-    // parent {project}) without being unsafe.
+    // Client-side hint only: a fast approximation of C-U-08 ("a project must always have at least one manager"), sourced
+    // from `direct_role`-kind entries only (see `MemberSourceProvenanceKind`). The backend guard
+    // (`DELETE .../roles/{user_id}/{role}`) is authoritative, so the hint may be wrong in edge cases (a manager inherited
+    // from a parent {project}) without being unsafe.
     cannotRemoveLastManager: "This is the {project}'s only manager source — add another manager first.",
-    // Shown (checked, disabled) for a role option whose *only* source is
-    // not a genuine direct grant — a group, nested org group, project
-    // reference, or org-wide visibility. `DELETE .../roles/{user_id}/{role}`
-    // only ever deletes a `UserProjectRole` row, so this role isn't
-    // togglable from here at all; it must be changed at its actual source
-    // (the group's own membership/role, the project's visibility setting).
+    // Shown (checked, disabled) for a role option whose only source is not a direct grant (a group, nested org group,
+    // project reference or org-wide visibility). `DELETE .../roles/{user_id}/{role}` deletes only a `UserProjectRole` row,
+    // so the role is changed at its source.
     roleNotDirectlyRevocable: "This role is not a direct grant on this {project} — it comes from a group, nested organisation group, project reference or organisation-wide visibility. Change it at that source instead.",
-    // Appended inline to a checked-but-disabled role option's own label (not
-    // just its hover `title` above) so the reason it is unavailable is
-    // visible without hovering — platform review 2026-09 follow-up.
-    // Deliberately one generic suffix covering every non-`direct_role`
-    // kind (group, nested org group, project reference, org-wide,
-    // inherited), same simplification the Source-column summary below
-    // makes; the precise mechanism stays one hover away via
-    // `roleNotDirectlyRevocable` above, unchanged.
+    // Inline suffix on a checked-but-disabled role option, so the reason is visible without hovering. One generic suffix
+    // covers every non-`direct_role` kind; `roleNotDirectlyRevocable` gives the precise mechanism on hover.
     roleByGroupSuffix: "(by group)",
-    // Same inline-suffix treatment for the other disabled reason (see
-    // `cannotRemoveLastManager` below) — a purely-direct
-    // `project_manager` role that can't be revoked because it's the
-    // {project}'s last manager, not because it's group-sourced.
+    // Inline suffix for the other disabled reason (see `cannotRemoveLastManager`): a direct `project_manager` role that
+    // cannot be revoked because it is the {project}'s last manager.
     roleOnlyManagerSuffix: "(only manager)",
+    // The role is the member's last source of access: clearing it would remove the member immediately, so it is
+    // unavailable until another role is granted; removal is the separate, confirmed "Remove all access" action.
+    roleOnlyRoleSuffix: "(only role)",
+    // Role cell summary once the role names no longer fit: the names stay in the trigger's tooltip and the list.
+    nRoles: (count: number) => `${count} roles`,
+    cannotRemoveOnlyRole: "This is the only role, so clearing it would remove the member. Grant another role first, or use Remove all access.",
     add: "Add",
-    // Whole-row Source-column summary (platform review 2026-09 follow-up)
-    // — replaces the old always-visible per-role provenance lines below
-    // with one plain-language word/phrase per row, since the Role column
-    // already names which roles a member holds (repeating that per source
-    // line was redundant): "Direct" (reused from `sourceDirectRole` below
-    // when every source is `direct_role`), "Group" when every source is
-    // some other (non-`direct_role`) kind, or this — a mix of both. Full
-    // per-source detail (which group, which project, which mode) is not
-    // lost, just moved behind the summary's own click-to-open `Popover`
-    // (`sourceSummaryDetailTitle` below), reusing `sourceLine` for its
-    // contents unchanged.
+    // Whole-row Source-column summary: one phrase per row, since the Role column already names the roles. "Direct"
+    // (`sourceDirectRole`) when every source is `direct_role`, "Group" when every source is another kind, or this when
+    // mixed. Per-source detail is in the summary's click-to-open `Popover` (`sourceSummaryDetailTitle`), which reuses `sourceLine`.
     sourceSummaryDirectAndGroup: "Direct and group",
-    // See `sourceSummaryDirectAndGroup` above — shown when every source is
-    // some non-`direct_role` kind (group, nested org group, project
-    // reference, org-wide, inherited). Deliberately one umbrella word
-    // rather than naming each of those five kinds at the row level; the
-    // detail popover still distinguishes them.
+    // Shown when every source is a non-`direct_role` kind (group, nested org group, project reference, org-wide,
+    // inherited): one umbrella word at row level; the detail popover distinguishes the kinds.
     sourceSummaryGroup: "Group",
     sourceSummaryDetailTitle: (name: string) => `${name}'s access sources`,
-    // Per-role provenance text (now shown inside the Source column's
-    // detail popover rather than always-visible in the cell itself) — one
-    // line per source a user holds a given role through; see
-    // `MemberSourceProvenanceKind`'s own doc comment for what each of the
-    // five direct kinds means.
+    // Per-role provenance text, shown in the Source column's detail popover: one line per source a user holds a role
+    // through (see `MemberSourceProvenanceKind`).
     sourceDirectRole: "Direct",
-    // Parameterized on the granting group's name (`via_group_name`) so the
-    // Source column can say *which* group, not just "Via group" — see
-    // `ProjectMembersTable.tsx`'s `sourceLine` for the fallback used when a
-    // name is ever missing.
+    // Parameterised on the granting group's name (`via_group_name`) so the Source column names the group;
+    // `ProjectMembersTable.tsx`'s `sourceLine` gives the fallback when a name is missing.
     sourceDirectGroup: (groupName: string) => `Via group '${groupName}'`,
     sourceDirectOrgGroup: (groupName: string) => `Via nested organisation group '${groupName}'`,
-    // `direct_org_group_role` (the members/groups directory rework) — a genuinely different mechanism from
-    // `sourceDirectOrgGroup` above (nested inside a `ProjectGroup`): the
-    // org group holds this role directly, granted from the Members
-    // section's own "Add member" autocomplete. Distinct wording so
-    // the two don't read as the same thing.
+    // `direct_org_group_role`: the organisation group holds this role directly, granted from the Members section's "Add
+    // member" autocomplete; distinct from `sourceDirectOrgGroup` (nested inside a `ProjectGroup`), so the wording differs.
     sourceDirectOrgGroupRole: (groupName: string) => `Via group '${groupName}' (direct)`,
     sourceDirectProjectRef: "Via project reference",
     sourceDirectOrgWide: "Organisation-wide visibility",
     sourceForwardInherited: (parentName: string, mode: string) => `Inherited from '${parentName}' (${mode.toLowerCase()})`,
     sourceMemberSourceInherited: (sourceName: string, mode: string) => `Via member source '${sourceName}' (${mode.toLowerCase()})`,
-    // Role filter (`FilterField`, matching every other directory's own
-    // role filter, e.g. Org Admin's Users table) — only show members
-    // holding a given role; doesn't affect invited rows' own role.
+    // Role filter (`FilterField`): shows members holding a given role; does not affect an invited row's role.
     roleFilterLabel: "Role",
     allRoles: "All roles",
     showInvited: "Show invited",
-    // Invited-row treatment, folded in from the retired
-    // `PendingInvitesSection.tsx` — status badge + Resend button replace
-    // the MultiSelectDropdown a real member row's Role cell would show.
+    // Invited-row treatment: a status badge and a Resend button replace the MultiSelectDropdown a member row's Role cell shows.
     invitedSentOn: (date: string) => `Sent ${date}`,
-    // Per-row Actions column (docs/decisions.md) — `ActionMenu` trigger name and its two
-    // conditionally-offered items; see `ProjectMembersTable.tsx`'s own
-    // eligibility rules for when each is shown.
+    // Per-row Actions column: `ActionMenu` trigger name and its conditionally offered items (`ProjectMembersTable.tsx` holds
+    // the eligibility rules).
     actionsFor: (name: string) => `${name}'s actions`,
     removeAllAccess: "Remove all access",
     removeAllAccessConfirmTitle: (name: string) => `Remove all access for ${name}?`,
@@ -957,12 +878,8 @@ const en = {
     // scoped to this one row's own outcome instead of a count.
     convertToDirectSuccess: (name: string) => `Converted ${name}'s inherited access to a direct role.`,
     convertToDirectNoOp: (name: string) => `${name} already holds an equal or higher direct role — nothing to convert.`,
-    // An org group holding a
-    // direct `OrgGroupProjectRole` grant on this project now gets its own
-    // `kind: "group"` row instead of being visible only through a member's
-    // own `direct_org_group_role` Source line. `rolesFor`/`grantRole`/
-    // `revokeRole`/`actionsFor` above are already name-generic and reused
-    // verbatim for a group's own name — no group-specific duplicates needed.
+    // An organisation group with a direct `OrgGroupProjectRole` grant on this project has its own `kind: "group"` row;
+    // `rolesFor`/`grantRole`/`revokeRole`/`actionsFor` above are name-generic and reused for a group's name.
     groupRowBadge: "Group",
     removeGroup: "Remove group",
     removeGroupConfirmTitle: (name: string) => `Remove ${name} from this {project}?`,
@@ -1161,11 +1078,8 @@ const en = {
     none: (orgPlural: string) => `No ${orgPlural.toLowerCase()} yet.`,
     filterAll: "All",
     empty: (orgPlural: string) => `No ${orgPlural.toLowerCase()} match these filters.`,
-    // Style guide "Pattern: action menu" — the row-level `ActionMenu`
-    // (Edit/Disable-Enable/Delete) replacing three standalone buttons;
-    // named after the row's own organisation, per Principle 8 (every
-    // `ActionMenu` trigger needs a real, disambiguating accessible name
-    // once more than one can appear on the same page).
+    // Style guide "Pattern: action menu": the row-level `ActionMenu` (Edit/Disable-Enable/Delete), named after the row's
+    // organisation per Principle 8 (each `ActionMenu` trigger needs a disambiguating accessible name).
     actionsFor: (name: string) => `${name} actions`,
   },
   companyDetails: {
@@ -1191,14 +1105,9 @@ const en = {
     codePolicySaved: "Project code policy saved",
     lockProjectCodes: "Lock codes after creation",
     enforceCodeEverywhere: "Always show the project code",
-    // Resource-menu group labels — Org Admin's 15 flat accordions regrouped into
-    // 6 route-addressable groups. Static text, not org-dependent, matching
-    // the style guide's own "after" diagram exactly.
-    //
-    // "People" was later split into its own two top-level groups, "Users"
-    // and "Groups" (style guide "Pattern: settings hierarchy" addendum,
-    // 2026-08-24 — a flat regroup, no new navigation capability) — new
-    // strings rather than reusing `groupPeople` for one of the two.
+    // Resource-menu group labels: Org Admin's sections as route-addressable groups. Static text, not organisation-dependent.
+    // "Users" and "Groups" are separate top-level groups (style guide "Pattern: settings hierarchy"), so `groupPeople`
+    // is reused for neither.
     groupOverview: "Overview",
     groupOrganisationDetails: (orgCap: string) => `${orgCap} details`,
     detailsName: "Name",
@@ -1226,26 +1135,19 @@ const en = {
     groupBrandingDefaults: "Branding & defaults",
     groupReports: "Reports",
     reportLayoutsSection: "Report layouts",
-    // "Integrations & security" was later split into its own three
-    // top-level groups — SSO/OIDC + SCIM (both identity-provisioning
-    // integrations) grouped as "OAuth/SSO", SMTP as its own "Email", and
-    // 2FA/self-signup/external-user-policy/PATs as "Security" — a flat
-    // regroup per the style guide's settings-hierarchy addendum, same
-    // reasoning as the earlier Users/Groups split above.
+    // "OAuth/SSO" (SSO/OIDC and SCIM identity-provisioning integrations), "Email" (SMTP) and "Security" (2FA,
+    // self-signup, external-user policy, PATs) are separate top-level groups (style guide "Pattern: settings hierarchy").
     groupOauthSso: "OAuth/SSO",
     groupEmail: "Email",
     groupSecurity: "Security",
-    // A new top-level
-    // group rather than folded into "Security", since it's a distinct
-    // day-to-day admin surface (enabling/disabling optional feature
-    // modules) rather than an authentication/access-policy setting.
+    // A top-level group of its own: enabling and disabling optional feature modules is a day-to-day administration surface,
+    // not an authentication or access-policy setting.
     groupModules: "Modules",
+    groupLifecycles: "Lifecycles",
     groupTags: "Tags",
-    // Fine-Grained Access Control (core) — a new top-level group covering
-    // both custom-role definition (org-admin-only) and the broader
-    // grant_roles-based assignment surface for fixed/module/custom roles
-    // together (named "Role Management," not "Custom
-    // Roles," since it spans more than custom roles alone).
+    // Fine-Grained Access Control (core): a top-level group for custom-role definition (organisation administrators only)
+    // and for the grant_roles-based assignment of fixed, module and custom roles; named "Role Management" because it
+    // spans more than custom roles.
     groupRoleManagement: "Role management",
     customRolesTitle: "Custom roles",
     customRolesHint: "A custom role is a named set of permissions, additive to the fixed and module roles above — it never replaces them.",
@@ -1280,30 +1182,10 @@ const en = {
     customRoleRevokeFieldLabel: "Revoke from user or group",
     customRoleGrantedTo: (target: string) => `Granted to ${target}`,
     customRoleRevokedFrom: (target: string) => `Revoked from ${target}`,
-    // The org-
-    // level Compliance Manager surface (standards/versions/requirements/
-    // required actions/mapping vocabulary), a new top-level group rather
-    // than nested under "Modules" (that group is the generic enable/
-    // disable toggle table any module gets, not a home for a specific
-    // module's own content).
+    // The organisation-level Compliance Manager surface (standards, versions, requirements, required actions, mapping
+    // vocabulary), a top-level group of its own: "Modules" is the generic enable/disable table every module gets, not a
+    // home for one module's content.
     groupCompliance: "Compliance",
-    // The org-
-    // wide compliance dashboard/reporting surface (§22/§23), separate flat
-    // top-level groups from "Compliance" above (standards management)
-    // rather than a fourth tab on that group's panel — the style guide's
-    // own "split into more flat groups, don't nest" addendum, since these
-    // are different jobs for a different (if overlapping) audience.
-    // Originally one combined "Compliance overview" group with its own
-    // internal `Tabs` (Dashboard / Compliance by standard / Outstanding);
-    // The same addendum applies a second time, one level deeper —
-    // that inner `Tabs` was itself a second, redundant navigation
-    // mechanism nested inside the `ResourceMenu` group's own left-hand
-    // menu, so the three tabs became three flat top-level
-    // `orgOverviewSections` entries instead (`ResourceMenu → Tabs →
-    // content`, three deep, collapsed to `ResourceMenu → content`, two).
-    groupComplianceDashboard: "Compliance dashboard",
-    groupComplianceByStandard: "Compliance by standard",
-    groupComplianceOutstanding: "Outstanding compliance items",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,
@@ -1327,11 +1209,7 @@ const en = {
     defaultTemplate: "Default {project} template",
     projects: "{Projects}",
     manageUsers: "Manage users",
-    // (docs/decisions.md): the inline "Manage users" expand-in-place
-    // became a `Modal` wrapping the same `ProjectMembersTable`
-    // `ProjectAdminPage.tsx`'s own Members section uses (rebuilt onto that
-    // component) — literally the
-    // same component, not a parallel reimplementation.
+    // "Manage users" is a `Modal` wrapping the `ProjectMembersTable` that `ProjectAdminPage.tsx`'s Members section uses.
     manageUsersModalTitle: (projectName: string) => `Manage users — ${projectName}`,
     users: (orgCap: string) => `${orgCap} users`,
     email: "Email",
@@ -1345,20 +1223,16 @@ const en = {
     statusActive: "Active",
     statusArchived: "Archived",
     statusDeactivated: "Deactivated",
-    // 2026-08-31 clarity pass : "Active" means
-    // "not deactivated", not "has ever logged in" — a freshly created user
-    // (or an invite the moment it's accepted) shows Active immediately,
-    // which read as surprising until this tooltip spelled out why.
+    // "Active" means "not deactivated", not "has ever logged in": a new user or an accepted invite is Active at once,
+    // which the tooltip states.
     statusActiveHint: "This account is not deactivated. It does not necessarily mean the person has logged in yet.",
     newUser: "New user",
     userCreated: "User created",
-    // "Invite user" : a second, distinct way
-    // to add a user, alongside "New user" — an email link the invitee
-    // completes themselves, rather than an admin-set password. The hint
-    // below sits next to both buttons so the difference is obvious rather
-    // than discovered by trial.
+    // "Invite user" is a second way to add a user beside "New user": an email link the invitee completes, rather than an
+    // administrator-set password. The hint beside both buttons states the difference.
     inviteUser: "Invite user",
     newUserModalHint: "You set their password now. To let them choose their own, use Invite user instead.",
+    newUserServiceHint: "For an integration, use New service user, which has no password.",
     inviteUserModalHint: "They will get an email with a link to choose their own password and display name.",
     sendInvite: "Send invite",
     inviteSent: "Invite sent",
@@ -1379,9 +1253,8 @@ const en = {
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Engineering",
     groupCreated: "Group created",
-    // Organisation group delete (2026-10-05). Title/button/toast reuse the Project
-    // Groups' own `admin.deleteGroup*`/`groupDeleted`; only the consequence
-    // differs, since an org group can carry roles across many projects.
+    // Organisation group delete: title, button and toast reuse the project groups' `admin.deleteGroup*`/`groupDeleted`;
+    // only the consequence differs, since an organisation group can carry roles across many projects.
     deleteGroupMessage:
       "Members lose every role and project access this group gave them, and it is removed from any group it is nested in. Access they hold some other way is unaffected. This cannot be undone.",
     // `DirectoryTable`'s row-detail panel — same "{name} details" shape `admin.groupDetails` already
@@ -1393,41 +1266,23 @@ const en = {
     groupMembersColumn: "Members",
     addNestedGroup: "Nest a group…",
     nestedGroupLabel: (name: string) => `${name} (nested group)`,
-    // Renamed from "IdP-synced group name" (2026-08-31) to match this app's existing "SSO group"
-    // terminology (`oidcRequiredGroup`'s "Required SSO group" label below)
-    // rather than the more technical "IdP" term, which appears nowhere else
-    // in this org's own SSO copy. Key name kept as-is to avoid touching
-    // every existing call site for a copy-only change.
+    // Labelled "SSO group" to match `oidcRequiredGroup`'s "Required SSO group" rather than the technical "IdP" term.
     idpSyncedGroupName: "SSO group name",
     idpSyncedGroupNamePlaceholder: "e.g. eng-team",
-    // The explicit enable/disable toggle wrapping the sync name +
-    // granted-role fields — checked by default only when the group already
-    // has a sync name set; unchecking clears both fields via the same PATCH
-    // the Save button already uses.
+    // The explicit enable/disable toggle wrapping the sync name and granted-role fields: checked by default only when the
+    // group already has a sync name; unchecking clears both fields via the PATCH the Save button uses.
     syncFromSso: "Sync membership and role from an SSO/IdP group",
-    // Role-granting is surfaced right
-    // next to the sync name and saved together via one button — replaces
-    // the old, disconnected "SSO group mappings" list this org's Advanced/
-    // OAuth-SSO settings used to carry (`ssoMappings` etc., retired).
+    // Role granting sits beside the sync name and is saved with it by one button.
     grantedOrgRole: "Grants role on sync",
     grantedOrgRoleNone: "No role granted",
-    // This hint used to
-    // sit next to a granted-role select that was the *only* gated field —
-    // the sync-name input and Save button rendered unconditionally above it
-    // even with no SSO configured at all. Now the whole sync sub-section
-    // (name, role, toggle, save) is gated on the same check, and this is
-    // the sole thing shown when it isn't configured.
+    // The whole sync sub-section (name, role, toggle, save) is gated on SSO being configured; this hint is the only thing
+    // shown when it is not.
     ssoNotConfiguredHint: (org: string) => `Set up SSO/OIDC for this ${org} first to grant a role here.`,
     saveIdpSync: "Save sync settings",
     groupSyncUpdated: "Sync settings updated",
-    // Users table Actions column (docs/decisions.md) — the two existing bare buttons
-    // (View access, lock/unlock display name) consolidated into one
-    // `ActionMenu`, plus two new actions: "Remove from {org}" (a genuinely
-    // new, access-mutating endpoint) and "Add to group" (pure UI
-    // reachability fix, `AddToGroupControl` — kept as its own small
-    // popover-triggering control next to the menu rather than folded into
-    // it, since it needs an anchored `Popover` of its own, not a single
-    // `onSelect` the kebab menu's plain-button items can express).
+    // Users table Actions column (docs/decisions.md): one `ActionMenu` (View access, lock/unlock display name, "Remove from
+    // {org}"). "Add to group" is the separate `AddToGroupControl` beside the menu, because it needs an anchored `Popover`
+    // of its own, not a single `onSelect`.
     usersActionsFor: (name: string) => `${name}'s actions`,
     removeFromOrg: (org: string) => `Remove from ${org}`,
     removeFromOrgConfirmTitle: (name: string) => `Remove ${name} from this organisation?`,
@@ -1448,18 +1303,12 @@ const en = {
     userAccessProjects: "Projects",
     userAccessNoProjects: "No access to any project in this organisation.",
     userAccessProjectGroups: "Via project group(s)",
-    // Reversal (docs/decisions.md, docs/ux-style-guide.md
-    // "Pattern: role display"): this panel now shows the collapsed summary
-    // by default per project row, with this pair of toggle labels revealing/
-    // hiding the full, uncollapsed role set on demand.
+    // This panel shows the collapsed role summary by default per project row; this pair of toggle labels reveals or hides
+    // the full role set (docs/decisions.md; docs/ux-style-guide.md, "Pattern: role display").
     userAccessShowAllRoles: (count: number) => `Show all ${count} roles`,
     userAccessShowFewerRoles: "Show fewer",
-    // The old "Advanced settings" catch-all doesn't survive the resource-
-    // menu regrouping as one item — its settings domains split by what
-    // they actually govern (style guide "Pattern: settings hierarchy"):
-    // SMTP/email gets its own card, and 2FA/self-signup/external-user-
-    // policy becomes "Security". PAT lifetime joins the existing PAT list
-    // (see `pats` below) rather than getting a heading of its own.
+    // Settings domains are split by what they govern (style guide "Pattern: settings hierarchy"): SMTP/email has its own
+    // card, 2FA/self-signup/external-user policy is "Security", and PAT lifetime joins the PAT list (see `pats` below).
     smtpEmailTitle: "SMTP & email",
     securityTitle: "Security",
     // The org admin's "Modules" section (enable/
@@ -1491,11 +1340,8 @@ const en = {
     // SSO group→role mapping moved from here (a flat, disconnected list)
     // onto the group being synced into instead — see `grantedOrgRole` etc. above, managed from Groups.
     ssoMappingsMovedHint: "Granting a role via an SSO group claim is now set on the group itself — see the Groups section.",
-    // `saveAdvanced` submits the whole `OrgAdvancedSettings` object — one
-    // shared PUT behind three separate resource-menu groups now, each with
-    // its own button calling it. Labelled per the group it's actually on,
-    // not the retired "Advanced" concept the object's own backend name
-    // still carries.
+    // `saveAdvanced` submits the whole `OrgAdvancedSettings` object: one shared PUT behind three resource-menu groups,
+    // each with its own button, labelled for the group it is on.
     saveAdvanced: "Save security settings",
     saveEmailSettings: "Save email settings",
     savePatLifetime: "Save token lifetime",
@@ -1506,12 +1352,12 @@ const en = {
     accessReview: "Access review",
     filterStale: "Stale (180+ days)",
     filterNo2fa: "No 2FA",
+    filterServiceUsers: "Service users only",
+    filterIncludeArchived: "Include archived",
     filterNoProjectAccess: "No {project} access",
     filterClear: "Clear filters",
-    // "Show invited" : pending, not-yet-
-    // accepted invites are a new row kind merged into this table — this
-    // checkbox lets an admin hide them again, defaulting on since they're
-    // new and otherwise invisible.
+    // "Show invited": pending, not-yet-accepted invites are a row kind merged into this table; the checkbox hides them and
+    // is on by default because they are otherwise invisible.
     filterShowInvited: "Show invited",
     lastLogin: "Last login",
     never: "Never",
@@ -1564,19 +1410,12 @@ const en = {
     allowSelfSignup: "Allow self-signup",
     allowRelaxedChildProjectCreation: "Allow {project} managers to create sub-{project}s",
     selfSignupSsoConflict: (org: string) => `Self-signup cannot be enabled while this ${org} is SSO-only — turn off "SSO only" in the SSO configuration below first, or turn off self-signup here.`,
-    // Org-wide force of
-    // `Project.require_change_request_for_approved_links`, minus a
-    // per-project `exempt_from_org_link_lock` opt-out. See `Organization`'s
-    // own field docstring (`frontend/src/api/types.ts`) for the full
-    // resolution.
+    // Organisation-wide force of `Project.require_change_request_for_approved_links`, minus a per-project
+    // `exempt_from_org_link_lock` opt-out (see `Organization` in `frontend/src/api/types.ts`).
     forceRequireChangeRequestForApprovedLinks: "Require a change request for link changes on approved {requirements}, organisation-wide",
-    // AI approval via MCP (docs/decisions.md). Both this AND a given
-    // {project}'s own toggle (Project Admin's settings) must be on before
-    // an AI assistant acting through the MCP server can approve, decide,
-    // or complete anything in that {project} — this flag alone is not
-    // sufficient. Readable by any org member (see OrganizationOut.
-    // allow_ai_approvals's docstring) since a {project} manager needs to
-    // know whether their own toggle can even take effect.
+    // AI approval via MCP (docs/decisions.md). This and a {project}'s own toggle (Project Admin's settings) must both be on
+    // before an AI assistant acting through the MCP server can approve, decide or complete anything in that {project}.
+    // Readable by any organisation member, since a {project} manager needs to know whether their own toggle can take effect.
     allowAiApprovals: "Allow AI approval via MCP",
     allowImportedApprovalState: "Keep approval state on imported {projects}",
     allowAiApprovalsAckTitle: "Allow AI approval for this organisation?",
@@ -1594,6 +1433,7 @@ const en = {
     showOutsideDomainUsers: "Show users outside this org",
     noOutsideDomainUsers: (org: string) => `No matching users found outside this ${org}.`,
     patUser: "User",
+    patIssuedBy: (name: string) => `Issued by ${name}`,
     patName: "Name",
     patExpires: "Expires",
     patLastUsed: "Last used",
@@ -1767,6 +1607,9 @@ const en = {
     users: "Users",
     // Server Management → Users → "Add user".
     addUser: "Add user",
+    addUserMenuHelp: "Invite user: emails a link so the person chooses their own name and password.\nNew user: you create the account now and set its password.",
+    addUserMenuHelpWithService:
+      "Invite user: emails a link so the person chooses their own name and password.\nNew user: you create the account now and set its password.\nNew service user: an identity for an integration, with no password and no sign-in. An administrator issues its tokens.",
     addUserNoOrg: (org: string) => `No ${org}`,
     addUserNoOrgHint: (org: string) => `The account belongs to no ${org} yet; add it to one later.`,
     addUserInviteHint: "They get an email link to choose their own name and password. In an organisation they join as a member; change their role once they have signed up.",
@@ -1800,10 +1643,7 @@ const en = {
     viewOrphaned: "Orphaned accounts",
     viewServerAdmins: "Server administrators",
     viewAll: "All users",
-    // FilterPanel search box and
-    // DirectoryTable empty state, added alongside the FilterPanel/
-    // DirectoryTable rebuild — matches Org Admin's own `searchUsers`/
-    // `noUsersFound` copy style.
+    // FilterPanel search box and DirectoryTable empty state, in the copy style of Org Admin's `searchUsers`/`noUsersFound`.
     searchUsers: "Search by name or email",
     noUsersFound: "No users match this search/filter.",
     includeDeactivated: "Include deactivated accounts",
@@ -1830,13 +1670,8 @@ const en = {
     revokeServerAdminTitle: "Revoke server admin from this user?",
     revokeServerAdminConfirm: "They will lose access to server-wide management immediately.",
     revokedServerAdminToast: "Server admin revoked",
-    // Server-tier
-    // role strings, mirroring Org Admin's own roles column string shapes
-    // (rolesFor/noRoles/grantRole/revokeRole). Originally an always-visible
-    // "Server roles" MultiSelectDropdown column; moved behind an ActionMenu
-    // modal (see `assignServerRoles`/
-    // `assignServerRolesModalTitle` below) — these per-role strings are
-    // still used there.
+    // Server-tier role strings, in the shape of Org Admin's roles-column strings (rolesFor/noRoles/grantRole/revokeRole); used
+    // in the `assignServerRoles` ActionMenu modal (see `assignServerRolesModalTitle`).
     serverRolesFor: (name: string) => `${name}'s server roles`,
     noServerRoles: "No server roles",
     grantServerRole: (role: string, name: string) => `Grant ${role} to ${name}`,
@@ -1897,9 +1732,7 @@ const en = {
     testEmailRecipient: "Recipient email",
     testEmailSending: "Sending…",
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
-    // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
-    // — Server Admin converted from Tabs to ResourceMenu for cross-page
-    // consistency with the other admin-tier pages (docs/decisions.md).
+    // Resource-menu accessible name, matching `orgAdmin.sectionsNav`.
     sectionsNav: "Server management sections",
   },
   // The shared draft of a report layout (autosaved working copy; a version exists only once published).
@@ -2186,6 +2019,8 @@ const en = {
     chapterLayoutAuto: "Auto (recommended)",
     chapterLayoutChaptered: "Chapter per {component}",
     chapterLayoutContinuous: "Continuous",
+    placesHeading: "Requirements in several components",
+    ownPlacesOnly: "List under own component only",
     resourceSections: "Resource sections",
   },
   reportVariables: {
@@ -2600,6 +2435,11 @@ const en = {
     location: "Position",
     noMetadata: "This file records no camera details.",
     failed: "The details could not be read.",
+  },
+  filePreview: {
+    open: (name: string) => `Preview ${name}`,
+    download: "Download",
+    unreadable: "The picture could not be loaded.",
   },
   reportSnippets: {
     menuButton: "Snippets",
@@ -3259,6 +3099,7 @@ const en = {
     columnRecord: "Record(s)",
     columnPerson: "Person",
     unnamedActor: "System",
+    viewAll: "View all history",
     empty: "No changes in this range.",
     emptyFiltered: "No events match these filters.",
     exportLabel: "Project history",
@@ -3280,9 +3121,7 @@ const en = {
     searchResetDefault: "Use the built-in default",
     searchIncludeOrgRecords: "Include organisation records when searching a project",
     searchFieldsHint: "Applies to the header search box and to a new search. You can still choose other fields for any one search.",
-    // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
-    // — Preferences converted from Tabs to ResourceMenu for cross-page
-    // consistency with the other admin-tier pages (docs/decisions.md).
+    // Resource-menu accessible name, matching `orgAdmin.sectionsNav`.
     sectionsNav: "Preferences sections",
     theme: "Theme",
     light: "Light",
@@ -3317,13 +3156,11 @@ const en = {
     myGroups: "Groups",
     inheritedGroup: "via a nested group",
     manageOrganisation: (org: string) => `Manage ${org}`,
-    // "Leave organisation" moved here from Org Admin — it's about the current user's own membership,
-    // not an org-level setting, so it belongs alongside the rest of "your
-    // access" rather than Org Admin's danger-zone-adjacent controls.
+    // "Leave organisation" concerns the current user's own membership, not an organisation-level setting, so it sits with
+    // the rest of "your access".
     leaveOrg: "Leave",
-    // Short, per-row accessible name (distinguishes each org's "Leave"
-    // button from every other row's) — the longer explanation is the
-    // hover `title` only, not repeated into the accessible name.
+    // Short per-row accessible name (distinguishes each organisation's "Leave" button); the longer explanation is the hover
+    // `title` only.
     leaveOrgAriaLabel: (orgName: string) => `Leave ${orgName}`,
     leaveOrgTooltip: (orgName: string) => `Remove your own membership in ${orgName}`,
     leaveOrgTitle: (orgName: string) => `Leave ${orgName}?`,
@@ -3393,9 +3230,7 @@ const en = {
     archivedToast: "Action archived",
     archiveTitle: "Archive this action?",
     archiveConfirm: "It can no longer be edited afterwards, but stays visible on every {requirement} it is linked to.",
-    // No `ConfirmDialog` here, matching `ProjectAdminPage.tsx`'s existing
-    // unarchive button (also fires immediately) — reversible again, unlike
-    // the Tier-1-confirmed archive action itself.
+    // No `ConfirmDialog`: restoring is reversible (archive it again), unlike the confirmed archive action.
     restoreAction: "Restore",
     restoredToast: "Action restored",
     completedAt: "Completed",
@@ -3585,13 +3420,51 @@ const en = {
     coversProjects: (count: number) => `Counts cover ${count} ${count === 1 ? "project" : "projects"}; stage progress is this project's own.`,
   },
   /** Feedback for a mutation run through `useMutation`: "Stage added." / "Could not add the stage." from a verb and a noun. */
-  /** Where a record sits in the project's component/category tree (`ComponentField`, `RecordPlacements`, `ComponentFilterField`). */
+  /** The Structure page: the component and category tree of a project (`StructurePanel`, `StructureNodeForm`). */
+  structure: {
+    heading: "{Components} & {categories}",
+    treeLabel: "{Components} and {categories}",
+    searchLabel: "Search {components} and {categories}",
+    searchPlaceholder: "Search by name or prefix",
+    prefixColumn: "Prefix",
+    requirementsColumn: "{Requirements}",
+    categoryCount: (count: number) => `${count} ${count === 1 ? "{category}" : "{categories}"}`,
+    emptyFolder: "No {categories} yet.",
+    emptyTree: "This {project} has no {components} yet.",
+    noMatch: "Nothing matches the search.",
+    addComponent: "Add {component}",
+    addCategory: (component: string) => `Add {category} to ${component}`,
+    editComponent: (name: string) => `Edit {component} ${name}`,
+    editCategory: (name: string) => `Edit {category} ${name}`,
+    actionsFor: (name: string) => `Actions for ${name}`,
+    edit: "Edit",
+    moveUp: "Move up",
+    moveDown: "Move down",
+    moveToComponent: "Move to another {component}…",
+    delete: "Delete",
+    deleteComponentBlocked: "Delete or move this {component}'s {categories} first.",
+    deleteComponentTitle: "Delete this {component}",
+    deleteCategoryTitle: "Delete this {category}",
+    moveTitle: (name: string) => `Move ${name} to another {component}`,
+    moveTarget: "New {component}",
+    moveChoose: "Choose a {component}…",
+    moveConfirm: "Move",
+    moveEffect: (name: string, count: number) =>
+      `The ${count} {requirements} in ${name} move with it, so they sit in the new {component}. Their existing codes do not change; {requirements} created afterwards take the new {component}'s prefix.`,
+    moveClash: "The new {component} already has a {category} with this prefix. Edit the prefix first.",
+    noOtherComponent: "There is no other {component} to move it to.",
+    moved: "{Category} moved.",
+  },
+  /** Where a record sits in the project's component/category tree (`ComponentField`, `RecordTags`, `ComponentFilterField`). */
   placements: {
     label: "Components",
     help: "The project's component and category tree, shared by every kind of record, so records can be filtered and reported by the part of the product they belong to. It is separate from an element's parent and child elements.",
     choose: "Choose components…",
     filterLabel: "Component and category",
     pickerLabel: "Components and categories",
+    primaryLabel: "{Component} and {category}",
+    primaryChoose: "Choose a {category}…",
+    primaryNoCategories: "No {categories} yet — add one in {Project} Admin.",
     filterPlaceholder: "Filter components",
     removeLabel: (place: string) => `Remove ${place}`,
     saveFailed: (message: string) => `Could not save the components: ${message}`,
@@ -3599,10 +3472,214 @@ const en = {
       failed: (message: string) => `The record was saved, but its components were not set: ${message} Set them from the record.`,
     },
   },
+  requirementAliases: {
+    /** The create form's field and the record page's section. */
+    label: "Additional components",
+    choose: "Choose categories…",
+    heading: "Components and codes",
+    ownPlace: "Own place",
+    aliasBadge: "Alias",
+    retiredNotice: (code: string) => `${code} is a retired code of this requirement: it was taken out of that component.`,
+    aliasNotice: (code: string) => `Opened through ${code}, a further component of this requirement.`,
+    addLabel: "Add component",
+    codeOf: (code: string) => `Code ${code}`,
+    saveFailed: (message: string) => `Could not save the components: ${message}`,
+    actionsOf: (code: string) => `Actions for ${code}`,
+    makeIndependent: "Make independent",
+    makePrimary: "Make this the own place",
+    remove: "Remove from this component",
+    removeTitle: "Remove from this component?",
+    removeMessage: (code: string, place: string) => `The requirement will no longer sit in ${place}. The code ${code} is retired, never reused, and still finds this requirement.`,
+    removeConfirm: "Remove",
+    removed: "Removed from the component.",
+    promoteTitle: "Make this the own place?",
+    promoteMessage: (code: string, ownCode: string) => `The requirement's own place becomes this one and takes the code ${code}. The current place keeps ${ownCode} as an alias, so no code is lost.`,
+    promoteConfirm: "Make own place",
+    promoted: "The own place was changed.",
+    independentTitle: "Make this requirement independent?",
+    independentMessage: (code: string, original: string) =>
+      `A new draft requirement ${code} is created from the current content of ${original}, and ${code} is removed from ${original}. Its links, comments, tags and attachments are copied, it is related to ${original}, and it is owned by you. It must be approved separately. This cannot be undone.`,
+    independentConfirm: "Make independent",
+    independentLinkTypeLabel: "Link type joining the two requirements",
+    independentLinkTypeHelp: "This organisation has no symmetric link type without a direction (such as Related to). Choose the link type that joins the new requirement to the original.",
+    independentDone: (code: string) => `${code} is now a requirement of its own.`,
+    independentSkippedTitle: "Not copied",
+    independentSkippedIntro: (code: string) => `${code} was made. These items could not be carried over:`,
+    independentSkippedKind: { link: "Link", comment: "Comment", attachment: "Attachment" } as Record<string, string>,
+    independentOpen: "Open the new requirement",
+    independentClose: "Close",
+    settings: {
+      heading: "Requirement aliases",
+      modeLabel: "New requirement aliases",
+      allowed: "Allowed",
+      disabled: "Disabled",
+      inherit: "Follow the parent project or organisation",
+      sourceProject: "Set on this project",
+      sourceParent: "Inherited from parent project",
+      sourceOrganization: "Inherited from organisation",
+      count: (n: number) => `${n} ${n === 1 ? "alias" : "aliases"} in this project`,
+      noAliases: "This project has no aliases.",
+      makeAll: "Make all independent",
+      makeAllTitle: "Make every alias independent?",
+      makeAllMessage: (n: number) => `${n} ${n === 1 ? "alias becomes a requirement" : "aliases become requirements"} of their own, each as a new draft with the content, links, comments, tags and attachments of the requirement it belonged to. This cannot be undone.`,
+      makeAllConfirm: "Make all independent",
+      makeAllDone: (made: number, failed: number) =>
+        failed === 0 ? `${made} made independent.` : `${made} made independent; ${failed} could not be made independent.`,
+      saved: "The setting was saved.",
+      noun: "requirement alias setting",
+      loadFailed: "Could not load the requirement alias setting.",
+    },
+  },
+  references: {
+    label: "External references",
+    /** Tooltip of a reference chip. */
+    kind: "External reference",
+    /** A row of the record header's add menu and the title of the dialog it opens. */
+    addLabel: "Add external reference",
+    addTitle: "Add an external reference",
+    editTitle: "Edit external reference",
+    editLabel: (reference: string) => `Edit reference ${reference}`,
+    removeLabel: (reference: string) => `Remove reference ${reference}`,
+    removeTitle: "Remove this reference?",
+    removeMessage: (reference: string) => `${reference} will no longer be listed on this record. The item in the outside system is not changed.`,
+    removeConfirm: "Remove",
+    system: "System",
+    systemChoose: "Choose a system…",
+    key: "Key",
+    keyPlaceholder: "PROJ-123",
+    keyHint: "Give a key, a link, or both.",
+    link: "Link",
+    linkPlaceholder: "https://…",
+    role: "Role",
+    roleNone: "No role",
+    note: "Note",
+    systemLabelOf: (n: number) => `Reference ${n} system`,
+    keyLabelOf: (n: number) => `Reference ${n} key`,
+    linkLabelOf: (n: number) => `Reference ${n} link`,
+    roleLabelOf: (n: number) => `Reference ${n} role`,
+    noteLabelOf: (n: number) => `Reference ${n} note`,
+    removeRowLabel: (n: number) => `Remove reference ${n}`,
+    addRow: "Add a reference",
+    openLink: (reference: string) => `Open ${reference} in a new tab`,
+    added: "Reference added.",
+    updated: "Reference saved.",
+    removed: "Reference removed.",
+    saveFailed: (message: string) => `Could not save the reference: ${message}`,
+    removeFailed: (message: string) => `Could not remove the reference: ${message}`,
+    create: {
+      failed: (message: string) => `The record was saved, but a reference was not added: ${message} Add it from the record.`,
+    },
+    filter: {
+      label: "External system",
+      choose: "Choose systems…",
+      keyLabel: "External key",
+      keyPlaceholder: "PROJ-123",
+    },
+    column: "External references",
+  },
+  lifecycleSettings: {
+    heading: "Lifecycles",
+    loadFailed: "The lifecycle settings could not be loaded.",
+    saved: "The lifecycle settings were saved.",
+    noTypes: "No record type of an enabled module has states that can be turned off.",
+    /** Project panel. */
+    useState: (label: string) => `Use ${label}`,
+    typeOf: (label: string, module: string) => (module ? `${label} (${module})` : label),
+    pathPreview: "Path in this project",
+    requiredByOrganisation: "Required by the organisation",
+    requiredReason: "The organisation requires this state, so it stays on in every project of the organisation.",
+    exempt: "Exempt from the organisation's requirement",
+    inheritedParent: "Inherited from parent project",
+    /** Organisation panel. */
+    requireState: (label: string) => `Require ${label}`,
+    exemptHeading: "Exempt projects",
+    noExemptions: "No project is exempt.",
+    addExemption: "Exempt a project",
+    addExemptionTitle: (type: string) => `Exempt a project from the ${type} requirement`,
+    projectLabel: "Project",
+    includeChildren: "Include nested projects",
+    includesChildren: "Includes nested projects",
+    exemptionAdded: "The project is exempt.",
+    removeExemption: (name: string) => `Remove the exemption of ${name}`,
+    exemptionRemoved: "The exemption was removed.",
+    noOptionalStates: "This type has no state that can be required.",
+    /** Skipping steps (project and organisation panels). */
+    skipHeading: "Skipping steps",
+    allowSkip: "Allow skipping steps",
+    forbidSkip: "Do not allow skipping steps",
+    skipBannedByOrganisation: "Not allowed by the organisation",
+    skipExempt: "Exempt from the organisation's ban on skipping steps",
+    skipInherited: "Inherited from parent project",
+    skipExemptTitle: "Exempt a project from the ban on skipping steps",
+  },
+  approvalSeparation: {
+    heading: "Approval",
+    loadFailed: "The approval settings could not be loaded.",
+    saved: "The approval settings were saved.",
+    noTypes: "No record type of an enabled module has an approval step.",
+    fieldLabel: (label: string) => `${label} approval`,
+    /** Project panel options. */
+    separate: "Separate approver required",
+    creatorWithComment: "Submitter may approve, with a comment",
+    byDefault: "Default: submitter may approve",
+    followParent: "Follow parent project",
+    /** Organisation panel options. */
+    projectDecides: "Project decides",
+    requiredEverywhere: "Required for every project",
+    requiredByOrganisation: "Required by the organisation",
+    exempt: "Exempt from the organisation's requirement",
+    inheritedParent: "Inherited from parent project",
+    exemptTitle: (type: string) => `Exempt a project from the ${type} approval requirement`,
+    /** Record pages. */
+    selfApproved: "Self-approved",
+    selfApprovedHelp: (name: string | null, when: string | null) =>
+      `Approved by its creator${name ? `, ${name}` : ""}${when ? ` on ${when}` : ""}.`,
+    needsOtherApprover: "A separate approver is required and you created this record, so a different person must approve it.",
+  },
+  lifecycle: {
+    /** Name of the track (a list of the record's states). */
+    label: "Lifecycle",
+    /** Assistive-technology text after a step's label, so its state is not carried by colour alone. */
+    done: "completed",
+    current: "current state",
+    later: "not yet reached",
+    locked: "Locked",
+    /** Name of the forward move (the popover's button and the first row of the actions menu). */
+    promoteTo: (label: string) => `Promote to ${label}`,
+    /** The Promote popover's first line: what pressing the button does. */
+    promoteExplain: (from: string, to: string) => `Moves this record from ${from} to ${to}.`,
+    /** Name of the next step's button, which opens the Promote popover. */
+    nextStep: (label: string) => `Next step: ${label}`,
+    /** The padlock on the next step for a person who may not promote. */
+    notPermitted: (label: string) => `You do not have permission to promote this record to ${label}.`,
+    /** The collapsed track at a narrow width, before the current state's name. */
+    position: (n: number, total: number) => `Step ${n} of ${total}`,
+    /** Skipping steps of one record (the actions-menu row and its dialog). */
+    skipSteps: "Skip steps…",
+    /** Name of a later step's button in the track, which opens the Skip steps dialog for it. */
+    skipTo: (label: string) => `Skip to ${label}`,
+    skipTitle: (noun: string) => `Skip steps of this ${noun}`,
+    skipTarget: "Move to",
+    skipOption: (target: string, passed: readonly string[]) => `${target} (skips ${passed.join(", ")})`,
+    skipReason: "Reason",
+    skipConfirm: "Skip steps",
+    skipped: (noun: string, target: string) => `${noun} moved to ${target}; the skipped steps are recorded in its history.`,
+  },
   tags: {
     label: "Tags",
-    /** The header's compact tags control: the button and the dialog it opens. */
-    editLabel: "Tags and components",
+    /** The record header's one chip row (tags, components, references) and its one add menu. */
+    groupLabel: "Tags, components and references",
+    /**
+     * Name of the (+) menu trigger for the rows the menu holds, in the menu's order: one row names itself ("Add tag"),
+     * several name their nouns ("Add tag, component or external reference").
+     */
+    addMenuLabel: (rows: ReadonlyArray<"tag" | "place" | "reference">) => {
+      if (rows.length === 1) return { tag: "Add tag", place: "Add {component} or {category}", reference: "Add external reference" }[rows[0]];
+      const nouns = rows.map((row) => ({ tag: "tag", place: "{component}", reference: "external reference" })[row]);
+      return `Add ${nouns.slice(0, -1).join(", ")} or ${nouns[nouns.length - 1]}`;
+    },
+    addPlace: "Add {component} or {category}",
+    placeKind: "{Component} or {category}",
     none: "No tags",
     addTag: "Add tag",
     done: "Done",
@@ -3643,7 +3720,7 @@ const en = {
       modeInheritedHint: (mode: string) => `Following the parent project: ${mode}.`,
       inheritedNotice: "These tags belong to a parent project, which manages them. Adding a tag here gives this project a list of its own.",
       addLabel: "New tag",
-      addPlaceholder: "Tag name",
+      addNameLabel: "Name",
       addButton: "Add tag",
       colourLabel: (name: string) => `Colour of ${name}`,
       noColour: "No colour",
@@ -3688,14 +3765,10 @@ const en = {
       merged: (count: number) => `Merged. ${count} ${count === 1 ? "record" : "records"} moved.`,
       deleted: (count: number) => `Tag deleted. It was removed from ${count} ${count === 1 ? "record" : "records"}.`,
       modeSaved: "Tag setting saved.",
-      usageHeading: "Where tags are used",
-      usageDescription: "One table per kind of record. Tick a tag to hide it from the tables while you review the others.",
-      usageEmpty: "No tagged records yet.",
-      usageFilter: "Filter tags",
-      usageHide: (name: string) => `Hide ${name} from the tables`,
-      usageHiddenCount: (count: number) => `${count} hidden`,
-      usageShowAll: "Show all",
-      unusedHeading: "Not used anywhere",
+      showUsage: (name: string) => `Show where ${name} is used`,
+      usageTitle: (name: string) => `Where "${name}" is used`,
+      recordTypeHeading: "Record type",
+      usageEmpty: "No records you can open carry this tag.",
       loadFailed: "Could not load the tags.",
       inheritedBadge: "Inherited",
     },
@@ -3788,6 +3861,7 @@ const en = {
     textWarning: "The name is hard to read in this colour on the band.",
   },
   help: {
+    watchers: "User: notified of every new comment on this record.\nGroup: every member who can view this project is notified of every new comment.\nA person who chose Subscribe in the record menu is listed here too.",
     logoBand: "The colour of the band behind the logo.\nLogin page: the band across the top of the sign-in card, behind the logo and the name.\nEmail: the header of every outgoing email.\nReports: the logo is drawn on a plate of this colour. Reports are unchanged until a colour is chosen.\nWhen no colour is chosen the colour of the top bar is used.",
     serverFooterPosition: "Where the footer of the signed-out pages (sign in, sign up, password reset) sits.\nAfter the content: directly below the sign-in card.\nBottom of the page: at the bottom edge of the window. When the window is shorter than the page the footer follows the content.\nAn organisation may choose its own position for its sign-in page.",
     orgFooterPosition: "Where the footer of this organisation's sign-in page sits.\nPlatform setting: the position chosen for the whole service.\nAfter the content: directly below the sign-in card.\nBottom of the page: at the bottom edge of the window. When the window is shorter than the page the footer follows the content.",
@@ -3806,7 +3880,9 @@ const en = {
     overviewWidgetSize:
       "The width is a number of the 12 columns the overview is divided into; the height is a number of rows, and a row grows if the content needs more. On a narrow screen the columns collapse and every widget takes the full width, apart from the small tiles, which sit two to a row. Dragging the corner of the widget does the same.",
     overviewText:
-      "Notes for the people who open the overview. Supports headings (# Title), lists (- item, 1. item), **bold**, *italic*, `code`, quotes (> text), rules (---) and links in the form [text](https://example.com). Raw HTML and images are not shown.",
+      "Notes for the people who open the overview, written in Markdown. Headings (# Title), lists (- item, 1. item), **bold**, _italic_, `code`, quotations (> text), tables, rules (---), links in the form [text](https://example.com) and diagrams (a block that starts with ```mermaid) are formatted. Raw HTML and images are not shown.\nVisual edits the formatted text, Write edits the Markdown source and Preview shows the result. Text with mathematics, HTML, an image, a footnote or a task list opens in Write.",
+    markdown:
+      "Formatted text, written in Markdown. Headings (# Title), lists (- item, 1. item), **bold**, _italic_, `code`, quotations (> text), tables, rules (---) and links in the form [text](https://example.com) are formatted.\nA block that starts with ```mermaid draws a diagram.\nRaw HTML and images are not shown; a link must start with https:, http: or mailto:.\nVisual edits the formatted text, Write edits the Markdown source and Preview shows the result. Text with mathematics, HTML, an image, a footnote or a task list opens in Write.",
     overviewMetric:
       "The figure the widget shows. The list is fixed: a metric is a defined count or percentage, not a free query, so an overview cannot show anything a person is not allowed to see.",
     overviewRecordType:
@@ -3859,6 +3935,8 @@ const en = {
       "Sends a notification to everyone who may read the policy, so people who are not on the Policies page still learn of it. You are not notified. The send is recorded as a count in the audit log and is not repeated when you publish again unless you choose it again.",
     announcementNotify:
       "Sends the message once as a notification, so people who are not signed in at the moment still receive it. The send is recorded and cannot be repeated.",
+    recordCodePrefix:
+      "The letters new records of this type start their code with, for example ADR for ADR-006. Two to five letters; the prefix is different for every record type. Only records created after the change use it: existing codes never change and the numbering carries on without reusing a number. A {project} follows its parent {project}, then the organisation, until it sets its own; clearing it returns to that inherited value.",
     navLabelName:
       "The name shown for this entry in the navigation, as the page title and as the back link from its records. Leave it empty to use the name inherited from the parent {project} or the organisation, or the built-in name. Record names such as {requirement} are set under Terminology.",
     stageWorkflowChoice:
@@ -3884,8 +3962,31 @@ const en = {
     stagePhaseChoice:
       "Moves the {stage} to another phase of its workflow. Entering or leaving a Locked phase needs the project manager role.",
     // Components on any record
+    requirementAliases: "Further components and categories this requirement belongs to, such as both sides of an interface.\nEach one gives the requirement a code of its own, named after that component and category.\nEvery code names the same requirement: its text, approval, comments and links are shared.",
+    lifecyclesProject: "A lifecycle is the path a record follows, for example a Pain Point from Submitted to Closed. Clear a state this project does not use and a record moves straight past it.\nOnly record types with a state that can be turned off are listed, and only for modules enabled in this project. Approval states, the first and last state, and states such as Rejected or Retired are never optional, so Requirements and Change requests are not listed.\nThe organisation can require a state for every project, which locks it here. A nested project uses its parent project's choice until it sets its own.",
+    lifecyclesOrganization: "A lifecycle is the path a record follows, for example a Decision from Draft to Approved. Require a state and no project of the organisation can turn it off; a project that had turned it off uses it again from then on, and its records are not changed.\nOnly record types with a state that can be turned off are listed, for modules enabled in this organisation. Approval states are never optional.\nAn exempt project keeps its own choice for that record type.",
+    lifecycleStates: "Turn off a state this project does not use. A record then moves past it: for example a Pain Point goes from Submitted straight to Accepted. A record already in a turned-off state can still be opened, edited and moved on, and turning the state back on restores it.\nA state marked Required is required by the organisation and cannot be turned off here.\nApproval states are never optional, so the approver's permission and comment still apply.",
+    lifecycleSkip: "Allow a record of this project to be moved past the steps between its state and a later one, with a reason that is recorded in its history.\nA record can skip only steps that the person moving it may carry out themselves, never a step that needs an approval, and never a step the organisation requires.\nOff by default. The organisation can forbid it for all its projects.",
+    lifecycleSkipForbidden: "No project of the organisation may skip steps, whatever its own setting. A project listed under Exempt projects is not bound by this.",
+    lifecycleSkipTarget: "The later step the record moves to. Each option names the steps it passes over. The permission to carry out each of those steps, and the target's own permission, are checked when you save.",
+    lifecycleSkipReason: "Why the steps are skipped. The reason is recorded with the move in the record's history, which names each skipped step.",
+    lifecycleRequired: "Require a state to be used by every project of the organisation. A project cannot turn a required state off, and a project that had turned it off uses it again from now on; its records are not changed.\nA project listed under Exempt projects is not bound by the requirement.",
+    lifecycleExemptProject: "The project that the requirement, or the ban on skipping steps, does not bind. Its own choice applies again.",
+    lifecycleIncludeChildren: "Off: only this project is exempt.\nOn: its nested child projects are exempt too, including projects added to it later.",
+    approvalSeparationProject: "Whether the person who created a record may also approve it.\nDefault: the creator may approve without a comment. A nested project follows its parent project's choice.\nSubmitter may approve, with a comment: the creator may approve, and each such approval needs a comment.\nSeparate approver required: another person with the approval permission must approve the record.\nA record approved by its creator is marked Self-approved and the approval is recorded in its history. If the organisation requires a separate approver, this cannot be changed here.",
+    approvalSeparationOrganization: "Whether every project of the organisation needs a separate approver for this record type.\nProject decides: each project chooses; by default the creator may approve.\nRequired for every project: the creator may never approve their own record, and a project cannot relax it. A project listed under Exempt projects is not bound by the requirement.",
+    requirementAliasMode: "Allowed: a requirement can be placed in further components and categories, each with a code of its own.\nDisabled: no new further places can be added; the ones that exist keep working and can be made independent.\nA project follows its parent project, then the organisation, until it sets its own value.\nA project that relies on traceability matrices and coverage figures reads them most clearly with one code per requirement: choose Disabled.",
     recordComponents: "The components and categories this record belongs to, for example Hardware or Hardware / Cooling. A record can belong to several, and every list can be filtered by them.",
     recordComponentsFilter: "Shows records placed in any chosen component or category.\nA component chosen alone matches the record whatever its category.",
+    // External references on any record
+    recordReferences: "Items in outside systems, such as a Jira issue or a DOORS requirement, that this record relates to. Each has a system and a key, and opens the item when a link is available. Every list can be filtered by them.",
+    referenceSystem: "The outside system the item is in, chosen from the list set up for your organisation and this project.",
+    referenceKey: "The item's identifier in that system, for example PROJ-123. Lists and searches find the record by it.",
+    referenceLink: "A web address (http or https) that opens the item. Without one, the link is built from the system's link template and the key, where the system has one.",
+    referenceRole: "Origin: the item the record came from.\nDelivery: the item where the record is being delivered.\nNo role: a reference that is neither.",
+    referenceNote: "A short remark about the reference, for example which part of the item applies. Not searched.",
+    referenceFilterSystem: "Shows records with an external reference in any chosen system.\nCombined with a key, the same reference must match both.",
+    referenceFilterKey: "Shows records with an external reference whose key contains this text, in any system unless systems are chosen. Capitals are ignored.",
     // Report layout designer
     layoutAutosave: "Writes your changes to the layout's shared draft a few seconds after you stop editing, so nothing is lost. Turn it off to try changes out freely: nothing is stored until you press Save draft, and Discard changes puts the editor back. This setting is yours and applies to every layout.",
     // Server Management → Force a credential reset
@@ -3902,7 +4003,7 @@ const en = {
     requirementReviewDate: "When this {requirement} is next due to be checked that it is still right. A review that falls due notifies the assigned reviewer.",
     requirementReminderLead: "How many days before the review date the assigned reviewer is reminded, for example 14.",
     requirementReviewer: "The person or group who carries out the periodic review of this {requirement} and is notified when it falls due.",
-    requirementPrefix: "A short code that starts the identifiers of everything under it, for example SW in SW-PERF-014.",
+    requirementPrefix: "A short code that starts the identifiers of everything under it, for example SW in SW-PERF-014. It is suggested from the name until you type your own. Changing it affects only {requirements} created afterwards.",
     // Reports
     colourScheme: "Named colours for this layout. A block uses one by name (for example primary), so changing the colour here changes every block that uses it. With none of its own, the layout uses the organisation's colours, then the standard four taken from the branding colour.",
     colourSchemeName: "What blocks call this colour: 1 to 24 lower-case letters, digits or underscores, starting with a letter, such as primary or warning.",
@@ -3915,6 +4016,7 @@ const en = {
     reportIncludeCoverPage: "Whether the built-in reports start with a cover page. A report layout shows its own cover page only if it tests this setting.",
     reportChaptersPerComponent: "Whether the requirements report starts a new chapter for each {component} or runs on continuously. The person generating the report can still choose.",
     reportOutputRetention: "How long a report prepared in the background stays available to download before its file is deleted. Blank uses the platform default; the platform also sets a maximum.",
+    reportOwnPlacesOnly: "A requirement that sits in several components is listed under each of them, with that component's code and a \"Same as\" reference to its own code.\nTicked, it is listed once, under its own component, so the document does not repeat its text.",
     reportChapterLayout: "Whether the report starts a new chapter for each {component} or runs on continuously. Automatic follows the organisation's setting.",
     // Search
     searchIncludeOrgRecords: "When you search one project, also look in the records your organisation owns and shares with every project (a shared Strategy, say). A project that has the feature switched off never shows them. You can change this for any one search from the search page.",
@@ -3936,7 +4038,7 @@ const en = {
     scoringEnabledModels: "The models offered when scoring and viewing a record, and shown side by side where a page shows several. The default model is always offered. Clear the choice to offer every model.",
     scoringAxisName: "What this criterion measures, for example Strategic fit. People see it as a field when they score a record.",
     scoringAxisDescription: "Guidance for the person scoring: what the criterion means and how to choose a level.",
-    scoringLevelThreshold: "The lowest worked-out value that falls in this level. A request lands in the highest level whose threshold it reaches, so the first level is normally 0.",
+    scoringLevelThreshold: "The lowest calculated value that falls in this level. A record lands in the highest level whose threshold its value reaches, so the first level is normally 0.",
     scoringModelName: "What people see when they pick this model, for example Weighted value.",
     scoringModelCombination: "A product multiplies the chosen levels' weights (and can divide by an axis such as Effort). A weighted sum scales each axis to 0 to 100% and adds them by importance, and can also divide the sum by an axis such as Job size.",
     scoringAxisScope: "Once for the whole record: one level for the record, the same for everyone it affects.\nSeparately for each target (for example a persona): a level for each one that differs. The level set for the whole record is the default for the others.\nThis cannot be changed after the criterion is added.",
@@ -3973,12 +4075,15 @@ const en = {
     showProjectCode: "Shows ACME-REQ-001 instead of REQ-001 inside a {project}. Records from another {project} always show it, and so does every record when your organisation requires it.",
     defaultNewProjectOrg: (org: string) => `The ${org} the New {project} dialog starts on. It can be changed in the dialog for a single {project}; the choice made there is not remembered.`,
     defaultProjectScope: "Which {projects} a list covers when opened in a {project} with parent or child {projects}. It can be changed on each list; the choice is remembered per {project}.",
-    requirementComponent: "The part of the product this {requirement} belongs to. It forms the prefix of the {requirement}'s code and lets lists and reports be filtered by component.",
-    requirementCategory: "A subdivision of the chosen {component}, for example a subsystem. Only the categories of the selected {component} are offered.",
-    proposedRequirementComponent: "The {component} the proposed {requirement} would belong to if this change request is approved.",
-    proposedRequirementCategory: "The category, within the chosen {component}, the proposed {requirement} would belong to.",
+    structureParentComponent: "The {component} the new {category} is created under.",
+    structureMoveTarget: "The {component} the {category} is moved under. It is placed last among that {component}'s {categories}.",
+    requirementPlace: "The {component} and {category} this {requirement} belongs to, chosen together: each {component} is a heading with its {categories} beneath it. Their prefixes form the {requirement}'s code, for example SW-PERF-014.",
+    proposedRequirementPlace: "The {component} and {category} the proposed {requirement} would belong to if this change request is approved. Choose a {category}; its {component} is the one it sits under.",
     proposedRequirementName: "The name the new {requirement} would have if this change request is approved.",
     proposedRequirementReasoning: "Why the new {requirement} is needed: the risk, defect class or constraint it addresses and the outcome expected. Reviewers read it when deciding on the change request.",
+    pictureAlt: "A short description of the picture, read by screen readers and shown in lists, search results and in place of the picture when it cannot be shown (for example to someone without access to the file). Describe what it shows, for example Throughput by hour, last 7 days.",
+    pictureCaption: "A line printed under the picture on the page and in reports, for example Figure 1: measured throughput. Up to 200 characters.",
+    mathTex: "The equation in TeX, for example x^2 + y^2 = z^2 or \\frac{a}{b}. It is drawn in the preview below as readers and reports will see it. Only the commands the report engine can draw are accepted.",
     requirementReasoning: "Why the {requirement} exists: the risk, defect class or constraint it addresses and the outcome expected. Reviewers read it when deciding whether to approve.",
     requirementOwner: "The person or group accountable for this {requirement}. A group can own it, so the record stays owned when individual members change.",
     actionType: "The kind of action, chosen from the types defined for the {project}. It groups actions in lists and reports.",
@@ -4026,6 +4131,12 @@ const en = {
     contentWidth: "Full width uses the whole window. Boxed centres pages and limits them to a readable width.",
     landingPage: "The page opened after you sign in. Automatic opens the page you used most recently.",
     emailDigest: "How notification emails reach you.\nInstant: one email for each notification.\nDaily digest: one email a day that gathers them.\nNone: no emails; notifications still appear in the application.",
+    serviceUserName: "The name of the integration this identity stands for, such as the build job or the agent. It is unique within the organisation and is shown wherever the service user acts.",
+    serviceUserDescription: "What the service user is for, so a reviewer of access can tell whether it is still needed.",
+    serviceUserEmail: "Where notifications for this service user are delivered. Notifications can name records, so they go to whoever reads this mailbox. Leave it blank to send no email. The address is never used to sign in.",
+    serviceUserResponsible: "The user or group answerable for this service user and its tokens. Without one the access review flags the service user. A group avoids depending on one person who may leave.",
+    serviceUserTokenName: "A label to tell this token from the others of the same service user.",
+    serviceUserTokenProjects: "Limits the token to the chosen projects. With none chosen it reaches every project the service user has access to. The token is always limited to this organisation.",
     tokenExpiry: "The date the token stops working. A shorter life limits the harm if the token is ever disclosed.",
     newProjectOrganization: "The organisation the new {project} belongs to. Its defaults, roles and project code policy apply. The organisation this starts on is set in Preferences.",
     newProjectNameAutoCode: "The project code is assigned automatically from the name.",
@@ -4116,7 +4227,85 @@ const en = {
     reportLayoutFamily: "A document layout produces headings, text, tables and figures as a PDF, Word or HTML file. A table layout produces one or more plain tables as CSV or Excel. It cannot be changed later.",
     // Links and tags
     linkRelationship: "How the two records are connected. The choices depend on the kinds of record being linked.",
+    scoringLevelWeight: "The number a record's score is calculated from when it is in this level. A higher weight counts for more; it must be above zero.",
+    scoringLevelGuidance: "Wording that helps scorers choose this level, shown beside the level when a record is scored.",
+    tagColour: "The colour of the tag's chip wherever it is shown, so related tags can be told apart at a glance. Optional; a tag with no colour uses the default.",
     tagMergeInto: "Moves every use of this tag onto the target tag, then removes this one.",
+  },
+  serviceUsers: {
+    heading: "Service users",
+    noun: "service user",
+    badge: "Service",
+    badgeHint: "A service user: no password and no sign-in. It acts only through personal access tokens an administrator issues.",
+    notApplicable: "Not applicable",
+    create: "New service user",
+    createTitle: "New service user",
+    editTitle: "Edit service user",
+    edit: "Edit",
+    empty: "No service users yet. Create one to give an integration its own identity and tokens.",
+    loadFailed: "Could not load the service users.",
+    name: "Name",
+    description: "Description",
+    email: "Notification email address",
+    responsible: "Responsible",
+    responsibleAria: "Responsible user or group",
+    none: "None",
+    noEmail: "No email",
+    status: "Status",
+    statusActive: "Active",
+    statusDeactivated: "Deactivated",
+    statusArchived: "Archived",
+    flags: "Review flags",
+    tokens: "Active tokens",
+    lastUsed: "Last used",
+    never: "Never",
+    createdByLabel: "Created by",
+    openAria: (name: string) => `Open ${name}`,
+    flagNoResponsible: "No responsible party",
+    flagNoResponsibleHint: "Nobody is named as responsible for this service user, so nobody is accountable for its access. Choose a user or group.",
+    flagAdministrator: "Administrator rights",
+    flagAdministratorHint: "This service user holds organisation administrator rights. Review that its tokens are narrowed by project and expiry.",
+    detailsTitle: (name: string) => `Service user: ${name}`,
+    tokensHeading: "Tokens",
+    noTokens: "No tokens have been issued.",
+    tokenName: "Name",
+    tokenPrefix: "Token",
+    tokenProjects: "Projects",
+    tokenAllProjects: "All projects the service user can reach",
+    tokenExpires: "Expires",
+    tokenIssuedBy: "Issued by",
+    tokenState: "State",
+    tokenRevoked: "Revoked",
+    tokenActive: "Active",
+    tokenExpired: "Expired",
+    issueToken: "Issue token",
+    issueTokenTitle: "Issue token",
+    issueTokenNoun: "token",
+    tokenNameField: "Token name",
+    tokenNamePlaceholder: "For example: nightly build",
+    tokenExpiry: "Expiry date",
+    tokenExpiryTooLong: "The longest allowed expiry is {date}.",
+    tokenProjectsField: "Restrict to projects",
+    tokenNoProjects: "This organisation has no projects.",
+    tokenSecretTitle: "Token issued",
+    tokenSecretHint: "Copy this token now. It is shown once and cannot be retrieved again.",
+    tokenSecretDismiss: "I have copied it",
+    revoke: "Revoke",
+    revokeTitle: "Revoke this token?",
+    revokeConfirm: "The token stops working at once. The service user is not affected, and a new token can be issued.",
+    revokeAria: (name: string) => `Revoke the token ${name}`,
+    deactivate: "Deactivate",
+    deactivateTitle: (name: string) => `Deactivate ${name}?`,
+    deactivateConfirm: "Every token of this service user stops working at once. It can be reactivated, but revoked tokens stay revoked.",
+    reactivate: "Reactivate",
+    archive: "Archive",
+    archiveTitle: (name: string) => `Archive ${name}?`,
+    archiveConfirm: "The service user is hidden from this list. What it did stays attributed to it. This cannot be undone.",
+    actionsFor: (name: string) => `Actions for ${name}`,
+    createdToast: "Service user created.",
+    savedToast: "Service user saved.",
+    deactivatedToast: "Service user deactivated.",
+    deactivateFailed: "Could not deactivate the service user.",
   },
   mutation: {
     past: {
@@ -4183,6 +4372,97 @@ const en = {
     scopeOrganisation: "Organisation",
     endBeforeStart: "The end must be after the start.",
   },
+  richText: {
+    toolbar: "Text formatting",
+    bold: "Bold",
+    italic: "Italic",
+    heading1: "Heading 1",
+    heading2: "Heading 2",
+    heading3: "Heading 3",
+    bulletList: "Bulleted list",
+    orderedList: "Numbered list",
+    quote: "Quotation",
+    rule: "Horizontal rule",
+    code: "Inline code",
+    codeBlock: "Code block",
+    table: "Table",
+    tableAddRow: "Add row below",
+    tableAddColumn: "Add column after",
+    tableDeleteRow: "Delete row",
+    tableDeleteColumn: "Delete column",
+    tableDelete: "Delete table",
+    diagram: "Diagram",
+    mathInline: "Inline equation",
+    mathBlock: "Equation block",
+    mathInlineTitle: "Inline equation",
+    mathBlockTitle: "Equation block",
+    mathSource: "TeX",
+    mathPreview: "Preview",
+    mathPreviewEmpty: "The equation is drawn here.",
+    mathInsert: "Insert",
+    mathApply: "Apply",
+    mathChange: "Change equation",
+    mathDelimiterInline: "An inline equation cannot contain \\).",
+    mathDelimiterBlock: "An equation block cannot contain $$.",
+    mathBlankLine: "An equation cannot contain a blank line.",
+    picture: "Picture",
+    pictureInsertTitle: "Insert a picture",
+    pictureChangeTitle: "Change picture",
+    pictureChange: "Change picture",
+    pictureChoose: "Choose a picture attached to this record",
+    pictureFile: (filename: string) => `Picture ${filename}`,
+    pictureUpload: "Upload a picture",
+    pictureUploadButton: "Choose a file",
+    pictureUploading: "Uploading…",
+    pictureUploadFailed: "The picture could not be uploaded.",
+    pictureNone: "No pictures are attached to this record yet.",
+    pictureNoUpload: "Pictures cannot be added to this record now.",
+    pictureAlt: "Alternative text",
+    pictureCaption: "Caption",
+    pictureInsert: "Insert",
+    pictureApply: "Apply",
+    pictureBack: "Back",
+    pictureUnavailable: "Picture unavailable",
+    picturePreview: "Selected picture",
+    link: "Link",
+    linkAddress: "Web address",
+    linkApply: "Apply link",
+    linkRemove: "Remove link",
+    linkInvalid: "Enter an address starting with https://, http:// or mailto:.",
+    undo: "Undo",
+    redo: "Redo",
+    diagramSourceLabel: "Diagram source",
+    pastedMarkdown: "The pasted text looks like Markdown.",
+    pasteConvert: "Convert to formatting",
+    pasteKeep: "Keep as typed",
+    visualUnavailableMathematics: "The Visual view is unavailable because this text contains mathematics, which this field does not draw. Use Write to edit it.",
+    visualUnavailableFormat: "The Visual view is unavailable because this text contains content it cannot show without changing it (for example HTML, an image with an outside address, a footnote or a task list). Use Write to edit it.",
+  },
+  markdown: {
+    visual: "Visual",
+    visualLoading: "Loading the editor…",
+    write: "Write",
+    preview: "Preview",
+    editorView: "Editor view",
+    toolbar: "Formatting",
+    previewEmpty: "Nothing to preview.",
+    bold: "Bold",
+    italic: "Italic",
+    heading: "Heading",
+    bulleted: "Bulleted list",
+    numbered: "Numbered list",
+    quote: "Quotation",
+    code: "Code block",
+    link: "Link",
+    table: "Table",
+    diagram: "Diagram",
+    picture: "Picture",
+    diagramDrawing: "Drawing the diagram…",
+    diagramFailed: (reason: string) => `The diagram could not be drawn: ${reason}`,
+    diagramLabel: (kind: string) => `Diagram: ${kind}`,
+    diagramSource: "Diagram source",
+    characterCount: (used: number, max: number) => `${used} of ${max} characters`,
+  },
   policies: {
     heading: "Policies",
     navLabel: "Published policies",
@@ -4233,23 +4513,6 @@ const en = {
     titleSuggestions: "Suggestions",
     organisationSection: (name: string) => `${name} policies`,
     orgPolicyLine: (organisation: string, title: string) => `${organisation}: ${title}`,
-    toolbar: "Text formatting",
-    bold: "Bold",
-    italic: "Italic",
-    heading1: "Heading 1",
-    heading2: "Heading 2",
-    heading3: "Heading 3",
-    bulletList: "Bulleted list",
-    orderedList: "Numbered list",
-    quote: "Quotation",
-    rule: "Horizontal rule",
-    link: "Link",
-    linkAddress: "Web address",
-    linkApply: "Apply link",
-    linkRemove: "Remove link",
-    linkInvalid: "Enter an address starting with https://, http:// or mailto:.",
-    undo: "Undo",
-    redo: "Redo",
     requiresAcknowledgement: "Require acceptance",
     acceptanceRequired: "Acceptance required",
     acceptance: "Acceptance",
@@ -4257,6 +4520,7 @@ const en = {
     acceptanceTitle: (title: string) => `Acceptance: ${title}`,
     acceptanceSummary: (accepted: number, required: number, version: number) => `${accepted} of ${required} accepted version ${version}.`,
     acceptanceEmpty: "No one needs to accept this policy.",
+    notApplicable: (names: string) => `Not applicable (service users): ${names}`,
     acceptanceTruncated: (shown: number) => `Showing the first ${shown} people. Export the list for everyone.`,
     acceptanceLoadFailed: "Could not load the acceptances.",
     person: "Person",
@@ -4285,6 +4549,97 @@ const en = {
     accepted: "Policy accepted.",
     acceptFailed: "Could not record the acceptance.",
     acceptChanged: "The policy has changed. The current version is shown; read it before accepting.",
+  },
+  licences: {
+    group: "Licences",
+    productSection: "Product licence",
+    componentsSection: "Third-party components",
+    fontsSection: "Fonts",
+    loadFailed: "Could not load the licence information.",
+    productHeading: "Product licence",
+    productStatement: (name: string, spdx: string) => `ReqTrackManager is free software. It is licensed under the ${name} (${spdx}).`,
+    productLicenceText: "Licence text",
+    productSource: "Source code",
+    productCommercial: "Commercial licence",
+    productComponentsNote: "Each third-party component keeps its own licence; see Third-party components.",
+    componentsHeading: "Third-party components",
+    componentsSummary: (libraries: number, programs: number) =>
+      `${libraries.toLocaleString("en")} libraries and ${programs} programs are included in the published images.`,
+    programsHeading: "Programs in the images",
+    programsTable: "Programs in the images",
+    baseImagesHeading: "Base images",
+    baseImagesTable: "Base images",
+    librariesHeading: "Libraries",
+    librariesTable: "Libraries",
+    librariesSearch: "Search libraries",
+    librariesSearchPlaceholder: "Name or licence",
+    librariesNone: "No library matches the search.",
+    name: "Name",
+    version: "Version",
+    licence: "Licence",
+    kind: "Type",
+    usedIn: "Used in",
+    role: "Role",
+    image: "Image",
+    images: "Images",
+    packageNpm: "npm package",
+    packagePython: "Python package",
+    detailTitle: (name: string) => `${name}: licence`,
+    licenceSource: "Licence source",
+    licenceSourceMetadata: "Package metadata",
+    licenceSourceText: "Licence text",
+    licenceSourceOverride: "Reviewed by the maintainers",
+    registryLink: "Registry page",
+    sourceLink: "Source",
+    reason: "Why it is allowed",
+    use: "Use",
+    useProgram: "Program in the image",
+    useSeparateProgram: "Separate program, not linked into the product",
+    useLibrary: "Library in the image",
+    useBuildTool: "Build tool",
+    notices: "Notices",
+    showText: "Licence text",
+    textsLoading: "Loading the licence text…",
+    textsFailed: "Could not load the licence text.",
+    textsNone: "No licence file is bundled with this component. See its registry page.",
+    fontsHeading: "Fonts",
+    fontLocation: "Where",
+    fontFiles: "Files",
+    fontsNone: "No fonts are listed.",
+  },
+  externalSystems: {
+    heading: "External systems",
+    orgHelp:
+      "The outside tools a record can point to, such as Jira or ServiceNow. Every project in the organisation offers this list; a project can add its own systems or hide the ones it does not use.\n"
+      + "Link template: an address with {key} in it. A reference that has only a key then opens the item (https://tracker.example/browse/{key}).",
+    projectHelp:
+      "The outside tools records in this project can point to: the organisation's list plus any added here. A sub-project with no changes of its own shows its parent project's list; changing it makes it its own.\n"
+      + "Hiding a system affects only this project, and references that already use it are kept.\n"
+      + "Link template: an address with {key} in it. A value set here replaces the organisation's for this project.",
+    noun: "External system",
+    inUse: "This system is still used by a reference. Disable it instead of deleting it.",
+    linkTemplate: "Link template",
+    linkTemplatePlaceholder: "https://tracker.example/browse/{key}",
+    linkTemplateAria: "Link template",
+  },
+  codePrefixes: {
+    heading: "Record codes",
+    recordType: "Record type",
+    prefix: "Prefix",
+    prefixOf: (type: string) => `Prefix for ${type}`,
+    save: "Save",
+    saveAria: (type: string) => `Save the prefix for ${type}`,
+    restoreAria: (type: string) => `Use the inherited prefix for ${type}`,
+    restoreLabel: "Use inherited value",
+    core: "Core",
+    inheritedFrom: "Inherited from",
+    customCount: (count: number) => `${count} custom`,
+    typeCount: (count: number) => (count === 1 ? "1 type" : `${count} types`),
+    fromParent: "Parent {project}",
+    fromOrganisation: "Organisation",
+    noun: "record code prefix",
+    loadFailed: "Could not load the record code prefixes.",
+    empty: "No record types are available.",
   },
   navLabels: {
     heading: "Navigation names",
@@ -4395,6 +4750,23 @@ const en = {
       metric: "Choose a metric.",
     },
   },
+  // Org Resources: the page of records and content an organisation owns and shares with its projects.
+  orgResources: {
+    menuAria: "Organisation resources",
+  },
+  // The Standards page (Compliance module): the standards list and the two organisation-wide status tabs.
+  standardsPage: {
+    title: "Compliance Standards",
+    tabStandards: "Standards",
+    tabByStandard: "By standard",
+    tabOutstanding: "Outstanding",
+    organisationHelp: (orgLabel: string, orgPlural: string) =>
+      `The ${orgLabel} whose compliance is shown; every ${orgLabel} is shown until one is chosen. Only ${orgPlural} where you hold the Compliance Manager role are listed. A report is produced for one ${orgLabel}, so Export is offered once one is chosen.`,
+    organisationHelpStandards: (orgLabel: string) =>
+      `The ${orgLabel} whose standards are listed; every ${orgLabel} you belong to is shown until one is chosen.`,
+    noStatusAccess: "Compliance status is available to compliance managers.",
+    complianceSettings: "Compliance settings",
+  },
   orgDashboards: {
     noun: "dashboard",
     notFound: "This dashboard was not found.",
@@ -4429,9 +4801,12 @@ const en = {
     phaseName: "Phase name",
     phaseKind: "Kind",
     addPhase: "Add phase",
-    removePhase: (name: string) => `Remove phase ${name}`,
-    movePhaseUp: (name: string) => `Move phase ${name} up`,
-    movePhaseDown: (name: string) => `Move phase ${name} down`,
+    order: "Order",
+    moveUp: "Move up",
+    moveDown: "Move down",
+    remove: "Remove",
+    lastPhaseTitle: "A workflow needs at least one phase.",
+    phaseActionsAria: (name: string) => `Actions for phase ${name}`,
     startStep: "Starting phase",
     stepCount: (count: number) => `${count} ${count === 1 ? "step" : "steps"}`,
     usedByNone: "Not used yet",
@@ -4466,6 +4841,7 @@ const en = {
     componentsHeading: "By {component}",
     noStages: "This {project} has no {stage}s yet.",
     loadFailed: "Could not load the {stage} phases.",
+    settingsLink: "{Stage} and phase settings",
   },
   deliveryPlan: {
     viewAria: "Delivery status view",
@@ -4618,6 +4994,27 @@ const en = {
     importFailed: "Could not import the file.",
   },
   // Filter-panel captions shared by several lists; a caption used on one list alone stays with its list.
+  createdToast: {
+    created: "created",
+    open: (code: string) => (code ? `Open ${code}` : "Open"),
+    text: (noun: string, code: string, verb: string) => (code ? `${noun} ${code} ${verb}.` : `${noun} ${verb}.`),
+  },
+  sort: {
+    sortBy: "Sort by",
+    order: "Order",
+    ascending: "Ascending",
+    descending: "Descending",
+    created: "Created",
+    modified: "Modified",
+    sortByIntro: "How the list is ordered. Your choice is remembered for this list.",
+    code: "{label}: the record's code, numbers by value (REQ-2 before REQ-10).",
+    text: "{label}: alphabetical, ignoring case.",
+    createdHelp: "{label}: when the record was created.",
+    modifiedHelp: "{label}: when the record was last changed, including a new version.",
+    column: "{label}: the value in that column.",
+    orderHelp: "Ascending: A to Z, lowest, earliest or oldest first.\nDescending: Z to A, highest, latest or newest first.",
+    defaultNote: "The default order is {label}, ascending.",
+  },
   filters: {
     status: "Status",
     priority: "Priority",
@@ -4762,8 +5159,27 @@ const en = {
     openDiagram: (label: string) => `Open ${label}`,
     threadCount: (count: number) => `${count} ${count === 1 ? "comment" : "comments"}`,
   },
+  requestFailure: {
+    generic: "A request could not be completed.",
+    incomplete: "Part of this page may not have loaded.",
+    reload: "Reload",
+    retry: "Retry",
+    /** The line of a page whose data could not be loaded; `what` names it ("The organisation list"). */
+    loadFailed: (what: string) => `${what} could not be loaded.`,
+    organisations: "The organisation list",
+    files: "The file list",
+    changeRequests: "The change request list",
+    reviewsDue: "The reviews due",
+    organisationOverview: "The organisation overview",
+    complianceStatus: "The compliance status",
+  },
   common: {
     requiredLegend: "* required",
+    clear: "Clear",
+    unassigned: "Unassigned",
+    searchUsers: "Search users…",
+    searchGroups: "Search groups…",
+    searchUsersAndGroups: "Search users and groups…",
     hexCode: (field: string) => `${field} (hex code)`,
     hexCodeInvalid: "Enter a colour as #rgb or #rrggbb.",
     loading: "Loading…",
@@ -4772,6 +5188,7 @@ const en = {
     ok: "OK",
     back: "Back",
     create: "Create",
+    add: "Add",
     import: "Import",
     delete: "Delete",
     edit: "Edit",
@@ -4801,10 +5218,8 @@ const en = {
     discardMessage: "This dialog has changes that are not saved. If you close it they are lost.",
     discardConfirm: "Discard changes",
     keepEditing: "Keep editing",
-    // `SplitButtonTrigger`'s chevron affordance (style guide "Pattern:
-    // split-button trigger") — generic across every call site, not
-    // per-instance, since the chevron's own job ("reveal the alternatives")
-    // doesn't change with what those alternatives are.
+    // `SplitButtonTrigger`'s chevron (style guide "Pattern: split-button trigger"): generic across call sites, since revealing
+    // the alternatives does not depend on what they are.
     moreOptions: "More options",
     // `ResultCount` — generic across every list
     // page that uses it, same reasoning as `moreOptions` above.

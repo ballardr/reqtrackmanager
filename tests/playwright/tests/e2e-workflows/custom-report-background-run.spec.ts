@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { chooseReport } from "./reportPicker";
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD } from "./helpers";
 import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API = "http://localhost:8000/api/v1";
@@ -12,7 +12,7 @@ const API = "http://localhost:8000/api/v1";
 /**
  * Job to be done: a report too big to produce while waiting is prepared in the background; the person is told it
  * has started, sees it in the top bar while it is prepared, is notified when it is ready, opens it from the
- * notification, downloads it, and can generate it again once the file has been removed. Nobody else can fetch it.
+ * notification, downloads it, and can generate it again after its file is deleted. Nobody else can fetch it.
  *
  * A layout big enough to pass the synchronous limits would need ~100,000 records, so the test answers the
  * synchronous run with the same 409 the server sends for one; the queueing, the leader's job loop, the stored file,
@@ -181,8 +181,7 @@ test.describe("Custom report background run", () => {
   test("an organisation admin sets how long background report files are kept", async ({ page, request }) => {
     const { org } = await setup(page, request);
 
-    await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Reports");
+    await page.goto(`/orgs/${org.id}/resources/reports`);
     await ensureExpanded(page, "Configuration");
     await expect(page.getByText(/platform default of 7 days/)).toBeVisible();
     await page.getByLabel("Keep background report files for (days)").fill("3");
@@ -190,7 +189,6 @@ test.describe("Custom report background run", () => {
 
     await expect(page.getByText("Settings saved.")).toBeVisible();
     await page.reload();
-    await selectOrgAdminGroup(page, "Reports");
     await ensureExpanded(page, "Configuration");
     await expect(page.getByLabel("Keep background report files for (days)")).toHaveValue("3");
   });

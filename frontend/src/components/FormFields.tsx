@@ -1,23 +1,26 @@
 /**
  * Module: components/FormFields
  *
- * The labelled controls every create/edit form is built from (docs/ux-style-guide.md, "Pattern:
- * compact forms and add-on-demand"): a single-line input, a multi-line textarea, a date input and a
- * checkbox, each with a visible label that is also the accessible name (principle 13) and an optional
- * hint underneath (`InlineTextInput` is the caption-less form for an inline row). Lay them out in a `FormGrid`; pick from a list with `LabeledSelect` and people with
- * `PrincipalFormField`. Every field takes `help` (a `(?)` button revealing what the field means,
- * `FieldHelp`) or, for a self-explanatory field, `helpNotNeeded`.
+ * The labelled controls every create/edit form is built from (docs/ux-style-guide.md, "Pattern: compact forms and
+ * add-on-demand"): a single-line input, a multi-line textarea, a date input and a checkbox, each with a visible
+ * label that is also the accessible name (principle 13) and an optional hint (`InlineTextInput` is the
+ * caption-less form for an inline row). Lay them out in a `FormGrid`; use `LabeledSelect` for lists and
+ * `PrincipalFormField` for people. Every field takes `help` (`FieldHelp`) or, if self-explanatory, `helpNotNeeded`.
  */
 import { useId, useState } from "react";
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
+import { t } from "../i18n/strings";
 import { normaliseHexColour } from "../utils/color";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { ClearButton } from "./ClearButton";
 import { FieldCaption, FieldHelp, FieldShell, RequiredMark } from "./FieldHelp";
 import { HexColourInput } from "./HexColourInput";
+import { MarkdownEditor } from "./MarkdownEditor";
 import type { FieldHelpProps } from "./FieldHelp";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ToggleSwitch } from "./ToggleSwitch";
+import { Tooltip } from "./Tooltip";
 
 /** Attributes a field passes straight to its control (type, min, max, maxLength, autoFocus, style…); the field owns the rest. */
 type InputExtras = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "className" | "aria-label" | "placeholder" | "disabled">;
@@ -115,7 +118,7 @@ export function InlineCheckbox({
  * (`scripts/check_textarea_autogrow.py` fails an empty reason).
  */
 export function TextAreaField({
-  label, value, onChange, rows = 2, hint, ariaLabel, disabled, inputProps, fixedHeight, labelExtra, help, required,
+  label, value, onChange, rows = 2, hint, ariaLabel, disabled, inputProps, fixedHeight, labelExtra, help, required, markdown,
 }: FieldHelpProps & {
   label: string;
   value: string;
@@ -130,9 +133,31 @@ export function TextAreaField({
   fixedHeight?: string;
   /** A control beside the label (an `OverridePill`); the label is then a sibling of the control, not its wrapper. */
   labelExtra?: ReactNode;
+  /**
+   * The text is Markdown, edited with the Visual, Write and Preview views (`MarkdownEditor`) and formatted where it is
+   * shown. `"simple"` offers Write and Preview only (a comment); `"math"` is `"simple"` with equations drawn in Preview
+   * (a requirement's description, reasoning and clarification).
+   */
+  markdown?: boolean | "simple" | "math";
+  /** Why this long text stays plain text (never empty); a field with neither this nor `markdown` fails `scripts/check_markdown_fields.py`. */
+  plainText?: string;
 }) {
   const id = useId();
   const controlId = inputProps?.id ?? id;
+  if (markdown) {
+    // The caption line carries the editor's view switch, so the editor draws the caption beside it.
+    return (
+      <div className="stack" style={{ gap: "var(--space-1)" }}>
+        <MarkdownEditor
+          value={value} onChange={onChange} rows={rows} ariaLabel={ariaLabel ?? label} disabled={disabled}
+          simple={markdown === "simple"} math={markdown === "math"}
+          textareaProps={{ ...inputProps, id: controlId, required: required ?? inputProps?.required, "aria-required": required || undefined }}
+          renderCaption={(viewSwitch) => <FieldCaption htmlFor={controlId} label={label} extra={labelExtra} help={help} required={required} actions={viewSwitch} />}
+        />
+        {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
+      </div>
+    );
+  }
   return (
     <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint} required={required}>
       {!fixedHeight ? (
@@ -193,13 +218,15 @@ export function CheckboxField({
     <div className="stack" style={{ gap: "var(--space-1)" }}>
       {heading && <FieldCaption label={heading} help={help} required={required} />}
       <span className="row" style={{ gap: "var(--space-2)", alignItems: "flex-start", flexWrap: "nowrap", minHeight: heading ? "2.25rem" : undefined }}>
-        <label className="checkbox-label">
-          <input
-            type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} required={required}
-            disabled={disabled} title={title}
-          />
-          {label}{!heading && required && <RequiredMark />}
-        </label>
+        <Tooltip label={title ?? ""} wrap disabled={!title}>
+          <label className="checkbox-label">
+            <input
+              type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} required={required}
+              disabled={disabled}
+            />
+            {label}{!heading && required && <RequiredMark />}
+          </label>
+        </Tooltip>
         {!heading && help && <FieldHelp label={label} help={help} />}
       </span>
       {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
@@ -218,7 +245,7 @@ export function CheckboxField({
  * @param emptyLabel Adds a "no colour" button with this text; choosing it reports `""`.
  */
 export function ColorField({
-  label, value, onChange, hint, ariaLabel, help, presets, emptyLabel, required,
+  label, value, onChange, hint, ariaLabel, help, presets, emptyLabel, required, onClear, clearLabel,
 }: FieldHelpProps & {
   label: string;
   value: string;
@@ -227,6 +254,10 @@ export function ColorField({
   ariaLabel?: string;
   presets?: ReadonlyArray<{ name: string; hex: string }>;
   emptyLabel?: string;
+  /** Adds a compact clear X after the colour while the caller has a value of its own to remove. */
+  onClear?: () => void;
+  /** Accessible name and tooltip of the clear X; defaults to "Clear: <label>". */
+  clearLabel?: string;
 }) {
   const id = useId();
   const name = ariaLabel ?? label;
@@ -234,6 +265,7 @@ export function ColorField({
     <FieldShell label={label} controlId={id} help={help} hint={hint} required={required}>
       <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <HexColourInput id={id} value={value} onChange={onChange} name={name} />
+        {onClear && <ClearButton label={clearLabel ?? `${t().common.clear}: ${label}`} onClick={onClear} />}
         {presets?.map((preset) => (
           <button
             key={preset.hex} type="button" className="colour-swatch" aria-label={preset.name} title={preset.name}
@@ -314,7 +346,7 @@ export function FileField({
  * @param children The trigger button's content.
  */
 export function UploadField({
-  id, label, labelExtra, accept, disabled, onSelect, children, help, required,
+  id, label, labelExtra, accept, disabled, onSelect, onSelectMany, children, help, required,
 }: FieldHelpProps & {
   id: string;
   label: string;
@@ -322,12 +354,14 @@ export function UploadField({
   accept?: string;
   disabled?: boolean;
   onSelect: (file: File) => void;
+  /** Several files at once (the picker accepts more than one); called in place of `onSelect`. */
+  onSelectMany?: (files: File[]) => void;
   children: ReactNode;
 }) {
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
       <FieldCaption htmlFor={id} label={label} extra={labelExtra} help={help} required={required} />
-      <FileUploadTrigger id={id} accept={accept} disabled={disabled} onSelect={onSelect}>
+      <FileUploadTrigger id={id} accept={accept} disabled={disabled} onSelect={onSelect} onSelectMany={onSelectMany}>
         {children}
       </FileUploadTrigger>
     </div>

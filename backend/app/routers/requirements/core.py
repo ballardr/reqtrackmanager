@@ -41,21 +41,29 @@ from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.project import MoveDirection
 from app.schemas.requirement import (
+    RequirementAliasOut,
     RequirementCreate,
     RequirementOut,
     RequirementUpdate,
     RequirementVersionOut,
 )
-from app.services import component_stages, engagement, pubsub
+from app.services import approval_separation, component_stages, engagement, pubsub
+from app.services import requirement_aliases as alias_service
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.external_reference_surfaces import reference_texts
+from app.services.list_sort import order_records
 from app.services.lookups import project_or_404
+from app.services.placements import PlacementPair
 from app.services.principals import label_of, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
+from app.services.requirement_aliases import active_aliases
 from app.services.requirements import (
     OPEN_CR_STATUSES,
+    ROW_ORDER_COLUMNS,
+    ROW_TEXT_SORTS,
     ListPrefetch,
     ListRow,
     RequirementFilters,
@@ -66,6 +74,8 @@ from app.services.requirements import (
     get_current_version,
     get_keywords,
     is_locked,
+    list_row_sort_value,
+    list_sort_column,
     prefetch_for_list,
     requirements_by_ids,
     unarchive_requirement,
@@ -114,12 +124,14 @@ def _to_out(
     if prefetch is not None:
         people = prefetch.people
         keywords = prefetch.keywords.get(requirement.id, [])
+        aliases = prefetch.aliases.get(requirement.id, [])
         subscribed = requirement.id in prefetch.subscribed
         comment_count = prefetch.comment_counts.get(requirement.id, 0)
         open_cr = requirement.id in prefetch.open_change_request
     else:
         people = version_people(db, [version])
         keywords = get_keywords(db, requirement.id)
+        aliases = active_aliases(db, requirement.id)
         subscribed = engagement.is_subscribed(db, current_user_id, "requirement", requirement.id)
         comment_count = engagement.get_comment_count(db, ReviewTargetType.REQUIREMENT, requirement.id)
         open_cr = _has_open_change_request(db, requirement.id)
@@ -134,6 +146,14 @@ def _to_out(
         is_completed=requirement.is_completed, completed_at=requirement.completed_at,
         completed_by=requirement.completed_by,
         keywords=keywords, custom_fields=version.custom_fields,
+        aliases=[
+            RequirementAliasOut(
+                id=a.id, unique_code=a.unique_code, component_id=a.component_id, category_id=a.category_id,
+                is_retired=a.is_retired,
+            )
+            for a in aliases
+            if a.component_id is not None and a.category_id is not None
+        ],
         created_at=requirement.created_at, updated_at=version.created_at,
         is_subscribed=subscribed,
         comment_count=comment_count,
@@ -203,6 +223,11 @@ def create_requirement_endpoint(
     )
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="created",
               actor_id=current_user.id, project_id=project_id)
+    if payload.additional_places:
+        alias_service.set_aliases(
+            db, project=project, requirement=requirement, actor_id=current_user.id,
+            pairs=[PlacementPair(p.component_id, p.category_id) for p in payload.additional_places],
+        )
     requirements_created_total.inc()
     db.commit()
     db.refresh(requirement)
@@ -215,11 +240,15 @@ def create_requirement_endpoint(
 def list_requirements(
     project_id: UUID,
     response: Response,
-    component_id: UUID | None = None,
-    category_id: UUID | None = None,
+    component_id: list[UUID] = Query([], description="Only requirements in these components (or with an alias there)."),
+    category_id: list[UUID] = Query(
+        [], description="Only requirements in these categories (or with an alias there); one in any listed component or category matches."
+    ),
     keyword: str | None = None,
     tag: list[str] = Query([], description="Only requirements carrying these tags (case-insensitive)."),
     tag_mode: Literal["any", "all"] = Query("any", description="Whether a requirement needs any or all of the `tag`s."),
+    external_system: list[str] = Query([], description="Only requirements with an external reference in these systems (by name)."),
+    external_key: str | None = Query(None, description="Only requirements with an external reference whose key contains this text."),
     search: str | None = None,
     status_filter: RequirementStatus | None = Query(None, alias="status"),
     is_completed: bool | None = None,
@@ -230,57 +259,51 @@ def list_requirements(
     only_watched: bool | None = None,
     phase: str | None = Query(None, description="Only requirements whose governing phase (their component's track, else the stage's) has this name."),
     include_archived: bool = False,
-    sort: str | None = Query(None, pattern="^(unique_code|name|status|created_at)$"),
+    sort: str | None = Query(
+        None, pattern="^(unique_code|code|name|title|status|created_at|created|updated_at|modified|target|placement|references)$",
+    ),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01)
-    and filter-panel query params (status/completed/target version/comments/watched).
+    """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01) and filter-panel query
+    params (status/completed/target version/comments/watched).
 
-    `target_stage_from_id`/`target_stage_to_id` keep the requirements whose target stage lies between
-    two stages by the stages' order (either may be omitted); `target_stage_id` is the single-stage
-    form and may be combined with them.
+    `target_stage_from_id`/`target_stage_to_id` keep the requirements whose target stage lies between two
+    stages by the stages' order (either may be omitted); `target_stage_id` is the single-stage form and may be
+    combined with them.
 
-    `is_completed` filters on the `Requirement.is_completed` overlay marker
-    (C-G-11) independently of `status` — completion is no longer a
-    `RequirementStatus` value, so it's its own boolean query param rather
-    than a `status` option, matching the frontend's separate "Completed"
-    `FilterCheckbox` alongside the status `<select>`.
+    `is_completed` filters on the `Requirement.is_completed` overlay marker (C-G-11) independently of `status`,
+    since completion is not a `RequirementStatus` value.
 
-    `limit`/`offset` (U-P-06) are optional: omitting both returns every
-    matching requirement, unchanged from before pagination existed (C-G-05:
-    no artificial limit is ever imposed unless the caller asks for a page).
-    When `limit` is given, the total match count (before slicing) is
-    returned in the `X-Total-Count` response header so a client can tell
-    whether more pages remain.
+    `limit`/`offset` (U-P-06) are optional: omitting both returns every matching requirement (C-G-05: no
+    artificial limit unless the caller asks for a page). When `limit` is given, the total match count (before
+    slicing) is returned in the `X-Total-Count` response header.
 
-    `sort` optionally overrides the default component/category/manual-
-    order sort below with a single-column sort by `unique_code`, `name`,
-    `status`, or `created_at`; `order` picks `asc` (default) or `desc`.
-    Omitting `sort` leaves the existing default ordering completely
-    unchanged, so this is additive, not a breaking change to callers that
-    don't ask for it.
+    `sort` overrides the default component/category/manual-order sort with a single-column sort by
+    `unique_code` (`code`), `name` (`title`), `status`, `created_at` (`created`), `updated_at` (`modified`),
+    `target` (the target stage's position, then the level), `placement` (the component's then the category's name)
+    or `references` (the first external reference's system and key); `order` picks `asc` (default) or `desc`.
+    A code orders by its prefix and then its number (`REQ-2` before `REQ-10`). Without `sort` the default ordering applies.
 
-    `X-Total-Unfiltered-Count` is a second response header reporting the
-    count within only the mandatory project + default archived-visibility
-    scope, before component/category/search/status/completed/stage/comments/
-    watched filters below narrow it further — unlike `X-Total-Count`, it does not
-    change when the caller adds a filter or search term, so the frontend
-    can show "12 matching · 57 total" instead of just a bare filtered count.
+    `X-Total-Unfiltered-Count` is the count within only the mandatory project + default archived-visibility
+    scope, before the component/category/search/status/completed/stage/comments/watched filters narrow it;
+    unlike `X-Total-Count` it does not change with a filter or search term, so the frontend can show
+    "12 matching · 57 total".
 
-    `project_scope` (`parents`/`children`/`both`) adds the requirements of the related projects
-    the caller can open (`services.project_scope`); rows from another project carry
-    `from_project_*`, the counts above cover every project listed, and project-local filters
-    (component, category, target stage) only match rows of the project they belong to.
+    `project_scope` (`parents`/`children`/`both`) adds the requirements of the related projects the caller can
+    open (`services.project_scope`); rows from another project carry `from_project_*`, the counts above cover
+    every project listed, and project-local filters (component, category, target stage) match only rows of
+    their own project.
     """
     unfiltered = 0
 
     filters = RequirementFilters(
-        include_archived=include_archived, is_completed=is_completed, component_id=component_id, category_id=category_id,
-        tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword, search=search, status=status_filter,
+        include_archived=include_archived, is_completed=is_completed, component_ids=tuple(component_id), category_ids=tuple(category_id),
+        tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword,
+        external_systems=tuple(s.strip() for s in external_system if s.strip()), external_key=external_key, search=search, status=status_filter,
         target_stage_id=target_stage_id, target_stage_from_id=target_stage_from_id, target_stage_to_id=target_stage_to_id,
         has_comments=has_comments, only_watched=only_watched, phase=phase,
     )
@@ -288,7 +311,7 @@ def list_requirements(
     # One project, or a scope widened over related projects. With one project the database sorts and pages,
     # so only the returned page is read; a widened scope needs every project's rows to order and page them
     # together, so those are read whole and cut here.
-    single = not project_scope.widened
+    single = not project_scope.widened and sort not in ROW_TEXT_SORTS
     matching = 0
 
     def rows_for(pid: UUID) -> list[ListRow]:
@@ -306,11 +329,12 @@ def list_requirements(
 
     if not single:
         matching = len(rows)
-        if sort:
-            def _sort_value(row: ListRow):
-                value = getattr(row, sort)
-                return value.lower() if isinstance(value, str) else value
-            rows.sort(key=_sort_value, reverse=(order == "desc"))
+        column = list_sort_column(sort) or (sort if sort in ROW_ORDER_COLUMNS else None)
+        if sort in ROW_TEXT_SORTS:
+            texts = reference_texts(db, "requirement", [row.id for row in rows])
+            rows = order_records(rows, lambda row: texts.get(row.id), descending=order == "desc")
+        elif column is not None:
+            rows = order_records(rows, lambda row: list_row_sort_value(row, column), descending=order == "desc")
         if limit is not None:
             rows = rows[offset:offset + limit]
     response.headers["X-Total-Count"] = str(matching)
@@ -353,28 +377,25 @@ def update_requirement(
     at that point, changes must go through a change request instead."""
     _require_edit_role(db, current_user, project_id)
     if payload.status == RequirementStatus.APPROVED:
-        # C-U-03's clarification is explicit that approving a requirement is
-        # a *Project Manager* capability layered on top of, not shared
-        # with, what administrators/stakeholders can do ("Project Managers
-        # can also provide approvals for change requests and approval of
-        # project requirements") — the same distinction
-        # decide_change_request already enforces for CR approval
-        # specifically ("C-U-03: project manager only"), which this direct-
-        # edit path had not mirrored: any of the three CAN_EDIT_ROLES
-        # (including a plain Stakeholder) could otherwise set
-        # status="approved" here and become the requirement's own
-        # approval_authority, self-approving and locking it.
+        # C-U-03 makes approving a requirement a Project Manager capability, not shared with
+        # administrators or stakeholders ("Project Managers can also provide approvals for change requests and
+        # approval of project requirements"), as `decide_change_request` enforces for change requests. Without
+        # this check any of the CAN_EDIT_ROLES (including a plain Stakeholder) could set status="approved"
+        # here, become the requirement's approval_authority, and self-approve and lock it.
         if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
-    # The previous reject-COMPLETED-in-payload guard that lived here is now
-    # moot: `COMPLETED` isn't a valid `RequirementStatus` value at all
-    # (C-G-11 — completion is `Requirement.is_completed`, an overlay marker,
-    # not a lifecycle status), so Pydantic/enum validation rejects it on the
-    # way in before this handler ever runs, with no special case needed.
+    # `COMPLETED` is not a `RequirementStatus` value (C-G-11: completion is the `Requirement.is_completed`
+    # overlay marker), so enum validation rejects it before this handler runs.
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     project = project_or_404(db, project_id)
+    if payload.status == RequirementStatus.APPROVED:
+        approval_separation.enforce_approval(
+            db, user=current_user, artefact_type="requirement", record_id=requirement.id,
+            creator_id=requirement.creator_id, organization_id=project.organization_id, project_id=project_id,
+            comment=payload.change_note,
+        )
     new_version = edit_requirement(
         db, project, requirement, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
@@ -389,6 +410,10 @@ def update_requirement(
         reviewer=payload.reviewer, reviewer_explicitly_set=True,
         component_id=payload.component_id, category_id=payload.category_id,
         keywords=payload.keywords,
+        additional_places=(
+            None if payload.additional_places is None
+            else [PlacementPair(p.component_id, p.category_id) for p in payload.additional_places]
+        ),
     )
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="updated",
               actor_id=current_user.id, project_id=project_id, detail={"change_note": payload.change_note})

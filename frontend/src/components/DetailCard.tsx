@@ -1,22 +1,20 @@
 /**
  * Module: components/DetailCard
  *
- * The card a record detail page puts its own content in: the record's fields under a "Details"
- * heading, or another group of them, or a panel (held needs, versions, attachments, comments) under its own
- * heading. The page header (back link, title, status badges, transitions) stays on the page background and
- * is never in a card (docs/ux-style-guide.md, "Pattern: detail page content").
+ * The card a record detail page puts its content in: the record's fields under "Details", another group of them,
+ * or a panel (versions, attachments, comments) under its own heading. The page header (back link, title, status
+ * badges, transitions) stays on the page background (docs/ux-style-guide.md, "Pattern: detail page content").
  *
- * Design decisions: cards never nest. A `DetailCard` is a page-level block, so one never holds another
- * card; `scripts/check_detail_cards.py` fails a file that puts a card directly inside a `DetailCard`. The
- * heading is a real `<h2>` and names the section for assistive technology.
+ * Cards never nest (`scripts/check_detail_cards.py`). The heading is a real `<h2>` naming the section.
  *
- * With `maxHeight` the card is never taller than that: the heading stays at the top and the content scrolls inside a
- * keyboard-reachable group named "<heading> content", without scrolling the page behind it at its ends. A card with
- * little to show keeps its natural height. A `CardHeaderAction` rendered anywhere in the card appears on the heading's line, after `action`. Inside that region a `.selection-actions` row stays at the top while the
- * content scrolls past it.
+ * With `maxHeight` the heading stays at the top and the content scrolls inside a keyboard-reachable group named
+ * "<heading> content", without scrolling the page at its ends; a short card keeps its natural height. A
+ * `CardHeaderAction` rendered anywhere in the card appears on the heading's line, after `action`. A
+ * `.selection-actions` row inside the scrolling region stays at the top.
  */
 import { useState, type KeyboardEventHandler, type ReactNode } from "react";
 
+import type { DetailRank } from "./detailCardOrder";
 import { DetailCardActionsContext } from "./detailCardSlots";
 import { FieldHelp } from "./FieldHelp";
 
@@ -26,13 +24,14 @@ import { FieldHelp } from "./FieldHelp";
  * @param help Plain-language help for a heading that names a domain term; drawn as a `(?)` after the heading.
  * @param action A control on the heading's line, e.g. an `AddPopoverButton`.
  * @param onKeyDown Hears key presses bubbling up from the card's controls (the editors' Selection cards return focus to the canvas on Escape).
+ * @param rank Where the card sits on a detail page (`detailCardOrder`): `body` by default; `supporting` for versions and attachments, `discussion` for comments. Read by `DetailLayout`; it does not change how the card is drawn.
  * @param maxHeight The tallest the card may be, in pixels; the content scrolls inside when it needs more. Omit for a card that grows with its content.
  * @param children The card's content.
  */
 export function DetailCard({
   heading = "Details", title, help, action, onKeyDown, maxHeight, children,
 }: {
-  heading?: string; title?: ReactNode; help?: string; action?: ReactNode; onKeyDown?: KeyboardEventHandler<HTMLElement>; maxHeight?: number; children: ReactNode;
+  heading?: string; title?: ReactNode; help?: string; action?: ReactNode; onKeyDown?: KeyboardEventHandler<HTMLElement>; rank?: DetailRank; maxHeight?: number; children: ReactNode;
 }) {
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
   const shown = title ?? heading;

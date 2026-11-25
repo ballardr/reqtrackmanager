@@ -4,8 +4,8 @@
  * One connection as a routed page (`/projects/:projectId/modules/architecture/connections/:connectionId`, also the
  * target other records' links follow): its type, protocol, both ends with their ports (each end links to its element), and
  * description, and (when it has any) the connections it realises and the connections that realise it. The Links panel and the
- * activity timeline sit in the aside and tags in the header. An end the viewer can no
- * longer read shows only its code. Edits send only the changed fields with the version they were based on (a stale
+ * activity timeline sit in the aside and tags in the header. An end the viewer cannot
+ * read shows only its code. Edits send only the changed fields with the version they were based on (a stale
  * version, 409, is shown in the dialog); the server enforces the Architect role and a refusal appears as a message.
  */
 import { useCallback, useEffect, useState } from "react";
@@ -28,7 +28,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { architectureTabPath } from "./architectureTabs";
 import { projectConnectionApi, projectElementApi } from "./api";
 import { diffConnectionFields, valuesFromConnection } from "./architectureFields";
-import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
+import { architectureLifecycle } from "./architectureLifecycle";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ConnectionEnd } from "./connectionEnds";
 import { ARCHITECTURE_HELP } from "./help";
@@ -143,6 +143,8 @@ export function ConnectionDetailPage() {
     }
   }
 
+  const { lifecycle, menuRows } = architectureLifecycle(connection.status, connection.allowed_status_moves, moveTo);
+
   const endLink = (id: string, locked: boolean) => (locked ? null : `/projects/${projectId}/modules/architecture/elements/${id}`);
   const sourceHref = endLink(connection.source_element_id, connection.source_locked);
   const targetHref = endLink(connection.target_element_id, connection.target_locked);
@@ -156,7 +158,7 @@ export function ConnectionDetailPage() {
         recordLabel="Connection"
         title={connection.name || `${connection.source_element_name} → ${connection.target_element_name}`}
         code={connection.unique_code}
-        tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_connection" artefactId={connection.id} />}
+        tags={<RecordTags projectId={projectId} artefactType="architecture_connection" artefactId={connection.id} />}
         back={{ to: architectureTabPath(projectId, "connections"), label: "Connections" }}
         badges={
           <>
@@ -167,12 +169,11 @@ export function ConnectionDetailPage() {
         version={connection.version}
         subtitle={<>{connection.connection_type_name}{connection.protocol ? ` · ${connection.protocol}` : ""}</>}
         onEdit={connection.is_archived ? undefined : () => setEditing(true)}
-        actions={[archive.item, remove.item]}
-        stateMenu={<ArchitectureStatusControls status={connection.status} moves={connection.allowed_status_moves} onMove={moveTo} />}
+        actions={[...menuRows, archive.item, remove.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
       {remove.dialog}
-      <div className="stack">
         <DetailCard>
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
             <RecordFieldGroup helpNotNeeded label="Source">
@@ -187,7 +188,7 @@ export function ConnectionDetailPage() {
               <span>{connection.directional ? "One-way, source to target" : "Two-way"}</span>
             </RecordFieldGroup>
           </div>
-          <RecordField label="Description" value={connection.description || "—"} />
+          <RecordField markdown label="Description" value={connection.description || "—"} />
         </DetailCard>
         <RecordDiagramsCard projectId={projectId} record={{ kind: "connection", id: connection.id }} />
         {(connection.realises.length > 0 || connection.realised_by.length > 0) && (
@@ -204,7 +205,6 @@ export function ConnectionDetailPage() {
         )}
 
         <RecordCommentsCards projectId={projectId} artefactType="architecture_connection" recordId={connection.id} currentUserId={user?.id} />
-      </div>
 
       {editing && (
         <ConnectionFormModal

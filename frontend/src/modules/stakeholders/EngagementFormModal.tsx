@@ -1,19 +1,15 @@
 /**
  * Module: modules/stakeholders/EngagementFormModal
  *
- * Create/edit dialog for an Engagement's content fields (docs/ux-style-guide.md
- * principle 3: a full entity create/edit is a `Modal`). Shared by create, edit
- * (distinguished by whether `initial` is passed) and the "Log contact" quick
- * add. `compact` keeps only title, channel, date and summary for the quick add;
- * the rest (purpose, notes, consent, retain-until) is filled in from the detail
- * page. A full form also holds the participants (`ParticipantsField`): a new engagement sends them as
- * `stakeholder_ids` and `anonymous_participants`; an edit is given the recorded ones as
- * `initialParticipants` and returns the complete edited lists, which the caller compares with
- * what was recorded. Quick links and tags are for a new engagement only; facilitators, covered
- * Personas and audience groups are assigned from the detail page.
- * Fields sit in a `FormGrid`: short ones in pairs, long ones full width. Channel
- * renders through its label map and every control has a visible label
- * (principle 13).
+ * Create/edit dialog for an Engagement's content fields (docs/ux-style-guide.md principle 3: a full entity create/edit
+ * is a `Modal`). Shared by create, edit (when `initial` is passed) and the "Log contact" quick add. `compact` keeps
+ * only title, channel, date and summary for the quick add; the rest (purpose, notes, consent, retain-until) is filled
+ * in on the detail page. A full form also holds the participants (`ParticipantsField`): a new engagement sends them as
+ * `stakeholder_ids` and `anonymous_participants`; an edit is given the recorded ones as `initialParticipants` and
+ * returns the complete edited lists, which the caller compares with what was recorded. Quick links and tags are for a
+ * new engagement only; facilitators, covered Personas and audience groups are assigned from the detail page. Fields
+ * sit in a `FormGrid` (short ones in pairs, long ones full width); channel renders through its label map and every
+ * control has a visible label (principle 13).
  */
 import { useState } from "react";
 
@@ -90,16 +86,16 @@ export function EngagementFormModal({
           <DateField helpNotNeeded required label="Date" value={date} onChange={setDate} />
           {!compact && (
             <FormGridFull>
-              <TextAreaField help={STAKEHOLDERS_HELP.engagementPurpose} label="Purpose" rows={2} value={purpose} onChange={setPurpose} />
+              <TextAreaField markdown help={STAKEHOLDERS_HELP.engagementPurpose} label="Purpose" value={purpose} onChange={setPurpose} />
             </FormGridFull>
           )}
           <FormGridFull>
-            <TextAreaField help={STAKEHOLDERS_HELP.engagementSummary} label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} />
+            <TextAreaField markdown help={STAKEHOLDERS_HELP.engagementSummary} label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} />
           </FormGridFull>
           {!compact && (
             <>
               <FormGridFull>
-                <TextAreaField helpNotNeeded
+                <TextAreaField markdown helpNotNeeded
                   label="Notes" rows={5} value={notes} onChange={setNotes}
                   hint="Notes can name people and are personal data: they are deleted with the engagement."
                 />

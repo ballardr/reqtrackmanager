@@ -4,14 +4,9 @@ Revision ID: 0137
 Revises: 0136
 Create Date: 2026-11-05
 
-Adds the two organisation/project vocabularies a request's references and requesters are classified by
-(`external_system_definitions` / `project_external_systems`, `request_channel_definitions` /
-`project_request_channels`), the many-per-request `enhancement_request_external_refs` table and the per-requester
-`enhancement_request_requester_channel` table. Every existing organisation is given the default systems and channels.
-
-The one delivery-tool link a request version used to carry (`external_ref_url` / `external_ref_key`) becomes a
-`delivery` reference on the "Other" system, taken from the request's current version, and the two columns are
-dropped (the references are not versioned with the request).
+Adds the system and channel vocabularies, the per-request reference table and
+the per-requester channel table. A version's `external_ref_url`/`external_ref_key`
+become a `delivery` reference on the "Other" system and the columns are dropped.
 """
 
 from collections.abc import Sequence

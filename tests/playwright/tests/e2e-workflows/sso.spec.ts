@@ -1,18 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * End-to-end proof that Massif (v3)'s OIDC SSO login (E-U-01) actually
- * works against a real identity provider, not just on paper: this drives a
- * real browser through the full authorization-code flow against the
- * Keycloak instance in tests/container/docker-compose.yml (realm/client/
- * test users defined in tests/container/keycloak/realm-export.json), and
- * confirms the resulting account is provisioned with the org role its
- * Keycloak group maps to (services/oidc_provisioning.py).
+ * End-to-end proof that Massif (v3)'s OIDC SSO login (E-U-01) works against a real identity provider: a real browser
+ * drives the full authorization-code flow against the Keycloak instance in tests/container/docker-compose.yml
+ * (realm/client/test users in tests/container/keycloak/realm-export.json), and the resulting account is provisioned
+ * with the org role its Keycloak group maps to (services/oidc_provisioning.py).
  *
- * Configures the org's SSO settings via API first (setup, not what's being
- * tested), then drives the actual login — the org-branded login page,
- * Keycloak's own real login form, the callback — entirely through the
- * browser, the same as a real user would.
+ * The org's SSO settings are configured through the API (setup); the login (the org-branded login page, Keycloak's
+ * login form, the callback) runs entirely through the browser.
  */
 
 const ADMIN_EMAIL = "admin@example.com";
@@ -53,21 +48,13 @@ test("SSO login: real Keycloak authorization-code flow provisions the user and s
     });
     expect(ssoResp.ok()).toBe(true);
 
-    // Group -> org role mapping (services/oidc_provisioning.py) is now a
-    // property of the org group being synced into, not a flat `sso_group_mappings` list: Keycloak's
-    // "reqtrack-org-admins" group (sso-admin@example.com's membership, per
-    // realm-export.json) maps to this app's org_admin role via a new
-    // `OrgGroup` with both `idp_synced_group_name` and `granted_org_role`
-    // set.
+    // Group -> org role mapping (services/oidc_provisioning.py) is a property of the org group being synced into:
+    // Keycloak's "reqtrack-org-admins" group (sso-admin@example.com's membership, per realm-export.json) maps to the
+    // org_admin role through an `OrgGroup` with both `idp_synced_group_name` and `granted_org_role` set.
     //
-    // "Default Organization" is a shared fixture other specs (and prior
-    // runs of this very test) also use, and there's no delete-group
-    // endpoint — a bare POST here is not idempotent and 400s ("idp sync
-    // target already in use") on a second run against the same org. Reuse
-    // an already-synced group with this name if a prior run left one,
-    // rather than assuming a clean slate (this project's standing "make
-    // the spec tolerant of already-mutated state" rule for shared
-    // fixtures).
+    // "Default Organization" is a shared fixture used by other specs and prior runs of this test, and there is no
+    // delete-group endpoint: a bare POST is not idempotent and returns 400 ("idp sync target already in use") on a
+    // second run. An already-synced group with this name is reused rather than assuming a clean slate.
     const existingGroups = await (
       await page.request.get(`${apiBaseUrl}/api/v1/orgs/${orgId}/groups`, { headers: authHeaders })
     ).json();

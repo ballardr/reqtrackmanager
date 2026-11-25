@@ -1,12 +1,12 @@
 /**
  * Module: components/ComponentPhasesPanel
  *
- * Project administration of component phases. A switch (off, on, or follow the parent project) decides
- * whether each component follows its own workflow for each stage; when it is on, every component lists its
- * track per stage with a phase picker (moving it applies the phase kind's behaviour on the server: a locked
- * phase approves only that component's requirements for the stage), its owner and an edit dialog for the
- * workflow, applicability and owner (one flat row per component and stage). Progression between stages is advisory: a badge says when the previous
- * stage has closed for the component, and nothing is blocked otherwise.
+ * Project administration of component phases. A switch (off, on, or follow the parent project) decides whether
+ * each component follows its own workflow per stage. When on, every component lists its track per stage with a
+ * phase picker (moving it applies the phase kind's behaviour on the server: a locked phase approves only that
+ * component's requirements for the stage), its owner and an edit dialog (workflow, applicability, owner), one flat
+ * row per component and stage. Progression between stages is advisory: a badge says when the previous stage has
+ * closed for the component, and nothing is blocked.
  */
 import { useCallback, useState } from "react";
 

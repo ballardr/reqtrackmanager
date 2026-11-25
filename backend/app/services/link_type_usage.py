@@ -1,43 +1,31 @@
 """
 Module: services.link_type_usage
 
-Deleting a link type that is in use: what depends on it, and the two ways out
-(move its links to another type, or delete them too).
+Deleting a link type that is in use: what depends on it, and the two ways out (move its links to another
+type, or delete them too).
 
 Responsibilities:
-- `compute_usage`: how many links, projects, pending change requests and
-  approved-requirement links depend on a type; which artefact-type rules name
-  it; and, for every other type, whether it could take over (with the reason it
-  cannot, never silently skipped).
-- `delete_link_type`: the single delete path, in one transaction, writing one
-  audit event per link touched plus one for the type itself.
-
-Scope: the same two functions serve an organisation-wide type (`project=None`,
-org admin) and a project's local type (`project=<owner>`, project admin).
+- `compute_usage`: how many links, projects, pending change requests and approved-requirement links depend on
+  a type, which artefact-type rules name it, and for every other type whether it could take over (with the
+  reason it cannot).
+- `delete_link_type`: the single delete path, in one transaction, with one audit event per link and one for the
+  type. It serves an organisation-wide type (`project=None`, org admin) and a project's local type.
 
 Design decisions:
-- Keep by copy: deleting a type that other projects use can leave it behind for them
-  (`keep_in_projects`): a meaning-preserving copy is created as a local type in the
-  top-most affected project of each branch (descendants inherit it) and the affected
-  links are repointed to it, so nothing a child sees changes. A copy needs no authority
-  over the child; moving or removing links does (every project whose links change must
-  be manageable by the caller, else 409 with a count only, never project names).
-  A copy whose name is taken in its project's scope becomes "<name> (copy)".
-- Moving links merges duplicates: a moved link that would repeat an existing
-  link of the target type between the same two records is dropped, and the
-  count is reported, rather than failing the whole move.
-- A pending change request that proposes the type is repointed by a move and
-  *blocks* link removal; the foreign key's `SET NULL` would otherwise strip the
-  type and leave a request that can no longer be applied.
-- An artefact-type rule naming the type gets the replacement substituted by a
-  move; removal drops it from the rule and is refused when that would empty the
-  rule, never silently widening one to "any link type".
-- Project and approved-link figures are best effort (projects are resolved
-  per artefact, so large sets report `None` for the project count).
+- Keep by copy (`keep_in_projects`): a type other projects use can be left for them as a meaning-preserving
+  local copy in the top-most affected project of each branch (descendants inherit it), with the links
+  repointed. A copy needs no authority over the child; moving or removing links does (every affected project
+  must be manageable by the caller, else 409 with a count only, never project names). A taken name becomes
+  "<name> (copy)".
+- Moving links merges duplicates: a link that would repeat one of the target type between the same records is
+  dropped and counted, not a failure.
+- A pending change request proposing the type is repointed by a move and blocks link removal, since `SET NULL`
+  would leave a request that cannot be applied.
+- An artefact-type rule naming the type gets the replacement on a move; removal drops it and is refused if
+  that would empty the rule, so a rule never widens to "any link type".
+- Project and approved-link figures are best effort (large sets report `None` for the project count).
 
-Dependencies: `services.link_types` (rules and validation), `services.link_type_scope`
-(project scope), `services.requirements` (lock state), `services.audit`, `services.rbac`
-(project management check).
+Dependencies: `services.link_types`, `link_type_scope`, `requirements`, `audit`, `rbac`.
 """
 
 from __future__ import annotations

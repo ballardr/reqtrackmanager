@@ -3,17 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, logout, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectPreferencesGroup } from "./helpers";
 
 /**
- * Job to be done: profile preferences persist server-side (not just
- * localStorage) — theme (U-U-01), pronouns (C-U-18), and the post-login
- * landing page (U-U-03, all three modes: automatic / overview / a specific
- * project). The header Help link is also checked here as a light, low-risk
- * assertion rather than its own spec file.
+ * Job to be done: profile preferences persist server-side (not only in localStorage): theme (U-U-01), pronouns
+ * (C-U-18), and the post-login landing page (U-U-03, all three modes: automatic / overview / a specific project).
+ * The header Help link is also checked here as a light assertion rather than in its own spec file.
  *
- * The landing preference is only resolved once, at the moment of login
- * (`resolveLandingPath` in LoginPage.tsx) — it's not applied to ordinary
- * in-app navigation like clicking the brand logo, which always goes to
- * plain `/projects`. Testing it for real means logging out and back in for
- * each mode, not just navigating around within one session.
+ * The landing preference is resolved once, at login (`resolveLandingPath` in LoginPage.tsx), and not applied to
+ * in-app navigation such as the brand logo (always plain `/projects`), so each mode needs a logout and login.
  */
 test.describe("preferences: theme persistence, pronouns, landing page mode; help link", () => {
   test("theme and pronouns persist across reload; all three landing-page modes save", async ({ page }) => {
@@ -133,12 +128,9 @@ test.describe("preferences: theme persistence, pronouns, landing page mode; help
       await page.goto("/preferences");
       await selectPreferencesGroup(page, "Your access");
       await expect(page.getByText(childName)).toBeVisible();
-      // Scoped to this run's own uniquely-suffixed parent group row, not a
-      // bare page-wide match on "(via a nested group)" — this persona
-      // (shared with other specs in the suite) accumulates one such nested
-      // membership per repeated run of this same test against the same
-      // database, which would otherwise make a page-wide text match
-      // ambiguous rather than reflecting a real bug.
+      // Scoped to this run's uniquely suffixed parent group row, not a page-wide match on "(via a nested group)": this
+      // persona is shared with other specs and accumulates one such nested membership per run against the same database,
+      // which would make a page-wide match ambiguous.
       const parentRow = page.locator("li", { hasText: parentName });
       await expect(parentRow).toBeVisible();
       await expect(parentRow.getByText("(via a nested group)")).toBeVisible();

@@ -2,9 +2,9 @@
  * Module: components/CreateChangeRequestDialog
  *
  * A self-contained "New change request" dialog for another record's Links panel (a core type's entry in
- * `modules/coreLinkedRecordCreators`): the same `ChangeRequestCreateModal` the Change requests page uses. When the page
- * record is a requirement, it is pre-selected as the requirement to change (it stays editable), because a finding or an
- * enhancement request is often a change to an existing requirement.
+ * `modules/coreLinkedRecordCreators`): the `ChangeRequestCreateModal` the Change requests page uses. A requirement
+ * page record is pre-selected (and stays editable) as the requirement to change, since a finding or enhancement
+ * request is often a change to an existing requirement.
  */
 import type { LinkedRecordCreatorProps } from "../modules/types";
 import { ChangeRequestCreateModal } from "./ChangeRequestCreateModal";

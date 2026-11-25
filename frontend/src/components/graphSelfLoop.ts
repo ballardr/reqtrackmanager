@@ -2,23 +2,21 @@
  * Module: components/graphSelfLoop
  *
  * The shape of a line that leaves a box and returns to the same box (a self loop on the shared graph canvas). Pure
- * functions, no React, so the canvas and the tests use the one rule.
+ * functions, no React, so the canvas and the tests share one rule.
  *
- * Responsibilities:
- * - Give the cubic curve of a loop on a box: where it leaves, where it returns, its two control points and the point a label
- *   sits at.
- * - Turn the curve into an SVG path string.
+ * Responsibilities: give the cubic curve of a loop on a box (where it leaves and returns, its two control points and the
+ * label point) and turn it into an SVG path string.
  *
  * Design decisions:
- * - The loop is fixed standard geometry: in the first slot it leaves the top side three quarters of the way across, bulges
- *   outward past the top right corner by `SELF_LOOP_REACH` and returns to the right side a quarter of the way down, so its
- *   arrowhead points into the box. A consumer cannot fix its attach points (a loop has no choice to make); several loops on
- *   one box take the other corners in turn (`slot`, given by `graphLineAnchors`), so none draws over another.
- * - A marker (a dot, a ring, a diamond) has no box outline at its corners, so its loop leaves the middle of a top or bottom side
- *   and returns to the middle of a left or right side, which are the points on its drawing (`sides`, the points the marker offers:
- *   a corner of the loop is used only when both of its sides are offered, so a label on one side is not crossed).
- * - The server draws the same loop with a Python copy (`state_shapes.py`); `graphSelfLoopCases.json` holds the cases both are
- *   tested against, so a change to the rule is made in both.
+ * - The loop is fixed standard geometry: in the first slot it leaves the top side three quarters across, bulges outward
+ *   past the top right corner by `SELF_LOOP_REACH` and returns to the right side a quarter down, so its arrowhead points
+ *   into the box. A consumer cannot fix its attach points; several loops on one box take the other corners in turn
+ *   (`slot`, from `graphLineAnchors`), so none draws over another.
+ * - A marker (a dot, a ring, a diamond) has no outline at its corners, so its loop runs between the middles of a top or
+ *   bottom side and a left or right side (`sides`, the points the marker offers; a corner is used only when both its
+ *   sides are offered, so a label on one side is not crossed).
+ * - The server draws the same loop with `state_shapes.py`; `graphSelfLoopCases.json` holds the cases both are tested
+ *   against, so a change is made in both.
  */
 
 /** How far the curve reaches beyond the box, in canvas units. */

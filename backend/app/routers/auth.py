@@ -1,14 +1,11 @@
 """
 Module: routers.auth
 
-Login (including the optional two-factor second step, C-U-14), public
-self-signup (gated by `ServerSettings.signup_mode`, see `signup` below),
-current-user profile/preferences (C-U-16, C-U-18, C-N-05), password change,
-and TOTP enrollment/disable endpoints. Login attempts (including a
-successful signup, which logs the new user in immediately) are always
-logged (C-A-07) and counted (metrics) regardless of outcome. Also the
-unauthenticated "forgot password" / "reset password" pair, whose logic lives in
-`services/credential_reset.py`.
+Login (including the optional two-factor second step, C-U-14), public self-signup (gated by
+`ServerSettings.signup_mode`), current-user profile/preferences (C-U-16, C-U-18, C-N-05), password
+change, TOTP enrolment/disable and the unauthenticated forgot/reset password pair (logic in
+`services/credential_reset.py`). Login attempts, including a signup that logs the new user in, are
+always logged (C-A-07) and counted (metrics) whatever the outcome.
 """
 
 from __future__ import annotations
@@ -26,7 +23,6 @@ from app.auth_backends.native import NativeAuthBackend
 from app.config import get_settings
 from app.database import SessionLocal, get_db
 from app.deps import get_client_ip, get_current_session_user, get_current_user
-from app.metrics import login_attempts_total
 from app.models.enums import OrgRole, SignupMode
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, PendingInvite, UserOrgRole
@@ -113,7 +109,6 @@ def login(
     wait = login_throttle.seconds_to_wait(db, email_attempted, request_ip)
     if wait:
         log_login(db, user_id=None, email_attempted=email_attempted, ip_address=request_ip, success=False, kind="throttled")
-        login_attempts_total.labels(result="throttled").inc()
         db.commit()
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
@@ -128,7 +123,6 @@ def login(
         ip_address=request_ip,
         success=result.success,
     )
-    login_attempts_total.labels(result="success" if result.success else "failure").inc()
     db.commit()
     background_tasks.add_task(resolve_and_store_login_location, login_event.id, request_ip)
     if result.reset_required or result.confirmation_required:
@@ -247,30 +241,23 @@ def signup(
     request_ip: str = Depends(get_client_ip),
     db: Session = Depends(get_db),
 ):
-    """Public self-registration, gated by `ServerSettings.signup_mode`
-    unless `invite_token` proves an explicit admin invite (which overrides
-    the mode entirely — see `SignupRequest`'s docstring).
+    """Public self-registration, gated by `ServerSettings.signup_mode` unless `invite_token` proves an
+    explicit admin invite (which overrides the mode; see `SignupRequest`).
 
     Without a valid invite:
       - `DISABLED`: rejected (403).
-      - `ALWAYS_ON`: account created with no organisation membership; an
-        admin assigns one afterward, same as any `create_org_user`-style
-        provisioning.
-      - `ORG_SPECIFIED`: the email's domain must match exactly one
-        organisation with `allow_self_signup=True` (which — enforced at
-        write time in `update_advanced_settings` — can never also be
-        `sso_only`, so this can't hand out a native credential an
-        `sso_only` org's login page would reject); that organisation grants
-        `member` immediately. No domain match is a 400, not a silent no-op.
+      - `ALWAYS_ON`: account created with no organisation membership; an admin assigns one afterwards.
+      - `ORG_SPECIFIED`: the email's domain must match exactly one organisation with
+        `allow_self_signup=True` (never also `sso_only`, enforced in `update_advanced_settings`, so no
+        native credential is handed out that an `sso_only` login page would reject); that organisation
+        grants `member` immediately. No domain match is a 400.
 
     Logs in immediately on success, same response shape as `/login`.
 
     Raises:
-        HTTPException: 409 if the email is already registered; 400 if an
-            `invite_token` is supplied but invalid/expired, or (in
-            `ORG_SPECIFIED` mode with no invite) the email's domain doesn't
-            match exactly one self-signup-enabled organisation; 403 if
-            public signup is disabled and no invite was supplied.
+        HTTPException: 409 if the email is already registered; 400 if an `invite_token` is invalid or
+            expired, or (in `ORG_SPECIFIED` mode with no invite) the email's domain does not match
+            exactly one self-signup-enabled organisation; 403 if signup is disabled and no invite was supplied.
     """
     credential_reset.enforce_signup_rate_limit(request_ip)
     email = payload.email.lower()
@@ -368,7 +355,6 @@ def verify_2fa(
     claims = decode_access_token(payload.challenge_token)
     if not claims or claims.get("purpose") != "2fa_challenge" or "sub" not in claims:
         log_login(db, user_id=None, email_attempted="(invalid 2fa challenge)", ip_address=request_ip, success=False, kind="second_factor")
-        login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     user = db.get(User, UUID(claims["sub"]))
@@ -382,20 +368,14 @@ def verify_2fa(
             email_attempted=user.email if user else "(invalid 2fa challenge)",
             ip_address=request_ip, success=False, kind="second_factor"
         )
-        login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     # Lock the row: parallel guesses would otherwise each read the same counter and advance it once between them.
     db.refresh(user, with_for_update=True)
-    # Hardening-review finding: a stolen password plus an unthrottled,
-    # reusable 2FA challenge against a bounded 6-digit TOTP keyspace lets an
-    # attacker converge toward a near-certain bypass given enough repeated
-    # 5-minute windows (freely re-mintable via `/login`). This lockout is
-    # keyed to the *account*, not the challenge token, so starting a fresh
-    # login doesn't reset it.
+    # Lockout is keyed to the account, not the challenge token: a stolen password plus a freely re-mintable
+    # `/login` challenge against the bounded 6-digit TOTP keyspace would otherwise converge on a bypass.
     if user.failed_2fa_locked_until is not None and user.failed_2fa_locked_until > datetime.now(UTC):
         log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False, kind="second_factor")
-        login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Too many failed attempts. Try again later.")
     if not totp.consume_code(user, payload.code):
@@ -404,11 +384,9 @@ def verify_2fa(
             user.failed_2fa_locked_until = datetime.now(UTC) + timedelta(minutes=_settings.two_factor_lockout_minutes)
             user.failed_2fa_attempts = 0
         log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False, kind="second_factor")
-        login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code.")
     login_event = log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True, kind="second_factor")
-    login_attempts_total.labels(result="success").inc()
     user.last_login_at = datetime.now(UTC)
     user.failed_2fa_attempts = 0
     user.failed_2fa_locked_until = None
@@ -447,17 +425,12 @@ def read_me(current_user: User = Depends(get_current_user)):
 
 @router.get("/me/memberships", response_model=MyMembershipsOut)
 def read_my_memberships(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Returns the current user's full cross-org membership picture — org
-    roles, org-group membership (direct and inherited via nesting), and
-    per-project roles, across every organisation they belong to. Backs the
-    self-service "My groups & roles" section (`PreferencesPage.tsx`) —
-    self-service, so no `require_org_role` gate; any authenticated user may
-    read their own data.
+    """Returns the current user's cross-org membership picture: org roles, org-group membership (direct
+    and inherited via nesting) and per-project roles, across every organisation they belong to. Backs the
+    self-service "My groups & roles" section; any authenticated user may read their own data.
 
-    "Orgs I belong to" is scoped to organisations with at least one direct
-    `UserOrgRole` row — every project-accessible user already has one
-    somewhere (C-U-02, enforced at write time by `_require_user_in_org`),
-    so this doesn't miss project-only access.
+    "Orgs I belong to" is scoped to organisations with at least one direct `UserOrgRole` row; every
+    project-accessible user has one (C-U-02, `_require_user_in_org`), so project-only access is not missed.
     """
     org_ids = set(
         db.scalars(select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)).all()
@@ -505,19 +478,13 @@ def update_preferences(
 ):
     """Updates the current user's preferences and profile fields.
 
-    Landing page / theme (U-U-01, U-U-03), pronouns (C-U-18), display name
-    (rejected if an org admin has locked it, C-U-16), email digest mode
-    (C-N-05), and the general-purpose `ui_preferences` bag (e.g. per-list
-    tile/list view mode). `ui_preferences` is shallow-merged into the
-    existing bag by top-level key (a reassignment, not an in-place
-    mutation, so SQLAlchemy's change-tracking picks it up) rather than
-    replaced wholesale, so setting one key never clobbers another; a `null`
-    value removes its key, and the merged bag is size-bounded
-    (`services.ui_preferences`, 422 beyond the limits). The user row is locked
-    (`SELECT ... FOR UPDATE`) before the merge, because two near-simultaneous
-    patches (two tabs, or the fire-and-forget view-mode toggles) would
-    otherwise each merge into the same stale bag and the later commit would
-    silently revert the earlier one's key.
+    Landing page / theme (U-U-01, U-U-03), pronouns (C-U-18), display name (rejected if an org admin has
+    locked it, C-U-16), email digest mode (C-N-05) and the `ui_preferences` bag (e.g. per-list view mode).
+    `ui_preferences` is shallow-merged by top-level key (a reassignment, so SQLAlchemy's change tracking
+    sees it); a `null` value removes its key and the merged bag is size-bounded (`services.ui_preferences`,
+    422 beyond the limits). The user row is locked (`SELECT ... FOR UPDATE`) before the merge, because two
+    near-simultaneous patches would otherwise each merge into the same stale bag and the later commit would
+    revert the earlier one's key.
     """
     if payload.ui_preferences is not None:
         # Before any attribute is set: a locking refresh reloads the row and
@@ -576,10 +543,7 @@ def change_password(
         title="Your password was changed",
         body="If you did not make this change, contact your organisation admin immediately.",
     )
-    # Hardening-review finding: password/2FA changes are security-critical
-    # account events with no other audit trail (the in-app notification
-    # above is user-facing, not an admin-visible record) — every other
-    # sensitive mutation in this codebase calls log_event, this one hadn't.
+    # Password and 2FA changes have no other admin-visible audit trail (the notification above is user-facing).
     log_event(db, entity_type="user", entity_id=current_user.id, action="password_changed", actor_id=current_user.id)
     db.commit()
 
@@ -648,24 +612,16 @@ def confirm_or_disable_2fa(
     current_user: User = Depends(get_current_session_user),
     db: Session = Depends(get_db),
 ):
-    """Applies a 2FA status transition for the current user — merges the
-    formerly-separate `confirm`/`disable` endpoints (2026-09-22, see
-    docs/decisions.md) into one, dispatching on `payload.action`. Each
-    branch below preserves its original endpoint's exact guards and field
-    writes; neither was weakened by the merge. `/2fa/enroll` itself is
-    unchanged and stays a separate endpoint (no `code` to dispatch on, and
-    a different response shape).
+    """Applies a 2FA status transition for the current user, dispatching on `payload.action`.
+    `/2fa/enroll` is a separate endpoint (no `code`, different response shape).
 
-    - `confirm` — completes an enrollment started by `/2fa/enroll`: 400 if
-      no enrollment is in progress (`current_user.totp_secret` unset), 400
-      if `code` doesn't verify against it, else sets `is_2fa_enabled`.
-    - `disable` — turns 2FA back off for an already-enabled account: 400 if
-      2FA isn't currently enabled, 400 if `code` doesn't verify, else clears
-      `is_2fa_enabled`/`totp_secret` and bumps `token_version` (same
-      rationale as `change_password`: a token issued while 2FA was still on
-      shouldn't silently keep working past this point).
+    - `confirm`: completes an enrolment started by `/2fa/enroll`: 400 if no enrolment is in progress
+      (`totp_secret` unset) or `code` does not verify, else sets `is_2fa_enabled`.
+    - `disable`: 400 if 2FA is not enabled or `code` does not verify, else clears
+      `is_2fa_enabled`/`totp_secret` and bumps `token_version` (as `change_password`: a token issued while
+      2FA was on must not keep working).
 
-    Both branches count wrong codes against the same per-account lockout `/2fa/verify` uses, so a held
+    Both branches count wrong codes against the per-account lockout `/2fa/verify` uses, so a held
     session cannot grind through the 6-digit space here instead.
 
     Raises:

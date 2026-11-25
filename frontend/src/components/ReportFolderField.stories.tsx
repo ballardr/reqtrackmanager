@@ -7,10 +7,10 @@ import { buildFolderApi, openFolderPopover } from "../testing/reportFolderFixtur
 import { ReportFolderField } from "./ReportFolderField";
 
 /** Hosts the field with state, as a layout or pack form does. */
-function Host({ initial = "", api, onChanged }: { initial?: string; api: ReportFolderApi; onChanged?: () => void }) {
+function Host({ initial = "", api, onChanged, width = "22rem" }: { initial?: string; api: ReportFolderApi; onChanged?: () => void; width?: string }) {
   const [value, setValue] = useState(initial);
   return (
-    <div style={{ width: "22rem", padding: "var(--space-5)" }}>
+    <div style={{ width, padding: "var(--space-5)" }}>
       <ReportFolderField value={value} onChange={setValue} api={api} onChanged={onChanged} />
       <output aria-label="Value">{value}</output>
     </div>
@@ -61,5 +61,18 @@ export const AddingAFolderKeepsThePopoverOpen: Story = {
     await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await expect(await popover.findByRole("radio", { name: "Annual" })).toBeChecked();
     await expect(canvas.getByLabelText("Value")).toHaveTextContent("Annual");
+  },
+};
+
+/** In a field the width of a dialog the popover opens at the field's left edge, not at its far end. */
+export const PopoverOpensAtTheLeftEdgeOfAWideField: Story = {
+  render: () => <Host api={buildFolderApi()} width="70rem" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", { name: "Folder: No folder" });
+    await userEvent.click(trigger);
+    const panel = await screen.findByRole("dialog", { name: /folder/i });
+    await expect(Math.abs(panel.getBoundingClientRect().left - trigger.getBoundingClientRect().left)).toBeLessThan(2);
+    await expect(panel.getBoundingClientRect().width).toBeLessThanOrEqual(449);
   },
 };

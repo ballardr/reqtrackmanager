@@ -1,18 +1,16 @@
 /**
  * Module: components/TableHeadingColours
  *
- * The control for a document layout's default table heading colours: the heading row's fill, its text colour and a small
- * sample heading row showing the result.
+ * The control for a document layout's default table heading colours: the heading row's fill, its text colour and a
+ * sample heading row showing the result. One component for the Blocks view's layout panel and the text view's page
+ * setup dialog.
  *
- * Responsibilities:
- * - Draw the two shared colour fields (`ColourChoiceField`, so the layout's scheme names are offered) and report both words
- *   together; an empty word is "default" (the fill the organisation's accent, the text automatic).
- * - Draw the sample the way the renderers colour a heading row (`utils/tableHeadingColours`): the fill, else the accent;
- *   the text colour, else black or white by contrast with the fill.
- * - One component for the Blocks view's layout panel and the text view's page setup dialog, so both places agree.
+ * Responsibilities: draw the two shared colour fields (`ColourChoiceField`, offering the layout's scheme names) and report
+ * both words together (an empty word is "default": the organisation's accent fill, automatic text); draw the sample as the
+ * renderers colour a heading row (`utils/tableHeadingColours`): the fill, else the accent; the text, else black or white
+ * by contrast with the fill.
  *
- * Design decisions: "No colour" is not offered; a heading row always has a fill, and a table that wants none says so in its
- * own cells. Changes apply as they are made.
+ * Design decisions: "No colour" is not offered, since a heading row always has a fill. Changes apply as made.
  */
 import { useStrings } from "../context/TerminologyContext";
 import { tableHeadingColours } from "../utils/tableHeadingColours";

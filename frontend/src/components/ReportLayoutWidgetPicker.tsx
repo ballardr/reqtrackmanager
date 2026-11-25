@@ -2,14 +2,12 @@
  * Module: components/ReportLayoutWidgetPicker
  *
  * The designer's widget picker: lists the report parts a `[[widget.key ...]]` line can embed as a tree (module, then
- * report, then the report's components), every branch collapsed until the author opens it or searches. It lets the
- * author set the report's parameters with the same form the Reports page uses (`ReportParamsForm`) and inserts the
- * finished line.
+ * report, then the report's components), every branch collapsed until the author opens it or searches. The author
+ * sets the report's parameters with the Reports page's form (`ReportParamsForm`) and inserts the finished line.
  *
- * Responsibilities: filter by title, report or module (a search opens every branch that still holds a match), show
- * what the line will read before inserting it, build the line through `widgetLine` (the one place that decides bare
- * versus quoted values). Controlled by the designer, which performs the insertion; the server validates the line when
- * it is parsed.
+ * It filters by title, report or module (a search opens every branch that holds a match), shows what the line will
+ * read before inserting it and builds the line through `widgetLine` (the one place that decides bare versus quoted
+ * values). Controlled by the designer, which performs the insertion; the server validates the line when parsed.
  */
 import { useMemo, useState } from "react";
 

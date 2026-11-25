@@ -1,21 +1,18 @@
 /**
  * Module: utils/reportLayoutBlockly
  *
- * Pure conversion between a report layout tree and the block editor's workspace state (Blockly's serialisation
- * JSON), plus the decisions about how a block type is drawn. It imports nothing from Blockly, so the round trip is
- * testable and the editor chunk stays out of the main bundle.
- *
- * Responsibilities:
- * - Summarise a block's key facts as one read-only line; every value is edited in the block editor beside the
- *   workspace, never on the block.
- * - Turn tree nodes into block states and back without losing any key: a block's `data` holds the whole node
- *   minus its child blocks, so a key the editor does not know survives an edit.
- * - List the blocks an author can add: one entry per block type, with the headings offered by level, the most-used
- *   types first.
- *
- * Design decisions: the tree stays canonical (the editor never keeps a second model); a block's `data` is the node
- * minus its child blocks and is the only thing read back, so opening a tree never rewrites it. Validity is the
- * server's; nothing here judges a value.
+ * Pure conversion between a report layout tree and the block editor's workspace
+ * state (Blockly's serialisation JSON), plus how a block type is drawn. It imports
+ * nothing from Blockly, so the round trip is testable and the editor chunk stays
+ * out of the main bundle.
+ * - Summarise a block's key facts as one read-only line (values are edited in
+ *   the block editor beside the workspace).
+ * - Turn tree nodes into block states and back without losing a key: a block's
+ *   `data` holds the whole node minus its child blocks, so an unknown key survives.
+ * - List the blocks an author can add: one entry per type, headings by level, the
+ *   most-used first.
+ * Design: the tree stays canonical (no second model); `data` is the only thing
+ * read back, so opening a tree never rewrites it. Validity is the server's.
  */
 import type { BlockType, LayoutFamily } from "../api/reportLayouts";
 import { summarise, type Tree, type TreeNode } from "./reportLayoutTree";

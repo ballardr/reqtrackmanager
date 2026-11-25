@@ -1,15 +1,12 @@
 /**
  * Module: modules/architecture/DiagramSettingsButton
  *
- * The gear beside Export in the editor toolbar: a `SettingsPopoverButton` holding the diagram-level setting that is
- * stored when changed (the connection-detail switch, which sets whether the diagram draws plain lines or typed,
- * labelled ones, the Line hops switch, which sets whether a line that crosses another is drawn with a small arc, the Show
- * connection names switch, which sets whether a line is labelled with the names of its connections, and the default line
- * shape; all belong to the diagram and apply to every viewer and every export) and the viewer's own display switches: Show
- * notes (whether a box draws its display note; kept in the page address), and Show comments and Show resolved (whether the
- * comment markers, and those of resolved threads, are drawn), Snap to grid (whether boxes snap to the grid while they are
- * moved or resized; kept in this browser) and Always show attach points (kept in the person's account). None of the five is
- * stored with the diagram or applied to exports.
+ * The gear beside Export in the editor toolbar: a `SettingsPopoverButton` holding the diagram-level settings, stored
+ * when changed (the connection-detail switch for plain or typed, labelled lines; Line hops, which draws a crossing line
+ * with a small arc; Show connection names; and the default line shape; all apply to every viewer and every export), and
+ * the viewer's own display switches: Show notes (kept in the page address), Show comments and Show resolved (whether
+ * comment markers, and those of resolved threads, are drawn), Snap to grid (kept in this browser) and Always show
+ * attach points (kept in the person's account). None of these five is stored with the diagram or applied to exports.
  */
 import { AttachPointsSetting } from "../../components/AttachPointsSetting";
 import { FieldCaption } from "../../components/FieldHelp";

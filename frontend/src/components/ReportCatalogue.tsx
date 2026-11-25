@@ -1,18 +1,16 @@
 /**
  * Module: components/ReportCatalogue
  *
- * The body of the Reports dialog (`ReportsDialog`): a "Report" picker (`ReportPicker`: folders, search, a type filter and favourites) over
- * every report the backend catalogue lists for a project or organisation,
- * and the selected report below it, run by `ReportRunner`. Used for a project and for an organisation, so a
- * module adds a report with a backend declaration only: no list of reports exists in the frontend.
+ * The body of the Reports dialog (`ReportsDialog`): a "Report" picker (`ReportPicker`: folders, search, a type
+ * filter and favourites) over every report the backend catalogue lists for a project or organisation, and the
+ * selected report below it, run by `ReportRunner`. Used for a project and for an organisation, so a module adds a
+ * report with a backend declaration only: no list of reports exists in the frontend.
  *
- * `extraEntries` lets a host add reports that are not in the catalogue
- * because they have their own request model (the requirement report); they appear in the same picker, first, and render the host's own
- * content. The selection is the `report` search parameter (the entry's slug
- * or extra key) so a report is linkable and survives a reload; absent or
- * unknown it falls back to the first entry. With a single entry the picker
- * is omitted. A pure presentation component over already-loaded `entries`
- * (hosts load them with `useReportCatalogue`).
+ * `extraEntries` lets a host add reports outside the catalogue because they have their own request model (the
+ * requirement report); they appear first in the same picker and render the host's own content. The selection is
+ * the `report` search parameter (the entry's slug or extra key), so a report is linkable and survives a reload;
+ * absent or unknown it falls back to the first entry. With a single entry the picker is omitted. Presentation over
+ * already-loaded `entries` (hosts load them with `useReportCatalogue`).
  */
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";

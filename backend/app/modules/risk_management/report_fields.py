@@ -1,17 +1,11 @@
 """
 Module: modules.risk_management.report_fields
 
-The `ReportFieldProvider` for the `risk` artefact type, so custom report layouts can print and group Risks.
-
-Responsibilities:
-- Declare the Risk fields a layout may use: the risk text (from the search declaration), the treatment
-  strategy, the owner and the review date, all read from the current version.
-
-Design decisions:
-- The owner is a principal (a user or a group), shown by name. Ratings are scored from the organisation's
-  scoring model and are reported by the Risk module's own reports, not as raw level ids.
-
-Dependencies: this module's models and enums; `services.report_fields` (builders).
+The `ReportFieldProvider` for `risk`, so custom report layouts can print and
+group Risks: the risk text (from the search declaration), treatment strategy,
+owner (a principal shown by name) and review date, from the current version.
+Ratings are reported by the module's own reports, not as level ids.
+Dependencies: this module's models; `services.report_fields`.
 """
 
 from __future__ import annotations

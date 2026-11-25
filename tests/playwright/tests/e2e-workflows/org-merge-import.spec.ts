@@ -8,20 +8,14 @@ import { deleteOrgOnCleanup, installCleanupHook, loginAs, logout, PASSWORD, PERS
 installCleanupHook();
 
 /**
- * Job to be done: merging an exported organisation bundle into an
- * *existing* organisation — the "Import into this organisation" action on
- * the org admin page (`services.org_export.merge_org_bundle`,
- * `POST /orgs/{id}/import/preview` + `.../import/merge`) — as opposed to
- * `org-bundle-export-import.spec.ts`, which always creates a brand-new
- * organisation. Drives a project-name collision through the actual
- * conflict-resolution UI and confirms the target organisation's own
- * branding is untouched by the merge.
+ * Job to be done: merging an exported organisation bundle into an existing organisation ("Import into this
+ * organisation" on the org admin page; `services.org_export.merge_org_bundle`, `POST /orgs/{id}/import/preview` and
+ * `.../import/merge`), unlike `org-bundle-export-import.spec.ts`, which creates a new organisation. Drives a
+ * project-name collision through the conflict-resolution UI and confirms the target organisation's branding is
+ * untouched by the merge.
  *
- * Disposable orgs built from scratch via the API, same reasoning as
- * `org-bundle-export-import.spec.ts`: importing/merging genuinely grants
- * real roles and creates real projects, which would pollute the shared
- * Alpha/Beta/Gamma personas other specs in this suite depend on staying
- * in a known state.
+ * Uses disposable organisations built through the API: importing grants real roles and creates real projects, which
+ * would pollute the shared Alpha/Beta/Gamma personas other specs depend on.
  */
 test.describe("organisation bundle merge-import", () => {
   test("merge a bundle into an existing organisation, resolving a project-name conflict", async ({ page }) => {
@@ -96,14 +90,9 @@ test.describe("organisation bundle merge-import", () => {
       // Style guide "Pattern: action menu" — rename + export now live
       // behind the Overview group's kebab trigger, not a standalone button.
       await page.getByRole("button", { name: "Organisation actions" }).click();
-      // `ActionMenu`'s items live in a `Popover` that positions itself
-      // relative to the trigger after mount (components/Popover.tsx) —
-      // clicking the menuitem before that settles can land the click at a
-      // stale coordinate the popover has since moved away from, silently
-      // missing the button (Playwright still reports the click as
-      // succeeded, since it targets the element's last-known bounding
-      // box). Waiting for the menu itself first proves the popover has
-      // finished positioning.
+      // `ActionMenu` items live in a `Popover` that positions itself after mount (components/Popover.tsx); a click before
+      // it settles can land at a stale coordinate and miss the button while Playwright still reports success. Waiting for
+      // the menu first proves positioning has finished.
       await expect(page.getByRole("menu", { name: "Organisation actions" })).toBeVisible();
       const downloadPromise = page.waitForEvent("download");
       await page.getByRole("menuitem", { name: "Export organisation bundle" }).click();

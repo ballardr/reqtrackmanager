@@ -21,11 +21,9 @@ function exportFile(): File {
 }
 
 /**
- * `StandardImportModal` — the
- * "Import standard" dialog reached from `StandardListPage.tsx`'s "New
- * standard" split-button trigger. Mirrors `StandardFormModal.stories.tsx`'s
- * org-picker coverage one level down, plus the 409-conflict retry flow this
- * dialog owns that `StandardFormModal` has no equivalent of.
+ * `StandardImportModal` is the "Import standard" dialog opened from `StandardListPage.tsx`'s "New standard" split-button. These
+ * stories cover the organisation picker, as `StandardFormModal.stories.tsx` does, plus the 409-conflict retry flow only this
+ * dialog has.
  */
 const meta: Meta<typeof StandardImportModal> = {
   title: "Modules/Compliance/StandardImportModal",

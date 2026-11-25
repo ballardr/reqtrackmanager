@@ -6,6 +6,8 @@ import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures"
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { StrategyDetailPage } from "./StrategyDetailPage";
 import type { Strategy } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
 
 const PROJECT_ID = "project-1";
 const STRATEGY_ID = "strategy-1";
@@ -37,11 +39,7 @@ function mockDetailApis(current: Strategy) {
   });
 }
 
-/**
- * A real routed page — stories go through `withRouter`/`withAuth` rather
- * than passing props directly, mirroring `modules/decisions/
- * DecisionDetailPage.stories.tsx`'s own identical convention.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props, as in `modules/decisions/DecisionDetailPage.stories.tsx`. */
 const meta: Meta<typeof StrategyDetailPage> = {
   title: "Modules/ContextStrategy/StrategyDetailPage",
   component: StrategyDetailPage,
@@ -58,32 +56,51 @@ export default meta;
 
 type Story = StoryObj<typeof StrategyDetailPage>;
 
-export const UnderReviewShowsApproveAndSendBack: Story = {
+export const UnderReviewOffersApproveAndSendBack: Story = {
   beforeEach: () => mockDetailApis(strategy()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Lead the regional market" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Send back" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Strategy");
+    await expect(names[0]).toBe("Promote to Approved");
+    await expect(names).toContain("Send back");
+    await expect(currentLifecycleStep(canvasElement)).toBe("Under review");
   },
 };
 
-export const DraftShowsPropose: Story = {
+export const DraftOffersPropose: Story = {
   beforeEach: () => mockDetailApis(strategy({ status: "draft" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Propose" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Proposed" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Strategy");
+    await expect(names[0]).toBe("Promote to Proposed");
+    await expect(names).not.toContain("Send back");
   },
 };
 
-export const ActiveShowsSupersedeAndRetire: Story = {
+export const ActiveOffersSupersedeAndRetire: Story = {
   beforeEach: () => mockDetailApis(strategy({ status: "active", is_locked: true })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Supersede" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Strategy actions" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Strategy");
+    await expect(names).toEqual(expect.arrayContaining(["Supersede", "Retire"]));
+    await expect(names.some((name) => name.startsWith("Promote to"))).toBe(false);
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     await expect(canvas.getByText(/new attachments can no longer be added/)).toBeInTheDocument();
+    // The padlock on the locked current step carries the reason.
+    await expect(canvas.getAllByRole("img", { name: /^Locked/ }).length).toBeGreaterThan(0);
+  },
+};
+
+export const RetiredShowsTheEndStep: Story = {
+  beforeEach: () => mockDetailApis(strategy({ status: "retired", is_locked: true })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Retired"));
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
   },
 };
 
@@ -91,8 +108,8 @@ export const SendBackRequiresComment: Story = {
   beforeEach: () => mockDetailApis(strategy()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Send back" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Send back" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Strategy actions" }));
+    await chooseRecordAction(canvas, "Strategy", "Send back");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Send this Strategy back to Draft?" }));
     await expect(dialog.getByRole("button", { name: "Send back" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText("Send-back comment"), "Needs a stronger market analysis first.");
@@ -110,8 +127,9 @@ export const ApproveStrategy: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Approve" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Approve" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Approved" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Approved" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Promote to Approved" }));
     const dialog = within(within(document.body).getByRole("dialog", { name: "Approve this Strategy?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
 
@@ -119,12 +137,28 @@ export const ApproveStrategy: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/strategies/${STRATEGY_ID}/approve`,
       { comment: null }
     ));
-    await waitFor(() => expect(canvas.getByText("Approved")).toBeInTheDocument());
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Approved"));
   },
 };
 
-export const LightTheme: Story = { ...UnderReviewShowsApproveAndSendBack };
-export const DarkTheme: Story = { ...UnderReviewShowsApproveAndSendBack, globals: { theme: "dark" } };
+export const PromoteFromTheActionsMenuProposesADraft: Story = {
+  beforeEach: () => {
+    mockDetailApis(strategy({ status: "draft" }));
+    spyOn(api, "post").mockResolvedValue(strategy({ status: "proposed" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Strategy actions" }));
+    await chooseRecordAction(canvas, "Strategy", "Promote to Proposed");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/strategies/${STRATEGY_ID}/propose`,
+    ));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Proposed"));
+  },
+};
+
+export const LightTheme: Story = { ...UnderReviewOffersApproveAndSendBack };
+export const DarkTheme: Story = { ...UnderReviewOffersApproveAndSendBack, globals: { theme: "dark" } };
 
 /** Links live in the shared Links panel beside the page; the page adds only what is specific to it. */
 export const LinksPanelShowsLinks: Story = {
@@ -133,5 +167,20 @@ export const LinksPanelShowsLinks: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Supersede another Strategy" })).toBeInTheDocument();
+  },
+};
+
+/** Every long field of a Strategy is Markdown: formatted on the page, never shown as typed marks. */
+export const ShowsItsTextFieldsFormatted: Story = {
+  beforeEach: () => mockDetailApis(strategy({
+    objective: "Become the **top** provider.", current_state: "- ranked third\n- two products", rationale: "Because of `data`.",
+  })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Lead the regional market" })).toBeInTheDocument());
+    await expect(canvasElement.querySelector(".markdown-view strong")).toHaveTextContent("top");
+    await expect(canvasElement.querySelectorAll(".markdown-view li")).toHaveLength(2);
+    await expect(canvasElement.querySelector(".markdown-view code")).toHaveTextContent("data");
+    await expect(canvasElement).not.toHaveTextContent("**top**");
   },
 };

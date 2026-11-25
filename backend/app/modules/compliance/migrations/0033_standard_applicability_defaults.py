@@ -4,24 +4,14 @@ Revision ID: 0033
 Revises: 0032
 Create Date: 2026-09-08
 
-Adds the two things needs
-(§3, §7, §11, §26):
+Adds the schema of applicability defaults (§3, §7, §11, §26):
 
-- `compliance_standards.applicability_default` — a new `VARCHAR(30)` column,
-  `NOT NULL DEFAULT 'opt_in'`, so every existing standard (including the
-  seeded `ASA-1`) keeps today's fully-manual, per-project assignment
-  behaviour unchanged. See `models.py`'s applicability defaults design decisions
-  and `enums.py::ComplianceStandardApplicabilityDefault`.
-- `compliance_standard_default_exclusions`
-  (`app.modules.compliance.models.ComplianceStandardDefaultExclusion`) — the
-  "...except" list of projects excepted out of a standard's
-  `applies_to_all_projects` default, with a mandatory `reason` (enforced at
-  the API layer, same as every other mandatory-justification field in this
-  module).
+- `compliance_standards.applicability_default`: `VARCHAR(30) NOT NULL DEFAULT 'opt_in'`, so every existing standard keeps
+  manual per-project assignment (see `models.py` and `enums.ComplianceStandardApplicabilityDefault`).
+- `compliance_standard_default_exclusions` (`ComplianceStandardDefaultExclusion`): the "except" list of projects
+  excluded from a standard's `applies_to_all_projects` default, with a mandatory `reason` (enforced by the API).
 
-This migration adds no data of its own beyond the column default — no
-existing `ProjectCompliance` rows are touched, and no organisation's
-existing standards change behaviour as a result of this migration alone.
+No data changes beyond the column default.
 """
 
 from collections.abc import Sequence

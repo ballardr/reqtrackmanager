@@ -9,6 +9,7 @@ for login auditing (C-A-07).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from urllib.parse import unquote
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query, Request, status
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.metrics import record_user_activity
 from app.models.organization import Organization
 from app.models.pat import PersonalAccessToken
 from app.models.user import User
@@ -26,7 +28,21 @@ from app.security import PAT_PREFIX, decode_access_token, decode_module_frame_to
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)
 settings = get_settings()
 
-_UNAUTHORIZED = HTTPException(
+INVALID_TOKEN_CODE = "invalid_token"
+
+
+class InvalidTokenError(HTTPException):
+    """A 401 for a credential that is missing, malformed, expired, revoked or superseded: the session is over.
+
+    The response body is `{"detail": <text>, "code": "invalid_token"}` (see `app.main`'s handler) and carries
+    `WWW-Authenticate: Bearer`. The client treats either signal as the end of the session, because a browser on
+    another origin cannot read a response header the server has not exposed, and a proxy may strip one. Every
+    cause answers identically, so the response never says whether a token expired, was revoked or never existed.
+    A 401 for a wrong password or a bad second-factor code is an ordinary `HTTPException` and carries neither.
+    """
+
+
+_UNAUTHORIZED = InvalidTokenError(
     status.HTTP_401_UNAUTHORIZED,
     "Could not validate credentials.",
     headers={"WWW-Authenticate": "Bearer"},
@@ -58,18 +74,14 @@ def _resolve_user_from_pat(token: str, db: Session, request: Request) -> User:
     """Resolves a Personal Access Token to the user it belongs to.
 
     Raises:
-        HTTPException: 401 if the token doesn't exist, is revoked, has
-            passed its effective expiry, or names an inactive/archived user.
+        HTTPException: 401 if the token does not exist, is revoked, is past its effective expiry, or
+            names an inactive or archived user.
 
     Side effects:
-        Stamps `request.state.pat_allowed_org_ids` with the token's scoped
-        org ids, and `request.state.pat_allowed_project_ids` with its
-        optional further project restriction (`None` if unset) —
-        `services/rbac.py`'s dependencies read both to restrict org/project
-        access to that scope, on top of the user's real RBAC roles. Also
-        stamps `last_used_at` on the token row, throttled to at most once
-        per hour so a busy integration doesn't cause a DB write on every
-        single request.
+        Sets `request.state.pat_allowed_org_ids` (the token's scoped org ids) and
+        `request.state.pat_allowed_project_ids` (its optional project restriction, `None` if unset), which
+        `services/rbac.py` reads to restrict access on top of the user's RBAC roles. Stamps `last_used_at`
+        at most once per hour to avoid a write on every request.
     """
     pat = db.scalar(select(PersonalAccessToken).where(PersonalAccessToken.token_hash == hash_pat(token)))
     if pat is None or pat.revoked_at is not None:
@@ -85,9 +97,8 @@ def _resolve_user_from_pat(token: str, db: Session, request: Request) -> User:
         db.commit()
 
     request.state.pat_allowed_org_ids = {UUID(org_id) for org_id in pat.allowed_organization_ids}
-    # None (not an empty set) means "no extra project restriction" — an
-    # empty list is this token's default, unrestricted-within-its-orgs
-    # state, not "scoped to zero projects."
+    # None (not an empty set) means no project restriction: an empty list is the unrestricted default,
+    # not "scoped to zero projects".
     request.state.pat_allowed_project_ids = (
         {UUID(project_id) for project_id in pat.allowed_project_ids} if pat.allowed_project_ids else None
     )
@@ -117,31 +128,31 @@ def _require_policies_accepted(user: User, db: Session, request: Request) -> Use
 def _resolve_user_from_token(token: str | None, db: Session, request: Request) -> User:
     """Decodes and validates a bearer token, returning the active user it names.
 
-    Dispatches to `_resolve_user_from_pat` for Personal Access Tokens
-    (recognised by their `rtm_pat_` prefix — see `security.PAT_PREFIX`) and
-    otherwise validates it as a session JWT, unchanged from before PATs
-    existed. A session JWT never sets `request.state.pat_allowed_org_ids`,
-    which is exactly what lets `services/rbac.py` tell "not a PAT, no
-    restriction" apart from "a PAT scoped to these orgs."
+    Records the user as active (`metrics.record_user_activity`) once the credential is valid.
+
+    Dispatches to `_resolve_user_from_pat` for Personal Access Tokens (`rtm_pat_` prefix, see
+    `security.PAT_PREFIX`) and otherwise validates a session JWT. A session JWT never sets
+    `request.state.pat_allowed_org_ids`, which lets `services/rbac.py` tell "not a PAT, no restriction"
+    from "a PAT scoped to these orgs".
 
     Args:
         token: The raw bearer token, or None if the request had none.
         db: Active database session.
-        request: The incoming request, used to carry PAT scope forward to
-            the RBAC dependencies (see `_resolve_user_from_pat`).
+        request: The incoming request, which carries PAT scope to the RBAC dependencies.
 
     Returns:
         The authenticated, active, non-archived user.
 
     Raises:
-        HTTPException: 401 if the token is missing, invalid, not an access
-            token (e.g. a 2FA challenge token), or names a user who is
-            inactive/archived.
+        HTTPException: 401 if the token is missing, invalid, not an access token (for example a 2FA
+            challenge token), or names an inactive or archived user.
     """
     if not token:
         raise _UNAUTHORIZED
     if token.startswith(PAT_PREFIX):
-        return _require_policies_accepted(_resolve_user_from_pat(token, db, request), db, request)
+        pat_user = _resolve_user_from_pat(token, db, request)
+        record_user_activity(pat_user.id)
+        return _require_policies_accepted(pat_user, db, request)
     claims = decode_access_token(token)
     if not claims or "sub" not in claims or claims.get("purpose") != "access":
         # Rejects 2FA challenge tokens (services/totp.py / routers/auth.py):
@@ -156,6 +167,7 @@ def _resolve_user_from_token(token: str | None, db: Session, request: Request) -
         # 2FA disable (see User.token_version) — reject even though the
         # signature/expiry are otherwise valid.
         raise _UNAUTHORIZED
+    record_user_activity(user.id)
     return _require_policies_accepted(user, db, request)
 
 
@@ -178,6 +190,29 @@ def get_current_user(
             inactive/archived.
     """
     return _resolve_user_from_token(token, db, request)
+
+
+LIFECYCLE_SKIP_HEADER = "X-Lifecycle-Skip-Reason"
+
+
+def capture_lifecycle_skip(
+    request: Request, token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> None:
+    """Route dependency that reads a request to skip steps of a record's lifecycle.
+
+    A move endpoint is asked to skip steps with the percent-encoded reason in `X-Lifecycle-Skip-Reason`; the request
+    is recorded on the session for `services.lifecycles.check_move`. A request without the header is untouched, and
+    the header never authenticates by itself: the caller must hold a normal session or personal access token.
+
+    Raises:
+        HTTPException: 400 for an empty or over-long reason, 401 for no valid credential.
+    """
+    raw = request.headers.get(LIFECYCLE_SKIP_HEADER)
+    if raw is None or request.method != "POST":
+        return
+    from app.services.lifecycles import request_skip
+
+    request_skip(db, _resolve_user_from_token(token, db, request), unquote(raw))
 
 
 _PAT_REFUSED = "Personal access tokens cannot manage account security or other access tokens; sign in to do this."
@@ -221,42 +256,31 @@ def get_current_session_user(
 
 
 def get_current_user_or_module_frame(module_key: str):
-    """FastAPI dependency factory accepting either a normal session/PAT
-    bearer token (delegates entirely to `_resolve_user_from_token`, exactly
-    like `get_current_user`) or a short-lived Tier B `<ModuleFrame>` JWT
-    (`app.security.create_module_frame_token`
-    ) scoped to exactly `module_key`.
+    """FastAPI dependency factory accepting a normal session/PAT bearer token (resolved as
+    `get_current_user` does) or a short-lived Tier B `<ModuleFrame>` JWT
+    (`app.security.create_module_frame_token`) scoped to exactly `module_key`.
 
-    Used only by `app.services.rbac`'s module-gating dependencies
-    (`require_org_module_enabled`, `require_project_module_enabled`,
-    `require_module_role`) in place of a plain `Depends(get_current_user)`
-    — every other endpoint in the app keeps using `get_current_user`
-    directly, which rejects a module-frame token outright (wrong `purpose`,
-    same as it already rejects a 2FA challenge token), so a module-frame
-    token is mechanically unusable against any endpoint other than the
-    specific module's own, no matter what module code might attempt.
+    Used only by `app.services.rbac`'s module-gating dependencies (`require_org_module_enabled`,
+    `require_project_module_enabled`, `require_module_role`). Every other endpoint uses
+    `get_current_user`, which rejects a module-frame token (wrong `purpose`, as for a 2FA challenge token),
+    so such a token is unusable outside its own module.
 
-    A module-frame token resolving here does **not** itself confirm the
-    request's `organization_id`/`project_id` path parameter matches the
-    token's own scope — only that its `module_key` claim matches this
-    dependency's `module_key`, and that it names a real active user. The
-    caller (one of the three `rbac.py` dependencies above) is responsible
-    for the org/project match itself, via `request.state.module_frame_scope`
-    and `rbac._enforce_module_frame_scope` — kept as two separate steps so
-    a bug in one dependency's own org/project check can't silently widen
-    every other module-gated endpoint's scope enforcement along with it.
+    Resolving a module-frame token here confirms only that its `module_key` matches and that it names an
+    active user, not that the request's `organization_id`/`project_id` matches the token's scope. The
+    calling `rbac.py` dependency checks that through `request.state.module_frame_scope` and
+    `rbac._enforce_module_frame_scope`; the two steps stay separate so a bug in one dependency's scope
+    check cannot widen scope enforcement for every other module-gated endpoint.
 
     Args:
-        module_key: The module this dependency accepts a module-frame token
-            for — any token minted for a different module is rejected.
+        module_key: The module this dependency accepts a module-frame token for; a token for another
+            module is rejected.
 
     Returns:
         A dependency resolving to the authenticated, active `User`.
 
     Raises:
-        HTTPException: 401 if no token, a module-frame token for a
-            different module, or otherwise invalid/expired; the same cases
-            `get_current_user` already raises 401 for, for a normal token.
+        HTTPException: 401 for no token, a module-frame token for another module, or an invalid or
+            expired token.
     """
 
     def _dependency(
@@ -332,15 +356,11 @@ def get_current_user_header_or_query_optional(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User | None:
-    """Like `get_current_user_header_or_query`, but returns `None` instead
-    of raising when no token was presented at all, rather than 401ing.
+    """Like `get_current_user_header_or_query`, but returns `None` when no token is presented.
 
-    Used by `routers/files.py::download_file`, which also serves fully
-    anonymous visitors (e.g. the pre-login page's branding images) alongside
-    its normal authenticated callers. A token that *is* present but invalid
-    or expired still raises 401 as usual — this only relaxes the "no token
-    at all" case, so a caller with a broken session doesn't silently fall
-    back to being treated as anonymous.
+    Used by `routers/files.py::download_file`, which also serves anonymous visitors (for example the
+    pre-login page's branding images). A present but invalid or expired token still raises 401, so a
+    broken session is never treated as anonymous.
     """
     if token:
         return _resolve_user_from_token(token, db, request)
@@ -367,22 +387,14 @@ def get_client_ip(request: Request) -> str:
 
 
 def get_request_channel(request: Request) -> str:
-    """Identifies which channel a request arrived through: `"mcp"` if it
-    carries the self-declared `X-Reqtrack-Client: mcp-server` header
-    `mcp-server/server.py`'s `_call_backend` adds to every request it makes,
-    `"ui"` otherwise (the normal frontend/direct-API case).
+    """Identifies the channel a request arrived through: `"mcp"` when it carries the
+    `X-Reqtrack-Client: mcp-server` header that `mcp-server/server.py`'s `_call_backend` adds, else `"ui"`.
 
-    This is a non-secret, self-identifying marker, not an authentication or
-    authorization mechanism — see docs/decisions.md's "AI approval via MCP"
-    entry for why that's sufficient here: the only thing this value gates
-    (an org/project's `allow_ai_approvals` check on an approval-type action)
-    can only ever *restrict* an action the calling account could already
-    take directly, so there is no privilege-escalation risk in a caller
-    spoofing this header in either direction. Used to (a) apply that gate
-    only to MCP-originated calls, never plain UI/API ones, and (b) mark the
-    resulting audit event / requirement change-note as "via MCP" so an
-    AI-made approval is visibly distinguishable from a human one wherever
-    it's later shown.
+    The header is a self-declared marker, not authentication or authorisation (docs/decisions.md, "AI
+    approval via MCP"): it gates only an `allow_ai_approvals` check that can restrict an action the caller
+    could already take, so spoofing it in either direction escalates nothing. It applies that gate to
+    MCP-originated calls only and marks the audit event and change note "via MCP", so an AI-made approval
+    is distinguishable from a human one.
 
     Args:
         request: The incoming FastAPI request.

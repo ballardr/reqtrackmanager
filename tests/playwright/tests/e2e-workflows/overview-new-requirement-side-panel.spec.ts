@@ -3,17 +3,10 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Project Overview's own "+ New Requirement" button deep-links to
- * `/requirements?new=1` rather than opening a form itself — before this
- * fix that deep link set `showNewForm` directly, which rendered
- * RequirementsPage's create form as an always-inline block above the list
- * (reflowing/hiding it), skipping the `Modal` layer the same form now
- * opens as when triggered from the Requirements page's own "+ New
- * requirement" split button (a plain click on the button itself — see
- * `SplitButtonTrigger`, style guide "Pattern: split-button trigger" —
- * performs this same "Add one" action directly, no menu). Both entry
- * points now converge on the same `Modal`, so this proves the
- * deep-linked path stopped being the odd one out.
+ * Project Overview's "+ New Requirement" button deep-links to `/requirements?new=1` rather than opening a form
+ * itself. The deep link opens the create form in the same `Modal` as the Requirements page's "+ New requirement"
+ * split button (a plain click performs "Add one" with no menu; style guide "Pattern: split-button trigger"), so
+ * this proves the deep-linked path matches the page's own.
  */
 test.describe("Project Overview '+ New Requirement' opens the same create-form modal", () => {
   test("deep-linked create form is a layer, not a page reflow", async ({ page }) => {
@@ -22,10 +15,8 @@ test.describe("Project Overview '+ New Requirement' opens the same create-form m
     await page.getByRole("link", { name: "Overview", exact: true }).click();
 
     await page.getByRole("link", { name: "New requirement" }).click();
-    // `?new=1` is consumed and stripped by RequirementsPage.tsx almost as
-    // soon as it lands, so waiting for that exact intermediate URL is a
-    // race that can miss it entirely — waiting for the settled final URL
-    // is enough to prove the deep link landed and was consumed.
+    // `?new=1` is consumed and stripped by RequirementsPage.tsx almost as soon as it lands, so waiting for that
+    // intermediate URL can miss it; the settled final URL proves the deep link landed and was consumed.
     await page.waitForURL(/\/requirements$/);
 
     const dialog = page.getByRole("dialog", { name: "New requirement" });

@@ -7,6 +7,8 @@ import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures"
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { OpenQuestionDetailPage } from "./OpenQuestionDetailPage";
 import type { OpenQuestion } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
 
 const PROJECT_ID = "project-1";
 const OPEN_QUESTION_ID = "open-question-1";
@@ -60,11 +62,7 @@ function mockDetailApis(current: OpenQuestion) {
   });
 }
 
-/**
- * A real routed page — stories go through `withRouter`/`withAuth` rather
- * than passing props directly, mirroring `PainPointDetailPage.stories.tsx`'s
- * own identical convention.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props, as in `PainPointDetailPage.stories.tsx`. */
 const meta: Meta<typeof OpenQuestionDetailPage> = {
   title: "Modules/ContextStrategy/OpenQuestionDetailPage",
   component: OpenQuestionDetailPage,
@@ -81,30 +79,38 @@ export default meta;
 
 type Story = StoryObj<typeof OpenQuestionDetailPage>;
 
-export const OpenShowsInvestigate: Story = {
+export const OpenOffersInvestigate: Story = {
   beforeEach: () => mockDetailApis(openQuestion({ status: "open" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Should we standardise on a single battery vendor?" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Investigate" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Investigating" })).toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Open Question");
+    await expect(names[0]).toBe("Promote to Investigating");
+    await expect(names).not.toContain("Withdraw");
   },
 };
 
-export const InvestigatingShowsBothBranches: Story = {
+export const InvestigatingOffersReadyAndWithdraw: Story = {
   beforeEach: () => mockDetailApis(openQuestion({ status: "investigating" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Mark ready for decision" }));
-    await expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Ready for Decision" }));
+    const names = await recordActionNames(canvas, "Open Question");
+    await expect(names[0]).toBe("Promote to Ready for Decision");
+    await expect(names).toContain("Withdraw");
+    await expect(currentLifecycleStep(canvasElement)).toBe("Investigating");
   },
 };
 
-export const ReadyForDecisionShowsResolveAndWithdraw: Story = {
+export const ReadyForDecisionOffersResolveAndWithdraw: Story = {
   beforeEach: () => mockDetailApis(openQuestion({ status: "ready_for_decision" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Resolve" }));
-    await expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Resolved" }));
+    const names = await recordActionNames(canvas, "Open Question");
+    await expect(names[0]).toBe("Promote to Resolved");
+    await expect(names).toContain("Withdraw");
   },
 };
 
@@ -114,6 +120,20 @@ export const ResolvedIsLockedNoNewEvidence: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument());
     await expect(canvas.getByText(/new evidence can no longer be added/)).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Resolved");
+    await expect(canvas.getAllByRole("img", { name: /^Locked/ }).length).toBeGreaterThan(0);
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
+  },
+};
+
+export const WithdrawnShowsTheBranchStep: Story = {
+  beforeEach: () => mockDetailApis(openQuestion({ status: "withdrawn", is_locked: true })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Withdrawn"));
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Open Question");
+    await expect(names).not.toContain("Withdraw");
   },
 };
 
@@ -121,8 +141,8 @@ export const WithdrawFromInvestigatingRequiresComment: Story = {
   beforeEach: () => mockDetailApis(openQuestion({ status: "investigating" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Withdraw" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Withdraw" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Open Question actions" }));
+    await chooseRecordAction(canvas, "Open Question", "Withdraw");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Withdraw this Open Question?" }));
     await expect(dialog.getByRole("button", { name: "Withdraw" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText("Withdrawal comment"), "Superseded by a vendor consolidation decision elsewhere.");
@@ -140,8 +160,9 @@ export const MarkReadyForDecision: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Mark ready for decision" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Mark ready for decision" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Ready for Decision" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Ready for Decision" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Promote to Ready for Decision" }));
     const dialog = within(within(document.body).getByRole("dialog", { name: "Mark this Open Question ready for decision?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Mark ready for decision" }));
 
@@ -149,7 +170,21 @@ export const MarkReadyForDecision: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}/mark-ready-for-decision`,
       { comment: null }
     ));
-    await waitFor(() => expect(canvas.getByText("Ready for Decision")).toBeInTheDocument());
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Ready for Decision"));
+  },
+};
+
+export const PromoteFromTheActionsMenuStartsInvestigation: Story = {
+  beforeEach: () => {
+    mockDetailApis(openQuestion({ status: "open" }));
+    spyOn(api, "post").mockResolvedValue(openQuestion({ status: "investigating" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Open Question actions" }));
+    await chooseRecordAction(canvas, "Open Question", "Promote to Investigating");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}/investigate`, { comment: null }));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Investigating"));
   },
 };
 
@@ -193,7 +228,7 @@ export const OwnerCanBeAnOrgGroup: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}`,
       expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
     ));
-    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument());
   },
 };
 
@@ -226,8 +261,8 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
-    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Unassign: Open Question owner" }));
+    await expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Clear: Open Question owner" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}`,
       expect.objectContaining({ owner: null })
@@ -235,8 +270,8 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
   },
 };
 
-export const LightTheme: Story = { ...InvestigatingShowsBothBranches };
-export const DarkTheme: Story = { ...InvestigatingShowsBothBranches, globals: { theme: "dark" } };
+export const LightTheme: Story = { ...InvestigatingOffersReadyAndWithdraw };
+export const DarkTheme: Story = { ...InvestigatingOffersReadyAndWithdraw, globals: { theme: "dark" } };
 
 /** Links live in the shared Links panel beside the page; the page adds only what is specific to it. */
 export const LinksPanelShowsLinks: Story = {

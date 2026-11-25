@@ -298,11 +298,9 @@ def test_action_direct_file_attachment(client, admin_token, org_id):
     listed = client.get(f"/api/v1/projects/{project['id']}/actions/{action['id']}/files", headers=auth_headers(admin_token)).json()
     assert len(listed) == 1
 
-    # Regression test: GET /api/v1/files/{id} (routers/files.py::download_file)
-    # used to have no resolution path for a file attached only via
-    # RequirementActionFile — project_id stayed None and the request always
-    # 403'd, even for the uploader, even though upload/list/delete all
-    # worked. An action-attached file must actually be downloadable.
+    # GET /api/v1/files/{id} (routers/files.py::download_file) resolves the
+    # project of a file attached only via RequirementActionFile, so an
+    # action-attached file is downloadable by its uploader.
     download = client.get(f"/api/v1/files/{file_id}", headers=auth_headers(admin_token))
     assert download.status_code == 200
     assert download.content == b"%PDF-fake"

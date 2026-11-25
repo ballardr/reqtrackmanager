@@ -14,15 +14,17 @@
  * is added at once, with a default name, by choosing it in the Add to diagram menu or dropping it on the canvas; it is then
  * selected with the cursor in its name, and its values are set in the Selection card (double-clicking a state opens the same
  * fields in a dialog). A transition is added the same way, at once and empty, by drawing a line between two states or from the
- * Selection card's "Add transition to" list (the same state draws a loop); its event (its guard for a line leaving a choice) takes
- * the focus, and double-clicking a line opens its fields in a dialog. Keyboard operation: Cmd or Ctrl with Z and Shift or Y undo and redo (`EditHistoryButtons`); the canvas moves a selected state with the arrow keys and removes it with Delete (which
+ * Selection card's "Add transition to" list (the same state draws a loop); its event (its guard for a line leaving a
+ * choice) takes the focus, and double-clicking a line opens its fields in a dialog. Keyboard operation: undo and redo
+ * through `EditHistoryButtons`; the canvas moves a selected state with the arrow keys and removes it with Delete (which
  * asks first); the Selection card is the keyboard route to nesting a state and to the attach points.
  * The status moves are the server's; a move to Active is refused with the list of errors while the checks find any.
  * Export (PNG and SVG images, Mermaid `stateDiagram-v2` text to download or copy) saves a pending drawing first, then asks the
  * server for its own drawing and text of the stored diagram, so a file shows what the editor shows.
  *
  * Design decisions:
- * - The validation issues are the server's (`state_machine_checks`); the page only displays them (the toolbar's Validation list and the Selection card's one-line note) and tints the states they name.
+ * - The validation issues are the server's (`state_machine_checks`); the page only displays them (the toolbar's
+ *   Validation list and the Selection card's one-line note) and tints the states they name.
  * - Comments are anchored to a state or a transition by its id and stored at once, never making the drawing look unsaved.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -53,7 +55,7 @@ import { useEscapeToLeaveMode } from "../../hooks/useEscapeToLeaveMode";
 import { useFillViewportHeight } from "../../hooks/useFillViewportHeight";
 import { useUrlChoice } from "../../hooks/useUrlFilter";
 import { projectElementApi, projectStateApi, projectStateMachineApi } from "./api";
-import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
+import { architectureLifecycle } from "./architectureLifecycle";
 import { architectureTabPath } from "./architectureTabs";
 import { DiagramCommentsPanel } from "./DiagramCommentsPanel";
 import { DiagramSwitcher } from "./DiagramSwitcher";
@@ -86,6 +88,8 @@ import { blankTransitionValues, diffTransitionFields, valuesFromTransition } fro
 import { useStateLabel } from "./useStateLabel";
 import { useStateMachineEditor } from "./useStateMachineEditor";
 import { ValidationButton } from "./ValidationButton";
+import { MarkdownView } from "../../components/MarkdownView";
+import { markdownPlainText } from "../../utils/markdownPlain";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureState, type StateFieldValues,
   type StateKind, type StateMachineFieldValues, type StateTransition, type TransitionFieldValues,
@@ -467,6 +471,8 @@ export function StateMachineEditorPage() {
     if (await editor.setStatus(status)) showToast(`State machine diagram moved to ${ARCHITECTURE_STATUS_LABEL[status]}.`);
   }
 
+  const { lifecycle, menuRows } = architectureLifecycle(diagram.status, diagram.allowed_status_moves, moveTo);
+
   const toolbar = (
     <div className="row" role="toolbar" aria-label="State machine diagram editing" style={{ alignItems: "center", gap: "var(--space-2)" }}>
       <EditHistoryButtons editable={editable} canUndo={editor.canUndo} canRedo={editor.canRedo} undo={editor.undo} redo={editor.redo} />
@@ -543,7 +549,7 @@ export function StateMachineEditorPage() {
         title={diagram.name}
         titleAddon={<DiagramSwitcher kind="stateMachine" projectId={projectId} currentId={diagram.id} />}
         code={diagram.unique_code}
-        tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_state_machine_diagram" artefactId={diagram.id} />}
+        tags={<RecordTags projectId={projectId} artefactType="architecture_state_machine_diagram" artefactId={diagram.id} />}
         back={{ to: architectureTabPath(projectId, "diagrams"), label: "Diagrams" }}
         returnTo={<ReturnToDiagram projectId={projectId} elementId={diagram.element_id} from={searchParams.get("from")} />}
         badges={
@@ -555,10 +561,10 @@ export function StateMachineEditorPage() {
           </>
         }
         version={diagram.version}
-        subtitle={<>Describes <Link to={`/projects/${projectId}/modules/architecture/elements/${diagram.element_id}`}>{elementLabel}</Link>{diagram.description ? ` · ${diagram.description}` : ""}</>}
+        subtitle={<>Describes <Link to={`/projects/${projectId}/modules/architecture/elements/${diagram.element_id}`}>{elementLabel}</Link>{diagram.description ? ` · ${markdownPlainText(diagram.description)}` : ""}</>}
         onEdit={editable ? () => { setFormError(null); setEditingDiagram(true); } : undefined}
-        actions={[archive.item, remove.item]}
-        stateMenu={<ArchitectureStatusControls status={diagram.status} moves={diagram.allowed_status_moves} onMove={moveTo} />}
+        actions={[...menuRows, archive.item, remove.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
       {remove.dialog}
@@ -662,7 +668,7 @@ export function StateMachineEditorPage() {
                 <Link to={`/projects/${projectId}/modules/architecture/elements/${diagram.element_id}`}>{elementLabel}</Link>
               </dd>
               <dt className="text-muted">Description</dt>
-              <dd style={{ margin: 0, whiteSpace: "pre-line" }}>{diagram.description || "—"}</dd>
+              <dd style={{ margin: 0 }}>{diagram.description ? <MarkdownView text={diagram.description} /> : "—"}</dd>
             </dl>
             {editable && (
               <button type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => { setFormError(null); setEditingDiagram(true); }}>

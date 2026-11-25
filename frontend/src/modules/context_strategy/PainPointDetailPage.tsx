@@ -1,55 +1,26 @@
 /**
  * Module: modules/context_strategy/PainPointDetailPage
  *
- * A single Pain Point's full detail — mirrors `StrategyDetailPage.tsx`'s overall
- * shape (full field display, lifecycle actions, attachments, comments,
- * relationships), with three structural differences driven directly by Pain
- * Point's own backend design:
+ * A single Pain Point's full detail: fields, lifecycle actions, attachments, comments and relationships. It mirrors
+ * `StrategyDetailPage.tsx` with three differences:
  *
- * 1. **Project-scoped only** — no `organizationId` route param, no
- *    scope-dispatch between two API objects; always `projectPainPointApi`.
- * 2. **Branching lifecycle UI, not a single "next" button.** From `TRIAGED`,
- *    this page offers three distinct actions — Accept / Reject / Mark
- *    Duplicate — matching `PainPointStatus`'s own three-way branch
- *    (`service._PP_ALLOWED_TRANSITIONS[TRIAGED]`). Confirmation tiers follow
- *    `docs/ux-style-guide.md`'s confirmation-tier principle the same way
- * Strategy's does: `triage` is a plain click (low-risk,
- *    single early-lifecycle step, mirrors Strategy's `propose`/`submit-for-
- *    review`); `reject`/`mark-duplicate` require a `ConfirmDialog` with a
- *    **mandatory** comment (matching backend enforcement —
- *    `project_router.reject_project_pain_point`/`mark_project_pain_point_
- *    duplicate` both 400 without one); `accept`/`address`/`close` get a
- *    `ConfirmDialog` with an optional comment (positive/neutral progression,
- *    same tier as Strategy's `approve`/`activate`/`retire`).
- * 3. **Evidence upload is open to any project member; only removal is
- *    manager-gated (Decided by: Agent).** Checked `upload_project_pain_
- *    point_file`'s own docstring first: unlike Strategy/Future State's
- * owner-gated file upload, §6.5 explicitly lists "Add
- *    evidence" among the broad-creation-model capabilities every project
- *    member gets. In practice this needs **no different frontend wiring**
- *    from Strategy's own `FileAttachmentList` usage — this codebase's
- *    established convention (`StrategyDetailPage.tsx`'s own docstring) is
- *    that every mutating control always renders regardless of the caller's
- *    actual role, gated only by content-lock state, with the backend's own
- *    RBAC surfacing as a toast on a 403; `is_locked` here already excludes
- *    only the three true terminal states (`REJECTED`/`DUPLICATE`/`CLOSED`,
- *    not `ACCEPTED`/`ADDRESSED` too — `service.PAIN_POINT_LOCKED_STATUSES`),
- *    so the upload control is already exactly as open as the backend allows
- *    without any manager-only conditional added around it. Only the
- *    difference in *who the backend accepts* (any member for upload, manager
- *    only for removal) is real — nothing on this page needs to encode it.
+ * 1. Project-scoped only: no `organizationId` route parameter and always `projectPainPointApi`.
+ * 2. A branching lifecycle: from `TRIAGED` the page offers Accept, Reject and Mark Duplicate
+ *    (`service._PP_ALLOWED_TRANSITIONS[TRIAGED]`). Confirmation tiers follow `docs/ux-style-guide.md`: `triage` is a
+ *    plain click; `reject` and `mark-duplicate` use a `ConfirmDialog` with a mandatory comment, matching the backend
+ *    (both `project_router` endpoints return 400 without one); `accept`, `address` and `close` use one with an
+ *    optional comment.
+ * 3. Evidence upload is open to any project member and only removal is manager-gated, as the backend allows. Every
+ *    mutating control renders whatever the caller's role (see `StrategyDetailPage.tsx`) and a 403 surfaces as a toast;
+ *    `is_locked` covers only the terminal states `REJECTED`, `DUPLICATE` and `CLOSED`
+ *    (`service.PAIN_POINT_LOCKED_STATUSES`), so no manager-only conditional is needed.
  *
- * The page also hosts `PainPointScoringPanel` (per-persona Severity/Frequency/
- * Confidence scoring and the chosen-when-viewing roll-up) and an
- * "Intentional" badge for deliberate limitations.
+ * The page hosts `PainPointScoringPanel` (per-persona Severity/Frequency/Confidence scoring and the chosen-when-viewing
+ * roll-up) and an "Intentional" badge for deliberate limitations.
  *
- * **Owner assignment via a dedicated `RecordPrincipalField`, not a
- * `PainPointFormModal` field (Decided by: Agent)** — see `types.ts`'s own
- * docstring on `PainPointFieldValues` for why. The owner is a user, an
- * organisation group or a project group. This page loads this
- * project's organisation's user list once (for the picker's own
- * search/display needs) and calls `projectPainPointApi.update` directly with
- * the current content fields plus the newly chosen `owner`.
+ * `owner` (a user, an organisation group or a project group) is assigned through `RecordPrincipalField`, not a
+ * `PainPointFormModal` field (see `types.ts` `PainPointFieldValues`). The page loads the project's organisation user
+ * list once and calls `projectPainPointApi.update` with the current content fields plus the chosen `owner`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -60,7 +31,7 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
-import { RecordPrincipalField } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -71,12 +42,17 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
 import { PainPointScoringPanel } from "./PainPointScoringPanel";
-import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
+import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_DESCRIPTION, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE, TERMINAL_LOCKED_REASON } from "./types";
 import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFieldValues } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import { DetailCard } from "../../components/DetailCard";
 
 /** The three optional-comment, positive/neutral-progression actions —
@@ -120,6 +96,11 @@ const MANDATORY_COMMENT_COPY: Record<MandatoryCommentAction, { title: string; hi
   },
 };
 
+/** The move request that enters each later step a skip may target. */
+const SKIP_ACTIONS: Record<string, "accept" | "address" | "close"> = { accepted: "accept", addressed: "address", closed: "close" };
+
+const MAIN_PATH = ["submitted", "triaged", "accepted", "addressed", "closed"] as const;
+
 export function PainPointDetailPage() {
   const { projectId, painPointId } = useParams<{ projectId: string; painPointId: string }>();
   const { user } = useAuth();
@@ -128,6 +109,7 @@ export function PainPointDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [painPoint, setPainPoint] = useState<PainPoint | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "pain_point");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [types, setTypes] = useState<EffectivePainPointType[]>([]);
   const [comments, setComments] = useState<PainPointComment[] | null>(null);
@@ -180,6 +162,15 @@ export function PainPointDetailPage() {
     }
   }
 
+  const skipSteps = useSkipSteps<PainPoint>({
+    lifecycle, current: painPoint?.status ?? "", labels: PAIN_POINT_STATUS_LABEL, noun: "Pain Point",
+    move: (target, reason) => {
+      if (!projectId || !painPoint || !(target in SKIP_ACTIONS)) return Promise.reject(new Error("This move is not available."));
+      return withLifecycleSkip(reason, () => projectPainPointApi[SKIP_ACTIONS[target]](projectId, painPoint.id));
+    },
+    onMoved: setPainPoint,
+  });
+
   async function saveEdit(values: PainPointFieldValues) {
     if (!projectId || !painPoint) return;
     setFormError(null);
@@ -226,8 +217,42 @@ export function PainPointDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (painPoint === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await projectPainPointApi.uploadFile(projectId, painPoint.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
+  // The next forward move: a plain call for triage, otherwise the move's comment dialog.
+  // The move goes to the next step the project uses, so a project that turned Triaged off promotes Submitted straight to Accepted.
+  const next = lifecycle.nextOnPath(MAIN_PATH, painPoint.status);
+  let promote: LifecyclePromote | undefined;
+  if (next === "triaged") {
+    promote = { to: "triaged", onPromote: () => runTransition(() => projectPainPointApi.triage(projectId, painPoint.id), "Pain Point triaged.") };
+  } else if (next === "accepted") {
+    promote = { to: "accepted", onPromote: () => setOptionalAction("accept") };
+  } else if (next === "addressed") {
+    promote = { to: "addressed", onPromote: () => setOptionalAction("address") };
+  } else if (next === "closed") {
+    promote = { to: "closed", onPromote: () => setOptionalAction("close") };
+  }
+
+  // A rejected or duplicate Pain Point ended after triage.
+  const offPath = painPoint.status === "rejected" || painPoint.status === "duplicate"
+    ? {
+        key: painPoint.status,
+        label: PAIN_POINT_STATUS_LABEL[painPoint.status],
+        description: PAIN_POINT_STATUS_DESCRIPTION[painPoint.status],
+        locked: true,
+        lockedReason: TERMINAL_LOCKED_REASON,
+        after: lifecycle.lastOnPath(MAIN_PATH, "triaged"),
+      }
+    : undefined;
+
   return (
     <DetailLayout
+      pictures={{ files, upload: uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} refreshToken={recordActivityKey(painPoint)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -257,42 +282,34 @@ export function PainPointDetailPage() {
           </>
         }
         onEdit={painPoint.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {painPoint.status === "submitted" && (
-            <button
-              className="btn btn-primary"
-              onClick={() => runTransition(() => projectPainPointApi.triage(projectId, painPoint.id), "Pain Point triaged.")}
-            >
-              Triage
-            </button>
-          )}
-          {painPoint.status === "triaged" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setOptionalAction("accept")}>Accept</button>
-              <button className="btn btn-danger" onClick={() => setMandatoryAction("reject")}>Reject</button>
-              <button className="btn" onClick={() => setMandatoryAction("mark_duplicate")}>Mark duplicate</button>
-            </>
-              )}
-              {painPoint.status === "accepted" && (
-                <button className="btn btn-primary" onClick={() => setOptionalAction("address")}>Address</button>
-              )}
-              {painPoint.status === "addressed" && (
-                <button className="btn btn-primary" onClick={() => setOptionalAction("close")}>Close</button>
-              )}
-          </>
-        }
+        actions={[
+          skipSteps.menuRow,
+          lifecycle.canMove(painPoint.status, "rejected", painPoint.status === "triaged") && { label: "Reject", danger: true, onSelect: () => setMandatoryAction("reject") },
+          lifecycle.canMove(painPoint.status, "duplicate", painPoint.status === "triaged") && { label: "Mark duplicate", onSelect: () => setMandatoryAction("mark_duplicate") },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, PAIN_POINT_STATUS_LABEL, {
+              descriptions: PAIN_POINT_STATUS_DESCRIPTION,
+              locked: { closed: TERMINAL_LOCKED_REASON },
+            }),
+            painPoint.status,
+          ),
+          current: painPoint.status,
+          offPath,
+          promote,
+          skip: skipSteps.track,
+        }}
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
-          {painPoint.description && <Field label="Description" value={painPoint.description} />}
-          {painPoint.source && <Field label="Source" value={painPoint.source} />}
-          {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
-          {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
+          {painPoint.description && <RecordField markdown math label="Description" value={painPoint.description} />}
+          {painPoint.source && <RecordField markdown math label="Source" value={painPoint.source} />}
+          {painPoint.impact && <RecordField markdown math label="Impact" value={painPoint.impact} />}
+          {painPoint.evidence && <RecordField markdown math label="Evidence" value={painPoint.evidence} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
@@ -303,15 +320,12 @@ export function PainPointDetailPage() {
         <PainPointScoringPanel projectId={projectId} painPointId={painPoint.id} locked={painPoint.is_locked} />
 
 
-        <DetailCard heading="Evidence">
+        <DetailCard heading="Evidence" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={painPoint.is_locked}
             emptyHint={painPoint.is_locked ? "This Pain Point has reached a terminal outcome; new evidence can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await projectPainPointApi.uploadFile(projectId, painPoint.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await projectPainPointApi.unlinkFile(projectId, painPoint.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
@@ -340,7 +354,6 @@ export function PainPointDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <PainPointFormModal
@@ -351,6 +364,8 @@ export function PainPointDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {optionalAction && (
         <CommentConfirmDialog
@@ -391,14 +406,5 @@ export function PainPointDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

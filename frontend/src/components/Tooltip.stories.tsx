@@ -36,10 +36,8 @@ export const HoverShowsLabel: Story = {
 };
 
 /**
- * Trigger pinned at the top-left corner of the viewport: with no room
- * above, the bubble must fall back to appearing below the trigger instead
- * of positioning off-screen (the `spaceAbove < VIEWPORT_MARGIN_PX` branch
- * in Tooltip.tsx).
+ * Trigger pinned at the top-left corner of the viewport: with no room above, the bubble falls back to appearing below the
+ * trigger instead of positioning off-screen (the `spaceAbove < VIEWPORT_MARGIN_PX` branch in Tooltip.tsx).
  */
 export const ClampsNearViewportEdge: Story = {
   render: (args) => (

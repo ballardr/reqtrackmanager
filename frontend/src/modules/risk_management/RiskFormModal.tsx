@@ -1,18 +1,14 @@
 /**
  * Module: modules/risk_management/RiskFormModal
  *
- * Create/edit dialog for a risk's content fields, shared by the register
- * (create) and the detail page (edit) and told apart by whether `initial` is
- * passed — the convention `DecisionFormModal` uses. Inherent and residual
- * Likelihood/Consequence/Detectability levels are picked with the shared
- * `ScoringLevelPicker`, so the level names and guidance come from the project's
- * configured scheme; the rating itself is derived by the backend and never
- * entered here.
+ * Create/edit dialog for a risk's content fields, shared by the register (create) and the detail page (edit) and told
+ * apart by whether `initial` is passed, as `DecisionFormModal`. Inherent and residual Likelihood, Consequence and
+ * Detectability levels use the shared `ScoringLevelPicker`, so names and guidance come from the project's scheme; the
+ * backend derives the rating and it is never entered here.
  *
- * On an Accepted risk the backend locks the levels, treatment strategy and
- * acceptance criteria (move it back to Assessed to change them), so those
- * controls are disabled with an explanation instead of failing on save. Edit
- * mode asks for an optional change note, stored on the new version.
+ * On an Accepted risk the backend locks the levels, treatment strategy and acceptance criteria (move it back to
+ * Assessed to change them), so those controls are disabled with an explanation instead of failing on save. Edit mode
+ * asks for an optional change note, stored on the new version.
  */
 import { useState } from "react";
 
@@ -83,7 +79,7 @@ export function RiskFormModal({
   function textField(key: "statement" | "cause" | "risk_event" | "consequence" | "acceptance_criteria", label: string, disabled = false) {
     return (
       <FormGridFull>
-        <TextAreaField helpNotNeeded label={label} value={values[key]} onChange={(value) => set(key, value)} disabled={disabled} />
+        <TextAreaField markdown helpNotNeeded label={label} value={values[key]} onChange={(value) => set(key, value)} disabled={disabled} />
       </FormGridFull>
     );
   }
@@ -141,8 +137,6 @@ export function RiskFormModal({
             display={savedPrincipalDisplay(values.owner, initial?.owner)}
             onChange={(next) => set("owner", next)}
             ariaLabel="Owner"
-            placeholder="Search users and groups…"
-            clearLabel="Clear"
           />
           {levelGroup("inherent", "Inherent")}
           {levelGroup("residual", "Residual")}

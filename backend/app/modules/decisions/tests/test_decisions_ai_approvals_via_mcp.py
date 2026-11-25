@@ -1,26 +1,11 @@
-"""Tests for the AI-approval-via-MCP gate as applied to Decision
-Management's own `approve_decision_endpoint`/`reject_decision_endpoint`
-(`project_router.py`), added 2026-09-22 alongside the "Decision Management
-MCP approval gate" entry (docs/decisions.md) — the user's explicit
-follow-up ("Yes, apply the same treatment") to the "Compliance MCP write
-tools + generalized AI approval gate" entry, which had left this module's
-approve/reject as the one architecturally-identical case still excluded
-via `APPROVAL_ACTION_ROUTE_EXTRA`.
-
-Mirrors `backend/app/modules/compliance/tests/test_compliance_ai_
-approvals_via_mcp.py`'s exact 7-test shape, itself mirroring `backend/
-tests/test_ai_approvals_via_mcp.py`'s pattern for the three core
-endpoints: an MCP-originated call (`X-Reqtrack-Client: mcp-server`, see
-`app.deps.get_request_channel`) is rejected unless both the project's and
-its organisation's `allow_ai_approvals` flags are true, a plain UI/API
-call is entirely unaffected by either flag, and the calling account's own
-`decision_approver`/`PROJECT_MANAGER` role is still required regardless of
-either flag (the gate only narrows, it never widens, real RBAC).
-
-`propose`/`submit-for-review` are also proven unaffected by the gate — they
-never carried `APPROVAL_ACTION_ROUTE_EXTRA` and need no `allow_ai_
-approvals` opt-in, since neither one decides anything (mirroring
-Compliance's own `submit_requirement_for_approval` treatment).
+"""
+Tests for the AI-approval-via-MCP gate on `approve_decision_endpoint` and
+`reject_decision_endpoint` (`project_router.py`), in the shape of the Compliance
+and core equivalents. An MCP-originated call (`X-Reqtrack-Client: mcp-server`)
+is rejected unless both the project's and its organisation's `allow_ai_approvals`
+are true; a plain UI/API call is unaffected by either flag; the caller's
+`decision_approver`/`PROJECT_MANAGER` role is still required (the gate only
+narrows). `propose`/`submit-for-review` decide nothing and need no opt-in.
 """
 
 from __future__ import annotations

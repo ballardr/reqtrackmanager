@@ -1,8 +1,8 @@
 /**
  * Module: modules/architecture/useFolders
  *
- * Loads the folders of one kind (elements, connections or diagrams) for a project, or the organisation's element
- * folders, and gives the calls to change them. Folders are navigation only, so a failed read (the organisation's list
+ * Loads the folders of one kind (elements, connections, diagrams or symbols) for a project, or the organisation's element
+ * or symbol folders, and gives the calls to change them. Folders are navigation only, so a failed read (the organisation's list
  * is for administrators; a module that is off) is an empty list, never an error the page has to handle.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -18,7 +18,7 @@ export interface FolderOwner {
 
 /**
  * @param owner The project or organisation whose folders to load; nothing loads without one.
- * @param kind Which list the folders organise (an organisation has `element` only).
+ * @param kind Which list the folders organise (an organisation has `element` and `symbol`).
  * @returns The folders in tree order, whether they have loaded, the calls and `reload`.
  */
 export function useFolders({ projectId, organizationId }: FolderOwner, kind: FolderKind) {
@@ -26,7 +26,7 @@ export function useFolders({ projectId, organizationId }: FolderOwner, kind: Fol
   const [loaded, setLoaded] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const calls = useMemo(
-    () => (projectId ? projectFolderApi(projectId, kind) : organizationId ? orgFolderApi(organizationId) : null),
+    () => (projectId ? projectFolderApi(projectId, kind) : organizationId ? orgFolderApi(organizationId, kind) : null),
     [projectId, organizationId, kind],
   );
 

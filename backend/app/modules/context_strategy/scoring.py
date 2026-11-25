@@ -1,43 +1,11 @@
 """
 Module: modules.context_strategy.scoring
 
-Context & Strategy's registration into core's generic scoring-matrix
-mechanism: the `pain_point` scheme, scored on Severity, Frequency and
-Confidence (per persona) and on Cost of Delay's criteria (for the whole Pain
-Point), combined by one of the models below, chosen when viewing.
-
-- `sxf`, `sxc`, `sxfxc` (the default): products of Severity, Frequency and Confidence.
-- `cod`: Cost of Delay, the sum of User/business value, Time criticality and Risk reduction / opportunity
-  enablement (equal importance).
-- `wsjf`: Weighted Shortest Job First, Cost of Delay divided by Job size, a *divisor* axis. This needs a weighted
-  sum that divides (`ScoringModelDefinition.divisor_axis_keys` on a `weighted_sum`), which the core engine
-  supports for any scheme (**Decided by: User**, with the choice to give Pain Points the Enhancement Request style
-  of alternative models and custom criteria rather than one more fixed model).
-
-Design decisions:
-- Severity is the same input as Impact/consequence (Decided by:
-  User); its top level is "Blocker", which the Blocker badge keys off
-  (top level = highest weight, see `services.scoring`).
-- Confidence uses fractional weights (0.5/0.8/1.0), so it discounts a score
-  rather than inflating it, RICE-style (Decided by: Agent; org-editable).
-- System default model S×F×C (Decided by: Agent). Default bands
-  are per model because a three-axis product sits lower on the normalised
-  scale than a two-axis one (Decided by: Agent).
-- Org-level configuration is gated by the existing `pain_point_type_admin`
-  role (plus org admins) — the same people who manage the Pain Point type
-  vocabulary (Decided by: Agent).
-- `count_level_usage`/`reassign_level_usage` count and move `PainPointScoreAxis`
-  references, so deleting an in-use level forces a reassignment
-  instead of leaving a score pointing at nothing.
-- Each axis is scored per persona or for the whole Pain Point (`ScoringAxisDefinition.per_target`): Severity,
-  Frequency, Confidence and User/business value differ by persona; Time criticality, Risk reduction and Job size
-  describe the Pain Point itself (**Decided by: Agent**; an organisation's own criteria choose when created).
-- Cost of Delay's levels are relative sizes on the usual 1, 2, 3, 5, 8, 13, 20 scale, organisation-editable
-  (**Decided by: Agent**). Job size runs from smallest to largest, so a larger job lowers the WSJF score.
-- An organisation, or a project, may define its own axes and models beside these (`allow_custom_criteria`): the
-  registered ones can only be hidden. Every read goes through the *effective* scheme
-  (`services.scoring_custom.effective_scheme`), never `PAIN_POINT_SCORING_SCHEME` itself, and only the enabled
-  models are offered when viewing (`side_by_side_models`).
+Registers the `pain_point` scheme into core's scoring-matrix mechanism.
+Per-persona axes: Severity, Frequency, Confidence, User/business value;
+whole-Pain-Point axes (`per_target`): Time criticality, Risk reduction, Job
+size. Models: `sxf`, `sxc`, `sxfxc` (default), `cod`, `wsjf`. Level-usage
+hooks stop deleted levels orphaning scores.
 """
 
 from __future__ import annotations

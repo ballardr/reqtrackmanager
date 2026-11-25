@@ -1,23 +1,15 @@
 /**
  * Module: modules/architecture/diagramEditorModel
  *
- * The diagram editor's state as plain functions, with no React: the layout being edited (boxes, notes, line anchors and boundary boxes), an
- * undo/redo history over it, the merge of a freshly read view into that layout, and the mapping to the shared
- * canvas's nodes and lines.
- *
- * Responsibilities:
+ * The diagram editor's state as plain functions, with no React.
  * - `EditorLayout`: every placement of the diagram (including boxes a view switch hides and boxes the viewer cannot read,
- *   which a save must keep), its notes, the boundary boxes (one per outer connection) and the attach points a person chose
- *   for lines. Edits return a new layout; none mutates.
- * - `History`: past / present / future with a saved baseline, so the editor knows what is unsaved and Save is enabled
- *   only for a real change.
+ *   which a save must keep), its notes, the boundary boxes (one per outer connection) and the chosen line attach points.
+ *   Edits return a new layout; none mutates.
+ * - `History`: past / present / future with a saved baseline, so Save is enabled only for a real change.
  * - `mergeView`: display data comes from the server's view, membership and geometry from the local layout, so a reload
- *   never discards unsaved work.
- *
- * Design decisions:
- * - Which boxes a view switch hides and which lines are drawn are not stored in the layout: `diagramLines` works them out
- *   from the layout and the model data, so a box added in the editor has its lines at once. This file only draws the
- *   lines it is given.
+ *   never discards unsaved work. The mapping to the shared canvas's nodes and lines is here too.
+ * Which boxes a view switch hides and which lines are drawn are not stored in the layout: `diagramLines` derives them from the
+ * layout and the model data, so a box added in the editor has its lines at once; this file only draws the lines it is given.
  */
 import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode, GraphNodeBadge } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";

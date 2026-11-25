@@ -4,25 +4,19 @@ Revision ID: 0046
 Revises: 0045
 Create Date: 2026-09-23
 
-: four new
-tables backing an organisation-definable custom role, additive to the
-fixed `OrgRole`/`ProjectRole` enums and every module-contributed role
-(never a replacement).
+Four tables backing an organisation-definable custom role, additive to the fixed `OrgRole`/`ProjectRole`
+enums and the module-contributed roles:
 
-- `custom_role_definitions` (`app.models.custom_role.CustomRoleDefinition`)
-  — one row per org-defined role: name/description/scope, org-scoped,
-  unique per `(organization_id, name)`.
-- `custom_role_permissions` (`CustomRolePermission`) — the role's
-  permission-atom membership, one row per atom (a normalised join table,
-  not a serialized array — same precedent `artefact_links` already set for
-  a per-row-queryable set), unique per `(custom_role_id, permission)`.
-- `user_custom_role_grants` / `group_custom_role_grants`
-  (`UserCustomRoleGrant`/`GroupCustomRoleGrant`) — grants a role to a user
-  or an org group, structurally identical to the existing `user_module_
-  roles`/`group_module_roles` pair (0025/0037) one tier down (a custom role
-  instead of a module-contributed one).
+- `custom_role_definitions` (`app.models.custom_role.CustomRoleDefinition`): one row per org-defined role
+  (name, description, scope), unique per `(organization_id, name)`.
+- `custom_role_permissions` (`CustomRolePermission`): the role's permission atoms, one row per atom in a
+  normalised join table (as `artefact_links` is, for a per-row-queryable set), unique per
+  `(custom_role_id, permission)`.
+- `user_custom_role_grants` / `group_custom_role_grants` (`UserCustomRoleGrant`/`GroupCustomRoleGrant`):
+  grants to a user or an org group, structurally identical to `user_module_roles`/`group_module_roles`
+  (0025/0037) for custom roles.
 
-Every table is a brand-new, initially-empty table — no backfill needed.
+All tables are new and empty; no backfill.
 """
 
 from collections.abc import Sequence

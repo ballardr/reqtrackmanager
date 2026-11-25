@@ -2,30 +2,24 @@
 Module: modules.architecture.mcp_tools
 
 Declares the System Architecture module's MCP tools: read, create, change, retire and delete for elements, ports,
-connections, block diagrams (read only) and state machine diagrams with their states and transitions.
+connections and state machine diagrams (states, transitions), and read-only block diagrams.
 
-Responsibilities:
-- One `McpToolDefinition` per project-router endpoint an agent needs. The module key prefixes each name
-  (`architecture_create_element`); `build_mcp_tool_manifest` checks every path and method against the real routes.
-- The report tools (`report_mcp_tools`) are added in `module.py`; they are not repeated here.
+Responsibilities: one `McpToolDefinition` per project-router endpoint an agent needs, named with the module key prefix
+(`architecture_create_element`); `build_mcp_tool_manifest` checks every path and method against the real routes. The
+report tools (`report_mcp_tools`) are added in `module.py`.
 
 Design decisions:
-- **A tool is a plain proxy to the same endpoint the screen calls.** The route applies the Architect role, the module
-  and sub-component gates, the visibility resolver (a shared element is read through collection grants only, a foreign
-  end is a locked placeholder) and the audit event. No tool reaches a record by a path the route does not.
-- **Links use the core link tools.** Allocation, constraint, risk and decision links are ordinary artefact links
-  (`create_artefact_link`), so this module declares none of its own. Realisation between connections has its own
-  endpoint and tool.
-- **Block diagrams are read only.** A block diagram is a drawing (placements, routes, notes); an agent reads the
-  elements and lines it shows (`architecture_get_diagram_view`) and edits the model, not the layout. A state machine
-  diagram is structure (states, transitions), so it is edited.
-- **No tool changes access.** Collections, grants and symbol upload are left to people (a grant widens who can read an
-  element; an upload is a file).
-- **Deletion is declared, never the default.** Each deletion tool says in its description that archiving is the
-  reversible alternative; the route refuses an element with children or connections.
+- A tool is a plain proxy to the endpoint the screen calls, so the route's Architect role, module and sub-component
+  gates, visibility resolver and audit event always apply.
+- Allocation, constraint, risk and decision links are ordinary artefact links (`create_artefact_link`); only realisation
+  between connections has its own endpoint and tool.
+- Block diagrams are drawings (placements, routes, notes), so an agent reads the elements and lines they show
+  (`architecture_get_diagram_view`) and edits the model; state machine diagrams are structure and are edited.
+- No tool changes access (collections, grants, symbol upload).
+- Each deletion tool says archiving is the reversible alternative; the route refuses an element with children or
+  connections.
 
-Dependencies: `app.modules.registry` (`McpToolDefinition`). No route, model or service imports, so the module imports
-with nothing else loaded.
+Dependencies: `app.modules.registry` (`McpToolDefinition`) only, so the module imports with nothing else loaded.
 """
 
 from __future__ import annotations

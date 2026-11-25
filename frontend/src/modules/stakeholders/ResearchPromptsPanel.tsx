@@ -1,13 +1,11 @@
 /**
  * Module: modules/stakeholders/ResearchPromptsPanel
  *
- * Research extras: an engagement's ordered session prompts (the questions
- * planned for an interview or focus group) with the response notes taken against
- * each. Add a prompt from a (+) popover, edit its text and notes in a `Modal` (principle 3),
- * reorder with up/down, and delete behind a tier-1 confirm. "Session prompts" is
- * the name used throughout so they are not confused with Open Questions.
- * Response notes can quote participants, so they are removed with the
- * engagement. Every change toasts; the list reloads from the server's order.
+ * Research extras: an engagement's ordered session prompts (the questions planned for an interview or focus group)
+ * with the response notes taken against each. Add a prompt from a (+) popover, edit its text and notes in a `Modal`
+ * (principle 3), reorder with up/down, and delete behind a tier-1 confirm. "Session prompts" is the name used
+ * throughout so they are not confused with Open Questions. Response notes can quote participants, so they are removed
+ * with the engagement. Every change toasts; the list reloads from the server's order.
  */
 import { ArrowDown, ArrowUp, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -22,6 +20,7 @@ import { projectResearchApi } from "./api";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import type { EngagementPrompt } from "./types";
 import { FormActions } from "../../components/FormActions";
+import { MarkdownView } from "../../components/MarkdownView";
 
 function PromptEditModal({
   prompt, onCancel, onSave,
@@ -35,8 +34,8 @@ function PromptEditModal({
   return (
     <Modal title="Edit session prompt" onClose={onCancel} size="lg">
       <div className="stack">
-        <TextAreaField helpNotNeeded required label="Prompt" rows={2} value={text} onChange={setText} />
-        <TextAreaField helpNotNeeded label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
+        <TextAreaField markdown helpNotNeeded required label="Prompt" value={text} onChange={setText} />
+        <TextAreaField markdown helpNotNeeded label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
         <FormActions
           onCancel={onCancel}
           onSave={() => onSave({ prompt: text.trim(), response_notes: notes })}
@@ -116,7 +115,7 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
                 <button className="btn btn-sm btn-icon" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 /></button>
               </>
             ),
-            detail: p.response_notes ? <span style={{ whiteSpace: "pre-wrap" }}>{p.response_notes}</span> : undefined,
+            detail: p.response_notes ? <MarkdownView text={p.response_notes} /> : undefined,
           }))}
         />
       )}

@@ -4,34 +4,26 @@ Module: services.placements
 Placing records of any registered artefact type in the project's component/category tree.
 
 Responsibilities:
-- Read a record's placements, singly or for a page of records in one query (`get_record_placements`,
-  `placements_for_records`), and name them for exports and reports (`placement_text`).
-- Replace a record's placements, validating that every component and category belongs to the record's
-  project and that a category sits under its component (`set_record_placements`), and write the audit
-  events the record's Activity tab reads.
-- Answer "which records sit in these components or categories" for list endpoints (`PlacementFilter`).
-- Keep the tree and the placements consistent when the tree changes: a deleted category's placements move to
-  the replacement (`reassign_category`), and a component that records still sit in cannot be deleted
-  (`component_placement_count`).
+- Read placements singly or for a page of records in one query (`get_record_placements`,
+  `placements_for_records`) and name them for exports and reports (`placement_text`).
+- Replace a record's placements, validating that components and categories belong to the record's project and
+  a category sits under its component (`set_record_placements`), with the audit events the Activity tab reads.
+- Filter list endpoints by place (`PlacementFilter`), and keep the tree consistent: a deleted category's
+  placements move to its replacement (`reassign_category`); a category or component records still sit in
+  cannot be deleted without one (`category_placement_count`, `component_placement_count`).
 
 Design decisions:
-- Requirements keep their single `component_id`/`category_id` columns because the component prefix forms the
-  requirement code; they are never stored here (`COLUMN_PLACED_TYPES`), their own endpoints carry the field,
-  and `can_place` is false for them. `pairs_for_records` presents the one resolved view for every type. A
-  change request has no component of its own (only the `proposed_*` pair for a requirement it would add), so it
-  is placed through the table like any other record.
-- A record may hold any number of placements with no primary one; a filter matches a record if any
-  placement matches.
-- A component belongs to one project, so a record is placed only in its own project's tree. A child project
-  does not fall back to an ancestor's tree: a placement is a reference to a row, not a definition table. A
-  record owned by the organisation has no project and so no tree: it cannot be placed.
-- A module may declare a type `not_placeable` (a record that exists only inside a structure of its own); the
-  API refuses it and no placement column, filter or bundle entry is offered for it.
-- Authority is the authority to tag the type (`services.tags.can_tag`): placement is metadata like a tag, so
-  an approved requirement's lock does not apply, and the same roles that may edit the record may place it.
+- Requirements keep `component_id`/`category_id` columns because the component prefix forms the code
+  (`COLUMN_PLACED_TYPES`, `can_place` is false); their further places are aliases (`services.requirement_aliases`),
+  and `pairs_for_records` presents one view for every type: the own pair first, then active aliases.
+- A record holds any number of placements with no primary one; a filter matches if any placement matches.
+- A component belongs to one project, so a record is placed only in its own project's tree, with no fallback to
+  an ancestor's; an organisation-owned record has no tree and cannot be placed. A module may declare a type
+  `not_placeable`.
+- Authority is `services.tags.can_tag`: placement is metadata like a tag, so an approved requirement's lock does
+  not apply.
 
-External dependencies: `models.placement`, `models.project`, `services.tags` (authority), `services.audit`,
-`modules.registry` (types).
+Dependencies: `models.placement`, `models.project`, `services.tags`, `services.audit`, `modules.registry`.
 """
 
 from __future__ import annotations
@@ -40,6 +32,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from fastapi import HTTPException, Query, status
@@ -49,6 +42,7 @@ from sqlalchemy.orm import Session
 from app.models.placement import ArtefactPlacement
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement
+from app.models.requirement_alias import RequirementAlias
 from app.modules.registry import RecordCellError, RecordColumn, RecordImportContext, get_not_placeable_types
 from app.services.audit import log_event
 from app.services.link_graph import ArtefactResolver
@@ -144,14 +138,44 @@ def pairs_for_records(
             record_id: [PlacementPair(p.component_id, p.category_id) for p in rows]
             for record_id, rows in placements_for_records(db, artefact_type, ids).items()
         }
+    return {
+        record_id: [place.pair for place in places] for record_id, places in requirement_places(db, ids).items()
+    }
+
+
+@dataclass(frozen=True)
+class RequirementPlace:
+    """One place a requirement sits in: the pair, the code of that place, and the alias row's id (`None` for the
+    requirement's own place, whose code is the requirement's own)."""
+
+    pair: PlacementPair
+    code: str
+    alias_id: uuid.UUID | None = None
+
+
+def requirement_places(db: Session, requirement_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, list[RequirementPlace]]:
+    """Where requirements sit, with the code of each place, in two statements: the requirement's own place first,
+    then its active aliases in the order they were added."""
+    ids = list(requirement_ids)
     if not ids:
         return {}
-    return {
-        row_id: [PlacementPair(component_id, category_id)]
-        for row_id, component_id, category_id in db.execute(
-            select(Requirement.id, Requirement.component_id, Requirement.category_id).where(Requirement.id.in_(ids))
+    found = {
+        row_id: [RequirementPlace(PlacementPair(component_id, category_id), code)]
+        for row_id, component_id, category_id, code in db.execute(
+            select(Requirement.id, Requirement.component_id, Requirement.category_id, Requirement.unique_code)
+            .where(Requirement.id.in_(ids))
         ).all()
     }
+    for alias_row in db.scalars(
+        select(RequirementAlias)
+        .where(RequirementAlias.requirement_id.in_(ids), RequirementAlias.is_retired.is_(False))
+        .order_by(RequirementAlias.created_at, RequirementAlias.unique_code)
+    ):
+        if alias_row.component_id is not None and alias_row.requirement_id in found:
+            found[alias_row.requirement_id].append(RequirementPlace(
+                PlacementPair(alias_row.component_id, alias_row.category_id), alias_row.unique_code, alias_row.id,
+            ))
+    return found
 
 
 def placement_text(db: Session, placements: Sequence[ArtefactPlacement | PlacementPair]) -> list[str]:
@@ -193,7 +217,7 @@ def placement_texts(db: Session, artefact_type: str, artefact_ids: Iterable[uuid
 # --- writing ----------------------------------------------------------------------------------
 
 
-def _resolve_pairs(db: Session, project: Project, pairs: Sequence[PlacementPair]) -> list[PlacementPair]:
+def resolve_pairs(db: Session, project: Project, pairs: Sequence[PlacementPair]) -> list[PlacementPair]:
     """The wanted pairs with duplicates dropped, after checking every component and category.
 
     Raises:
@@ -265,9 +289,9 @@ def set_record_placements(
         `(added, removed)` placement rows.
 
     Raises:
-        HTTPException: 422 for an invalid pair (see `_resolve_pairs`).
+        HTTPException: 422 for an invalid pair (see `resolve_pairs`).
     """
-    wanted = _resolve_pairs(db, project, pairs)
+    wanted = resolve_pairs(db, project, pairs)
     current = get_record_placements(db, artefact_type, artefact_id)
     have = {PlacementPair(p.component_id, p.category_id): p for p in current}
     removed = [row for key, row in have.items() if key not in set(wanted)]
@@ -315,6 +339,7 @@ def reassign_category(db: Session, category_id: uuid.UUID, target: ProjectCatego
     Returns:
         How many placements were moved or dropped.
     """
+    _reassign_category_aliases(db, category_id, target)
     other = ArtefactPlacement.__table__.alias("other")
     already_there = (
         select(other.c.id)
@@ -337,12 +362,70 @@ def reassign_category(db: Session, category_id: uuid.UUID, target: ProjectCatego
     return dropped + moved
 
 
+def _reassign_category_aliases(db: Session, category_id: uuid.UUID, target: ProjectCategory) -> int:
+    """Moves the active requirement aliases in `category_id` to `target`.
+
+    A requirement that already sits in `target` (its own pair, run before this by the caller, or another alias)
+    has the alias retired instead, so it never holds the same place twice; the retired code keeps resolving.
+
+    Returns:
+        How many aliases were moved or retired.
+    """
+    aliases = list(db.scalars(
+        select(RequirementAlias).where(RequirementAlias.category_id == category_id, RequirementAlias.is_retired.is_(False))
+    ))
+    if not aliases:
+        return 0
+    requirement_ids = {a.requirement_id for a in aliases}
+    held = {
+        (row.requirement_id, row.category_id)
+        for row in db.scalars(select(RequirementAlias).where(
+            RequirementAlias.requirement_id.in_(requirement_ids), RequirementAlias.category_id == target.id,
+            RequirementAlias.is_retired.is_(False),
+        ))
+    }
+    primary = {
+        row_id for row_id in db.scalars(select(Requirement.id).where(
+            Requirement.id.in_(requirement_ids), Requirement.category_id == target.id
+        ))
+    }
+    now = datetime.now(UTC)
+    for alias in aliases:
+        if alias.requirement_id in primary or (alias.requirement_id, target.id) in held:
+            alias.is_retired = True
+            alias.retired_at = now
+        else:
+            alias.category_id = target.id
+            alias.component_id = target.component_id
+            held.add((alias.requirement_id, target.id))
+    db.flush()
+    return len(aliases)
+
+
+def _active_alias_count(db: Session, **where: uuid.UUID) -> int:
+    """How many active requirement aliases match the column values."""
+    query = select(func.count()).select_from(RequirementAlias).where(RequirementAlias.is_retired.is_(False))
+    for column, value in where.items():
+        query = query.where(getattr(RequirementAlias, column) == value)
+    return int(db.scalar(query) or 0)
+
+
+def category_placement_count(db: Session, category_id: uuid.UUID) -> int:
+    """How many placements and requirement aliases name the category; a category with any cannot be deleted
+    without a replacement."""
+    return (
+        db.scalar(select(func.count()).select_from(ArtefactPlacement).where(ArtefactPlacement.category_id == category_id))
+        or 0
+    ) + _active_alias_count(db, category_id=category_id)
+
+
 def component_placement_count(db: Session, component_id: uuid.UUID) -> int:
-    """How many placements name the component (with or without a category); a component with any cannot
-    be deleted."""
-    return db.scalar(
-        select(func.count()).select_from(ArtefactPlacement).where(ArtefactPlacement.component_id == component_id)
-    ) or 0
+    """How many placements and requirement aliases name the component (with or without a category); a component
+    with any cannot be deleted."""
+    return (
+        db.scalar(select(func.count()).select_from(ArtefactPlacement).where(ArtefactPlacement.component_id == component_id))
+        or 0
+    ) + _active_alias_count(db, component_id=component_id)
 
 
 # --- export and import ------------------------------------------------------------------------
@@ -619,11 +702,19 @@ def placed_ids(
     if artefact_type in COLUMN_PLACED_TYPES:
         # A requirement keeps its one component and category on the record itself, so it matches through them.
         own = []
+        by_alias = []
         if component_ids:
             own.append(Requirement.component_id.in_(component_ids))
+            by_alias.append(RequirementAlias.component_id.in_(component_ids))
         if category_ids:
             own.append(Requirement.category_id.in_(category_ids))
-        return set(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id, or_(*own))).all())
+            by_alias.append(RequirementAlias.category_id.in_(category_ids))
+        found = set(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id, or_(*own))).all())
+        # A requirement also sits in each of its aliases' places.
+        found.update(db.scalars(select(RequirementAlias.requirement_id).where(
+            RequirementAlias.project_id == project_id, RequirementAlias.is_retired.is_(False), or_(*by_alias),
+        )).all())
+        return found
     return set(
         db.scalars(
             select(ArtefactPlacement.artefact_id).where(

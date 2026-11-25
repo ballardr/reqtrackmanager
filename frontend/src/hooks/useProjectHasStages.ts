@@ -1,13 +1,12 @@
 /**
  * Module: hooks/useProjectHasStages
  *
- * Whether a project uses its stages beyond the single default one every project starts with, for the navigation: a project
- * that has not gone further has nothing to show on the Delivery status page, so its navigation entry is hidden. Asks the
- * server (`GET /projects/{id}/stage-usage`, one small read) and asks again on every route change, so using stages in project
- * administration (a second stage, a schedule, component phases) is reflected on the next navigation, without a reload.
+ * Whether a project uses its stages beyond the single default one every project starts with, so the Delivery status
+ * navigation entry is hidden when that page would be empty. Asks `GET /projects/{id}/stage-usage` (one small read) on
+ * every route change, so a second stage, a schedule or component phases appear on the next navigation.
  *
- * Design decisions: unknown counts as "not in use", so the entry appears once known rather than appearing and disappearing;
- * a failed read also hides it (the page remains reachable by its address and shows its own state).
+ * Design decisions: unknown counts as "not in use", so the entry never appears and disappears; a failed read also
+ * hides it (the page stays reachable by its address and shows its own state).
  */
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";

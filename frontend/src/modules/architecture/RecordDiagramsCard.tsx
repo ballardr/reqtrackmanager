@@ -7,7 +7,7 @@
  *
  * Design decisions: one read per record (`diagrams` on the element or connection API) answers both diagram types after the
  * server has applied visibility, so the card draws what it is given and holds no access rule of its own. A failed read leaves
- * the card out, so the page is as it was for a person the read does not serve.
+ * the card out.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";

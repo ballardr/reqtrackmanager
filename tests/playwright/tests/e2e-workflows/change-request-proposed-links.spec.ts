@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Locator, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openProject, PASSWORD, PERSONAS, PROJECT_NAMES, closeDialogWithoutSaving } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openProject, PASSWORD, PERSONAS, PROJECT_NAMES, closeDialogWithoutSaving, expectCanPromote, promoteTo } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -123,7 +123,7 @@ async function pickRecord(picker: Locator, name: RegExp): Promise<void> {
 
 async function openRequest(page: Page, world: World, crId: string): Promise<void> {
   await page.goto(`/projects/${world.projectId}/change-requests/${crId}`);
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeVisible();
+  await expectCanPromote(page, "Approved");
 }
 
 test.describe("change requests: proposed links", () => {
@@ -135,7 +135,7 @@ test.describe("change requests: proposed links", () => {
     const section = page.getByLabel("Proposed links");
     await expect(section.getByText("Pending")).toHaveCount(3);
 
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await promoteTo(page, "Approved");
     const dialog = page.getByRole("dialog", { name: "Approve change request" });
     await expect(dialog.getByRole("checkbox", { name: /Merge link/ })).toHaveCount(3);
     await expect(dialog.getByRole("checkbox", { name: /Merge link/, checked: true })).toHaveCount(2);
@@ -168,7 +168,7 @@ test.describe("change requests: proposed links", () => {
       expect(await linksOf(page.request, world, target)).toEqual([]);
       await form.getByLabel("Reason for change").fill("Trace both related requirements");
       await form.getByRole("button", { name: "Create" }).click();
-      await expect(page.getByText("Change request created")).toBeVisible();
+      await expect(page.getByText(/Change request( \S+-\d+)? created/)).toBeVisible();
     });
 
     const crs: { id: string; proposed_link_count: number }[] = await (
@@ -195,7 +195,7 @@ test.describe("change requests: proposed links", () => {
     await loginAs(page, world.adminEmail, PASSWORD);
     await openRequest(page, world, crId);
 
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await promoteTo(page, "Approved");
     const dialog = page.getByRole("dialog", { name: "Approve change request" });
     await expect(dialog.getByRole("checkbox", { name: /Merge link: Related to .*First related/ })).toBeChecked();
     await expect(dialog.getByRole("checkbox", { name: /Merge link: Related to .*Second related/ })).toBeChecked();
@@ -218,7 +218,7 @@ test.describe("change requests: proposed links", () => {
     await loginAs(page, world.adminEmail, PASSWORD);
     await openRequest(page, world, crId);
 
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await promoteTo(page, "Approved");
     const dialog = page.getByRole("dialog", { name: "Approve change request" });
     await dialog.getByRole("checkbox", { name: /Merge link: Related to .*Dropped/ }).uncheck();
     await dialog.getByRole("button", { name: "Approve and merge 1 link" }).click();
@@ -238,7 +238,7 @@ test.describe("change requests: proposed links", () => {
     await loginAs(page, world.adminEmail, PASSWORD);
     await openRequest(page, world, crId);
 
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await promoteTo(page, "Approved");
     const dialog = page.getByRole("dialog", { name: "Approve change request" });
     await dialog.getByRole("button", { name: "Select none" }).click();
     await dialog.getByRole("button", { name: "Approve without links" }).click();
@@ -262,7 +262,7 @@ test.describe("change requests: proposed links", () => {
     await loginAs(page, world.adminEmail, PASSWORD);
     await openRequest(page, world, crId);
 
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await promoteTo(page, "Approved");
     const dialog = page.getByRole("dialog", { name: "Approve change request" });
     await expect(dialog.getByRole("checkbox", { name: /Merge link: Related to .*Linked meanwhile/ })).toBeDisabled();
     await expect(dialog.getByText("Already linked, will be skipped")).toBeVisible();
@@ -294,7 +294,7 @@ test.describe("change requests: proposed links", () => {
     await loginAs(page, world.adminEmail, PASSWORD);
     await openRequest(page, world, crId);
 
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await promoteTo(page, "Approved");
     const dialog = page.getByRole("dialog", { name: "Approve change request" });
     await dialog.getByRole("button", { name: "Select none" }).click();
     await expect(dialog.getByText(/approving it changes nothing/)).toBeVisible();
@@ -320,7 +320,7 @@ test.describe("change requests: proposed links", () => {
     await expect(form.getByText(/Existing requirement/)).toBeVisible();
     await form.getByLabel("Reason for change").fill("A new requirement that builds on the existing one");
     await form.getByRole("button", { name: "Create" }).click();
-    await expect(page.getByText("Change request created")).toBeVisible();
+    await expect(page.getByText(/Change request( \S+-\d+)? created/)).toBeVisible();
 
     const crs: { id: string; kind: string; proposed_link_count: number }[] = await (
       await page.request.get(`${apiBaseUrl}/api/v1/projects/${world.projectId}/change-requests`, { headers: world.headers })

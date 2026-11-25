@@ -3,8 +3,9 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgGroup, OrgUser } from "../../api/types";
 import { api } from "../../api/client";
-import { expectHeaderOrdersText } from "../../testing/sortHelpers";
+import { expectHeaderOrdersText, expectHeaderSorts } from "../../testing/sortHelpers";
 import { withToast } from "../../testing/storybook-helpers";
+import { expectTooltip, reasonTarget } from "../../testing/tooltips";
 import { StandardMembersSection } from "./StandardMembersSection";
 import type { ComplianceStandard, ComplianceStandardMembers } from "./types";
 
@@ -39,11 +40,9 @@ const ORG_GROUPS: OrgGroup[] = [
   },
 ];
 
-/** Mocks `GET/POST/DELETE .../standards/{id}/members(/roles|/group-roles)`
- * and the `UserAutocomplete` server-side search endpoint (`GET .../users/
- * search`) — mirrors `MappingTypesPanel.stories.tsx`'s own direct `api.*`
- * mocking shape, since this component (like that panel) owns its
- * fetch/reload state entirely. */
+/** Mocks `GET/POST/DELETE .../standards/{id}/members(/roles|/group-roles)` and the `UserAutocomplete` server-side search endpoint
+ * (`GET .../users/search`) with direct `api.*` mocking, as `MappingTypesPanel.stories.tsx` does, since this component owns its
+ * fetch and reload state. */
 function mockMembersApi(initial: ComplianceStandardMembers) {
   let data = initial;
   spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -162,8 +161,7 @@ export const ListsGroupGrants: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Security Reviewers")).toBeInTheDocument());
-    await expect(canvas.getByText("Organisation group")).toBeInTheDocument();
-    await expect(canvas.getByText("3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group, 3 members")).toHaveClass("sr-only");
   },
 };
 
@@ -183,7 +181,7 @@ export const LastManagerCheckboxDisabledWithNoFallback: Story = {
     const group = within(document.body).getByRole("group", { name: "Roles for Alex Manager" });
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Standards Manager from Alex Manager" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("must always have at least one"));
+    await expectTooltip(reasonTarget(checkbox), /must always have at least one/);
   },
 };
 
@@ -293,5 +291,24 @@ export const NameHeaderSortsMembersAndGroups: Story = {
   play: async ({ canvasElement }) => {
     const table = await within(canvasElement).findByRole("table");
     await expectHeaderOrdersText(table, "Name");
+  },
+};
+/** The Email header orders users by address (a group has none and sorts last) and the Roles header by the roles shown (no roles last). */
+export const EmailAndRolesHeadersSortMembers: Story = {
+  beforeEach: () =>
+    mockMembersApi({
+      members: [
+        { user_id: "user-2", display_name: "Sam Contributor", email: "sam@example.com", role_keys: ["standards_contributor"] },
+        { user_id: "user-1", display_name: "Alex Manager", email: "alex@example.com", role_keys: ["standards_manager"] },
+        { user_id: "user-3", display_name: "Jo Newcomer", email: "jo@example.com", role_keys: [] },
+      ],
+      group_members: [{ org_group_id: "group-1", group_name: "Security Reviewers", role_keys: ["standards_contributor", "standards_manager"], member_count: 3 }],
+      manager_floor_covered_by_fallback: true,
+    }),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderSorts(table, "Email", ["alex@example.com", "jo@example.com", "sam@example.com", "—"]);
+    await expectHeaderSorts(table, "Roles", ["Standards Contributor", "Standards Manager", "Standards Manager, Standards Contributor", "No roles"]);
+    await expect(within(table).getByRole("columnheader", { name: "Roles" })).toHaveAttribute("aria-sort", "descending");
   },
 };

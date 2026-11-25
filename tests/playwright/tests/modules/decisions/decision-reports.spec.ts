@@ -18,12 +18,9 @@ const REPORTS = [
 ];
 
 /**
- * Job to be done: —
- * the four Decision Management reports appear in the shared Reports page
- * (rendered by the generic viewer, no custom view), show the project's
- * decisions with their display labels, narrow through the generated option
- * controls, and download as PDF and CSV. Also that a project with the module
- * off offers none of them.
+ * Job to be done: the four Decision Management reports appear in the shared Reports page (rendered by the
+ * generic viewer, no custom view), show the project's decisions with their display labels, narrow through the
+ * generated option controls, and download as PDF and CSV. A project with the module off offers none of them.
  *
  * Everything is created through the API in a disposable, uniquely named org
  * (CLAUDE.md's test-independence rule) and deleted afterwards.

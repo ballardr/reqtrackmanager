@@ -5,10 +5,10 @@ Revises: 0084
 Create Date: 2026-10-13
 
 `subscriptions.user_id` becomes `subscriber_id`, with a `subscriber_type`
-(existing rows backfill to `user`): the subscriber may now be an organisation
+(existing rows backfill to `user`): the subscriber may be an organisation
 group or a project group, in which case every member who can view the project
 is a subscriber (resolved when a notification is sent). The foreign key to
-`users` is dropped (the id now points at one of three tables), the uniqueness
+`users` is dropped (the id points at one of three tables), the uniqueness
 moves to `(subscriber_type, subscriber_id, entity_type, entity_id)` and a check
 constraint keeps the type valid.
 """

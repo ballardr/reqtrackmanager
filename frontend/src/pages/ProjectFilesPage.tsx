@@ -3,16 +3,12 @@
  *
  * The project's Files page: every file the project holds in one filterable list, with a preview of each picture.
  *
- * Responsibilities:
- * - List the files of a project's requirements, actions and requirement comments and the pictures in its report
- *   image library (`POST /projects/{id}/files/search`), each with the origin it came from.
- * - Narrow the list with the shared filters (`useFileFilters`, `FileFilterFields`) plus the nested-project scope.
- *   Every filter lives in the URL, so the list comes back as it was left after opening a record.
+ * Responsibilities: list the files of the project's requirements, actions and requirement comments and the pictures in its
+ * report image library (`POST /projects/{id}/files/search`) with their origin; narrow the list with the shared filters
+ * (`useFileFilters`, `FileFilterFields`) plus the nested-project scope, all in the URL.
  *
- * Design decisions:
- * - Read/browse only: uploads happen from the record a file is attached to (`FileAttachmentList`) or from the report
- *   image library in the layout designer, not here.
- * - A response that arrives after a newer search has been sent is dropped, so typing quickly cannot show stale rows.
+ * Design decisions: browse-only (uploads happen from the attaching record, `FileAttachmentList`, or the report image
+ * library); a response arriving after a newer search was sent is dropped so fast typing shows no stale rows.
  */
 import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -23,6 +19,7 @@ import { FileFilterFields } from "../components/FileFilterFields";
 import { FilesTable } from "../components/FilesTable";
 import { FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
+import { LoadFailed } from "../components/LoadFailed";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
 import { Spinner } from "../components/Spinner";
@@ -46,6 +43,7 @@ export function ProjectFilesPage() {
   const filters = useFileFilters();
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const latestRequest = useRef(0);
+  const [failed, setFailed] = useState(false);
   const scopeQuery = projectScope.widened ? `&${projectScope.query}` : "";
 
   async function loadFiles(offset: number, append: boolean) {
@@ -62,7 +60,12 @@ export function ProjectFilesPage() {
 
   const filterKey = [projectId, projectScope.scope, ...filters.key];
   useResetOnChange(filterKey, () => setFiles(null));
-  useLoadOnChange(() => loadFiles(0, false), filterKey);
+  // The first page: a refused request shows the failure with Retry instead of leaving the spinner up.
+  function loadFirstPage() {
+    setFailed(false);
+    loadFiles(0, false).catch(() => setFailed(true));
+  }
+  useLoadOnChange(loadFirstPage, filterKey);
   useLoadOnChange(async () => {
     if (!projectId) return;
     setUploaders(await api.get<ProjectFileUploader[]>(`/api/v1/projects/${projectId}/files/uploaders?${projectScope.query}`));
@@ -86,7 +89,8 @@ export function ProjectFilesPage() {
         </FilterPanel>
       }
     >
-      {!files && <Spinner />}
+      {failed && <LoadFailed message={strings.requestFailure.loadFailed(strings.requestFailure.files)} onRetry={loadFirstPage} />}
+      {!files && !failed && <Spinner />}
       {files && files.length === 0 && <p className="text-muted">{filters.filtered ? strings.files.emptyFiltered : strings.files.empty}</p>}
       {files && files.length > 0 && <FilesTable files={files} projectId={projectId} />}
       {files && <LoadMoreButton loaded={files.length} total={total} onClick={() => loadFiles(files.length, true)} />}

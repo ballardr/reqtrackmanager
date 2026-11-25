@@ -1,52 +1,25 @@
 /**
  * Module: modules/context_strategy/GuidingPrincipleDetailPage
  *
- * A single Guiding Principle's full detail — mirrors `StrategyDetailPage.tsx`'s exact
- * shape (full field display, current lifecycle status, version history,
- * comments, attachments, relationships, every lifecycle action), adjusted
- * for two genuine differences in Guiding Principle's own backend design:
+ * A single Guiding Principle's full detail: fields, lifecycle status, versions, comments, attachments, relationships
+ * and every lifecycle action. It mirrors `StrategyDetailPage.tsx` with two differences:
  *
- * 1. **A shorter, six-state lifecycle with no `under_review` step.**
- *    `Draft -> Proposed -> Approved -> Active -> Superseded/Retired` — from
- *    `Proposed`, this page offers `Approve` (optional comment) and
- *    `Send back` (mandatory comment, this module's "reject"-equivalent)
- *    directly, with no intervening `Submit for review` step
- *    `StrategyDetailPage.tsx` needs for its own seven-state lifecycle.
- * 2. **A dedicated `RecordPrincipalField` for `owner`, not a
- *    `GuidingPrincipleFormModal` field (Decided by: Agent).** The backend
- *    versions `owner` as a plain content field on the same full-replace
- *    `PUT` every other field uses (`schemas.GuidingPrincipleUpdate`,
- *    structurally closer to `FutureStateFieldValues.target_date` than to
- *    Pain Point's genuinely separate "assign owner" surface) — but this
- * frontend still reuses `components/RecordDetailParts`'
- *    `RecordPrincipalField` (a user, an organisation group and, on a project
- *    principle, a project group), mirroring `PainPointDetailPage.tsx`'s
- *    identical choice, for the same reasons: assigning a person or team is a
- *    distinct, higher-frequency action with its own search-first UX, better
- *    served by a dedicated control than buried inside a multi-field
- *    content-edit modal. `assignOwner` below calls
- *    `scopedApi.update` with the Guiding Principle's own current content
- *    fields plus the newly chosen `owner`, the same full-replace pattern
- *    `PainPointDetailPage.tsx`'s own `assignOwner` already establishes —
- *    this exercises the exact "explicit owner-assign-then-clear" behaviour
- * the backend test suite pins.
+ * 1. A six-state lifecycle with no `under_review` step: `Draft -> Proposed -> Approved -> Active -> Superseded/Retired`.
+ *    From `Proposed` the page offers `Approve` (optional comment) and `Send back` (mandatory comment) directly.
+ * 2. `owner` is assigned through `RecordPrincipalField` (a user, an organisation group and, on a project principle, a
+ *    project group), not a `GuidingPrincipleFormModal` field, as in `PainPointDetailPage.tsx`: assigning a person or
+ *    team is a frequent action that suits a search-first control. The backend versions `owner` as a content field on
+ *    the full-replace `PUT`, so `assignOwner` calls `scopedApi.update` with the current content fields plus the new
+ *    `owner`.
  *
- * **Scope-aware** (same as `StrategyDetailPage.tsx`): reads
- * whichever of `projectId`/`organizationId` its current route supplies.
- * Unlike `PainPointDetailPage.tsx` (project-scoped only), an org-scoped
- * Guiding Principle has no *project* to fetch for its own organisation id —
- * `organizationId` is used directly for the owner picker's org-user list in
- * that case, and a project fetch (for its `organization_id`) is only needed
- * in the project-scoped case.
+ * Scope-aware (as `StrategyDetailPage.tsx`): reads whichever of `projectId`/`organizationId` the route supplies. An
+ * organisation-scoped principle uses `organizationId` directly for the owner picker; a project-scoped one fetches its
+ * project to obtain `organization_id`.
  *
- * Every mutating control always renders regardless of the caller's actual
- * role (same posture `StrategyDetailPage.tsx` establishes) — the backend
- * enforces `guiding_principle_owner`/`guiding_principle_approver` (or their
- * org-scoped equivalents) and a 403 surfaces as a toast. Edit/archive/
- * file-attach controls specifically for *content* are hidden once
- * `guidingPrinciple.is_locked` (locked at `APPROVED` and beyond — one state
- * earlier than Strategy/Future State's `UNDER_REVIEW`, per `service.
- * GUIDING_PRINCIPLE_LOCKED_STATUSES`).
+ * Mutating controls always render whatever the caller's role; the backend enforces `guiding_principle_owner` /
+ * `guiding_principle_approver` (or the organisation equivalents) and a 403 surfaces as a toast. Content edit, archive
+ * and file-attach controls are hidden once `guidingPrinciple.is_locked` (from `APPROVED`, one state earlier than
+ * Strategy and Future State; `service.GUIDING_PRINCIPLE_LOCKED_STATUSES`).
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -62,29 +35,36 @@ import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSectio
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
-import { RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { Spinner } from "../../components/Spinner";
 import { SupersedeAction } from "../../components/SupersedeAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgGuidingPrincipleApi, projectGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
-import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
+import {
+  GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_DESCRIPTION, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE,
+  REVIEWED_LOCKED_REASON,
+} from "./types";
 import type {
   GuidingPrinciple, GuidingPrincipleComment, GuidingPrincipleFieldValues, GuidingPrincipleVersion,
 } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_GUIDING_PRINCIPLES_SECTION_KEY } from "./orgResourceKeys";
 
-/** Every lifecycle action this page can offer, keyed by the action itself —
- * same generic confirm-dialog-copy pattern as `StrategyDetailPage.tsx`'s own
- * `TransitionAction`/`TRANSITION_COPY`, minus `approve`'s Strategy-only
- * "Under Review" framing (Guiding Principle moves `Proposed -> Approved`
- * directly, no intervening review state). */
+/** Every lifecycle action this page offers; keys the confirm-dialog copy as in `StrategyDetailPage.tsx`, with `approve` going straight from Proposed to Approved. */
 type TransitionAction = "approve" | "activate" | "supersede" | "retire";
 
 const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; confirmLabel: string }> = {
@@ -110,6 +90,8 @@ const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; c
   },
 };
 
+const MAIN_PATH = ["draft", "proposed", "approved", "active"] as const;
+
 export function GuidingPrincipleDetailPage() {
   const { projectId, organizationId, guidingPrincipleId } = useParams<{
     projectId?: string;
@@ -122,10 +104,13 @@ export function GuidingPrincipleDetailPage() {
   const scopeId = projectId ?? organizationId;
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/guiding-principles`
-    : `/org-overview`;
-  const backLabel = projectId ? "Guiding Principles" : "Organisation overview";
+    : organizationId ? orgResourcesPath(organizationId, ORG_GUIDING_PRINCIPLES_SECTION_KEY) : "/org-resources";
 
   const [guidingPrinciple, setGuidingPrinciple] = useState<GuidingPrinciple | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "guiding_principle");
+  const approval = useApprovalStatus(
+    projectId ? { projectId } : organizationId ? { organizationId } : null, "guiding_principle", guidingPrinciple?.id, guidingPrinciple?.status,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<GuidingPrincipleVersion[] | null>(null);
   const [comments, setComments] = useState<GuidingPrincipleComment[] | null>(null);
@@ -148,10 +133,8 @@ export function GuidingPrincipleDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeId, guidingPrincipleId]);
 
-  // The owner picker needs an organisation's own user list — a project-scoped
-  // Guiding Principle has no `organization_id` route param, so its owning
-  // project is fetched once to resolve one (mirrors `PainPointDetailPage.tsx`'s
-  // identical lookup); an org-scoped Guiding Principle already has it.
+  // The owner picker needs the organisation's user list; a project-scoped principle fetches its project once to
+  // resolve `organization_id`, as `PainPointDetailPage.tsx` does.
   useEffect(() => {
     if (organizationId || !projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((p) => setOwnerOrgId(p.organization_id));
@@ -231,12 +214,54 @@ export function GuidingPrincipleDetailPage() {
   });
 
   const codeOwner = useRecordOwnerCode(guidingPrinciple ?? {});
+  const skipSteps = useSkipSteps<GuidingPrinciple>({
+    lifecycle, current: guidingPrinciple?.status ?? "", labels: GUIDING_PRINCIPLE_STATUS_LABEL, noun: "Guiding Principle",
+    move: (target, reason) => {
+      if (!scopeId || !guidingPrinciple) return Promise.reject(new Error("This move is not available."));
+      if (target === "approved") return withLifecycleSkip(reason, () => scopedApi.approve(scopeId, guidingPrinciple.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setGuidingPrinciple,
+  });
+
   if (!scopeId || !guidingPrincipleId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciple === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await scopedApi.uploadFile(scopeId, guidingPrinciple.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
+  // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  // It goes to the next step the project uses (a project may turn Proposed off).
+  const next = lifecycle.nextOnPath(MAIN_PATH, guidingPrinciple.status);
+  let promote: LifecyclePromote | undefined;
+  if (next === "proposed") {
+    promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, guidingPrinciple.id), "Guiding Principle proposed.") };
+  } else if (next === "approved") {
+    promote = approval.approve("approved", () => setTransitionAction("approve"));
+  } else if (next === "active") {
+    promote = { to: "active", onPromote: () => setTransitionAction("activate") };
+  }
+
+  // An ended Guiding Principle sits after the last main step it reached: any retired one was approved, and was active if a version says so.
+  const offPath = guidingPrinciple.status === "superseded" || guidingPrinciple.status === "retired"
+    ? {
+        key: guidingPrinciple.status,
+        label: GUIDING_PRINCIPLE_STATUS_LABEL[guidingPrinciple.status],
+        description: GUIDING_PRINCIPLE_STATUS_DESCRIPTION[guidingPrinciple.status],
+        locked: true,
+        lockedReason: REVIEWED_LOCKED_REASON,
+        after: guidingPrinciple.status === "superseded" || versions?.some((v) => v.status === "active") ? "active" : "approved",
+      }
+    : undefined;
+
   return (
     <DetailLayout
+      pictures={{ files, upload: guidingPrinciple.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} refreshToken={recordActivityKey(guidingPrinciple)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -264,9 +289,10 @@ export function GuidingPrincipleDetailPage() {
         recordLabel="Guiding Principle"
         title={guidingPrinciple.name}
         code={guidingPrinciple.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} /> : undefined}
         codeOwner={codeOwner}
-        back={{ to: backLink, label: backLabel }}
+        back={{ to: backLink, label: "Guiding Principles" }}
         badges={
           <>
           <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[guidingPrinciple.status]}>
@@ -277,42 +303,33 @@ export function GuidingPrincipleDetailPage() {
         version={guidingPrinciple.version_number}
         subtitle={`${GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority`}
         onEdit={guidingPrinciple.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {guidingPrinciple.status === "draft" && (
-            <button
-              className="btn btn-primary"
-              onClick={() => runTransition(() => scopedApi.propose(scopeId, guidingPrinciple.id), "Guiding Principle proposed.")}
-            >
-              Propose
-            </button>
-          )}
-          {guidingPrinciple.status === "proposed" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-              )}
-              {guidingPrinciple.status === "approved" && (
-                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-              )}
-              {guidingPrinciple.status === "active" && (
-                <>
-                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-                </>
-              )}
-          </>
-        }
+        actions={[
+          skipSteps.menuRow,
+          lifecycle.canMove(guidingPrinciple.status, "draft", guidingPrinciple.status === "proposed") && { label: "Send back", onSelect: () => setSendingBack(true) },
+          guidingPrinciple.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
+          guidingPrinciple.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, GUIDING_PRINCIPLE_STATUS_LABEL, {
+              descriptions: GUIDING_PRINCIPLE_STATUS_DESCRIPTION,
+              locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON },
+            }),
+            guidingPrinciple.status,
+          ),
+          current: guidingPrinciple.status,
+          offPath,
+          promote,
+          skip: skipSteps.track,
+        }}
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
-          <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
-          {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
+          <RecordField markdown label="Principle statement" value={guidingPrinciple.principle_statement} />
+          {guidingPrinciple.rationale && <RecordField markdown label="Rationale" value={guidingPrinciple.rationale} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
@@ -329,15 +346,12 @@ export function GuidingPrincipleDetailPage() {
           ]}
         />
 
-        <DetailCard heading="Attachments">
+        <DetailCard heading="Attachments" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={guidingPrinciple.is_locked}
             emptyHint={guidingPrinciple.is_locked ? "This Guiding Principle is past review; new attachments can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await scopedApi.uploadFile(scopeId, guidingPrinciple.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await scopedApi.unlinkFile(scopeId, guidingPrinciple.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
@@ -366,7 +380,6 @@ export function GuidingPrincipleDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <GuidingPrincipleFormModal
@@ -377,6 +390,8 @@ export function GuidingPrincipleDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {sendingBack && (
         <CommentConfirmDialog
@@ -412,14 +427,5 @@ export function GuidingPrincipleDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

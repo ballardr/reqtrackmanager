@@ -30,7 +30,7 @@ from app.schemas.requirement import (
     RequirementReviewCreate,
     RequirementReviewOut,
 )
-from app.services import pubsub
+from app.services import approval_separation, pubsub
 from app.services.audit import log_event
 from app.services.lookups import project_or_404
 from app.services.principals import is_principal_member, label_of, principal_ref
@@ -101,19 +101,14 @@ def record_review_outcome(
 ):
     """Records the outcome of a requirement's scheduled review (C-R-07).
 
-    Gate: the requirement's assigned reviewer (C-R-10; when that is a group, any one
-    of its members, recorded as `reviewed_by`), or a project manager as a fallback. Doesn't touch `review_date` itself (see
-    `services/reviews.py`'s due-list definition) — the requirement drops off
-    the due list because a review now exists, not because the date changed.
+    Gate: the requirement's assigned reviewer (C-R-10; when that is a group, any one of its members, recorded as
+    `reviewed_by`), or a project manager as a fallback. Does not touch `review_date` (see `services/reviews.py`'s
+    due-list definition): the requirement leaves the due list because a review now exists.
 
-    A `FAILED` outcome recorded against a currently-completed requirement
-    also clears its completion overlay (`is_completed`/`completed_at`/
-    `completed_by`) — the concrete mechanism behind C-G-11's "[a requirement
-    marked completed] may later be reversed to non-compliant... when a
-    review/audit occurs." Logged as a distinct audit event
-    (`completion_cleared_by_review`) from `review_recorded`, so it's
-    traceable that the reviewer's outcome, not some other action, is what
-    dropped the requirement back off the completed list.
+    A `FAILED` outcome against a currently completed requirement also clears its completion overlay
+    (`is_completed`/`completed_at`/`completed_by`), C-G-11's "may later be reversed to non-compliant when a
+    review/audit occurs". It is logged as a distinct audit event (`completion_cleared_by_review`) from
+    `review_recorded`, so the reviewer's outcome is traceable as the cause.
     """
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
@@ -157,32 +152,21 @@ def approve_requirement(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Approves a draft or reviewed requirement directly (C-G-11) — the
-    previously-missing standalone path out of draft/reviewed status. Before this
-    endpoint existed, `APPROVED` only ever happened as a side effect of a
-    change request (`decide_change_request`) or a stage baseline
-    (`services/baseline.py::create_baseline_for_stage`, which does the same
-    transition in bulk for every draft/reviewed requirement targeting the
-    stage being approved) — despite `update_requirement` already allowing a
-    project manager to set `status=approved` directly via a full edit
-    payload (`:578-591`). This gives that same transition its own
-    single-purpose action, matching `complete`/`uncomplete` below, so the
-    frontend doesn't have to resend the entire edit payload just to flip
-    status.
+    """Approves a draft or reviewed requirement directly (C-G-11): the standalone path out of draft/reviewed
+    status. `APPROVED` is otherwise reached through a change request (`decide_change_request`), a stage baseline
+    (`services/baseline.py::create_baseline_for_stage`) or a full edit payload by a project manager
+    (`update_requirement`). This single-purpose action matches `complete`/`uncomplete` below, so the frontend
+    need not resend the whole edit payload to change status.
 
-    Gate: project manager only (C-U-03's clarification: "Project Managers
-    can also provide approvals for change requests and approval of project
-    requirements from scoping review to project requirements") — the same
-    check `decide_change_request` and `update_requirement`'s own
-    status=approved branch already use. When reached through the MCP server
-    (`channel == "mcp"`), additionally requires this project and its
-    organisation to both have explicitly enabled AI approval (docs/decisions.md's
-    "AI approval via MCP" entry) — a plain UI/API call is unaffected by that
-    flag either way.
+    Gate: project manager only (C-U-03's clarification: Project Managers provide approvals for change requests
+    and for project requirements from scoping review), the check `decide_change_request` and
+    `update_requirement`'s status=approved branch use. Through the MCP server (`channel == "mcp"`) the project
+    and its organisation must also have enabled AI approval (docs/decisions.md's "AI approval via MCP" entry);
+    a UI/API call is unaffected.
 
     The body is optional; its `comment` (what the approver checked) is recorded as the audit event's
-    `detail.comment` and appended to the version's change note, so it shows in the Activity tab and
-    the Versions table.
+    `detail.comment` and appended to the version's change note, so it shows in the Activity tab and the
+    Versions table.
     """
     if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
@@ -195,6 +179,10 @@ def approve_requirement(
     if current_version.status not in REQUIRES_APPROVAL_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")
     comment = ((payload.comment if payload else None) or "").strip()
+    approval_separation.enforce_approval(
+        db, user=current_user, artefact_type="requirement", record_id=requirement.id, creator_id=requirement.creator_id,
+        organization_id=project_or_404(db, project_id).organization_id, project_id=project_id, comment=comment,
+    )
     note = "Approved via MCP" if channel == "mcp" else "Approved directly"
     new_version = apply_new_version(
         db, requirement, current_version, current_user,
@@ -220,18 +208,13 @@ def complete_requirement(
     current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
     db: Session = Depends(get_db), channel: str = Depends(get_request_channel),
 ):
-    """Marks an approved requirement completed (C-P-03, C-G-11), gated the
-    same as archiving — a status transition a project manager can make
-    directly, not content that needs to go through a change request. When
-    reached through the MCP server, additionally requires this project and
-    its organisation to both have explicitly enabled AI approval — see
-    `approve_requirement`'s docstring.
+    """Marks an approved requirement completed (C-P-03, C-G-11), gated as archiving is: a status transition a
+    project manager makes directly, not content that goes through a change request. Through the MCP server the
+    project and its organisation must also have enabled AI approval (see `approve_requirement`).
 
-    Sets `is_completed`/`completed_at`/`completed_by` directly on the
-    `Requirement` row rather than calling `apply_new_version` — completion
-    is an overlay marker independent of lifecycle state (C-G-11), not a
-    change to the requirement's content, so it must not bump the version
-    number the way every actual content/status edit does.
+    Sets `is_completed`/`completed_at`/`completed_by` on the `Requirement` row without `apply_new_version`:
+    completion is an overlay marker independent of lifecycle state (C-G-11), not a content change, so it must
+    not bump the version number.
     """
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:

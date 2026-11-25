@@ -4,24 +4,17 @@ Module: services.stage_workflow_bundle
 Project and organisation bundle sections for stage workflows.
 
 Responsibilities:
-- Export a tier's workflows (name and ordered phases with kinds), a project's hidden organisation
-  workflows (by name), and each stage's workflow and phase (by name).
-- Import them again, resolving by name, never by id.
+- Export a tier's workflows (name, ordered phases with kinds), a project's hidden organisation workflows, each stage's
+  workflow and phase, component phase tracks and the phase schedule; import them resolving by name, never id.
 
 Design decisions:
-- An imported stage in a locked or closed phase starts at its workflow's first phase instead, with
-  a warning: entering those phases writes a baseline and records an approval, which an import
-  must not do on someone's behalf (an imported approval state never bypasses the approval gate).
-- The organisation import adds the bundle's workflows and then seeds Standard only if the
-  organisation still has none, so a customised Standard is not replaced by the default.
-- A merge into an existing organisation adds workflows missing by name and leaves existing ones alone.
-- Component phases travel as the switch plus one entry per stored track (component prefix, stage name,
-  workflow, phase, owner, applicability); the same rule holds: a track never lands in a locked or closed
-  phase, and its approval and completion stamps are not carried.
-- The phase schedule travels as the reminder lead time, each stage's owner (by name or email) and one entry per
-  plan row (stage, component prefix or null, phase name, expected range, actual dates). An import keeps the
-  actual dates as history; the "notified for" markers are derived and not carried, so an import re-arms every
-  reminder. Owners and plans resolve after the project's groups and component tracks exist.
+- An imported stage or track in a locked or closed phase starts at its workflow's first phase with a warning: entering
+  those phases writes a baseline or approval, which an import must not do on someone's behalf.
+- An organisation import adds the bundle's workflows, then seeds Standard only if none exist; a merge adds missing names.
+- Component phases travel as the switch plus one entry per track (component prefix, stage, workflow, phase, owner,
+  applicability); approval and completion stamps are not carried.
+- The schedule travels as the lead time, stage owners and plan rows (expected range, actual dates kept as history); the
+  "notified for" markers are derived, so import re-arms reminders. Owners and plans resolve after groups and tracks exist.
 """
 
 from __future__ import annotations

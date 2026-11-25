@@ -1,10 +1,9 @@
 /**
  * Module: components/linkOptions
  *
- * Helpers shared by the "Add a link" dialog and the create forms' quick-link field for reading the
- * link types a record can use (`ArtefactLinkTypeOption`): a stable key per type-and-direction, and
- * the relationship to preselect for a chosen record type. Kept in one place so both controls
- * default a pair to the same relationship.
+ * Helpers shared by the "Add a link" dialog and the create forms' quick-link field for reading the link types a record
+ * can use (`ArtefactLinkTypeOption`): a stable key per type-and-direction, and the relationship to preselect for a chosen
+ * record type, so both controls default a pair to the same relationship.
  */
 import type { ArtefactLinkTypeOption } from "../api/artefactLinks";
 

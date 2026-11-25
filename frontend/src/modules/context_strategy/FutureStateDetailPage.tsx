@@ -1,28 +1,18 @@
 /**
  * Module: modules/context_strategy/FutureStateDetailPage
  *
- * A single Future State's full detail — full field display (including `target_date`),
- * current lifecycle status, version history, comments, attachments, and
- * relationships, plus every lifecycle action. Mirrors
- * `StrategyDetailPage.tsx`'s exact structure field-for-field, since Future
- * State's backend is itself "an exact structural mirror" of Strategy's
- * — same seven-state lifecycle, same lock rule
- * (past `UNDER_REVIEW`), same owner/approver RBAC shape, same comments/
- * attachments/relationships sections.
+ * A single Future State's full detail: fields (including `target_date`), lifecycle status, versions, comments,
+ * attachments, relationships and every lifecycle action. Its structure mirrors `StrategyDetailPage.tsx` field for
+ * field, because the backend model mirrors Strategy's (same seven-state lifecycle, lock rule past `UNDER_REVIEW`,
+ * owner/approver RBAC).
  *
- * **Scope-aware, Decided by: Agent**, for the exact same reason
- * `StrategyDetailPage.tsx` is: a Future State is org- **or** project-scoped,
- * so this one component serves both
- * `ProjectFutureStatesPage.tsx`'s row-click navigation and
- * `OrgFutureStatesPanel.tsx`'s own (`module.ts`'s `globalRoutes`, org-scoped,
- * not gated by any one project's own enabled-modules list).
+ * Scope-aware: a Future State is organisation- or project-scoped, so one component serves both
+ * `ProjectFutureStatesPage.tsx` and `OrgFutureStatesPanel.tsx` (`module.ts`'s `globalRoutes`, not gated by a project's
+ * enabled modules).
  *
- * Every mutating control always renders regardless of the caller's actual
- * role (same posture `StrategyDetailPage.tsx` establishes) — the backend
- * enforces `future_state_owner`/`future_state_approver` (or their org-scoped
- * equivalents) and a 403 surfaces as a toast. Edit/archive/file-attach
- * controls specifically for *content* are hidden (not just toast-blocked)
- * once `futureState.is_locked`.
+ * Mutating controls always render whatever the caller's role; the backend enforces `future_state_owner` /
+ * `future_state_approver` (or the organisation equivalents) and a 403 surfaces as a toast. Content edit, archive and
+ * file-attach controls are hidden once `futureState.is_locked`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -42,19 +32,25 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgFutureStateApi, projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
-import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
+import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE, FUTURE_STATE_STATUS_DESCRIPTION, REVIEWED_LOCKED_REASON } from "./types";
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { RecordField } from "../../components/RecordDetailParts";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_FUTURE_STATES_SECTION_KEY } from "./orgResourceKeys";
 
-/** Every lifecycle action this page can offer, keyed by the action itself —
- * used to build the confirm-dialog copy generically instead of repeating it
- * per call site. Exact mirror of `StrategyDetailPage.tsx`'s own
- * `TransitionAction`/`TRANSITION_COPY`. */
+/** Every lifecycle action this page offers; keys the confirm-dialog copy, as `StrategyDetailPage.tsx`'s `TRANSITION_COPY` does. */
 type TransitionAction = "approve" | "activate" | "supersede" | "retire";
 
 const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; confirmLabel: string }> = {
@@ -80,6 +76,8 @@ const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; c
   },
 };
 
+const MAIN_PATH = ["draft", "proposed", "under_review", "approved", "active"] as const;
+
 export function FutureStateDetailPage() {
   const { projectId, organizationId, futureStateId } = useParams<{
     projectId?: string;
@@ -92,10 +90,13 @@ export function FutureStateDetailPage() {
   const scopeId = projectId ?? organizationId;
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/future-states`
-    : `/org-overview`;
-  const backLabel = projectId ? "Future States" : "Organisation overview";
+    : organizationId ? orgResourcesPath(organizationId, ORG_FUTURE_STATES_SECTION_KEY) : "/org-resources";
 
   const [futureState, setFutureState] = useState<FutureState | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "future_state");
+  const approval = useApprovalStatus(
+    projectId ? { projectId } : organizationId ? { organizationId } : null, "future_state", futureState?.id, futureState?.status,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<FutureStateVersion[] | null>(null);
   const [comments, setComments] = useState<FutureStateComment[] | null>(null);
@@ -169,12 +170,57 @@ export function FutureStateDetailPage() {
   });
 
   const codeOwner = useRecordOwnerCode(futureState ?? {});
+  const skipSteps = useSkipSteps<FutureState>({
+    lifecycle, current: futureState?.status ?? "", labels: FUTURE_STATE_STATUS_LABEL, noun: "Future State",
+    move: (target, reason) => {
+      if (!scopeId || !futureState) return Promise.reject(new Error("This move is not available."));
+      if (target === "under_review") return withLifecycleSkip(reason, () => scopedApi.submitForReview(scopeId, futureState.id));
+      if (target === "approved") return withLifecycleSkip(reason, () => scopedApi.approve(scopeId, futureState.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setFutureState,
+  });
+
   if (!scopeId || !futureStateId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureState === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await scopedApi.uploadFile(scopeId, futureState.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
+  // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  // It goes to the next step the project uses (a project may turn Proposed and Under review off).
+  const next = lifecycle.nextOnPath(MAIN_PATH, futureState.status);
+  let promote: LifecyclePromote | undefined;
+  if (next === "proposed") {
+    promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, futureState.id), "Future State proposed.") };
+  } else if (next === "under_review") {
+    promote = { to: "under_review", onPromote: () => runTransition(() => scopedApi.submitForReview(scopeId, futureState.id), "Future State submitted for review.") };
+  } else if (next === "approved") {
+    promote = approval.approve("approved", () => setTransitionAction("approve"));
+  } else if (next === "active") {
+    promote = { to: "active", onPromote: () => setTransitionAction("activate") };
+  }
+
+  // An ended Future State sits after the last main step it reached: any retired one was approved, and was active if a version says so.
+  const offPath = futureState.status === "superseded" || futureState.status === "retired"
+    ? {
+        key: futureState.status,
+        label: FUTURE_STATE_STATUS_LABEL[futureState.status],
+        description: FUTURE_STATE_STATUS_DESCRIPTION[futureState.status],
+        locked: true,
+        lockedReason: REVIEWED_LOCKED_REASON,
+        after: futureState.status === "superseded" || versions?.some((v) => v.status === "active") ? "active" : "approved",
+      }
+    : undefined;
+
   return (
     <DetailLayout
+      pictures={{ files, upload: futureState.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="future_state" artefactId={futureState.id} refreshToken={recordActivityKey(futureState)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -202,9 +248,10 @@ export function FutureStateDetailPage() {
         recordLabel="Future State"
         title={futureState.title}
         code={futureState.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="future_state" artefactId={futureState.id} /> : undefined}
         codeOwner={codeOwner}
-        back={{ to: backLink, label: backLabel }}
+        back={{ to: backLink, label: "Future States" }}
         badges={
           <>
           <Badge tone={FUTURE_STATE_STATUS_TONE[futureState.status]}>
@@ -215,59 +262,39 @@ export function FutureStateDetailPage() {
         version={futureState.version_number}
         subtitle={futureState.target_date ? `Target date ${futureState.target_date}` : undefined}
         onEdit={futureState.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {futureState.status === "draft" && (
-            <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, futureState.id), "Future State proposed.")}>
-              Propose
-            </button>
-          )}
-          {futureState.status === "proposed" && (
-            <>
-              <button
-                className="btn btn-primary"
-                onClick={() => runTransition(() => scopedApi.submitForReview(scopeId, futureState.id), "Future State submitted for review.")}
-              >
-                Submit for review
-              </button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-              )}
-              {futureState.status === "under_review" && (
-                <>
-                  <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-                  <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-                </>
-              )}
-              {futureState.status === "approved" && (
-                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-              )}
-              {futureState.status === "active" && (
-                <>
-                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-                </>
-              )}
-          </>
-        }
+        actions={[
+          skipSteps.menuRow,
+          lifecycle.canMove(futureState.status, "draft", futureState.status === "proposed" || futureState.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
+          futureState.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
+          futureState.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, FUTURE_STATE_STATUS_LABEL, { descriptions: FUTURE_STATE_STATUS_DESCRIPTION, locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON } }),
+            futureState.status,
+          ),
+          current: futureState.status,
+          offPath,
+          promote,
+          skip: skipSteps.track,
+        }}
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
-          {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
-          <Field label="Desired state" value={futureState.desired_state} />
-          {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
-          {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
-          {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
-          {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
+          {futureState.current_state && <RecordField markdown label="Current state" value={futureState.current_state} />}
+          <RecordField markdown label="Desired state" value={futureState.desired_state} />
+          {futureState.outcomes && <RecordField markdown label="Outcomes" value={futureState.outcomes} />}
+          {futureState.success_measures && <RecordField markdown label="Success measures" value={futureState.success_measures} />}
+          {futureState.constraints && <RecordField markdown label="Constraints" value={futureState.constraints} />}
+          {futureState.assumptions && <RecordField markdown label="Assumptions" value={futureState.assumptions} />}
         </DetailCard>
 
 
         {versions && versions.length > 1 && (
-          <DetailCard heading="Versions">
+          <DetailCard heading="Versions" rank="supporting">
             <table className="table">
               <thead>
                 <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>
@@ -286,15 +313,12 @@ export function FutureStateDetailPage() {
           </DetailCard>
         )}
 
-        <DetailCard heading="Attachments">
+        <DetailCard heading="Attachments" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={futureState.is_locked}
             emptyHint={futureState.is_locked ? "This Future State is past review; new attachments can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await scopedApi.uploadFile(scopeId, futureState.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await scopedApi.unlinkFile(scopeId, futureState.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
@@ -323,7 +347,6 @@ export function FutureStateDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <FutureStateFormModal
@@ -334,6 +357,8 @@ export function FutureStateDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {sendingBack && (
         <CommentConfirmDialog
@@ -366,14 +391,5 @@ export function FutureStateDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

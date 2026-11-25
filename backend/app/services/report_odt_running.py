@@ -1,26 +1,22 @@
 """
 Module: services.report_odt_running
 
-The running headers and footers of an OpenDocument text file: the page layouts and master pages of a document that has them.
+The running headers and footers of an OpenDocument text file: page layouts and master pages.
 
 Responsibilities:
-- `running_styles`: the automatic styles the bands use (a borderless table, its columns and cells) for `styles.xml`.
-- `page_layout`: a style's page layout, whose top and bottom margins leave room for the header and footer inside the
-  margins the layout asked for (ODF puts a header and footer inside the text area, so the body would otherwise start lower
-  than in the other formats).
-- `master_page`: a master page with its header, left-hand header, first-page header and the same for the footer.
+- `running_styles` (automatic styles for the bands, for `styles.xml`), `page_layout` (top and bottom margins that leave
+  room for the header and footer inside the requested margins, since ODF puts them inside the text area) and
+  `master_page` (header, left-hand header, first-page header and the footer equivalents).
 
 Design decisions:
-- A header or footer is a borderless three-column table of left, centre and right cells, holding `text:page-number` and
+- A band is a borderless three-column table of left, centre and right cells with `text:page-number` and
   `text:page-count` fields and an optional logo frame.
-- A band that sets its own font, size or colour gets automatic paragraph styles over the `Band_<slot>` ones, and bold and
-  italic stretches are `text:span`s in three shared automatic text styles; the writer collects both (and the families)
-  for the parts that hold them.
-- The first page of a master page is its own `style:header-first`/`style:footer-first`, so a section's first page can
-  differ; the return to the document's style uses a separate master page without one (a continuation).
-- The page layout of the cover page has no header or footer, as before.
+- A band with its own font, size or colour gets automatic paragraph styles over the `Band_<slot>` ones; bold and italic
+  stretches are `text:span`s in three shared text styles, collected by the writer.
+- A section's first page is its own `style:header-first`/`style:footer-first`; the return to the document's style uses a
+  master page without one. The cover page layout has no header or footer.
 
-Dependencies: `services.report_band_cells`, `services.report_odf`, `services.report_image_layout`, `services.report_running`, `services.report_svg`.
+Dependencies: `report_band_cells`, `report_odf`, `report_image_layout`, `report_running`, `report_svg`.
 """
 
 from __future__ import annotations

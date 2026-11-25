@@ -1,13 +1,10 @@
 /**
  * Module: components/BulkTagDialog
  *
- * Adds and removes tags on the records selected in a list, in one previewed step: the list's
- * bulk toolbar opens it with the chosen record ids. It reuses the reclassify call (`records`
- * form), so the server applies the usual rules: tag authority for each record, the project's own
- * vocabulary, all or nothing, one audit event per changed record.
- *
- * Only tags the project owns are offered; a project that follows a parent's list has none to pick
- * here, because the parent manages that list (the dialog says so).
+ * Adds and removes tags on the records selected in a list in one previewed step, opened from the list's bulk
+ * toolbar. It reuses the reclassify call (`records` form), so the server applies the usual rules: tag authority
+ * per record, the project's own vocabulary, all or nothing, one audit event per changed record. Only tags the
+ * project owns are offered; a project following a parent's list has none, because the parent manages it.
  */
 import { useCallback, useState } from "react";
 

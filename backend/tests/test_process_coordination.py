@@ -1,8 +1,8 @@
-"""Tests for multi-worker coordination (2026-10-04): the advisory-lock leader
-election and startup lock in `services.process_coordination`, and the
-Postgres LISTEN/NOTIFY fan-out in `services.pubsub` — what lets the backend
-run several uvicorn workers without duplicating scheduled jobs/emails or
-losing WebSocket broadcasts published by another worker.
+"""Tests for multi-worker coordination: the advisory-lock leader election and
+startup lock in `services.process_coordination`, and the Postgres LISTEN/NOTIFY
+fan-out in `services.pubsub`, which let the backend run several uvicorn workers
+without duplicating scheduled jobs/emails or losing WebSocket broadcasts
+published by another worker.
 
 Each lock is exercised from two separate connections, standing in for two
 worker processes (advisory locks are per-session, so a second connection

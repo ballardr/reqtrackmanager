@@ -1,24 +1,17 @@
 """
 Module: routers.projects
 
-Aggregates the `projects` package's per-concern routers — `core` (CRUD,
-import, tree, favourites, files, export, terminology, changes, metrics),
-`hierarchy` (ancestors/children, member sources, effective members,
-access-inheritance materialization), `lifecycle`
-(archive/unarchive), `stages`, `component_stages` (component phases), `stage_phase_plans`
-(phase schedule), `taxonomy` (components/categories),
-`groups`, `roles` (direct/group/by-email project role assignment,
-pending invites), `module_roles`, and `scoring` (project overrides of
-the generic scoring-matrix default model/bands) —
-into the single `/api/v1/projects` router `main.py` mounts.
+Aggregates the `projects` package's per-concern routers into the single `/api/v1/projects` router
+`main.py` mounts: `core` (CRUD, import, tree, favourites, files, export, terminology, changes, metrics),
+`hierarchy` (ancestors/children, member sources, effective members, access-inheritance materialisation),
+`lifecycle` (archive/unarchive), `stages`, `component_stages` (component phases), `stage_phase_plans`
+(phase schedule), `taxonomy` (components/categories), `groups`, `roles` (direct/group/by-email project role
+assignment, pending invites), `module_roles` and `scoring` (project overrides of the scoring-matrix
+default model/bands).
 
-Split out from one ~3,500-line module (previously `routers/projects.py`)
-so each concern can be read and changed independently; see
-`docs/decisions.md` for the decision record. `core.py` also holds the
-shared private helpers (`_accessible_project_ids`,
-`_project_out_with_redacted_parent`, `_ensure_project_has_a_manager`,
-`_require_user_in_org`) the other bucket files import from it rather than
-duplicating.
+Each concern is its own module so it can be read and changed independently. `core.py` also holds the shared
+private helpers (`_accessible_project_ids`, `_project_out_with_redacted_parent`,
+`_ensure_project_has_a_manager`, `_require_user_in_org`) the other bucket files import.
 """
 
 from __future__ import annotations
@@ -42,11 +35,9 @@ from app.routers.projects import (
 
 _PREFIX = "/api/v1/projects"
 
-# The prefix is passed to each `include_router()` call, not set on `router`
-# itself: `core.router` has a bare `POST ""` route (create), and FastAPI's
-# `include_router` rejects a route whose *own* path is empty unless the
-# call's `prefix` argument (not the target router's already-configured
-# prefix) is non-empty.
+# The prefix is passed to each `include_router()` call, not set on `router`: `core.router` has a bare
+# `POST ""` route, and FastAPI's `include_router` rejects a route whose own path is empty unless the call's
+# `prefix` argument is non-empty.
 router = APIRouter()
 router.include_router(core.router, prefix=_PREFIX)
 router.include_router(hierarchy.router, prefix=_PREFIX)

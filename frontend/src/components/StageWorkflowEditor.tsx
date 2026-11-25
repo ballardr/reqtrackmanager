@@ -1,10 +1,11 @@
 /**
  * Module: components/StageWorkflowEditor
  *
- * The create/edit dialog for a stage workflow: its name and its ordered phases, each with a free-text
- * name and a kind that carries the behaviour (open, review, locked, on hold, closed). Used by
- * `StageWorkflowsPanel` for both the organisation and the project tier, so the two cannot drift. The
- * caller saves; an existing phase keeps its `id` so a stage following it is not detached.
+ * The create/edit dialog for a stage workflow: its name and its ordered phases, each with a free-text name and a kind
+ * that carries the behaviour (open, review, locked, on hold, closed). The phases are one grid, one line per phase
+ * (order, name, kind, a row actions menu), in the aligned-rows pattern of docs/ux-style-guide.md; Save is in the dialog
+ * header. `StageWorkflowsPanel` uses it for both tiers. The caller saves; an existing phase keeps its `id` so a stage
+ * following it is not detached.
  */
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -12,11 +13,15 @@ import { useState } from "react";
 import type { StagePhaseKind, StageWorkflow, StageWorkflowPhaseWrite } from "../api/types";
 import { STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
-import { FieldCaption } from "./FieldHelp";
+import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
+import { FieldCaption, FieldHelp } from "./FieldHelp";
 import { FormActions } from "./FormActions";
 import { InlineTextInput, TextField } from "./FormFields";
 import { InlineSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
+
+/** Column tracks: order number, name (takes the spare width), kind (as wide as its longest option), row menu. */
+const PHASE_TRACKS = "2.5rem minmax(7rem, 1fr) fit-content(10rem) 2.25rem";
 
 /** The values the dialog saves. */
 export interface StageWorkflowValues {
@@ -54,50 +59,63 @@ export function StageWorkflowEditor({
       return next;
     });
   const valid = name.trim() !== "" && phases.length > 0 && phases.every((p) => p.name.trim() !== "");
+  const rowItems = (index: number): ActionMenuItem[] => {
+    const s = strings.stageWorkflows;
+    const items: ActionMenuItem[] = [];
+    if (index > 0) items.push({ label: s.moveUp, icon: <ArrowUp />, onSelect: () => movePhase(index, -1) });
+    if (index < phases.length - 1) items.push({ label: s.moveDown, icon: <ArrowDown />, onSelect: () => movePhase(index, 1) });
+    items.push({
+      label: s.remove, icon: <Trash2 />, danger: true, disabled: phases.length === 1, title: phases.length === 1 ? s.lastPhaseTitle : undefined,
+      onSelect: () => setPhases((list) => list.filter((_, i) => i !== index)),
+    });
+    return items;
+  };
   return (
     <Modal title={workflow ? strings.stageWorkflows.editWorkflow : strings.stageWorkflows.newWorkflow} onClose={onCancel} size="lg">
       <div className="stack">
         <TextField helpNotNeeded required label={strings.stageWorkflows.workflowName} value={name} onChange={setName} />
         <div className="stack" style={{ gap: "var(--space-2)" }}>
-          <FieldCaption label={strings.stageWorkflows.phases} help={strings.help.workflowPhases} required />
-          {phases.map((phase, index) => (
-            <div key={phase.id ?? `new-${index}`} className="row">
-              <InlineTextInput
-                ariaLabel={`${strings.stageWorkflows.phaseName} ${index + 1}`} value={phase.name}
-                onChange={(next) => setPhase(index, { name: next })}
-              />
-              <InlineSelect
-                ariaLabel={`${strings.stageWorkflows.phaseKind} ${index + 1}`} value={phase.kind} placeholder={null}
-                onChange={(next) => setPhase(index, { kind: next as StagePhaseKind })}
-                options={STAGE_PHASE_KINDS.map((kind) => ({ value: kind, label: STAGE_PHASE_KIND_LABEL[kind] }))}
-              />
-              <button
-                className="btn" disabled={index === 0} onClick={() => movePhase(index, -1)}
-                aria-label={strings.stageWorkflows.movePhaseUp(phase.name || String(index + 1))}
-              >
-                <ArrowUp />
-              </button>
-              <button
-                className="btn" disabled={index === phases.length - 1} onClick={() => movePhase(index, 1)}
-                aria-label={strings.stageWorkflows.movePhaseDown(phase.name || String(index + 1))}
-              >
-                <ArrowDown />
-              </button>
-              <button
-                className="btn btn-danger" disabled={phases.length === 1}
-                onClick={() => setPhases((list) => list.filter((_, i) => i !== index))}
-                aria-label={strings.stageWorkflows.removePhase(phase.name || String(index + 1))}
-              >
-                <Trash2 />
-              </button>
-            </div>
-          ))}
-          <div>
-            <button className="btn" onClick={() => setPhases((list) => [...list, { name: "", kind: "open" }])}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <FieldCaption label={strings.stageWorkflows.phases} help={strings.help.workflowPhases} required />
+            <button className="btn btn-sm" onClick={() => setPhases((list) => [...list, { name: "", kind: "open" }])}>
               <Plus /> {strings.stageWorkflows.addPhase}
             </button>
           </div>
-          <FieldCaption label={strings.stageWorkflows.phaseKind} help={strings.help.workflowPhaseKind} muted />
+          <div className="definition-grid" role="group" aria-label={strings.stageWorkflows.phases} style={{ gridTemplateColumns: PHASE_TRACKS }}>
+            <div className="definition-grid__head">{strings.stageWorkflows.order}</div>
+            <div className="definition-grid__head">{strings.stageWorkflows.phase}</div>
+            <div className="definition-grid__head">
+              <span className="field-caption">
+                <span>{strings.stageWorkflows.phaseKind}</span>
+                <FieldHelp label={strings.stageWorkflows.phaseKind} help={strings.help.workflowPhaseKind} />
+              </span>
+            </div>
+            <div className="definition-grid__head" />
+            {phases.map((phase, index) => (
+              <div key={phase.id ?? `new-${index}`} className="definition-grid__row">
+                <div className="definition-grid__cell text-muted">{index + 1}</div>
+                <div className="definition-grid__cell">
+                  <InlineTextInput
+                    ariaLabel={`${strings.stageWorkflows.phaseName} ${index + 1}`} value={phase.name}
+                    onChange={(next) => setPhase(index, { name: next })}
+                  />
+                </div>
+                <div className="definition-grid__cell">
+                  <InlineSelect
+                    ariaLabel={`${strings.stageWorkflows.phaseKind} ${index + 1}`} value={phase.kind} placeholder={null} autoWidth
+                    onChange={(next) => setPhase(index, { kind: next as StagePhaseKind })}
+                    options={STAGE_PHASE_KINDS.map((kind) => ({ value: kind, label: STAGE_PHASE_KIND_LABEL[kind] }))}
+                  />
+                </div>
+                <div className="definition-grid__actions">
+                  <ActionMenu
+                    size="sm" items={rowItems(index)}
+                    triggerLabel={strings.stageWorkflows.phaseActionsAria(phase.name || String(index + 1))}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
         <FormActions
           error={error} onCancel={onCancel} saveDisabled={!valid}

@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildUser, withStatefulAuth } from "../../testing/storybook-helpers";
 import { buildNeed, buildPersona } from "./fixtures";
 import { NeedsPage } from "./NeedsPage";
 import { PeoplePage } from "./PeoplePage";
@@ -45,7 +46,7 @@ function Harness({ start }: { start: string }) {
   );
 }
 
-const meta: Meta<typeof Harness> = { title: "Modules/Stakeholders/PeopleAndNeedsTabs", component: Harness };
+const meta: Meta<typeof Harness> = { title: "Modules/Stakeholders/PeopleAndNeedsTabs", component: Harness, decorators: [withStatefulAuth(buildUser())] };
 export default meta;
 
 type Story = StoryObj<typeof Harness>;

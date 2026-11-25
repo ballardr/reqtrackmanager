@@ -1,15 +1,13 @@
 /**
  * Module: components/TagField
  *
- * The "Tags" field of a create form: choose the tags the new record starts with. Nothing is
- * written here; the form applies them with `useCommitTags` once the record exists, the same
- * contract as `QuickLinkField`. It also renders `ComponentField`, so every create form that has tags offers the
- * components too, and `useCommitTags` applies both.
+ * The "Tags" field of a create form: choose the tags the new record starts with. Nothing is written here; the form
+ * applies them with `useCommitTags` once the record exists, the same contract as `QuickLinkField`. It also renders
+ * `ComponentField`, so a create form with tags offers components too, and `useCommitTags` applies both.
  *
- * It asks the server about a record that does not exist yet (`DRAFT_ARTEFACT_ID`), so the
- * vocabulary, the project's mode and the caller's authority are the ones that will apply, and it
- * renders nothing when the caller may not tag this kind of record or the read fails: a form never
- * offers a field that would be refused.
+ * It asks the server about a record that does not exist yet (`DRAFT_ARTEFACT_ID`), so the vocabulary, mode and caller's
+ * authority are those that will apply, and renders nothing when the caller may not tag this kind of record or the read
+ * fails, so a form never offers a field that would be refused.
  */
 import { useEffect, useState } from "react";
 
@@ -17,6 +15,7 @@ import { DRAFT_ARTEFACT_ID } from "../api/artefactLinks";
 import { recordTagsApi, type RecordTags, type RecordTagsApi } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
 import { ComponentField } from "./ComponentField";
+import { ReferenceField } from "./ReferenceField";
 import { TagInput } from "./TagInput";
 
 /**
@@ -26,9 +25,10 @@ import { TagInput } from "./TagInput";
  * @param onChange Called with the new list.
  * @param api Injectable calls (stories pass a fake).
  * @param components False leaves out the component picker, for a type that cannot be placed in the component tree.
+ * @param references False leaves out the external references, for a form that collects its own (Product Feedback).
  */
 export function TagField({
-  projectId, artefactType, value, onChange, api = recordTagsApi, components = true,
+  projectId, artefactType, value, onChange, api = recordTagsApi, components = true, references = true,
 }: {
   projectId: string;
   artefactType: string;
@@ -36,6 +36,7 @@ export function TagField({
   onChange: (names: string[]) => void;
   api?: RecordTagsApi;
   components?: boolean;
+  references?: boolean;
 }) {
   const strings = useStrings();
   const [data, setData] = useState<RecordTags | null>(null);
@@ -60,6 +61,7 @@ export function TagField({
         </div>
       )}
       {components && <ComponentField projectId={projectId} artefactType={artefactType} />}
+      {references && <ReferenceField projectId={projectId} artefactType={artefactType} />}
     </>
   );
 }

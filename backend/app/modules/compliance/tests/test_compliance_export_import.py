@@ -251,10 +251,8 @@ def test_org_export_import_round_trips_standards_and_mappings(client, admin_toke
     full standard/version/requirement/required-action tree and the mapping
     both survive intact."""
     action_type = _create_action_type(client, admin_token, org_id, name="Inspection")
-    # The standard's mandatory first version was already created alongside
-    # the standard itself (a standard is never left with zero versions) —
-    # fetch it rather than creating a redundant second one, so this test's
-    # "exactly one version round-trips" assertions below stay accurate.
+    # The standard's mandatory first version already exists, so fetch it rather than create a second: the "exactly one
+    # version round-trips" assertions below depend on it.
     standard_a = _create_standard(client, admin_token, org_id, reference="ORG-EXPORT-A", name="Standard A")
     version_a = client.get(
         f"{_base(org_id)}/standards/{standard_a['id']}/versions", headers=auth_headers(admin_token)
@@ -441,11 +439,8 @@ def test_org_merge_compliance_standard_reference_conflict_can_be_skipped_or_impo
     assert len([s for s in standards_after_skip if s["reference"] == "MERGE-STD-B"]) == 1
     assert next(s for s in standards_after_skip if s["reference"] == "MERGE-STD-B")["name"] == "Pre-existing Standard"
 
-    # Import as copy: the bundle's standard is added alongside the existing
-    # one, under a renamed reference (mirrors `export.py::_import_compliance_
-    # standards`'s "{reference} (imported)" convention — the project-name
-    # conflict's exact pattern, applied to a standard's `reference` instead
-    # of a project's `name`).
+    # Import as copy: the bundle's standard is added beside the existing one under a renamed reference
+    # (`"{reference} (imported)"`, `export._import_compliance_standards`).
     copy_resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={conflict["id"]: "import_as_copy"})
     assert copy_resp.status_code == 200, copy_resp.text
     assert copy_resp.json()["compliance_standards_imported"] == 1

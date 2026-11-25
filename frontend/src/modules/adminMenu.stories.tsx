@@ -106,7 +106,7 @@ export const InstalledModuleGroupsAreUnambiguous: Story = {
   args: {
     value: (() => {
       const problems: string[] = [];
-      for (const tier of ["orgAdminSections", "projectAdminSections"] as const) {
+      for (const tier of ["orgAdminSections", "projectAdminSections", "orgResourceSections"] as const) {
         const sections: AdminSectionLike[] = installedModules.flatMap((m): AdminSectionLike[] => m[tier] ?? []);
         const sectionKeys = new Set(sections.map((s) => s.key));
         const labels = new Map<string, string>();

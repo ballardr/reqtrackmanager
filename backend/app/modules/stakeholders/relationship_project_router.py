@@ -1,20 +1,14 @@
 """
 Module: modules.stakeholders.relationship_project_router
 
-Project-scoped API for the §10.5 relationships a Stakeholder or Persona has with
-other artefacts, mounted at
-`/api/v1/projects/{project_id}/modules/stakeholders`: the declared kinds, a
-target picker, a holder's relationships (list/add/remove) and the reverse view
-from a target.
+Project-scoped API for the §10.5 relationships a Stakeholder or Persona has with other artefacts,
+mounted at `/api/v1/projects/{project_id}/modules/stakeholders`: the declared kinds, a target picker,
+a holder's relationships (list/add/remove) and the reverse view from a target.
 
-RBAC: viewing needs the holder's sub-component (`stakeholder`/`persona`);
-changing a holder's relationships needs the same manage gate as editing that
-holder (`stakeholder_owner`/`persona_owner` or the FGAC `manage` grant). A
-target is only ever shown to a caller who may view its artefact type
-(`(target_type, view)` FGAC atom) in an enabled module. Tenancy: a target must
-belong to the request's project; anything else 404s so another tenant's ids look
-absent. Targets come from `relationships.resolve_target`, never from a direct
-import of the owning module.
+RBAC: viewing needs the holder's sub-component; changing needs the same manage gate as editing the
+holder. A target is shown only to a caller who may view its artefact type in an enabled module, and
+must belong to the request's project (otherwise 404, so another tenant's ids look absent). Targets
+come from `relationships.resolve_target`, never from a direct import of the owning module.
 """
 
 from __future__ import annotations

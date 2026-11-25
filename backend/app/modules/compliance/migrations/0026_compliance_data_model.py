@@ -4,33 +4,19 @@ Revision ID: 0026
 Revises: 0025
 Create Date: 2026-09-05
 
-Adds the five tables backing the Compliance Module's data model
-(§2, §5, §6, §25, §31) — the first real first-party module
-built on the module system:
+Adds the five tables of the Compliance Module's data model (§2, §5, §6, §25, §31):
 
-- `compliance_standards` (`app.modules.compliance.models.
-  ComplianceStandard`) — an organisation-level, reusable compliance
-  standard definition.
-- `compliance_standard_versions` (`ComplianceStandardVersion`) — versioned
-  content per standard (§4); every version remains independently
-  addressable indefinitely (no `valid_from`/`valid_to` supersession, unlike
-  `requirement_versions` — see that model's own docstring for why).
-- `compliance_requirements` (`ComplianceRequirement`) — self-referential
-  (`parent_requirement_id`) for section/subsection hierarchy (§5).
-- `compliance_required_actions` (`ComplianceRequiredAction`) — one-to-many
-  from a requirement, not a link table (§6).
-- `compliance_action_type_definitions` (`ComplianceActionTypeDefinition`)
-  — organisation-scoped extensible action-type vocabulary, mirroring
-  `action_type_definitions`' existing pattern at org rather than project
-  scope.
+- `compliance_standards` (`ComplianceStandard`): an organisation-level, reusable standard.
+- `compliance_standard_versions` (`ComplianceStandardVersion`): versioned content per standard (§4); every version stays
+  addressable (no `valid_from` / `valid_to` supersession, unlike `requirement_versions`).
+- `compliance_requirements` (`ComplianceRequirement`): self-referential (`parent_requirement_id`) for the section
+  hierarchy (§5).
+- `compliance_required_actions` (`ComplianceRequiredAction`): one-to-many from a requirement (§6).
+- `compliance_action_type_definitions` (`ComplianceActionTypeDefinition`): an organisation-scoped action-type
+  vocabulary, as `action_type_definitions` is at project scope.
 
-All five tables start empty: this migration adds no seed data (Compliance's
-"potential initial action types," §6, are seeded separately) and no
-existing table is altered. `compliance_required_actions.action_type_id`
-must be created after `compliance_action_type_definitions` (its FK target);
-`compliance_requirements` must be created after
-`compliance_standard_versions`, which must be created after
-`compliance_standards` — the table order below follows those dependencies.
+The tables start empty (initial action types are seeded separately) and no existing table is altered. Creation order
+follows the foreign keys.
 """
 
 from collections.abc import Sequence

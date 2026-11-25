@@ -6,10 +6,10 @@
  *
  * Responsibilities: Save is unavailable until something changed and while a save is in flight; success is a toast
  * (nothing persistent is drawn, so a later edit never sits beside an outdated "Saved"); a failure is drawn beside the
- * button and stays until the next attempt. A lone toggle or a per-row control is not a settings group and saves at once.
+ * button until the next attempt. A lone toggle or a per-row control is not a settings group and saves at once.
  *
- * Design decisions: the caller owns the field state and says whether it is `dirty`, so each page keeps its own
- * partial-update payload; `onSave` throws to report a failure, so the component never needs to know the request.
+ * Design decisions: the caller owns the field state and `dirty`, so each page keeps its own partial-update payload;
+ * `onSave` throws to report a failure, so the component never knows the request.
  */
 import { useState, type FormEvent, type ReactNode } from "react";
 

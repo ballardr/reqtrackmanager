@@ -4,14 +4,9 @@ Module: models.action_type
 Project-scoped requirement-action type definitions (e.g. "Review", "Test"),
 the vocabulary a `RequirementAction.action_type_id` picks from.
 
-Design decision: action types are project-scoped (`CustomFieldDefinition`'s
-pattern), not org-scoped, per an explicit user scope call during planning —
-with an eye toward a possible future where projects can nest. No nested-
-project mechanism exists today and none is being built now; the only
-concession made for that possible future is keeping this a plain per-
-project FK rather than baking a flat org-wide list in anywhere, so a later
-"fall back to the parent project's action types" resolution could be added
-on top of this shape without a schema rework. See docs/decisions.md.
+Design decision: action types are project-scoped (`CustomFieldDefinition`'s pattern), not org-scoped,
+as a plain per-project FK. A child project with none of its own falls back to its nearest ancestor's
+(`services.project_hierarchy.resolve_effective_action_types`). See docs/decisions.md.
 """
 
 from __future__ import annotations

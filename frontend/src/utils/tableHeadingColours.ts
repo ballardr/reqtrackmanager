@@ -3,12 +3,11 @@
  *
  * How a table heading row is coloured, for the places that draw a sample of it.
  *
- * Responsibilities: `tableHeadingColours` resolves a layout's default heading fill and text colour the way the renderers
- * do (`DocumentStyles.table_head_colours`): the fill, else the organisation's accent; the text colour, else black or white
- * by contrast with the fill actually used.
+ * Responsibilities: `tableHeadingColours` resolves a layout's heading fill (else the organisation's accent) and text
+ * colour (else black or white by contrast) as the renderers do (`DocumentStyles.table_head_colours`).
  *
- * Design decisions: the server stays the judge; this mirrors its rule only so a sample can show the result before a run.
- * An unknown or unreadable word falls back to the default rather than throwing.
+ * Design decisions: this mirrors the server's rule only so a sample can show the result before a run. An unknown or
+ * unreadable word falls back to the default rather than throwing.
  */
 import { contrastTextHex } from "./color";
 import { resolveColourWord, type ColourContext, type ColourEntry } from "./reportColours";

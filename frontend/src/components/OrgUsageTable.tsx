@@ -1,19 +1,15 @@
 /**
  * Module: components/OrgUsageTable
  *
- * A plain table at the top of the organisation settings overview: how many users, projects and how much file storage
- * the organisation uses.
+ * A plain table at the top of the organisation settings overview: how many users, projects and how much file
+ * storage the organisation uses.
  *
- * Responsibilities:
- * - Read `GET /orgs/{id}/overview-stats`, the same service function the organisation dashboards' core metrics use, so
- *   the table and the widgets cannot disagree.
- * - Show the storage limit, whether new files are accepted and, at 90% of the limit, a warning (the limit itself is set
- *   by the server administrator or a Platform subscription manager, so it is read-only here).
- * - Render only the organisation's real totals (`is_full_org_total`): a scoped figure would describe the caller's own
- *   projects, not the organisation's size, so nothing is drawn for it.
+ * Reads `GET /orgs/{id}/overview-stats`, the service function the organisation dashboards' core metrics also use, so
+ * the table and the widgets agree. It shows the storage limit (read-only here; set by the server administrator or a
+ * Platform subscription manager), whether new files are accepted and, at 90% of the limit, a warning. It renders
+ * only the organisation's real totals (`is_full_org_total`), because a scoped figure would describe the caller's
+ * own projects. A failed or pending read draws nothing, because the page below is usable without it.
  *
- * Design decisions: a table, not a widget (the figures are fixed and need no layout or editing); a failed or pending
- * read draws nothing rather than an error, because the settings page below it is fully usable without it.
  * External dependencies: `api`, `DirectoryTable`, `formatFileSize`.
  */
 import type { JSX } from "react";

@@ -1,33 +1,20 @@
 """
 Module: services.report_document
 
-The document-level layer every generated report shares, whatever it reports
-on (requirements in `services.reports`, any module's report in
-`services.report_framework`):
+The document-level layer every generated report shares (`services.reports`, `services.report_framework`).
 
-- `ReportBranding`, `resolve_branding` and `layout_branding`: the organisation's report accent colour, cover page, logo
-  and footer for a built-in report, and the accent alone for a custom layout.
-- `title_flowables`, `build_pdf`: the cover/title block, footer and A4 document
-  build, parameterised by page size so tall requirement tables and wide module
-  tables use the same shell.
-- `image_flowable` and `resolve_report_images`: the PDF image builder and the
-  tenant-checked image lookup every renderer's images come through. The
-  neutral document model and its Markdown reader live in `services.report_model`;
-  the renderers are `report_pdf` and `report_docx`.
-- `safe`, `styled_table`: ReportLab-markup escaping (which also switches characters
-  Helvetica cannot print to the bundled Unicode font, `report_fonts`) and the
-  accent-coloured table builder.
+Responsibilities:
+- `ReportBranding`, `resolve_branding`, `layout_branding`: the organisation's accent colour, cover page, logo and
+  footer for a built-in report, and the accent alone for a custom layout.
+- `title_flowables`, `build_pdf`: the cover block, footer and document build, parameterised by page size.
+- `image_flowable`, `resolve_report_images`: the PDF image builder and the tenant-checked image lookup.
+- `safe`, `styled_table`: ReportLab-markup escaping (and fallback to the bundled Unicode font) and the accent table.
 
 Design decisions:
-- ReportLab's `Paragraph` parses markup, so every user-supplied string must go
-  through `safe` first; otherwise `<img src="http://internal/...">` becomes a
-  server-side fetch (SSRF / local file read). There is deliberately no second
-  escaping helper to drift from this one.
-- Images are never fetched by the renderer. `resolve_report_images` resolves
-  `attachment:<id>` references to bytes beforehand, restricted to the
-  organisation's own shared resources, so the renderer never reasons about
-  tenant isolation.
-- The organisation has one report look; authored text belongs to a report layout.
+- ReportLab's `Paragraph` parses markup, so every user string goes through `safe` first (otherwise an `<img>` is a
+  server-side fetch); there is deliberately no second escaping helper.
+- Renderers never fetch images: `resolve_report_images` resolves `attachment:<id>` to bytes beforehand, restricted to
+  the organisation's own resources.
 
 Dependencies: ReportLab, markdown-it-py, `services.files`, `services.branding`, `services.report_fonts`.
 """
@@ -366,31 +353,18 @@ def image_flowable(image_bytes: bytes):
 
 
 def resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: str) -> dict[str, bytes]:
-    """Scans one or more Markdown strings for `attachment:<uuid>` image
-    references (written in an organisation shared resource file) and resolves each to its bytes.
+    """Scans one or more Markdown strings for `attachment:<uuid>` image references (written in an organisation shared
+    resource file) and resolves each to its bytes.
 
-    Every resolved reference is checked against `organization_id` *and*
-    restricted to `is_org_resource=True` assets before its bytes are read.
-    Org scoping alone isn't enough: within a multi-project org, a direct
-    (non-shared) `FileAsset` — most importantly a requirement attachment —
-    is gated by *project*-level access in its own right
-    (`routers/files.py::download_file` requires `get_effective_project_roles`
-    for exactly that reason), which a shared resource file is never itself scoped
-    to check. Without this restriction, a user with report-edit rights on
-    Project A could hand-type `attachment:<id>` for a requirement
-    attachment belonging to Project B in the same org — one they may have
-    no project-level access to at all — and have its bytes embedded into
-    Project A's report. Org shared resources have no such finer-grained
-    gate (any org member can already see them, `orgs.py::list_org_resources`),
-    matching what the attachment picker UI actually offers (org shared
-    resources only, never a raw requirement-attachment id) — so this isn't
-    a functional restriction on the real feature, only on hand-crafted
-    references that were never a legitimate use of it. A reference that
-    doesn't resolve — wrong org, not a shared resource, not found, not
-    actually an image content type — is simply left out of the returned
-    mapping; `report_model.markdown_to_blocks` already treats a missing entry as
-    "skip this image" rather than an error, so a bad reference never breaks
-    report generation.
+    Every reference is checked against `organization_id` and restricted to `is_org_resource=True` assets before its bytes are
+    read. Organisation scoping alone is not enough: a direct (non-shared) `FileAsset`, such as a requirement attachment, is
+    gated by project-level access (`routers/files.py::download_file`), which a shared resource is not scoped to check, so
+    without the restriction a user with report-edit rights on Project A could embed another project's attachment by typing
+    its id. Organisation shared resources are visible to any member (`orgs.py::list_org_resources`), matching what the
+    attachment picker offers.
+
+    A reference that does not resolve (wrong organisation, not a shared resource, not found, not an image type) is left out of
+    the result; `report_model.markdown_to_blocks` skips a missing entry, so a bad reference never breaks a report.
 
     Args:
         db: Database session.

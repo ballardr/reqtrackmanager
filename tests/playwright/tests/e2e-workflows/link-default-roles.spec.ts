@@ -7,14 +7,9 @@ import { openAddLinkDialog } from "../modules/linksPanel";
 installCleanupHook();
 
 /**
- * Job to be done: a stakeholder or project administrator traces a requirement while it is still being
- * worked on, but cannot change the links of an approved requirement directly; only someone holding the
- * Link permission can (the permission exists to link in every state), and everyone else proposes the
- * change in a change request.
- *
- * Covers: a stakeholder sees "Add link" on a draft requirement and links it; on an approved requirement
- * the page shows no add or remove control for them; a user holding the Link permission still sees it
- * on the approved one.
+ * Job to be done: a stakeholder or project administrator traces a requirement while it is a draft, but cannot change
+ * the links of an approved requirement directly; only a holder of the Link permission can, and everyone else
+ * proposes the change in a change request.
  *
  * Builds its own organisation, so it depends on no shared fixture or earlier run.
  */

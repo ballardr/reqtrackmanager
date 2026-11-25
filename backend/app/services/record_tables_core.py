@@ -1,39 +1,28 @@
 """
 Module: services.record_tables_core
 
-The `RecordTableProvider`s for the core artefact types (requirements, actions and change requests), plus the building blocks
-module providers use to declare a type in a few lines.
+The `RecordTableProvider`s for the core artefact types (requirements, actions, change requests) and the parser and
+cell builders module providers use to declare a type in a few lines.
 
 Responsibilities:
-- Declare, per core type, the columns of its table (export, import, grid) and how a row is created or updated.
-- Share the list query with the type's list endpoint (`services.requirements.filter_requirements`,
-  `services.actions.list_actions_filtered`) and the create/update logic with its edit endpoints
-  (`create_requirement`, `edit_requirement`, `create_action`, `edit_action`), so a filter, rule or audit event
-  added there reaches the file too.
-- Offer `text_parser`, `date_parser`, `int_parser`, `bool_parser`, `enum_parser`, `person_parser`, `list_parser`, `label_map`,
-  `list_cell`, `bool_cell`, `cached_lookup` and the filter readers (`enum_filter`, `uuid_filter`), so a module's provider is
-  declarations only.
+- Declare each core type's columns (export, import, grid) and how a row is created or updated, sharing the type's
+  list query and create/update functions so a rule added there reaches the file too.
+- Offer the `*_parser`, `list_cell`, `bool_cell`, `label_map`, `cached_lookup` and filter readers.
 
 Design decisions:
-- Core owns these types, so they register here (the module-boundary rule: a module's types are registered by
-  the module, never listed here).
-- `status` of a requirement is export-only: it has an approval gate, and a file must not bypass it. An import
-  creates drafts and edits content; an approved requirement refuses the edit (it changes through a change
-  request), reported as that row's error.
-- A change request is export-only (`CORE_NOT_IMPORTABLE` gives the reason): its content depends on its kind
-  and it moves through submit and approval, which a file cannot author.
-- A person column is one cell: an email for a user, `Name (Organisation group)` / `Name (Project group)` for a group.
-- A project's custom fields are columns named `cf_<name>`, built per project.
+- A requirement's `status` is export-only: an import creates drafts and edits content, never bypassing the approval gate.
+- A change request is export-only (`CORE_NOT_IMPORTABLE`): its content depends on its kind and an approval flow.
+- A person is one cell (an email, or `Name (Organisation group)`); custom fields are `cf_<name>` columns.
 
-Dependencies: `modules.registry` (provider shapes), `services.record_tables` (cell helpers, people),
-`services.requirements`, `services.actions`, `services.change_request_list`, `services.audit`.
+Dependencies: `modules.registry`, `services.record_tables`, `services.requirements`, `services.actions`,
+`services.change_request_list`, `services.audit`.
 """
 
 from __future__ import annotations
 
 import enum
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -67,15 +56,18 @@ from app.modules.registry import (
 from app.schemas.principal import PrincipalRef
 from app.services import actions as action_service
 from app.services import change_request_list as change_request_service
+from app.services import requirement_aliases as alias_service
 from app.services import requirements as requirement_service
 from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.custom_fields import validate_custom_field_values
 from app.services.labels import CHANGE_REQUEST_STATUS_TONE, REQUIREMENT_STATUS_TONE
+from app.services.placements import PlacementCells, PlacementPair
 from app.services.principals import principal_ref, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles
 from app.services.record_tables import PrincipalCells, find_many_by_code, parse_principal_cell
+from app.services.requirement_aliases import aliases_for_requirements
 from app.services.search_core import humanise_labels
 
 CAN_EDIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
@@ -207,6 +199,17 @@ def uuid_filter(filters: RecordFilters, key: str) -> uuid.UUID | None:
         raise HTTPException(422, f"{key} must be an id.") from None
 
 
+def uuid_filters(filters: RecordFilters, key: str) -> tuple[uuid.UUID, ...]:
+    """Every value of a repeatable UUID filter, or a 422 naming the parameter."""
+    found = []
+    for raw in filters.many(key):
+        try:
+            found.append(uuid.UUID(raw))
+        except ValueError:
+            raise HTTPException(422, f"{key} must be an id.") from None
+    return tuple(found)
+
+
 def enum_filter(filters: RecordFilters, key: str, enum_class: type[enum.Enum]) -> Any:
     """An enum filter by its stored value, or a 422 naming the parameter."""
     raw = filters.one(key)
@@ -251,6 +254,9 @@ class _RequirementTable:
         refs += [principal_ref(v.reviewer_type, v.reviewer_id) for v in self.versions.values()]
         self.people = PrincipalCells.load(db, refs)
         self.keywords = tag_service.keywords_for_requirements(db, ids) if ids else {}
+        # Further places and their codes, read once for the whole page.
+        self.aliases = aliases_for_requirements(db, ids)
+        self.places = PlacementCells(db, project, "requirement")
 
 
 def _prepare_requirements(db: Session, project: Project, records: list[Any]) -> _RequirementTable:
@@ -262,7 +268,7 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
         db, project_id, user.id,
         requirement_service.RequirementFilters(
             include_archived=bool(filters.flag("include_archived")), is_completed=filters.flag("is_completed"),
-            component_id=uuid_filter(filters, "component_id"), category_id=uuid_filter(filters, "category_id"),
+            component_ids=uuid_filters(filters, "component_id"), category_ids=uuid_filters(filters, "category_id"),
             keyword=filters.one("keyword"), search=filters.one("search"),
             status=enum_filter(filters, "status", RequirementStatus), target_stage_id=uuid_filter(filters, "target_stage_id"),
             target_stage_from_id=uuid_filter(filters, "target_stage_from_id"),
@@ -276,7 +282,18 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
 
 
 def _find_requirement(db: Session, project: Project, code: str) -> Requirement | None:
-    return db.scalar(select(Requirement).where(Requirement.project_id == project.id, Requirement.unique_code == code.upper()))
+    """The requirement a code names, its own code or any alias code."""
+    match = alias_service.find_by_code(db, project.id, code)
+    return match.requirement if match is not None else None
+
+
+def _find_many_requirements(db: Session, project: Project, codes: Sequence[str]) -> dict[str, Any]:
+    """The requirements the codes name (`{UPPER code: requirement}`), alias codes included."""
+    return alias_service.find_many_by_code(db, project.id, codes)
+
+
+#: The key of the additional-places column (the requirement's further components and categories, by prefix).
+ADDITIONAL_PLACES_KEY = "additional_places"
 
 
 def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
@@ -300,9 +317,9 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
             "category", "Category", lambda t, r: t.categories[r.category_id].prefix, text_parser, kind="enum", required=True,
             choices=tuple(category_prefixes),
         ),
-        RecordColumn("reasoning", "Reasoning", lambda t, r: version(t, r).reasoning, text_parser, editable=True),
-        RecordColumn("clarification", "Clarification", lambda t, r: version(t, r).clarification, text_parser, editable=True),
-        RecordColumn("description", "Description", lambda t, r: version(t, r).description, text_parser, editable=True),
+        RecordColumn("reasoning", "Reasoning", lambda t, r: version(t, r).reasoning, text_parser, editable=True, markdown=True),
+        RecordColumn("clarification", "Clarification", lambda t, r: version(t, r).clarification, text_parser, editable=True, markdown=True),
+        RecordColumn("description", "Description", lambda t, r: version(t, r).description, text_parser, editable=True, markdown=True),
         RecordColumn(
             "level", "Level", lambda t, r: levels[version(t, r).level.value],
             enum_parser(RequirementLevel, "Level", blank=RequirementLevel.REQUIREMENT), kind="enum", editable=True,
@@ -322,6 +339,16 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
             person_parser("reviewer"), kind="principal",
         ),
         RecordColumn("keywords", "Tags", lambda t, r: list_cell(t.keywords.get(r.id, [])), list_parser, kind="list"),
+        RecordColumn(
+            ADDITIONAL_PLACES_KEY, "Additional components and categories",
+            lambda t, r: t.places.format([
+                PlacementPair(a.component_id, a.category_id) for a in t.aliases.get(r.id, []) if a.component_id and a.category_id
+            ]),
+            lambda ctx, text: PlacementCells(ctx.db, ctx.project, "requirement").parse(text), kind="list",
+        ),
+        RecordColumn(
+            "alias_codes", "Alias codes", lambda t, r: list_cell([a.unique_code for a in t.aliases.get(r.id, [])]), kind="list",
+        ),
         RecordColumn(
             "review_date", "Review date", lambda t, r: review_date.isoformat() if (review_date := version(t, r).review_date) else "",
             date_parser("Review date"), kind="date",
@@ -437,6 +464,10 @@ def _create_requirement(ctx: RecordImportContext, values: Mapping[str, Any]) -> 
         custom_fields=custom_fields, review_date=values.get("review_date"), review_lead_days=values.get("review_lead_days"),
         reviewer=values.get("reviewer"),
     )
+    if values.get(ADDITIONAL_PLACES_KEY):
+        alias_service.set_aliases(
+            ctx.db, project=ctx.project, requirement=requirement, actor_id=ctx.user.id, pairs=values[ADDITIONAL_PLACES_KEY],
+        )
     log_event(ctx.db, entity_type="requirement", entity_id=requirement.id, action="created", actor_id=ctx.user.id,
               project_id=ctx.project.id, detail={"via": "record_import"})
     requirements_created_total.inc()
@@ -480,6 +511,7 @@ def _update_requirement(ctx: RecordImportContext, requirement: Requirement, valu
         review_lead_days=values.get("review_lead_days"), review_lead_days_explicitly_set="review_lead_days" in values,
         reviewer=values.get("reviewer"), reviewer_explicitly_set="reviewer" in values,
         component_id=component_id, category_id=category_id, keywords=values.get("keywords"),
+        additional_places=values.get(ADDITIONAL_PLACES_KEY),
     )
     log_event(ctx.db, entity_type="requirement", entity_id=requirement.id, action="updated", actor_id=ctx.user.id,
               project_id=ctx.project.id, detail={"via": "record_import"})
@@ -499,11 +531,12 @@ def count_rows(db: Session, model: Any, project_id: uuid.UUID, *, live_only: boo
 
 
 REQUIREMENT_TABLE = RecordTableProvider(
+    title_column="name",
     label="Requirements",
     columns=_requirement_columns,
     list_records=_list_requirements,
     find=_find_requirement,
-    find_many=find_many_by_code(Requirement, "project_id"),
+    find_many=_find_many_requirements,
     prepare=_prepare_requirements,
     create=_create_requirement,
     update=_update_requirement,
@@ -554,7 +587,7 @@ def _action_columns(db: Session, project: Project) -> list[RecordColumn]:
     type_names = tuple(t.name for t in resolve_effective_action_types(db, project.id))
     return [
         RecordColumn("title", "Title", lambda t, a: a.title, text_parser, editable=True, required=True),
-        RecordColumn("description", "Description", lambda t, a: a.description, text_parser, editable=True),
+        RecordColumn("description", "Description", lambda t, a: a.description, text_parser, editable=True, markdown=True),
         RecordColumn(
             "action_type", "Action type", lambda t, a: t.types.get(a.action_type_id, ""), text_parser, kind="enum", required=True,
             choices=type_names,
@@ -709,9 +742,9 @@ def _change_request_columns(db: Session, project: Project) -> list[RecordColumn]
             "changed_fields", "Changed fields",
             lambda t, cr: list_cell([CHANGED_FIELD_LABEL.get(f, f) for f in t.version(cr).changed_fields]), kind="list",
         ),
-        RecordColumn("proposed_reasoning", "Proposed reasoning", lambda t, cr: t.version(cr).proposed_reasoning or ""),
-        RecordColumn("proposed_clarification", "Proposed clarification", lambda t, cr: t.version(cr).proposed_clarification or ""),
-        RecordColumn("proposed_description", "Proposed description", lambda t, cr: t.version(cr).proposed_description or ""),
+        RecordColumn("proposed_reasoning", "Proposed reasoning", lambda t, cr: t.version(cr).proposed_reasoning or "", markdown=True),
+        RecordColumn("proposed_clarification", "Proposed clarification", lambda t, cr: t.version(cr).proposed_clarification or "", markdown=True),
+        RecordColumn("proposed_description", "Proposed description", lambda t, cr: t.version(cr).proposed_description or "", markdown=True),
         RecordColumn(
             "proposed_level", "Proposed level", lambda t, cr: levels[t.version(cr).proposed_level.value] if t.version(cr).proposed_level else "",
             kind="enum",

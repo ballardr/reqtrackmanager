@@ -8,8 +8,8 @@ generic, the bundle checker fails on each kind of identifying content, the archi
 the scenario catalogue matches the load generator, and the headroom preflight and watchdog trip as stated.
 
 The runner drives `docker compose`; these tests replace the process runner with a scripted fake, so they need no
-Docker. The real thing is exercised end to end by running `perf/run_profile.sh`. The `perf/` directory sits next
-to `backend/` (or is mounted at `/perf` in the backup-image test run); the tests skip when it is absent.
+Docker. The `perf/` directory sits next to `backend/` (or is mounted at `/perf` in the backup-image test run);
+the tests skip when it is absent.
 """
 
 from __future__ import annotations
@@ -1234,7 +1234,7 @@ def _pg():
 def test_only_the_perf_stack_loads_pg_stat_statements():
     root = _PERF.parent
     assert "shared_preload_libraries=pg_stat_statements" in (_PERF / "docker-compose.perf.yml").read_text()
-    for name in ("docker-compose.yml", "docker-compose.profile.yml", "tests/container/docker-compose.yml"):
+    for name in ("deployments/full/docker-compose.yml", "docker-compose.profile.yml", "tests/container/docker-compose.yml"):
         assert "pg_stat_statements" not in (root / name).read_text(), f"{name} must not load the extension"
 
 

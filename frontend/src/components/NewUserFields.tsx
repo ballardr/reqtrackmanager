@@ -19,13 +19,16 @@ const strings = t();
  * @param values Current field values.
  * @param onChange Called with the changed field(s).
  * @param show Which optional fields to render (all by default); the email is always shown.
+ * @param pointToServiceUser Adds to the password help that an integration uses New service user; set only where the
+ *   Add user menu has that row.
  */
 export function NewUserFields({
-  values, onChange, show,
+  values, onChange, show, pointToServiceUser,
 }: {
   values: NewUserValues;
   onChange: (patch: Partial<NewUserValues>) => void;
   show?: { displayName?: boolean; password?: boolean; role?: boolean };
+  pointToServiceUser?: boolean;
 }) {
   const showName = show?.displayName ?? true;
   const showPassword = show?.password ?? true;
@@ -42,7 +45,7 @@ export function NewUserFields({
         <TextField helpNotNeeded required label={strings.orgAdmin.name} value={values.displayName} onChange={(displayName) => onChange({ displayName })} />
       )}
       {showPassword && (
-        <TextField required help={strings.orgAdmin.newUserModalHint}
+        <TextField required help={pointToServiceUser ? `${strings.orgAdmin.newUserModalHint} ${strings.orgAdmin.newUserServiceHint}` : strings.orgAdmin.newUserModalHint}
           label={strings.orgAdmin.password}
           value={values.password}
           onChange={(password) => onChange({ password })}

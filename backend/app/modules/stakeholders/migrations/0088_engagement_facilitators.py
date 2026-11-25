@@ -4,11 +4,8 @@ Revision ID: 0088
 Revises: 0087
 Create Date: 2026-10-13
 
-An engagement's single `facilitator_type` / `facilitator_id` pair becomes a list: one
-`engagement_facilitators` row per person or group (a user, an organisation group or a
-project group, the same principal shape as an owner), unique per engagement and deleted with
-it. Existing facilitators are copied across before the columns are dropped. The downgrade
-keeps the first-listed facilitator of each engagement.
+Replaces the facilitator pair with `engagement_facilitators` rows (a principal
+each), copying existing values first; the downgrade keeps the first listed.
 """
 
 from collections.abc import Sequence

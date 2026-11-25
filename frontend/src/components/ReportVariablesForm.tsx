@@ -1,25 +1,20 @@
 /**
  * Module: components/ReportVariablesForm
  *
- * The run form of a custom report layout's variables: one labelled control per variable the layout declares,
- * built from what the server returns (`ReportVariable`: type, default and the current options), so a new layout
- * needs no UI code. Used by the Reports page (`ReportRunner`) and by the designer's preview.
+ * The run form of a custom report layout's variables: one labelled control per declared variable, built from what the
+ * server returns (`ReportVariable`: type, default, current options), so a new layout needs no UI code. Used by
+ * `ReportRunner` and the designer's preview.
  *
  * Responsibilities:
- * - Pick the control from the variable: a switch for yes/no, a checkbox list in a dropdown for a list of options,
- *   a select for one of several options, a date, a number, or text (a list typed as comma-separated text).
- * - Mark a variable the person must fill in (no default) with `*`, through the shared field components.
- * - Stay controlled and stateless but for the text being typed in a free list field, which is kept so a trailing
- *   comma is not swallowed before the next value is typed.
+ * - Pick the control from the variable: a switch (yes/no), a checkbox dropdown (list of options), a select, a date,
+ *   a number, or text (a list is comma-separated text).
+ * - Mark a variable with no default as required (`*`) through the shared field components.
+ * - Stay controlled, except the text being typed in a free list field, so a trailing comma is not swallowed.
  *
- * Design decisions:
- * - A value the form cannot offer (the options changed since it was chosen) is still shown selected, so the
- *   person sees what will run; the server warns when it is no longer one of the options.
- * - Variables narrow what a report shows, they do not widen what the person may read; the form says nothing
- *   about access.
+ * Design decisions: a value no longer among the options is still shown selected so the person sees what will run (the
+ * server warns). Variables narrow what a report shows; they never widen what the person may read.
  *
- * Dependencies: the shared field components (`LabeledSelect`, `TextField`, `DateField`, `ToggleField`,
- * `MultiSelectDropdown`).
+ * Dependencies: `LabeledSelect`, `TextField`, `DateField`, `ToggleField`, `MultiSelectDropdown`.
  */
 import { useState } from "react";
 

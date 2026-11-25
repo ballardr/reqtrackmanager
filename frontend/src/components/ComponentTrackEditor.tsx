@@ -1,10 +1,10 @@
 /**
  * Module: components/ComponentTrackEditor
  *
- * The dialog for one component's track within one stage when component phases are on: the workflow the
- * component follows, whether the stage applies to it at all, and an owner (a user or a group) who may move
- * the track. The caller saves; only what the dialog changes is sent, and the server refuses a workflow or
- * applicability change once the track has left an open phase or has a baseline, its message shown here.
+ * The dialog for one component's track within one stage when component phases are on: its workflow, whether the
+ * stage applies, and an owner (user or group) who may move the track. The caller saves; only changed fields are
+ * sent, and the server refuses a workflow or applicability change once the track has left an open phase or has a
+ * baseline, its message shown here.
  */
 import { useState } from "react";
 

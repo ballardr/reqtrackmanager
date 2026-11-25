@@ -1,18 +1,15 @@
 /**
  * Module: utils/reportLayoutTree
  *
- * Pure helpers the block editor uses to reach and add blocks in a layout tree, and to work out which
- * `{{name.field}}` names are in scope at a block.
- *
- * Responsibilities:
- * - Paths: read the server's problem paths (`nodes[1].children[0].level`) into segments and back.
- * - Immutable edits of the tree: set a key, insert a block (moving and removing blocks is the workspace's job).
- * - Scope: the names the enclosing blocks bring in, from each block type's schema (`BlockProvides`).
- *
- * Design decisions: the helpers know where child blocks live only through the block catalogue's `containers`
- * and `provides`, never by block type, so a module's block type needs no change here. Nothing validates: the
- * server's `validate` is the only judge of a tree, and these edits can leave it invalid until the author fills
- * a new block in.
+ * Pure helpers the block editor uses to reach and add blocks in a layout tree and
+ * to work out which `{{name.field}}` names are in scope at a block: paths (the
+ * server's problem paths such as `nodes[1].children[0].level` to segments and
+ * back), immutable edits (set a key, insert a block) and scope (names the
+ * enclosing blocks bring in, from each type's `BlockProvides`).
+ * Design: child blocks are found only through the block catalogue's `containers`
+ * and `provides`, never by block type, so a module's block type needs no change
+ * here. Nothing validates: the server's `validate` is the only judge, and an edit
+ * can leave the tree invalid until the author fills a new block in.
  */
 import type { BlockType, TreeProblem } from "../api/reportLayouts";
 

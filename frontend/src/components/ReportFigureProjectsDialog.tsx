@@ -1,18 +1,14 @@
 /**
  * Module: components/ReportFigureProjectsDialog
  *
- * The "which projects?" list behind an organisation-wide report figure
- * (report figure links). A project page can show only one project's
- * items, so clicking an organisation figure (say "Blockers: 3") opens this
- * dialog: every in-scope project with its own number for that figure, biggest
- * first, each a link to that project's page (the filtered list the figure
- * counts, or the gap table). The numbers come from the report's per-project
- * breakdown endpoint, i.e. the same collector run per project, so they equal
- * each project's own report and add up to the figure clicked.
+ * The "which projects?" list behind an organisation-wide report figure. A project page shows only one project's
+ * items, so clicking an organisation figure (say "Blockers: 3") opens this dialog: every in-scope project with its
+ * own number for that figure, biggest first, each a link to that project's page (the filtered list the figure
+ * counts, or the gap table). The numbers come from the report's per-project breakdown endpoint, the same collector
+ * run per project, so they equal each project's own report and add up to the figure clicked.
  *
- * Loads on open, shows a spinner then the list or an error; projects with a
- * zero for the figure are listed last and muted (not links worth following).
- * Pure presentation plus one read: it never changes data.
+ * Loads on open, shows a spinner then the list or an error; projects with a zero for the figure are listed last
+ * and muted. Presentation plus one read: it never changes data.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

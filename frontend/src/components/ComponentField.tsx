@@ -1,14 +1,13 @@
 /**
  * Module: components/ComponentField
  *
- * The "Components" field of a create form: choose the components and categories the new record starts in.
- * Nothing is written here; the choice is held for `useCommitTags`, which applies it once the record exists, the
- * same contract as `TagField` and `QuickLinkField` (`hooks/pendingPlacements`).
+ * The "Components" field of a create form: choose the components and categories the new record starts in. Nothing
+ * is written here; the choice is held for `useCommitTags`, which applies it once the record exists, as `TagField`
+ * and `QuickLinkField` do (`hooks/pendingPlacements`). `TagField` renders it.
  *
- * It asks the server about a record that does not exist yet (`DRAFT_ARTEFACT_ID`), so the caller's authority
- * is the one that will apply, and it renders nothing when the caller may not place this kind of record (a
- * requirement keeps its own component), the project has no components, or the read fails: a form never offers a
- * field that would be refused. `TagField` renders it, so every create form that has tags has this too.
+ * It asks the server about a record that does not exist yet (`DRAFT_ARTEFACT_ID`), so the caller's own authority
+ * applies, and renders nothing when the caller may not place this kind of record, the project has no components or
+ * the read fails: a form never offers a field that would be refused.
  */
 import { useEffect, useId, useState } from "react";
 

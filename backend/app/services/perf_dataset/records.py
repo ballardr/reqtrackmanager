@@ -1,26 +1,24 @@
 """
 Module: services.perf_dataset.records
 
-The building blocks every non-core artefact type's dataset generator uses, so a module's generator is the type's own
-columns and nothing else.
+The building blocks every non-core artefact type's dataset generator uses, so a module's generator is the
+type's own columns and nothing else.
 
 Responsibilities:
-- `RecordBatch`: collects a type's identity rows, satellite rows (versions, scores, reviews) and "created" audit
-  events, then writes them with chunked Core inserts and moves the project's sequence counter past the generated
-  codes.
-- `add_comments`, `add_tags`: comment threads and tags on a type's records, in the same proportions as requirements.
-- `link_to_earlier`: cross-type links from a type's records to records of types generated before it, with a
-  heavy-tailed number of links per target (hubs) and a share to the parent project.
-- `scoring_levels`, `org_link_types`, `pick_*`: small lookups of organisation vocabulary the rows must reference.
+- `RecordBatch`: collects a type's identity rows, satellite rows (versions, scores, reviews) and "created"
+  audit events, writes them with chunked Core inserts and moves the project's sequence counter past the codes.
+- `add_comments`, `add_tags`: comment threads and tags in the proportions of requirements.
+- `link_to_earlier`: cross-type links to records of earlier-generated types, with a heavy-tailed number of
+  links per target (hubs) and a share to the parent project.
+- `scoring_levels`, `org_link_types`, `pick_*`: lookups of organisation vocabulary the rows reference.
 
 Design decisions:
-- A module registers only its own `PerfDatasetGenerator`; nothing here names a module's type. A type's link partners
-  are the types it asks for by string, which must have been generated earlier (`PerfDatasetGenerator.order`).
-- Counters are written as the application leaves them: one `ProjectSequenceCounter` row per type with `next_seq`
-  one past the last generated code, so the next record a person creates is numbered correctly.
-- Cross-type links use a link type that permits both ends when the organisation has one, else are untyped (the
-  application stores untyped links too); a cross-level link needs a type with the ancestor scope and is skipped for a
-  pair that has none.
+- A module registers only its own `PerfDatasetGenerator`; nothing here names a module's type. Link partners are
+  types asked for by string and must be generated earlier (`PerfDatasetGenerator.order`).
+- Counters are written as the application leaves them: one `ProjectSequenceCounter` per type with `next_seq`
+  one past the last code, so the next created record is numbered correctly.
+- Cross-type links use a link type permitting both ends when the organisation has one, else are untyped; a
+  cross-level link needs a type with the ancestor scope and is skipped for a pair that has none.
 
 Dependencies: SQLAlchemy models, `perf_dataset.context/core/textgen`.
 """
@@ -45,7 +43,9 @@ from app.models.tag import ArtefactTag
 from app.services.link_types import get_org_link_type
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import ANCHOR, CHUNK, PerfProjectContext, insert_rows, uuid_from
+from app.services.perf_dataset.context import poisson as _poisson
 from app.services.perf_dataset.core import AuditBuffer
+from app.services.perf_dataset.references import write_references
 
 
 def created_at(rng: random.Random, *, max_days: float = 540) -> datetime:
@@ -242,6 +242,7 @@ def add_tags(ctx: PerfProjectContext, batch: RecordBatch) -> None:
     generator calls this one function for a batch's classification. Does nothing for tags when the project has none."""
     rng, spec = ctx.rng, ctx.spec
     add_placements(ctx, batch)
+    write_references(ctx, batch.artefact_type, batch.ids, batch.created, batch.audit)
     if not ctx.tags or not batch.ids:
         return
     vocabulary = len(ctx.tags)
@@ -265,20 +266,6 @@ def add_tags(ctx: PerfProjectContext, batch: RecordBatch) -> None:
             )
     ctx.add_count("artefact_tags", insert_rows(ctx.db, ArtefactTag, rows))
     batch.audit.flush()
-
-
-def _poisson(rng: random.Random, mean: float) -> int:
-    """A Poisson draw (Knuth), fine for the small means used here."""
-    import math
-
-    if mean <= 0:
-        return 0
-    limit, k, p = math.exp(-mean), 0, 1.0
-    while True:
-        p *= rng.random()
-        if p <= limit:
-            return k
-        k += 1
 
 
 def org_link_types(ctx: PerfProjectContext) -> list[RequirementLinkTypeDefinition]:

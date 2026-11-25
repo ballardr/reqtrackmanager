@@ -1,23 +1,21 @@
 """
 Module: services.report_placement_bundle
 
-Report placements (where each report appears in the Reports picker, and which module reports are hidden) in the project
+Report placements (where each report appears in the Reports picker, which module reports are hidden) in the project
 and organisation export bundles.
 
 Responsibilities:
-- Export a scope's own placements, each naming its report portably: a module report by its module and report key, a
-  layout or pack by its name (ids differ between installations).
-- Import them after the layouts and packs they refer to: resolve each name against what the target scope can reach,
-  tidy the folder again and store the row; one that names nothing here is reported, not guessed.
+- Export a scope's own placements, naming each report portably (module and report key, or a layout or pack name, since
+  ids differ between installations).
+- Import after the layouts and packs: resolve each name against what the target can reach, tidy the folder, store the
+  row; an unmatched name is reported, not guessed.
 
 Design decisions:
-- **A bundle is untrusted input.** A folder goes through `clean_folder` again (an invalid one is dropped); a hide of a
-  layout or pack is ignored (those are hidden from their own lists); a module report this installation does not
-  register is skipped with a warning.
-- Placements are configuration: no author or time is restored and nothing is logged beyond the audit event of the
-  store.
+- A bundle is untrusted input: a folder goes through `clean_folder` again (an invalid one is dropped), a hide of a
+  layout or pack is ignored (their own lists hide them), and an unregistered module report is skipped with a warning.
+- Placements are configuration: no author or time is restored.
 
-Dependencies: `services.report_placements`, `services.report_layout_scope`, `services.report_pack_scope`.
+Dependencies: `report_placements`, `report_layout_scope`, `report_pack_scope`.
 """
 
 from __future__ import annotations

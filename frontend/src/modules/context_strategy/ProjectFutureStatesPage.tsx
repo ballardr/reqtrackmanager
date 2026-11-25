@@ -1,20 +1,14 @@
 /**
  * Module: modules/context_strategy/ProjectFutureStatesPage
  *
- * The Context & Strategy module's project-scoped Future State list route,
- * mounted at
- * `/projects/:projectId/modules/context_strategy/future-states`
- * (`module.ts`, reached via this module's second nav-rail entry).
- * Mirrors `ProjectStrategiesPage.tsx`'s
- * `DirectoryTable` + `FilterPanel` + "New X" `Modal` shape exactly, minus a
- * priority filter (Future State has no `priority` field — see `types.ts`'s
- * own docstring) and minus the target-date column here (shown in the full
- * detail page, not worth a list column of its own for a nullable field).
+ * The project-scoped Future State list route, mounted at `/projects/:projectId/modules/context_strategy/future-states`
+ * (`module.ts`, the module's second nav-rail entry). It has `ProjectStrategiesPage.tsx`'s `DirectoryTable`,
+ * `FilterPanel` and "New X" `Modal` shape, without a priority filter (no `priority` field) or a target-date column
+ * (shown on the detail page).
  *
- * Filters can be pre-set from the URL (a report figure links here, e.g.
- * `?roadmap=1&target_passed=1`): `status`, `roadmap=1` (still expected to
- * arrive), `target_passed=1` (target date passed while not Active) and
- * `no_measures=1`. They only seed the state; each is a visible filter control.
+ * Filters can be pre-set from the URL (a report figure links here, e.g. `?roadmap=1&target_passed=1`): `status`,
+ * `roadmap=1` (still expected to arrive), `target_passed=1` (target date passed while not Active) and `no_measures=1`.
+ * They only seed the state; each is a visible filter control.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -25,10 +19,9 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { FUTURE_STATE_SORT_KEYS, FUTURE_STATE_SORT_VALUES } from "./contextStrategySort";
 import { projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
@@ -37,8 +30,12 @@ import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./t
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
+import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
@@ -55,9 +52,9 @@ export function ProjectFutureStatesPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "future_state");
   const commitTags = useCommitTags(projectId ?? "", "future_state");
+  const announceCreated = useCreatedToast(projectId ?? "", "future_state");
   const [project, setProject] = useState<Project | null>(null);
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -66,7 +63,7 @@ export function ProjectFutureStatesPage() {
   const [search, setSearch] = useUrlText("q");
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(FUTURE_STATE_SORT_KEYS);
+  const listSort = useListSort("future_states", FUTURE_STATE_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [roadmapOnly, setRoadmapOnly] = useUrlFlag("roadmap");
@@ -103,8 +100,22 @@ export function ProjectFutureStatesPage() {
     if (targetPassedOnly) params.set("target_passed_only", "true");
     if (noMeasuresOnly) params.set("no_measures_only", "true");
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
+
+  const columns: DirectoryColumn<FutureState>[] = [
+    { key: "title", label: "Title", sortable: true, render: (fs) => <>{fs.title}<ProjectScopeLabel row={fs} /></> },
+    { key: "code", label: "Code", sortable: true, render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
+    },
+    { key: "target_date", label: "Target date", sortable: true, optional: true, render: (fs) => fs.target_date ?? "—" },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (fs) => `v${fs.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("context_future_states", columns);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -120,21 +131,11 @@ export function ProjectFutureStatesPage() {
     return true;
   });
 
-  const columns: DirectoryColumn<FutureState>[] = [
-    { key: "title", label: "Title", sortable: true, render: (fs) => <>{fs.title}<ProjectScopeLabel row={fs} /></> },
-    { key: "code", label: "Code", sortable: true, render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
-    },
-    { key: "target_date", label: "Target date", sortable: true, render: (fs) => fs.target_date ?? "—" },
-    { key: "version", label: "Version", sortable: true, render: (fs) => `v${fs.version_number}` },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Future State"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "future_state", filters: filterParams().toString(), onImported: reloadFutureStates }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -158,16 +159,17 @@ export function ProjectFutureStatesPage() {
             <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} codeKey="code" titleKey="title" />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
       >
         <DirectoryTable
           ariaLabel="Future States"
-          columns={columns}
-          rows={sortRows(filtered, sort, FUTURE_STATE_SORT_VALUES)}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
+          columns={shown.columns}
+          rows={sortRows(filtered, listSort.sort, FUTURE_STATE_SORT_VALUES)}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(fs) => fs.id}
           placements={{ projectId, artefactType: "future_state", rowId: (fs) => fs.id }}
           onRowClick={(fs) => navigate(`/projects/${rowProjectId(fs, projectId)}/modules/context_strategy/future-states/${fs.id}`)}
@@ -185,7 +187,7 @@ export function ProjectFutureStatesPage() {
             setCreateError(null);
             try {
               const created = await projectFutureStateApi.create(projectId, values);
-              showToast("Future State created.");
+              announceCreated("Future State", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

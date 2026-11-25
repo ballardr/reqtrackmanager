@@ -10,12 +10,11 @@ Responsibilities:
 Design decisions:
 - Pure ASGI, not `BaseHTTPMiddleware`: it must see the raw `receive` stream and cannot buffer the body.
 - Two ceilings. A bundle or spreadsheet import (a path with an `/import` segment) may be as large as
-  `services.bundle_common.MAX_IMPORT_UPLOAD_BYTES`; everything else (JSON, attachments, avatars) is held to
-  `Settings.max_request_body_bytes`, which is above `Settings.max_upload_bytes` by the multipart overhead.
-  Every upload handler reads its whole file into memory, so this ceiling is what bounds a worker's memory
-  against a signed-in user with the lowest upload right.
-- A reverse proxy's own limit (`client_max_body_size`) is still the first line in production; this is the
-  one that holds when the backend is reached directly.
+  `services.bundle_common.MAX_IMPORT_UPLOAD_BYTES`; everything else is held to
+  `Settings.max_request_body_bytes` (above `Settings.max_upload_bytes` by the multipart overhead). Upload
+  handlers read the whole file into memory, so this ceiling bounds a worker's memory.
+- A reverse proxy's `client_max_body_size` is the first line in production; this holds when the backend is
+  reached directly.
 
 Dependencies: `config`, `services.bundle_common`.
 """

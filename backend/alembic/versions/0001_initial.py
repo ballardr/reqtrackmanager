@@ -4,27 +4,13 @@ Revision ID: 0001
 Revises:
 Create Date: 2026-07-31
 
-Creates the full schema in one migration, using
-`Base.metadata.create_all`/`drop_all` (rather than transcribing every
-`op.create_table` call by hand) to stay in lockstep with the SQLAlchemy
-models, which remain the single source of truth for the schema.
+Creates the full schema with `Base.metadata.create_all`/`drop_all`, so the baseline stays in lockstep
+with the SQLAlchemy models, which are the single source of truth for the schema.
 
-Note: `Base.metadata.create_all()` always reflects the *current* state of
-the model classes, not a frozen snapshot from whenever this migration was
-first written. That's fine for adding brand-new tables in a later migration
-(scope that migration's `create_all(tables=[...])` to just the new ones),
-but it means this migration must never be left in place unmodified once a
-later migration also `ALTER`s a column onto one of these same tables —
-`create_all` would create that column here too, and the later migration's
-`op.add_column` would then fail with "column already exists". Originally
-this was the Ossa (v1) baseline only; when Pelion (v2) added columns to
-several v1 tables (users, organizations, projects, requirement_versions,
-change_request_versions) rather than only new tables, this baseline was
-squashed to include them directly instead of chasing that failure mode —
-reasonable pre-release (no real deployments yet to preserve an incremental
-path for). Once this project has real deployed data, schema changes must go
-back to being genuinely incremental `op.add_column`/`op.create_table`
-migrations, generated with `alembic revision --autogenerate`.
+`create_all()` reflects the current model classes, not a frozen snapshot, so a later migration that
+adds a column to one of these tables finds it already created. Later migrations therefore scope
+`create_all(tables=[...])` to new tables or use `IF NOT EXISTS`. Once real data is deployed, schema
+changes are incremental `op.add_column`/`op.create_table` migrations (`alembic revision --autogenerate`).
 """
 
 from collections.abc import Sequence

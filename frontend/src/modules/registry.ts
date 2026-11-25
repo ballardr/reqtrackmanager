@@ -3,51 +3,27 @@ import type { ReportViewDef, TierAModuleDefinition } from "./types";
 /**
  * Module: modules/registry
  *
- * The frontend half of the Tier A ("installed module") registration
- * convention — the sibling of
- * `backend/app/modules/registry.py`'s `INSTALLED_MODULES`. A first-party
- * module (e.g. Compliance) ships its own `frontend/src/modules/<key>/
- * module.ts`, exporting a `moduleDefinition: TierAModuleDefinition` — the
- * frontend mirror of the backend's `app/modules/<key>/module.py` exposing a
- * `MODULE_DEFINITION` — and is what lets it directly import and render
- * every real shared component (`Toast`, `ConfirmDialog`, `Modal`,
- * `SidePanel`, `DirectoryTable`, `FilterPanel`, form inputs) rather than
- * going through the Tier B `<ModuleFrame>` iframe/bridge.
+ * The frontend half of the Tier A ("installed module") registration convention, the sibling of
+ * `backend/app/modules/registry.py`'s `INSTALLED_MODULES`. A first-party module (e.g. Compliance) ships its own
+ * `frontend/src/modules/<key>/module.ts` exporting a `moduleDefinition: TierAModuleDefinition` (the mirror of the
+ * backend's `app/modules/<key>/module.py` `MODULE_DEFINITION`), which lets it import and render the shared components
+ * (`Toast`, `ConfirmDialog`, `Modal`, `SidePanel`, `DirectoryTable`, `FilterPanel`, form inputs) directly, unlike the
+ * Tier B `<ModuleFrame>` iframe and bridge.
  *
- * **Auto-discovery** (module system follow-up, 2026-09-07 — see
- * `docs/decisions.md`'s "Module system follow-up: frontend module
- * auto-discovery" entry): `installedModules` is no longer a hand-maintained
- * array a new module edits this file to append to. `import.meta.glob`
- * (Vite's own build-time file-glob-to-module-map primitive — works
- * identically under the real Vite dev/build, Vitest, and Storybook's
- * Vitest-based test runner, since all three share Vite's module graph)
- * eagerly imports every first-party module's own `module.ts`, and this file
- * just assembles + sorts the results. Dropping a new `frontend/src/
- * modules/<key>/module.ts` file is now sufficient to register a module —
- * no hand-edit to this file needed, mirroring the backend's own
- * registry-driven `Base.metadata` auto-import follow-up for ORM models.
- * Third-party (npm-installed) Tier A modules are explicitly **not**
- * discovered this way — `import.meta.glob`'s pattern only ever matches
- * paths physically under this directory (`./*\/module.ts`), so an
- * npm-installed module would need its own, separate mechanism (symlinking
- * or an explicit registration point) not built here; no third-party Tier A
- * module exists yet, so building one now would be speculative (mirrors
- * the "both tiers built, no real third-party module ships"
- * scoping).
+ * Auto-discovery (`docs/decisions.md` "Module system follow-up: frontend module auto-discovery"): `import.meta.glob`
+ * (a Vite build-time primitive that behaves the same under Vite dev/build, Vitest and Storybook, which share Vite's
+ * module graph) eagerly imports every first-party `module.ts`, and this file assembles and sorts the results. Adding
+ * `frontend/src/modules/<key>/module.ts` registers a module without editing this file, as the backend auto-imports ORM
+ * models for `Base.metadata`. Third-party (npm-installed) Tier A modules are not discovered: the glob matches only
+ * paths under this directory (`./*\/module.ts`), so they would need a separate mechanism (a symlink or an explicit
+ * registration point), which is not built because no third-party Tier A module exists.
  *
- * `route.path` uses React Router's own `:projectId` param syntax
- * and must match, once the router segment is substituted for a real id,
- * the `nav_path` the backend's `ModuleFrontendManifest` declares
- * (`backend/app/modules/compliance/module.py`), which uses a literal
- * `"{project_id}"` placeholder the backend interpolates with a concrete id
- * before sending it to the frontend
- * (`routers/projects.py::list_project_enabled_modules`) — see that
- * function's own docstring. See `frontend/src/modules/compliance/
- * module.ts` for Compliance's own registration, including its
- * `orgAdminSections` (the org-level counterpart of this mechanism —
- * `OrgAdminPage.tsx` reads `installedModules` directly for those, since
- * the routing/nav-discovery mechanism here is project-scoped end to
- * end and has no org-level equivalent).
+ * `route.path` uses React Router's `:projectId` syntax and must match, once the segment is substituted with an id, the
+ * `nav_path` of the backend's `ModuleFrontendManifest` (`backend/app/modules/compliance/module.py`). That uses a literal
+ * `"{project_id}"` placeholder the backend interpolates before sending it
+ * (`routers/projects.py::list_project_enabled_modules`). See `frontend/src/modules/compliance/module.ts` for
+ * Compliance's registration, including `orgAdminSections`, the organisation-level counterpart that `OrgAdminPage.tsx`
+ * reads from `installedModules` directly, since this routing and nav discovery is project-scoped throughout.
  */
 const moduleFiles = import.meta.glob<{ moduleDefinition: TierAModuleDefinition }>("./*/module.ts", {
   eager: true,
@@ -70,3 +46,5 @@ export function getInstalledModule(key: string): TierAModuleDefinition | undefin
 export function getReportView(moduleKey: string, reportKey: string): ReportViewDef | undefined {
   return getInstalledModule(moduleKey)?.reportViews?.[reportKey];
 }
+
+/** Looks up a Tier A module's registration by `module_key`, or `undefined` if no installed module registers it (for example an enabled Tier B `"remote"` module, or one with no frontend integration). */

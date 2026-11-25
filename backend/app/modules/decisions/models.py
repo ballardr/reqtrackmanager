@@ -1,37 +1,11 @@
 """
 Module: modules.decisions.models
 
-Decision Management's data model:
-
-- `DecisionTypeDefinition` — project-scoped, extensible vocabulary (e.g.
-  Architecture, Design, Engineering, Strategy, Operational), exact shape of
-  `app.models.action_type.ActionTypeDefinition` (id, project_id, name,
-  sort_order — no `is_enabled` flag; see this module's own docstring for
-  why). Seeded per-project by `service.seed_decision_types`.
-- `DecisionTemplateDefinition` — org-scoped, per-field guidance-text
-  preset (e.g. the seeded Nygard/MADR/Y-Statement ADR packs, or an org's
-  own custom ones). Deliberately *not* associated with a `DecisionTypeDefinition`
-  (org-scoped templates vs. project-scoped types would make a cross-scope
-  FK ambiguous) and *not* referenced by `Decision` after creation — a
-  template is a creation-time convenience that pre-fills fields, not a
-  persistent relationship, so deleting one is always a plain delete with
-  no reassignment machinery.
-- `Decision` — the record itself (§13/10.3's field list).
-  `unique_code` uses the platform's generic `services.sequences.
-  generate_unique_code` with this module's own `"decision"` artefact-type
-  string (`ModuleDefinition.artefact_types`, `module.py`), not a
-  hand-edited core enum member — see `app.models.sequence.
-  ProjectSequenceCounter`'s own docstring for why that mechanism is
-  module-registrable rather than requiring one.
-- `DecisionComment` / `DecisionCommentFile` / `DecisionFile` — this
-  module's own comment-thread and attachment tables. Deliberately
-  module-local rather than reusing the core `ReviewComment`/`CommentFile`/
-  `ReviewTargetType` machinery: that machinery has never been extended by
-  any module before (Compliance has its own separate mechanism), and a
-  Decision comment/attachment only ever targets a `Decision` — no
-  polymorphic `target_type` is needed, so the module-local tables are
-  actually simpler than reusing the polymorphic core ones would be, not
-  just more boundary-correct.
+Decision Management's data model: `DecisionTypeDefinition` (project-scoped,
+seeded), `DecisionTemplateDefinition` (org-scoped creation-time guidance
+preset), `Decision` (`unique_code` uses the registered `"decision"` type) and
+the module-local `DecisionComment`/`DecisionCommentFile`/`DecisionFile`, which
+only ever target a `Decision`.
 """
 
 from __future__ import annotations
@@ -68,26 +42,19 @@ class DecisionTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
 
 
 class DecisionTemplateDefinition(UUIDPKMixin, TimestampMixin, Base):
-    """An org-managed Decision Template — per-field guidance/placeholder
-    text applied to a new Decision's free-text fields at creation time,
-not a persistent relationship (see module docstring).
+    """An org-managed Decision Template: per-field guidance text applied to a
+    new Decision's free-text fields at creation time (not referenced afterwards).
 
     Attributes:
         organization_id: The owning organisation.
-        name: Display name, unique within the organisation (e.g. "MADR
-            (Markdown Architectural Decision Records)", or a custom name).
+        name: Display name, unique within the organisation.
         description: One-line explanation shown in the template picker.
         context_prompt / options_considered_prompt / chosen_option_prompt /
             rationale_prompt / consequences_prompt / assumptions_prompt /
-            constraints_prompt: Placeholder/example guidance text for the
-            matching `Decision` field, applied verbatim (then edited by the
-            user) when this template is picked at creation time. Any may be
-            `NULL` — a format like Nygard's original ADR template has no
-            "Options Considered" or "Rationale" section, and its own seeded
-            prompt text says so explicitly (see `service.
-            DECISION_TEMPLATE_PACKS`) rather than the field being silently
-            blank with no explanation.
-        sort_order: Display/picker order among the organisation's templates.
+            constraints_prompt: Guidance text for the matching `Decision`
+            field, applied verbatim when the template is picked. Any may be
+            `NULL` where the format has no such section.
+        sort_order: Picker order among the organisation's templates.
     """
 
     __tablename__ = "decision_template_definitions"
@@ -116,34 +83,24 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
         unique_code: Project-scoped identifier (e.g. `"DEC-003"`), from
             `services.sequences.generate_unique_code`.
         title: Short display title.
-        decision_statement: The decision itself, in one sentence/paragraph.
         decision_type_id: FK to `DecisionTypeDefinition`.
-        status: Lifecycle state — see `DecisionStatus`.
-        decision_date: Date the decision was actually made, which may
-            precede formal approval (e.g. a decision made in a meeting,
-            formally approved days later).
-        decision_maker_type / decision_maker_id: Optional principal (a user,
-            an organisation group or a project group — `models.principal`) —
-            who actually made (or is expected to make) this specific
-            decision. Distinct from the
-            `decision_approver` module role (`module.py`), which controls
-            *who may* approve any decision in the project — this column
-            records who *did* (or will), the placeholder-role resolution
-            doesn't remove the value of
-            recording an actual named decision-maker per Decision.
-        owner_type / owner_id: Mandatory principal that maintains the
-            record (a team can own a Decision); distinct from the decision
-            maker. The id has no foreign key (see `models.principal`);
+        status: Lifecycle state (`DecisionStatus`).
+        decision_date: Date the decision was made, which may precede approval.
+        decision_maker_type / decision_maker_id: Optional principal (user,
+            organisation group or project group) who made or is expected to
+            make the decision; distinct from the `decision_approver` role,
+            which controls who may approve.
+        owner_type / owner_id: Mandatory principal that maintains the record.
+            The id has no foreign key (see `models.principal`);
             `services.principals.validate_principal` checks it on write and
             `module.py`'s `principal_references` guard group deletion.
-        context / options_considered / chosen_option / rationale /
-            consequences / assumptions / constraints: Free-text fields
-            (§13/10.3; rationale and consequences are
-            explicitly separate fields per that section, not folded into
-            a single description).
+        decision_statement / context / options_considered / chosen_option /
+            rationale / consequences / assumptions / constraints: Markdown
+            free-text fields; rationale and consequences are separate (§13/10.3).
+        document: The decision written out in full, in Markdown, beside the
+            structured fields; content-locked with them once approved or superseded.
         creator_id: Who created this record.
-        is_archived / archived_at / archived_by: Soft-delete, matching
-            `Requirement`/`RequirementAction`'s own convention.
+        is_archived / archived_at / archived_by: Soft-delete.
     """
 
     __tablename__ = "decisions"
@@ -173,6 +130,7 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
     consequences: Mapped[str | None] = mapped_column(Text, nullable=True)
     assumptions: Mapped[str | None] = mapped_column(Text, nullable=True)
     constraints: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document: Mapped[str | None] = mapped_column(Text, nullable=True)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -180,20 +138,15 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
 
 
 class DecisionComment(UUIDPKMixin, TimestampMixin, Base):
-    """A discussion-thread comment on a `Decision` — module-local analogue
-    of `ReviewComment`, with a direct `decision_id` FK instead of a
-    polymorphic `target_type`/`target_id` pair (see module docstring for
-    why).
+    """A discussion-thread comment on a `Decision`, with a direct `decision_id`
+    FK instead of a polymorphic target.
 
     Attributes:
         decision_id: The commented-on Decision.
         author_id: Who wrote the comment.
         body: Comment text.
-        edited_at: Set only when the body is actually changed after
-            creation; `None` for a never-edited comment — mirrors
-            `ReviewComment.edited_at`'s own reasoning (avoids the two
-            independent `TimestampMixin` defaults intermittently reading a
-            fresh comment as "edited").
+        edited_at: Set only when the body changes after creation; `None` for a
+            never-edited comment.
     """
 
     __tablename__ = "decision_comments"

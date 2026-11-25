@@ -6,19 +6,11 @@ import { deleteOrgOnCleanup, installCleanupHook, selectPreferencesGroup } from "
 installCleanupHook();
 
 /**
- * Job to be done: a user can leave an organisation themselves, from
- * Preferences' "Your access" tab —
- * moved out of Org Admin entirely, since leaving is about the current
- * user's own membership, not an org-level setting. Previously fired
- * immediately with zero confirmation; now goes through the shared Tier 1
- * `ConfirmDialog` and reports success via `Toast`, matching every other
- * ordinary/reversible mutation in the app.
+ * Job to be done: a user leaves an organisation from Preferences' "Your access" tab; the action goes through the
+ * shared Tier 1 `ConfirmDialog` and reports success via `Toast`.
  *
- * Uses a disposable organisation + a brand-new user created via the API
- * (same pattern `org-rename-and-test-email.spec.ts` already established)
- * rather than a shared seed persona/org — leaving an org is exactly the
- * kind of mutation other specs sharing this suite's single-worker run
- * shouldn't see happen to a persona/org they also depend on.
+ * Uses a disposable organisation and a new user created through the API, so no shared persona or organisation is
+ * affected by the membership change.
  */
 
 const apiBaseUrl = "http://localhost:8000";
@@ -42,10 +34,8 @@ test.describe("leave organisation from Preferences", () => {
       })
     ).json();
     deleteOrgOnCleanup({ id: org.id });
-    // Plain "member", not "org_admin" — `leave_organization` (backend/app/
-    // routers/orgs.py) 409s rather than silently stripping an org of its
-    // last admin, which this brand-new, single-user org's own admin would
-    // otherwise be. A plain member has no such guard to work around.
+    // A plain "member": `leave_organization` (backend/app/routers/orgs.py) returns 409 rather than remove an
+    // organisation's last administrator.
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: { Authorization: `Bearer ${adminToken}` },
       data: { email: userEmail, display_name: "E2E Leave Org User", password, role: "member" },

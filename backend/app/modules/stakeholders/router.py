@@ -2,15 +2,12 @@
 Module: modules.stakeholders.router
 
 Org-scoped API for the Stakeholders & Personas module, mounted at
-`/api/v1/orgs/{organization_id}/modules/stakeholders`: organisation-scoped
-Persona CRUD/lifecycle/comments/files and the org Persona type vocabulary.
+`/api/v1/orgs/{organization_id}/modules/stakeholders`: organisation-scoped Persona
+CRUD/lifecycle/comments/files and the org Persona type vocabulary.
 
-RBAC: reads are gated by `require_org_subcomponent_enabled("stakeholders",
-"persona")` (any org member with the module and sub-component enabled);
-mutations additionally require `_shared.require_persona_manage` (org persona
-owner role or FGAC grant), and type CRUD `require_persona_type_admin`. An org
-persona's files are org shared resources (`is_org_resource=True`), so the
-file-owner hook is never consulted for them.
+RBAC: reads need `require_org_subcomponent_enabled("stakeholders", "persona")`; mutations also need
+`_shared.require_persona_manage`, and type CRUD `require_persona_type_admin`. An org persona's files are
+org shared resources (`is_org_resource=True`), so the file-owner hook is never consulted for them.
 """
 
 from __future__ import annotations

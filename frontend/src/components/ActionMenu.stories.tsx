@@ -21,10 +21,9 @@ export default meta;
 
 type Story = StoryObj<typeof ActionMenu>;
 
-/** The trigger is a single icon-only kebab button, named by `triggerLabel`
- * (Principle 8 — every interactive control has a real name) rather than a
- * generic, unnamed "More actions". Clicking it reveals both items as
- * `role="menuitem"` rows inside a `role="menu"` container. */
+/** The trigger is a single icon-only kebab button, named by `triggerLabel` (Principle 8: every interactive
+ * control has a real name), not a generic "More actions". Clicking it reveals both items as `role="menuitem"`
+ * rows inside a `role="menu"` container. */
 export const OpensMenuWithBothActions: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -76,9 +75,8 @@ export const Disabled: Story = {
   },
 };
 
-/** An item is inserted ahead of the others while the menu is open (Org
- * Admin adds "Rename" once its settings load). Each button must keep its
- * own action: with index keys, clicking "Export" ran Rename (2026-10-04). */
+/** An item is inserted ahead of the others while the menu is open (Org Admin adds "Rename" once its settings
+ * load). Each button keeps its own action: the rows are keyed by label, so clicking "Export" never runs Rename. */
 export const ItemsChangeWhileOpen: Story = {
   render: () => {
     function Harness() {

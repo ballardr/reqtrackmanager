@@ -1,508 +1,130 @@
 """
 Module: modules.compliance.models
 
-The Compliance Module's data model (§2, §5, §6, §25, §31): the organisation-level, reusable compliance standard
-definitions, plus (§7-§11, §16, §20, §25, §26) the project-specific
-assessment layer on top of them: per §31's "A
-Compliance Requirement must not contain the compliance state of a project,"
-that state was deliberately kept off `ComplianceRequirement`/
-`ComplianceRequiredAction` and lives in the three models at the bottom of
-this file instead.
+The Compliance Module's data model: the organisation-level, reusable standard definitions (§2, §5, §6, §25, §31) and, on
+top of them, the project assessment layer (§7-§11, §16, §20, §25, §26). Per §31 ("A Compliance Requirement must not
+contain the compliance state of a project") project state lives only in the project-level models.
 
-Shape, per §25's conceptual data model:
-
-    ComplianceStandard (org-level identity row)
+    ComplianceStandard (organisation-level identity row)
         `-- ComplianceStandardVersion (versioned content, §4)
                 `-- ComplianceRequirement (hierarchical, self-referential, §5)
                         `-- ComplianceRequiredAction (§6)
-
-    ComplianceActionTypeDefinition (org-level, extensible vocabulary, §6)
+    ComplianceActionTypeDefinition (organisation-level, extensible vocabulary, §6)
 
     Project
-        `-- ProjectCompliance (a project's assignment to one standard version, §7)
+        `-- ProjectCompliance (assignment to one standard version, §7)
                 `-- ProjectComplianceRequirement (per-requirement assessment, §8-§10)
                         `-- ComplianceRequiredActionAssessment (per-required-action assessment, §6/§25)
 
-Design decisions:
-- `ComplianceStandard`/`ComplianceStandardVersion` follow the `Requirement`/
-  `RequirementVersion` identity-row + versioned-child-row shape,
-  but *not* that pair's valid_from/valid_to temporal
-  semantics: a `RequirementVersion` superseded by a newer one is history,
-  while every `ComplianceStandardVersion` remains independently live and
-  addressable indefinitely, since different projects may deliberately stay
-  pinned to different past versions forever (§4's worked example — Project A
-  on v1.1, Project B on v1.0). Versions are instead ordered and made
-  immutable by `version_number` + `status` (draft -> published -> retired),
-  not superseded by a newer row.
-- `ComplianceRequirement`'s self-referential `parent_requirement_id` is a
-  plain foreign key with no ORM `relationship()`, matching `Project.
-  parent_project_id`'s own precedent (hierarchy traversal is a service-layer
-  concern, not something the ORM needs to model directly) rather than
-  `Requirement`/`RequirementVersion`'s `relationship()`-backed pattern, which
-  exists there to walk a *single* linear version history rather than an
-  arbitrary-depth tree.
-- `ComplianceRequiredAction` belongs to exactly one `ComplianceRequirement`
-  (a plain one-to-many foreign key), unlike `RequirementAction`, which is
-  many-to-many with requirements via `RequirementActionLink`. §25's data
-  model diagram places "Required Actions" as a direct child of "Compliance
-  Requirements" with no separate mapping table, and nothing in §6 asks for
-  one required action to be reused verbatim across multiple compliance
-  requirements the way a `RequirementAction` can be reused across
-  requirements within a project.
-- §6 also lists "Status," "Assignee," "Due date," "Completion information,"
-  and "Evidence" as things a Required Action "should support" — those are
-  the *project-specific assessment* of a required action (§25's "Required
-  Action Assessments," nested under "Project Compliance Requirements," not
-  under "Required Actions"), and so belong to the per-project
-  assessment model, not to this reusable definition — the same §31
-  principle that keeps compliance state off `ComplianceRequirement` applies
-  identically one level down.
-- "Review schedule" (§2, one of a standard's listed attributes) is
-  satisfied by the dedicated `ComplianceReview` entity (§17: "
-  Compliance Standards and Project Compliance records must support
-  scheduled reviews"), not a scalar field here — §25's diagram places
-  "Compliance Reviews" as its own entity, not a column.
-- "Appropriate audit/history information" (§2) is satisfied by
-  `TimestampMixin`'s `created_at`/`updated_at` plus the
-  `services.audit.log_event` integration on every mutating endpoint, not a
-  bespoke history column here.
-- `ComplianceStandard`'s "Status" attribute (§2) is satisfied by the
-  existing `is_archived`/`archived_at`/`archived_by` soft-delete convention
-  already used by `Requirement`/`RequirementAction`, not a separate status
-  enum — a standard's own active/archived lifecycle is independent of its
-  versions' draft/published/retired lifecycle (`ComplianceStandardVersion.
-  status`), which is what actually needs a dedicated enum (§4).
-- `ComplianceActionTypeDefinition` mirrors `ActionTypeDefinition`'s existing
-  extensible-vocabulary pattern (§6: "Action types should preferably be
-  configurable/extensible rather than hard-coded"), but is organisation-
-  scoped rather than project-scoped: a required action's type is chosen
-  within a Compliance Standard, which is itself an organisation-level,
-  cross-project resource (§2's "must be capable of being assigned to
-  multiple projects"), so the vocabulary it draws from is scoped the same
-  way. The table ships empty, extensible, and
-  seed data (including §6's "potential initial action types") is a separate
-  seeding step.
+Design decisions, standard definitions:
+- `ComplianceStandard` / `ComplianceStandardVersion` are an identity row plus versioned child rows but without
+  `valid_from` / `valid_to`: every version stays live and addressable, because projects may stay pinned to different past
+  versions (§4). Versions are ordered and made immutable by `version_number` and `status` (draft, published, retired).
+- `ComplianceRequirement.parent_requirement_id` is a plain foreign key with no ORM `relationship()` (as
+  `Project.parent_project_id`): tree traversal is a service concern.
+- A `ComplianceRequiredAction` belongs to exactly one requirement (§25 has no mapping table). Its status, assignee, due
+  date, completion and evidence (§6) belong to `ComplianceRequiredActionAssessment` (§31 one level down).
+- "Review schedule" (§2, §7) is the `ComplianceReview` entity (§17), not a column. Audit and history (§2) come from
+  `TimestampMixin` and `services.audit.log_event`. A standard's status is the `is_archived` soft delete, independent of
+  its versions' lifecycle.
+- `ComplianceActionTypeDefinition` is an extensible vocabulary (§6) scoped to the organisation, as the standard that
+  draws on it is (§2); the table ships empty and seeding is separate.
 
-Project assessment layer design decisions:
-- `ProjectCompliance.standard_version_id` may only ever be set to a
-  `PUBLISHED` version (enforced at the API layer, `router.py::
-  create_project_compliance`) — a `DRAFT` version's requirements aren't
-  fixed yet, and `ComplianceStandardVersionStatus.RETIRED`'s own docstring
-  already states a retired version is "no longer assignable to **new**
-  projects." An existing assignment stays on its version regardless of
-  that version's later lifecycle changes (§4, §27) — nothing here ever
-  moves `standard_version_id` to a different row.
-- "Compliance Officer(s)" (§7's own field list for `ProjectCompliance`) is
-  **not** a column on this model — it's already fully answered by
-  `UserModuleRole` rows for `(module_key="compliance", role_key=
-  "compliance_officer", project_id=...)`, which
-  the existing `GET/POST /projects/{project_id}/members/{user_id}/
-  module-roles` endpoints already expose. Duplicating that as a second
-  field here would create two sources of truth for the same fact.
-- "Review schedule" (§7's field list) is, like §2's identical field on
-  `ComplianceStandard`, satisfied by the dedicated `ComplianceReview`
-  entity, not a column here — see the standard-level design decisions above for the
-  identical reasoning applied to the standard-level case.
-- `ProjectComplianceRequirement.explicit_applicability` is nullable —
-  `None` means "never explicitly decided," distinct from an explicit
-  `APPLICABLE` decision, even though both currently *resolve* to the same
-  effective value absent an ancestor override. This is what lets
-  `service.py::resolve_applicability` distinguish "the ordinary, untouched
-  default" from "a user actively confirmed this is applicable" if a future
-  change ever needs to (today both render as the same `EXPLICIT` source —
-  see `ComplianceApplicabilitySource`'s own docstring).
-- A single `justification` column serves both §9's "Not Applicable
-  justification" and §16's "rationale... required for Non-Compliant
-  decisions" — §8 itself lists this as one field ("Justification/
-  rationale"), and the two are never needed simultaneously in practice (a
-  row is either Not Applicable *or* Applicable-and-assessed, never both at
-  once). Enforced as mandatory, at the API layer, exactly when
-  `explicit_applicability` is being set to `NOT_APPLICABLE` or
-  `compliance_status` is being set to `NON_COMPLIANT` — never a NOT NULL
-  constraint, since it is conditionally required depending on which other
-  field is changing.
-- `ProjectComplianceRequirement.approval_state` exists now (default
-  `NOT_ASSESSED`) and the approval workflow is the only thing that changes it — see this
-  file's enums module docstring for why the column belongs with the
-  assessment data rather than the workflow.
+Design decisions, project assessment:
+- `ProjectCompliance.standard_version_id` is only ever a `PUBLISHED` version (API layer, `router.create_project_compliance`)
+  and never moves to another row, whatever the version's later lifecycle (§4, §27).
+- "Compliance Officer(s)" (§7) is not a column: `UserModuleRole` rows for `(compliance, compliance_officer, project_id)`
+  already answer it, and a second field would be a second source of truth.
+- `explicit_applicability` is nullable: `None` is "never decided", distinct from an explicit `APPLICABLE` although both
+  resolve alike (`service.resolve_applicability`).
+- One `justification` column serves §9's Not Applicable justification and §16's Non-Compliant rationale (§8 lists one
+  field). The API requires it exactly when `explicit_applicability` becomes `NOT_APPLICABLE` or `compliance_status`
+  becomes `NON_COMPLIANT`; it is never a NOT NULL constraint.
+- `approval_state` (default `NOT_ASSESSED`) is changed only by the approval workflow. `approval_decided_at`,
+  `approval_decided_by` and `decision_note` serve both approval and rejection (`approval_state` says which); the
+  assessment timestamps reuse `assessed_at` / `assessed_by` (§12). There is no submission timestamp and no approval
+  history table: `services.audit.log_event` rows (`project_router.get_requirement_history`) carry both. The transitions
+  (§12) are business logic in `service.py` and the approval endpoints.
+- Every requirement of an assigned version, section and leaf rows alike, gets a `ProjectComplianceRequirement` (and every
+  required action a `ComplianceRequiredActionAssessment`) materialised in full when the `ProjectCompliance` is created
+  (`router.create_project_compliance`), not lazily. The tree matters only for applicability inheritance (§9) and totals
+  (§20); a published version is immutable, so the set never needs reconciling.
+- `ComplianceRequiredActionAssessment` has the `is_completed` / `completed_at` / `completed_by` completion overlay of
+  `Requirement`, not `ComplianceStatus`: a required action is a task.
 
-Approval workflow design decisions:
-- `approval_decided_at`/`approval_decided_by`/`decision_note` are added to
-  `ProjectComplianceRequirement` (§12's "Date/time of approval"/"Who
-  approved/signed off the assessment") — one column pair serves *both* an
-  approval and a rejection decision (mirroring `justification`'s own
-  "one field, meaning depends on which transition is
-  happening" precedent) rather than separate `approved_*`/`rejected_*`
-  pairs, since a row is never both at once and `approval_state` itself
-  already distinguishes which decision `decision_note` belongs to.
-  "Who performed the assessment"/"date/time of assessment" (§12) reuse the
-  existing `assessed_at`/`assessed_by` columns — no new columns needed
-  there.
-- No new "submitted for approval" timestamp/actor columns: §12's own
-  minimum field list names only assessment and approval timestamps, not a
-  submission event, and `services.audit.log_event`'s existing history
-  (surfaced by `project_router.py::get_requirement_history`) already
-  records who/when moved a row into `PENDING_APPROVAL` — adding a redundant
-  pair of columns for a fact the audit trail already carries would be a
-  second source of truth for the same thing, the same call the standard-level
-  and project assessment notes already made about not duplicating audit-log facts as
-  columns.
-- No bespoke "approval history" table: §12's "Approval/sign-off history"
-  is satisfied by the same `AuditEvent` rows/`get_requirement_history`
-  endpoint that already carry the assessment/applicability history —
-  `service.py`'s `advance_approval_state_on_assessment`/`invalidate_
-  approval_if_in_flight` transitions are logged through `log_event` by
-  their callers exactly like every other mutation in this module, not a
-  second, parallel history mechanism.
-- The state-machine transitions themselves (§12's "Not Assessed -> Assessed
-  -> Pending Approval -> Approved/Rejected -> Requires Re-assessment") are
-  business logic, not something this file enforces structurally — see
-  `service.py`'s own docstring and `project_router.py`'s new `submit-for-
-  approval`/`approve`/`reject` endpoints.
-- Every `ComplianceRequirement` in an assigned version — section/parent
-  rows and leaf rows alike — gets its own `ProjectComplianceRequirement`
-  row, materialised once, in full, at `ProjectCompliance` creation time
-  (`router.py::create_project_compliance`), not lazily on first access.
-  This deliberately does not special-case "does this requirement have
-  children" — the tree structure only matters for applicability
-  inheritance (§9) and requirement-count totals (§20), not for which rows
-  exist. Same materialisation for `ComplianceRequiredActionAssessment` —
-  one row per `ComplianceRequiredAction` under the version, created at the
-  same time. A version's requirement/required-action set is immutable
-  once published (enforced at the API layer), so there is nothing to
-  reconcile later: the set materialised at assignment time is permanently
-  complete for that assignment.
-- `ComplianceRequiredActionAssessment` mirrors `Requirement`'s own
-  "completion overlay" shape (`is_completed`/`completed_at`/`completed_by`,
-  see `Requirement.completed_at`'s own docstring) rather than reusing the
-  `ComplianceStatus` enum — a required action is closer to a task than to
-  something needing degrees of compliance, and §6's own field list
-  ("Status, Assignee, Due date, Completion information") reads as a task's
-  fields, not a re-assessment's.
-- Evidence linkage is deliberately absent from every model in this file —
-  evidence is linked generically (see the evidence design decisions),
-  following `services/files.py::upload_file`'s existing
-  join-table-per-owner-type convention; a placeholder column would just
-  need reconciling away later.
+Design decisions, cross-standard mapping:
+- `ComplianceRequirement.cloned_from_requirement_id` (nullable, self-referential, `ondelete="SET NULL"`) records the
+  source requirement when `router._clone_requirement_tree` creates a version from another. §27's added, removed,
+  modified, replaced and re-mapped classification needs a durable lineage: names alone cannot tell a renamed and edited
+  requirement from a removal plus an unrelated addition. `SET NULL`, not `CASCADE` as for `parent_requirement_id`,
+  because a cloned requirement is an independent row of a published version that must survive deletion of its draft
+  source; a missing lineage is treated as `added` (`service.diff_standard_versions`, which also walks multi-hop lineage).
+- `ComplianceMappingRelationshipTypeDefinition` is an organisation-scoped, extensible vocabulary (§19), shaped like
+  `ComplianceActionTypeDefinition`, with no seed rows. Its table is `compliance_mapping_relationship_types` because the
+  longer auto-generated `organization_id` index name exceeds Postgres's 63-byte identifier limit.
+- `ComplianceRequirementMapping` records one directed relationship between two `ComplianceRequirement` rows (§19). It
+  is not restricted to different standards: §27's `replaced` category reuses it for a same-standard, cross-version link.
+  It is directed because relationship types such as "Derived From" are; a symmetric type is stored in a stable order.
+  `organization_id` is stored directly so cross-organisation isolation (404, not 403) is one indexed column. A `CHECK`
+  forbids `from_requirement_id = to_requirement_id`; `is_archived` / `archived_at` / `archived_by` keep a mapping
+  auditable (§19); `UNIQUE (from, to, relationship_type_id)` allows several types between one pair.
+- Per §19 a mapping never implies that satisfying one requirement satisfies another: no code reads a mapping to write
+  an assessment value except one narrow path. Carrying an assessment forward across a `replaced` mapping requires two
+  gates: the relationship type's `implies_equivalence` is `True` (an organisation decision, default `False`, no fixed
+  list of type names), and the compliance officer lists that requirement's id in
+  `ProjectComplianceMigrationRequest.confirmed_replacement_requirement_ids` for that migration. A carried `replaced`
+  row always has `requires_reassessment` true, because the wording changed (`service.migrate_project_compliance`).
 
-Cross-standard mapping design decisions:
-- `ComplianceRequirement.cloned_from_requirement_id` (nullable,
-  self-referential, `ondelete="SET NULL"`) is a new column recording which
-  requirement (if any) a given requirement was cloned from by `router.py::
-  _clone_requirement_tree` when a new standard version is created from an
-  existing one. Previously, cloning remapped old-id -> new-id only
-  in memory, for the duration of one clone operation, and persisted
-  nothing — §27's "identify requirements that are added/removed/modified/
-  replaced/re-mapped" between two versions cannot be answered precisely
-  without a durable lineage link: without it, a version diff could only
-  guess "same name/reference -> probably the same requirement," which
-  breaks the moment a requirement is renamed *and* content-edited in the
-  same version (indistinguishable from one being removed and an unrelated
-  one being added). `ondelete="SET NULL"`, not `CASCADE`, deliberately
-  mirrors `Project.parent_project_id`'s "detach, don't cascade" precedent
-  rather than this same file's own `parent_requirement_id` `CASCADE`
-  precedent one column up: `parent_requirement_id`'s `CASCADE` exists
-  because a compliance requirement has no "stand alone once detached"
-  concept *within its own tree* — deleting a section requirement should
-  take its subsections with it. Deleting the *source* requirement a later
-  version's requirement was cloned from is a different situation entirely:
-  the cloned requirement is a fully independent row in a different,
-  already-published version that must keep existing and keep its own
-  identity regardless of what later happens to the version it was cloned
-  from (a draft version can still have its unpublished requirements
-  deleted before publishing) — `SET NULL` simply means "the lineage record
-  is gone," which `service.py::diff_standard_versions` already treats
-  identically to "never had a lineage record" (i.e. `added`), the correct
-  fallback. See `service.py::diff_standard_versions`'s own docstring for
-  exactly how this column is walked (including the multi-hop case: diffing
-  two versions that are not directly adjacent, e.g. v1 vs. v3 when v3 was
-  cloned from v2, not v1).
-- `ComplianceMappingRelationshipTypeDefinition` is a new, organisation-
-  scoped, extensible vocabulary table for §19's "relationship types...
-  configurable or extensible where practical" (Equivalent, Satisfies,
-  Derived From, Related To, Overlaps, Conflicts With are examples, not a
-  fixed enum) — mirrors `ComplianceActionTypeDefinition`'s exact shape
-  (`organization_id`, unique `name`, `sort_order`), which is this module's precedent for "a
-  vocabulary chosen from within an org-level resource is itself org-
-  scoped." No rows are seeded here, consistent with every other
-  vocabulary table in this module (`ComplianceActionTypeDefinition`'s own
-  notes) — seed data is a separate step.
-  `__tablename__` is `compliance_mapping_relationship_types`, not
-  `..._type_definitions` (which every column name elsewhere in this class
-  would otherwise suggest, matching `ComplianceActionTypeDefinition`'s own
-  `compliance_action_type_definitions`): the longer name's auto-generated
-  `organization_id` index name (`ix_compliance_mapping_relationship_
-  type_definitions_organization_id`, 67 characters) exceeds Postgres's
-  63-byte identifier limit — the exact class of problem `Compliance
-  RequiredActionAssessment`'s own comment already documents for a
-  different table, solved there with an explicit shortened index name and
-  solved here instead by shortening the table name itself, which reads
-  more naturally than an oddly-abbreviated index alongside a normal-length
-  table name.
-- `ComplianceRequirementMapping` is a new table recording one directed
-  relationship between two `ComplianceRequirement` rows (`from_requirement_id`
-  -> `to_requirement_id`, typed by `relationship_type_id`) — the cross-
-  standard mapping §19 asks for. Deliberately **not** restricted to rows in
-  *different* standards: nothing about the mapping's own shape needs that
-  restriction, and §27's "re-mapped" version-diff category and the same
-  "replaced" category (see `service.py::diff_standard_versions`'s
-  own docstring) both deliberately reuse this exact same table for a
-  same-standard, cross-*version* link — a Compliance Manager marking "the
-  new v2.0 clause 5.3 replaces the old v1.0 clause 4.9, which was removed
-  outright rather than cloned forward" is structurally the same fact
-  (\"these two requirement rows are related, and here's how\") as marking
-  an ISO 27001 clause equivalent to a corporate standard's clause, so one
-  mechanism serves both rather than inventing a second, parallel
-  "supersedes" table. Directed (not a symmetric/unordered pair) because
-  several of §19's own named relationship types are inherently directional
-  (\"B Derived From A\", \"B Satisfies A\") — a symmetric relationship
-  (Equivalent, Overlaps, Related To, Conflicts With) is simply stored with
-  an arbitrary but stable from/to order, since nothing about this table's
-  own semantics depends on treating one direction as more authoritative.
-  `organization_id` is stored directly (denormalised from the mapped
-  requirements' own standards) rather than derived through two joins on
-  every request, mirroring `ComplianceStandard.organization_id` itself
-  being the scoping anchor for every other org-scoped lookup in this
-  module — both endpoints creating/reading mappings need one flat,
-  indexed column to enforce cross-org isolation the same "404, not 403"
-  way as every other resource in this module (`router.py`'s own
-  docstring). A `CHECK (from_requirement_id != to_requirement_id)`
-  constraint rules out a self-referential mapping, which could never mean
-  anything (a requirement cannot be Equivalent To/Satisfies/etc. itself).
-  `is_archived`/`archived_at`/`archived_by` mirror every other entity in
-  this module's soft-delete convention — a mapping is auditable history
-  (§19: "must be... auditable") once created, so removing one is a
-  lifecycle transition, not a hard delete, exactly like `ComplianceStandard`/
-  `ComplianceEvidence`. A `UNIQUE (from_requirement_id, to_requirement_id,
-  relationship_type_id)` constraint prevents the exact same relationship
-  being recorded twice between the same pair, while still allowing more
-  than one relationship type to exist between the same pair (e.g. both
-  "Overlaps" and "Related To" recorded separately, if a Compliance Manager
-  judges both apply) — nothing in §19 suggests a pair of requirements can
-  only ever have one relationship between them.
-  Per §19's explicit "must not imply that satisfying one requirement
-  automatically satisfies another unless the relationship explicitly
-  supports that behaviour": this table and every endpoint that reads or
-  writes it are pure metadata for every purpose *except* one narrow,
-  deliberate exception — see `ComplianceMappingRelationshipTypeDefinition.
-  implies_equivalence` and the "carry-forward across a `replaced` mapping"
-  addition below. Outside that one path, no code anywhere in this module
-  reads a `ComplianceRequirementMapping` row to alter a
-  `ProjectComplianceRequirement.compliance_status`/`approval_state` value
-  on the other side of a mapping — mapping rows are otherwise only ever
-  read to *report* structure (the diff/re-mapped logic in `service.py`),
-  never to *write* an assessment value.
-- **Carrying an assessment forward across a `replaced` mapping is possible,
-  but only when both an org-level and a per-migration human decision agree
-  — never automatic, and never a general property of the mapping
-  mechanism.** Added after the initial implementation, in
-  response to direct feedback that always forcing a `replaced` requirement
-  (e.g. an old "IPX6 water ingress" requirement explicitly linked to a new
-  "IP67 water ingress" requirement) back to blank defaults on migration
-  was too blunt when a Compliance Manager has already judged the two
-  genuinely equivalent. The mechanism has two independent gates, both of
-  which must be satisfied, so this never becomes the kind of automatic
-  cross-requirement inference §19 explicitly rules out:
-  (1) `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`
-  must be `True` on the specific mapping's relationship type — an org-
-  level, Compliance-Manager-only decision about which relationship types
-  are strong enough to ever be used this way (defaults `False`; "Related
-  To"/"Overlaps"/"Conflicts With" are never expected to be marked `True`,
-  though nothing stops an org from choosing to — this table's vocabulary
-  is deliberately theirs to define, per §19's own "configurable or
-  extensible" instruction, so this module doesn't hardcode a fixed allow-
-  list of type *names*).
-  (2) The compliance officer performing the *specific* migration must
-  separately, explicitly list that specific new-version requirement's id
-  in `ProjectComplianceMigrationRequest.confirmed_replacement_requirement_id
-  s` — a mapping existing and being of a strong-enough type only ever
-  makes carry-forward *possible*, never automatic; nothing carries forward
-  a project's own assessment without a human confirming it for that
-  project's own migration, exactly like every other consequential
-  decision in this module (assessment, applicability, approval). See
-  `service.py::migrate_project_compliance`'s own docstring for exactly
-  what is/isn't copied when both gates are satisfied, and why a
-  `replaced`-carried row's `requires_reassessment` is always `True`
-  regardless of its carried-forward `approval_state` (unlike an
-  `unchanged`-carried row, where it depends on whether `approval_state`
-  actually needed downgrading) — the underlying wording did change, even
-  if a human has judged the change immaterial.
+Design decisions, evidence:
+- `ComplianceEvidence` is project-scoped (`project_id`): it is supplied for one project's assessment but may support
+  several of that project's requirements and required actions (§13). That many-to-many is `ArtefactLink` rows with
+  `source_type=COMPLIANCE_EVIDENCE` and `target_type` `PROJECT_COMPLIANCE_REQUIREMENT` or
+  `COMPLIANCE_REQUIRED_ACTION_ASSESSMENT`: the assessment rows, not the reusable definitions (§31).
+- `expiry_date` is the current expiry, updated in place by a revalidation (§15). `ComplianceEvidenceRevalidation` is
+  append-only so each revalidation's previous expiry stays visible.
+- `ComplianceEvidenceFile` has the shape of `app.models.file.RequirementFile` but lives here because it is
+  Compliance-owned; §13 reuses the file mechanism (`services.files.upload_file`), not core's owner-specific tables.
+- `is_archived` / `archived_at` / `archived_by` answer "Whether it remains applicable" (§13); a hard delete would sever
+  `ArtefactLink` rows the assessments' audit trail (§16) depends on.
 
-Evidence design decisions:
-- `ComplianceEvidence` is project-scoped (`project_id`), not standard- or
-  requirement-scoped: evidence (a certificate, a test report) is a real
-  artefact supplied for one project's own assessment, even though a
-  single row may support several of that project's requirements and/or
-  required actions at once (§13's own "a single piece of evidence should
-  be capable of supporting multiple compliance requirements"). That
-  multi-linkage is a genuine many-to-many, not a foreign key on either
-  side — originally two dedicated join tables (`ComplianceEvidenceRequirementLink`/
-  `ComplianceEvidenceActionLink`), folded into the core `app.models.relationship.ArtefactLink` table
-  instead, `source_type=ArtefactType.COMPLIANCE_EVIDENCE` pointing at
-  `target_type=ArtefactType.PROJECT_COMPLIANCE_REQUIREMENT`/
-  `ArtefactType.COMPLIANCE_REQUIRED_ACTION_ASSESSMENT` — deliberately the
-  project-specific assessment rows (`ProjectComplianceRequirement`/
-  `ComplianceRequiredActionAssessment`), not the reusable
-  `ComplianceRequirement`/`ComplianceRequiredAction` definitions — the same
-  §31 "state belongs to the project-specific assessment layer, not the
-  reusable definition" principle the project assessment design decisions already
-  apply to `ComplianceStatus`/`ComplianceApplicability`, extended one
-  concept further to evidence.
-- `ComplianceEvidence.expiry_date` is this row's *current* effective
-  expiry — revalidating (§15) updates it in place. `ComplianceEvidenceRevalidation`
-  is a separate, append-only table recording what it previously was: §15's
-  own worked example ("Issued/Expires/Revalidated/By/New expiry") requires
-  the *previous* expiry to remain visible after a revalidation, which a
-  plain in-place update (even with `updated_at` tracking) cannot provide,
-  since a second revalidation would overwrite the first's own "previous"
-  value along with the row's `expiry_date` itself.
-- `ComplianceEvidenceFile` mirrors `app.models.file.RequirementFile`'s
-  exact shape (UUID PK, `evidence_id`/`file_id`/`linked_by`/`created_at`,
-  no `updated_at`) rather than reusing that table directly — it lives in
-  this module (not `app.models.file`) since it is Compliance-owned, not a
-  core concept, per §13's "reuse ReqTrackManager's existing attachment/
-  file mechanisms" (i.e. `services.files.upload_file`), not its existing
-  *tables*, which are all owned by specific core entities.
-- `is_archived`/`archived_at`/`archived_by` on `ComplianceEvidence` mirrors
-  every other compliance entity's soft-delete convention exactly, and is
-  this model's answer to §13's own listed attribute "Whether it remains
-  applicable" — deliberately not a hard delete, since that would silently
-  sever the `ArtefactLink` rows that other assessments' own audit trail
-  (§16) may still depend on.
+Design decisions, reviews:
+- `ComplianceReview` has exactly one of `standard_id` / `project_compliance_id` (`CheckConstraint`): §17 names two owners.
+- `frequency_label` (free text) plus nullable `recurrence_days` (`None` is one-off) replace a calendar enum, because
+  §17 includes event-triggered reviews ("before product release").
+- Review history (§17) is the retained rows: a completed row stays (`status` `COMPLETED`) and a recurring review gets a
+  new `SCHEDULED` row for the next cycle (`service.complete_review`), so no history table exists.
+- `ComplianceReviewEvidenceLink` is a dedicated many-to-many (not `ArtefactLink`, which covers evidence to requirement
+  and required action assessment). The API, not the database, requires the evidence and review to share a project, so a
+  standard-level review cannot link project evidence.
+- Reminder bookkeeping (`*_reminder_sent_at`, `*_notified_at` on `ComplianceEvidence`,
+  `ComplianceRequiredActionAssessment`, `ProjectCompliance`) lives on the owning row, as
+  `RequirementVersion.review_reminder_sent_at` does, so sweeps do not re-notify.
 
-Review design decisions:
-- `ComplianceReview` has exactly one of `standard_id`/`project_compliance_id`
-  set (a `CheckConstraint`, not left to convention) — §17's "Compliance
-  Standards and Project Compliance records must support scheduled reviews"
-  names two distinct owners, not a shared "reviewable thing" abstraction;
-  a standard-level review (e.g. "annual audit of this standard itself") and
-  a project-level review (e.g. "review this project's compliance before
-  release") are different concerns that happen to share every other field.
-- `frequency_label` (free text, e.g. "Annual," "Before product release")
-  plus an optional `recurrence_days` (nullable — `None` means "one-off,
-  does not auto-recur") were chosen over a fixed calendar-frequency enum:
-  §17's own examples include event-triggered reviews with no calendar
-  cadence at all ("Review before product release," "Review after a
-  significant standard change"), which a rigid Annual/Six-Monthly/... enum
-  can't represent without an awkward "Other" escape hatch.
-- "Review history" (§17) is satisfied by *retaining* each completed
-  `ComplianceReview` row (never deleted, `status` moves to `COMPLETED`)
-  and, when `recurrence_days` is set, creating a **new** `SCHEDULED` row
-  for the next cycle rather than reopening/reusing the completed one — see
-  `service.py::complete_review`. Querying every `ComplianceReview` row for
-  one owner, ordered by `created_at`, *is* that owner's review history;
-  no separate history table, mirroring the "the audit trail
-  already carries this" reasoning used for assessments and approvals applied to a different mechanism (chained
-  rows instead of `AuditEvent`, since a review's own recurrence naturally
-  produces one row per cycle already).
-- `ComplianceReviewEvidenceLink` (§17's "Notes/evidence associated with the
-  review") is a many-to-many, mirroring the original evidence-linkage
-  join-table shape (§13's own established convention) rather than a single
-  nullable FK — the same "a piece of evidence may support more than one
-  thing at once" reasoning applied to requirements/required
-  actions, extended to reviews. Unlike the two evidence-link
-  tables, this one is **not** folded into the generic `ArtefactLink` table
-  (that covers evidence<->requirement and evidence<->action assessment
-  only), so it is its own dedicated table. Enforced at the API layer only (not a
-  DB constraint) that a link's evidence and review share the same project —
-  a standard-level review (no `project_id` of its own) cannot be linked to
-  project-scoped evidence at all, since it has no project to share.
-- Evidence-expiry/required-action-due/target-date reminder "already sent"
-  bookkeeping (`*_reminder_sent_at`/`*_notified_at` pairs on `ComplianceEvidence`/
-  `ComplianceRequiredActionAssessment`/`ProjectCompliance`) lives on each
-  owning row rather than a separate notification-log table, mirroring
-  `RequirementVersion.review_reminder_sent_at`'s own established Massif
-  (v3) precedent for exactly this "don't re-notify every sweep run" need.
+Design decisions, applicability defaults:
+- `ComplianceStandard.applicability_default` is a column on the standard (§3, §26): one setting, no history.
+- `ComplianceStandardDefaultExclusion` joins `(standard_id, project_id)` with a mandatory `reason` (API-validated) and
+  cascades on both keys.
+- Reconciliation never creates a second `ProjectCompliance` for a project that already tracks the standard through any
+  version (that would break the `(project_id, standard_version_id)` uniqueness or create a confusing concurrent
+  assignment); it fills only the gap, targets the standard's current latest `PUBLISHED` version when it runs, and
+  reconciles nothing for a standard with no published version (`service.reconcile_standard_applicability`, which reuses
+  an exclusion-archived row on un-exclusion).
+- Switching back to `OPT_IN` never archives rows an earlier reconciliation created: a real row carries a real
+  assessment and audit trail (§8, §16). The default governs future reconciliation only.
 
-Standard applicability defaults, exceptions and project-manager assignment
-design decisions:
-- `ComplianceStandard.applicability_default` is a plain column on the
-  standard itself, not a separate "applicability policy" entity — §3/§26
-  already treat this as a property of the standard a Compliance Manager
-  curates, and there is exactly one such setting per standard, never a
-  history of past settings worth modelling separately (unlike, say,
-  `ComplianceStandardVersion.status`, which genuinely has a lifecycle).
-- `ComplianceStandardDefaultExclusion` is a real join table
-  (`standard_id`, `project_id`) with a mandatory `reason`, mirroring the
-  mandatory-justification convention exactly (Not Applicable,
-  Non-Compliant, Rejection) — enforced at the API layer, same as those,
-  not a DB `CHECK` (an empty-string reason is a payload-validation
-  question, not a schema-shape one). `ON DELETE CASCADE` on both foreign
-  keys: an exclusion row has no independent meaning once either its
-  standard or its project is gone.
-- Reconciliation never creates a *second*, duplicate `ProjectCompliance`
-  row for a project that already tracks the standard via any of its
-  versions (whether that existing row came from a Project-Manager
-  self-service assignment, a Compliance-Manager manual assignment, or a
-  prior reconciliation pass) — it only fills the gap for a project with
-  none. This is a deliberate, narrower reading of the spec's "materialise
-  a real row for every ... project" than "always assign the very latest
-  published version regardless of what's already tracked": the latter
-  would either violate `ProjectCompliance`'s own `(project_id,
-  standard_version_id)` uniqueness constraint when a still-archived row
-  already occupies that exact pair, or silently create a second, confusing
-  concurrent assignment to a different version of the same standard when
-  it doesn't. See `service.py::reconcile_standard_applicability`'s own
-  docstring for the exact rule and why un-excluding a project reuses (by
-  unarchiving) an exclusion-time-archived row for the same version rather
-  than creating a fresh one.
-- Reconciliation always targets the standard's *current latest `PUBLISHED`
-  version* at the moment it runs (standard flipped to "applies to all," a
-  new project created, or a project un-excluded) — not a version pinned at
-  the moment `applicability_default` was first set. A standard with zero
-  published versions simply reconciles nothing (not an error): switching a
-  standard to `APPLIES_TO_ALL_PROJECTS` before it has anything publishable
-  is allowed (a Compliance Manager may set the policy ahead of publishing
-  the standard's content), it just has no projects to materialise against
-  until a version is published.
-- Switching a standard *back* to `OPT_IN` never retroactively archives
-  `ProjectCompliance` rows a prior `APPLIES_TO_ALL_PROJECTS` reconciliation
-  created — once a real assignment row exists, it is exactly as permanent
-  and independently manageable (archivable, one at a time) as a manually
-  created one, per this module's existing "a real row carries a real
-  assessment/audit trail" principle (§8, §16). `applicability_default`
-  only ever governs *future* reconciliation events, never past ones.
+Design decisions, post-publish clarification:
+- `ComplianceStandardVersion.summary` and `ComplianceRequirement`'s four clarification columns are a narrow exception to
+  immutability of a published version (`router._require_draft_version`): a manager-gated, mandatory-note edit
+  (`router.clarify_requirement`) is not a silent change to assessed wording (§4, §31).
+- `summary` is editable at any `status`; the schema shape (`ComplianceStandardVersionUpdate` carries only this field)
+  makes it exempt from the draft gate, not only a runtime check.
+- The clarification fields sit on the reusable `ComplianceRequirement` because they describe the requirement's own text,
+  identical for every project, like `name` and `description`; they are not project state (§31).
+- There is no substantive-versus-clarification flag: a text diff cannot be classified reliably, so the distinction is
+  procedural (the dedicated `PATCH .../clarify` endpoint) and the mandatory `clarification_note` makes each use
+  accountable.
 
-Post-publish clarification edits and editable version descriptions design
-decisions:
-- `ComplianceStandardVersion.summary` and `ComplianceRequirement`'s four
-  clarification columns are a
-  deliberate, explicitly-flagged *revision* of the "a published
-  version's requirements become immutable" rule (`router.py::
-  _require_draft_version`), not a reopening of it: see `router.py::
-  clarify_requirement`'s own docstring for why a narrow, mandatory-note,
-  manager-gated exception satisfies §4/§31's actual wording ("must not
-  *silently*/*unexpectedly* alter... compliance assessment") rather than
-  violating it.
-- `summary` is a plain column on `ComplianceStandardVersion`, editable
-  regardless of `status`, rather than living behind `_require_draft_version`
-  like every other field on this row — the one field on this table
-  deliberately made structurally exempt from that gate (see
-  `schemas.py`'s `ComplianceStandardVersionUpdate`, which carries only this
-  field, mirroring `ComplianceStandardUpdate`'s own precedent of using the
-  schema's own shape — not a runtime check alone — to make a field
-  editable/non-editable).
-- The clarification fields live on `ComplianceRequirement` itself (the
-  *reusable* definition), not on a project-specific assessment row — this
-  looks, at first glance, like it cuts against this module's own
-  established §31 principle ("a Compliance Requirement must not contain the
-  *compliance state of a project*," this file's own docstring, applied
-  repeatedly above). It doesn't: whether a requirement
-  has been clarified, and its own wording's last-touched marker, are a fact
-  about the *requirement's own text*, identical for every project assigned
-  to it — the same category of fact `name`/`description`/`reasoning`
-  already are on this row — not a project's assessment of that text, which
-  is what §31 actually scopes off onto `ProjectComplianceRequirement`.
-- No new "substantive vs. clarification" enum or detection column: the
-  distinction is enforced procedurally (a dedicated, narrow `PATCH .../
-  clarify` endpoint distinct from the ordinary draft-only update endpoint,
-  see `router.py`), not data-modelled — there is no reliable way to
-  classify a text diff as substantive vs. non-substantive from the diff
-  alone, so the schema doesn't pretend otherwise; the mandatory
-  `clarification_note` is what makes each use of the distinction
-  accountable, per this file's own module docstring.
-
-External dependencies: none beyond this project's own ORM/config modules.
+External dependencies: this project's ORM and configuration modules only.
 """
 
 from __future__ import annotations
@@ -1067,15 +689,9 @@ class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("project_compliance_requirement_id", "required_action_id"),
         principal_check_constraint("assignee", nullable=True),
-        # Explicit, shortened index name: `index=True`'s auto-generated
-        # `ix_compliance_required_action_assessments_project_compliance_
-        # requirement_id` is 75 characters, over Postgres's 63-byte
-        # identifier limit — Postgres silently truncates it at DDL time,
-        # which then never matches SQLAlchemy's own (untruncated) computed
-        # name and permanently fails `test_schema_migrations_match_models.py`
-        # regardless of what the migration itself names it (see
-        # `ComplianceRequirementTraceabilityLink.compliance_requirement_id`
-        # below for the same issue hit a second time).
+        # Explicit short index name: the generated `ix_compliance_required_action_assessments_project_compliance_
+        # requirement_id` is 75 characters, over Postgres's 63-byte limit, so Postgres truncates it at DDL time and it
+        # never matches SQLAlchemy's computed name (`test_schema_migrations_match_models.py`).
         Index(
             "ix_required_action_assessments_pcr_id", "project_compliance_requirement_id"
         ),
@@ -1215,24 +831,12 @@ class ComplianceEvidenceFile(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-# `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink` used to
-# be defined here (Evidence<->ProjectComplianceRequirement and
-# Evidence<->ComplianceRequiredActionAssessment, both untyped many-to-many
-# join tables). Both were folded into
-# the core `app.models.relationship.ArtefactLink` table — see the evidence
-# design decisions in this file's docstring above and
-# `app.services.relationships` for the generic replacement. Removed rather
-# than kept as compatibility shims, per migration 0043.
+# Evidence links to a `ProjectComplianceRequirement` or `ComplianceRequiredActionAssessment` are
+# `app.models.relationship.ArtefactLink` rows (see the module docstring and `app.services.relationships`).
 #
-# This module's own registered artefact-type values (declared on
-# `module.MODULE_DEFINITION.artefact_types`, `app.modules.registry.
-# ModuleDefinition`) — the canonical constants every internal call site
-# below (service.py/reports.py/export.py/project_router.py) imports,
-# rather than re-typing the raw strings. `module.py`'s own
-# `MODULE_DEFINITION` construction mirrors these three values as local
-# literals rather than importing them from here, for the same
-# zero-import-cycle reason its own `_ORG_MERGE_RESOLUTION_CHOICES`
-# documents.
+# This module's registered artefact-type values (`module.MODULE_DEFINITION.artefact_types`) are the constants every call
+# site (`service.py`, `reports.py`, `export.py`, `project_router`) imports. `module.py` repeats them as local literals to
+# avoid an import cycle.
 ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT = "compliance_requirement"
 ARTEFACT_TYPE_EVIDENCE = "compliance_evidence"
 EVIDENCE_CODE_PREFIX = "EVD"

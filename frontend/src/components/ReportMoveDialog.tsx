@@ -1,12 +1,11 @@
 /**
  * Module: components/ReportMoveDialog
  *
- * The dialog that moves one report to a folder in the Report setup list: a `ReportFolderChooser` (the same control a
- * layout's or pack's own folder field uses) with Move and Cancel.
- *
- * Responsibilities: hold the chosen folder while the chooser adds, renames or deletes folders, keep Move disabled while
- * either a save or a folder change is in flight, and hand the tidied path to `onSave`, which decides whether the move
- * edits the report itself (an owned layout or pack) or sets a placement (a shared or module report).
+ * The dialog that moves one report to a folder in the Report setup list: a `ReportFolderChooser` (the control a
+ * layout's or pack's folder field uses) with Move and Cancel. It holds the chosen folder while the chooser adds,
+ * renames or deletes folders, keeps Move disabled while a save or a folder change is in flight and hands the tidied
+ * path to `onSave`, which decides whether the move edits the report itself (an owned layout or pack) or sets a
+ * placement (a shared or module report).
  */
 import { useState } from "react";
 

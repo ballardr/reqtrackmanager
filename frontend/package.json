@@ -1,6 +1,7 @@
 {
   "name": "reqtrackmanager-frontend",
   "private": true,
+  "license": "AGPL-3.0-only",
   "version": "1.0.0",
   "type": "module",
   "engines": {
@@ -17,6 +18,13 @@
     "test-storybook": "vitest run --project=storybook"
   },
   "dependencies": {
+    "@tiptap/extension-bold": "3.33.0",
+    "@tiptap/extension-code": "3.33.0",
+    "@tiptap/extension-italic": "3.33.0",
+    "@tiptap/extension-strike": "3.33.0",
+    "@tiptap/extension-table": "3.33.0",
+    "@tiptap/extensions": "3.33.0",
+    "@tiptap/markdown": "3.33.0",
     "@tiptap/pm": "^3.33.0",
     "@tiptap/react": "^3.33.0",
     "@tiptap/starter-kit": "^3.33.0",
@@ -26,6 +34,8 @@
     "dompurify": "^3.4.17",
     "katex": "^0.18.10",
     "lucide-react": "^0.446.0",
+    "markdown-it": "15.0.3",
+    "mermaid": "12.3.0",
     "papaparse": "^5.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

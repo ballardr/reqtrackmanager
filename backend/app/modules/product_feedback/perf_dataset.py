@@ -1,40 +1,26 @@
 """
 Module: modules.product_feedback.perf_dataset
 
-The dataset generator for the `enhancement_request` artefact type: project requests with their version history
-(including declined ones with a reason), comments, tags, "Requested by" links to Stakeholders, Personas and
-Engagements, and a share of duplicates merged into an earlier request.
-
-Responsibilities:
-- Score a share of requests with the organisation's real `enhancement_request` scoring levels.
-- Write `enhancement_requests`, `enhancement_request_versions`, `enhancement_request_comments`,
-  `enhancement_request_merges`, tags, cross-type `artefact_links` and audit events, and the project's
-  `enhancement_request` sequence counter.
-
-Design decisions:
-- A duplicate is created with the `DUPLICATE` status its merge row implies and points at an earlier, non-duplicate
-  request of the batch, so no chain exists.
-- Only project-owned requests are generated; the organisation inbox is not covered (its rows belong to the
-  organisation, not a project).
-
-Dependencies: `perf_dataset.records`, this module's models.
+The dataset generator for `enhancement_request`: project requests with version
+history, comments, tags, "Requested by" links, scores from the organisation's
+levels and a share of duplicates merged into an earlier non-duplicate request
+(no chains). The organisation inbox is not generated. Dependencies:
+`perf_dataset.records`, this module's models.
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
 
+from app.models.external_reference import ExternalReference, ExternalReferenceRole, ExternalSystemDefinition, ProjectExternalSystem
 from app.modules.product_feedback.demand import REQUESTED_BY_FORWARD
-from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, ExternalRefRole
+from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus
 from app.modules.product_feedback.models import (
     EnhancementRequest,
     EnhancementRequestComment,
-    EnhancementRequestExternalRef,
     EnhancementRequestMerge,
     EnhancementRequestVersion,
     EnhancementRequestVersionScore,
-    ExternalSystemDefinition,
-    ProjectExternalSystem,
 )
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.service import REQUEST_ARTEFACT_TYPE, REQUEST_CODE_PREFIX
@@ -113,10 +99,11 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
         }
         ref_count = (2 if rng.random() < 0.2 else 1) if systems and rng.random() < 0.4 else 0
         for _ in range(ref_count):
-            batch.satellite(EnhancementRequestExternalRef, {
-                "id": batch.new_id(), "request_id": record_id, "org_system_id": None,
-                "project_system_id": rng.choice(systems), "key": f"PROJ-{rng.randint(1, 9999)}",
-                "url": None, "role": rng.choice((ExternalRefRole.ORIGIN, ExternalRefRole.DELIVERY)), "created_by": creator,
+            batch.satellite(ExternalReference, {
+                "id": batch.new_id(), "artefact_type": REQUEST_ARTEFACT_TYPE, "artefact_id": record_id,
+                "organization_id": ctx.organization_uuid, "project_id": ctx.project_uuid, "org_system_id": None,
+                "project_system_id": rng.choice(systems), "key": f"PROJ-{rng.randint(1, 9999)}", "url": None, "note": "",
+                "role": rng.choice((ExternalReferenceRole.ORIGIN, ExternalReferenceRole.DELIVERY)), "created_by": creator,
                 "created_at": created, "updated_at": created,
             })
         extra = extra_versions(rng, ctx.spec.ratios.versions_per_requirement)

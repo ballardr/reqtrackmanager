@@ -1,16 +1,10 @@
 """
 Module: routers.system.users
 
-Server-tier user administration (I-M-06): adding a user (by invite or with a
-password), granting or revoking the server admin role itself, server-tier role grants/revokes (`UserServerRole`), the
-system-wide user access-review directory (C-A-13), the merged
-deactivate/reactivate/ban/unban action for orphaned (org-less) accounts,
-and platform-wide PAT bulk revocation. Every endpoint here is
-`require_server_admin` only.
-
-Split out of the former flat `routers/system.py` as a pure code-organization
-refactor — see `routers/system/__init__.py`'s module docstring for the
-package layout.
+Server-tier user administration (I-M-06): adding a user (by invite or with a password), granting or revoking
+the server admin role itself, server-tier role grants/revokes (`UserServerRole`), the system-wide user
+access-review directory (C-A-13), the deactivate/reactivate/ban/unban action for orphaned (org-less)
+accounts and platform-wide PAT bulk revocation. Every endpoint is `require_server_admin` only.
 """
 
 from __future__ import annotations
@@ -36,6 +30,7 @@ from app.schemas.pat import BulkRevokeResult
 from app.services import credential_reset
 from app.services.audit import log_event
 from app.services.imported_people import assert_not_imported_person
+from app.services.list_sort import natural_key, order_records
 from app.services.pats import revoke_matching
 from app.services.rate_limit import RateLimiter
 from app.services.rbac import get_user_org_group_ids, require_server_admin
@@ -56,21 +51,15 @@ class ServerAdminUpdate(BaseModel):
 
 
 class SystemUserOut(BaseModel):
-    """Account-level fields, plus organisation-membership visibility for the
-    access review (C-A-13). `organization_count` is always a plain number —
-    no more revealing than `has_org_membership` already was — but
-    `organization_names` is a deliberate, explicit exception to I-M-05's
-    "server admin does not give access to data within organisations": naming
-    actual orgs here does leak cross-tenant membership to a role that's
-    otherwise kept content-blind by design. Gated by
-    `settings.access_review_show_org_names` (default on — a server admin
-    already has direct database access regardless) rather than silently
-    always on; when off, `organization_names` is always `[]` and the UI
-    falls back to `organization_count`. `group_names` (every org group the
-    user effectively belongs to across every org, direct or inherited via
-    nesting — see `services.rbac.get_user_org_group_ids`) is gated by the
-    same setting, for the same reason: naming a specific team/group is at
-    least as revealing of org-internal structure as an org name is."""
+    """Account-level fields, plus organisation-membership visibility for the access review (C-A-13).
+    `organization_count` is always a plain number (no more revealing than `has_org_membership`), but
+    `organization_names` is an explicit exception to I-M-05's "server admin does not give access to data
+    within organisations": naming orgs leaks cross-tenant membership to an otherwise content-blind role. It
+    is gated by `settings.access_review_show_org_names` (default on, as a server admin already has database
+    access); when off, `organization_names` is `[]` and the UI falls back to `organization_count`.
+    `group_names` (every org group the user effectively belongs to across every org, direct or inherited via
+    nesting, see `services.rbac.get_user_org_group_ids`) is gated by the same setting, because naming a team
+    is at least as revealing of org-internal structure as an org name."""
 
     user_id: UUID
     email: str
@@ -81,6 +70,8 @@ class SystemUserOut(BaseModel):
     is_2fa_enabled: bool
     created_at: datetime
     is_server_admin: bool
+    #: A service user (`services.service_users`): never a person, never able to sign in.
+    is_service_account: bool = False
     #: Server-tier roles granted by row (never `server_admin`, which is `is_server_admin`).
     server_roles: list[ServerRole]
     has_org_membership: bool
@@ -103,19 +94,14 @@ class ServerRoleAssign(BaseModel):
 
 
 class OrphanedUserStatusUpdate(BaseModel):
-    """Payload for `POST /users/{user_id}/status` — merges the four
-    formerly-separate `deactivate`/`reactivate`/`ban`/`unban` orphaned-user
-    endpoints (2026-09-22, see docs/decisions.md) into one, following the
-    same "action discriminates the transition" shape `ChangeRequestDecision`
-    already uses for approve/reject. `deactivate_reactivate_ban_or_unban_
-    orphaned_user` dispatches on `action`, applying the exact same per-branch
-    guards and field writes the four original endpoints each had — see that
-    function's own docstring for each branch's asymmetries (self-targeting,
-    the banned/reactivate interaction, which fields `ban`/`unban` touch).
+    """Payload for `POST /users/{user_id}/status`: the `deactivate`/`reactivate`/`ban`/`unban` orphaned-user
+    transitions in one endpoint, using the "action discriminates the transition" shape of
+    `ChangeRequestDecision`. `deactivate_reactivate_ban_or_unban_orphaned_user` dispatches on `action`; see
+    its docstring for each branch's guards (self-targeting, the banned/reactivate interaction, which fields
+    `ban`/`unban` touch).
 
     Attributes:
-        action: Which status transition to apply to the target orphaned
-            account.
+        action: Which status transition to apply to the target orphaned account.
     """
 
     action: Literal["deactivate", "reactivate", "ban", "unban"]
@@ -348,17 +334,16 @@ def set_server_admin(
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
     if not payload.is_server_admin and target.is_server_admin:
-        # Revoking, not granting or a no-op — check this wouldn't leave the
-        # deployment with zero active server admins, which would be an
-        # unrecoverable lockout: nobody left with the authority to grant the
-        # role back to anyone, ever, short of direct database access. Only
-        # *active* admins count — a deactivated one can't do anything
-        # anyway, so doesn't cover for a revocation.
+        # Revoking (not granting or a no-op): the deployment must keep at least one active server admin, or
+        # nobody could grant the role back short of direct database access. Only active admins count, as a
+        # deactivated one cannot act.
         active_admin_count = db.scalar(
             select(func.count()).select_from(User).where(User.is_server_admin.is_(True), User.is_active.is_(True))
         ) or 0
         if target.is_active and active_admin_count <= 1:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot revoke the deployment's last active server admin.")
+    if payload.is_server_admin and target.is_service_account:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A service user cannot be a server administrator.")
     target.is_server_admin = payload.is_server_admin
     log_event(
         db,
@@ -440,7 +425,7 @@ def list_system_users(
     has_2fa: bool | None = None,
     is_server_admin: bool | None = None,
     search: str | None = None,
-    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at|created_at)$"),
+    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at|created_at|organizations|groups|status)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
@@ -449,46 +434,30 @@ def list_system_users(
 ):
     """System-wide user directory for the server-admin access review (C-A-13).
 
-    `limit`/`offset` (U-P-06) are optional, same contract as
-    `list_requirements`: omitting both returns every matching user,
-    unchanged from before pagination existed. When `limit` is given, the
-    total match count (before slicing) is returned in the `X-Total-Count`
-    response header. Slicing happens immediately after the filtered query,
-    before the per-user organisation/group name lookups below, so a
-    deployment with thousands of users doesn't pay for resolving names on
-    rows outside the requested page.
+    `limit`/`offset` (U-P-06) are optional, as `list_requirements`: omitting both returns every matching user;
+    when `limit` is given the total match count (before slicing) is returned in `X-Total-Count`. Slicing
+    follows the filtered query and precedes the per-user organisation/group name lookups, so a deployment
+    with thousands of users does not resolve names for rows outside the page.
 
-    `no_org_membership` is the requirement's literal "orphaned account"
-    clarification: an enabled user who belongs to no organisation and
-    therefore has no project access either (C-U-02: all project users must
-    be organisation users). A server admin is, *by design* (I-M-05), never a
-    member of any organisation — that's the intended shape of the role, not
-    an oversight — so `no_org_membership=true` always excludes server admins
-    regardless of any other filter, closing a false-positive a hardening
-    review found: every deployment's own server admin(s) were being flagged
-    as "orphaned" alongside genuinely-forgotten accounts. Use the independent
-    `is_server_admin` filter to review the server-admin roster itself (which
-    intentionally is *not* restricted to org-less accounts — I-M-08 lets a
-    bootstrap server admin also hold an organisation of their own).
+    `no_org_membership` is the "orphaned account" filter: an enabled user who belongs to no organisation and so
+    has no project access (C-U-02). A server admin is by design (I-M-05) never a member of any organisation, so
+    `no_org_membership=true` always excludes server admins, or every deployment's server admin would be
+    flagged as orphaned. The independent `is_server_admin` filter reviews the server-admin roster itself (not
+    restricted to org-less accounts, as I-M-08 lets a bootstrap server admin hold an organisation).
 
-    `search`  is name/email
-    substring, case-insensitive — the exact same Python-side matching
-    approach `list_org_users` (`routers/orgs.py`) already established,
-    reused verbatim rather than reinvented as a SQL `ilike`.
+    `search` is a case-insensitive name/email substring, matched in Python as `list_org_users`
+    (`routers/orgs.py`) does rather than as a SQL `ilike`.
 
-    `sort`/`order` mirror `list_org_users`'s own `sort`/`order`
-    contract: `display_name` (default), `email`, `last_login_at`, or
-    `created_at`, ascending unless `order=desc`. This is necessary plumbing
-    for `DirectoryTable`'s sortable Email/Name/Last login/Created columns to
-    re-sort the *full* filtered result correctly across pages, not just the
-    already-loaded rows — the same reasoning that motivated `list_org_users`'
-    own `sort`/`order` params originally. `last_login_at` is nullable (never
-    logged in); those rows always sort last regardless of `order`, so "sort
-    by last login, descending" surfaces the most recently active users first
-    without "never logged in" accounts jumping to the top.
+    `sort`/`order` follow `list_org_users`: `display_name` (default), `email`, `last_login_at` or
+    `created_at`, ascending unless `order=desc`. They re-sort the full filtered result across pages for
+    `DirectoryTable`'s sortable columns, not only the loaded rows. `last_login_at` is nullable: never-logged-in
+    rows sort last regardless of `order`, so descending surfaces the most recently active users first.
+    `organizations` and `groups` order by the joined names the columns show, `status` by Active, Banned or
+    Deactivated; a user with no value sorts last ascending and first descending, equal values by name. While
+    `access_review_show_org_names` is off the names are not read, so `organizations` orders by the number of
+    organisations and `groups` has no value for any user.
 
-    Server-admin only (`require_server_admin`, no org-admin fallback) — this
-    spans every organisation's users.
+    Server-admin only (`require_server_admin`, no org-admin fallback): this spans every organisation's users.
     """
     query = select(User).where(User.is_archived.is_(False))
     has_org_role = exists().where(UserOrgRole.user_id == User.id)
@@ -509,7 +478,21 @@ def list_system_users(
         needle = search.lower()
         users = [u for u in users if needle in u.display_name.lower() or needle in u.email.lower()]
 
-    if sort and sort != "display_name":
+    # The organisation and group names are read for every filtered user when they are the sort key, otherwise only for the page.
+    lookups = _directory_lookups(db, [u.id for u in users]) if sort in ("organizations", "groups") else None
+    if lookups is not None and sort is not None:
+        org_ids, org_names, group_names = lookups
+        sort_key: str = sort
+        users = order_records(
+            users, lambda u: _names_sort_value(u.id, sort_key, org_ids, org_names, group_names), descending=(order == "desc"),
+            id_of=lambda u: str(u.id), tie_of=lambda u: natural_key(u.display_name),
+        )
+    elif sort == "status":
+        users = order_records(
+            users, lambda u: "Banned" if u.is_banned else "Deactivated" if not u.is_active else "Active",
+            descending=(order == "desc"), id_of=lambda u: str(u.id), tie_of=lambda u: natural_key(u.display_name),
+        )
+    elif sort and sort != "display_name":
         def _sort_value(u: User):
             value = getattr(u, sort)
             if sort == "last_login_at":
@@ -533,6 +516,38 @@ def list_system_users(
             select(UserServerRole.user_id, UserServerRole.role).where(UserServerRole.user_id.in_(user_ids))
         ).all():
             server_roles_by_user.setdefault(user_id, []).append(role)
+    org_ids_by_user, org_names_by_id, group_names_by_user = lookups if lookups is not None else _directory_lookups(db, user_ids)
+    return [
+        SystemUserOut(
+            user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
+            is_banned=u.is_banned,
+            last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
+            is_server_admin=u.is_server_admin, is_service_account=u.is_service_account,
+            server_roles=sorted(server_roles_by_user.get(u.id, []), key=lambda r: r.value),
+            has_org_membership=u.id in org_ids_by_user,
+            organization_count=len(org_ids_by_user.get(u.id, ())),
+            organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),
+            group_names=group_names_by_user.get(u.id, []),
+        )
+        for u in users
+    ]
+
+
+def _directory_lookups(
+    db: Session, user_ids: list[UUID]
+) -> tuple[dict[UUID, set[UUID]], dict[UUID, str], dict[UUID, list[str]]]:
+    """Reads the organisations and groups of `user_ids` for the access review's Organisations and Groups columns.
+
+    Names are gated by `access_review_show_org_names` (see `SystemUserOut`): with the gate off the name maps stay
+    empty and no per-user group lookup runs.
+
+    Args:
+        db: The database session.
+        user_ids: The users to read, the page or (for an organisations or groups sort) every filtered user.
+
+    Returns:
+        The organisation ids of each user, the name of each organisation id, and each user's sorted group names.
+    """
     org_ids_by_user: dict[UUID, set[UUID]] = {}
     if user_ids:
         for user_id, organization_id in db.execute(
@@ -547,9 +562,6 @@ def list_system_users(
         if all_org_ids and settings.access_review_show_org_names
         else {}
     )
-    # Group names are gated by the same setting as org names (see
-    # SystemUserOut's docstring) — skip the per-user group lookups
-    # entirely when the gate is off, same as the org-names branch above.
     group_names_by_user: dict[UUID, list[str]] = {}
     if settings.access_review_show_org_names:
         for user_id, org_ids in org_ids_by_user.items():
@@ -561,35 +573,43 @@ def list_system_users(
                 group_names_by_user[user_id] = sorted(
                     db.scalars(select(OrgGroup.name).where(OrgGroup.id.in_(group_ids))).all()
                 )
-    return [
-        SystemUserOut(
-            user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
-            is_banned=u.is_banned,
-            last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
-            is_server_admin=u.is_server_admin, server_roles=sorted(server_roles_by_user.get(u.id, []), key=lambda r: r.value),
-            has_org_membership=u.id in org_ids_by_user,
-            organization_count=len(org_ids_by_user.get(u.id, ())),
-            organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),
-            group_names=group_names_by_user.get(u.id, []),
-        )
-        for u in users
-    ]
+    return org_ids_by_user, org_names_by_id, group_names_by_user
+
+
+def _names_sort_value(
+    user_id: UUID, key: str, org_ids_by_user: dict[UUID, set[UUID]], org_names_by_id: dict[UUID, str],
+    group_names_by_user: dict[UUID, list[str]],
+) -> str | int | None:
+    """The sort value of one user for the Organisations or Groups column, matching the text the column shows.
+
+    Args:
+        user_id: The user.
+        key: `organizations` or `groups`.
+        org_ids_by_user: Each user's organisation ids.
+        org_names_by_id: The organisation names (empty while names are hidden).
+        group_names_by_user: Each user's sorted group names (empty while names are hidden).
+
+    Returns:
+        The joined names, the organisation count when only the count is shown, or `None` when there is nothing to show.
+    """
+    if key == "groups":
+        return ", ".join(group_names_by_user.get(user_id, ())) or None
+    names = sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(user_id, ()) if oid in org_names_by_id)
+    if names:
+        return ", ".join(names)
+    return len(org_ids_by_user.get(user_id, ())) or None
 
 
 def _require_orphaned_user(db: Session, user_id: UUID) -> User:
-    """Resolves `user_id` for the deactivate/reactivate endpoints below,
-    which are deliberately scoped to accounts with no organisation
-    membership at all (mirroring `no_org_membership`'s own definition).
+    """Resolves `user_id` for the orphaned-user status endpoint, which is scoped to accounts with no
+    organisation membership at all (as `no_org_membership`).
 
-    A server admin's authority is tenancy-wide but content-free (I-M-05):
-    acting on an org member's account is the *organisation's own* admin's
-    call (`deactivate_org_user`/`archive_org_user`), not the server admin's —
-    so this deliberately refuses to touch any user who has an org role
-    anywhere, directing the caller to the right place instead.
+    A server admin's authority is tenancy-wide but content-free (I-M-05): acting on an org member's account is
+    the organisation's own admin's call (`deactivate_org_user`/`archive_org_user`), so this refuses any user
+    with an org role anywhere and directs the caller to the right place.
 
     Raises:
-        HTTPException: 404 if `user_id` doesn't exist; 400 if they belong to
-            any organisation.
+        HTTPException: 404 if `user_id` doesn't exist; 400 if they belong to any organisation.
     """
     user = db.get(User, user_id)
     if user is None:
@@ -611,52 +631,29 @@ def deactivate_reactivate_ban_or_unban_orphaned_user(
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
-    """Applies a status transition to an orphaned account — merges the
-    formerly-separate `deactivate`/`reactivate`/`ban`/`unban` endpoints
-    (2026-09-22, see docs/decisions.md) into one, dispatching on
-    `payload.action`. Each branch below preserves its original endpoint's
-    exact guards and field writes; none were weakened by the merge:
+    """Applies a status transition to an orphaned account, dispatching on `payload.action`:
 
-    - `deactivate` (C-U-04; C-A-13's "should be deactivated" clarification)
-      — the one category of user no organisation admin can ever reach,
-      since `deactivate_org_user` requires the target to already belong to
-      that org. Refuses to deactivate the caller's own account (400).
-    - `reactivate` — reverses a deactivation. No user-facing lifecycle
-      action currently reverses a deactivation at all (org-scoped or
-      otherwise) — added alongside `deactivate` so a server admin who
-      deactivates an orphaned account by mistake, or whose owner turns out
-      to still need it, isn't left with no way back short of direct
-      database access. Refuses (400) if the account is currently banned —
-      `unban` must be applied first; otherwise this would let a banned
-      account back in without ever going through that step, contradicting
-      `User.is_banned`'s own documented invariant that a ban "survives even
-      if something else were to flip `is_active` back on." Hardening-review
-      finding: this was previously unchecked. Does *not* forbid
-      self-targeting (unlike `deactivate`/`ban`) — reactivating your own
-      account is harmless.
-    - `ban` — deactivates the account (same effect as `deactivate`) and
-      also flags it so `assign_org_role` refuses to let any org admin grant
-      it a role again later — closing the gap a plain deactivation leaves
-      open, where the same account could quietly be re-admitted through a
-      different organisation without a server admin ever being asked
-      again. Refuses to ban the caller's own account (400).
-    - `unban` — reverses a ban. Deliberately does *not* also reactivate the
-      account (`is_active` stays False) — unbanning just means "this
-      account may be granted org roles again," a separate decision from
-      "this account may log in again," which stays a distinct, explicit
-      `reactivate` action. Does *not* forbid self-targeting.
+    - `deactivate` (C-U-04; C-A-13's "should be deactivated" clarification): the one category of user no
+      organisation admin can reach, since `deactivate_org_user` requires the target to belong to that org.
+      Refuses to deactivate the caller's own account (400).
+    - `reactivate`: reverses a deactivation, so a mistaken deactivation has a way back short of direct database
+      access. Refuses (400) if the account is banned: `unban` must be applied first, or a banned account would
+      return without that step, contradicting `User.is_banned`'s invariant that a ban "survives even if
+      something else were to flip `is_active` back on". Does not forbid self-targeting (harmless).
+    - `ban`: deactivates the account and flags it so `assign_org_role` refuses to let any org admin grant it a
+      role again, closing the gap where a deactivated account could be re-admitted through another
+      organisation without a server admin being asked. Refuses to ban the caller's own account (400).
+    - `unban`: reverses a ban. It does not reactivate the account (`is_active` stays False): "may be granted
+      org roles again" and "may log in again" are separate decisions, the latter an explicit `reactivate`.
+      Does not forbid self-targeting.
 
-    All four actions are scoped to orphaned/system-level accounts (see
-    `_require_orphaned_user`) and log the same audit `action` string
-    (`"deactivated"`/`"reactivated"`/`"banned"`/`"unbanned"`) their original,
-    separate endpoints did — mirroring how `change_requests.decide_change_
-    request` already computes its own audit action string from a merged
-    payload (`action="approved" if payload.approve else "rejected"`).
+    All four actions are scoped to orphaned/system-level accounts (see `_require_orphaned_user`) and log the
+    audit action `"deactivated"`/`"reactivated"`/`"banned"`/`"unbanned"` (computed from the payload as
+    `change_requests.decide_change_request` does).
 
     Raises:
-        HTTPException: 404 if `user_id` doesn't exist; 400 if they belong to
-            any organisation (`_require_orphaned_user`); 400 for the
-            self-targeting/still-banned guards above, per action.
+        HTTPException: 404 if `user_id` doesn't exist; 400 if they belong to any organisation
+            (`_require_orphaned_user`) or for the self-targeting/still-banned guards above, per action.
     """
     if payload.action in ("deactivate", "ban") and user_id == current_user.id:
         verb = "deactivate" if payload.action == "deactivate" else "ban"

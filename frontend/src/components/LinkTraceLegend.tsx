@@ -1,12 +1,9 @@
 /**
  * Module: components/LinkTraceLegend
  *
- * The key to the trace map, shown in a popover from the map's "Key" button: what a node's
- * stripe, border, fade and arrow mean.
- *
- * Responsibilities: presentation only. Each swatch is a miniature of the real map element and
- * reuses its CSS classes (`link-trace__node-*`), so a restyle of the map restyles the key.
- * The swatches are decorative (`aria-hidden`); every entry also has its text.
+ * The key to the trace map, shown in a popover from the map's "Key" button: what a node's stripe, border, fade and
+ * arrow mean. Each swatch is a decorative miniature (`aria-hidden`) reusing the real map element's CSS classes
+ * (`link-trace__node-*`), so a restyle of the map restyles the key; every entry also has its text.
  */
 import { useStrings } from "../context/TerminologyContext";
 

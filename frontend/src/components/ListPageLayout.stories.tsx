@@ -1,6 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter } from "react-router-dom";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
+
+import { expectTextRows } from "../testing/menuRows";
+import { roundButtonViolations } from "../testing/roundButtons";
 
 import { fakeRecordTables } from "../testing/recordTablesFixtures";
 
@@ -81,6 +84,40 @@ export const RecordsAddExportAndImportBesideTheActions: Story = {
   },
 };
 
+/** The page's other actions (`menuItems`) join the one menu, ahead of Export and Import; the page keeps one primary button and no row of buttons. */
+export const MenuItemsJoinTheOneActionsMenu: Story = {
+  args: {
+    title: "Elements",
+    actions: <button className="btn btn-primary">New element</button>,
+    menuItems: [
+      { key: "folder", label: "New folder", onSelect: fn() },
+      { key: "delete", label: "Delete folder", danger: true, onSelect: fn() },
+    ],
+    records: { projectId: "project-1", recordType: "requirement", tables: fakeRecordTables() },
+    filter,
+    children: <p>List</p>,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByRole("button", { name: /List actions|New element/ })).toHaveLength(2);
+    await userEvent.click(await canvas.findByRole("button", { name: "List actions" }));
+    const menu = within(await within(document.body).findByRole("menu"));
+    const rows = menu.getAllByRole("menuitem").map((row) => row.textContent?.trim());
+    await expect(rows.slice(0, 2)).toEqual(["New folder", "Delete folder"]);
+    await expect(await menu.findByRole("menuitem", { name: "Download shown items" })).toBeVisible();
+    await expectTextRows(within(document.body).getByRole("menu"));
+  },
+};
+
+/** A page with `menuItems` and no `records` still gets the menu. */
+export const MenuItemsAloneStillDrawTheMenu: Story = {
+  args: { title: "Elements", menuItems: [{ key: "folder", label: "New folder", onSelect: fn() }], filter, children: <p>List</p> },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "List actions" }));
+    await expect(await within(document.body).findByRole("menuitem", { name: "New folder" })).toBeVisible();
+  },
+};
+
 /** Collapsing hides the panel (the list takes the full width) and puts a "Filters" button beside the actions to bring it back. */
 export const FilterPanelCanBeCollapsed: Story = {
   args: {
@@ -108,3 +145,18 @@ export const FilterPanelCanBeCollapsed: Story = {
     await expect(canvas.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
   },
 };
+
+/** The filter panel's collapse toggle is a circle (square box, 50% radius), whatever the base button's own height rule says. */
+export const FilterToggleIsACircleLight: Story = {
+  globals: { theme: "light" },
+  args: { title: "Pain Point", filter, children: <table aria-label="Rows"><tbody><tr><td>A pain point</td></tr></tbody></table> },
+  play: async ({ canvasElement }) => {
+    const toggle = within(canvasElement).getByRole("button", { name: "Collapse filters" });
+    const box = toggle.getBoundingClientRect();
+    await expect(box.width).toBe(box.height);
+    await expect(getComputedStyle(toggle).borderTopLeftRadius).toBe("50%");
+    await expect(roundButtonViolations(canvasElement)).toEqual([]);
+  },
+};
+
+export const FilterToggleIsACircleDark: Story = { ...FilterToggleIsACircleLight, globals: { theme: "dark" } };

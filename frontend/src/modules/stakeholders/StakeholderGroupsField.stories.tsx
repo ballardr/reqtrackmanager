@@ -35,6 +35,7 @@ export const ShowsCurrentGroupsWithTheirPath: Story = {
     await expect(within(canvasElement).getByText("Acme", { selector: ".badge" })).toHaveAttribute("title", "Client › Acme");
     // Each group chip carries the group's code, so two groups with one name can be told apart.
     await expect(within(canvasElement).getByText(/SGP-001$/)).toBeInTheDocument();
+    await expect(within(canvasElement).getByRole("img", { name: "Stakeholder Group" })).toBeInTheDocument();
   },
 };
 

@@ -7,8 +7,8 @@ import { withRouter } from "../testing/storybook-helpers";
 import { LinkTraceTree } from "./LinkTraceTree";
 
 /**
- * The trace tree: a record's links as
- * Upstream / Downstream / Related, each branch opened on demand without a depth limit.
+ * The trace tree: a record's links as Upstream / Downstream / Related, each branch opened on demand without a
+ * depth limit.
  */
 const meta: Meta<typeof LinkTraceTree> = {
   title: "Components/LinkTraceTree",

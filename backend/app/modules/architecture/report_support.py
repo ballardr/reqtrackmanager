@@ -7,6 +7,7 @@ Responsibilities:
 - `element_text`: an element as a report names it, or "Shared element" for one the reported project does not own.
 - `project_elements` / `live_connections`: the reported project's elements and its connections still in force.
 - `chain_of`: the parent chain of an element (cycle-safe, depth-capped).
+- `ordered_element_ids`: element ids in the report's record order (`ReportContext.order_records`).
 - `viewer_for`: the `Viewer` a report reads as (the person it runs for, else the project).
 
 Design decisions:
@@ -32,6 +33,15 @@ from app.modules.architecture.visibility import Viewer
 from app.services.report_framework import ReportContext
 
 SHARED = "Shared element"
+
+
+def ordered_element_ids(
+    req: ReportContext, ids: list[uuid.UUID], elements: dict[uuid.UUID, ArchitectureElement],
+) -> list[uuid.UUID]:
+    """`ids` (keys of `elements`) in the report's record order: by element code or name, ascending."""
+    return req.order_records(ids, code=lambda i: elements[i].unique_code, title=lambda i: elements[i].name)
+
+
 _DEPTH_CAP = 64
 
 

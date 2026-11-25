@@ -2,55 +2,36 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
-import type { ProjectListItem, ServerSettings, SignupConfig, User } from "../api/types";
+import type { ServerSettings, SignupConfig } from "../api/types";
 import { LoginAnnouncements } from "../components/LoginAnnouncements";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { SignedOutPage } from "../components/SignedOutPage";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 import { TextField } from "../components/FormFields";
+import { resolvePostSignInPath } from "../utils/signInDestination";
 
 const strings = t();
-
-/**
- * Resolves where to send the user after login (U-U-03): a specific project,
- * the project overview list, or "automatic" (the sole accessible project if
- * there's exactly one, else the overview list).
- */
-export async function resolveLandingPath(user: User): Promise<string> {
-  const preference = user.landing_preference;
-  if (preference && preference !== "auto" && preference !== "overview") {
-    return `/projects/${preference}`;
-  }
-  if (preference === "overview") {
-    return "/projects";
-  }
-  const projects = await api.get<ProjectListItem[]>("/api/v1/projects?archived=false");
-  return projects.length === 1 ? `/projects/${projects[0].id}` : "/projects";
-}
 
 export function LoginPage() {
   const { login, verify2fa } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const routerState = location.state as { message?: string; challengeToken?: string } | null;
+  // Only a redirect's own message (a password change ending the session) is shown; a page to return to adds no text.
   const reauthMessage = routerState?.message ?? null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  // Pre-populated when arriving from OrgLoginPage's own 2FA branch (E-P-03) —
-  // that page never duplicates the code-entry form, it hands off its
-  // already-issued challenge token here via router state so this page opens
-  // straight on step two instead of asking for email/password again.
+  // Set when arriving from OrgLoginPage's 2FA branch (E-P-03): it hands its issued challenge token over
+  // in router state so this page opens on the code step.
   const [challengeToken, setChallengeToken] = useState<string | null>(routerState?.challengeToken ?? null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loginBackgroundFileId, setLoginBackgroundFileId] = useState<string | null>(null);
   const [signupAvailable, setSignupAvailable] = useState(false);
-  // Platform-default branding (U-C-02) — this page is pre-auth/outside
-  // BrandingProvider (no org/project context to resolve an org's own
-  // branding against), so it falls back straight to the deployment-wide
-  // default, same fields `BrandingContext`'s own serverDefault uses.
+  // Platform-default branding (U-C-02): the page is outside BrandingProvider (no organisation context),
+  // so it uses the deployment-wide default, the same fields as `BrandingContext`'s serverDefault.
   const [brandLogoFileId, setBrandLogoFileId] = useState<string | null>(null);
   const [brandTitle, setBrandTitle] = useState(strings.appName);
   const [brandBandColorHex, setBrandBandColorHex] = useState<string | null>(null);
@@ -76,7 +57,7 @@ export function LoginPage() {
       if (result.requires2fa) {
         setChallengeToken(result.challengeToken);
       } else {
-        navigate(await resolveLandingPath(result.user));
+        navigate(await resolvePostSignInPath(result.user));
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);
@@ -92,7 +73,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       const user = await verify2fa(challengeToken, code);
-      navigate(await resolveLandingPath(user));
+      navigate(await resolvePostSignInPath(user));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);
     } finally {

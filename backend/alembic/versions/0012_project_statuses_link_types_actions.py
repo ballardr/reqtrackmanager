@@ -4,59 +4,30 @@ Revision ID: 0012
 Revises: 0011
 Create Date: 2026-08-17
 
-Three additive features, one migration:
+Three additive features:
 
-1. **Org-definable project statuses** (`project_status_definitions`):
-   4 defaults (Proposed/Active/Abandoned/Completed) backfilled per existing
-   organisation, then `projects.status_id` (new, NOT NULL, no `ON DELETE` —
-   see `models/project_status.py`'s docstring for why) is backfilled to
-   each project's own organisation's lowest-`sort_order` status ("Proposed").
+1. Org-definable project statuses (`project_status_definitions`): four defaults
+   (Proposed/Active/Abandoned/Completed) per organisation; `projects.status_id` (NOT NULL, no
+   `ON DELETE`; see `models/project_status.py`) is backfilled to the organisation's lowest-`sort_order`
+   status.
 
-2. **Typed, bidirectional, org-extensible requirement links**
-   (`requirement_link_type_definitions`): 12 default forward/reverse name
-   pairs backfilled per existing organisation, then
-   `requirement_links.link_type_id` (new FK) replaces the old fixed
-   `link_type` enum column entirely.
+2. Typed, bidirectional, org-extensible requirement links (`requirement_link_type_definitions`): twelve
+   default forward/reverse name pairs per organisation; `requirement_links.link_type_id` (FK) replaces
+   the `link_type` enum column. The backfill maps the three enum values (`relates_to`, `depends_on`,
+   `derived_from`) to the organisation's "Related to" / "Depends on" / "Derives from" definitions,
+   through the source requirement's project. It is guarded by an `information_schema.columns` check on
+   the old column, which a database built from the current models does not have. The old 3-part unique
+   constraint is found through `pg_constraint`/`pg_attribute` because Postgres truncates its generated
+   name at the 63-byte `NAMEDATALEN` limit.
 
-   The enum -> FK backfill (the tricky part): the old `link_type` column
-   only ever held three values (`relates_to`, `depends_on`, `derived_from`
-   — the retired `RequirementLinkType` enum). Each existing link row is
-   matched to the new per-organisation `requirement_link_type_definitions`
-   row whose `forward_name` is that value's plain-English equivalent
-   ("Related to" / "Depends on" / "Derives from" respectively), resolved
-   through the link's *source* requirement's project's organisation (a link
-   is between two requirements in the same project, so either end's
-   organisation would do; the source is used for consistency with the
-   FK's own directionality). This UPDATE is guarded by an
-   `information_schema.columns` existence check on the old `link_type`
-   column: a brand-new database's `0001_initial.py` builds straight from
-   the *current* models (see 0001's own docstring), which no longer have
-   that column at all, so this whole block is a deliberate no-op there —
-   only a database migrated before this revision ever has `link_type` to
-   read from. The old 3-part unique constraint (on `link_type`) is located
-   and dropped dynamically by inspecting `pg_constraint`/`pg_attribute`
-   rather than by a literal `DROP CONSTRAINT <guessed-name>`, because
-   Postgres silently truncates that constraint's default-generated name
-   (over the 63-byte `NAMEDATALEN` limit) to something not worth trying to
-   reproduce by hand.
+3. Requirement actions (`action_type_definitions`, `requirement_actions`, `requirement_action_links`,
+   `requirement_action_files`): two default action types (Review, Test) per project (action types are
+   project-scoped; see `models/action_type.py`), and `projects.next_action_seq` for
+   `RequirementAction.unique_code`.
 
-3. **Requirement actions** (`action_type_definitions`, `requirement_actions`,
-   `requirement_action_links`, `requirement_action_files`): 2 default
-   action types (Review, Test) backfilled per existing *project* (not
-   organisation — action types are project-scoped, see
-   `models/action_type.py`'s docstring), plus `projects.next_action_seq`
-   for `RequirementAction.unique_code` generation.
-
-Every statement is `IF NOT EXISTS`/`IF EXISTS` (or an explicit
-`pg_constraint`/`information_schema` existence check where plain
-`IF NOT EXISTS` isn't available, e.g. `ALTER TABLE ... ADD CONSTRAINT`),
-for the same reason every migration since 0002 uses that style: 0001's
-`create_all()` already creates all of this against the *current* model
-classes on a brand-new database, so a plain (non-guarded) DDL statement
-here would fail there with "already exists"; an already-migrated database
-from before this revision is genuinely missing it. Backfills are safe
-unconditionally either way — a fresh database has no pre-existing rows to
-backfill (no-op).
+Statements are `IF NOT EXISTS`/`IF EXISTS`, or an explicit `pg_constraint`/`information_schema` check
+where that is unavailable (`ALTER TABLE ... ADD CONSTRAINT`), as in 0002. Backfills are no-ops on a
+database with no rows.
 """
 
 from collections.abc import Sequence
@@ -161,22 +132,10 @@ def upgrade() -> None:
         """
     )
 
-    # Platform Foundations, 2026-09-21, removed the
-    # `RequirementLink` model entirely (folded into the generic
-    # `ArtefactLink` table — see migration 0041) — before that, this table's
-    # existence on a brand-new database relied entirely on 0001's
-    # `create_all()` reflecting the *then-current* `RequirementLink` model
-    # (per this migration's own docstring above: "0001's create_all()
-    # already creates all of this against the current model classes").
-    # With that model gone, 0001 no longer creates `requirement_links` at
-    # all, so a genuinely fresh migration chain run would fail on the very
-    # next statement ("relation \"requirement_links\" does not exist") —
-    # this guard recreates its pre-0012 shape (the old fixed `link_type`
-    # column included) so every statement below through this migration's
-    # end still has a table to operate on, exactly as it did against a
-    # pre-0012 database. A no-op (IF NOT EXISTS) on every database that
-    # migrated through this revision before 2026-09-21, i.e. every real
-    # deployment.
+    # `RequirementLink` is replaced by the generic `ArtefactLink` table (migration 0041), so 0001's
+    # `create_all()` no longer creates `requirement_links`. This guard creates the table in its
+    # pre-0012 shape (including the fixed `link_type` column) so the statements below have a table to
+    # operate on in a fresh chain. It is a no-op (IF NOT EXISTS) on an already-migrated database.
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS requirement_links (
@@ -192,9 +151,8 @@ def upgrade() -> None:
     )
 
     op.execute("ALTER TABLE requirement_links ADD COLUMN IF NOT EXISTS link_type_id UUID")
-    # See this migration's module docstring for the full explanation of this
-    # guarded backfill: only a pre-0012 database ever has the old
-    # `link_type` column to read from.
+    # Guarded backfill; see the module docstring. Only a database with the old `link_type` column has
+    # values to read.
     op.execute(
         """
         DO $$
@@ -227,10 +185,8 @@ def upgrade() -> None:
         "ALTER TABLE requirement_links ADD CONSTRAINT requirement_links_link_type_id_fkey "
         "FOREIGN KEY (link_type_id) REFERENCES requirement_link_type_definitions(id)"
     )
-    # Drop the old 3-part (..., link_type) unique constraint, whichever name
-    # Postgres actually gave it (see module docstring — its default-generated
-    # name is over NAMEDATALEN and gets silently truncated, so it's located
-    # by column membership instead of a guessed literal name).
+    # Drop the old 3-part (..., link_type) unique constraint by column membership: its generated name
+    # was truncated at NAMEDATALEN.
     op.execute(
         """
         DO $$
@@ -356,15 +312,10 @@ def upgrade() -> None:
         )
         """
     )
-    # No extra index on action_id here: mirrors `RequirementFile`, which has
-    # no index on its own `requirement_id` either — see
-    # `RequirementActionFile`'s model docstring ("exact shape of
-    # RequirementFile").
+    # No index on action_id, mirroring `RequirementFile` (see `RequirementActionFile`'s model docstring).
 
-    # No migration needed for ReviewTargetType.ACTION itself: `str_enum`
-    # columns are plain VARCHAR (see 0004's note on adding "optional" to
-    # RequirementLevel for the same reasoning), and no existing
-    # `review_comments`/`comment_files` row can already reference it.
+    # No migration for ReviewTargetType.ACTION: `str_enum` columns are plain VARCHAR (see 0004) and no
+    # existing `review_comments`/`comment_files` row can reference it.
 
 
 def downgrade() -> None:
@@ -392,12 +343,8 @@ def downgrade() -> None:
     op.execute("ALTER TABLE requirement_links DROP CONSTRAINT IF EXISTS uq_requirement_links_source_target_type")
     op.execute("ALTER TABLE requirement_links DROP CONSTRAINT IF EXISTS requirement_links_link_type_id_fkey")
     op.execute("ALTER TABLE requirement_links DROP COLUMN IF EXISTS link_type_id")
-    # Restore a 3-part unique constraint on (source, target, link_type),
-    # letting Postgres pick its own default name rather than trying to
-    # reproduce the original pre-0012 name exactly (which was itself over
-    # NAMEDATALEN and silently truncated — see this migration's module
-    # docstring) — located dynamically so repeated downgrade/upgrade cycles
-    # stay idempotent instead of erroring on a duplicate.
+    # Restore a 3-part unique constraint on (source, target, link_type) under a Postgres-generated name,
+    # found dynamically so repeated downgrade/upgrade cycles stay idempotent.
     op.execute(
         """
         DO $$

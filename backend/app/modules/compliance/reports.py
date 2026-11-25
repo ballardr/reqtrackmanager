@@ -1,127 +1,44 @@
 """
 Module: modules.compliance.reports
 
-Compliance Module reports (§29 "Reporting and Export") — PDF and CSV
-report generation covering a project's compliance assessments against its
-assigned standards, and an organisation-wide roll-up across every project.
+Compliance reports (§29): PDF and CSV for a project's assessments against its assigned standards, and an
+organisation-wide roll-up across projects. It lives in this module, not `app.services.reports` (which is committed to
+the requirement-report shape), reusing core's ReportLab/csv approach and the document shell of
+`app.services.report_document`.
 
-Lives in this module's own package, not `app.services.reports`, mirroring
-this module's own established convention for cross-cutting logic that
-touches a core service: `project_router.py` already calls
-`app.services.files.upload_file` directly from module code for evidence
-attachments rather than routing through a new core wrapper (see that
-router's own module docstring), and `app.modules.registry.
-build_mcp_tool_manifest` is the one core-owned exception to that pattern
-(the manifest builder has to live centrally since it aggregates *every*
-module's declared tools, not just this one's). A compliance report is a
-single module's own reporting surface, so — like the evidence-upload
-precedent — it belongs here, reusing `app.services.reports`'s ReportLab/csv
-approach and escaping discipline rather than routing report generation
-through core `services/reports.py`/`routers/reports.py`, which are already
-fully committed to the *requirement*-report shape (`ReportRequirementRow`)
-that has no equivalent concept here.
+Two report kinds:
+- Project (`generate_project_compliance_pdf` / `_csv`, collected by `collect_project_compliance_report`): every
+  non-archived (unless `include_archived`) `ProjectCompliance`, each requirement's applicability, compliance and
+  approval state, its required actions and linked evidence, plus appendices for the evidence register, review history
+  (project and standard level) and requirement mappings touching the assigned standards.
+- Organisation (`generate_org_compliance_pdf` / `_csv`, collected by `collect_org_compliance_report`): one row per
+  project and assigned standard version, plus appendices for non-compliant requirements, pending approvals and
+  expiring or expired evidence. It reuses `service.py`'s per-project listing functions (the ones `router` uses), so §20
+  percentages are calculated once (§31, §32).
 
-Two report kinds, one PDF/CSV pair each:
-- Project-level (`generate_project_compliance_pdf`/`_csv`, collected by
-  `collect_project_compliance_report`): every one of a project's
-  (non-archived, unless `include_archived`) `ProjectCompliance` assignments,
-  each requirement's applicability/compliance/approval state under it, its
-  required actions and linked evidence, plus appendices for the full
-  evidence register, review history (project- and standard-level), and any
-  cross-standard/cross-version requirement mappings touching this project's
-  assigned standards (§29's full field list: standards, standard versions,
-  compliance requirements, project compliance assessments, required
-  actions, evidence, evidence validity/expiry, approval/sign-off
-  information, review history, applicability decisions, cross-standard
-  mappings).
-- Organisation-level (`generate_org_compliance_pdf`/`_csv`, collected by
-  `collect_org_compliance_report`): one row per (project, assigned standard
-  version) roll-up across every project in the organisation, plus
-  appendices for non-compliant requirements, pending approvals, and
-  expiring/expired evidence across every project — deliberately built by
-  calling `service.py`'s existing per-project listing functions
-  (`list_non_compliant_requirements_for_project` etc., the same functions
-  `router.py`'s org-wide aggregation endpoints call) rather
-  than re-deriving any of that traversal or the §20 compliance-percentage
-  calculation, per this module's own "avoid duplicating existing
-  infrastructure" principle (§31) and so compliance percentages stay
-  calculated exactly once, consistently, everywhere they're surfaced (§32).
+The CSV carries only the main assessment table of each kind (the flat export); the PDF carries every appendix, as for
+core requirement reports (`services.reports.generate_csv_report`).
 
-CSV intentionally carries only the main assessment-row table for each
-report kind (one row per requirement, or per project/standard assignment)
-— not a separate CSV per appendix — mirroring `services.reports.
-generate_csv_report`'s own "CSV is the flat, single-table export; PDF is
-where the richer, multi-section layout lives" split for core requirement
-reports. The PDF is what carries every appendix (evidence register, review
-history, mappings, cross-project drill-downs), since CSV's flat-file shape
-has no natural place for them anyway and nothing in §29 requires every
-listed field to appear in *both* export formats, only that reports overall
-be *capable* of including them.
+Design decisions:
+- The PDF's requirement cell is one narrative block (`_narrative_requirement_paragraph`): the title always, then any of
+  reasoning, description, clarification, justification and notes on bold-prefixed lines, as in `docs/requirements.md`.
+  `_requirement_path`'s breadcrumb drops a requirement's title when it has a reference, so it is used only for the CSV,
+  which has a separate `requirement_name` column and keeps one column per field for spreadsheet use.
+- Both collectors accept optional `standard_id`, `standard_version_id` and `requirement_id` filters (plus `project_id`
+  at organisation scope) so an export from a filtered panel (`OrgComplianceStandardsPanel.tsx`,
+  `OrgComplianceOutstandingPanel.tsx`, `OutstandingPanel.tsx`) reports what the panel shows. `requirement_id` is a
+  sub-section filter matched on a row's top-level ancestor (`_top_level_ancestor_id`), as `api.ts::findTopLevelAncestor`
+  does on the client. Evidence and mapping appendices and review history are unaffected by those three filters (only
+  by `project_id`): narrowing background appendices would remove context a reader needs.
+- `ProjectComplianceReportData` and `OrgComplianceReportData` carry a `filtered` flag so the empty-state message
+  (`_project_report_empty_message`, `_org_report_empty_message`) does not claim that nothing is assigned when assignments
+  exist but none matched the filter, which would mislead in an audit-facing document.
 
-Report cell layout: the PDF's
-main requirement table (both report kinds) renders each requirement as one
-narrative cell — title always shown, then any of reasoning/description/
-clarification/justification/notes present, each on its own bold-prefixed
-line — via `_narrative_requirement_paragraph`, rather than one column per
-field. This mirrors `docs/requirements.md`'s own table convention (title,
-`**Reasoning:**`, `**Clarification:**`, all in one cell) rather than a
-spreadsheet-style layout, since a PDF report is read by a person for
-context, not machine-parsed the way the CSV export or the standard-
-definition JSON export are. This replaced a real bug where the
-PDF's "Requirement" column was built from `_requirement_path`'s breadcrumb,
-which silently drops a requirement's own title whenever it also has a
-section reference (a `reference` won at every level, leaf included) — see
-`_requirement_path`'s own docstring for the full account. The CSV export is
-deliberately unaffected: it keeps one column per field for downstream
-spreadsheet/pivot use, since a CSV cell has no rich-text/bold-prefix concept
-and was never affected by the title-loss bug (it already carries the
-requirement's title as its own separate column).
-
-Report scoping: both collectors
-accept optional `standard_id`/`standard_version_id`/`requirement_id`
-filters (plus `project_id` at org scope), narrowing a report to exactly
-what a filtered on-screen panel is showing — `OrgComplianceStandardsPanel.tsx`,
-`OrgComplianceOutstandingPanel.tsx`, and `OutstandingPanel.tsx` each gained
-an inline Export trigger (`docs/ux-style-guide.md`'s new "report export
-trigger" pattern) that passes its own current filter state through as query
-params on `GET .../reports/{pdf,csv}`, rather than always downloading an
-unfiltered whole-project/whole-org report regardless of what the user has
-filtered the page to. `requirement_id` is a "sub-section" filter (a
-top-level requirement) matched via each row's *top-level ancestor*
-(`_top_level_ancestor_id`/`_requirement_top_level_ancestors_for_standard`),
-mirroring `api.ts::findTopLevelAncestor`'s identical client-side definition
-exactly. Evidence/mapping appendices and review history are deliberately
-unaffected by `standard_id`/`standard_version_id`/`requirement_id` (only by
-`project_id`) — neither Outstanding panel's own Evidence section is
-standard-scoped in the first place (see `OrgComplianceOutstandingPanel.tsx`), and narrowing a report's background appendices to a
-single sub-section would cut context a reader of the exported document
-still needs, not just repeat what's already on screen.
-
-Both `ProjectComplianceReportData`/`OrgComplianceReportData` also carry a
-`filtered` flag (added after reviewing the scoping filters above): a filtered report reaching zero rows is a state
-distinct from "nothing is assigned here at all," and the PDF's empty-state
-message (`_project_report_empty_message`/`_org_report_empty_message`) must
-say so — claiming a project/organisation has no assigned compliance
-standards when several are assigned but none matched the requested filter
-is a materially misleading statement to leave in an exported, potentially
-audit-facing document.
-
-Security note (data classification, `docs/soc2/policies/
-data-classification-and-confidentiality-policy.md`): every field surfaced
-here (requirement text, justifications/notes, evidence titles/metadata,
-approval decisions, user emails) is already returned to the same
-organisation/project members via this module's own JSON endpoints
-(`router.py`/`project_router.py`), gated by the identical `require_org_
-module_enabled`/`require_project_module_enabled`/`require_module_role`
-dependencies used here — a report never surfaces anything a caller with
-that same access couldn't already read via the API, and evidence *file
-contents* are never embedded (only an evidence row's own metadata/title),
-so no Restricted-classified attachment payload is pulled into a report
-body. All requirement/free-text fields are escaped via `_safe` before
-reaching a ReportLab `Paragraph`, for the identical SSRF/markup-injection
-reason `app.services.report_document.safe`'s own docstring documents. The
-document shell (title block, A4 build, accent table) is also
-`app.services.report_document`'s, shared with every report.
+Security (`docs/soc2/policies/data-classification-and-confidentiality-policy.md`): every field in a report is already
+returned to the same members by this module's JSON endpoints under the same dependencies, so a report discloses nothing
+the caller cannot read through the API. Evidence file contents are never embedded (metadata and title only), so no
+Restricted attachment payload enters a report. Free text is escaped through `_safe` before reaching a ReportLab
+`Paragraph`, for the injection reason documented on `app.services.report_document.safe`.
 """
 
 from __future__ import annotations
@@ -220,7 +137,7 @@ def _ordered_requirements(requirements: list[ComplianceRequirement]) -> list[Com
     for r in requirements:
         by_parent.setdefault(r.parent_requirement_id, []).append(r)
     for siblings in by_parent.values():
-        siblings.sort(key=lambda r: (r.sort_order, r.name))
+        siblings.sort(key=lambda r: (r.sort_order, r.name))  # not-a-list: the standard's own clause order
 
     ordered: list[ComplianceRequirement] = []
 
@@ -282,24 +199,11 @@ def _top_level_ancestor_id(requirement: ComplianceRequirement, by_id: dict[uuid.
 
 
 def _requirement_path(requirement: ComplianceRequirement, by_id: dict[uuid.UUID, ComplianceRequirement]) -> str:
-    """Builds a breadcrumb ("3 > 3.2 > 3.2.1") from a requirement up through
-    its ancestors, using each row's `reference` where set and its `name`
-    otherwise for *every* segment, including the leaf itself — this is the
-    CSV export's "Requirement path" column, a compact machine-oriented
-    locator, not the human-facing report cell. Cycle-safe (a malformed tree
-    can never infinite-loop this), though `parent_requirement_id` cannot
-    actually form a cycle in practice — enforced structurally the same way
-    `Project.parent_project_id`'s own hierarchy is (see that field's own
-    docstring).
-
-    Deliberately *not* used for the PDF's own "Requirement" column
-    (`_narrative_requirement_paragraph` below): this function silently
-    drops a requirement's own `name` (its title) whenever it also has a
-    `reference`, since a `reference` wins over `name` at every level
-    including the leaf's. A CSV row always carries `requirement_name` as
-    its own separate column, so this function's leaf-drops-title behaviour
-    never lost the title there — only the PDF, which had no other column
-    carrying it, was actually affected.
+    """Builds a breadcrumb ("3 > 3.2 > 3.2.1") from a requirement up through its ancestors, using each row's `reference`
+    where set and its `name` otherwise for every segment, including the leaf. This is the CSV's compact "Requirement
+    path" locator; the PDF uses `_narrative_requirement_paragraph` because a reference wins over the name at every
+    level, so the leaf's own title is dropped (the CSV has a separate `requirement_name` column). Cycle-safe, though
+    `parent_requirement_id` cannot form a cycle in practice.
     """
     leaf = requirement.reference or requirement.name
     ancestors = _requirement_ancestor_breadcrumb(requirement, by_id)
@@ -311,19 +215,12 @@ def _requirement_path(requirement: ComplianceRequirement, by_id: dict[uuid.UUID,
 
 @dataclass
 class ComplianceReportRequirementRow:
-    """One requirement's project-specific assessment, under one assigned
-    standard version — the main row of both the project- and (implicitly,
-    via §29's "project compliance assessments") org-level compliance
-    reports' primary table.
+    """One requirement's project-specific assessment under one assigned standard version: the main row of the project
+    and organisation compliance reports (§29).
 
-    `ancestor_path`/`requirement_reasoning`/`requirement_description`/
-    `requirement_clarification` feed
-    `_narrative_requirement_paragraph`'s single-cell report layout — they
-    default to `""` so `_requirement_report_row_from_out` (the org report's
-    non-compliant/pending-approval appendix adapter, built from an already-
-    narrower `NonCompliantRequirementOut`/`PendingApprovalOut` response
-    schema with no reasoning/description/clarification fields of its own)
-    doesn't need to change to keep constructing this dataclass.
+    `ancestor_path`, `requirement_reasoning`, `requirement_description` and `requirement_clarification` feed
+    `_narrative_requirement_paragraph`'s single-cell layout and default to `""`, because
+    `_requirement_report_row_from_out` builds rows from response schemas that carry none of them.
     """
 
     standard_reference: str
@@ -445,38 +342,20 @@ def collect_project_compliance_report(
     standard_id: uuid.UUID | None = None, standard_version_id: uuid.UUID | None = None,
     requirement_id: uuid.UUID | None = None,
 ) -> ProjectComplianceReportData:
-    """Gathers every field §29 asks a compliance report to be capable of
-    including, for one project, across every standard it is (or, with
-    `include_archived=True`, has ever been) assigned to.
-
-    Reuses `service.py`'s existing computed-state builders throughout
-    (`load_pcrs_and_applicability` for §9's hierarchical applicability
-    resolution, `compute_evidence_validity_state`/`compute_review_schedule_
-    state` for §14/§17's derived states) rather than re-deriving any of
-    them — the same "one calculation, every caller" principle `service.py`'s
-    own docstring already establishes for its cross-project/cross-scope
-    callers, extended to this report generator.
+    """Gathers every field §29 asks a compliance report to be able to include, for one project, across every standard
+    it is (or, with `include_archived=True`, has been) assigned to. Computed states come from `service.py`
+    (`load_pcrs_and_applicability`, `compute_evidence_validity_state`, `compute_review_schedule_state`) rather than being
+    re-derived.
 
     Args:
         db: An active database session.
         project: The project to report on.
-        include_archived: Whether to include assignments the project has
-            archived (stopped tracking) — off by default, mirroring every
-            other listing in this module's own "active unless asked
-            otherwise" convention.
-        standard_id: When set (§29's reporting scope extended
-            to match `OutstandingPanel.tsx`'s filters), skips
-            any assignment not for this standard.
-        standard_version_id: When set, skips any assignment not for this
-            exact standard version.
-        requirement_id: When set, a "sub-section" filter — only requirement
-            rows whose top-level ancestor (`_top_level_ancestor_id`) is this
-            requirement are included, mirroring `OutstandingPanel.tsx`'s own
-            client-side Sub-section filter definition exactly, so an export
-            triggered from a filtered panel reports only what that panel is
-            showing. Reviews and the evidence/mappings appendices are
-            unaffected — see this function's own "Review history"/appendix
-            comments below for why.
+        include_archived: Whether to include archived assignments (off by default).
+        standard_id: When set, skips any assignment not for this standard.
+        standard_version_id: When set, skips any assignment not for this exact version.
+        requirement_id: When set, a sub-section filter: only rows whose top-level ancestor (`_top_level_ancestor_id`) is
+            this requirement are included, as `OutstandingPanel.tsx` filters on the client. Reviews and the evidence and
+            mapping appendices are unaffected.
 
     Returns:
         The collected report data.
@@ -531,12 +410,8 @@ def collect_project_compliance_report(
         assessment_by_action_id = {a.required_action_id: a for a in assessments}
         assessment_ids = [a.id for a in assessments]
 
-        # Evidence links now live in the generic `ArtefactLink` table
-        #, evidence as source;
-        # filtering to `source_type == COMPLIANCE_EVIDENCE` keeps this
-        # correct by construction even though it's the only source type
-        # that targets these two target types today (mirrors
-        # `routers.requirements.list_links`'s established precedent).
+        # Evidence links live in `ArtefactLink` with evidence as source; filtering on
+        # `source_type == COMPLIANCE_EVIDENCE` keeps this correct by construction.
         req_evidence_links = [
             link for link in relationships.get_links_to_many(db, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, pcr_ids)
             if link.source_type == ARTEFACT_TYPE_EVIDENCE
@@ -602,11 +477,8 @@ def collect_project_compliance_report(
                 requirement_clarification=requirement.last_clarification_note,
             ))
 
-        # Review history for this assignment: its own project-level reviews,
-        # plus its standard's own standard-level reviews (§17's "Compliance
-        # Standards and Project Compliance records must support scheduled
-        # reviews" — both owners are relevant background for a project's own
-        # compliance report against that standard).
+        # Review history for this assignment: its project-level reviews plus its standard's standard-level reviews (§17),
+        # both being background for the project's report against that standard.
         reviews = list(
             db.scalars(
                 select(ComplianceReview)
@@ -629,10 +501,8 @@ def collect_project_compliance_report(
                 completed_by_email=(review_emails.get(review.completed_by, "") if review.completed_by else ""),
             ))
 
-    # Evidence register: every piece of evidence for the project (not just
-    # what's linked under the assignments above — §13's evidence is
-    # project-scoped and may exist unlinked, or linked only to an assignment
-    # this report excluded via `include_archived=False`).
+    # Evidence register: every piece of evidence of the project (§13: evidence is project-scoped and may be unlinked, or
+    # linked only to an assignment excluded by `include_archived=False`).
     evidence_rows = list(db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == project.id)).all())
     evidence_provider_emails = _emails_by_id(db, {e.provided_by for e in evidence_rows})
     register_codes, register_tags = _evidence_codes(db, project, evidence_rows, own_project=True)
@@ -733,37 +603,14 @@ def _styled_table(data: list[list], col_widths: list[float]) -> Table:
 
 
 def _narrative_requirement_paragraph(row: ComplianceReportRequirementRow) -> Paragraph:
-    """Builds one requirement's report-table cell as a single narrative
-    block — title, then each present free-text field on its own bold-
-    prefixed line — mirroring `docs/requirements.md`'s own table convention
-    (one requirement per cell: its own text, then `**Reasoning:**`/
-    `**Clarification:**`, newline-separated in the same cell) rather than
-    one column per field (see this module's own docstring for the
-    full "why").
+    """Builds one requirement's report-table cell as a narrative block: the title, then each non-empty free-text field
+    on its own bold-prefixed line (see the module docstring).
 
-    The requirement's own title (`requirement_reference` + `requirement_
-    name`, or just `requirement_name` when there's no reference) is always
-    the lead line, regardless of whether `requirement_reference` is set —
-    the specific bug this fixes (the PDF's "Requirement" column used to
-    be built from `_requirement_path`, which drops a requirement's own name
-    whenever it has a reference; see that function's own docstring).
-    `ancestor_path`, when non-empty, prints above the title in italics as
-    brief section context (e.g. "4 > 4.1") without duplicating the leaf's
-    own label.
-
-    Every other field (`requirement_reasoning`/`requirement_description`/
-    `requirement_clarification`/`justification`/`notes`) prints only when
-    non-empty, in that order, so a requirement with nothing to say beyond
-    its title and status doesn't grow a stack of empty "X:" lines — the
-    same "present-if-non-empty" convention `_markdown_to_flowables`'s core-
-    report sibling in `app.services.reports` already uses for its own
-    optional sections.
-
-    Every interpolated field value is escaped via `_safe()` before being
-    embedded in the returned `Paragraph`'s markup — only the literal
-    `<b>`/`<br/>`/`<i>` structural tags this function itself adds are ever
-    left unescaped, for the identical SSRF/markup-injection reason this
-    module's own docstring documents for `_safe()`.
+    The title (`requirement_reference` and `requirement_name`, or the name alone) is always the lead line, so it is shown
+    even when a reference is set. A non-empty `ancestor_path` prints above it in italics as section context. Then
+    `requirement_reasoning`, `requirement_description`, `requirement_clarification`, `justification` and `notes` print
+    in that order only when non-empty. Every interpolated value is escaped with `_safe()`; only this function's own
+    `<b>`, `<br/>` and `<i>` tags are left unescaped.
     """
     segments: list[str] = []
     if row.ancestor_path:
@@ -802,34 +649,20 @@ def _project_report_empty_message(data: ProjectComplianceReportData) -> str:
 
 
 def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceReportData) -> bytes:
-    """Builds a PDF compliance report for one project — suitable for
-    internal review and external audit preparation alike (§29's explicit
-    requirement for both), since every section is the same regardless of
-    audience: this module deliberately does not maintain two different
-    report shapes for "internal" vs. "for an auditor."
+    """Builds a PDF compliance report for one project, for internal review and external audit alike (§29): one report
+    shape for both audiences.
 
-    Sections, in order: a main table (one row per requirement per assigned
-    standard, §29's "compliance requirements"/"project compliance
-    assessments"/"applicability decisions"/"approval-sign-off information"),
-    an evidence register appendix (§29's "evidence"/"evidence validity/
-    expiry"), a review history appendix (§29's "review history"), and a
-    cross-standard mappings appendix (§29's "cross-standard mappings") —
-    the last three omitted entirely when empty, rather than printing an
-    empty heading with nothing under it.
+    Sections: a main table (one row per requirement per assigned standard: requirements, assessments, applicability and
+    approval information), an evidence register appendix, a review history appendix and a cross-standard mappings
+    appendix; the last three are omitted when empty.
     """
     story: list = title_flowables(f"{project_name} — Compliance Report", None)
 
     if not data.requirement_rows:
         story.append(Paragraph(_project_report_empty_message(data), _styles["BodyText"]))
     else:
-        # "Requirement" is a narrative cell (title, then any of
-        # reasoning/description/clarification/justification/notes present)
-        # rather than a separate column per field — see
-        # `_narrative_requirement_paragraph`'s own docstring. There is no
-        # longer a standalone "Justification/Notes" column: those two
-        # fields now fold into the same narrative cell as the requirement
-        # they belong to, and the Requirement column's width absorbs what
-        # that column used to occupy (both tables' total width unchanged).
+        # "Requirement" is a narrative cell (see `_narrative_requirement_paragraph`); justification and notes fold into
+        # it, so there is no separate column.
         header = ["Standard", "Requirement", "Applicability", "Status", "Approval", "Actions", "Evidence"]
         rows: list[list[str | Paragraph]] = [list(header)]
         for r in data.requirement_rows:
@@ -994,34 +827,19 @@ def collect_org_compliance_report(
     project_id: uuid.UUID | None = None, standard_id: uuid.UUID | None = None,
     standard_version_id: uuid.UUID | None = None, requirement_id: uuid.UUID | None = None,
 ) -> OrgComplianceReportData:
-    """Gathers an organisation-wide compliance roll-up: every project's
-    every (non-archived) standard assignment with its computed §20 status,
-    plus cross-project appendices for non-compliant requirements, pending
-    approvals, and expiring/expired evidence — the same three listings
-    `router.py`'s org-wide aggregation endpoints
-    (`list_org_non_compliant_requirements` etc.) expose, reused here via
-    `service.py`'s underlying per-project functions rather than duplicated,
-    per this module's own "one calculation, every caller" principle.
+    """Gathers an organisation-wide compliance roll-up: every project's non-archived standard assignments with their §20
+    status, plus cross-project appendices for non-compliant requirements, pending approvals and expiring or expired
+    evidence (the listings `router`'s organisation endpoints expose, reused through `service.py`).
 
     Args:
         db: An active database session.
         organization_id: The organisation to report on.
-        project_id: When set (matching `OrgComplianceStandardsPanel.tsx`/
-            `OrgComplianceOutstandingPanel.tsx`'s filters),
-            restricts the whole report — assignment rows and every appendix,
-            evidence included — to this one project.
-        standard_id: When set, skips any assignment/appendix row not for
-            this standard. Evidence rows are unaffected (evidence isn't
-            standard-scoped in the data model — see `OrgComplianceOutstandingPanel.tsx`'s
-            note on why its Evidence section stays governed by
-            Project + Evidence status alone).
-        standard_version_id: When set, skips any assignment/appendix row not
-            for this exact standard version. Evidence unaffected, as above.
-        requirement_id: When set, a "sub-section" filter over the non-
-            compliant/pending-approval appendices only (mirroring
-            `OrgComplianceOutstandingPanel.tsx`'s own Sub-section filter,
-            which likewise only narrows its three per-requirement sections) —
-            see `_matches_requirement_filter`.
+        project_id: When set, restricts the whole report, evidence included, to this project.
+        standard_id: When set, skips assignment and appendix rows not for this standard (evidence is not
+            standard-scoped).
+        standard_version_id: When set, skips rows not for this exact version (evidence unaffected).
+        requirement_id: When set, a sub-section filter over the non-compliant and pending-approval appendices only (see
+            `_matches_requirement_filter`).
 
     Returns:
         The collected report data.
@@ -1158,12 +976,9 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
             table_rows.append(cell_fn(project_name, item))
         story.append(_styled_table(table_rows, col_widths))
 
-    # Both appendices' "Requirement" column is the same narrative
-    # cell the main project report uses (`_narrative_requirement_paragraph`)
-    # — for "Non-Compliant Requirements" this also folds in the separate
-    # "Justification" column the two-column version used to carry, since
-    # `_requirement_report_row_from_out` already populates `justification`
-    # on these rows the same way the project report's own rows do.
+    # Both appendices' "Requirement" column is the narrative cell of the project report
+    # (`_narrative_requirement_paragraph`), which folds in `justification` (populated by
+    # `_requirement_report_row_from_out`).
     _appendix(
         "Non-Compliant Requirements", data.non_compliant_rows, ["Project", "Standard", "Requirement"],
         lambda project_name, r: [_p(project_name), _p(f"{r.standard_reference} v{r.version_label}"), _narrative_requirement_paragraph(r)],

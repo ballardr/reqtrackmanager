@@ -7,6 +7,7 @@ import {
   buildDemand, buildExternalRef, buildLoop, buildRequest, buildRequestScheme, CHANNEL_CHOICES, ORG_ID, ORG_USERS, PROJECT_ID,
   REQUEST_ID, SYSTEM_CHOICES,
 } from "./requestFixtures";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 import { RequestDetailPage } from "./RequestDetailPage";
 import type { CloseTheLoop, EnhancementRequest, FeedbackAccess } from "./types";
 
@@ -86,15 +87,35 @@ export const NoPainPointPromptWhenPainPointsAreOff: Story = {
   },
 };
 
-/** The lifecycle buttons are the server's allowed moves, named for where they go. */
-export const LifecycleButtonsFollowTheAllowedMoves: Story = {
+/** Promote is the next forward step and the other allowed moves are menu rows, named for where they go. */
+export const LifecycleFollowsTheAllowedMoves: Story = {
   beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByRole("heading", { name: /Export the list to Excel/ });
-    await expect(canvas.getByRole("button", { name: "Mark under review" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Decline" })).toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Mark delivered" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("New");
+    await expect(canvas.getByRole("button", { name: "Next step: Under review" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Request")).toEqual([
+      "Promote to Under review", "Arrange sections…", "Decline", "Merge into another request…", "Archive",
+    ]);
+  },
+};
+
+/** Promote opens the type's comment dialog and sends the move. */
+export const PromoteSendsTheMove: Story = {
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "post").mockResolvedValue(buildRequest({ status: "under_review", allowed_next_statuses: ["new", "accepted", "declined"] }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Next step: Under review" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Under review" }));
+    const dialog = within(within(document.body).getByRole("dialog"));
+    await userEvent.click(dialog.getByRole("button", { name: "Mark under review" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      expect.stringContaining(`/requests/${REQUEST_ID}/transition`), { status: "under_review", comment: "" },
+    ));
   },
 };
 
@@ -106,7 +127,8 @@ export const DecliningNeedsAReason: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Decline" }));
+    await canvas.findByRole("heading", { name: /Export the list to Excel/ });
+    await chooseRecordAction(canvas, "Request", "Decline");
     const dialog = within(within(document.body).getByRole("dialog"));
     await expect(dialog.getByRole("button", { name: "Decline" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText(/Decline reason/), "Out of scope");
@@ -123,9 +145,10 @@ export const ANonTriagerSeesNoEditOrTransitionControls: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByRole("heading", { name: /Export the list to Excel/ });
-    await waitFor(() => expect(canvas.queryByRole("button", { name: "Mark under review" })).not.toBeInTheDocument());
+    await waitFor(() => expect(canvas.queryByRole("button", { name: "Next step: Under review" })).not.toBeInTheDocument());
+    await expect(canvas.getByRole("img", { name: "You do not have permission to promote this record to Under review." })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Request")).toEqual(["Arrange sections…"]);
   },
 };
 
@@ -158,7 +181,7 @@ export const DeliveredShowsTheClosingTheLoopPanel: Story = {
   },
 };
 
-/** A duplicate names the request it was merged into and offers Undo merge in place of lifecycle moves. */
+/** A duplicate names the request it was merged into and offers Undo merge, a row of the actions menu, in place of lifecycle moves. */
 export const ADuplicateOffersUndoMerge: Story = {
   beforeEach: () => mockApis({
     request: buildRequest({
@@ -168,11 +191,12 @@ export const ADuplicateOffersUndoMerge: Story = {
   }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole("button", { name: "Undo merge" })).toBeInTheDocument();
-    await expect(canvas.getByRole("link", { name: "ENH-007 Canonical" })).toHaveAttribute(
+    await expect(await canvas.findByRole("link", { name: "ENH-007 Canonical" })).toHaveAttribute(
       "href", `/projects/${PROJECT_ID}/modules/product_feedback/requests/request-7`,
     );
-    await expect(canvas.queryByRole("button", { name: "Mark under review" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Duplicate");
+    await expect(canvas.queryByRole("button", { name: /Next step/ })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Request")).toContain("Undo merge");
   },
 };
 

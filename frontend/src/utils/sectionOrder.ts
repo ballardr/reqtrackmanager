@@ -1,13 +1,13 @@
 /**
  * Module: utils/sectionOrder
  *
- * Works out the order a record page shows its sections in, from the built-in order and the layers a person or a
+ * Resolves the order a record page shows its sections in, from the built-in order and the layers a person or a
  * project may have saved over it. Pure, so every record page that lets its sections be rearranged resolves the same way.
  */
 
 /**
  * One layer over the built-in order: the keys it names come first, in its order; a key it does not name follows in
- * the built-in order, so a section added to the page later still appears; a key the page does not know is ignored.
+ * the built-in order, so a section the layer omits still appears; a key the page does not know is ignored.
  *
  * @param builtin Every section key the page has, in its built-in order.
  * @param layer A saved order, or null/empty for none.

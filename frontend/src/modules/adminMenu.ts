@@ -5,8 +5,8 @@
  * `ResourceMenu` entries and resolves an admin URL to a section:
  * - `buildAdminMenuEntries`: sections sharing a declared `group` become one expandable entry with sub-pages; a section
  *   with no group, or the only visible section of its group, is a single entry.
- * - `resolveAdminSection`: reads `/…/admin/:group/:section?` and finds the section it names, or the redirect that
- *   brings an earlier address to the current one.
+ * - `resolveAdminSection`: reads `/…/admin/:group/:section?` and finds the section it names, or the redirect to
+ *   its canonical address.
  *
  * Shared by `OrgAdminPage` and `ProjectAdminPage` so both pages group, link and redirect identically. It reads only the
  * generic section shape and names no module. Menus have two levels at most; a section's group never nests.
@@ -79,9 +79,8 @@ export interface AdminSectionRoute<S extends AdminSectionLike> {
  * Finds the module section an admin URL names.
  *
  * Accepted: `/<group>/<section>`; `/<section>` for an ungrouped section; `/<group>` (redirects to the group's first
- * visible section); and `/<section>` for a grouped section, the address used before groups existed (redirects to the
- * grouped address, so bookmarks keep working). A mismatched `:section` under a known group redirects to the group's
- * first section.
+ * visible section); and `/<section>` for a grouped section (redirects to the grouped address). A mismatched
+ * `:section` under a known group redirects to the group's first section.
  *
  * Args:
  *   sections: The sections visible to the caller.

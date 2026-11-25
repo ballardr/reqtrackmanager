@@ -4,6 +4,7 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import { expectContainerFits } from "../../testing/containerFits";
 import { buildPort, CONNECTION_TYPES } from "./architectureFixtures";
 import { PortList } from "./PortList";
+import { openAddDialog } from "../../testing/storybook-helpers";
 
 const meta: Meta<typeof PortList> = {
   title: "Modules/Architecture/PortList",
@@ -34,8 +35,9 @@ export const ChangesAreReportedOneFieldAtATime: Story = {
     await expect(args.onChange).toHaveBeenCalledWith("port-2", { direction: "both" });
     await userEvent.selectOptions(canvas.getByLabelText("Connection type of Telemetry"), "ct-2");
     await expect(args.onChange).toHaveBeenCalledWith("port-2", { connection_type_id: "ct-2" });
-    await userEvent.type(canvas.getByLabelText("Port name", { selector: "input[placeholder='Port name']" }), "Events");
-    await userEvent.click(canvas.getByRole("button", { name: "Add port" }));
+    const dialog = await openAddDialog(canvas, "Add port");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Events");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await expect(args.onAdd).toHaveBeenCalledWith({ name: "Events", direction: "both", connection_type_id: null });
   },
 };

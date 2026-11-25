@@ -1,22 +1,17 @@
 """
 Module: modules.stakeholders.perf_dataset
 
-The dataset generators for the Stakeholders module's artefact types: personas, stakeholders (with influence and
-interest levels), needs, stakeholder groups (a tree, with members), engagements (with facilitators, participants
-and covered personas) and research findings.
-
-Responsibilities:
-- Write each type's identity and version rows, group membership, engagement facilitators, comments, tags,
-  cross-type links (including the participant, covers, represents and has-need relationships the application reads
-  by name) and audit events, and each type's project sequence counter.
+Dataset generators for the Stakeholders module's artefact types: personas, stakeholders, needs,
+stakeholder groups (a tree, with members), engagements (with facilitators, participants and covered
+personas) and research findings.
 
 Design decisions:
-- Project-scoped records only: an organisation-scoped persona, stakeholder or group is shared across projects and
-  belongs to no one project, so it is not part of a per-project dataset (a stated gap of the generator).
-- Relationships the application reads by name (participants, represents, has need) are written with that link
-  type, so "last engaged", the represented-persona list and a need's holders have real data to read.
-- A finding belongs to one engagement of the project; findings are spread over the engagements, with a few
-  engagements holding many.
+- Each type's identity and version rows, comments, tags, cross-type links, audit events and project
+  sequence counter are written; links the application reads by name (participants, represents, has need)
+  use that link type so "last engaged", represented personas and a need's holders have data.
+- Project-scoped records only: an organisation-scoped persona, stakeholder or group belongs to no one
+  project, so a per-project dataset omits it.
+- Findings are spread over the project's engagements, a few engagements holding many.
 
 Dependencies: `perf_dataset.records`, this module's models and enums, `services.scoring`.
 """

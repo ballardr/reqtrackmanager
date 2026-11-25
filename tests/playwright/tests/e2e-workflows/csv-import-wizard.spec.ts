@@ -10,8 +10,8 @@ import { chooseExport } from "../listActions";
  * (column mapping, a preview of what would change, per-row error reporting), and exporting the list as the
  * file that re-imports, so an edited export updates the same records.
  *
- * Each test works in its own disposable project (2026-10-04): the round-trip test once exported *every*
- * requirement in a shared project and re-imported them all, doubling it on each run.
+ * Each test works in its own disposable project, because the round-trip test exports and re-imports every
+ * requirement in its project and would double a shared project's requirements on each run.
  */
 test.describe("CSV import wizard", () => {
   installCleanupHook();

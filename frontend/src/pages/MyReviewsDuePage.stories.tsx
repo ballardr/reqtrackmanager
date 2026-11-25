@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, within } from "storybook/test";
+import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { RequirementDueForReview } from "../api/types";
@@ -43,6 +43,24 @@ export const DueReviews: Story = {
     // need this column since it's already in that page's own URL.
     await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
     await expect(canvas.getByText("Beacon Mobile")).toBeInTheDocument();
+  },
+};
+
+/** A refused request shows what failed with Retry, not a spinner that never ends; Retry loads the first page again. */
+export const FailedLoadOffersRetry: Story = {
+  beforeEach: () => {
+    let calls = 0;
+    spyOn(api, "getPage").mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("The server is down.");
+      return { items: [reviewItem({})], total: 1 };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The reviews due could not be loaded.");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await expect(await canvas.findByText("AUTH-LOG-001")).toBeInTheDocument();
   },
 };
 

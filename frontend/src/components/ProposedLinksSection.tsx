@@ -11,6 +11,7 @@ import { PROPOSED_LINK_OUTCOME_LABEL, PROPOSED_LINK_OUTCOME_TONE } from "../api/
 import { useStrings } from "../context/TerminologyContext";
 import { ProposedLinkRow } from "./ProposedLinkRow";
 import { Badge } from "./Badge";
+import { markdownPlainText } from "../utils/markdownPlain";
 
 export function ProposedLinksSection({ links, title }: { links: ProposedLink[]; title?: string }) {
   const strings = useStrings();
@@ -31,7 +32,7 @@ export function ProposedLinksSection({ links, title }: { links: ProposedLink[]; 
                 <Badge tone={PROPOSED_LINK_OUTCOME_TONE[link.outcome]}>
                   {PROPOSED_LINK_OUTCOME_LABEL[link.outcome]}
                 </Badge>
-                {link.outcome_reason && <span className="text-muted">{link.outcome_reason}</span>}
+                {link.outcome_reason && <span className="text-muted">{markdownPlainText(link.outcome_reason)}</span>}
               </>
             }
           />

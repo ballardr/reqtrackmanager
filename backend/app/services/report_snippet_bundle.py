@@ -4,23 +4,19 @@ Module: services.report_snippet_bundle
 Author-saved report snippets in the project and organisation export bundles.
 
 Responsibilities:
-- Export a project's own snippets and the inherited ones it has hidden (by name); export an organisation's own snippets.
-- Import them: validate every fragment again, store through the snippet store, re-apply the hides by name.
+- Export a project's own snippets and the inherited ones it hides (by name), and an organisation's own snippets.
+- Import: validate every fragment again through the snippet store and re-apply hides by name.
 
 Design decisions:
-- **A bundle is untrusted input.** Each fragment goes through `report_snippet_store.create_snippet`, so it is checked against
-  this deployment's block schemas and the library rule at its tier; one that fails is skipped with a warning.
-- **Pictures travel with the snippets that use them** (`report_snippet_images`, the same entry shape and importer as the
-  layouts' pictures, bytes in the bundle's `files/`): an import copies each into the target's own library and rewrites
-  the image blocks' file ids. An organisation picture the importing organisation already has is kept by reference.
-- **Authors and times are not restored.** The importer becomes the author.
-- **Hides travel by name**, resolved against the project's inherited snippets after the organisation's have been imported.
-  A name with no inherited snippet is reported, not guessed.
-- **Names that already exist** (organisation merge into a live organisation) are never overwritten: the import is added as
-  "<name> (imported)", or skipped with a warning when that is also taken.
+- A bundle is untrusted input: each fragment goes through `report_snippet_store.create_snippet` (this deployment's block
+  schemas and the library rule at its tier); a failing one is skipped with a warning.
+- Pictures travel in `report_snippet_images` (the layouts' entry shape and importer, bytes in `files/`), are copied into
+  the target's library and have block file ids rewritten; an organisation picture already present stays a reference.
+- Authors and times are not restored (the importer is the author). Hides travel by name, resolved after the
+  organisation's snippets import; an unmatched name is reported.
+- An existing name is never overwritten: "<name> (imported)", or skipped with a warning.
 
-Dependencies: `services.report_snippet_store`, `services.report_snippet_scope`, `services.report_layout_bundle` (pictures),
-`services.bundle_common`.
+Dependencies: `report_snippet_store`, `report_snippet_scope`, `report_layout_bundle`, `bundle_common`.
 """
 
 from __future__ import annotations

@@ -1,27 +1,15 @@
 /**
  * Module: components/ArtefactCommentsSection
  *
- * The shared comment thread for module artefacts whose comments carry no
- * reaction mechanism (Strategy, Future State, Pain Point, Guiding Principle,
- * Open Question, Decision, Persona …) — deliberately not
- * `components/CommentThread.tsx`, whose mandatory `onToggleReaction` prop
- * assumes a heart-reaction these module-local comment tables don't have.
+ * The shared comment thread for module artefacts whose comments have no reaction mechanism (Strategy, Future
+ * State, Pain Point, Decision, Persona ...). Not `CommentThread`, whose mandatory `onToggleReaction` assumes
+ * heart reactions these tables lack.
  *
- * Generic over the comment shape: any row structurally satisfying
- * `ArtefactComment` works, so a module's own `*Comment` type needs no
- * adapter. Extracted from the previously duplicated
- * `modules/context_strategy/ArtefactCommentsSection.tsx` and
- * `modules/decisions/DecisionCommentsSection.tsx` (docs/ux-style-guide.md's
- * one-component-per-pattern rule) so a third module (Stakeholders &
- * Personas) didn't add a third copy.
+ * Generic over the comment shape: any row structurally satisfying `ArtefactComment` works. Attachment upload,
+ * remove and edit are opt-in through callbacks; edit only on the current user's own comments. `renderMeta` adds a
+ * caller line under a comment's header; `onPost` may resolve to nothing when the caller reloads its own list.
  *
- * Attachment upload/remove and edit are each opt-in via their callback; edit
- * is offered only on the current user's own comments. `renderMeta` adds a caller-defined line under a comment's header
- * (a "Pinned" chip and its actions, for comments that also sit on a drawing); `onPost` may resolve to nothing when
- * the caller reloads its own list and the comment takes no attachments.
- *
- * It is one `DetailCard` ("Comments"), so a detail page places it directly; each comment inside is a
- * flat row (`.comment-row`), not a card, because cards never nest.
+ * It is one `DetailCard` ("Comments"); each comment is a flat row (`.comment-row`), because cards never nest.
  */
 import { Paperclip, Pencil } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -29,11 +17,13 @@ import { useState, type ReactNode } from "react";
 import { FileDetailsToggle } from "./FileDetailsPanel";
 import { fileUrl } from "../api/client";
 import type { FileAsset } from "../api/types";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { DetailCard } from "./DetailCard";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ItemRow } from "./ItemRow";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { MarkdownView } from "./MarkdownView";
 import { RemovableChip } from "./RemovableChip";
+import { withDetailRank } from "./detailCardOrder";
 
 /** The structural shape of a comment this thread can render. */
 export interface ArtefactComment {
@@ -120,7 +110,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             {renderMeta?.(c)}
             {isEditing ? (
               <div className="stack" style={{ gap: "var(--space-2)" }}>
-                <AutoGrowTextarea rows={2} value={editBody} onChange={setEditBody} aria-label="Edit comment" />
+                <MarkdownEditor simple value={editBody} onChange={setEditBody} ariaLabel="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -137,7 +127,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
               </div>
             ) : (
               <>
-                <div>{c.body}</div>
+                <MarkdownView text={c.body} />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -177,12 +167,9 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             </>
           }
         >
-          <input
-            className="input"
-            placeholder="Add a comment…"
-            aria-label="Add a comment"
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
+          <MarkdownEditor
+            simple rows={1} value={newComment} onChange={setNewComment} ariaLabel="Add a comment"
+            textareaProps={{ placeholder: "Add a comment…" }}
           />
         </ItemRow>
         {pendingFiles.length > 0 && (
@@ -196,3 +183,5 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
     </DetailCard>
   );
 }
+
+withDetailRank(ArtefactCommentsSection, "discussion");

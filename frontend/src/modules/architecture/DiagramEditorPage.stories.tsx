@@ -3,11 +3,14 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
 import { buildPlace, openPlacementPicker } from "../../testing/placementsFixtures";
+import { chooseAddition } from "../../testing/tagsFixtures";
 import { buttonHeightViolations } from "../../testing/buttonHeights";
 import { expectLabelInName } from "../../testing/labelInName";
 import { requiredCaptions } from "../../testing/requiredMarkers";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
-import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
+import { recordActionNames } from "../../testing/recordActions";
+import { buildUser, openAddDialog, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
   buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildLeader, buildModelElement, buildNote,
   buildViewNode, captureDownloads, FIREWALL_TOGGLE, mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
@@ -99,6 +102,9 @@ export const DrawsBoxesAndLinesFromTheModelData: Story = {
     await expect(canvas.getByLabelText("Orders, node")).toBeInTheDocument();
     await expect(await canvas.findByLabelText("Connection from Gateway to Orders")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Active");
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Diagram")).toContain("Retire");
     await openTab(canvas, "Configuration");
     await expect(await canvas.findByRole("switch", { name: "Security devices" })).toBeChecked();
   },
@@ -864,7 +870,10 @@ export const AComponentIsAssignedToABoxFromTheSelectionCard: Story = {
     await select(canvas, "Gateway");
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
     await expect((await panel.findAllByText("Hardware / Cooling")).length).toBeGreaterThan(0);
-    await openPlacementPicker(panel);
+    // The Selection card's labels are the one chip row: components are added from its (+) menu, in a dialog.
+    await chooseAddition(panel, "Add component or category");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add component or category" }));
+    await openPlacementPicker(dialog);
     await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Software" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/artefacts/architecture_element/el-1/placements`,
@@ -1821,8 +1830,9 @@ export const ASelectedBoxListsItsPortsAndAddsOneAtOnce: Story = {
     await select(canvas, "Gateway");
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
     await expect(await panel.findByLabelText("Direction of HTTPS API")).toBeInTheDocument();
-    await userEvent.type(panel.getByLabelText("Port name", { selector: "input[placeholder='Port name']" }), "Events");
-    await userEvent.click(panel.getByRole("button", { name: "Add port" }));
+    const add = await openAddDialog(panel, "Add port");
+    await userEvent.type(add.getByRole("textbox", { name: "Name" }), "Events");
+    await userEvent.click(add.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `${BASE}/elements/el-1/ports`, { name: "Events", direction: "both", connection_type_id: null },
     ));
@@ -2091,7 +2101,7 @@ function actionNames(panel: ReturnType<typeof within>): string[] {
   return [...group.querySelectorAll("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent ?? "");
 }
 
-/** A box's Selection card offers every action as an icon button with the same name as before, none as a text button. */
+/** A box's Selection card offers every action as an icon button named for the action, none as a text button. */
 export const ABoxSelectionOffersEveryActionAsAnIconButton: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -2106,7 +2116,7 @@ export const ABoxSelectionOffersEveryActionAsAnIconButton: Story = {
   },
 };
 
-/** The tooltip of "Open inside as diagram" keeps the explanation the text button used to carry. */
+/** The icon button "Open inside as diagram" explains itself in its tooltip. */
 export const TheOpenInsideIconExplainsItselfInItsTooltip: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

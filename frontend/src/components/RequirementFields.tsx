@@ -1,17 +1,13 @@
 /**
  * Module: components/RequirementFields
  *
- * The field group shared by the requirement create dialog (`RequirementsPage`) and the requirement
- * edit form (`RequirementDetailPage`), so a field added to a requirement appears in both. It holds
- * every field that is the same in the two: name, reasoning, clarification, description, target
- * version, level, review date, reminder lead time, reviewer and owner.
+ * The field group shared by the requirement create dialog (`RequirementsPage`) and the edit form
+ * (`RequirementDetailPage`), so a field added to a requirement appears in both: name, reasoning, clarification,
+ * description, target version, level, review date, reminder lead time, reviewer and owner.
  *
- * Fields that differ stay with the page: the create dialog puts component and category (chosen
- * once, at creation) between description and target version through `afterDescription`; custom
- * fields, tags, links and the edit form's change note follow the group.
- *
- * The component is controlled and framework-free: the page owns the values, so the edit form can
- * keep its dirty-tracking around `onChange`.
+ * Fields that differ stay with the page: the create dialog places component and category (chosen once, at creation)
+ * through `afterDescription`; custom fields, tags, links and the change note follow the group.
+ * Controlled: the page owns the values, so the edit form keeps its dirty-tracking around `onChange`.
  */
 import type { ReactNode } from "react";
 
@@ -62,13 +58,13 @@ export function RequirementFields({
         <TextField helpNotNeeded required label={strings.requirements.name} value={values.name} onChange={(next) => set("name", next)} placeholder={strings.requirements.name} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField help={strings.help.requirementReasoning} label={strings.requirements.reasoning} rows={3} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
+        <TextAreaField markdown="math" help={strings.help.requirementReasoning} label={strings.requirements.reasoning} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField help={strings.help.requirementClarification} label={strings.requirements.clarification} rows={2} value={values.clarification} onChange={(next) => set("clarification", next)} inputProps={{ placeholder: strings.requirements.clarification }} />
+        <TextAreaField markdown="math" help={strings.help.requirementClarification} label={strings.requirements.clarification} value={values.clarification} onChange={(next) => set("clarification", next)} inputProps={{ placeholder: strings.requirements.clarification }} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField helpNotNeeded label={strings.requirements.description} rows={2} value={values.description} onChange={(next) => set("description", next)} inputProps={{ placeholder: strings.requirements.description }} />
+        <TextAreaField markdown="math" helpNotNeeded label={strings.requirements.description} value={values.description} onChange={(next) => set("description", next)} inputProps={{ placeholder: strings.requirements.description }} />
       </FormGridFull>
       {afterDescription}
       <LabeledSelect help={strings.help.requirementTargetVersion} required
@@ -95,14 +91,14 @@ export function RequirementFields({
         projectId={projectId} value={values.reviewer}
         display={saved ? savedPrincipalDisplay(values.reviewer, saved.reviewer) : undefined}
         onChange={(reviewer) => set("reviewer", reviewer)}
-        ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
+        ariaLabel={strings.requirements.reviewer}
       />
       <PrincipalFormField help={strings.help.requirementOwner} required={ownerRequired}
         label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId}
         projectId={projectId} value={values.owner}
         display={saved ? savedPrincipalDisplay(values.owner, saved.owner) : undefined}
         onChange={(owner) => set("owner", owner)}
-        ariaLabel={strings.requirements.owner} placeholder={ownerPlaceholder ?? strings.reviews.unassigned} clearLabel="Clear"
+        ariaLabel={strings.requirements.owner} emptyLabel={ownerPlaceholder}
       />
     </>
   );

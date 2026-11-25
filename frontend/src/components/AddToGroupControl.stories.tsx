@@ -27,10 +27,7 @@ export default meta;
 
 type Story = StoryObj<typeof AddToGroupControl>;
 
-/** Only groups the user isn't already a member of are offered — Jordan is
- * already in "Platform" (`grp2`), so only "Engineering" appears in the
- * picker. Picking a group and confirming calls `onAdd(groupId, userId)`,
- * the caller's own existing `addGroupMember` handler. */
+/** Only groups the user is not already a member of are offered. Confirming calls `onAdd(groupId, userId)`. */
 export const PicksAnAvailableGroup: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);

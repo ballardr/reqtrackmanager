@@ -1,17 +1,10 @@
 """
 Module: routers.system.branding
 
-Platform-wide UI branding defaults: the accent colour/header title/email
-footer/org-label overrides used on any page without a resolvable
-organisation context (and as the fallback for orgs without their own
-override), plus the platform-wide logo/login-background image upload and
-removal. The
-GET is deliberately unauthenticated — the plain `/login` page needs it
-before any session exists.
-
-Split out of the former flat `routers/system.py` as a pure code-organization
-refactor — see `routers/system/__init__.py`'s module docstring for the
-package layout.
+Platform-wide UI branding defaults: the accent colour/header title/email footer/org-label overrides used on
+any page without a resolvable organisation context (and as the fallback for organisations without their own
+override), plus the platform-wide logo/login-background image upload and removal. The GET is
+unauthenticated because the plain `/login` page needs it before any session exists.
 """
 
 from __future__ import annotations

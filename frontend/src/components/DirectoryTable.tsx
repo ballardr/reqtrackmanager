@@ -1,61 +1,32 @@
 /**
  * Module: components/DirectoryTable
  *
- * A generic, deliberately thin `<table>` shell shared by every "directory"
- * list in the app (Org Users, Org Groups, Project Groups, Project Members,
- * Server Admin's Access Review) — see docs/ux-style-guide.md's "Pattern:
- * directories at scale" and "Pattern: sortable column header". Pulled out
- * after a design-review pass found four
- * separate pages about to each hand-roll their own version of the exact
- * shape `MemberRoleTable.tsx` already proved out (see that component's own
- * docstring) — and that the *existing* Project Groups list wasn't a real
- * `<table>` at all, just a `<button>` per row with no `SortableHeader`.
- *
- * Responsibilities:
- * - Renders a real `<table>`/`<thead>`/`<tbody>` over a caller-supplied,
- *   already-filtered/sorted/paginated `rows` array, using `SortableHeader`
- *   for any column marked `sortable` (reusing its `aria-sort` handling
- *   rather than reimplementing it) and `LoadMoreButton` when the caller
- *   passes `total`/`onLoadMore`.
- * - Optionally makes the first column's cell content a real, keyboard-
- *   operable `<button>` (`onRowClick`) or `<Link>` (`rowHref`) — never a
- *   bare `<tr onClick>`, which has no role and isn't reachable by keyboard.
- *   `onRowClick` and `rowHref` are mutually exclusive; if a caller somehow
- *   passes both, `rowHref` wins — a `<Link>` is strictly more capable
- *   (bookmarkable, deep-linkable, openable in a new tab) than a plain click
- *   handler for row navigation, so there's no case where preferring
- *   `onRowClick` instead would be the better silent choice.
- *
- * - Optionally (`selection`) adds a leading checkbox column, with a header box that selects every selectable row on
- *   the page, for a bulk action the caller offers above the table. The component only reports the chosen keys.
- *
- * Deliberately excluded (each already has a better home elsewhere; folding
- * these in would duplicate or misplace them):
- * - No search box — that's `FilterPanel`'s own `search`/`onSearchChange`
- *   header prop, composed beside this component in a `.side-grid` layout by
- *   every real call site, not inside it. Avoids the exact duplicate-search-
- *   input shape `MemberRoleTable` had before this component existed.
- * - No `.side-grid`/`FilterPanel` wrapping — callers compose those
- *   themselves; this component renders inside the content column only.
- * - No "add"/"create" control slot — callers render their own controls
- *   (e.g. "New group", "Invite user", "Add member") as siblings above this
- *   component, same as every call site does today.
- * - No fetch/mutate/merge logic of any kind — 100% presentational over
- *   whatever `rows` the caller already has ready to render. Sorting is the
- *   same contract: this component only calls `onSort(key)` on a header
- *   click — the caller owns `sort` state and decides how to re-sort
- *   (refetch or re-slice), then passes new `rows` back in.
+ * A thin `<table>` shell shared by every "directory" list (Org Users, Org Groups, Project Groups, Project Members,
+ * Access Review); see docs/ux-style-guide.md "Pattern: directories at scale" and "Pattern: sortable column header".
+ * It renders a caller-supplied, already filtered, sorted and paginated `rows` array with `SortableHeader` for
+ * `sortable` columns and `LoadMoreButton` for `total`/`onLoadMore`; it only calls `onSort(key)` and the caller owns
+ * `sort` and passes new `rows` back. The first column's cell can be a keyboard-operable `<button>` (`onRowClick`) or
+ * `<Link>` (`rowHref`, which wins: a link is bookmarkable), never a bare `<tr onClick>`. `selection` adds a leading
+ * checkbox column whose header box selects every selectable row on the page and reports the chosen keys.
+ * A column can hold a floor width (`minWidth`, the Name column's 12rem: its text wraps beyond it and the other columns
+ * give way first, and it stays at the left edge when the table scrolls sideways), drop when the table is narrow (`hideBelow`)
+ * and be chosen by the person (`optional`, `defaultHidden`: see `useOptionalColumns`, which filters the columns
+ * before they reach this table). `rowAccent` draws the record type's accent stripe on each row. Excluded: a search box (`FilterPanel`'s own), `.side-grid` wrapping, an add slot and
+ * any fetch or mutate logic.
  */
 import { useEffect, useRef } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import type { RecordReferencesApi } from "../api/externalReferences";
 import { placementsText, type RecordPlacementsApi } from "../api/placements";
 import { useStrings } from "../context/TerminologyContext";
 import { usePagePlacementsByType } from "../hooks/usePagePlacements";
+import { usePageReferencesByType } from "../hooks/usePageReferences";
 
 import { InlineCheckbox } from "./FormFields";
 import { LoadMoreButton } from "./LoadMoreButton";
+import { ReferencesCell } from "./ReferencesCell";
 import { SortableHeader } from "./SortableHeader";
 import type { SortState } from "./sortState";
 
@@ -76,10 +47,8 @@ export interface DirectoryTableSelection<Row> {
 export interface DirectoryColumn<Row> {
   key: string;
   label: ReactNode;
-  /** Only for genuinely orderable columns (a name, a date) — never a
-   * badge/actions-only column with no natural order, per style guide
-   * "Pattern: sortable column header"'s "sortable columns are the obvious
-   * ones only" rule. */
+  /** Only for orderable columns (a name, a date), never a badge or actions column with no natural order
+   * (style guide "Pattern: sortable column header"). */
   sortable?: boolean;
   /** A control that belongs to the column as a whole (a settings gear), drawn
    * beside the header text. It is a sibling of the sort button, not inside it,
@@ -90,6 +59,24 @@ export interface DirectoryColumn<Row> {
    * it has no effect on a `sortable` column. */
   width?: string;
   render: (row: Row) => ReactNode;
+  /** A floor width (a CSS length such as `"12rem"`) the column never shrinks below: the Name column's. The cell stays
+   * at the left edge when the table scrolls sideways, so it needs a first column. */
+  minWidth?: string;
+  /** Drops the column while the table has less than 40rem of room (stacked cards below 720px keep every column), so
+   * the columns that matter keep theirs. */
+  hideBelow?: boolean;
+  /** The person can show or hide this column (`useOptionalColumns`); a column that is not optional is always drawn. */
+  optional?: boolean;
+  /** An optional column that is off until the person chooses it. */
+  defaultHidden?: boolean;
+  /** The column's name in the column chooser when `label` is not plain text. */
+  chooserLabel?: string;
+}
+
+/** The class and inline style a column's header and body cells share (floor width, narrow-width drop). */
+function cellProps<Row>(column: DirectoryColumn<Row>): { className?: string; style?: { minWidth: string } } {
+  const classes = [column.minWidth ? "directory-table-floor" : "", column.hideBelow ? "directory-table-wide" : ""].filter(Boolean).join(" ");
+  return { className: classes || undefined, style: column.minWidth ? { minWidth: column.minWidth } : undefined };
 }
 
 /** The row ids on the page grouped by record type, for the Components column's read (one type unless the list mixes several). */
@@ -107,10 +94,8 @@ function placementIdsByType<Row>(
 }
 
 /**
- * Renders `rows` as a `<table>`. See the module docstring for the full
- * contract — in short, this component owns none of the data: sorting,
- * pagination, and search all stay caller-side, this just presents the
- * result.
+ * Renders `rows` as a `<table>` (see the module docstring). It owns no data: sorting, pagination and search stay
+ * with the caller.
  */
 export function DirectoryTable<Row>({
   ariaLabel,
@@ -126,6 +111,7 @@ export function DirectoryTable<Row>({
   emptyState,
   placements,
   selection,
+  rowAccent,
 }: {
   /** Accessible name for the `<table>` itself. */
   ariaLabel: string;
@@ -138,47 +124,48 @@ export function DirectoryTable<Row>({
   /** The table's current sort, or `null`/omitted for unsorted. Has no
    * effect unless `onSort` is also provided. */
   sort?: SortState | null;
-  /** Called with a sortable column's `key` on that header's click — the
-   * caller re-sorts/refetches and passes new `rows` (and, typically, a new
-   * `sort`) back in; this component doesn't cycle or apply sort itself.
-   * Omit to render every column (even ones marked `sortable`) as a plain,
-   * non-interactive `<th>`. */
+  /** Called with a sortable column's `key` on that header's click; the caller re-sorts or refetches and passes
+   * new `rows` and `sort` back. Omit to render every column as a plain, non-interactive `<th>`. */
   onSort?: (key: string) => void;
   /** Paired with `onLoadMore`, the same contract `LoadMoreButton` already
    * establishes elsewhere in the app. Omit both to render no pagination
    * control (e.g. an already-fully-loaded directory). */
   total?: number;
   onLoadMore?: () => void;
-  /** Makes the first column's cell a real `<button>` calling this with the
-   * clicked row, instead of plain (non-interactive) cell content. Mutually
-   * exclusive with `rowHref` — see module docstring for which wins if both
-   * are passed. */
+  /** Makes the first column's cell a `<button>` calling this with the clicked row. Mutually exclusive with
+   * `rowHref`, which wins if both are passed. */
   onRowClick?: (row: Row) => void;
-  /** Makes the first column's cell a real `<Link>` to this href instead of
-   * a click handler — for a bookmarkable, deep-linkable row (e.g. an
-   * `?openGroup=`-style flow). Takes priority over `onRowClick` if both are
-   * passed. */
+  /** Makes the first column's cell a `<Link>` to this href, for a bookmarkable, deep-linkable row. Takes priority
+   * over `onRowClick`. */
   rowHref?: (row: Row) => string;
   /** Shown instead of the table when `rows` is empty. The caller decides
    * "nothing here yet" vs. "no results match this search/filter" copy —
    * only it knows whether a filter is currently active. */
   emptyState: ReactNode;
-  /** Adds a Components column showing where each row's record sits in the project's component tree, read for the
-   * whole page at once. The column appears only when a row on the page is placed somewhere, so a project that does
-   * not use components sees no new column. `api` is injectable for stories. */
+  /** Adds a Components column (where each row's record sits in the component tree) and an External references
+   * column, each read for the whole page at once. A column appears only when a row has a value. `api` and
+   * `referencesApi` are injectable for stories. */
   placements?: {
     projectId: string | undefined;
     /** The record type of the rows, or (a list of several types) a function giving each row's type. */
     artefactType: string | ((row: Row) => string);
     rowId: (row: Row) => string;
     api?: RecordPlacementsApi;
+    referencesApi?: RecordReferencesApi;
+    /** The sort keys of the Components and External references headers, when the list's server orders by them; the
+     * headers are plain text without them. */
+    sortKeys?: { places?: string; references?: string };
   };
   /** Adds a leading column of checkboxes for a bulk action; the caller owns the selected keys and the action itself. */
   selection?: DirectoryTableSelection<Row>;
+  /** The record type's accent colour (`ENTITY_ACCENT_COLOR`), drawn as a stripe at the left edge of every row. */
+  rowAccent?: string;
 }): JSX.Element {
   const strings = useStrings();
   const placed = usePagePlacementsByType(placements?.projectId, placementIdsByType(rows, placements), placements?.api);
   const showPlacements = placements !== undefined && rows.some((r) => (placed[placements.rowId(r)] ?? []).length > 0);
+  const referenced = usePageReferencesByType(placements?.projectId, placementIdsByType(rows, placements), placements?.referencesApi);
+  const showReferences = placements !== undefined && rows.some((r) => (referenced[placements.rowId(r)] ?? []).length > 0);
   const selectAll = useRef<HTMLInputElement>(null);
   const choosable = selection ? rows.filter((r) => selection.selectable?.(r) ?? true) : [];
   const chosen = selection ? choosable.filter((r) => selection.selected.has(rowKey(r))).length : 0;
@@ -192,7 +179,7 @@ export function DirectoryTable<Row>({
 
   return (
     <div className="stack">
-      <div style={{ overflowX: "auto" }}>
+      <div className={columns.some((c) => c.hideBelow) ? "directory-table-scroll--responsive" : undefined} style={{ overflowX: "auto" }}>
         <table aria-label={ariaLabel}>
           <thead>
             <tr>
@@ -211,19 +198,28 @@ export function DirectoryTable<Row>({
               )}
               {columns.map((column) =>
                 column.sortable && onSort ? (
-                  <SortableHeader key={column.key} label={column.label} sortKey={column.key} sort={sort} onSort={onSort} action={column.headerAction} />
+                  <SortableHeader key={column.key} label={column.label} sortKey={column.key} sort={sort} onSort={onSort} action={column.headerAction} {...cellProps(column)} />
                 ) : (
-                  <th key={column.key} style={column.width ? { width: column.width } : undefined}>
+                  <th key={column.key} {...cellProps(column)} style={{ ...cellProps(column).style, ...(column.width ? { width: column.width } : {}) }}>
                     {column.headerAction ? <span className="th-with-action">{column.label}{column.headerAction}</span> : column.label}
                   </th>
                 )
               )}
-              {showPlacements && <th>{strings.placements.label}</th>}
+              {showPlacements && (placements?.sortKeys?.places && onSort
+                ? <SortableHeader label={strings.placements.label} sortKey={placements.sortKeys.places} sort={sort} onSort={onSort} />
+                : <th>{strings.placements.label}</th>)}
+              {showReferences && (placements?.sortKeys?.references && onSort
+                ? <SortableHeader label={strings.references.column} sortKey={placements.sortKeys.references} sort={sort} onSort={onSort} />
+                : <th>{strings.references.column}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={rowKey(row)}>
+              <tr
+                key={rowKey(row)}
+                className={rowAccent ? "entity-accent-row" : undefined}
+                style={rowAccent ? { ["--entity-accent-color" as string]: rowAccent } : undefined}
+              >
                 {selection && (
                   <td>
                     {(selection.selectable?.(row) ?? true) && (
@@ -240,7 +236,7 @@ export function DirectoryTable<Row>({
                   </td>
                 )}
                 {columns.map((column, index) => (
-                  <td key={column.key}>
+                  <td key={column.key} {...cellProps(column)}>
                     {index === 0
                       ? renderFirstCell({ row, content: column.render(row), onRowClick, rowHref })
                       : column.render(row)}
@@ -248,6 +244,9 @@ export function DirectoryTable<Row>({
                 ))}
                 {showPlacements && placements && (
                   <td>{placementsText(placed[placements.rowId(row)])}</td>
+                )}
+                {showReferences && placements && (
+                  <td><ReferencesCell references={referenced[placements.rowId(row)]} /></td>
                 )}
               </tr>
             ))}
@@ -259,11 +258,8 @@ export function DirectoryTable<Row>({
   );
 }
 
-/** The first column's cell content, optionally wrapped in a real `<Link>`
- * or `<button>` — see the component docstring for the `rowHref`-wins-over-
- * `onRowClick` rule. Both render with the same `.directory-table-row-
- * trigger` styling (theme.css) so a row that navigates and a row that opens
- * a panel look identical, regardless of which element renders it. */
+/** The first column's cell content, optionally wrapped in a `<Link>` or `<button>` (`rowHref` wins). Both use the
+ * same `.directory-table-row-trigger` styling, so a navigating row and a panel-opening row look identical. */
 function renderFirstCell<Row>({
   row,
   content,

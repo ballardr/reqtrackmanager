@@ -32,10 +32,9 @@ def test_native_login_still_works_with_a_second_non_sso_only_org(client, admin_t
     org, org_admin_token = create_org_admin_in(client, admin_token, "SsoOnlyOrg2")
     _enable_sso_only(client, org_admin_token, org["id"], "sso-only-org-2")
 
-    # Get the user's id via the (still-authenticated, sso_only doesn't block
-    # already-org-scoped org-admin API access with a valid token — only the
-    # native /login step itself) member listing, then grant them a role in a
-    # second, non-sso_only org.
+    # Get the user's id via the member listing (sso_only blocks only the native
+    # /login step, not org-admin API access with a valid token), then grant them
+    # a role in a second, non-sso_only org.
     users = client.get(f"/api/v1/orgs/{org['id']}/users", headers=auth_headers(org_admin_token)).json()
     user_id = next(u["user_id"] for u in users if u["email"] == "ssoonlyorg2_admin@example.com")
 

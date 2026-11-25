@@ -1,13 +1,12 @@
 /**
  * Module: pages/ReportRunPage
  *
- * `/report-runs/:runId`, where a background-report notification lands: it loads the person's own run and shows it
- * in `ReportRunDialog`. The page behind the dialog is empty; closing goes back to where the person came from, or to
- * the report's project or organisation overview when the link was opened directly.
+ * `/report-runs/:runId`, where a background-report notification lands: it loads the person's own run and shows it in
+ * `ReportRunDialog`. Closing returns to where the person came from, or to the report's project or organisation overview.
  *
- * Design decisions: a run that is not the person's (or no longer listed) shows a short message instead of the dialog,
- * the same answer for both so a run id reveals nothing. The route is not module-specific: any notification whose
- * entity is a background report resolves here (`notificationLink`).
+ * Design decisions: a run that is not the person's (or no longer listed) shows a short message, the same for both so a run id
+ * reveals nothing. The route is not module-specific: any notification whose entity is a background report resolves here
+ * (the `report_run` notification target).
  */
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";

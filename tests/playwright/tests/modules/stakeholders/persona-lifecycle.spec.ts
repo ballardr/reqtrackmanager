@@ -1,27 +1,19 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { addDefinition, chooseRecordAction, installCleanupHook, recordActionNames, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { chooseColumn } from "../../columnChooser";
 import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 /**
- * Job to be done:
- * Playwright e2e coverage for the Persona UI
- * (`frontend/src/modules/stakeholders/`) against a real backend.
+ * Job to be done: e2e coverage of the Persona UI (`frontend/src/modules/stakeholders/`) against a real backend.
  *
- * Each test builds a disposable org + admin (+ project) through the API, per
- * this repo's "tests must not depend on shared seeded state" rule, and
- * `Date.now()`-suffixes every name. The module is `default_enabled=False`, so
- * each test switches it on from Org Admin's Modules group first.
- *
- * `backend/scripts/seed_e2e_dataset.py` still gains Personas (both seed scripts carry
- * them), but these specs don't depend on them.
- *
- * The org admin is the project's `PROJECT_MANAGER`, which composes with the
- * module's project-scoped `persona_owner` role, so one persona can create,
- * activate and re-weight without any extra grant.
+ * Each test builds a disposable org + admin (+ project) through the API with `Date.now()`-suffixed names and
+ * switches the `default_enabled=False` module on from Org Admin's Modules group. Both seed scripts carry
+ * Personas, but these specs do not depend on them. The org admin is the project's `PROJECT_MANAGER`, which
+ * composes with the module's `persona_owner` role, so one persona can create, activate and re-weight.
  */
 test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
   test("creates a project Persona, activates it, overrides its weight and resets it", async ({ page }) => {
@@ -49,7 +41,8 @@ test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
     await expect(page.getByText("Persona's own weight", { exact: true })).toBeVisible();
 
     // --- Activate behind a confirm dialog; there is no approval step.
-    await page.getByRole("button", { name: "Activate" }).click();
+    await page.getByRole("button", { name: "Next step: Active" }).click();
+    await page.getByRole("button", { name: "Promote to Active" }).click();
     await page.getByRole("dialog", { name: "Activate this Persona?" }).getByRole("button", { name: "Activate" }).click();
     await expect(statusBadge(page, "Active")).toBeVisible();
 
@@ -64,10 +57,10 @@ test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
     await expect(page.getByText("Persona's own weight", { exact: true })).toBeVisible();
 
     // --- Retire, then reactivate (a retired persona keeps its history).
-    await page.getByRole("button", { name: "Retire" }).click();
+    await chooseRecordAction(page, "Persona", "Retire");
     await page.getByRole("dialog", { name: "Retire this Persona?" }).getByRole("button", { name: "Retire" }).click();
     await expect(statusBadge(page, "Retired")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Reactivate" })).toBeVisible();
+    expect(await recordActionNames(page, "Persona")).toContain("Reactivate");
 
     // --- The list shows the final status through its label map.
     await page.getByRole("link", { name: "← People", exact: true }).click();
@@ -114,8 +107,7 @@ test.describe("Stakeholders & Personas: organisation Personas and types", () => 
     await expect(page.locator(`input[value="Primary"]`)).toBeVisible();
     await expect(page.locator(`input[value="Secondary"]`)).toBeVisible();
     await expect(page.locator(`input[value="Negative"]`)).toBeVisible();
-    await page.getByPlaceholder("Persona type name").fill(typeName);
-    await page.getByRole("button", { name: "Add Persona type" }).click();
+    await addDefinition(page, "Add Persona type", { Name: typeName });
     await expect(page.getByText("Persona type created.")).toBeVisible();
     await expect(page.locator(`input[value="${typeName}"]`)).toHaveCount(1);
 
@@ -129,8 +121,9 @@ test.describe("Stakeholders & Personas: organisation Personas and types", () => 
       data: { name: personaName, persona_type_id: typeId },
     });
 
-    // --- From the project it appears with an Organisation scope badge...
+    // --- From the project it appears with an Organisation scope badge (Scope is an optional column, so it is chosen first)...
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas`);
+    await chooseColumn(page, "Scope");
     const row = page.locator("tr", { hasText: personaName });
     await expect(row.getByText("Organisation", { exact: true })).toBeVisible();
     await expect(row.getByText(typeName)).toBeVisible();
@@ -139,7 +132,8 @@ test.describe("Stakeholders & Personas: organisation Personas and types", () => 
     await page.getByRole("button", { name: personaName }).click();
     await expect(page.getByText(/organisation-wide Persona/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Retire" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Next step: Active" })).toHaveCount(0);
+    expect(await recordActionNames(page, "Persona")).not.toContain("Retire");
     await page.getByRole("link", { name: "organisation view" }).click();
     await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/modules/stakeholders/personas/[^/]+$`));
 

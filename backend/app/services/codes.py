@@ -1,41 +1,30 @@
 """
 Module: services.codes
 
-Project codes and qualified record codes.
-
-A project's record codes (`REQ-001`) repeat in every project, so a record seen
-outside its own project is named with its project code in front:
-`ACME-REQ-001`. This module owns the database side of that: assigning and
-validating a project's own code against its organisation's policy, and
-building and splitting qualified codes. The character rules are in
-`app.code_rules`.
+Project codes and qualified record codes. A project's record codes (`REQ-001`) repeat in every project, so a
+record seen outside its own project is named with the project code in front (`ACME-REQ-001`). This module
+assigns and validates a project's code against its organisation's policy and builds and splits qualified
+codes; the character rules are in `app.code_rules`.
 
 Design decisions:
-- A project's code is its own, never built from its parents'; nesting is shown
-  by breadcrumb, not by the code.
-- A qualified code is split on its first hyphen. That is unambiguous because a
-  project or organisation code never contains one (`code_rules.code_error`).
-- A project code is never equal to its organisation's code, so a qualified code
-  for an organisation-scoped record cannot be mistaken for a project's.
-- An organisation-scoped record (a Persona shared by every project) is qualified by the
-  organisation's code, and is always shown qualified, since its bare `PER-001` would be
-  ambiguous with a project's own.
-- The organisation row is locked while a code is generated, so two projects
-  created at once cannot be given the same code.
-- The organisation may lock project codes after creation (`CodePolicy.locked`); `change_project_code` is the one
-  place that enforces it, so every route that changes a code is covered, and only an organisation administrator
-  may still change one.
-- The stored `unique_code` of a record never changes; qualification is applied
-  when a code is displayed or looked up.
-- Output with no viewer (a report, an export) uses `display_code`, the server twin of the
-  frontend rule, and never the viewer's preference, so a saved report reads the same for everyone.
+- A project's code is its own, never built from its parents'.
+- A qualified code is split on its first hyphen, unambiguous because a project or organisation code has none
+  (`code_rules.code_error`). A project code never equals its organisation's code, so an organisation-scoped
+  qualified code is not mistaken for a project's.
+- An organisation-scoped record (a Persona shared by every project) is qualified by the organisation code and
+  always shown qualified, since a bare `PER-001` would be ambiguous.
+- The organisation row is locked while a code is generated, so two simultaneous projects get different codes.
+- The organisation may lock project codes (`CodePolicy.locked`); `change_project_code` is the one place that
+  enforces it, and only an organisation administrator may still change one.
+- A stored `unique_code` never changes; qualification applies at display and lookup. Output with no viewer
+  (a report, an export) uses `display_code`, never the viewer's preference, so a saved report reads the same
+  for everyone.
 
 Dependencies: `app.code_rules`, the `Organization` and `Project` models.
 """
 
 from __future__ import annotations
 
-import re
 import uuid
 from dataclasses import dataclass
 
@@ -51,6 +40,7 @@ from app.code_rules import (
     default_code_for_name,
     normalise_code,
     policy_error,
+    split_record_label,
 )
 from app.models.change_request import ChangeRequest
 from app.models.enums import CORE_ARTEFACT_TYPES
@@ -58,6 +48,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.modules.registry import (
     get_all_registered_artefact_types,
     list_artefact_summaries,
@@ -227,8 +218,8 @@ def change_organization_code(db: Session, org: Organization, requested: str) -> 
 
     The code must use letters and digits only (no hyphen, so a qualified code still splits on
     its first one), fit `ABSOLUTE_MAX_CODE_LENGTH`, and differ from every project code in the
-    organisation. Records already named with the old code (pasted into documents or tickets)
-    stop matching; stored record codes are unchanged.
+    organisation. Records named elsewhere with the current code (pasted into documents or
+    tickets) stop matching; stored record codes are unchanged.
 
     Returns:
         The normalised code.
@@ -316,6 +307,8 @@ class CodedRecord:
         project_id: The project that owns it; `None` for a record the organisation itself owns.
         qualified_code: The code as displayed outside the project, e.g. `ACME-REQ-001`.
         label: The record's summary label (`REQ-001 Title`).
+        alias_state: `alias` when the code is a further place's code of a requirement, `retired_alias` when that
+            place was taken away (the code still resolves); `None` for the record's own code.
     """
 
     artefact_type: str
@@ -323,9 +316,7 @@ class CodedRecord:
     project_id: uuid.UUID | None
     qualified_code: str
     label: str
-
-
-_CODE_PREFIX = re.compile(r"^[A-Z]{2,5}-\d{3,4}\s+")
+    alias_state: str | None = None
 
 
 def label_title(label: str) -> str:
@@ -334,7 +325,7 @@ def label_title(label: str) -> str:
     Bundles refer to a record by its title: a code is numbered afresh on import, so it cannot
     identify the record in the target project.
     """
-    return _CODE_PREFIX.sub("", label, count=1)
+    return split_record_label(label)[1]
 
 
 def _label_code(label: str) -> str:
@@ -401,6 +392,19 @@ def find_record_by_qualified_code(
     ).scalar_one_or_none()
     if requirement is not None:
         return result("requirement", requirement, unique_code)
+    alias = db.execute(
+        select(RequirementAlias.requirement_id, RequirementAlias.is_retired).where(
+            RequirementAlias.project_id == project.id, RequirementAlias.unique_code == unique_code
+        )
+    ).first()
+    if alias is not None:
+        found = result("requirement", alias.requirement_id, unique_code)
+        if found is None:
+            return None
+        return CodedRecord(
+            found.artefact_type, found.id, found.project_id, found.qualified_code, found.label,
+            "retired_alias" if alias.is_retired else "alias",
+        )
     action = db.execute(
         select(RequirementAction.id, RequirementAction.title).where(
             RequirementAction.project_id == project.id, RequirementAction.unique_code == unique_code

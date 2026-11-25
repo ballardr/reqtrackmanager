@@ -37,7 +37,7 @@ def _by_name(entries: list[dict]) -> dict[str, dict]:
 
 
 def _systems(client, token, project_id) -> dict[str, dict]:
-    return _by_name(client.get(project_base(project_id) + "/external-systems", headers=auth_headers(token)).json())
+    return _by_name(client.get(f"/api/v1/projects/{project_id}/external-systems", headers=auth_headers(token)).json())
 
 
 def _refs_url(project_id, request_id) -> str:
@@ -47,7 +47,7 @@ def _refs_url(project_id, request_id) -> str:
 def test_a_new_organisation_gets_the_default_systems_and_channels(client, admin_token):
     org, project, token = setup(client, admin_token, "Refs Defaults Co")
     h = auth_headers(token)
-    systems = client.get(org_base(org["id"]) + "/external-systems", headers=h).json()
+    systems = client.get(f"/api/v1/orgs/{org['id']}/external-systems", headers=h).json()
     channels = client.get(org_base(org["id"]) + "/request-channels", headers=h).json()
     assert tuple(s["name"] for s in systems) == SYSTEMS and tuple(c["name"] for c in channels) == CHANNELS
     assert tuple(_systems(client, token, project["id"])) == SYSTEMS  # a project sees the organisation's list
@@ -131,7 +131,7 @@ def test_only_a_triager_changes_references_after_creation_and_an_archived_reques
 def test_a_project_adds_hides_and_restores_systems_and_a_hidden_one_keeps_existing_references(client, admin_token):
     org, project, token = setup(client, admin_token, "Refs Project List Co")
     h = auth_headers(token)
-    base = project_base(project["id"]) + "/external-systems"
+    base = f"/api/v1/projects/{project['id']}/external-systems"
     systems = _systems(client, token, project["id"])
     request = create_request(client, token, project["id"], references=[{"system_id": systems["Jira"]["id"], "key": "P-1"}])
     local = client.post(base, json={"name": "Internal tracker"}, headers=h)
@@ -156,7 +156,7 @@ def test_a_project_adds_hides_and_restores_systems_and_a_hidden_one_keeps_existi
 def test_the_organisation_list_needs_the_list_admin_role_and_an_entry_in_use_cannot_be_deleted(client, admin_token):
     org, project, token = setup(client, admin_token, "Refs Org List Co")
     h = auth_headers(token)
-    base = org_base(org["id"]) + "/external-systems"
+    base = f"/api/v1/orgs/{org['id']}/external-systems"
     created = client.post(base, json={"name": "Linear"}, headers=h)
     assert created.status_code == 201, created.text
     assert client.post(base, json={"name": "Linear"}, headers=h).status_code == 400
@@ -181,13 +181,13 @@ def test_the_organisation_list_needs_the_list_admin_role_and_an_entry_in_use_can
 def test_triage_into_a_project_re_points_the_references_at_the_projects_systems(client, admin_token):
     org, project, token = setup(client, admin_token, "Refs Triage Co")
     h = auth_headers(token)
-    org_systems = _by_name(client.get(org_base(org["id"]) + "/external-systems", headers=h).json())
+    org_systems = _by_name(client.get(f"/api/v1/orgs/{org['id']}/external-systems", headers=h).json())
     inbox = create_inbox_request(client, token, org["id"], references=[
         {"system_id": org_systems["Jira"]["id"], "key": "P-1"}, {"system_id": org_systems["GitHub"]["id"], "key": "#4"},
     ])
     # The project hides GitHub before the move: the reference is kept as a project system of the same name.
     project_systems = _systems(client, token, project["id"])
-    client.delete(f"{project_base(project['id'])}/external-systems/{project_systems['GitHub']['id']}", headers=h)
+    client.delete(f"/api/v1/projects/{project['id']}/external-systems/{project_systems['GitHub']['id']}", headers=h)
     moved = client.post(f"{org_base(org['id'])}/requests/{inbox['id']}/move-to-project", json={"project_id": project["id"]}, headers=h)
     assert moved.status_code == 200, moved.text
     refs = client.get(_refs_url(project["id"], inbox["id"]), headers=h).json()
@@ -206,8 +206,8 @@ def test_the_older_link_pair_is_a_delivery_reference_on_other_and_a_missing_othe
         f"{project_base(project['id'])}/requests/{request['id']}", json={"external_ref_url": "https://x.example/1"}, headers=h,
     ).json()
     assert [(r["key"], r["url"]) for r in updated["external_refs"]] == [("OLD-1", "https://x.example/1")]
-    other = _by_name(client.get(org_base(org["id"]) + "/external-systems", headers=h).json())["Other"]
-    client.patch(f"{org_base(org['id'])}/external-systems/{other['id']}", json={"is_active": False}, headers=h)
+    other = _by_name(client.get(f"/api/v1/orgs/{org['id']}/external-systems", headers=h).json())["Other"]
+    client.patch(f"/api/v1/orgs/{org['id']}/external-systems/{other['id']}", json={"is_active": False}, headers=h)
     refused = client.post(
         project_base(project["id"]) + "/requests", json={"title": "No other", "external_ref_key": "X"}, headers=h,
     )
@@ -349,8 +349,8 @@ def test_references_channels_and_the_projects_own_lists_survive_a_project_round_
     org, project, token = _world(client, admin_token, "Refs Bundle Co")
     pid, h = project["id"], auth_headers(token)
     systems = _systems(client, token, pid)
-    local = client.post(project_base(pid) + "/external-systems", json={"name": "Internal tracker"}, headers=h).json()
-    client.delete(f"{project_base(pid)}/external-systems/{systems['Zendesk']['id']}", headers=h)
+    local = client.post(f"/api/v1/projects/{pid}/external-systems", json={"name": "Internal tracker"}, headers=h).json()
+    client.delete(f"/api/v1/projects/{pid}/external-systems/{systems['Zendesk']['id']}", headers=h)
     request = create_request(client, token, pid, title="Bundled", references=[
         {"system_id": systems["Jira"]["id"], "key": "P-1", "role": "origin"},
         {"system_id": local["id"], "key": "T-9", "url": "https://t.example/9"},
@@ -374,7 +374,7 @@ def test_references_channels_and_the_projects_own_lists_survive_a_project_round_
 def test_the_organisations_lists_and_inbox_references_survive_an_organisation_round_trip(client, admin_token):
     org, _, token = setup(client, admin_token, "Refs Org Bundle Co")
     h = auth_headers(token)
-    linear = client.post(org_base(org["id"]) + "/external-systems", json={"name": "Linear"}, headers=h).json()
+    linear = client.post(f"/api/v1/orgs/{org['id']}/external-systems", json={"name": "Linear"}, headers=h).json()
     client.post(org_base(org["id"]) + "/request-channels", json={"name": "Town hall"}, headers=h)
     create_inbox_request(client, token, org["id"], title="Linked", references=[{"system_id": linear["id"], "key": "L-1"}])
     export = client.get(f"/api/v1/orgs/{org['id']}/export", headers=h).content
@@ -389,18 +389,14 @@ def test_the_organisations_lists_and_inbox_references_survive_an_organisation_ro
     assert imported.status_code == 201, imported.text
     new_org = imported.json()["organization"]["id"]
     with SessionLocal() as db:
-        from app.modules.product_feedback.models import (
-            EnhancementRequest,
-            EnhancementRequestExternalRef,
-            ExternalSystemDefinition,
-            RequestChannelDefinition,
-        )
+        from app.models.external_reference import ExternalReference, ExternalSystemDefinition
+        from app.modules.product_feedback.models import EnhancementRequest, RequestChannelDefinition
 
         names = {s.name for s in db.scalars(select(ExternalSystemDefinition).where(ExternalSystemDefinition.organization_id == new_org))}
         channels = {c.name for c in db.scalars(select(RequestChannelDefinition).where(RequestChannelDefinition.organization_id == new_org))}
         refs = list(db.scalars(
-            select(EnhancementRequestExternalRef).join(EnhancementRequest, EnhancementRequest.id == EnhancementRequestExternalRef.request_id)
-            .where(EnhancementRequest.organization_id == new_org)
+            select(ExternalReference).join(EnhancementRequest, EnhancementRequest.id == ExternalReference.artefact_id)
+            .where(ExternalReference.artefact_type == "enhancement_request", EnhancementRequest.organization_id == new_org)
         ))
         assert set(SYSTEMS) | {"Linear"} == names and "Town hall" in channels and len(channels) == len(CHANNELS) + 1
         assert [r.key for r in refs] == ["L-1"]
@@ -453,7 +449,7 @@ def test_a_project_member_reads_the_lists_but_only_a_triager_changes_them(client
     org, project, token = setup(client, admin_token, "Refs List Gate Co")
     pid = project["id"]
     _, member = add_member(client, token, org["id"], pid, "refs.listmember@example.com")
-    base = project_base(pid) + "/external-systems"
+    base = f"/api/v1/projects/{pid}/external-systems"
     assert client.get(base, headers=auth_headers(member)).status_code == 200
     assert client.post(base, json={"name": "Mine"}, headers=auth_headers(member)).status_code == 403
     jira = _systems(client, token, pid)["Jira"]["id"]
@@ -472,9 +468,9 @@ def test_a_project_member_reads_the_lists_but_only_a_triager_changes_them(client
 def test_a_bundle_name_longer_than_the_column_is_skipped_with_a_warning(client, admin_token):
     from app.database import SessionLocal
     from app.models.project import Project
-    from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS
-    from app.modules.product_feedback.vocabulary_bundle import NameResolver
     from app.services.bundle_common import BundleImportWarnings
+    from app.services.external_references import EXTERNAL_SYSTEMS
+    from app.services.vocabulary_bundle import NameResolver
 
     org, project, _ = setup(client, admin_token, "Refs Long Name Co")
     warnings = BundleImportWarnings()
@@ -512,7 +508,7 @@ def _parent_and_child(client, admin_token, name):
 def test_a_child_project_shows_its_ancestors_list_until_it_changes_its_own(client, admin_token):
     org, parent, child, token = _parent_and_child(client, admin_token, "Refs Nested Co")
     h = auth_headers(token)
-    parent_base = project_base(parent["id"]) + "/external-systems"
+    parent_base = f"/api/v1/projects/{parent['id']}/external-systems"
     grandchild = _child_project(client, token, org["id"], child["id"], "Grandchild")
     assert tuple(_systems(client, token, child["id"])) == SYSTEMS  # nothing configured anywhere: the organisation's list
 
@@ -533,7 +529,7 @@ def test_a_child_project_shows_its_ancestors_list_until_it_changes_its_own(clien
     assert refused.status_code == 400
 
     # The child's first change copies the inherited list into it; the parent is untouched.
-    own = client.post(project_base(child["id"]) + "/external-systems", json={"name": "Child only"}, headers=h)
+    own = client.post(f"/api/v1/projects/{child['id']}/external-systems", json={"name": "Child only"}, headers=h)
     assert own.status_code == 201, own.text
     child_names = _systems(client, token, child["id"])
     assert "Child only" in child_names and "Parent tracker" in child_names and "Jira" not in child_names
@@ -551,10 +547,10 @@ def test_a_child_renames_an_inherited_entry_without_touching_the_parents(client,
     h = auth_headers(token)
     parent_systems = _systems(client, token, parent["id"])
     client.put(
-        f"{project_base(parent['id'])}/external-systems/{parent_systems['GitHub']['id']}", json={"name": "Parent GitHub"}, headers=h,
+        f"/api/v1/projects/{parent['id']}/external-systems/{parent_systems['GitHub']['id']}", json={"name": "Parent GitHub"}, headers=h,
     )
     inherited = _systems(client, token, child["id"])["Parent GitHub"]["id"]  # the parent's override row
-    renamed = client.put(f"{project_base(child['id'])}/external-systems/{inherited}", json={"name": "Child GitHub"}, headers=h)
+    renamed = client.put(f"/api/v1/projects/{child['id']}/external-systems/{inherited}", json={"name": "Child GitHub"}, headers=h)
     assert renamed.status_code == 200, renamed.text
     assert "Child GitHub" in _systems(client, token, child["id"]) and "Parent GitHub" not in _systems(client, token, child["id"])
     assert "Parent GitHub" in _systems(client, token, parent["id"])
@@ -575,12 +571,15 @@ def test_a_project_can_switch_external_references_off_and_back_on_keeping_what_i
     project_modules = f"/api/v1/projects/{project['id']}/modules/product_feedback"
 
     _set_references(client, token, project_modules, False)
-    # The feature is gone: its routes and its system list answer 404, and a create cannot carry references.
+    # The feature is gone: its routes (and the shared record route) answer 404, and a create cannot carry references. The
+    # organisation's system list is shared with every record type, so it stays available.
+    generic = f"/api/v1/projects/{project['id']}/artefacts/enhancement_request/{request['id']}/external-references"
+    assert client.get(generic, headers=h).status_code == 404
     assert client.get(_refs_url(project["id"], request["id"]), headers=h).status_code == 404
     assert client.post(
         _refs_url(project["id"], request["id"]), json={"system_id": systems["Jira"]["id"], "key": "PROJ-2"}, headers=h,
     ).status_code == 404
-    assert client.get(project_base(project["id"]) + "/external-systems", headers=h).status_code == 404
+    assert client.get(f"/api/v1/projects/{project['id']}/external-systems", headers=h).status_code == 200
     refused = client.post(
         project_base(project["id"]) + "/requests",
         json={"title": "With a reference", "references": [{"system_id": systems["Jira"]["id"], "key": "PROJ-3"}]}, headers=h,
@@ -592,6 +591,7 @@ def test_a_project_can_switch_external_references_off_and_back_on_keeping_what_i
 
     _set_references(client, token, project_modules, True)
     assert [r["key"] for r in client.get(_refs_url(project["id"], request["id"]), headers=h).json()] == ["PROJ-1"]
+    assert [r["key"] for r in client.get(generic, headers=h).json()["references"]] == ["PROJ-1"]
 
 
 def test_the_organisation_switches_external_references_off_everywhere_or_only_by_default(client, admin_token):
@@ -604,8 +604,7 @@ def test_the_organisation_switches_external_references_off_everywhere_or_only_by
 
     # Off for the organisation: no project and not the inbox has the feature.
     _set_references(client, token, org_modules, False)
-    assert client.get(project_base(project["id"]) + "/external-systems", headers=h).status_code == 404
-    assert client.get(org_base(org["id"]) + "/external-systems", headers=h).status_code == 404
+    assert client.get(f"/api/v1/projects/{project['id']}/external-systems", headers=h).status_code == 200
     assert client.get(refs, headers=h).status_code == 404
 
     # On again, but off by default for new projects: an existing project keeps it, a new one does not, the inbox has it.
@@ -614,7 +613,5 @@ def test_the_organisation_switches_external_references_off_everywhere_or_only_by
     )
     assert switched.status_code == 200, switched.text
     later = create_project(client, token, org["id"], "Created after the default changed")
-    assert client.get(project_base(project["id"]) + "/external-systems", headers=h).status_code == 200
-    assert client.get(project_base(later["id"]) + "/external-systems", headers=h).status_code == 404
-    assert client.get(org_base(org["id"]) + "/external-systems", headers=h).status_code == 200
     assert client.get(refs, headers=h).status_code == 200
+    assert later["id"] != project["id"]

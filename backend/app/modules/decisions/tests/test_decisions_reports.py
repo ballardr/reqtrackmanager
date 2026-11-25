@@ -236,6 +236,18 @@ def test_d3_log_covers_the_period_and_only_decisions_that_were_made(client, admi
     assert _section(narrow, "log")["rows"] == []
 
 
+def test_d3_log_cells_read_markdown_as_plain_text(client, admin_token):
+    _, project, token = _setup(client, admin_token, "D3 Markdown Co")
+    _approved(
+        client, token, project["id"], "Marked up call", decision_date=(_today() - timedelta(days=5)).isoformat(),
+        context="We **doubled** traffic.\n\n```mermaid\nflowchart LR\nA-->B\n```",
+        rationale="- cheap\n- `fast`",
+    )
+    log = _section(_report(client, token, project["id"], "decision-log"), "log")
+    assert _col(log, "Context") == ["We doubled traffic. Diagram"]
+    assert _col(log, "Rationale") == ["cheap fast"]
+
+
 def test_d3_counts_decisions_without_a_rationale_as_a_gap(client, admin_token):
     _, project, token = _setup(client, admin_token, "D3 Gap Co")
     today = _today().isoformat()

@@ -46,8 +46,8 @@ test.describe("System Architecture: the connection type tree", () => {
     });
 
     await test.step("add a project type that sits under two groups", async () => {
-      await page.getByRole("button", { name: "New connection type with details" }).click();
-      const dialog = page.getByRole("dialog", { name: "New connection type" });
+      await page.getByRole("button", { name: "Add connection type", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Add connection type" });
       await dialog.getByLabel("Name", { exact: true }).fill("Board-to-board link");
       await dialog.getByRole("button", { name: "Sits under", exact: true }).click();
       const tree = page.getByRole("group", { name: "Sits under" });
@@ -67,7 +67,7 @@ test.describe("System Architecture: the connection type tree", () => {
       await selectOptionContaining(dialog.getByLabel("Target element"), sensor);
       await chooseType(page, dialog, "Serial bus", "serial");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
       await expect(page.locator("tr", { hasText: sensor }).getByText("Serial bus", { exact: true })).toBeVisible();
     });
 
@@ -88,7 +88,7 @@ test.describe("System Architecture: the connection type tree", () => {
       await selectOptionContaining(dialog.getByLabel("Target element"), flash);
       await chooseType(page, dialog, "SPI", "spi");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
     });
 
     await test.step("filtering on the group finds both, filtering on a member finds one", async () => {

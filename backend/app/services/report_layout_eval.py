@@ -1,69 +1,33 @@
 """
 Module: services.report_layout_eval
 
-Evaluates a validated layout tree for one caller and returns the neutral report model: a
-`ReportDocument` (document family) or a list of `Sheet`s (table family).
+Evaluates a validated layout tree for one caller into the neutral report model: a `ReportDocument` (document family)
+or a list of `Sheet`s (table family).
 
 Responsibilities:
-- Walk the tree, reading records through the traversal layer (`services.report_traversal`) and the
-  field registry (`services.report_fields`), and emit `Heading`/`Paragraph`/`Table`/... blocks.
-- Substitute `{{alias.field}}` and the global `{{project_name}}`-style placeholders into the parsed
-  text of headings, text blocks, table cells and empty-state lines.
-- Apply `where`, `sort` and `group` in memory over typed values, and `if` on a condition. A condition is a test
-  of one field (`eq`, `ne`, `contains`, `in`, `not_in`, comparisons, `empty`) or an `all` / `any` / `not` of
-  conditions.
-- Bound the work: iteration, output-row and wall-clock caps raise `LayoutLimitError`; a traversal
-  that hit its record cap adds a warning and a visible note instead of failing.
-- Count what the caller could not see (never name it) and report it as a note.
-- Apply run-time variables: check the supplied values against the layout's declarations, substitute them into a copy
-  of the tree (`services.report_variables`) so everything below sees literals, fill `{{var.name}}` text, and warn when
-  a value is no longer one of its source field's options.
-- Run `widget` blocks: one component (a table, the figures, the notes) of a module report, for the project
-  being evaluated, inserted as blocks (`services.report_widget_run`); the widgets that ran and a digest of
-  what each report produced go into the run's provenance.
+- Walk the tree, reading records through `report_traversal` and `report_fields`; substitute `{{alias.field}}` and global
+  placeholders into parsed text; apply `where`, `sort`, `group` and `if` conditions in memory over typed values.
+- Bound the work (`LayoutLimitError` on iteration, row and time caps; a traversal that hit its record cap adds a
+  warning); count what the caller could not see without naming it.
+- Apply run-time variables (`report_variables`) and run `widget` blocks (`report_widget_run`), recording them in provenance.
 
 Design decisions:
-- **Authorisation is the traversal layer's, nothing here.** Every record this module reads came out of
-  `root_records`/`linked_records`, which pass each through the caller's `ArtefactResolver`; the
-  evaluator adds no visibility rule, so a layout never shows a record the caller's link graph would
-  not. A record that fails is counted per parent and not traversed through.
-- **A value never becomes markup.** Markdown is parsed first, from the author's text alone; record
-  values are substituted into the parsed blocks afterwards, in a single pass that does not rescan
-  the substituted text, so a title containing `# heading` or `{{record.title}}` stays literal text.
-- The tree is revalidated before every run (`assert_valid`): a stored tree can predate a registry
-  change (a module field removed), and the field references the analysis returns decide which
-  columns are loaded.
-- Linked records are fetched in batches. The first time a nested block needs the records linked to
-  one parent it fetches for every record of that type read so far (`_Run.pool`), so the number of
-  link queries follows the number of nested blocks, not the number of records.
-- Group order is by the group field's typed value (so dates and numbers sort as such), the empty
-  group last as `(none)`; a record with no value for a sort key sorts last in both directions. Grouping by tags
-  puts a record in one group per tag (groups by tag name, alphabetical).
-- **Math is switched on where it is written or declared.** `\\( \\)` and `$$ $$` are recognised in the author's own
-  text and in the value of a record field its provider marks math-capable (`ReportField.math`); a delimiter inside
-  any other substituted value stays literal text, so a record's title cannot turn into an equation. Headings,
-  paragraphs, list items and the cells of a document table are scanned (a `$$ $$` where there is no room for a block
-  is drawn inline, in a `MathText`); sheets of the table family show the TeX as written. TeX that
-  fails the allow-list or cannot be drawn is shown as its source with one warning (never the TeX itself), and a run
-  draws at most `MAX_EQUATIONS` equations, so a layout over thousands of records cannot make typesetting unbounded.
-- **Styles belong to the author's words.** Bold, italic and code runs come from the Markdown reader (`MathText` with
-  `Styled` parts). A run's placeholders are filled and its equations found run by run, and a substituted value takes
-  the run's style (a record title inside `**{{req.title}}**` prints bold) but is never read for styles itself.
-  An equation inside a styled run is drawn unstyled.
-- Past instants stay UTC and dates are plain dates (`format_value`); no server-local time or
-  timezone conversion happens here.
+- Authorisation is the traversal layer's: every record came through the caller's `ArtefactResolver`, so a layout never
+  shows a record the caller's link graph would not.
+- A value never becomes markup: Markdown is parsed from the author's text first and record values are substituted into
+  the parsed blocks in one pass that does not rescan, so a title containing `# heading` stays literal.
+- The tree is revalidated before every run (`assert_valid`), since a registry change can outdate a stored tree.
+- Linked records are fetched in batches (`_Run.pool`), so link queries follow nested blocks, not record counts.
+- Groups sort by typed value, the empty group last as `(none)`; a missing sort key sorts last; tag grouping gives one
+  group per tag. Past instants stay UTC and dates stay plain dates.
+- Math (`\\( \\)`, `$$ $$`) is recognised only in the author's text and fields marked `ReportField.math`; TeX that fails
+  is shown as source with one warning, and a run draws at most `MAX_EQUATIONS`.
+- Styles belong to the author's words: a substituted value takes its run's style but is never read for styles.
+- A widget runs once per distinct parameter set, only where its module is enabled for the project; elsewhere, or when the
+  report refuses its parameters (4xx), a note is shown instead of a failure.
 
-- **A widget is one component of the report's own run, gated as the report is.** A report is collected once
-  per distinct parameter set however many of its components a layout embeds. It runs only where the report's module (and
-  sub-component) is enabled for the project; elsewhere the layout says so in a note and carries on, because
-  an organisation layout runs in many projects and a missing module is a fact about one of them. A report
-  that refuses its parameters (4xx) is shown as a note too, never as a failed layout; any other error is a
-  bug and propagates.
-
-Dependencies: `services.report_layout_tree` (validation), `services.report_variables` (run-time variables), `services.report_fields`,
-`services.report_traversal`, `services.report_framework.ReportContext` (record codes),
-`services.link_type_scope` (link type names), `services.report_model` (output blocks),
-`services.report_widgets` and `services.report_widget_run` (widgets), `services.report_math` (equations).
+Dependencies: `report_layout_tree`, `report_variables`, `report_fields`, `report_traversal`, `report_framework`,
+`link_type_scope`, `report_model`, `report_widgets`, `report_widget_run`, `report_math`.
 """
 
 from __future__ import annotations
@@ -88,11 +52,14 @@ from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import is_module_enabled_for_project
 from app.services import report_font_catalogue
 from app.services.branding import explicit_logo_band_hex, get_server_settings
+from app.services.external_reference_surfaces import CELL_SEPARATOR, REFERENCES_COLUMN_KEY
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.markdown_text import plain_text
 from app.services.placements import PLACEMENT_TEXT_SEPARATOR, PLACEMENTS_FIELD_KEY
 from app.services.report_colours import effective_scheme, is_name, resolve_colour
 from app.services.report_column_width import sheet_widths_cm
+from app.services.report_diagram import DiagramBudget
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
 from app.services.report_fonts import FontFamily
 from app.services.report_framework import ReportContext, ReportResult
@@ -106,6 +73,7 @@ from app.services.report_layout_tree import (
     assert_valid,
     group_member,
 )
+from app.services.report_markdown import PictureResolver, record_markdown_blocks
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
     MAX_CONTENTS_LEVELS,
@@ -136,6 +104,7 @@ from app.services.report_model import (
     PageStyle,
     PageStyleChange,
     Paragraph,
+    Quote,
     ReportDocument,
     RunningBand,
     Sheet,
@@ -149,6 +118,8 @@ from app.services.report_model import (
     link_problem,
     linked,
     markdown_to_blocks,
+    restore_set_aside,
+    set_aside,
     text_on,
     text_runs,
     typed_cell,
@@ -480,6 +451,8 @@ class _Run:
         self.warnings: list[str] = []
         self.stats = EvalStats()
         self._equations = 0
+        #: The diagrams of the run (author text and Markdown fields): drawn within one budget, then cached.
+        self.diagrams = DiagramBudget()
         #: The owner of the layout being run, and the picture cache, byte total and caption counter of its image blocks.
         self.layout_project_id: uuid.UUID | None = None
         self._images: dict[str, ResolvedImage | None] = {}
@@ -699,10 +672,32 @@ class _Run:
         self.stats.record_images += 1
         return image
 
+    def record_pictures(self, record: ReportRecord) -> PictureResolver:
+        """Supplies the pictures a record's Markdown text holds (`![alt](attachment:<file id>)`).
+
+        A picture is the record's own non-confidential attachment, found through its attachment table
+        (`record_files_of`), so a file of another record, or one marked confidential, is never resolved and the text
+        prints its alternative text instead.
+
+        Args:
+            record: A record the traversal showed the caller.
+
+        Returns:
+            A function from a file id to the picture (`None` when it cannot be printed).
+        """
+        def resolve(file_id: uuid.UUID) -> Image | None:
+            # Read only when a text really holds a picture, so a report over many records costs nothing extra for the
+            # ones that hold none.
+            asset = next((candidate for candidate in self.record_files_of(record) if candidate.id == file_id), None)
+            image = self.record_picture(asset) if asset is not None else None
+            return None if image is None else Image(data=image.data, svg=image.svg)
+
+        return resolve
+
     def block_look(self, node: dict[str, Any]) -> tuple[FontFamily | None, float | None]:
         """The font family and size a text or heading block sets for itself (`None` for each it leaves to the document).
 
-        A family this server no longer has prints in the standard one of its kind, with a run note.
+        A family this server does not have prints in the standard one of its kind, with a run note.
         """
         key = node.get("font")
         family = None
@@ -837,8 +832,9 @@ class _Run:
     def group_labels(self, record: ReportRecord, key: str) -> list[str]:
         """The group labels a record falls under when grouped by `key`.
 
-        A single-valued field gives one label (`(none)` when empty). Tags and placements give one label per tag or place, so a record with two
-        of either is in both groups (group counts then add up to more than the records); an untagged record is in `(none)`.
+        A single-valued field gives one label (`(none)` when empty). Tags, placements and external references give one label
+        per tag, place or reference, so a record with two of either is in both groups (group counts then add up to more
+        than the records); an untagged record is in `(none)`.
         A tag name cannot contain a comma, so the joined text splits back into the names.
         """
         text = self.text_of(record, key)
@@ -848,6 +844,9 @@ class _Run:
         if key == PLACEMENTS_FIELD_KEY:
             places = list(dict.fromkeys(n for n in text.split(PLACEMENT_TEXT_SEPARATOR) if n))
             return places or [EMPTY_GROUP_LABEL]
+        if key == REFERENCES_COLUMN_KEY:
+            found = list(dict.fromkeys(n for n in text.split(CELL_SEPARATOR) if n))
+            return found or [EMPTY_GROUP_LABEL]
         return [text or EMPTY_GROUP_LABEL]
 
     def resolve_sheet_links(self, offset: int) -> None:
@@ -911,7 +910,7 @@ class _Run:
             return (bound.label if group_member(member) == "value" else str(len(bound.members))), False
         assert bound.record is not None
         math = member not in RESERVED_FIELD_KEYS and self.catalogue(bound.record.artefact_type)[member].math
-        return self.text_of(bound.record, member), math
+        return self.document_text(bound.record, member), math
 
     def fill(self, text: str, scope: Scope) -> str:
         """Substitutes `{{...}}` placeholders in already-parsed text, in one pass over `text` only."""
@@ -955,43 +954,65 @@ class _Run:
         ]
         return MathText(parts) if any(isinstance(p, Equation) for p in parts) else "".join(str(p) for p in parts)
 
-    def checked_link(self, run: Styled, scope: Scope) -> Styled | str:
+    def checked_link(self, run: Styled, scope: Scope | None) -> Styled | str:
         """`run` with its link address filled in and checked: the run itself, or without the link (with one warning) when
         the address, once filled in, is not allowed. A record value can reach an address, so the check is made here,
         on the final text, never on the template."""
         if run.href is None:
             return run
-        href = "".join(piece for piece, _ in self.fill_pieces(run.href, scope))
+        href = run.href if scope is None else "".join(piece for piece, _ in self.fill_pieces(run.href, scope))
         if link_problem(href) is None:
             return replace(run, href=href)
         self.warn("A link address was not allowed once filled in, so its text is shown without the link.")
         plain = replace(run, href=None)
         return plain if (plain.bold or plain.italic or plain.code) else plain.text
 
-    def rich(self, text: str, scope: Scope) -> str:
+    def pieces_of(self, text: str, scope: Scope | None, math: bool) -> list[tuple[str, bool]]:
+        """The pieces of `text` for `fill_pieces`' callers: its placeholders filled (`scope` given), or, for a record's own
+        Markdown value (`scope` is `None`), the text exactly as it is, whose equations count when `math` says the field has them."""
+        return self.fill_pieces(text, scope) if scope is not None else [(text, math)]
+
+    def rich(self, text: str, scope: Scope | None, *, math: bool = True) -> str:
         """`text` with placeholders filled and its equations found, for a heading or a list item.
+
+        With no `scope` the text is a record's Markdown value: nothing is filled, and equations are found only when `math`.
 
         Styled runs (bold, italic, code) from the Markdown reader keep their style: each run is filled and scanned on
         its own and the strings it yields take the run's style.
         """
         if not isinstance(text, MathText):
-            return self.inline_text(self.fill_pieces(text, scope))
+            return self.inline_text(self.pieces_of(text, scope, math))
         parts: list[str | Equation | Styled] = []
         for run in text_runs(text):
             run = self.checked_link(run, scope) if isinstance(run, Styled) else run  # noqa: PLW2901
             plain = run.text if isinstance(run, Styled) else run
-            for part in text_runs(self.inline_text(self.fill_pieces(str(plain), scope))):
+            for part in text_runs(self.inline_text(self.pieces_of(str(plain), scope, math))):
                 parts.extend(_restyled(part, run))
         return MathText(parts)
 
+    def document_text(self, record: ReportRecord, key: str) -> str:
+        """A field's text for a sentence or a cell of a document: the words of a Markdown field (no marks, one line), else the
+        value as `text_of` gives it. A spreadsheet keeps the Markdown source, and a math-capable field keeps its delimiters."""
+        value = self.text_of(record, key)
+        if key in RESERVED_FIELD_KEYS or not value:
+            return value
+        info = self.catalogue(record.artefact_type)[key]
+        if not info.markdown:
+            return value
+        if not info.math:
+            return plain_text(value)
+        # Equations are set aside while the words are read (the reader would take `\\(` for an escaped bracket) and put back.
+        source, written = set_aside(value, escapes=False)
+        return restore_set_aside(plain_text(source), written)
+
     def cell_of(self, record: ReportRecord, key: str) -> str:
         """A field as a document table cell: its text, with equations drawn when the field is math-capable."""
-        value = self.text_of(record, key)
+        value = self.document_text(record, key)
         if key in RESERVED_FIELD_KEYS or not self.catalogue(record.artefact_type)[key].math:
             return value
         return self.inline_text([(value, True)])
 
-    def paragraph_blocks(self, text: str, scope: Scope) -> list[Block]:
+    def paragraph_blocks(self, text: str, scope: Scope | None, *, math: bool = True) -> list[Block]:
         """A text block's paragraph with its placeholders filled and its equations found (see the module docstring).
 
         Inline equations stay in the paragraph's `MathText`; a display equation ends the paragraph and is a block.
@@ -1014,7 +1035,7 @@ class _Run:
         for run in runs:
             run = self.checked_link(run, scope) if isinstance(run, Styled) else run  # noqa: PLW2901
             plain = run.text if isinstance(run, Styled) else run
-            pieces = self.fill_pieces(str(plain), scope)
+            pieces = self.pieces_of(str(plain), scope, math)
             found = self._segments(pieces)
             if found is None:
                 if not isinstance(text, MathText):
@@ -1034,19 +1055,69 @@ class _Run:
         return blocks
 
     def text_blocks(self, source: str, scope: Scope) -> list[Block]:
-        """Markdown `source` as blocks with placeholders filled (parsed once, filled each time)."""
+        """Markdown `source` as blocks with placeholders filled (parsed once, filled each time).
+
+        A paragraph that is only the placeholder of a Markdown field of a record (`{{decision.rationale}}`) is replaced by
+        the field's own Markdown, read as the screen reads it (`markdown_field_blocks`); any other placeholder is filled with
+        the value as plain text.
+        """
         if source not in self._markdown:
-            self._markdown[source] = markdown_to_blocks(source)
+            self._markdown[source] = markdown_to_blocks(source, diagrams=self.diagrams, warn=self.warn)
         out: list[Block] = []
         for block in self._markdown[source]:
             if isinstance(block, Heading):
                 out.append(Heading(self.rich(block.text, scope), block.level))
             elif isinstance(block, Paragraph):
-                out.extend(self.paragraph_blocks(block.text, scope))
-            elif isinstance(block, BulletList):
-                out.append(BulletList([self.rich(item, scope) for item in block.items]))
-            elif isinstance(block, NumberedList):
-                out.append(NumberedList([self.rich(item, scope) for item in block.items]))
+                field_blocks = self.markdown_field_blocks(block.text, scope)
+                out.extend(field_blocks if field_blocks is not None else self.paragraph_blocks(block.text, scope))
+            elif isinstance(block, BulletList | NumberedList):
+                out.append(replace(block, items=[self.rich(item, scope) for item in block.items]))
+            elif isinstance(block, Quote):
+                out.append(Quote(self.rich(block.text, scope)))
+            elif isinstance(block, Grid):
+                out.append(replace(block, rows=[
+                    replace(row, cells=[replace(cell, paragraphs=tuple(self.rich(text, scope) for text in cell.paragraphs)) for cell in row.cells])
+                    for row in block.rows
+                ]))
+            else:
+                out.append(block)
+        return out
+
+    def markdown_field_blocks(self, text: str, scope: Scope) -> list[Block] | None:
+        """The blocks of a record's Markdown field when `text` is that field's placeholder and nothing else, else `None`.
+
+        The value is read as the screen reads it, never as the layout's own text, so nothing in it can add a placeholder
+        or change what the layout prints around it; equations are drawn only where the field is math-capable, and a heading
+        in it sits below the layout's own.
+        """
+        if isinstance(text, MathText):
+            return None
+        match = PLACEHOLDER_RE.fullmatch(text.strip())
+        if match is None or match.group(2) is None:
+            return None
+        bound = scope.get(match.group(1))
+        member = match.group(2)
+        if bound is None or bound.kind == "group" or bound.record is None or member in RESERVED_FIELD_KEYS:
+            return None
+        info = self.catalogue(bound.record.artefact_type)[member]
+        if not info.markdown:
+            return None
+        value = self.text_of(bound.record, member)
+        blocks = record_markdown_blocks(
+            value, math=info.math, diagrams=self.diagrams, warn=self.warn, pictures=self.record_pictures(bound.record),
+        )
+        if not info.math:
+            return blocks
+        out: list[Block] = []
+        for block in blocks:
+            if isinstance(block, Paragraph):
+                out.extend(self.paragraph_blocks(block.text, None, math=True))
+            elif isinstance(block, Heading):
+                out.append(Heading(self.rich(block.text, None, math=True), block.level))
+            elif isinstance(block, BulletList | NumberedList):
+                out.append(replace(block, items=[self.rich(item, None, math=True) for item in block.items]))
+            elif isinstance(block, Quote):
+                out.append(Quote(self.rich(block.text, None, math=True)))
             else:
                 out.append(block)
         return out
@@ -1551,7 +1622,7 @@ def _eval_group(run: _Run, node: dict[str, Any], scope: Scope) -> None:
             groups.setdefault(label, []).append(record)
 
     def order(label: str) -> tuple[bool, Any]:
-        typed = None if key in ("tags", PLACEMENTS_FIELD_KEY) else run.sort_key(groups[label][0], key)
+        typed = None if key in ("tags", PLACEMENTS_FIELD_KEY, REFERENCES_COLUMN_KEY) else run.sort_key(groups[label][0], key)
         return label == EMPTY_GROUP_LABEL, (label.casefold() if typed is None else typed)
 
     for label in sorted(groups, key=order):

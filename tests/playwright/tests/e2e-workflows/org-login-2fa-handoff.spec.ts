@@ -8,32 +8,16 @@ installCleanupHook();
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * OrgLoginPage's own code comment claims a 2FA challenge on an org-branded
- * login page "falls through to the plain /login flow rather than
- * duplicating the code-entry form" — but until this pass the submit handler
- * only ever branched on the non-2FA case, so a 2FA-enrolled user submitting
- * correct credentials on a branded page hit a silent dead end: the button
- * stopped spinning and nothing else happened, no redirect, no error.
+ * A 2FA challenge on an org-branded login page falls through to the plain /login flow rather than duplicating the
+ * code-entry form. The submit handler navigates to /login with the issued challenge token in router state, so
+ * LoginPage opens on the code-entry step instead of asking for email and password again. This proves the handoff
+ * end to end.
  *
- * Fixed by actually navigating to /login with the already-issued challenge
- * token in router state, so LoginPage opens straight on the code-entry step
- * instead of asking for email/password again. This proves the handoff
- * works end to end, not just that the code compiles.
- *
- * Uses a brand-new, disposable organisation + admin + a standalone,
- * zero-org-membership user — created via the API, then immediately left
- * via `DELETE .../membership`, mirroring exactly how
- * backend/scripts/seed_e2e_dataset.py itself constructs PERSONAS.orphan —
- * rather than mutating the shared Alpha org's sso-config/slug in place and
- * reusing the shared orphan persona. Both were previously safe only
- * because this suite ran single-worker/serial; under real concurrency
- * either could collide
- * with another spec touching Alpha's SSO config or orphan's 2FA/session
- * state (e.g. two-factor-auth.spec.ts). Org-branded login only affects
- * which login method is offered, not which account is reached (see
- * OrgLoginPage.tsx's own docstring), so a disposable org's branded page is
- * exactly as representative of the real scenario as Alpha's would be: any
- * global user can use any org's branded login page.
+ * Uses a disposable organisation and admin plus a standalone zero-membership user (created through the API, then
+ * left via `DELETE .../membership`, as backend/scripts/seed_e2e_dataset.py constructs PERSONAS.orphan). Mutating
+ * Alpha's sso-config/slug or reusing the shared orphan persona could collide with other specs under concurrency
+ * (e.g. two-factor-auth.spec.ts). Org-branded login only affects which login method is offered, not which account
+ * is reached (see OrgLoginPage.tsx), so a disposable organisation's branded page is as representative as Alpha's.
  */
 test.describe("org-branded login: 2FA handoff to /login", () => {
   test("a 2FA-enrolled user submitting on the branded page lands on the code-entry step, not a dead end", async ({ page }) => {
@@ -121,10 +105,8 @@ test.describe("org-branded login: 2FA handoff to /login", () => {
       await page.getByLabel("Password").fill(PASSWORD);
       await page.getByRole("button", { name: "Sign in" }).click();
 
-      // The dead end this test guards against: before the fix, nothing here
-      // ever became true — the button just stopped submitting and the
-      // branded email/password form stayed on screen with no indication
-      // anything was wrong.
+      // Without the handoff nothing here becomes true: the button stops submitting and the branded email/password form
+      // stays on screen with no error.
       await page.waitForURL(/\/login$/);
       await expect(page.getByText("Two-factor verification")).toBeVisible();
 

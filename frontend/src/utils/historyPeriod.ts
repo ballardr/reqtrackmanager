@@ -1,20 +1,17 @@
 /**
  * Module: utils/historyPeriod
  *
- * The time range of the project History page, from a preset or a custom pair of date-times, as the UTC instants
- * the API takes. A person's range is their own wall-clock time: a `datetime-local` value or the start of their
- * local day, converted to an instant here in the browser, never on the server (docs/decisions.md, "Time and
- * Dates": a past instant is stored and sent in UTC, and only browsers convert to and from local time).
- *
- * Responsibilities:
- * - `periodRange`: the `since` and `until` instants of a preset or custom range.
- * - `localInputToInstant`: one `datetime-local` value as an instant, optionally the last millisecond of its minute.
- *
- * Design decisions:
- * - The upper bound of a custom range is the **end** of the chosen minute: the input has minute precision, so
- *   a bound written as 17:00 would otherwise hide an event at 17:00:30 that the person plainly meant to include.
- * - A preset counts local calendar days: "Last 7 days" starts at 00:00 six days ago, so a daylight-saving change
- *   inside the range moves no event in or out by an hour.
+ * The time range of the project History page, from a preset or a custom pair of
+ * date-times, as the UTC instants the API takes. A person's range is their own
+ * wall-clock time, converted to an instant here in the browser, never on the
+ * server (docs/decisions.md, "Time and Dates").
+ * Responsibilities: `periodRange` (the `since`/`until` instants) and
+ * `localInputToInstant` (one `datetime-local` value, optionally the last
+ * millisecond of its minute).
+ * Design: a custom range's upper bound is the **end** of the chosen minute (the
+ * input has minute precision, so 17:00 would hide an event at 17:00:30). A preset
+ * counts local calendar days ("Last 7 days" starts at 00:00 six days ago), so a
+ * daylight-saving change moves no event in or out by an hour.
  */
 
 export type PeriodKey = "today" | "week" | "month" | "custom";

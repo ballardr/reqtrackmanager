@@ -56,10 +56,8 @@ from app.services.tags import TagFilter
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/actions", tags=["actions"])
 
-# Mirrors `routers.requirements.CAN_EDIT_ROLES` exactly — no cross-router
-# import precedent exists in this codebase (see `services.actions`' module
-# docstring for why the IDOR-guard helper lives in a service module
-# instead), so this small role tuple is duplicated rather than imported.
+# Mirrors `routers.requirements.CAN_EDIT_ROLES`; routers do not import each other, so this small role
+# tuple is duplicated (the IDOR-guard helper lives in `services.actions` for the same reason).
 CAN_EDIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
 
 
@@ -126,13 +124,11 @@ def list_linked_requirements(
     project_id: UUID, action_id: UUID,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Lists the active requirements this action is linked to, by code —
-    the reverse of `GET /requirements/{id}/actions`. Replaces the action
-    detail page fetching every requirement's action list to find them
-    (one request per requirement in the project; 2026-10-04).
+    """Lists the active requirements this action is linked to, by code: the reverse of
+    `GET /requirements/{id}/actions`, so the action detail page needs no per-requirement request.
 
-    Only requirements in this same project are returned, whatever the link
-    rows say (defense in depth against a cross-tenant link).
+    Only requirements in this same project are returned, whatever the link rows say (defence in depth
+    against a cross-tenant link).
 
     Raises:
         HTTPException: 404 if the action isn't in this project.

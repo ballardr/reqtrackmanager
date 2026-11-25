@@ -25,11 +25,8 @@ from sqlalchemy.orm import Session
 from app.models.action_type import ActionTypeDefinition
 from app.models.project import Project
 
-# Defensive circuit-breaker for the iterative walks below — several
-# thousand nodes is far beyond any realistic project tree, so this should
-# never actually trip; it exists purely to bound worst-case query cost
-# against a pathological tree rather than to limit modelled depth, which is
-# unlimited by design.
+# Circuit-breaker for the iterative walks below: bounds query cost on a pathological tree.
+# It is far above any realistic tree and does not limit modelled depth.
 _PROJECT_TREE_ITERATION_CAP = 5000
 
 

@@ -1,14 +1,11 @@
 /**
  * Module: components/ForceCredentialResetModal
  *
- * Server Management → Users → "Force a credential reset…": a server administrator ends the sessions of a
- * group of accounts, revokes their access tokens and requires a new password, after an incident or a restore
- * of data that may be exposed (`POST /system/credentials/force-reset`).
- *
- * Responsibilities: choose the scope (everyone, one organisation, the server administrators), whether to
- * clear two-factor enrolment and whether to email each person a new link; then a Tier 2 confirmation (type
- * the word) because the effect is immediate and wide, and a toast with the counts. The same operation
- * exists on the command line for when no administrator can sign in.
+ * Server Management, Users, "Force a credential reset": a server administrator ends the sessions of a group of
+ * accounts, revokes their access tokens and requires a new password (`POST /system/credentials/force-reset`),
+ * after an incident or a restore of possibly exposed data. It chooses the scope (everyone, one organisation, the
+ * server administrators), whether to clear two-factor enrolment and whether to email a new link, then a Tier 2
+ * confirmation (type the word) because the effect is immediate and wide, and a toast with the counts.
  */
 import { useEffect, useState } from "react";
 

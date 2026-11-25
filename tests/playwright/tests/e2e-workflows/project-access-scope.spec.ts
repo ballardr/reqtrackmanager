@@ -3,17 +3,13 @@ import { expect, test } from "@playwright/test";
 import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: project access is granted per-project, not implied by org
- * membership — a plain org member sees only the specific projects they've
- * been given a role on, whether that's one project in one org or several
- * projects spanning multiple orgs, and holding no org-admin/project-creator
- * role means no ability to create new projects, full stop.
+ * Job to be done: project access is granted per project, not implied by organisation membership: a plain member
+ * sees only the projects they hold a role on (one project in one organisation, or several across organisations),
+ * and holding no org-admin/project-creator role means no ability to create projects.
  *
  * Personas:
- *  - StakeholderAlphaOnly: stakeholder on Alpha-1 only (member of Alpha org,
- *    but that alone doesn't grant Alpha-2 access).
- *  - MemberAlphaBeta: member on Alpha-1 *and* Beta-1 (two different orgs),
- *    with no org_admin/project_creator role anywhere.
+ *  - StakeholderAlphaOnly: stakeholder on Alpha-1 only (member of Alpha, which alone does not grant Alpha-2).
+ *  - MemberAlphaBeta: member on Alpha-1 and Beta-1 (two organisations), with no org_admin/project_creator role.
  */
 test.describe("project access is scoped per-project, not per-org", () => {
   test("single-org, single-project user sees exactly one project", async ({ page }) => {

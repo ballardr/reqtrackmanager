@@ -1,25 +1,12 @@
 """
 Module: modules.decisions.edits
 
-The list query and the create / edit paths of a Decision, shared by the HTTP endpoints (`project_router.core`)
-and the record-table export and import (`record_tables`) so a filter or rule added here reaches both.
-
-Responsibilities:
-- Select a project's Decisions the way the list endpoint does (its filters, the search box, archived only when asked, oldest first).
-- Create a Decision (`DRAFT`, owner defaulting to the creator) with its type and principal validation, and record
-  the `created` audit event.
-- Edit one in place with the checks the edit endpoint makes (the content lock once approved or superseded, the
-  type and principal checks), and record the `updated` audit event.
-
-Design decisions:
-- Nothing here commits and nothing here checks who may do it: the caller owns the transaction and the role gate
-  (`_require_edit_role` for the endpoint, `can_update` for the import).
-- A refusal is an `HTTPException` (409 for a locked Decision, 400 for an unusable type or person), the shape the
-  endpoints already answered with and the import turns into that row's error.
-- An edit takes the fields to change and keeps every other as it is, because the edit endpoint's body is a full
-  replace but a file names only the cells it changes.
-
-Dependencies: `modules.decisions.service` (effective types, unique codes), `services.principals`, `services.audit`.
+The list query and the create/edit paths of a Decision, shared by the HTTP
+endpoints and the record-table export and import so a rule added here reaches both.
+- Nothing commits or checks the role: the caller owns both.
+- Text fields except the title are Markdown (`MARKDOWN_LIMITS`).
+- A refusal is an `HTTPException` (409 locked, 400 unusable type or person).
+- An edit changes only the fields supplied.
 """
 
 from __future__ import annotations
@@ -37,9 +24,10 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.models import Decision
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, resolve_effective_decision_types
+from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX, resolve_effective_decision_types
 from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
+from app.services.markdown_text import MarkdownLimitError, validate_markdown
 from app.services.principals import principal_filter_clause, validate_principal
 from app.services.rbac import user_satisfies_module_role
 from app.services.sequences import generate_unique_code
@@ -50,8 +38,36 @@ LOCKED_STATUSES = frozenset({DecisionStatus.APPROVED, DecisionStatus.SUPERSEDED}
 #: The free-text content fields of a Decision (everything an edit may change except type, date and people).
 TEXT_FIELDS = (
     "title", "decision_statement", "context", "options_considered", "chosen_option", "rationale", "consequences",
-    "assumptions", "constraints",
+    "assumptions", "constraints", "document",
 )
+
+#: The size limit, in characters, of each field written in Markdown (every text field but the title). The document is
+#: the long-form field, so it has the larger limit.
+MARKDOWN_LIMITS: dict[str, int] = {
+    **{field: 50_000 for field in TEXT_FIELDS if field not in ("title", "document")}, "document": 200_000,
+}
+
+
+def check_markdown_limits(values: Mapping[str, Any]) -> None:
+    """Refuses Markdown text over its limits (size, nesting, diagram count and size) with a 422 naming the field.
+    Every write path (the endpoints, an import and the record table) goes through the stage functions below, so one
+    check covers them all.
+
+    Args:
+        values: Field names mapped to the submitted text (a key that is not a Markdown field, or a blank value, is
+            skipped).
+
+    Raises:
+        HTTPException: 422 when a field breaks a limit.
+    """
+    for field, limit in MARKDOWN_LIMITS.items():
+        text = values.get(field)
+        if not text:
+            continue
+        try:
+            validate_markdown(text, max_chars=limit, field=field.replace("_", " ").capitalize())
+        except MarkdownLimitError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 def user_is_decision_owner(db: Session, user: User, project: Project) -> bool:
@@ -151,10 +167,11 @@ def stage_decision(
         HTTPException: 400 for a type or person the project cannot use.
     """
     validate_effective_decision_type(db, project.id, decision_type_id)
+    check_markdown_limits({"decision_statement": decision_statement, **text})
     owner = owner or PrincipalRef(type=PrincipalType.USER, id=creator.id)
     validate_people(db, project, owner, decision_maker)
     decision = Decision(
-        project_id=project.id, unique_code=generate_unique_code(db, project, DECISION_ARTEFACT_TYPE, "DEC"),
+        project_id=project.id, unique_code=generate_unique_code(db, project, DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX),
         title=title, decision_statement=decision_statement, decision_type_id=decision_type_id,
         status=DecisionStatus.DRAFT, decision_date=decision_date, owner_type=owner.type.value, owner_id=owner.id,
         creator_id=creator.id, **_maker_columns(decision_maker), **{k: v for k, v in text.items() if k in TEXT_FIELDS},
@@ -183,6 +200,7 @@ def stage_decision_update(
         )
     if "decision_type_id" in changes:
         validate_effective_decision_type(db, project.id, changes["decision_type_id"])
+    check_markdown_limits(changes)
     owner = changes.get("owner")
     if "owner" in changes and owner is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A Decision needs an owner.")

@@ -1,25 +1,18 @@
 """
 Module: services.report_styles
 
-The fonts and heading colour a document layout sets once, for the whole document: the `styles` and `embed_fonts` keys of
-its tree.
+The fonts and heading colour a document layout sets once for the whole document: the `styles` and `embed_fonts` keys.
 
 Responsibilities:
-- `document_styles_problems`: the tree rules for `styles` (a closed shape, a font key's form, a size of 6 to 72 in half points, a
-  heading colour word) as `(path, message)` pairs.
-- `resolve_styles`: turns the stored words into a `DocumentStyles` the renderers read: font keys into families (the
-  administrator's name and generic applied; a family the server no longer has falls back to the bundled one of the same
-  kind, with a note), the heading colour into `#rrggbb`.
-- `font_keys`: every font key a tree names (for the save warning and the run notes).
-- `used_extra_families`: the administrator-provided families a built document draws and the faces of each, for the
-  Word and OpenDocument embedding step.
+- `document_styles_problems` (closed shape, font key form, size 6 to 72 in half points, heading colour word);
+  `resolve_styles` (font keys into families with the administrator's name and generic applied, a family the server
+  lacks falling back to the bundled one of that kind with a note; heading colour to `#rrggbb`); `font_keys`;
+  `used_extra_families` (for the Word and OpenDocument embedding step).
 
 Design decisions:
-- A key that is well formed but not on this server is **not** a validation error: a layout moved between servers keeps
-  its key and prints in the fallback with a note (the save route and every run report it), as the font admin page says.
-- Nothing set means each format's own look, so a layout without `styles` renders as it did before this existed.
-- The heading font follows the body font when it has none of its own, so a document set in one family does not keep
-  sans headings by accident.
+- A well-formed key not on this server is not a validation error: a layout moved between servers prints in the fallback
+  with a note (the save route and every run report it).
+- Nothing set means each format's own look. The heading font follows the body font when it has none of its own.
 
 Dependencies: `report_colours`, `report_font_catalogue`, `report_fonts`, `report_model`.
 """

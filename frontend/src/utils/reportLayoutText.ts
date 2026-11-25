@@ -1,20 +1,16 @@
 /**
  * Module: utils/reportLayoutText
  *
- * Pure helpers for the report layout designer's text editor; none of them knows the tree, only the text view's
- * line syntax (backend `services.report_layout_text`), so the server stays the one parser and these only help a
- * person write.
- *
- * Responsibilities:
- * - `aliasesInScope`: the `as` names a `{{alias.field}}` may use at a line (the enclosing `@each`/`@group`
- *   blocks), with the record type each one stands for so the field picker can offer that type's fields.
- * - `insertAt`: put a snippet at the caret or over the selection.
- * - `BLOCK_SNIPPETS`: starter text for each block type, per layout family.
- * - `widgetLine` and `placeholder`: the exact text a picker inserts.
- * - `diffLines`: a line diff of two text views, for comparing versions.
- *
- * Design decisions: a heuristic scan, not a parser. A line is judged by its first word only, so a half-typed
- * layout still resolves most aliases, and the worst case (an alias not found) leaves the author typing it by hand.
+ * Pure helpers for the report layout designer's text editor. They know only the
+ * text view's line syntax (backend `services.report_layout_text`), not the tree;
+ * the server is the one parser and these only help a person write.
+ * - `aliasesInScope`: the `as` names a `{{alias.field}}` may use at a line (the
+ *   enclosing `@each`/`@group` blocks) with each one's record type.
+ * - `insertAt`, `BLOCK_SNIPPETS` (starter text per block type and layout family),
+ *   `widgetLine` and `placeholder` (the text a picker inserts), `diffLines`.
+ * Design: a heuristic scan, not a parser; a line is judged by its first word, so
+ * a half-typed layout still resolves most aliases and the worst case is an alias
+ * the author types manually.
  */
 import type { LayoutFamily, ReportWidget } from "../api/reportLayouts";
 

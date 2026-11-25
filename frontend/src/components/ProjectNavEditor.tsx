@@ -1,27 +1,20 @@
 /**
  * Module: components/ProjectNavEditor
  *
- * The "Customise navigation" modal for the Project nav section
- *: reorder items, move them behind
- * "More", and choose whether the layout applies to every project or just this one.
+ * The "Customise navigation" modal for the Project nav section: reorder items, move them behind "More" and choose
+ * whether the layout applies to every project or just this one.
  *
- * Responsibilities:
- * - Edit a draft of the layout in effect; nothing is persisted until Save.
- * - Write the result to the user's default (`project_nav`) or this project's override
- *   (`project_nav:<id>`) in one `ui_preferences` PATCH, with a toast.
- * - Prune overrides left behind for projects the user can no longer reach, so the bounded
- *   `ui_preferences` bag does not fill with dead keys.
+ * Edits a draft of the layout in effect; nothing persists until Save, which writes the user's default
+ * (`project_nav`) or this project's override (`project_nav:<id>`) in one `ui_preferences` PATCH with a toast. It
+ * prunes overrides for projects the user can no longer reach, so the bounded `ui_preferences` bag does not fill
+ * with dead keys.
  *
- * Design decisions:
- * - Up/down buttons are the reorder control: keyboard- and screen-reader-accessible, which a
- *   drag-only list is not.
- * - Pinned items (Overview, Admin) have no "move to More" control — see `PINNED_NAV_KEYS`.
- * - Saving for all projects while this project has its own override also removes that
- *   override (the user edited what they see here, so leaving it shadowing the save would look
- *   like the save did nothing); the form says so.
+ * Up/down buttons reorder, being keyboard- and screen-reader-accessible where a drag-only list is not. Pinned items
+ * (Overview, Admin) have no "move to More" control (`PINNED_NAV_KEYS`). Saving for all projects while this project
+ * has its own override also removes that override, which would otherwise shadow the save; the form says so.
  *
- * Dependencies: `AuthContext` (preference writes), `ToastContext`, the projects list endpoint
- * (pruning only; failure skips pruning).
+ * Dependencies: `AuthContext` (preference writes), `ToastContext`, the projects list endpoint (pruning only;
+ * failure skips pruning).
  */
 import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp } from "lucide-react";
 import { useState } from "react";

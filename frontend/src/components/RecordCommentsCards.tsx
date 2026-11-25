@@ -1,19 +1,13 @@
 /**
  * Module: components/RecordCommentsCards
  *
- * The generic comment cards of a record page whose type opted in to record comments: the record's own comments (the shared
- * `ArtefactCommentsSection`) and, below it, the pinned threads on drawings that are anchored to this record (a box or a
- * line), read-only, each linking to its drawing with the thread open.
+ * The generic comment cards of a record page whose type opted in to record comments: the record's own comments (the
+ * shared `ArtefactCommentsSection`, wired to `useRecordComments` for post, edit and delete of one's own comments)
+ * and, below it, the pinned threads on drawings anchored to this record (`recordCommentsApi.anchored`), read-only,
+ * each with its first comment, state and a link that opens the drawing at that thread (`?pin=`).
  *
- * Responsibilities:
- * - Wire `ArtefactCommentsSection` to `useRecordComments` (post, edit, and delete for one's own comments).
- * - List the threads pinned to this record on other records' drawings (`recordCommentsApi.anchored`), with their first
- *   comment, state and a link that opens the drawing at that thread (`?pin=`).
- *
- * Design decisions:
- * - Nothing here knows a module: the link to a drawing comes from the module registry's `getArtefactPath`, and the
- *   pinned list is empty for a type that is never an anchor.
- * - Replying to or resolving a pinned thread is done on its drawing, so this list is read-only.
+ * Nothing here knows a module: the drawing link comes from the module registry's `getArtefactPath`, and the pinned
+ * list is empty for a type that is never an anchor. Replying to or resolving a pinned thread happens on its drawing.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -22,9 +16,11 @@ import { recordCommentsApi, type AnchoredThread, type RecordCommentsApi } from "
 import { useStrings } from "../context/TerminologyContext";
 import { useRecordComments } from "../hooks/useRecordComments";
 import { getArtefactPath } from "../modules/artefactPaths";
+import { markdownPlainText } from "../utils/markdownPlain";
 import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
 import { Badge } from "./Badge";
 import { DetailCard } from "./DetailCard";
+import { withDetailRank } from "./detailCardOrder";
 
 /**
  * @param projectId The project the record is opened from.
@@ -84,7 +80,7 @@ export function RecordCommentsCards({
                 </div>
                 {t.comments.map((c) => (
                   <div key={c.id} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                    <strong>{c.author_display_name}</strong>{" "}{c.body}
+                    <strong>{c.author_display_name}</strong>{" "}{markdownPlainText(c.body)}
                   </div>
                 ))}
               </div>
@@ -95,3 +91,5 @@ export function RecordCommentsCards({
     </>
   );
 }
+
+withDetailRank(RecordCommentsCards, "discussion");

@@ -5,38 +5,22 @@ import { ensureExpanded, installCleanupHook, loginAs, logout, onCleanup, openPro
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: `Pattern: role display` — a compact role-badge list (project list roles, favourites, "my
- * organisations") collapses a user's held `ProjectRole` set to its
- * effective highest tier, per the real precedence
- * `project_manager` > (`project_administrator` = `stakeholder`) > `member`
- * — rather than listing every role a user happens to hold.
+ * Job to be done: `Pattern: role display`: a compact role-badge list (project list roles, favourites, "my
+ * organisations") collapses a user's held `ProjectRole` set to its effective highest tier, per the precedence
+ * `project_manager` > (`project_administrator` = `stakeholder`) > `member`, rather than listing every held role.
  *
- * Uses a brand-new dedicated user on Gamma (single-admin org, avoids
- * interfering with Alpha/Beta specs sharing this suite's run) rather than
- * granting a second role to any shared seeded persona — none of the seed
- * personas hold more than one project-role tier today, and mutating a
- * shared persona's effective permissions for the rest of a suite run risks
- * changing behaviour other specs depend on (e.g. a "stakeholder can't
- * archive" assertion elsewhere).
+ * Uses a new dedicated user on Gamma (single-admin org, avoiding interference with Alpha/Beta specs) rather than
+ * granting a second role to a shared seeded persona: none hold more than one project-role tier, and changing a
+ * shared persona's effective permissions risks other specs (e.g. a "stakeholder can't archive" assertion).
  *
- * Cleans up its own three throwaway project groups and its throwaway user's
- * org membership at the end — an earlier version of this spec assumed
- * "leaving them behind afterward is harmless... nothing else in the suite
- * ever looks for a project's group count", but that's false in practice:
- * Gamma-1's "Project groups" table paginates at 20 rows ("Load more"), and
- * after enough unclean runs accumulated more than 20 groups, a *newly
- * created* group's row landed past the default page, so `row.getByRole(...)`
- * on it waited forever for an element that existed but was never rendered —
- * looked exactly like flakiness/a timeout under load, but reproduced
- * deterministically once the table had enough leftover rows, regardless of
- * contention. See docs/decisions.md.
+ * Cleans up its three throwaway project groups and its throwaway user's org membership at the end: Gamma-1's
+ * "Project groups" table paginates at 20 rows ("Load more"), so once leftover groups exceed 20 a newly created
+ * group's row lands past the default page and `row.getByRole(...)` waits for an element that exists but is not
+ * rendered, which looks like a timeout under load. See docs/decisions.md.
  *
- * Setup (user, groups, role grants, memberships) goes through the API, not
- * the Project Admin UI (2026-10-04): the UI path is covered by
- * project-admin-groups-and-fields.spec.ts, and driving it here put this
- * test at ~27s of its 30s budget, where a timeout skipped cleanup and leaked
- * groups. Any "E2E Role Collapse" groups/users an earlier interrupted run
- * left on Gamma are swept before starting.
+ * Setup (user, groups, role grants, memberships) goes through the API, not the Project Admin UI (covered by
+ * project-admin-groups-and-fields.spec.ts), to stay within the 30s test budget so a timeout cannot skip cleanup.
+ * Any "E2E Role Collapse" groups/users left on Gamma by an interrupted run are swept before starting.
  */
 test.describe("role display collapses to the effective highest tier", () => {
   installCleanupHook();
@@ -135,12 +119,8 @@ test.describe("role display collapses to the effective highest tier", () => {
 
 
     await test.step("Org Admin's 'View access' panel shows the collapsed summary by default, with every role available via its expand toggle", async () => {
-      // 2026-08-30 reversal (see docs/decisions.md and docs/ux-style-guide
-      // .md's "Pattern: role display" section): this panel used to always
-      // show every held role uncollapsed; it now defaults to the same
-      // collapsed summary compact lists use, with a per-row "Show all N
-      // roles" toggle that reveals the full set on demand — the audit
-      // detail is still reachable, just not the default view.
+      // The panel defaults to the same collapsed summary compact lists use (docs/decisions.md and docs/ux-style-guide.md's
+      // "Pattern: role display"), with a per-row "Show all N roles" toggle that reveals the full set on demand.
       await page.getByRole("button", { name: "Sign out" }).click();
       await page.waitForURL(/\/login$/);
       await loginAs(page, PERSONAS.orgAdminGamma.email);
@@ -149,13 +129,9 @@ test.describe("role display collapses to the effective highest tier", () => {
       await selectOrgAdminGroup(page, "Users");
       await ensureExpanded(page, "Organisation users");
 
-      // the members/groups directory rework (docs/decisions.md)
-      // consolidated the Users table's previously-bare "View {name}'s
-      // access" button into the row's `ActionMenu` — reachable via its
-      // kebab trigger (`${display name}'s actions`), then the `menuitem`
-      // inside the `Popover` it opens (waiting for the menu itself before
-      // clicking an item, same pattern other `ActionMenu` call sites in
-      // this suite use, since the popover repositions after mount).
+      // The row's `ActionMenu` holds "View {name}'s access": open it through its kebab trigger (`${display name}'s
+      // actions`), then the `menuitem` in the `Popover` (waiting for the menu itself, since the popover repositions after
+      // mount), as other `ActionMenu` call sites in this suite do.
       const row = page.locator("tr", { hasText: email });
       const menuTriggerName = `E2E Role Collapse ${suffix}'s actions`;
       await row.getByRole("button", { name: menuTriggerName }).click();
@@ -163,13 +139,10 @@ test.describe("role display collapses to the effective highest tier", () => {
       await page.getByRole("menuitem", { name: /'s access$/ }).click();
 
       const panel = page.getByRole("dialog", { name: /'s access$/ });
-      // Collapsed by default: `project_manager` is the sole top tier, so
-      // it alone shows, hiding the lower-tier `project_administrator`/
-      // `stakeholder`/`member` roles also held on Gamma-1 — held roles
-      // total 4, not 3: `_normalize` (`backend/app/services/rbac.py`)
-      // implicitly adds `project_administrator`+`stakeholder`+`member`
-      // alongside a directly-granted `project_manager`, on top of the two
-      // directly granted via the earlier admin/stakeholder groups.
+      // Collapsed by default: `project_manager` is the sole top tier, so it alone shows, hiding the lower-tier
+      // `project_administrator`/`stakeholder`/`member` roles also held on Gamma-1. Held roles total 4, not 3: `_normalize`
+      // (`backend/app/services/rbac.py`) implicitly adds `project_administrator`+`stakeholder`+`member` alongside a
+      // directly granted `project_manager`, on top of the two directly granted via the admin/stakeholder groups.
       await expect(panel.getByText("Project manager")).toBeVisible();
       await expect(panel.getByText("Project administrator")).toHaveCount(0);
       await expect(panel.getByText("Stakeholder")).toHaveCount(0);

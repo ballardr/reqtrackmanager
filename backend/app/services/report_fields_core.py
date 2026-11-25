@@ -1,32 +1,26 @@
 """
 Module: services.report_fields_core
 
-The `ReportFieldProvider`s for the three core artefact types (requirements, actions, change
-requests): what a custom report layout may print or group by for each.
+The `ReportFieldProvider`s for the core artefact types (requirements, actions, change requests).
 
 Responsibilities:
-- Declare, per core type, the typed fields on top of the search's text fields (component, category,
-  level, stage and owner of a requirement; type, assignee and due date of an action; kind and times of
-  a change request).
+- Declare each core type's typed fields on top of the search's text fields (a requirement's component, category,
+  level, stage and owner; an action's type, assignee and due date; a change request's kind and times).
 
 Design decisions:
-- Core types register through the same mechanism as module types, in core code because core owns
-  them (a module's types are registered by the module, never listed here).
-- A requirement is read through its current version (`valid_to IS NULL`), the joins coming from the
-  search declaration so they are written once.
-- A requirement's component and category are their names, looked up by correlated subquery, so a
-  layout can group by the words a person sees.
-- Review notes, comments and file contents are not fields; free text is limited to what the search
-  already treats as a vetted, opt-in column.
+- Core owns these types, so they register here; a module's types are registered by the module.
+- A requirement is read through its current version (`valid_to IS NULL`), joins shared with the search declaration;
+  component and category are names via correlated subquery so a layout groups by the words a person sees.
+- Review notes, comments and file contents are not fields; free text is limited to vetted search columns.
 
-Dependencies: the core models and `services.search_core` (the joins), `services.report_fields` (builders).
+Dependencies: core models, `services.search_core`, `services.report_fields`.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.action_type import ActionTypeDefinition
 from app.models.change_request import ChangeRequest
@@ -34,6 +28,7 @@ from app.models.enums import ChangeRequestKind, RequirementLevel, StagePhaseKind
 from app.models.project import ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.models.stage_workflow import StagePhasePlan, StageWorkflowPhase
 from app.modules.registry import ReportFieldProvider
 from app.services.report_fields import (
@@ -70,6 +65,15 @@ def _target_stage_plan(column: Any) -> Any:
     )
 
 
+def _alias_codes() -> Any:
+    """A correlated subquery: the active alias codes of the requirement, `; `-separated (NULL when it has none)."""
+    return (
+        select(func.string_agg(RequirementAlias.unique_code, "; "))
+        .where(RequirementAlias.requirement_id == Requirement.id, RequirementAlias.is_retired.is_(False))
+        .scalar_subquery()
+    )
+
+
 CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     "requirement": from_search(
         CORE_SEARCH_PROVIDERS["requirement"],
@@ -93,6 +97,8 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         date_field("target_stage_phase_expected_end", "Target stage phase expected end", _target_stage_plan(StagePhasePlan.expected_to)),
         instant_field("target_stage_phase_started_at", "Target stage phase started at", _target_stage_plan(StagePhasePlan.started_at)),
         enum_field("level", "Level", RequirementVersion.level, RequirementLevel),
+        # The codes of the further places the requirement sits in (its aliases), so a layout can print them.
+        text_field("alias_codes", "Alias codes", _alias_codes()),
         principal_field("owner", "Owner", RequirementVersion.owner_type, RequirementVersion.owner_id),
         principal_field("reviewer", "Reviewer", RequirementVersion.reviewer_type, RequirementVersion.reviewer_id),
         date_field("review_date", "Review date", RequirementVersion.review_date),
@@ -117,6 +123,7 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         enum_field("kind", "Kind", ChangeRequest.kind, ChangeRequestKind),
         instant_field("submitted_at", "Submitted at", ChangeRequest.submitted_at),
         instant_field("decided_at", "Decided at", ChangeRequest.decided_at),
+        math_fields=("reason", "description"),
         core_fields=("description",),
     ),
 }

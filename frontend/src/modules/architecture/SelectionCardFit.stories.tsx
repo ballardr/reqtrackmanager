@@ -104,7 +104,7 @@ export const PortsListFitsTheCard: Story = {
   play: async ({ canvasElement }) => {
     await page.viewport(1280, 900);
     const card = await selectBox(within(canvasElement), "Gateway");
-    const ports = within(card).getByLabelText("Port name", { selector: "input[placeholder='Port name']" });
+    const ports = within(card).getAllByLabelText("Port name")[0];
     await expect(ports).toBeInTheDocument();
     for (const control of [
       within(card).getAllByLabelText(/^Direction of /)[0], within(card).getAllByLabelText(/^Connection type of /)[0],

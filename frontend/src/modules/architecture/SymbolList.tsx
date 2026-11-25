@@ -51,7 +51,7 @@ export function SymbolList({
 
   return (
     <div className="stack" style={{ gap: "var(--space-2)" }}>
-      <div role="listbox" aria-label="Symbols" className="menu-list" style={{ maxHeight: "min(20rem, 50vh)", overflowY: "auto" }}>
+      <div role="listbox" aria-label="Symbols" className="menu-list scroll-region" style={{ maxHeight: "min(20rem, 50vh)" }}>
         {row(0, emptyLabel, value === null, null)}
         {symbols.map((symbol, index) => row(index + 1, symbol.name, symbol.id === value, symbol.id))}
       </div>

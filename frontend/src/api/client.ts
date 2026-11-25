@@ -15,6 +15,8 @@ export class ApiError extends Error {
   status: number;
   /** The response's `detail` when it was structured (an object), else `undefined`; a plain message is in `message`. */
   detail?: unknown;
+  /** Set when this refusal ended the session: the person is being returned to sign-in, so nothing more is shown for it. */
+  sessionEnded = false;
   constructor(status: number, message: string, detail?: unknown) {
     super(message);
     this.status = status;
@@ -23,9 +25,12 @@ export class ApiError extends Error {
 }
 
 let authToken: string | null = null;
+/** The token whose refusal has already been reported, so requests refused together end the session once even before the listener clears it. */
+let endedSessionToken: string | null = null;
 
 export function setAuthToken(token: string | null): void {
   authToken = token;
+  endedSessionToken = null;
   if (token) {
     localStorage.setItem("reqtrack_token", token);
   } else {
@@ -58,10 +63,14 @@ export async function ensureMediaToken(): Promise<void> {
     mediaToken = null;
     return;
   }
+  const sessionToken = authToken;
   try {
     const result = await request<{ token: string }>("/api/v1/auth/media-token", { method: "POST" });
+    // A session that ended (or was replaced) while this was in flight is not given the old session's credential.
+    if (authToken !== sessionToken) return;
     mediaToken = result.token;
   } catch {
+    if (authToken !== sessionToken) return;
     mediaToken = null;
   }
   if (authToken) mediaRefreshTimer = setTimeout(() => void ensureMediaToken(), MEDIA_TOKEN_REFRESH_MS);
@@ -73,78 +82,137 @@ export function loadStoredToken(): string | null {
 }
 
 /**
- * Fired whenever any request gets a 401 (expired/invalidated token — e.g.
- * the 12h access token lapsing, or a password change bumping
- * `User.token_version` server-side). `AuthContext` listens for this and
- * clears the session immediately, rather than leaving stale UI state up
- * until a hard reload re-runs the mount-time `/auth/me` check — this was
- * the actual cause of "the UI looks broken until I force-refresh, then I'm
- * at the login page": every fetch after expiry was 401ing silently, with
- * nothing reacting to it in place.
+ * Fired once when a request is refused because the session token is dead (expired, revoked or superseded by a
+ * password change). `AuthContext` listens for this and clears the session at once, so the router returns the person
+ * to the sign-in page instead of leaving stale UI up until a reload re-runs the mount-time `/auth/me` check.
  */
 export const AUTH_UNAUTHORIZED_EVENT = "reqtrack:unauthorized";
 
-/** No request in this client carries a timeout by default — a plain `fetch()`
- * with no `signal` waits indefinitely, so a genuinely slow backend call has
- * always surfaced as a spinner that never resolves, not a distinct "timed
- * out" error. `timeoutMs` opts a specific call into an explicit ceiling
- * (login uses this — see AuthContext.tsx — since a bcrypt-verify under
- * concurrent login load can legitimately take longer than this app's other,
- * cheap requests; see docs/decisions.md, "bcrypt login cost under
- * concurrent load"). */
-async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: number): Promise<Response> {
+/** The `code` of the body of a dead-token 401 (`app.deps.INVALID_TOKEN_CODE`). */
+export const INVALID_TOKEN_CODE = "invalid_token";
+
+/**
+ * The ceiling an ordinary read (a GET, or a POST that only reads and is passed `READ_TIMEOUT_MS`) is given when the
+ * caller names none: a response that never arrives would otherwise be a spinner that never ends. Generous on purpose
+ * (a large list on a slow deployment); uploads, downloads, exports and report runs name their own limit or none.
+ */
+export const READ_TIMEOUT_MS = 120_000;
+
+/** Header that asks a record's move endpoint to skip steps of its lifecycle; its value is the percent-encoded reason. */
+export const LIFECYCLE_SKIP_HEADER = "X-Lifecycle-Skip-Reason";
+
+/** The reason the next request carries (set and cleared synchronously by `withLifecycleSkip`). */
+let pendingSkipReason: string | null = null;
+
+/**
+ * Runs `call`, which must issue its request before its first `await`, so that request asks the server to skip the
+ * steps between the record's state and its target (`LIFECYCLE_SKIP_HEADER`). Every other request is untouched.
+ *
+ * @param reason Why the steps are skipped (the server requires it, at most 500 characters).
+ * @param call Makes the record's own move request (for example `decisionsApi.approveDecision(...)`).
+ * @returns The move's result.
+ */
+export function withLifecycleSkip<T>(reason: string, call: () => Promise<T>): Promise<T> {
+  pendingSkipReason = reason;
+  try {
+    return call();
+  } finally {
+    pendingSkipReason = null;
+  }
+}
+
+/** Message of the error raised when a request outlives its ceiling. */
+export const REQUEST_TIMEOUT_MESSAGE = "The server is taking longer than expected to respond. Please try again.";
+
+/** Message of the error raised when no response arrives at all (offline, refused, a proxy that is down). */
+export const NETWORK_FAILURE_MESSAGE = "The server could not be reached. Check the connection and try again.";
+
+/**
+ * Whether a refused request means the session itself is over. The backend answers a missing, invalid, expired,
+ * revoked or superseded token with `401` and `WWW-Authenticate: Bearer`, and puts `code: invalid_token` in the body;
+ * either alone is enough, because a browser on another origin cannot read a header the server did not expose and a
+ * proxy may remove one. An ordinary 401 (a wrong current password, a bad two-factor code) carries neither and never
+ * ends a session.
+ */
+export function isDeadSessionResponse(status: number, wwwAuthenticate: string | null, body: unknown): boolean {
+  if (status !== 401) return false;
+  if (wwwAuthenticate) return true;
+  return typeof body === "object" && body !== null && (body as { code?: unknown }).code === INVALID_TOKEN_CODE;
+}
+
+/** Whether a request with these options is an ordinary read that gets the default ceiling. */
+function isPlainRead(options: RequestInit): boolean {
+  return (options.method ?? "GET").toUpperCase() === "GET";
+}
+
+/**
+ * `timeoutMs` opts a call into an explicit ceiling (login uses this, see AuthContext.tsx, since a bcrypt verify under
+ * concurrent login load can legitimately take longer than this app's other, cheap requests; see docs/decisions.md,
+ * "bcrypt login cost under concurrent load"). Left out, a plain GET gets `READ_TIMEOUT_MS` and everything else waits
+ * (an upload or an export may legitimately take minutes); `null` means no ceiling for a GET too (a file download).
+ */
+async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: number | null): Promise<Response> {
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>), "X-Client-Date": localToday() };
+  if (pendingSkipReason !== null) {
+    headers[LIFECYCLE_SKIP_HEADER] = encodeURIComponent(pendingSkipReason);
+    pendingSkipReason = null;
+  }
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
+  // The token this request is sent with: a refusal of it ends the session only while it is still the session's token,
+  // so a late answer to a request of a session that already ended never signs out the one that replaced it.
+  const sentToken = authToken;
+  if (sentToken) {
+    headers["Authorization"] = `Bearer ${sentToken}`;
   }
 
-  const controller = timeoutMs !== undefined ? new AbortController() : undefined;
-  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  const ceiling = timeoutMs === undefined ? (isPlainRead(options) ? READ_TIMEOUT_MS : undefined) : (timeoutMs ?? undefined);
+  const controller = ceiling !== undefined ? new AbortController() : undefined;
+  const timer = controller ? setTimeout(() => controller.abort(), ceiling) : undefined;
   let response: Response;
   try {
     response = await fetch(`${BASE_URL}${path}`, { ...options, headers, signal: controller?.signal ?? options.signal });
   } catch (err) {
-    if (controller?.signal.aborted) {
-      throw new ApiError(0, "The server is taking longer than expected to respond. Please try again.");
-    }
+    if (controller?.signal.aborted) throw new ApiError(0, REQUEST_TIMEOUT_MESSAGE);
+    // A caller's own cancellation (a superseded search) is its own business and keeps its AbortError.
+    if (err instanceof TypeError) throw new ApiError(0, NETWORK_FAILURE_MESSAGE);
     throw err;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
   if (!response.ok) {
-    // The backend raises 401 for two different reasons: the bearer token
-    // itself being missing/invalid/expired (`deps.py`'s shared
-    // `_UNAUTHORIZED`, always sent with a `WWW-Authenticate: Bearer`
-    // header — the standard signal for "your credentials are bad"), vs. an
-    // ordinary business-logic 401 with a valid token attached (wrong
-    // current password, bad 2FA code). Only the former means the session
-    // itself is dead and should force a logout; treating every 401 the
-    // same would log the user out just for mistyping their current
-    // password on the change-password form.
-    if (response.status === 401 && authToken && response.headers.get("www-authenticate")) {
-      window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
-    }
     let message = response.statusText;
     let detail: unknown;
+    let body: unknown;
     try {
-      const body = await response.json();
-      message = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body);
-      if (body.detail && typeof body.detail === "object" && !Array.isArray(body.detail)) {
-        detail = body.detail;
-        if (typeof body.detail.message === "string") message = body.detail.message;
+      body = await response.json();
+      const parsed = body as { detail?: unknown };
+      message = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail ?? body);
+      if (parsed.detail && typeof parsed.detail === "object" && !Array.isArray(parsed.detail)) {
+        detail = parsed.detail;
+        if (typeof (parsed.detail as { message?: unknown }).message === "string") message = (parsed.detail as { message: string }).message;
       }
     } catch {
       // response had no JSON body; fall back to statusText
     }
-    throw new ApiError(response.status, message, detail);
+    // Checked after the body is read and against the live token: when several requests are refused together the first
+    // ends the session (and clears the token), so the rest see a token that is no longer current and do nothing.
+    const error = new ApiError(response.status, message, detail);
+    if (isDeadSessionResponse(response.status, response.headers.get("www-authenticate"), body) && sentToken !== null) {
+      // A refusal of an earlier session's token (sent before the current sign-in) is not this session's to end.
+      error.sessionEnded = true;
+      if (sentToken === authToken && sentToken !== endedSessionToken) {
+        endedSessionToken = sentToken;
+        window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
+      }
+    }
+    throw error;
   }
   return response;
 }
 
-async function request<T>(path: string, options: RequestInit = {}, timeoutMs?: number): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, timeoutMs?: number | null): Promise<T> {
   const response = await rawRequest(path, options, timeoutMs);
   if (response.status === 204) {
     return undefined as T;
@@ -157,11 +225,8 @@ async function request<T>(path: string, options: RequestInit = {}, timeoutMs?: n
 }
 
 /** A page of results from a `limit`/`offset`-paginated list endpoint (U-P-06).
- * `totalUnfiltered` is optional — only the requirements/change-requests/projects
- * list endpoints send the `X-Total-Unfiltered-Count` header it comes from;
- * every other paginated endpoint (and every existing test/story mock built
- * before this field existed) simply omits it, and callers that care fall
- * back to `total` themselves (see `ResultCount`'s callers). */
+ * `totalUnfiltered` is optional: only the requirements, change-requests and projects list endpoints send the
+ * `X-Total-Unfiltered-Count` header it comes from; callers fall back to `total` (see `ResultCount`'s callers). */
 export interface Page<T> {
   items: T[];
   total: number;
@@ -173,8 +238,8 @@ export interface Page<T> {
   canIncludeUnjoined?: boolean;
 }
 
-async function requestPage<T>(path: string, options: RequestInit = {}): Promise<Page<T>> {
-  const response = await rawRequest(path, options);
+async function requestPage<T>(path: string, options: RequestInit = {}, timeoutMs?: number): Promise<Page<T>> {
+  const response = await rawRequest(path, options, timeoutMs);
   const items = (await response.json()) as T[];
   const totalHeader = response.headers.get("x-total-count");
   const totalUnfilteredHeader = response.headers.get("x-total-unfiltered-count");
@@ -193,7 +258,7 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   getPage: <T>(path: string) => requestPage<T>(path),
   /** A paginated read whose filters travel in a POST body, so text a person typed is in no URL a server logs. */
-  postPage: <T>(path: string, body: unknown) => requestPage<T>(path, { method: "POST", body: JSON.stringify(body) }),
+  postPage: <T>(path: string, body: unknown) => requestPage<T>(path, { method: "POST", body: JSON.stringify(body) }, READ_TIMEOUT_MS),
   /** `signal` lets the caller cancel the request (a superseded search); `timeoutMs` takes precedence when both are given. */
   post: <T>(path: string, body?: unknown, timeoutMs?: number, signal?: AbortSignal) =>
     request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined, signal }, timeoutMs),
@@ -222,8 +287,8 @@ export const api = {
     const name = dispositionFileName(response.headers.get("Content-Disposition"));
     return name ? new File([blob], name, { type: blob.type }) : blob;
   },
-  /** Downloads a file; a failed response throws the same `ApiError` (message and structured `detail`) as any other call. */
-  getForBlob: async (path: string): Promise<Blob> => (await rawRequest(path)).blob(),
+  /** Downloads a file (no ceiling: a large file may take minutes); a failed response throws the same `ApiError` (message and structured `detail`) as any other call. */
+  getForBlob: async (path: string): Promise<Blob> => (await rawRequest(path, {}, null)).blob(),
 };
 
 /**
@@ -247,11 +312,10 @@ export function wsBaseUrl(): string {
   return BASE_URL.replace(/^http/, "ws");
 }
 
-/** Builds a viewable/downloadable URL for a stored file, e.g. for <img src>,
- * which cannot send an Authorization header, so a credential travels as a
- * query param instead (backend/app/deps.py::get_current_user_header_or_query).
- * That credential is the short-lived media token (`ensureMediaToken`), never the
- * session token: a URL is written to server logs and browser history. */
+/** Builds a viewable/downloadable URL for a stored file, e.g. for <img src>, which cannot send an Authorization
+ * header, so a credential travels as a query parameter (backend/app/deps.py::get_current_user_header_or_query).
+ * That credential is the short-lived media token (`ensureMediaToken`), never the session token: a URL is written
+ * to server logs and browser history. */
 export function fileUrl(fileId: string): string {
   return `${BASE_URL}/api/v1/files/${fileId}?token=${encodeURIComponent(mediaToken ?? "")}`;
 }
@@ -260,10 +324,8 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
-/** Builds an absolute backend URL for endpoints the browser must navigate to
- * directly (full-page redirects) rather than call via fetch, e.g. the OIDC
- * login entry point (E-U-01), which itself issues a 302 to the identity
- * provider. */
+/** Builds an absolute backend URL for endpoints the browser navigates to directly (full-page redirects) rather
+ * than calls via fetch, e.g. the OIDC login entry point (E-U-01), which issues a 302 to the identity provider. */
 export function apiUrl(path: string): string {
   return `${BASE_URL}${path}`;
 }

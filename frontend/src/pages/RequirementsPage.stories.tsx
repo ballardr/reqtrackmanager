@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ArtefactLinkCandidate, ArtefactLinkTypeOption } from "../api/artefactLinks";
@@ -106,6 +106,30 @@ export const TilesView: Story = {
   },
 };
 
+/** The tile shows the Description as its plain words with equations drawn, clamped to three lines, never its Markdown marks. */
+export const TilesShowTheDescriptionAsPlainTextWithEquationsDrawn: Story = {
+  beforeEach: () => {
+    mockRequirementsListApis("manager");
+    const items = [
+      buildRequirement({
+        id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1",
+        description: "We as a company have signed up to ***Paris Agreement*** and we must aim to be *green*. Stress \\(\\sigma = F/A\\) holds.",
+        reasoning: "Reasoning that the tile no longer shows.",
+      }),
+    ];
+    spyOn(api, "getPage").mockImplementation(async () => ({ items, total: items.length }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    const summary = canvasElement.querySelector<HTMLElement>(".markdown-summary") as HTMLElement;
+    await expect(summary.textContent).toContain("signed up to Paris Agreement and we must aim to be green.");
+    await expect(summary.textContent).not.toMatch(/[*$]|\\\(/);
+    await expect(summary.querySelector(".katex")).not.toBeNull();
+    await expect(canvas.queryByText(/Reasoning that the tile/)).not.toBeInTheDocument();
+  },
+};
+
 /** A plain click on "New requirement" opens the create form as a `Modal` layer (not an inline block that reflows
  * the list underneath), with no menu stop first. Import is not hidden behind it: the list's shared Export and
  * Import controls sit beside it (see `ListActions.stories.tsx` for what they do). */
@@ -149,6 +173,25 @@ export const ListView: Story = {
   },
 };
 
+/** The list view draws every column by default; the chooser hides Target and level, and the reset brings it back. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    for (const name of ["ID", "Name", "Target · level", "Component · category"]) {
+      await expect(canvas.getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Target and level" }));
+    await expect(canvas.queryByRole("columnheader", { name: "Target · level" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(canvas.getByRole("columnheader", { name: "Target · level" })).toBeInTheDocument();
+  },
+};
+
 /** Column-header sorting — this list is backend-
  * paginated (`PAGE_SIZE`/`LoadMoreButton`), so a header click refetches with
  * `sort`/`order` query params rather than reordering just the loaded page. */
@@ -162,10 +205,8 @@ export const SortByNameRefetchesWithSortParams: Story = {
     await waitFor(() =>
       expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=name&order=asc"))
     );
-    // Re-queried after every click rather than cached: `reload()` clears
-    // `requirements` to `null` before each refetch, which unmounts and
-    // remounts the whole table (and its `<th>` nodes) — a `th` reference
-    // captured before an earlier click goes stale once that happens.
+    // Re-queried after every click: `reload()` clears `requirements` and
+    // remounts the table, so an earlier `th` reference goes stale.
     await waitFor(() =>
       expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "ascending")
     );
@@ -178,11 +219,54 @@ export const SortByNameRefetchesWithSortParams: Story = {
       expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "descending")
     );
 
+    // A header never resets the sort (the default is a choice in the Sort by and Order fields): a third click is ascending again.
     await userEvent.click(canvas.getByRole("button", { name: "Name" }));
-    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.not.stringContaining("sort=")));
     await waitFor(() =>
-      expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "none")
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=name&order=asc"))
     );
+    await waitFor(() =>
+      expect(canvas.getByRole("button", { name: "Name" }).closest("th")).toHaveAttribute("aria-sort", "ascending")
+    );
+  },
+};
+
+/** Target and level and Component and category order the whole list on the server, like every other header. */
+export const TargetAndComponentHeadersSortOnTheServer: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    for (const [header, key] of [["Target · level", "target"], ["Component · category", "placement"]] as const) {
+      await userEvent.click(canvas.getByRole("button", { name: header }));
+      await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining(`sort=${key}&order=asc`)));
+    }
+  },
+};
+
+/**
+ * Sort by and Order in the filter panel: the list opens in component and
+ * category order (no direction, no `sort` sent); Created, Descending puts the
+ * newest requirement first, sent to the server, and the column headers follow
+ * the same state.
+ */
+export const SortFieldPutsTheNewestRequirementFirst: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    const sortBy = canvas.getByRole("combobox", { name: "Sort by" });
+    const order = canvas.getByRole("combobox", { name: "Order" });
+    await expect(sortBy).toHaveValue("component");
+    await expect(order).toBeDisabled();
+    await expect(api.getPage).toHaveBeenLastCalledWith(expect.not.stringContaining("sort="));
+    await userEvent.selectOptions(sortBy, "created");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Order" }), "desc");
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created&order=desc")));
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Sort by" }), "component");
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.not.stringContaining("sort=")));
+    await expect(canvas.getByRole("combobox", { name: "Order" })).toBeDisabled();
   },
 };
 
@@ -199,7 +283,8 @@ export const FilterByStatusBadge: Story = {
 };
 
 /** The component filter and the target version range are what narrow the list (and so its Export and Download
- * report): choosing them sends `component_id` and the two range ends, and clearing an end drops its parameter. */
+ * report): choosing a component from the shared tree filter sends `component_id` and the two range ends are sent as
+ * `target_stage_from_id` and `target_stage_to_id`; clearing an end drops its parameter. */
 export const ComponentAndTargetVersionRangeFiltersAreSent: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -209,8 +294,10 @@ export const ComponentAndTargetVersionRangeFiltersAreSent: Story = {
       const calls = (api.getPage as unknown as { mock: { calls: unknown[][] } }).mock.calls;
       return String(calls[calls.length - 1][0]);
     };
-    await userEvent.selectOptions(canvas.getByLabelText("Component"), "c2");
+    await userEvent.click(await canvas.findByRole("button", { name: "Component and category" }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Reporting" }));
     await waitFor(() => expect(lastPath()).toContain("component_id=c2"));
+    await userEvent.keyboard("{Escape}");
     await userEvent.selectOptions(canvas.getByLabelText("Target version from"), "s2");
     await waitFor(() => expect(lastPath()).toContain("target_stage_from_id=s2"));
     await expect(lastPath()).not.toContain("target_stage_to_id");
@@ -287,11 +374,8 @@ export const StatusFilterOptionsUseLabelMap: Story = {
   },
 };
 
-/** The "Include archived" filter checkbox is what makes an archived
- * requirement reachable at all — the default list excludes them entirely,
- * and `RequirementDetailPage.tsx`'s new Restore button only helps once a
- * user can get to that page in the first place. Mirrors
- * `ProjectActionsPage.tsx`'s existing `include_archived` checkbox. */
+/** The "Include archived" checkbox makes an archived requirement reachable;
+ * the default list excludes them. */
 export const IncludeArchivedFilterShowsArchivedRequirement: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
@@ -323,11 +407,10 @@ export const IncludeArchivedFilterShowsArchivedRequirement: Story = {
 };
 
 /**
- * C-G-11: completion is an independent overlay marker, not a status value —
- * a completed requirement renders a distinct "Completed" badge alongside
- * its (still-"Approved") status badge, and the "Completed" filter checkbox
- * (separate from the Status `<select>`, which no longer offers "Completed"
- * as an option at all) narrows the list via `is_completed=true`.
+ * C-G-11: completion is an overlay marker, not a status value. A completed
+ * requirement shows a "Completed" badge beside its "Approved" status badge,
+ * and the "Completed" checkbox (the Status `<select>` has no such option)
+ * narrows the list via `is_completed=true`.
  */
 export const CompletedBadgeAndFilterCheckbox: Story = {
   beforeEach: () => {
@@ -362,7 +445,7 @@ export const CompletedBadgeAndFilterCheckbox: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
     await expect(canvas.getByText("Completed", { selector: "span.badge" })).toBeInTheDocument();
-    // The status filter select no longer offers "Completed" as an option.
+    // The status filter select has no "Completed" option.
     const statusSelect = canvas.getByLabelText("Status") as HTMLSelectElement;
     const optionLabels = Array.from(statusSelect.options).map((o) => o.textContent);
     await expect(optionLabels).not.toContain("Completed");
@@ -416,28 +499,24 @@ export const NoComponentsMemberSeesLinkToAdmin: Story = {
   },
 };
 
-/** Changing the component in the create form resets the category to the
- * first one belonging to the newly-selected component — the tree/cascade
- * rule from help/01-overview.md. */
-export const CreateFormCascadesCategoryOnComponentChange: Story = {
+/** The create form chooses the component and category as one pair from the tree: it starts on the first category, and
+ * choosing a category of another component chooses that component with it. */
+export const CreateFormChoosesTheComponentAndCategoryAsOnePair: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByPlaceholderText("Name")).toBeInTheDocument());
-    const componentSelect = within(panel).getByLabelText("Component");
-    const categorySelect = within(panel).getByLabelText("Category");
-    await expect(categorySelect).toHaveValue("cat1");
-    await userEvent.selectOptions(componentSelect, "c2");
-    await expect(categorySelect).toHaveValue("cat2");
+    const place = within(panel).getByRole("button", { name: "Component and category" });
+    await expect(place).toHaveTextContent("Authentication / Login");
+    await userEvent.click(place);
+    await userEvent.click(await within(document.body).findByRole("radio", { name: "Reporting / Export" }));
+    await expect(place).toHaveTextContent("Reporting / Export");
   },
 };
 
-/** Creating shows a success toast (Principle 7, sixth-pass audit — the
- * audit named this page specifically: it got real interaction-model work
- * this pass, `Modal`/`FilterBadge`, without picking up Toast, so a
- * create still just silently re-rendered the list). */
+/** Creating shows a success toast rather than silently re-rendering the list. */
 export const CreateRequirementShowsToast: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
@@ -456,7 +535,9 @@ export const CreateRequirementShowsToast: Story = {
         expect.objectContaining({ name: "Reset password via SMS" })
       )
     );
-    await expect(within(document.body).getByText("Requirement created")).toBeInTheDocument();
+    // The confirmation names the new record by its code and offers Open (hooks/useCreatedToast.ts).
+    await expect(within(document.body).getByText("Requirement AUTH-LOG-099 created.")).toBeInTheDocument();
+    await expect(within(document.body).getByRole("button", { name: "Open AUTH-LOG-099" })).toBeInTheDocument();
   },
 };
 
@@ -561,10 +642,8 @@ export const CreateRequirementLinksTheChosenRecords: Story = {
   },
 };
 
-/** Style guide Principle 13 — Name/Reasoning/Description
- * used to be the only fields on this form relying on placeholder text
- * alone, unlike every field below them (Component/Category/Target
- * version/Level), which already had a real `<label>`. All seven now do. */
+/** Name, Reasoning and Description have visible labels, not only placeholder
+ * text; every field on the form is labelled. */
 export const CreateFormFieldsAllHaveVisibleLabels: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -575,21 +654,16 @@ export const CreateFormFieldsAllHaveVisibleLabels: Story = {
     await expect(panel.getByLabelText("Name")).toBeInTheDocument();
     await expect(panel.getByLabelText("Reasoning")).toBeInTheDocument();
     await expect(panel.getByLabelText("Description")).toBeInTheDocument();
-    // Unchanged from before this fix — asserted here too so a regression
-    // in one direction (removing a label these fields never had) doesn't
-    // read as a pass just because the three new ones above did.
-    await expect(panel.getByLabelText("Component")).toBeInTheDocument();
-    await expect(panel.getByLabelText("Category")).toBeInTheDocument();
+    // Asserted too so a regression in one direction does not read as a pass.
+    await expect(panel.getByRole("button", { name: "Component and category" })).toBeInTheDocument();
     await expect(panel.getByLabelText("Target version")).toBeInTheDocument();
     await expect(panel.getByLabelText("Level")).toBeInTheDocument();
   },
 };
 
-/** Reasoning/Description are `AutoGrowTextarea` now, not
- * a fixed `rows={2}` `<textarea>`: typing content past two lines grows the
- * field's own height to show it, rather than scrolling inside a two-line
- * box (see `AutoGrowTextarea.stories.tsx` for the height-cap behaviour
- * itself, covered there rather than re-proven per call site). */
+/** Reasoning and Description are `AutoGrowTextarea`s: content past two lines
+ * grows the field instead of scrolling inside it (the height cap is covered in
+ * `AutoGrowTextarea.stories.tsx`). */
 export const ReasoningFieldGrowsWithContent: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -603,9 +677,8 @@ export const ReasoningFieldGrowsWithContent: Story = {
   },
 };
 
-/** A failed reorder now surfaces an error toast (sixth-pass audit — this
- * used to be an unhandled rejection with zero visible feedback, named
- * explicitly in the audit's "Confirmation & feedback" findings). */
+/** A failed reorder shows an error toast rather than an unhandled rejection
+ * with no visible feedback. */
 export const MoveFailureShowsToast: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
@@ -620,10 +693,9 @@ export const MoveFailureShowsToast: Story = {
   },
 };
 
-/** Style guide "Pattern: bulk operations on a list". Checking a row
- * checkbox in list view surfaces the contextual toolbar — "N selected",
- * "Clear selection", and the two bulk actions — right above the table;
- * unchecking back down to zero hides it again. */
+/** Style guide "Pattern: bulk operations on a list". Checking a row checkbox
+ * in list view shows the toolbar ("N selected", "Clear selection" and the two
+ * bulk actions) above the table; unchecking every row hides it. */
 export const BulkSelectShowsToolbar: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -673,10 +745,9 @@ export const MemberSeesNoBulkControls: Story = {
   },
 };
 
-/** Archiving selected rows goes through the same Tier-1 `ConfirmDialog`
- * as the single-row archive button (copy pluralised, count-bearing), then
- * reports a CSV-import-wizard-style "N updated" summary via `Toast`,
- * clearing the selection and refreshing the list. */
+/** Archiving selected rows uses the same Tier-1 `ConfirmDialog` as the
+ * single-row archive (pluralised, with the count), then a `Toast` reports
+ * "N updated", the selection clears and the list refreshes. */
 export const BulkArchiveConfirmAndToast: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
@@ -699,10 +770,9 @@ export const BulkArchiveConfirmAndToast: Story = {
   },
 };
 
-/** Moving selected rows to a chosen stage: the toolbar's "Move to stage"
- * button opens a `Popover` with the same stage source the single-
- * requirement create form already uses, then a `ConfirmDialog` names the
- * count and destination stage before anything happens. */
+/** Moving selected rows to a stage: "Move to stage" opens a `Popover` with
+ * the create form's stage source, then a `ConfirmDialog` names the count and
+ * destination before anything happens. */
 export const BulkMoveToStageConfirmAndToast: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");

@@ -1,17 +1,17 @@
 /**
  * Module: modules/architecture/DiagramFormModal
  *
- * Create and edit dialog for a diagram, shared by the Diagrams list (create), the editor page (edit), the Links panel
- * (create) and told apart by whether `initial` is passed. A new diagram also takes quick links, tags, "Place the scope's
- * elements" and "Save and activate" (a diagram has no approval step). The scope is an element the diagram shows the inside
- * of; empty is the system context.
+ * Create and edit dialog for a diagram, shared by the Diagrams list (create), the editor page (edit) and the Links
+ * panel (create); `initial` tells create from edit. A new diagram also takes quick links, tags, "Place the scope's
+ * elements" and "Save and activate" (a diagram has no approval step). The scope is an element the diagram shows the
+ * inside of; empty is the system context.
  *
- * Creating starts with a Type choice (Block diagram or State machine diagram, where both are offered): the type's own field
- * group follows (a block diagram's scope, folder and connection detail; a state machine diagram's element, through the
- * shared `StateMachineFields`), and the type is fixed once the diagram exists, so editing shows no Type. The quick links and
- * tags belong to the chosen type's record. A new state machine diagram has no states, so it cannot pass the checks that guard
- * activation; Save and activate is offered for a block diagram only, and a state machine diagram is activated from its
- * Change status menu once it is sound.
+ * Creating starts with a Type choice (Block diagram or State machine diagram, where both are offered): the type's own
+ * field group follows (a block diagram's scope, folder and connection detail; a state machine diagram's element, through
+ * the shared `StateMachineFields`), and the type is fixed once the diagram exists, so editing shows no Type. The quick
+ * links and tags belong to the chosen type's record. A new state machine diagram has no states, so it cannot pass the
+ * checks that guard activation: Save and activate is offered for a block diagram only, and a state machine diagram is
+ * activated from its actions menu.
  */
 import { useState } from "react";
 
@@ -116,7 +116,7 @@ export function DiagramFormModal({
                 <TextField helpNotNeeded required label="Name" value={values.name} onChange={(value) => set("name", value)} />
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField helpNotNeeded label="Purpose" value={values.purpose} onChange={(value) => set("purpose", value)} />
+                <TextAreaField markdown helpNotNeeded label="Purpose" value={values.purpose} onChange={(value) => set("purpose", value)} />
               </FormGridFull>
               <LabeledSelect
                 help={ARCHITECTURE_HELP.diagramScope} label="Scope element" value={values.scope_element_id ?? ""}

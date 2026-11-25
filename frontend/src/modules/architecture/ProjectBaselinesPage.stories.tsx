@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
 import { requiredCaptions } from "../../testing/requiredMarkers";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildBaseline, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ProjectBaselinesPage } from "./ProjectBaselinesPage";
 
@@ -12,6 +12,12 @@ const BASELINES = [
   buildBaseline({ id: "bl-2", kind: "stage", label: "Design baseline", stage_name: "Design", created_by_name: "Sam Stage", item_counts: { requirement: 2, architecture_element: 5 } }),
   buildBaseline({ id: "bl-3", label: "Requirements only", item_counts: { requirement: 3 } }),
 ];
+
+/** A person who has chosen every optional column, including Taken by, which is off by default. */
+const withEveryColumn = withAuth(buildUser({
+  id: "user-1",
+  ui_preferences: { column_choice_architecture_baselines: ["kind", "stage", "taken", "by", "records"] },
+}));
 
 const meta: Meta<typeof ProjectBaselinesPage> = {
   title: "Modules/Architecture/ProjectBaselinesPage",
@@ -28,6 +34,7 @@ type Story = StoryObj<typeof ProjectBaselinesPage>;
 
 /** The list shows each baseline's kind, stage and the count of architecture records only; a baseline with none is not listed. */
 export const ListsBaselinesThatHoldArchitecture: Story = {
+  decorators: [withEveryColumn],
   beforeEach: () => { mockArchitectureReads({ baselines: BASELINES }); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -112,5 +119,25 @@ export const EmptyState: Story = {
   beforeEach: () => { mockArchitectureReads({ baselines: [] }); },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText("No baselines hold architecture records yet.")).toBeInTheDocument();
+  },
+};
+
+/** Taken by is off by default; the column chooser adds it and the reset puts it away again. */
+export const TakenByIsOptionalAndOffByDefault: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  beforeEach: () => { mockArchitectureReads({ baselines: BASELINES }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Baselines" });
+    for (const name of ["Name", "Kind", "Stage", "Taken", "Records"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await expect(within(table).queryByRole("columnheader", { name: "Taken by" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Taken by" }));
+    await expect(within(table).getByRole("columnheader", { name: "Taken by" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Taken by" })).not.toBeInTheDocument();
   },
 };

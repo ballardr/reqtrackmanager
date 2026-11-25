@@ -1,26 +1,19 @@
 """
 Module: modules.stakeholders.stakeholder_project_router
 
-Project-scoped Stakeholder API, mounted at
-`/api/v1/projects/{project_id}/modules/stakeholders` alongside
-`project_router.py`'s Persona routes: project-scoped Stakeholder
-CRUD/lifecycle/comments/files/erasure, the project's Stakeholder type
-vocabulary (effective list plus rename/reorder/disable/add), "create from org
-user", the cadence hint, the "represents Persona" links and the project's
+Project-scoped Stakeholder API, mounted at `/api/v1/projects/{project_id}/modules/stakeholders`
+alongside `project_router.py`: Stakeholder CRUD/lifecycle/comments/files/erasure, the project's type
+vocabulary, "create from org user", the cadence hint, the "represents Persona" links and the project's
 per-stakeholder visibility override.
 
-Reads return the project's own stakeholders *and* the organisation's live
-org-scoped ones, minus org ones the project (or an
-ancestor) has hidden. Every mutation targets a project-scoped stakeholder
-only; an org stakeholder is edited through the org router — the one exception
-is hiding/showing it, which writes only the project's own override row. A project stakeholder may represent an org persona or one of its own
-project's personas; the persona-side reverse list is filtered to stakeholders
-this project can see, so one project never learns of another's records.
+Reads return the project's own stakeholders and the organisation's live org-scoped ones, minus those the
+project (or an ancestor) has hidden. Mutations target project-scoped stakeholders only; an org
+stakeholder is edited through the org router, except that hiding or showing it writes the project's own
+override row. A project stakeholder may represent an org persona or a persona of its own project; the
+persona-side reverse list shows only stakeholders this project can see.
 
-RBAC mirrors the org router: sub-component enablement to view,
-`_stakeholder_shared.require_stakeholder_manage` (project stakeholder owner
-role or FGAC grant) to change anything. A project stakeholder's files resolve
-through `service.resolve_stakeholder_file_project_id`.
+RBAC: sub-component enablement to view, `_stakeholder_shared.require_stakeholder_manage` to change
+anything. Files resolve through `service.resolve_stakeholder_file_project_id`.
 """
 
 from __future__ import annotations

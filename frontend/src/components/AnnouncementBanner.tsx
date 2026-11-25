@@ -2,17 +2,14 @@
  * Module: components/AnnouncementBanner
  *
  * The banner above the top bar of every signed-in page: the platform's active messages plus those of the
- * organisation the person is currently in (the organisation of the open project, else their only organisation).
+ * organisation the person is in (the open project's, else their only organisation).
  *
- * Responsibilities: load the active notices for that organisation, let a person dismiss one, and remember the
- * dismissal in this browser only (a per-viewer convenience: it never reaches the server, and a cleared or
- * blocked store simply shows the notice again). A notice that is not dismissible has no close control and shows
- * even if it was dismissed earlier. A failed load shows nothing.
+ * Loads the active notices and lets a person dismiss one; the dismissal is remembered in this browser only (a
+ * per-viewer convenience that never reaches the server). A non-dismissible notice has no close control and shows
+ * even if dismissed earlier. A failed load shows nothing.
  *
- * Design decisions: the banner is sticky, so it stays above the top bar while the page scrolls. The top bar,
- * the navigation rail and other pinned chrome sit below it by reading `--announcement-height`, which this
- * component keeps equal to its own measured height (0px when nothing is shown), so a notice that wraps on a
- * narrow screen never covers the chrome beneath.
+ * Design: the banner is sticky. Pinned chrome below it reads `--announcement-height`, which this component keeps
+ * equal to its measured height (0px when empty), so a wrapped notice never covers the chrome.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 

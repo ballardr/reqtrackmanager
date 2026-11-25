@@ -21,6 +21,8 @@ There are two kinds of token, interchangeable everywhere this header is accepted
 
 A caller (the REST API, or `mcp-server` relaying the header on your behalf) doesn't need to know or care which kind it's holding — the backend's own RBAC does 100% of the access-control work either way, and neither token type is ever granted more access than the underlying account already has.
 
+When a token stops being accepted (it has expired, been revoked, or been replaced by a password change), the API answers `401` with `"code": "invalid_token"` (see [Error format](./rest-api-overview.md#error-format)). The web interface ends the session at the first such answer and returns to the sign-in page, then back to the page that was open once signed in again.
+
 ## The recommended way — a Personal Access Token
 
 From **Preferences → Personal Access Tokens**, create a token scoped to whichever organisation(s) (optionally narrowed to specific projects) it needs, and give it an expiry.
@@ -33,6 +35,10 @@ From **Preferences → Personal Access Tokens**, create a token scoped to whiche
 The token is shown exactly once, at creation — copy it immediately. It can be revoked at any time from the same page, taking effect on its very next use. See [Core Features → Personal access tokens](../core-features/personal-access-tokens.md) for the full walkthrough of creating, scoping, and revoking one; this page covers only how to *use* it.
 
 Paste the resulting `rtm_pat_...` value into any client config exactly where a session token would go.
+
+### For an integration: a service user's token
+
+An unattended integration (an MCP agent, a build job) should not use a named person's token: it stops working when that person leaves and its actions are recorded under their name. Ask an organisation administrator for a **service user** instead. They issue its token from the organisation settings (**People → Users →** the service user's name **→ Issue token**), and you use it exactly like any personal access token. The service user needs roles on the projects it works with; its token is limited to its own organisation and can be narrowed to projects. See [Core Features → Personal access tokens: Service users](../core-features/personal-access-tokens.md#service-users).
 
 A sign-in that is repeated wrongly is delayed, and a script that calls the login endpoint should respect the `Retry-After` header on a 429 answer. Prefer a personal access token for anything unattended.
 

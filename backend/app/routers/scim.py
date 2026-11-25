@@ -1,35 +1,22 @@
 """
 Module: routers.scim
 
-Inbound SCIM 2.0 (RFC 7643/7644) provisioning — lets an IdP push user/group
-membership changes directly, on its own schedule, with no user login
-required. This is the purpose-built alternative to
-`services/oidc_provisioning.py`'s claims-based sync (`sync_org_groups_from_claims`),
-which only ever runs at login time and can't promptly deprovision someone
-who stops logging in. Per-organisation bearer token auth
-(`Organization.scim_token_hash`/`scim_token_prefix`, managed via
-`routers/orgs.py`'s `/scim-token` endpoints), entirely independent of any
-user session.
+Inbound SCIM 2.0 (RFC 7643/7644) provisioning: lets an IdP push user/group membership changes on its own
+schedule with no user login, so it can promptly deprovision someone who stops logging in (unlike
+`services/oidc_provisioning.py`'s claims-based sync, which runs only at login). Per-organisation bearer token
+auth (`Organization.scim_token_hash`/`scim_token_prefix`, managed via `routers/orgs.py`'s `/scim-token`
+endpoints), independent of any user session.
 
-A SCIM Group's `id` is this app's own `OrgGroup.id`, and a SCIM User's `id`
-is this app's own `User.id` — the IdP stores whatever `id` a `POST` returns
-and addresses that exact resource on every later call, so no separate
-external-id mapping table is needed. Group membership sync therefore
-operates directly on `OrgGroupMember` rows with `user_id` set — never
-`member_org_group_id` (nested-group) edges, which are structural,
-admin-managed relationships, not something an IdP's group roster should be
-able to rearrange.
+A SCIM Group's `id` is this app's `OrgGroup.id` and a SCIM User's `id` is its `User.id`: the IdP stores the
+`id` a `POST` returns and addresses that resource on later calls, so no external-id mapping table is needed.
+Group membership sync operates on `OrgGroupMember` rows with `user_id` set, never `member_org_group_id`
+(nested-group) edges, which are admin-managed structure an IdP's roster must not rearrange.
 
-Deliberately a pragmatic subset of the spec, not full RFC 7644 compliance
-(documented candidly, not hidden — see docs/enterprise-integration.md):
-- Filter support is limited to a single `attr eq "value"` expression,
-  covering the `userName eq`/`emails.value eq` queries real IdP SCIM
-  clients (Okta, Azure AD, Google Workspace) send in practice — no
-  AND/OR/complex filter grammar.
-- PATCH supports `active`/`displayName` replace on Users and
-  `members` add/remove on Groups — the operations those same IdPs actually
-  send for deprovisioning and group-membership sync — not arbitrary path
-  expressions.
+A pragmatic subset of the spec (docs/enterprise-integration.md):
+- Filters are limited to a single `attr eq "value"` expression, covering the `userName eq`/`emails.value eq`
+  queries Okta, Azure AD and Google Workspace send; no AND/OR/complex grammar.
+- PATCH supports `active`/`displayName` replace on Users and `members` add/remove on Groups, the operations
+  those IdPs send for deprovisioning and group sync; not arbitrary path expressions.
 - No Bulk operations, no ETags/versioning, no schema extensions.
 """
 
@@ -129,14 +116,11 @@ def _operations(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def require_scim_org(request: Request, db: Session = Depends(get_db)) -> Organization:
     """Resolves the calling organisation from a SCIM bearer token.
 
-    Deliberately distinct from every other auth dependency in this app
-    (`deps.get_current_user*`) — a SCIM request authenticates as an
-    *organisation*, via a token an org admin generated, never as any
-    individual `User`/session.
+    Distinct from the other auth dependencies (`deps.get_current_user*`): a SCIM request authenticates as an
+    organisation, via a token an org admin generated, never as an individual `User` or session.
 
     Raises:
-        HTTPException: 401 if the token is missing/invalid, 403 if the
-            resolved organisation has been disabled.
+        HTTPException: 401 if the token is missing/invalid, 403 if the resolved organisation is disabled.
     """
     auth_header = request.headers.get("authorization", "")
     if not auth_header.lower().startswith("bearer "):
@@ -153,24 +137,15 @@ def require_scim_org(request: Request, db: Session = Depends(get_db)) -> Organiz
 
 
 def _parse_simple_eq_filter(filter_param: str | None) -> tuple[str, str] | None:
-    """Parses the single `attr eq "value"` filter shape real SCIM clients
-    send for user/group lookups — see module docstring for the scope
-    limitation.
+    """Parses the single `attr eq "value"` filter shape SCIM clients send for user/group lookups (see the
+    module docstring for the scope limit).
 
-    Deliberately not a `(attr)\\s+eq\\s+"(value)"`-shaped regex over the
-    whole `filter_param`, in either a single combined pattern or a
-    `search()` for just the trailing `eq "value"` half: `attr` itself can
-    legitimately contain its own `eq "..."` (the bracket-filter shape this
-    module accepts, `emails[type eq "work"].value`), and `filter_param` is
-    attacker-controlled (any bearer-token holder can send it) — a combined
-    pattern has to backtrack over every candidate split between attr's
-    embedded `eq` and the real trailing one, and even a `search()` for only
-    `\\s+eq\\s+"..."` is *itself* polynomial-time on a long run of
-    whitespace containing no "eq" at all (every starting position
-    backtracks its own `\\s+` before failing — the same CodeQL
-    py/polynomial-redos shape, just moved rather than removed). Finding the
-    same attr/value split with plain string operations (`rfind`/slicing)
-    instead avoids backtracking entirely, in genuinely linear time.
+    Not a `(attr)\\s+eq\\s+"(value)"`-shaped regex over `filter_param`, nor a `search()` for the trailing
+    `eq "value"`: `attr` can contain its own `eq "..."` (the accepted bracket-filter shape
+    `emails[type eq "work"].value`), and `filter_param` is attacker-controlled (any bearer-token holder). A
+    combined pattern backtracks over every candidate split, and even a `search()` for `\\s+eq\\s+"..."` is
+    polynomial-time on a long whitespace run with no "eq" (CodeQL py/polynomial-redos). Finding the split
+    with plain string operations (`rfind`/slicing) is linear time.
     """
     if not filter_param:
         return None
@@ -183,14 +158,10 @@ def _parse_simple_eq_filter(filter_param: str | None) -> tuple[str, str] | None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported filter expression.")
     end_quote = len(s) - 1
     start_quote = s.rfind('"', 0, end_quote)
-    # At least one whitespace char must separate "eq" from the opening
-    # quote (hardening pass, 2026-09) — `before = s[:start_quote].rstrip()`
-    # alone would accept a zero-whitespace gap too (e.g. `eq"active"`,
-    # never valid per SCIM's grammar or the original `\s+eq\s+"..."` regex
-    # this function replaced), since rstrip() has nothing to strip when
-    # the quote immediately follows "eq". Checked before rstripping so a
-    # missing gap is rejected regardless of how much whitespace precedes
-    # the "eq" token itself.
+    # At least one whitespace character must separate "eq" from the opening quote: `before =
+    # s[:start_quote].rstrip()` alone would accept a zero-whitespace gap (`eq"active"`), which SCIM's grammar
+    # does not allow, since rstrip() has nothing to strip. Checked before rstripping so a missing gap is
+    # rejected however much whitespace precedes "eq".
     before_raw = s[:start_quote] if start_quote != -1 else ""
     if start_quote == -1 or not before_raw or not before_raw[-1].isspace():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported filter expression.")
@@ -248,9 +219,10 @@ def _get_org_user(db: Session, org: Organization, user_id: UUID) -> User:
     """Loads a User and 404s unless they actually belong to `org` — without
     this, a SCIM token for org A could read/modify any user in the entire
     deployment by guessing/enumerating ids. A server administrator is the platform's own account, never an
-    organisation's to manage, so it reads as absent here too."""
+    organisation's to manage, so it reads as absent here too. A service user is an administrator-managed integration
+    identity with no place in an identity provider's directory, so it reads as absent as well."""
     user = db.get(User, user_id)
-    if user is None or user.is_server_admin or not get_effective_org_roles(db, user.id, org.id):
+    if user is None or user.is_server_admin or user.is_service_account or not get_effective_org_roles(db, user.id, org.id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
     return user
 
@@ -308,14 +280,10 @@ def _get_org_group(db: Session, org: Organization, group_id: UUID) -> OrgGroup:
 def _parse_uuid(value: Any) -> UUID | None:
     """Parses a SCIM member `value` into a UUID, or `None` if it isn't one.
 
-    A real IdP only ever echoes back an id this app itself issued (the
-    `id` returned from a prior `POST`/`GET`), so this should never actually
-    fire — but the request body is untyped (`dict[str, Any]`), so a
-    malformed or hand-crafted request previously hit a raw `UUID(...)`
-    call and 500ed instead of getting a clean rejection. Callers skip a
-    bad entry rather than fail the whole request, matching
-    `_add_group_member`'s existing "silently skip a member id that isn't
-    a real org member" tolerance for this same untrusted list.
+    A real IdP echoes back only an id this app issued, so a non-UUID should not occur; but the request body is
+    untyped (`dict[str, Any]`), so a malformed value is rejected cleanly instead of failing in `UUID(...)`.
+    Callers skip a bad entry rather than fail the whole request, as `_add_group_member` silently skips a
+    member id that is not a real org member.
     """
     if not value:
         return None
@@ -371,7 +339,9 @@ def list_users(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     org_user_ids = select(UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id)
-    query = select(User).where(User.id.in_(org_user_ids), User.is_server_admin.is_(False))
+    query = select(User).where(
+        User.id.in_(org_user_ids), User.is_server_admin.is_(False), User.is_service_account.is_(False),
+    )
     parsed = _parse_simple_eq_filter(filter)
     if parsed:
         attr, value = parsed
@@ -388,20 +358,15 @@ def list_users(
 def create_user(
     payload: dict[str, Any] = Body(...), org: Organization = Depends(require_scim_org), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    """Provisions a user into this organisation — `find-or-create` by
-    email, but without an email-verification gate: the
-    entire SCIM channel is already privileged (only reachable with a token
-    an org admin explicitly generated), unlike OIDC's public login flow
-    where any caller could otherwise claim an arbitrary email. Privileged
-    to *this organisation*, though: an account another organisation holds
-    is added only if this one allows external users
+    """Provisions a user into this organisation: find-or-create by email, without an email-verification gate,
+    because the SCIM channel is privileged (reachable only with a token an org admin generated), unlike OIDC's
+    public login flow where any caller could claim an arbitrary email. The privilege is to this organisation:
+    an account another organisation holds is added only if this one allows external users
     (`services.org_membership.assert_may_add_account`).
 
-    Grants baseline `OrgRole.MEMBER` if the resolved user holds no role in
-    this org yet — a SCIM `Users` resource is inherently org-scoped, so
-    "provisioned into this org" already implies membership; role
-    elevation beyond that happens via `sync_org_group_mappings`-managed
-    OIDC claims or group sync, not here.
+    Grants baseline `OrgRole.MEMBER` if the resolved user holds no role in this org: a SCIM `Users` resource is
+    org-scoped, so provisioning implies membership; further role elevation comes from
+    `sync_org_group_mappings`-managed OIDC claims or group sync, not here.
     """
     emails = payload.get("emails", [])
     email = payload.get("userName") or next(
@@ -415,6 +380,8 @@ def create_user(
     display_name = _display_name(payload.get("displayName")) or _display_name(formatted) or email.split("@")[0][:_MAX_DISPLAY_NAME]
 
     user = db.scalar(select(User).where(User.email == email))
+    if user is not None and user.is_service_account:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this userName already exists.")
     if user is not None:
         # An existing account is pulled in only under the same rule as every other grant by an administrator
         # (`services.org_membership`): not banned, not a platform administrator, and not held by another
@@ -645,25 +612,15 @@ def patch_group(
 
 @router.delete("/Groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_group(group_id: UUID, org: Organization = Depends(require_scim_org), db: Session = Depends(get_db)):
-    """Deletes an org group. `OrgGroupMember`/`ProjectGroupMember` rows
-    referencing it all cascade at the database level (`ondelete="CASCADE"`
-    on each FK to `org_groups.id`) — this is the only group-deletion path
-    in the app at all (no equivalent UI/API exists yet for a human org
-    admin), so an IdP routinely deleting/recreating one of its groups can
-    silently revoke whatever project access this group granted through
-    nesting into a `ProjectGroup`, or drop it as another group's own
-    nested member, with nothing about *that* recorded beyond "a group was
-    deleted."
+    """Deletes an org group. `OrgGroupMember`/`ProjectGroupMember` rows referencing it cascade at the
+    database level (`ondelete="CASCADE"` on each FK to `org_groups.id`), so an IdP deleting or recreating a
+    group can revoke project access the group granted through nesting into a `ProjectGroup`, or drop it as
+    another group's nested member.
 
-    Hardening-review finding: the log event only recorded the group's own
-    id/name, not what its removal actually cascaded into — the same
-    "record what changed, not just that something happened" gap the
-    merge-import audit-provenance hardening pass fixed for
-    `merge_org_bundle` (see docs/decisions.md). Fixed by capturing the
-    affected `ProjectGroup`/parent-`OrgGroup` ids *before* the cascade
-    runs and recording them in the event detail, so "a project's access
-    just changed and nobody knows why" is answerable from the audit log
-    alone.
+    The log event therefore records what the removal cascaded into, not only the group's id and name ("record
+    what changed, not just that something happened", as `merge_org_bundle`'s audit provenance; see
+    docs/decisions.md): the affected `ProjectGroup`/parent-`OrgGroup` ids are captured before the cascade runs
+    and recorded in the event detail, so a change in a project's access is answerable from the audit log alone.
     """
     group = _get_org_group(db, org, group_id)
     affected_project_group_ids = list(

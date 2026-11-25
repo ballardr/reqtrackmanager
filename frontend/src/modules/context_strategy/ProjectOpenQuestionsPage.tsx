@@ -1,28 +1,19 @@
 /**
  * Module: modules/context_strategy/ProjectOpenQuestionsPage
  *
- * The Context & Strategy module's project-scoped Open Question list route,
- * mounted at
- * `/projects/:projectId/modules/context_strategy/open-questions`, reached
- * via this module's fifth and last top-level nav-rail entry.
- * Mirrors `ProjectPainPointsPage.tsx`'s exact `DirectoryTable` + `FilterPanel`
- * + "New X" `Modal` shape — Open Question is project-scoped only (source
- * overview §9), so unlike `ProjectStrategiesPage.tsx`/
- * `ProjectGuidingPrinciplesPage.tsx` there is no org-scoped sibling panel,
- * and unlike `ProjectPainPointsPage.tsx` there is no type vocabulary to load
- * up front either — the simplest of the five list pages this module ships.
+ * The project-scoped Open Question list route, mounted at
+ * `/projects/:projectId/modules/context_strategy/open-questions` (the module's last top-level nav-rail entry). It has
+ * `ProjectPainPointsPage.tsx`'s `DirectoryTable`, `FilterPanel` and "New X" `Modal` shape. Open Question is
+ * project-scoped only, so there is no organisation-scoped sibling panel and no type vocabulary to load.
  *
- * The list column shows `question` itself, not a separate `title` — Open
- * Question has no `title` field (see `types.ts`'s own docstring).
+ * The list column shows `question`, which is the display title (see `types.ts`).
  *
- * The list opens on unresolved Open Questions only (the "Open only" filter is
- * ticked and stays visible); a link with a valid `status`, or `open=0`, starts
- * with it off (`hooks/useOpenOnly.ts`).
+ * The list opens on unresolved Open Questions only (the "Open only" filter is ticked and visible); a link with a valid
+ * `status`, or `open=0`, starts with it off (`hooks/useOpenOnly.ts`).
  *
- * Filters can be pre-set from the URL (a report figure links here, e.g.
- * `?open=1&overdue=1`): `status`, `priority`, `open=1|0` (unresolved; the
- * default), `overdue=1` (due date passed) and `unowned=1`. They only seed the
- * state; each is a visible control in the filter panel.
+ * Filters can be pre-set from the URL (a report figure links here, e.g. `?open=1&overdue=1`): `status`, `priority`,
+ * `open=1|0` (unresolved; the default), `overdue=1` (due date passed) and `unowned=1`. They only seed the state; each
+ * is a visible control in the filter panel.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -33,9 +24,8 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { Spinner } from "../../components/Spinner";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { OPEN_QUESTION_SORT_KEYS, OPEN_QUESTION_SORT_VALUES } from "./contextStrategySort";
@@ -44,9 +34,13 @@ import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQuestionStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { MarkdownSummary } from "../../components/MarkdownSummary";
 import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
+import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
@@ -57,6 +51,7 @@ import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
@@ -65,9 +60,9 @@ export function ProjectOpenQuestionsPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "open_question");
   const commitTags = useCommitTags(projectId ?? "", "open_question");
+  const announceCreated = useCreatedToast(projectId ?? "", "open_question");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [openQuestions, setOpenQuestions] = useState<OpenQuestion[] | null>(null);
@@ -78,7 +73,7 @@ export function ProjectOpenQuestionsPage() {
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]);
   const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(OPEN_QUESTION_SORT_KEYS);
+  const listSort = useListSort("open_questions", OPEN_QUESTION_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(OPEN_QUESTION_STATUS_LABEL));
@@ -116,8 +111,22 @@ export function ProjectOpenQuestionsPage() {
     if (overdueOnly) params.set("overdue_only", "true");
     if (unownedOnly) params.set("unowned_only", "true");
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
+
+  const columns: DirectoryColumn<OpenQuestion>[] = [
+    { key: "question", label: "Question", sortable: true, render: (q) => <><MarkdownSummary text={q.question} math /><ProjectScopeLabel row={q} /></> },
+    { key: "code", label: "Code", sortable: true, render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (q) => <Badge tone={OPEN_QUESTION_STATUS_TONE[q.status]}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</Badge>,
+    },
+    { key: "due_date", label: "Due", sortable: true, optional: true, render: (q) => q.due_date ?? "—" },
+  ];
+
+  const shown = useOptionalColumns("context_open_questions", columns);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -137,21 +146,11 @@ export function ProjectOpenQuestionsPage() {
   // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && openQuestions.some((q) => matches(q, false));
 
-  const columns: DirectoryColumn<OpenQuestion>[] = [
-    { key: "question", label: "Question", sortable: true, render: (q) => <>{q.question}<ProjectScopeLabel row={q} /></> },
-    { key: "code", label: "Code", sortable: true, render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
-    { key: "priority", label: "Priority", sortable: true, render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (q) => <Badge tone={OPEN_QUESTION_STATUS_TONE[q.status]}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</Badge>,
-    },
-    { key: "due_date", label: "Due", sortable: true, render: (q) => q.due_date ?? "—" },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Open Question"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "open_question", filters: filterParams().toString(), onImported: reloadOpenQuestions }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -182,16 +181,17 @@ export function ProjectOpenQuestionsPage() {
             <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} codeKey="code" titleKey="question" />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
       >
         <DirectoryTable
           ariaLabel="Open Questions"
-          columns={columns}
-          rows={sortRows(filtered, sort, OPEN_QUESTION_SORT_VALUES)}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
+          columns={shown.columns}
+          rows={sortRows(filtered, listSort.sort, OPEN_QUESTION_SORT_VALUES)}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(q) => q.id}
           placements={{ projectId, artefactType: "open_question", rowId: (q) => q.id }}
           onRowClick={(q) => navigate(`/projects/${rowProjectId(q, projectId)}/modules/context_strategy/open-questions/${q.id}`)}
@@ -216,7 +216,7 @@ export function ProjectOpenQuestionsPage() {
             setCreateError(null);
             try {
               const created = await projectOpenQuestionApi.create(projectId, values);
-              showToast("Open Question created.");
+              announceCreated("Open Question", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

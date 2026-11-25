@@ -1,21 +1,16 @@
 /**
  * Module: modules/context_strategy/PainPointScoringPanel
  *
- * The scoring section of a Pain Point's detail page: rate the Pain Point on
- * every criterion the project offers (General), add the personas whose
- * per-persona criteria differ, and see the roll-up under a model and persona
- * roll-up chosen right here ("chosen when viewing").
+ * The scoring section of a Pain Point's detail page: rate the Pain Point on every criterion the project offers
+ * (General), add the personas whose per-persona criteria differ, and see the roll-up under a model and persona roll-up
+ * chosen in the panel.
  *
- * Built from the generic scoring core's shared pieces (`ScoringLevelPicker`,
- * `ScoringModelSwitcher`, the `projectScoringApi` scheme read); the persona
- * list arrives from the backend's `available_targets`, so this module never
- * knows the Stakeholders module exists. If personas are not available, only the
- * General scores are offered. Existing rows whose persona has since
- * vanished stay editable as "Persona unavailable" so they can be removed.
+ * Built from the generic scoring core (`ScoringLevelPicker`, `ScoringModelSwitcher`, the `projectScoringApi` scheme
+ * read). Personas arrive from the backend's `available_targets`, so this module never depends on the Stakeholders
+ * module; without them only General scores are offered. A row whose persona is unavailable stays editable as "Persona
+ * unavailable" so it can be removed.
  *
- * Like the rest of this page, the controls always render and the backend's
- * RBAC surfaces as a toast; they are disabled only once the Pain Point is
- * locked (a terminal outcome).
+ * Controls always render and the backend's RBAC surfaces as a toast; they are disabled once the Pain Point is locked.
  */
 import { useCallback, useEffect, useState } from "react";
 

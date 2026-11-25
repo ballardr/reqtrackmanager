@@ -8,6 +8,27 @@ sidebar_position: 7
 
 Use the file picker at the bottom of a requirement's Attachments card to upload a supporting document; click a filename to download it, or the trash icon to remove it. Once a requirement is locked, this direct upload is no longer available — a file can still be attached at that point via an approved [change request](./change-requests.md), or informally via a discussion comment.
 
+## Pictures in text
+
+A picture attached to a record can also sit inside the record's text, beside the words it illustrates: a requirement's description, a Decision's rationale, a pain point's evidence. A picture in text is always one of that record's own attachments; a web address is never drawn, so opening a record never contacts another site.
+
+```mermaid
+flowchart LR
+    A["Edit the record"] --> B["Picture button in the text toolbar"]
+    B --> C{"Where is the picture?"}
+    C -->|"Already attached"| D["Choose it"]
+    C -->|"On your computer"| E["Upload a picture<br/>(attached to the record)"]
+    D --> F["Alternative text and caption<br/>(optional)"]
+    E --> F
+    F --> G["Shown in the text, on the page and in reports"]
+```
+
+- **Insert** from the **Picture** button of an edit form on a record's page (in the **Visual** and **Write** views). The panel lists the record's pictures; **Upload a picture** attaches a new file and chooses it at once. In the **Visual** view you can also paste or drop a picture file onto the text. A form that *creates* a record has no Picture button, because the record has no attachments yet: add the picture when you edit it.
+- **Alternative text** is a short description read by screen readers and shown in place of the picture where it cannot be shown (a list, a search result, a file that is no longer attached). **Caption** is a line shown under the picture and printed in reports. Both are optional; press a picture in the Visual view to change them.
+- **Reports** print a picture that stands on a line of its own, with its caption. A picture marked *confidential*, or one that is not a picture a report can print, appears as its alternative text.
+- **Removing the attachment** does not change the text; the picture then shows its alternative text (or "Picture unavailable") until it is removed from the text or attached again.
+- Comments hold text only. A project [export and import](./zip-export-import.md) carries the pictures with their files.
+
 ## Attachments in discussion
 
 Discussion comments support file attachments too, via the paperclip icon — attach one while writing a new comment, or add/remove attachments while editing an existing comment. There's no way to attach a file to someone else's comment, or to an already-posted comment that isn't being edited. This works even on a locked requirement, since a discussion comment isn't part of the requirement's governed content.
@@ -29,6 +50,8 @@ The filter panel on the right narrows the list; the filters are held in the addr
 - **Uploaded by** lists the people who uploaded files in this project.
 - **Uploaded from** and **to** are calendar days in your own time zone, both included.
 - On a project with parent or child projects, the usual project scope filter widens the list; a row from another project says so and opens there.
+
+Select a picture's small preview to open it larger in a dialog. The dialog names the file, offers **Download**, and closes with **Escape** or the close button; focus returns to the preview. The same preview opens from the organisation's Files page and from its shared resources. A file that is not a picture shows an icon and has no preview.
 
 A picture you cannot read shows an icon in place of its preview. A *confidential* library picture is still listed for the project's members; the mark only stops a report from printing it.
 

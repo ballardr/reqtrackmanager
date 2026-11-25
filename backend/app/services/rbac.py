@@ -1,138 +1,53 @@
 """
 Module: services.rbac
 
-Computes a user's effective organisation and project roles and exposes
-FastAPI dependencies that enforce them (C-U-01, C-U-03).
+Computes a user's effective organisation and project roles and exposes FastAPI dependencies that enforce
+them (C-U-01, C-U-03).
 
-Effective project role resolution combines eight sources:
-    1. Direct per-user role assignments (UserProjectRole).
-    2. Membership in a project group (ProjectGroupMember with user_id set),
-       for each role the group holds (ProjectGroupRole — the members/groups directory rework replaced a group's old single,
-       required `role` scalar with this separate grant table, mirroring
-       source 8's own OrgGroupProjectRole shape: a group can now hold zero,
-       one, or several roles at once, resolved here as one provenance entry
-       per (group, granted role) pair a member's group membership matches).
-    3. Membership in an org group that is itself nested inside a project
-       group (ProjectGroupMember with org_group_id set, resolved via
-       OrgGroupMember) — transitively: a user who's only a *direct* member
-       of a sub-group counts as a member of every ancestor group too, via
-       OrgGroupMember's own self-nesting (OrgGroupMember.member_org_group_id,
-       a distinct, fully transitive relationship from this one-hop
-       org-group-in-project-group nesting — see `_ancestor_org_group_ids`/
-       `_descendant_org_group_ids` and docs/decisions.md for why the two
-       nesting relationships resolve differently).
-    4. ProjectVisibility.ORG_WIDE: baseline MEMBER access for any user who
-       holds any role in the project's own organisation, with no explicit
-       assignment needed. Deliberately narrower than the other sources —
-       never implies PROJECT_MANAGER/ADMINISTRATOR/STAKEHOLDER, and
-       deliberately not folded into `get_project_member_user_ids`
-       (broadcast notification targeting, C-N-01) or
-       `can_manage_project_settings` — org-wide visibility is a read grant,
-       not a "this is now like being a real project member" shortcut.
-    5. Forward (parent -> child) inheritance: `Project.role_inheritance_mode`
-       — walks the parent chain, applying each hop's own mode
-       (MIRROR_ALL/MIRROR_ROLE/MEMBER_ONLY) to that ancestor's *direct*
-       roles (sources 1-4 above, computed at that ancestor — never an
-       ancestor's own inherited roles), breaking at the first ancestor
-       whose mode is NONE. Unlike ORG_WIDE, this is a real, potentially
-       elevated grant (MIRROR_ALL/MIRROR_ROLE can convey PROJECT_MANAGER)
-       and *is* folded into `get_project_member_user_ids` — see decision 5
-       in docs/decisions.md's "Hierarchical projects" entry.
-    6. Member-source (source -> receiving project) inheritance:
-       `ProjectMemberSource`, an explicit list a project maintains of which
-       other same-organisation projects it consumes members from,
-       authorized entirely by the *receiving* project's own manage rights
-       (not the source's) — see `models.project.ProjectMemberSource`'s
-       docstring for why. Originally restricted to a direct child and
-       always MEMBER-only; generalized (docs/decisions.md) to any
-       same-organisation project, with each row's own `mirror_mode`/
-       `mirror_filter_role` controlling what's mirrored — MIRROR_ALL/
-       MIRROR_ROLE/MEMBER_ONLY, same vocabulary as source 5's forward
-       mechanism, applied to the source's *direct* roles only (never the
-       source's own inherited or member-sourced roles). Walks down through
-       a chain of explicit lists (each hop requires that hop's own list to
-       name the next one down, regardless of which mode granted access at
-       an earlier hop). Also folded into `get_project_member_user_ids`.
-    7. Project-referencing group membership: `ProjectGroupMember` with
-       `source_project_id` set — "this group's members = that other
-       project's direct members," resolved as one hop only (never that
-       project's own inherited/member-sourced/project-referenced members)
-       via `_direct_project_member_ids_base`, so two projects referencing
-       each other can never cause unbounded recursion — a structural
-       guarantee, not just an optimisation. Same-organisation only.
-       Authorized purely by `require_project_manage` on the group's own
-       project, mirroring source 6's receiving-side-only authorization.
-       Treated as a "direct" source for provenance purposes (folded into
-       `_direct_effective_project_roles`/`_direct_project_member_ids`/
-       `_direct_project_role_holder_ids` alongside sources 1-4, the same
-       way nested org groups already are) rather than a separate inherited
-       kind, since it resolves at the project's own level via its own
-       group configuration.
-    8. Direct org-group project role assignment (`OrgGroupProjectRole`,
-       added alongside the members/groups directory rework): an org
-       group holding a project role directly, as its own
-       independently-revocable record — parallel to source 1
-       (`UserProjectRole`) but at the group level, and genuinely distinct
-       from source 3 (nesting an org group inside a `ProjectGroup`, C-U-12):
-       both mechanisms coexist by design, one is not a replacement for the
-       other. Resolved for every org group the user belongs to, direct or
-       transitively nested (`_ancestor_org_group_ids`, same closure source
-       3 already uses), with the same live cross-tenant re-check
-       (`OrgGroup.organization_id == Project.organization_id`) source 3
-       applies. Provenance kind `"direct_org_group_role"`, with
-       `via_group_id`/`via_group_name` naming the `OrgGroup` that granted
-       it (not the same as `"direct_org_group"`'s provenance, which means
-       "nested inside a project group" — kept as two distinct kinds so a UI
-       can tell the two mechanisms apart). Folded into `_direct_effective_
-       project_roles`/`_direct_project_member_ids`/`_direct_project_role_
-       holder_ids` alongside sources 1-4/7 for the same reason source 7
-       is — it resolves at the project's own level, not as a separate
-       inherited kind — which is also what makes it cascade through
-       forward inheritance (source 5) and the member-source mechanism
-       (source 6) automatically: both walk an ancestor/source project's
-       *direct* roles via these same shared helpers, so an org group's
-       direct grant on a parent project is picked up by that walk exactly
-       like a user's own direct grant already is, without either
-       mechanism needing its own group-aware branch. See
-       docs/decisions.md's identify/verify/remediate entry for this source.
+Effective project roles combine eight sources:
+    1. Direct per-user assignments (UserProjectRole).
+    2. Membership in a project group (ProjectGroupMember with user_id), for each role the group holds
+       (ProjectGroupRole: zero, one or several roles; one provenance entry per (group, role) pair).
+    3. An org group nested inside a project group (ProjectGroupMember with org_group_id), transitively: a
+       member of a sub-group counts for every ancestor group via OrgGroupMember.member_org_group_id (see
+       `_ancestor_org_group_ids`/`_descendant_org_group_ids` and docs/decisions.md).
+    4. ProjectVisibility.ORG_WIDE: baseline MEMBER access for any user with a role in the project's
+       organisation. Narrower than the others: never implies a higher role, and not folded into
+       `get_project_member_user_ids` (broadcast targeting, C-N-01) or `can_manage_project_settings`.
+    5. Forward (parent -> child) inheritance via `Project.role_inheritance_mode`: walks the parent chain,
+       applying each hop's mode (MIRROR_ALL/MIRROR_ROLE/MEMBER_ONLY) to that ancestor's direct roles (sources
+       1-4 and 7-8, never its inherited roles), stopping at the first NONE. A real grant (it can convey
+       PROJECT_MANAGER), so it is folded into `get_project_member_user_ids` (docs/decisions.md,
+       "Hierarchical projects").
+    6. Member-source inheritance (`ProjectMemberSource`): an explicit list of same-organisation projects a
+       project consumes members from, authorised by the receiving project's manage rights
+       (`models.project.ProjectMemberSource`). Each row's `mirror_mode`/`mirror_filter_role` selects what is
+       mirrored, from the source's direct roles only; a chain walks down through each hop's own list. Folded
+       into `get_project_member_user_ids`.
+    7. Project-referencing group membership (`ProjectGroupMember.source_project_id`): "this group's members =
+       that project's direct members", one hop via `_direct_project_member_ids_base`, so mutual references
+       cannot recurse. Same organisation only, authorised by `require_project_manage` on the group's project.
+       Treated as direct for provenance (folded into `_direct_effective_project_roles`,
+       `_direct_project_member_ids`, `_direct_project_role_holder_ids`).
+    8. Direct org-group project role (`OrgGroupProjectRole`): an org group holding a project role as its own
+       revocable record, parallel to source 1 and distinct from source 3. Resolved for every org group the
+       user belongs to, direct or nested, with the live cross-tenant check
+       (`OrgGroup.organization_id == Project.organization_id`). Provenance kind `"direct_org_group_role"`
+       (source 3 is `"direct_org_group"`) so a UI can tell the two apart. Being direct, it cascades through
+       sources 5 and 6, which read an ancestor's or source's direct roles through the same helpers.
 
-Sources 5, 6, and 7 are kept decoupled from each other and from themselves:
-the forward walk (5) only ever reads an ancestor's *direct* roles (which,
-per source 8 above, now includes that ancestor's own `OrgGroupProjectRole`
-grants); the member-source walk (6) only ever reads a source's *direct*
-roles (plus, recursively, whatever that source has itself separately
-consumed via its own member-source list — a deliberate, bounded chain); and
-the project-reference arm (7) only ever reads a source's *base* direct
-roles (`_direct_project_member_ids_base` — explicitly excluding even its
-own project-reference arm, unlike 6's chaining). None of the three ever
-reads another mechanism's already-resolved result. This prevents a
-sibling-project leak (an unrelated project's users ending up visible via
-someone else's mirroring) and avoids any mutual-recursion hazard. See
-docs/decisions.md.
+Sources 5, 6 and 7 never read another mechanism's resolved result: 5 reads an ancestor's direct roles, 6 a
+source's direct roles (plus that source's own member-source list, a bounded chain), 7 a source's base direct
+roles only. This prevents sibling-project leaks and mutual recursion (docs/decisions.md).
 
-A project manager role implies project administrator and stakeholder
-capabilities (C-U-03 clarification: "Project Managers can also perform all
-project administrator and stakeholder tasks"). Holding any project role
-implies baseline member-level view access. This normalization is applied
-once, over the fully-combined set from all eight sources — so e.g. a child's
-own direct STAKEHOLDER role plus a forward-inherited PROJECT_MANAGER role
-still correctly implies PROJECT_ADMINISTRATOR on the child.
+A project manager implies project administrator and stakeholder capabilities (C-U-03), and any project role
+implies member-level view. The normalisation is applied once over the combined set from all eight sources.
 
-Organisation admins do not automatically gain project content access
-(C-U-01 clarification: "No Project access is guaranteed from any roles apart
-from org admin being able to manage project settings") — that specific,
-narrow capability is checked separately via `can_manage_project_settings`
-rather than folded into the general project role set. Neither inheritance
-mechanism changes this: both only ever propagate project-level roles
-between projects, never touch org-role resolution.
+Organisation admins gain no project content access (C-U-01); managing project settings is checked separately
+by `can_manage_project_settings`. Neither inheritance mechanism touches org-role resolution.
 
-`get_effective_permissions`/`require_permission`, near the end of this
-module, are a separate, later addition (Fine-Grained Access Control,
-) — a fourth,
-independently-resolving path (alongside the org/project role resolution
-above and module-contributed roles below) over a different vocabulary
-(permission atoms, not `OrgRole`/`ProjectRole`), built as a parallel
-function rather than threaded through the resolution above.
+`get_effective_permissions`/`require_permission`, near the end, are a parallel resolution path over the
+permission-atom vocabulary (Fine-Grained Access Control), independent of the role resolution above.
 """
 
 from __future__ import annotations
@@ -184,10 +99,8 @@ from app.modules.registry import (
 from app.services.lookups import present
 from app.services.permissions import ADMINISTRATIVE_PERMISSIONS, ALL_ARTEFACT_TYPES, encode_permission
 
-# Defensive circuit-breaker for the forward-inheritance and member-source
-# walks below — matches `_ORG_GROUP_CLOSURE_ITERATION_CAP`'s own rationale:
-# should never actually trip (project trees are realistically small), exists
-# purely to bound worst-case query cost against a pathological tree.
+# Circuit-breaker for the forward-inheritance and member-source walks below
+# (same rationale as `_ORG_GROUP_CLOSURE_ITERATION_CAP`): bounds query cost on a pathological tree.
 _PROJECT_INHERITANCE_ITERATION_CAP = 1000
 
 
@@ -308,17 +221,10 @@ def _require_org_active(db: Session, organization_id: UUID) -> None:
     (`require_server_admin`, not any of these factories) bypass this.
 
     Every access path that reads org/project-scoped content must be gated
-    by this (directly, or via one of the five dependency factories below)
-    — a hardening-review pass found and fixed three call sites that read
-    such content through a different mechanism and had silently never been
-    wired to it: the WebSocket endpoint (`routers/ws.py`, its own inline
-    auth check), the file-download endpoint (`routers/files.py`, authorizes
-    via the raw `get_effective_*_roles` helpers rather than a `require_*`
-    dependency, since it needs `?token=` query-param support those don't
-    offer), and the cross-project reviews-due listing (`services/reviews.py`,
-    which has no single `project_id`/`organization_id` to hang a dependency
-    off in the first place). See docs/decisions.md's "Organisation disable
-    and hard delete" hardening-pass follow-up for the full list.
+    by this (directly, or via one of the five dependency factories below). Paths that read such content
+    without a `require_*` dependency call it themselves: the WebSocket endpoint (`routers/ws.py`), the
+    file-download endpoint (`routers/files.py`, which needs `?token=` support the dependencies lack) and the
+    cross-project reviews-due listing (`services/reviews.py`, which has no single project or organisation).
 
     Raises:
         HTTPException: 403 if the organisation is disabled or doesn't exist
@@ -341,10 +247,15 @@ def _require_org_2fa(db: Session, organization_id: UUID, user: User) -> None:
     still produces the more specific "disabled" message rather than this
     one when both are true.
 
+    A service user is exempt: it has no interactive sign-in to hold a second factor on, and its personal access token
+    is issued by an organisation administrator and narrowed by scope and expiry instead.
+
     Raises:
         HTTPException: 403 if the org requires 2FA and the caller doesn't
             have it enabled.
     """
+    if user.is_service_account:
+        return
     requires_2fa = bool(db.scalar(select(Organization.require_2fa).where(Organization.id == organization_id)))
     if requires_2fa and not user.is_2fa_enabled:
         raise HTTPException(
@@ -355,16 +266,11 @@ def _require_org_2fa(db: Session, organization_id: UUID, user: User) -> None:
 
 _T = TypeVar("_T")
 
-# Request-scoped memo for role-resolution lookups a bulk read repeats: the
-# user's org-group ids and org roles (identical for every project), and
-# per-(user, project) role results (re-read across inheritance walks and
-# repeated passes).
-# Off by default: only enabled by `memoize_user_lookups()` around read-only
-# bulk resolution (e.g. `list_projects`, which resolves roles for every
-# accessible project), so a mutating endpoint that changes membership and
-# then re-checks roles can never read a stale cached value. Added
-# 2026-10-04: `list_projects` was the hottest backend path in the e2e suite,
-# re-running these same queries once per project.
+# Request-scoped memo for lookups a bulk read repeats: the user's org-group ids and org roles
+# (identical for every project) and per-(user, project) role results.
+# Off by default: `memoize_user_lookups()` enables it only around read-only bulk resolution
+# (e.g. `list_projects`), so a mutating endpoint that changes membership and re-checks roles
+# never reads a stale value.
 _user_lookup_memo: ContextVar[dict | None] = ContextVar("_user_lookup_memo", default=None)
 
 
@@ -436,20 +342,10 @@ def get_user_org_group_ids(db: Session, user_id: UUID, organization_id: UUID) ->
     (`routers/auth.py::read_my_memberships`) and the server-admin
     access-review directory.
 
-    Hardening-review finding: `_ancestor_org_group_ids` itself walks
-    `OrgGroupMember` with no organisation filter (nesting is only ever
-    same-org at write time, per `routers.orgs.add_org_group_member`'s
-    cross-org rejection, so it should never actually cross a tenant
-    boundary) — but both callers of this function place the result
-    directly under `organization_id` in their response (a membership
-    entry in `read_my_memberships`, a name list in the access-review
-    directory) with no downstream re-check, unlike
-    `get_effective_project_roles`'s equivalent nested-group resolution,
-    which re-joins on `OrgGroup.organization_id` as defense in depth
-    even though the same write-time check already applies there. Filtered
-    here too, for the same reason: a bug elsewhere that ever let a
-    cross-org edge through should never surface another organisation's
-    group name under this one.
+    `_ancestor_org_group_ids` walks `OrgGroupMember` with no organisation filter, and callers
+    place the result under `organization_id` with no further check, so the result is filtered by
+    `OrgGroup.organization_id` here (defence in depth): a cross-organisation edge never surfaces
+    another organisation's group name.
     """
     def compute() -> tuple[frozenset[UUID], frozenset[UUID]]:
         direct = set(
@@ -546,20 +442,12 @@ def _descendant_org_group_ids(db: Session, group_ids: set[UUID]) -> set[UUID]:
 
 def effective_org_group_member_ids(db: Session, org_group_id: UUID) -> set[UUID]:
     """Every user who is a direct member of `org_group_id` or of any group
-    transitively nested inside it — resolves an
-    org group "downward" to the users it actually reaches, the mirror
-    image of `_descendant_org_group_ids`/`_ancestor_org_group_ids` (which
-    resolve group-to-group, never all the way to users).
+    transitively nested inside it: resolves an org group "downward" to the
+    users it reaches (`_descendant_org_group_ids`/`_ancestor_org_group_ids`
+    resolve group-to-group only).
 
-    The shared "which users does this group grant currently reach"
-    resolution used by `_has_module_role_grant`'s group-grant branch below,
-    and by any caller that needs the same enumeration directly (e.g.
-    compliance's own standards-manager floor check,
-    `modules.compliance.service.fallback_standards_manager_ids` — migrated
-    onto this function, which is what makes group-based
-    module-role resolution a genuine core mechanism rather than the
-    narrow, single-purpose helper that function's own docstring originally
-    described).
+    Shared by `_has_module_role_grant`'s group-grant branch and by callers that
+    need the same enumeration (e.g. compliance's standards-manager floor check).
     """
     all_group_ids = {org_group_id} | _descendant_org_group_ids(db, {org_group_id})
     return set(
@@ -671,10 +559,8 @@ def would_create_org_group_cycle(db: Session, parent_group_id: UUID, child_group
     return parent_group_id in _descendant_org_group_ids(db, {child_group_id})
 
 
-# The six sub-kinds `_direct_effective_project_roles_by_kind` distinguishes
-# — see that function's docstring. Shared as a constant so callers (the
-# provenance endpoint, tests) iterate a single source of truth for "what are
-# all the possible direct-source kinds" rather than each hardcoding the list.
+# The six sub-kinds `_direct_effective_project_roles_by_kind` distinguishes (see its docstring),
+# shared so callers (the provenance endpoint, tests) iterate one list of direct-source kinds.
 DIRECT_ROLE_KINDS: tuple[str, ...] = (
     "direct_role", "direct_group", "direct_org_group", "direct_project_ref", "direct_org_wide",
     "direct_org_group_role",
@@ -704,27 +590,17 @@ def _direct_effective_project_roles_by_kind(
     (`"direct_role"`, `"direct_project_ref"`, `"direct_org_wide"`) are
     unaffected and remain plain `set[ProjectRole]`.
 
-    This is what makes `get_effective_project_members_with_provenance`'s
-    provenance `kind` values safe to build an "is this role directly
-    revocable" UI rule on (found in review before this split existed): a
-    genuine `UserProjectRole` row (`"direct_role"`) is freely revocable via
-    `DELETE /{project_id}/roles/{user_id}/{role}`, and a genuine
-    `OrgGroupProjectRole` row (`"direct_org_group_role"`) is freely
-    revocable via `DELETE /{project_id}/group-roles/{org_group_id}/{role}`
-    — but a role arriving via a same-project group (`"direct_group"`), a
-    nested org group (`"direct_org_group"`), a project-referencing group
-    (`"direct_project_ref"`), or `ProjectVisibility.ORG_WIDE`
-    (`"direct_org_wide"`) is not — neither endpoint above touches those
-    rows, so offering either delete against any of those four kinds would
-    204 as a silent no-op while a naive caller's UI showed the role as
-    removed. Before the kinds were split apart, all
-    five of them were collapsed into one `"direct"`
-    bucket by `_direct_effective_project_roles` below, which can't support
-    that distinction at all.
+    The kinds let provenance decide whether a role is directly revocable: a
+    `UserProjectRole` row (`"direct_role"`) is revocable via
+    `DELETE /{project_id}/roles/{user_id}/{role}`, and an `OrgGroupProjectRole` row
+    (`"direct_org_group_role"`) via `DELETE /{project_id}/group-roles/{org_group_id}/{role}`.
+    A role arriving via a same-project group (`"direct_group"`), a nested org group
+    (`"direct_org_group"`), a project-referencing group (`"direct_project_ref"`) or
+    `ProjectVisibility.ORG_WIDE` (`"direct_org_wide"`) is not, and a delete there would
+    be a silent no-op.
 
-    `_direct_effective_project_roles` is now just this function's six sets
-    unioned together — kept for the many existing callers that only need
-    "does this project role exist at all," not which source it came from.
+    `_direct_effective_project_roles` is the union of the six sets, for callers that only
+    need whether a role exists.
 
     Returns a dict with all of `DIRECT_ROLE_KINDS` always present as keys
     (value possibly an empty set).
@@ -762,14 +638,9 @@ def _direct_effective_project_roles_by_kind_for_projects(
     ).all():
         result[project_id]["direct_role"].add(ProjectRole(role))
 
-    # Source 2: same-project group membership, for each role the group
-    # holds (`ProjectGroupRole` — the members/groups directory rework replaced the group's old single, required `role` scalar
-    # with this separate grant table, mirroring source 8's own
-    # `OrgGroupProjectRole` shape). Joining through the grant table
-    # (instead of reading `ProjectGroup.role` directly) produces one row
-    # per (group, granted role) pair the membership matches — a group
-    # holding two roles yields two entries here, same principle already
-    # established for two *different* groups granting the same role.
+    # Source 2: same-project group membership, for each role the group holds (`ProjectGroupRole`).
+    # Joining through the grant table yields one row per (group, granted role) pair, so a group
+    # holding two roles yields two entries.
     for project_id, role, group_id, group_name in db.execute(
         select(ProjectGroup.project_id, ProjectGroupRole.role, ProjectGroup.id, ProjectGroup.name)
         .join(ProjectGroup, ProjectGroup.id == ProjectGroupRole.project_group_id)
@@ -780,11 +651,8 @@ def _direct_effective_project_roles_by_kind_for_projects(
 
     user_org_group_ids = set(_all_user_org_group_ids(db, user_id))
     if user_org_group_ids:
-        # Defense in depth: even though endpoints reject nesting an org
-        # group from a different organisation into a project group at
-        # write time, also constrain the read-side resolution to org
-        # groups belonging to the project's own organisation, so a
-        # cross-tenant row (however it got there) can never grant a role.
+        # Defence in depth: endpoints reject cross-organisation nesting at write time, and the read
+        # side also requires the org group to belong to the project's organisation.
         for project_id, role, group_id, group_name in db.execute(
             select(ProjectGroup.project_id, ProjectGroupRole.role, OrgGroup.id, OrgGroup.name)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupRole.project_group_id)
@@ -799,12 +667,8 @@ def _direct_effective_project_roles_by_kind_for_projects(
         ).all():
             result[project_id]["direct_org_group"].add((ProjectRole(role), group_id, group_name))
 
-        # Source 8: org groups holding a role on this project *directly*
-        # (`OrgGroupProjectRole`) rather than nested inside a `ProjectGroup`
-        # — genuinely distinct from the `"direct_org_group"` block above.
-        # Reuses `user_org_group_ids` (direct + transitively-nested org
-        # groups) computed just above, and the same cross-tenant defense in
-        # depth.
+        # Source 8: org groups holding a role on this project directly (`OrgGroupProjectRole`), not
+        # nested in a `ProjectGroup`. Same cross-tenant check as above.
         for project_id, role, group_id, group_name in db.execute(
             select(OrgGroupProjectRole.project_id, OrgGroupProjectRole.role, OrgGroup.id, OrgGroup.name)
             .join(OrgGroup, OrgGroup.id == OrgGroupProjectRole.org_group_id)
@@ -817,10 +681,8 @@ def _direct_effective_project_roles_by_kind_for_projects(
         ).all():
             result[project_id]["direct_org_group_role"].add((ProjectRole(role), group_id, group_name))
 
-    # Source 7: project-referencing group members ("this group = that other
-    # project's direct members") — one hop only, via `_direct_project_
-    # member_ids_base` so this can never recurse (see that function's
-    # docstring and the module docstring's source-7 entry).
+    # Source 7: project-referencing group members ("this group = that other project's direct
+    # members"): one hop only, via `_direct_project_member_ids_base`, so it never recurses.
     SourceProject = aliased(Project)
     project_ref_rows = db.execute(
         select(ProjectGroup.project_id, ProjectGroupRole.role, ProjectGroupMember.source_project_id)
@@ -904,11 +766,8 @@ def prefetch_project_roles(db: Session, user_id: UUID, project_ids: Collection[U
     user's direct roles there, each project's inheritance settings, and its
     member-source rows. A no-op outside `memoize_user_lookups` (the only
     place the preloaded values are read), so it can never feed a stale
-    value to a mutating request. Resolution itself is unchanged — the same
-    functions run, finding their inputs already cached.
-
-    Added 2026-10-04: `list_projects` made ~8 queries per accessible
-    project (547 for a 65-project user, ~1s per call).
+    value to a mutating request. Resolution itself is unchanged: the same
+    functions run, finding their inputs already cached, which avoids ~8 queries per project.
 
     Args:
         db: Database session.
@@ -974,24 +833,10 @@ def _direct_project_member_ids_base(db: Session, project_id: UUID) -> set[UUID]:
     both walks read *this* function (via `_direct_project_member_ids`) at
     each ancestor/source hop.
 
-    The members/groups directory rework (docs/decisions.md) added an
-    `EXISTS` requirement to both `ProjectGroupMember` arms below — a group
-    with zero roles (now possible; a group used to always have exactly one)
-    no longer counts its members here. An earlier draft of this PR left
-    plain membership counting regardless of role, reasoning that membership
-    and role-holding were separate concepts elsewhere in this module — that
-    was wrong in practice, caught by a failing test: `_accessible_project_
-    ids` (`routers.projects`) has its own analogous `ProjectGroupMember`
-    join for the same reason, and a user whose *only* connection to a
-    project was membership in a now-zero-role group kept appearing in their
-    own `GET /projects` listing (and, via this function, could be pulled
-    into an unrelated *receiving* project through source 7's project-
-    reference mechanism, or notified via `get_project_member_user_ids`)
-    after every one of their actual effective roles had been revoked —
-    while `get_effective_project_roles` (the authoritative check) correctly
-    already saw zero roles for them. Both call sites are now consistent:
-    membership in a group counts here only while that group still holds at
-    least one role.
+    Both `ProjectGroupMember` arms below require an `EXISTS` on the group's roles: a group with zero
+    roles contributes no members. Plain membership would keep such users in project listings, let source 7
+    pull them into a receiving project and notify them, while `get_effective_project_roles` (the
+    authoritative check) sees no roles. `_accessible_project_ids` applies the same rule.
     """
     user_ids: set[UUID] = set(
         db.scalars(select(UserProjectRole.user_id).where(UserProjectRole.project_id == project_id)).all()
@@ -1021,11 +866,8 @@ def _direct_project_member_ids_base(db: Session, project_id: UUID) -> set[UUID]:
                 )
             ).all())
         )
-    # Source 8: org groups holding *any* role on `project_id` directly
-    # (`OrgGroupProjectRole`) — same cross-tenant re-check and
-    # descendant-expansion (a role held by a group extends to users who are
-    # only members of a subgroup nested inside it) as the nested-group arm
-    # just above.
+    # Source 8: org groups holding any role on `project_id` directly (`OrgGroupProjectRole`), with the
+    # cross-tenant check and descendant expansion (members of a nested subgroup are reached) of the arm above.
     direct_role_group_ids = set(
         db.scalars(
             select(OrgGroupProjectRole.org_group_id)
@@ -1052,20 +894,12 @@ def _direct_project_member_ids(db: Session, project_id: UUID) -> set[UUID]:
     nested-org-group, or project-referenced role on `project_id` itself, no
     forward/member-source inheritance.
 
-    Deliberately excludes `ORG_WIDE`'s implicit baseline grant — the same
-    exclusion `get_project_member_user_ids` already applies today (see
-    module docstring), preserved here rather than reintroduced through a
-    side channel: if this included `ORG_WIDE`, an org-wide-visible ancestor
-    would flow its *entire organisation's* membership through forward
-    inheritance or the member-source mechanism into every notification and
-    every "does this descendant have a real member" check, exactly the mass
-    side effect the existing exclusion exists to prevent. `_forward_
-    inherited_roles` (the per-user, `get_effective_project_roles` path)
-    correctly keeps using `_direct_effective_project_roles`, which *does*
-    include `ORG_WIDE` — access resolution and notification-membership
-    resolution are different questions with different existing answers, and
-    this helper is only for the latter (used by `get_project_member_user_ids`
-    and both member-source helpers).
+    Excludes `ORG_WIDE`'s implicit baseline grant, as `get_project_member_user_ids` does
+    (see module docstring): an org-wide ancestor would otherwise flow its entire
+    organisation's membership through inheritance into every notification and every
+    "has a real member" check. `_forward_inherited_roles` (the per-user access path) keeps
+    using `_direct_effective_project_roles`, which includes `ORG_WIDE`; this helper serves
+    membership resolution only (`get_project_member_user_ids` and both member-source helpers).
 
     The project-reference arm resolves each referenced source via
     `_direct_project_member_ids_base` (not this function) — see that
@@ -1094,13 +928,7 @@ def _direct_project_member_ids(db: Session, project_id: UUID) -> set[UUID]:
 def _direct_project_role_holder_ids(db: Session, project_id: UUID, role: ProjectRole) -> set[UUID]:
     """Set-returning "who holds exactly `role` directly on `project_id`",
     including nested-org-group-derived holders and direct-org-group-role
-    (`OrgGroupProjectRole`, source 8) holders alike. (Pre-existing docstring
-    note, corrected in passing: an *earlier* version of `get_project_users_
-    by_role` used to deliberately exclude nested-org-group holders for a
-    different purpose — notification-role-targeting, not inheritance — but
-    that narrowing was removed; see that function's own docstring. Both
-    functions now include nested-org-group and direct-org-group-role
-    holders alike.)
+    (`OrgGroupProjectRole`, source 8) holders alike, as `get_project_users_by_role` does.
     Used by `_forward_contributed_member_ids`'s `MIRROR_ROLE` case, so a
     `MIRROR_ROLE`-filtered contribution only ever includes users who
     actually hold the filtered role on the ancestor, matching `_forward_
@@ -1374,11 +1202,8 @@ def _direct_project_roles_excluding_org_wide(db: Session, user_id: UUID, project
                 )
             ).all()
         )
-        # Source 8: org groups holding a role on `project_id` directly
-        # (`OrgGroupProjectRole`) — same cross-tenant re-check as the
-        # nested-group block above. Needed so a `MIRROR_ALL` member-source
-        # row mirrors a source project's actual direct roles including this
-        # mechanism, not just its `ProjectGroup`-nesting-derived ones.
+        # Source 8: org groups holding a role on `project_id` directly (`OrgGroupProjectRole`), with the
+        # cross-tenant check above, so a `MIRROR_ALL` member-source row mirrors this mechanism's roles too.
         roles.update(
             ProjectRole(r)
             for r in db.scalars(
@@ -1449,14 +1274,10 @@ def _group_forward_inherited_roles(db: Session, org_group_id: UUID, project_id: 
     *direct* `OrgGroupProjectRole` grant for `org_group_id` (source 8 of
     the module docstring) instead of a user's combined direct roles.
 
-    Added for the members/groups directory rework (per-group
-    "convert inherited to direct" action,
-    `materialize_inherited_access_for_group` in routers/projects.py): that
-    action needs to know what an org group's *own* forward-inherited role
-    on this project is, independent of any particular member — a question
-    `_forward_inherited_roles` can't answer since it's scoped to a single
-    user. Live cross-tenant re-check (`OrgGroup.organization_id ==
-    Project.organization_id`) at each hop, matching every other
+    Serves the per-group "convert inherited to direct" action
+    (`materialize_inherited_access_for_group` in routers/projects.py), which needs an org group's own
+    forward-inherited role on this project independent of any member; `_forward_inherited_roles` is per user.
+    Live cross-tenant re-check (`OrgGroup.organization_id == Project.organization_id`) at each hop, matching every other
     `OrgGroupProjectRole` read in this module.
     """
     inherited: set[ProjectRole] = set()
@@ -1651,11 +1472,8 @@ def _direct_project_managers(db: Session, project_id: UUID) -> set[UUID]:
     DO count towards this — unlike a nested org group or an org group's own
     direct `OrgGroupProjectRole` grant, neither of which this function
     resolves at all (see `revoke_group_project_role`'s own docstring for
-    why those two are deliberately excluded from the C-U-08 floor). The members/groups directory rework
-    (docs/decisions.md) changed only *how* a group's manager-role status is
-    read — joined through `ProjectGroupRole` now that a group can hold zero,
-    one, or several roles, instead of the old scalar `ProjectGroup.role` —
-    not whether a project group's direct members count at all.
+    why those two are deliberately excluded from the C-U-08 floor). A group's manager-role status is
+    read by joining through `ProjectGroupRole` (a group holds zero, one or several roles).
     """
     manager_ids: set[UUID] = set(
         db.scalars(
@@ -1697,11 +1515,8 @@ def get_effective_project_managers(
     `MEMBER_ONLY` and the member-source mechanism never can, since both cap
     at `MEMBER` by construction.
 
-    Used to enforce "a project must have at least one project manager"
-    (C-U-08) and the org-removal fallback rule (C-U-09) — replaces
-    `_direct_project_managers` at every call site that previously used the
-    now-removed `get_project_managers`, since an inherited manager is a
-    real, concrete, individually accountable user for these purposes too.
+    Used to enforce "a project must have at least one project manager" (C-U-08) and the org-removal
+    fallback rule (C-U-09); an inherited manager is a concrete, accountable user for these purposes too.
 
     The `*_override` parameters let a caller ask "what would the manager
     set be if `project_id`'s own `role_inheritance_mode`/
@@ -1709,16 +1524,10 @@ def get_effective_project_managers(
     values instead" — used by `routers.projects.update_project` to validate
     a *proposed* change (disabling inheritance, reparenting) before
     committing it, inside the same row lock as the write
-    (`lock_project_for_update`) to avoid a TOCTOU window. `parent_override`
-    only takes effect when `parent_override_set=True`, and
-    `filter_role_override` only takes effect when
-    `filter_role_override_set=True` — each independently, so a caller can
-    override just one of mode/filter_role/parent without the others
-    silently falling back to a *different* override's presence as a proxy
-    for "was this one set" (a real bug an earlier version of this function
-    had: `filter_role_override` was gated on `mode_override is not None`
-    instead of its own flag, harmless only because every caller so far
-    always passes both together).
+    (`lock_project_for_update`) to avoid a TOCTOU window. `parent_override` takes
+    effect only when `parent_override_set=True` and `filter_role_override` only when
+    `filter_role_override_set=True`, each independently, so a caller can override
+    one of mode/filter_role/parent without the others.
     """
     manager_ids = _direct_project_managers(db, project_id)
 
@@ -1734,10 +1543,7 @@ def get_effective_project_managers(
         ).first()
         if row is None:
             break
-        # Overrides only ever apply at the first hop (project_id's own
-        # settings, hypothetically changed) — every hop beyond that uses
-        # its real stored values, since the override only asks "what if
-        # *this* project's own settings were different", not its ancestors'.
+        # Overrides apply at the first hop only (the project's own hypothetical settings); later hops use stored values.
         if first_hop:
             mode = mode_override if mode_override is not None else row.role_inheritance_mode
             filter_role = filter_role_override if filter_role_override_set else row.role_inheritance_filter_role
@@ -1774,9 +1580,7 @@ def is_inherited_manager(db: Session, user_id: UUID, project_id: UUID) -> bool:
     effective manager" check) can't distinguish "removing this user's
     direct role would leave zero managers" from "this user is both a
     direct *and* an inherited manager, so removing the direct role is
-    perfectly safe" — the naive check would over-block the latter, a real
-    correctness gap `get_effective_project_managers`'s inheritance-
-    awareness introduced (hierarchical projects; see docs/decisions.md).
+    safe"; the plain check would over-block the latter.
     """
     return ProjectRole.PROJECT_MANAGER in _forward_inherited_roles(db, user_id, project_id)
 
@@ -1848,20 +1652,11 @@ def get_project_users_by_role(db: Session, project_id: UUID, role: ProjectRole) 
     authority and must not silently miss change-request notifications
     (`routers.change_requests.py`) just because their role came from a
     parent). Member-source contribution is included too, for the same
-    reason — originally only ever `MEMBER` (the only role that mechanism
-    could grant), now scoped to whatever `role` each `ProjectMemberSource`
-    row's own `mirror_mode` actually grants (`_member_source_role_holder_
-    ids`), though today's callers only ever pass `PROJECT_MANAGER`/
-    `STAKEHOLDER`/`MEMBER`.
+    reason, scoped to whatever `role` each `ProjectMemberSource`
+    row's own `mirror_mode` grants (`_member_source_role_holder_ids`).
 
-    An earlier version of this function excluded nested-org-group holders,
-    matching `_direct_project_managers`'s deliberately narrower "concrete,
-    individually accountable user" semantics for C-U-08's manager-floor
-    invariant — but that narrowing was never a deliberate choice for
-    *notification* targeting specifically, and widening it here brings this
-    function in line with `get_effective_project_roles`'s own resolution
-    (which already includes nested-org-group), which is more accurate for
-    C-N-01's purpose than the previous, narrower behaviour.
+    Nested-org-group holders are included, as in `get_effective_project_roles`; `_direct_project_managers`
+    excludes them because C-U-08's manager floor counts only concrete, accountable users.
     """
     user_ids = _direct_project_role_holder_ids(db, project_id, role)
 
@@ -1956,8 +1751,7 @@ def get_effective_project_members_with_provenance(db: Session, project_id: UUID)
         `via_mode` naming that hop's mode.
       - `"member_source_inherited"`: via the `ProjectMemberSource`
         mechanism — `role`/`via_mode` reflect the contributing hop's own
-        `mirror_mode` (`mirror_all`/`mirror_role`/`member_only`, no longer
-        always `MEMBER`) and `via_project_id` names that hop's source
+        `mirror_mode` (`mirror_all`/`mirror_role`/`member_only`) and `via_project_id` names that hop's source
         project.
 
     Not optimised for the request-hot-path RBAC checks the rest of this
@@ -3017,14 +2811,8 @@ def require_module_role(module_key: str, role_key: str):
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
             _require_org_active(db, organization_id)
             _require_org_2fa(db, organization_id, current_user)
-            # `is_module_enabled_for_project`, not the org-only `is_module_
-            # enabled` — the project-level override must
-            # apply here too: a project that has disabled this module via
-            # its own override must 404 a project-scoped module role check
-            # (e.g. Compliance's `compliance_officer`, Decision
-            # Management's `decision_owner`) the same way `require_project_
-            # module_enabled`/`require_project_subcomponent_enabled` do,
-            # not keep resolving against stale org-level state.
+            # The project-level override applies too: a project that disabled this module via its own
+            # override must 404 a project-scoped module role check, as `require_project_module_enabled` does.
             if not is_module_enabled_for_project(db, project_id, module_key):
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
             if user_satisfies_module_role(
@@ -3035,16 +2823,9 @@ def require_module_role(module_key: str, role_key: str):
 
         return _project_dependency
 
-    # A module-owned entity scope — any `scope`
-    # string other than the two core-recognised ones above (compliance's
-    # own `"standard"` scope is the first). There is no path parameter
-    # literally named `organization_id`/`project_id` to bind here the way
-    # the two branches above can (the caller's route names its own entity
-    # id, e.g. `standard_id`, not a generic one) — the entity id is instead
-    # read directly off the request's own resolved path parameters at the
-    # conventional key `f"{scope}_id"`, then resolved to an owning
-    # organisation via the role's own `resolve_entity_organization_id`
-    # (required for this branch — see that field's docstring).
+    # A module-owned entity scope: any `scope` other than the two core-recognised ones (e.g. compliance's
+    # `"standard"`). The entity id is read from the request's path parameters at `f"{scope}_id"` and resolved
+    # to an owning organisation via the role's `resolve_entity_organization_id`, which this branch requires.
     resolve_entity_organization_id = role.resolve_entity_organization_id
     if resolve_entity_organization_id is None:
         raise ValueError(
@@ -3085,24 +2866,16 @@ def require_module_role(module_key: str, role_key: str):
 # ---------------------------------------------------------------------------
 # Fine-Grained Access Control: effective-permission resolution and `require_permission`.
 #
-# A parallel resolution path, not a
-# rewrite of `get_effective_org_roles`/`get_effective_project_roles` above —
-# those keep resolving the fixed `OrgRole`/`ProjectRole` vocabulary exactly
-# as they do today, for every organisation that never touches custom roles.
-# `get_effective_permissions` below is a second, independent function that
-# additionally unions in whatever those roles (plus module-contributed and
-# custom-role grants) imply under the new permission-atom vocabulary
-# (`app.services.permissions`) — reusing this module's existing
-# group-membership/tenant-isolation helpers (`get_user_org_group_ids`,
-# `_project_organization_id`) rather than reinventing them, the same way
-# module-contributed-role resolution above already does one section up.
+# A parallel resolution path: `get_effective_org_roles`/`get_effective_project_roles` above resolve the
+# fixed `OrgRole`/`ProjectRole` vocabulary. `get_effective_permissions` below additionally unions in what
+# those roles (plus module-contributed and custom-role grants) imply under the permission-atom vocabulary
+# (`app.services.permissions`), reusing the group-membership/tenant-isolation helpers
+# (`get_user_org_group_ids`, `_project_organization_id`).
 # ---------------------------------------------------------------------------
 
 _PROJECT_ROLE_LEVELS: dict[ProjectRole, tuple[PermissionLevel, ...]] = {
-    # Every artefact-type permission at every level — C-U-03's clarification
-    # has Project Managers performing "all project administrator and
-    # stakeholder tasks" plus approvals: the ceiling of this taxonomy. This
-    # restates the worked example in the design rather than inventing one.
+    # Every artefact-type permission at every level (C-U-03: Project Managers perform "all project
+    # administrator and stakeholder tasks" plus approvals): the ceiling of this taxonomy.
     ProjectRole.PROJECT_MANAGER: (
         PermissionLevel.VIEW,
         PermissionLevel.PROPOSE_CREATE,
@@ -3110,28 +2883,14 @@ _PROJECT_ROLE_LEVELS: dict[ProjectRole, tuple[PermissionLevel, ...]] = {
         PermissionLevel.LINK,
         PermissionLevel.APPROVE_BASELINE,
     ),
-    # C-U-03's own tasks for this role (project setup, versions/stages,
-    # components/categories, reports) are project-*configuration* actions
-    # already gated separately by `can_manage_project_settings`, not
-    # artefact-type permissions at all — "generate reports" is this role's
-    # only artefact-facing capability, so it maps to VIEW alone
-    # (**Decided by: Agent** — C-U-03 does not say Administrator inherits
-    # Stakeholder's create capability the way it explicitly says Manager
-    # inherits both Administrator's and Stakeholder's).
+    # This role's tasks (project setup, versions/stages, components/categories, reports) are configuration
+    # actions gated by `can_manage_project_settings`; its only artefact-facing capability is generating
+    # reports, so it maps to VIEW alone (**Decided by: Agent**: C-U-03 does not give Administrator
+    # Stakeholder's create capability).
     ProjectRole.PROJECT_ADMINISTRATOR: (PermissionLevel.VIEW,),
-    # "add requirements during scoping", "submit, view and provide feedback
-    # for change requests", "view and generate reports" (C-U-03) — a view +
-    # propose/create capability, short of MANAGE/APPROVE_BASELINE. Applied
-    # across every registered artefact type rather than hand-naming
-    # "requirement"/"change_request" specifically (**Decided by: Agent** —
-    # this mapping is a ceiling, not a precise replica of C-U-03's own
-    # two-artefact-type wording; harmless today since this mapping has no
-    # live consumer yet other than two, neither of which is
-    # STAKEHOLDER-shaped, and a future module's own artefact type gets the
-    # same treatment for free rather than needing a hand-edit here — the
-    # same "derived, not hand-maintained" principle
-    # `get_all_registered_artefact_types` already gives every other part of
-    # this vocabulary).
+    # View plus propose/create (C-U-03), short of MANAGE/APPROVE_BASELINE, applied across every registered
+    # artefact type so a module's type needs no edit here (**Decided by: Agent**: a ceiling, wider than
+    # C-U-03's two named artefact types).
     ProjectRole.STAKEHOLDER: (PermissionLevel.VIEW, PermissionLevel.PROPOSE_CREATE),
     # "view requirements and generate reports only".
     ProjectRole.MEMBER: (PermissionLevel.VIEW,),
@@ -3146,19 +2905,11 @@ extends to every specific sub-type a check might ask for.
 """
 
 _ORG_ROLE_PERMISSIONS: dict[OrgRole, tuple[str, ...]] = {
-    # An org admin already performs every one of these today via existing,
-    # separately-gated endpoints; this mapping is composition (Design
-    # Principle 3), not a new grant. Deliberately excludes every
-    # artefact-type permission: C-U-01's own clarification is explicit that
-    # "No Project access is guaranteed from any roles apart from org admin
-    # being able to manage project settings" — already handled separately
-    # by `can_manage_project_settings`, not by this permission vocabulary.
+    # Composition of grants an org admin already holds through separately gated endpoints. No
+    # artefact-type permission is implied: C-U-01 guarantees no project access beyond managing project
+    # settings (`can_manage_project_settings`).
     OrgRole.ORG_ADMIN: ADMINISTRATIVE_PERMISSIONS,
-    # `OrgRole.PROJECT_CREATOR`/`OrgRole.MEMBER` imply no atoms in this
-    # vocabulary at all (both simply absent from this table) — neither
-    # implies any artefact-type or administrative capability under this
-    # model; project creation itself is a separate, existing check, not
-    # part of this permission-atom system.
+    # `OrgRole.PROJECT_CREATOR`/`OrgRole.MEMBER` imply no atoms; project creation is a separate check.
 }
 """The static mapping from a fixed `OrgRole` to the
 administrative permissions it implies. See `_PROJECT_ROLE_LEVELS`'s own
@@ -3178,6 +2929,16 @@ MANAGE_ORG_RESOURCES = "manage_org_resources"
 
 MANAGE_PROJECT_REPORT_LAYOUTS = "manage_project_report_layouts"
 """The administrative permission that lets a person manage a project's custom report layouts."""
+
+MANAGE_ORG_LIFECYCLES = "manage_org_lifecycles"
+"""The administrative permission that lets a person set the organisation's required lifecycle states and exemptions."""
+
+MANAGE_PROJECT_LIFECYCLES = "manage_project_lifecycles"
+"""The administrative permission that lets a person choose which optional lifecycle states a project uses."""
+
+_PROJECT_LIFECYCLE_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR})
+"""Project roles that hold `MANAGE_PROJECT_LIFECYCLES` in their project (organisation admins hold it through
+`_ORG_ROLE_PERMISSIONS`; anyone else needs a custom or module role that lists it)."""
 
 _PROJECT_REPORT_LAYOUT_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR})
 """Project roles that hold `MANAGE_PROJECT_REPORT_LAYOUTS` in their project (organisation admins hold it
@@ -3326,17 +3087,9 @@ def _module_role_permission_grants(
         definition = get_module(module_key)
         if definition is None:
             continue
-        # A disabled/non-entitled module grants nothing here, mirroring
-        # `require_module_role`'s own 404 posture for the same condition —
-        # a stale `UserModuleRole` row for a module an org later disabled
-        # must not keep contributing permissions this vocabulary can act on.
-        # When resolving at project scope, this must also respect the
-        # project-level override (`is_module_enabled_for_
-        # project`), not just the org-only state — a project that has
-        # disabled this module via its own override must not have a stale
-        # module-role grant keep contributing its permissions either, the
-        # same reasoning `require_module_role`'s own project-scoped branch
-        # now applies.
+        # A disabled or non-entitled module grants nothing (as `require_module_role` 404s), so a stale
+        # `UserModuleRole` row contributes no permissions. At project scope the project-level override
+        # (`is_module_enabled_for_project`) applies, not only the org state.
         if project_id is not None:
             if not is_module_enabled_for_project(db, project_id, module_key):
                 continue
@@ -3569,6 +3322,8 @@ def get_effective_permissions(
             permissions.add(EXPORT_PERSONAL_DATA)
         if project_roles & _PROJECT_REPORT_LAYOUT_ROLES:
             permissions.add(MANAGE_PROJECT_REPORT_LAYOUTS)
+        if project_roles & _PROJECT_LIFECYCLE_ROLES:
+            permissions.add(MANAGE_PROJECT_LIFECYCLES)
 
     permissions |= _module_role_permission_grants(
         db, user_id, organization_id=organization_id, project_id=project_id,

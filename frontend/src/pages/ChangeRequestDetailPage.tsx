@@ -1,3 +1,4 @@
+import { useApprovalStatus } from "../hooks/useApprovalStatus";
 import { useMutation } from "../hooks/useMutation";
 import { Bell, BellOff, MessageSquare } from "lucide-react";
 import { useState } from "react";
@@ -22,7 +23,6 @@ import type {
 } from "../api/types";
 import {
   CHANGE_REQUEST_STATUS_LABEL,
-  CHANGE_REQUEST_STATUS_TONE,
   CHANGEABLE_FIELD_LABEL,
   principalText,
   REQUIREMENT_LEVEL_LABEL,
@@ -34,11 +34,13 @@ import { RecordTags } from "../components/RecordTags";
 import { ApproveChangeRequestDialog } from "../components/ApproveChangeRequestDialog";
 import { CommentThread } from "../components/CommentThread";
 import { PrincipalBadge } from "../components/PrincipalBadge";
-import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
+import { useWatchingTab } from "../hooks/useWatchingTab";
 import { PrincipalFormField } from "../components/PrincipalFormField";
 import { Modal } from "../components/Modal";
 import { ProposedLinksSection } from "../components/ProposedLinksSection";
 import { Spinner } from "../components/Spinner";
+import type { LifecyclePromote } from "../components/LifecycleTrack";
+import { lifecycleSteps } from "../components/lifecycleSteps";
 import { RecordHeader } from "../components/RecordHeader";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -48,15 +50,13 @@ import { Badge } from "../components/Badge";
 import { TextField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { DetailCard } from "../components/DetailCard";
-import { MathText } from "../components/MathText";
+import { MarkdownView } from "../components/MarkdownView";
+import { markdownPlainText } from "../utils/markdownPlain";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
- * A MODIFY_REQUIREMENT change request only shows the fields it actually
- * proposes to change (`cr.changed_fields`) — a field not listed there was
- * never touched, so its `proposed_*` value (usually null) isn't rendered
- * at all, rather than showing a misleading "no change" line for every
- * possible field.
+ * A MODIFY_REQUIREMENT request renders only the fields listed in
+ * `cr.changed_fields`; an unlisted field has no proposed value to show.
  */
 export function ChangeRequestDetailPage() {
   const run = useMutation();
@@ -69,6 +69,7 @@ export function ChangeRequestDetailPage() {
   const canManageTasks = canDecide || myRoles.includes("project_administrator");
   const canVote = myRoles.includes("stakeholder") || canDecide;
   const [cr, setCr] = useState<ChangeRequest | null>(null);
+  const approval = useApprovalStatus(projectId ? { projectId } : null, "change_request", cr?.id, cr?.status);
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -81,21 +82,19 @@ export function ChangeRequestDetailPage() {
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskAssignee, setNewTaskAssignee] = useState<PrincipalRef | null>(null);
   const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
+  const watchingTab = useWatchingTab({
+    recordPath: projectId && crId ? `/api/v1/projects/${projectId}/change-requests/${crId}` : undefined,
+    organizationId, projectId, canManage: canManageTasks, refreshKey: cr?.is_subscribed,
+  });
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
   const [showVoteComments, setShowVoteComments] = useState(false);
-  // ADD_ACTION/REMOVE_ACTION-only (extended to the remove side) — the action type list to resolve
-  // `proposed_action_type_id` to a name, and (link-existing/remove mode
-  // only) the action itself, so a reviewer can see what they're actually
-  // approving rather than a bare id.
+  // ADD_ACTION/REMOVE_ACTION only: action types resolve `proposed_action_type_id` to a name and
+  // the preview shows the linked action (link-existing/remove mode), so a reviewer sees more than an id.
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [linkedActionPreview, setLinkedActionPreview] = useState<RequirementAction | null>(null);
-  // REMOVE_LINK-only — the same
-  // "resolve the id to something a reviewer can actually read" purpose as
-  // the action fields above: the existing link (its `display_name`/other-
-  // requirement fields are already server-resolved the same way the Links
-  // card on `RequirementDetailPage.tsx` uses them). Links an add-link,
-  // new or modify request proposes arrive resolved on `cr.proposed_links`.
+  // REMOVE_LINK only: the existing link, server-resolved as on the Links card.
+  // Links an add-link, new or modify request proposes arrive resolved on `cr.proposed_links`.
   const [linkPreview, setLinkPreview] = useState<RequirementLink | null>(null);
   // Approving a request that proposes links goes through a dialog where the approver
   // chooses which to merge; `clearCompletion` carries the second approve button.
@@ -248,6 +247,43 @@ export function ChangeRequestDetailPage() {
     }
   }
 
+  /** Submits a draft request for a decision. */
+  function submit() {
+    return act(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/submit`), strings.changeRequests.submittedToast);
+  }
+
+  /** Withdraws a draft or submitted request. */
+  function withdraw() {
+    return act(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/withdraw`), strings.changeRequests.withdrawnToast);
+  }
+
+  /**
+   * Approves the request with the decision note. A request that proposes links opens the dialog where the approver
+   * chooses which links to merge.
+   *
+   * @param clearCompletion Also clears the completion of a completed target requirement so the change is re-verified.
+   */
+  function approve(clearCompletion: boolean) {
+    if (cr && cr.proposed_link_count > 0) {
+      setApproving({ clearCompletion });
+      return Promise.resolve();
+    }
+    return act(
+      () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+        approve: true, note: decisionNote, ...(clearCompletion ? { clear_completion: true } : {}),
+      }),
+      strings.changeRequests.approvedToast,
+    );
+  }
+
+  /** Rejects the request with the decision note. */
+  function reject() {
+    return act(
+      () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, { approve: false, note: decisionNote }),
+      strings.changeRequests.rejectedToast,
+    );
+  }
+
   async function postComment(body: string): Promise<Comment> {
     const comment = await api.post<Comment>(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`, { body });
     reload();
@@ -283,11 +319,22 @@ export function ChangeRequestDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (!cr) return <Spinner />;
 
+  // A draft is promoted by submitting it; a submitted or in-review request by approving it (project managers).
+  const isDecidable = cr.status === "submitted" || cr.status === "in_review";
+  let nextPromotion: LifecyclePromote | undefined;
+  if (cr.status === "draft") nextPromotion = { to: "submitted", onPromote: submit };
+  else if (isDecidable) {
+    nextPromotion = canDecide
+      ? approval.approve("approved", () => approve(false))
+      : { to: "approved", blockedReason: strings.lifecycle.notPermitted(CHANGE_REQUEST_STATUS_LABEL.approved) };
+  }
+
   const title = cr.proposed_name ?? requirement?.name ?? cr.id;
 
   return (
     <DetailLayout
       contained={false}
+      extraTabs={watchingTab ? [watchingTab] : []}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="change_request" artefactId={cr.id} refreshToken={refreshToken} /> : undefined}
       aside={projectId ? <ArtefactLinksPanel projectId={projectId} artefactType="change_request" artefactId={cr.id} refreshToken={refreshToken} /> : null}
     >
@@ -296,6 +343,7 @@ export function ChangeRequestDetailPage() {
         back={projectId ? { to: `/projects/${projectId}/change-requests`, label: strings.changeRequests.title } : undefined}
         title={title}
         code={cr.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="change_request" artefactId={cr.id} /> : undefined}
         badges={cr.is_subscribed ? <Badge tone="info">{strings.requirements.subscribed}</Badge> : undefined}
         actions={[
@@ -304,20 +352,25 @@ export function ChangeRequestDetailPage() {
             icon: cr.is_subscribed ? <BellOff /> : <Bell />,
             onSelect: toggleSubscription,
           },
+          isDecidable && canDecide && cr.kind === "modify_requirement" && requirement?.is_completed && {
+            label: strings.changeRequests.approveAndClearCompletion, onSelect: () => approve(true),
+          },
+          isDecidable && canDecide && { label: strings.changeRequests.reject, danger: true, onSelect: reject },
+          (cr.status === "draft" || cr.status === "submitted") && { label: strings.changeRequests.withdraw, onSelect: withdraw },
         ]}
+        lifecycle={{
+          steps: lifecycleSteps(["draft", "submitted", "in_review", "approved"], CHANGE_REQUEST_STATUS_LABEL, {
+            descriptions: strings.changeRequests.stateDescription,
+          }),
+          current: cr.status,
+          offPath: cr.status === "rejected" || cr.status === "withdrawn"
+            ? { key: cr.status, label: CHANGE_REQUEST_STATUS_LABEL[cr.status], description: strings.changeRequests.stateDescription[cr.status] }
+            : undefined,
+          promote: nextPromotion,
+        }}
       />
-      {projectId && (
-        <WatchingGroupsPanel
-          recordPath={`/api/v1/projects/${projectId}/change-requests/${crId}`}
-          organizationId={organizationId} projectId={projectId} canManage={canManageTasks}
-        />
-      )}
-      <div className="stack">
       <DetailCard>
         <div className="row">
-          <Badge tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}>
-            {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
-          </Badge>
           {cr.kind !== "add_action" && cr.kind !== "remove_action" && cr.kind !== "add_link" && cr.kind !== "remove_link" && (
             <>
               <Badge>Target: {targetLabel()}</Badge>
@@ -352,9 +405,10 @@ export function ChangeRequestDetailPage() {
                   <strong>{strings.actions.name}:</strong> {cr.proposed_action_title}
                 </p>
                 {cr.proposed_action_description && (
-                  <p>
-                    <strong>{strings.actions.description}:</strong> {cr.proposed_action_description}
-                  </p>
+                  <div>
+                    <strong>{strings.actions.description}:</strong>
+                    <MarkdownView text={cr.proposed_action_description} />
+                  </div>
                 )}
                 <p>
                   <strong>{strings.actions.actionType}:</strong> {actionTypeName(cr.proposed_action_type_id)}
@@ -392,131 +446,40 @@ export function ChangeRequestDetailPage() {
           </div>
         ) : (
           <div className="stack" style={{ gap: "var(--space-3)" }}>
-            <p>
-              <strong>{strings.requirements.reasoning}:</strong> <MathText text={cr.proposed_reasoning ?? ""} />
-            </p>
+            <div>
+              <strong>{strings.requirements.reasoning}:</strong> <MarkdownView math text={cr.proposed_reasoning ?? ""} />
+            </div>
             {cr.proposed_clarification && (
-              <p>
-                <strong>{strings.requirements.clarification}:</strong> <MathText text={cr.proposed_clarification} />
-              </p>
+              <div>
+                <strong>{strings.requirements.clarification}:</strong> <MarkdownView math text={cr.proposed_clarification} />
+              </div>
             )}
             {cr.proposed_description && (
-              <p>
-                <strong>{strings.requirements.description}:</strong> <MathText text={cr.proposed_description} />
-              </p>
+              <div>
+                <strong>{strings.requirements.description}:</strong> <MarkdownView math text={cr.proposed_description} />
+              </div>
             )}
           </div>
         )}
 
         {cr.kind !== "add_link" && cr.proposed_links.length > 0 && <ProposedLinksSection links={cr.proposed_links} />}
 
-        <p>
-          <strong>{strings.changeRequests.reason}:</strong> {cr.reason}
-        </p>
+        <div>
+          <strong>{strings.changeRequests.reason}:</strong> <MarkdownView math text={cr.reason} />
+        </div>
         {cr.decision_note && (
-          <p>
-            <strong>{strings.changeRequests.decisionNote}:</strong> {cr.decision_note}
-          </p>
+          <div>
+            <strong>{strings.changeRequests.decisionNote}:</strong> <MarkdownView text={cr.decision_note} />
+          </div>
         )}
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          {cr.status === "draft" && (
-            <button
-              className="btn btn-primary"
-              onClick={() =>
-                act(
-                  () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/submit`),
-                  strings.changeRequests.submittedToast
-                )
-              }
-            >
-              {strings.changeRequests.submit}
-            </button>
-          )}
-          {(cr.status === "draft" || cr.status === "submitted") && (
-            <button
-              className="btn"
-              onClick={() =>
-                act(
-                  () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/withdraw`),
-                  strings.changeRequests.withdrawnToast
-                )
-              }
-            >
-              {strings.changeRequests.withdraw}
-            </button>
-          )}
-          {(cr.status === "submitted" || cr.status === "in_review") && canDecide && (
-            <>
-              <TextField helpNotNeeded
-                label={strings.changeRequests.decisionNote}
-                placeholder={strings.changeRequests.decisionNote}
-                value={decisionNote}
-                onChange={setDecisionNote}
-                inputProps={{ style: { maxWidth: 240 } }}
-              />
-              <button
-                className="btn btn-primary"
-                onClick={() =>
-                  cr.proposed_link_count > 0
-                    ? setApproving({ clearCompletion: false })
-                    : act(
-                        () =>
-                          api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                            approve: true,
-                            note: decisionNote,
-                          }),
-                        strings.changeRequests.approvedToast
-                      )
-                }
-              >
-                {strings.changeRequests.approve}
-              </button>
-              {/* C-G-11: an explicit, opt-in second action — shown only for
-                  a MODIFY_REQUIREMENT change request whose target is
-                  currently completed, since only then is there a
-                  meaningful choice between "keep completion" (plain
-                  Approve, above) and "this change is substantial enough to
-                  need re-verifying" (this button). Every other case keeps
-                  the single Approve button unchanged. */}
-              {cr.kind === "modify_requirement" && requirement?.is_completed && (
-                <button
-                  className="btn"
-                  onClick={() =>
-                    cr.proposed_link_count > 0
-                      ? setApproving({ clearCompletion: true })
-                      : act(
-                          () =>
-                            api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                              approve: true,
-                              note: decisionNote,
-                              clear_completion: true,
-                            }),
-                          strings.changeRequests.approvedToast
-                        )
-                  }
-                >
-                  {strings.changeRequests.approveAndClearCompletion}
-                </button>
-              )}
-              <button
-                className="btn btn-danger"
-                onClick={() =>
-                  act(
-                    () =>
-                      api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                        approve: false,
-                        note: decisionNote,
-                      }),
-                    strings.changeRequests.rejectedToast
-                  )
-                }
-              >
-                {strings.changeRequests.reject}
-              </button>
-            </>
-          )}
-        </div>
+        {isDecidable && canDecide && (
+          <TextField helpNotNeeded
+            label={strings.changeRequests.decisionNote}
+            value={decisionNote}
+            onChange={setDecisionNote}
+          />
+        )}
       </DetailCard>
 
       <DetailCard heading={strings.changeRequests.tasks}>
@@ -527,7 +490,7 @@ export function ChangeRequestDetailPage() {
               disabled={!(canManageTasks || task.can_mark_done)}
               onChange={() => toggleTaskDone(task)}
             />
-            <span style={{ textDecoration: task.is_done ? "line-through" : "none" }}>{task.description}</span>
+            <span style={{ textDecoration: task.is_done ? "line-through" : "none" }}>{markdownPlainText(task.description)}</span>
             {task.assignee && <PrincipalBadge principal={task.assignee} />}
             {task.due_date && <span className="text-muted">({task.due_date})</span>}
           </label>
@@ -541,7 +504,6 @@ export function ChangeRequestDetailPage() {
             <PrincipalFormField helpNotNeeded
               label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
               value={newTaskAssignee} onChange={setNewTaskAssignee} ariaLabel={`${strings.changeRequests.newTask} ${strings.actions.assignee}`}
-              placeholder={strings.reviews.unassigned}
             />
             <button className="btn" onClick={addTask}>
               {strings.changeRequests.newTask}
@@ -613,7 +575,7 @@ export function ChangeRequestDetailPage() {
                     {v.vote === "approve" ? strings.changeRequests.voteApproveCount : strings.changeRequests.voteRejectCount}
                   </Badge>
                 </div>
-                <div>{v.comment}</div>
+                <MarkdownView text={v.comment ?? ""} />
                 <span className="text-muted" style={{ fontSize: "0.8rem" }}>
                   {new Date(v.voted_at).toLocaleString()}
                 </span>
@@ -623,7 +585,7 @@ export function ChangeRequestDetailPage() {
         </Modal>
       )}
 
-      <DetailCard heading={strings.requirements.discussion}>
+      <DetailCard heading={strings.requirements.discussion} rank="discussion">
         <CommentThread
           comments={comments}
           onPost={postComment}
@@ -634,7 +596,6 @@ export function ChangeRequestDetailPage() {
           currentUserId={user?.id}
         />
       </DetailCard>
-      </div>
     </DetailLayout>
   );
 }

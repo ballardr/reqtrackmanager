@@ -1,45 +1,32 @@
 """
 Module: modules.architecture.records
 
-The rules for elements, their ports and connections, and the bulk reads behind
-their API shapes.
+The rules for elements, their ports and connections, and the bulk reads behind their API shapes.
 
 Responsibilities:
-- Create, edit, move, change the status of, archive and delete an element; add,
-  edit and remove its ports; create, edit, archive and delete a connection. Each
-  change validates its references, advances the record's `version`, and writes one
-  audit event holding ids and field names, never free text.
-- Read lists in bulk (`element_outs`, `connection_outs`): one query per kind of
-  related row however many records are listed.
+- Create, edit, move, change the status of, archive and delete an element; add, edit and remove its ports; create, edit,
+  archive and delete a connection. Each change validates its references, advances `version` and writes one audit event
+  holding ids and field names, never free text.
+- Read lists in bulk (`element_outs`, `connection_outs`): one query per kind of related row.
 - Register the vocabulary usage checks, so a type a record uses is never deleted.
 
 Design decisions:
-- A save quotes the `version` it was based on (`VersionConflict` otherwise), and the
-  row is locked while it is checked, so two saves cannot both win.
-- Tree rules: a parent belongs to the same project, a move may not create a cycle,
-  and the tree is at most `MAX_DEPTH` levels deep (a move counts the subtree it carries).
-- Retiring, rejecting or archiving an element needs every child to be retired, rejected or archived
-  first; deleting needs no children and no connection ending at it. These are
-  integrity rules (a hidden child would be orphaned from its parent's view, and a
-  connection would lose an end).
-- A status moves only along `transitions.STATUS_MOVES` (one map, also returned with each record): there is no
-  approval gate on this module's records.
-- Port changes advance the element's `version`, so an editor holding a stale copy
-  is told before overwriting.
+- A save quotes the `version` it was based on (`VersionConflict` otherwise) and the row is locked while checked. Port
+  changes advance the element's `version` too.
+- Tree rules: a parent belongs to the same project, a move may not create a cycle, depth is at most `MAX_DEPTH` (a move
+  counts the subtree it carries).
+- Retiring, rejecting or archiving an element needs every child to be retired, rejected or archived first; deleting needs
+  no children and no connection ending at it (integrity: no orphaned child, no connection that loses an end).
+- A status moves only along `transitions.STATUS_MOVES`; there is no approval gate on this module's records.
+- An element is owned by a project or the organisation (`ElementOwner`); every write finds it through its owner, so
+  another owner's element looks absent. A connection belongs to the project that created it but may end at an element
+  another owner shares: every end is checked through `visibility`, a retired shared element cannot be newly connected
+  to, and an end the viewer cannot see is a locked placeholder holding only its code.
+- An element another owner may use cannot be deleted, only retired or archived: it has a connection (of any project),
+  it is shared (it or an ancestor is in a collection with a grant), or a record outside its owner links to it.
 
-- An element is owned by a project or by the organisation (`ElementOwner`); every element write finds its
-  element through its owner, so another owner's element looks absent. A connection belongs to the project that
-  created it but may end at an element another owner shares with it: every end is checked through
-  `visibility`, a retired shared element cannot be newly connected to, and an end the viewer can no longer see is
-  drawn as a locked placeholder holding only its code.
-- An element another owner may use cannot be deleted, only retired or archived: it has a connection (of any
-  project), it is shared (it or an ancestor is in a collection that has a grant; revoking the sharing lifts this),
-  or a record outside its owner links to it (any link for an organisation-owned element, a cross-level link for a
-  project-owned one).
-
-Dependencies: `service` (vocabularies, constants), `visibility`, core `services.sequences`,
-`services.principals`, `services.relationships`, `services.tags`,
-`services.placements`, `services.audit`.
+Dependencies: `service`, `visibility`, core `services.sequences`, `principals`, `relationships`, `tags`, `placements`,
+`audit`.
 """
 
 from __future__ import annotations
@@ -108,6 +95,7 @@ from app.services import placements as placement_service
 from app.services import record_comments as comment_service
 from app.services import tags as tag_service
 from app.services.audit import log_event
+from app.services.external_references import forget_record_references
 from app.services.principals import label_of, principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.relationships import delete_link, get_all_links
 from app.services.sequences import generate_unique_code
@@ -698,11 +686,12 @@ def _linked_from_elsewhere(db: Session, element: ArchitectureElement) -> bool:
 
 
 def _forget(db: Session, artefact_type: str, record_id: uuid.UUID) -> None:
-    """Removes the links, tags, places and comments that refer to a record being deleted."""
+    """Removes the links, tags, places, external references and comments that refer to a record being deleted."""
     for link in get_all_links(db, artefact_type, record_id, include_cross_project=True):
         delete_link(db, link)
     tag_service.forget_record_tags(db, artefact_type, record_id)
     placement_service.forget_record_placements(db, artefact_type, record_id)
+    forget_record_references(db, artefact_type, record_id)
     comment_service.forget_record_comments(db, artefact_type, record_id)
 
 
@@ -1049,8 +1038,7 @@ def element_outs(
 
 def connection_outs(db: Session, connections: Sequence[ArchitectureConnection], viewer: Viewer) -> list[ConnectionOut]:
     """API shapes for `connections` as the viewer sees them: types, ends and ports are read in bulk. An end the viewer
-    can no longer read (its sharing was revoked) is a locked placeholder holding only its code, with no name and
-    no port name."""
+    cannot read (its sharing was revoked) is a locked placeholder holding only its code, with no name and no port name."""
     end_ids = {c.source_element_id for c in connections} | {c.target_element_id for c in connections}
     ends = {
         row.id: row for row in db.scalars(select(ArchitectureElement).where(ArchitectureElement.id.in_(end_ids)))

@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { OrgResource } from "../api/types";
+import { withPictureFiles } from "../testing/pictureFiles";
 import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { OrgFilesPage } from "./OrgFilesPage";
 
@@ -110,5 +111,20 @@ export const DeletingAResourceStatesItsLinks: Story = {
     await userEvent.type(dialog.getByRole("textbox"), "standards.pdf");
     await userEvent.click(dialog.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/resources/r1`));
+  },
+};
+
+/** A shared picture's thumbnail opens the same larger preview as on a project's Files page. */
+export const ASharedPictureOpensALargerPreview: Story = {
+  decorators: [withPictureFiles],
+  beforeEach: () => {
+    mockServer({ canManage: false, rows: [{ ...resource("pic-png", "brand-mark.png", "2026-08-22T09:00:00Z", "Jamie Lee", 0), content_type: "image/png" }] });
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Preview brand-mark.png" }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "brand-mark.png" });
+    await expect(within(dialog).getByRole("link", { name: "Download" })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).toBeNull());
   },
 };

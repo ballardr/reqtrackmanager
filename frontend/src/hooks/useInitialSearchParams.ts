@@ -1,12 +1,9 @@
 /**
  * Module: hooks/useInitialSearchParams
  *
- * The URL's query parameters as they were when the page mounted, for pages
- * whose filters can be pre-set by a link (a report figure that opens "the
- * Blockers", say). Read once, to seed the page's own filter state: the page
- * stays the source of truth afterwards, so changing a filter never rewrites
- * the URL or re-triggers the seed, and the filters stay ordinary visible
- * controls the user can change or clear.
+ * The URL's query parameters as they were when the page mounted, for pages whose filters a link can pre-set
+ * (a report figure that opens "the Blockers"). Read once to seed the page's own filter state; the page stays the
+ * source of truth afterwards, so changing a filter never rewrites the URL or re-triggers the seed.
  */
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";

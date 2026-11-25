@@ -1,14 +1,12 @@
 """Tests for Fine-Grained Access Control's data model: the
 `CustomRoleDefinition`/`CustomRolePermission`/`UserCustomRoleGrant`/
 `GroupCustomRoleGrant` tables, the permission-atom vocabulary
-(`app.services.permissions`), and the new sub-type-provider registry
-(`app.modules.registry.get_subtype_providers`/`get_subtypes`) — including
-Decision Management's own registration, the "real consumer on day
-one".
+(`app.services.permissions`) and the sub-type-provider registry
+(`app.modules.registry.get_subtype_providers`/`get_subtypes`), including
+Decision Management's registration.
 
-Nothing here exercises an actual authorization decision (see
-`test_effective_permissions.py`) — only that the vocabulary and storage
-behave as designed.
+No authorization decision is exercised here (see `test_effective_permissions.py`),
+only that the vocabulary and storage behave as designed.
 """
 
 import uuid
@@ -90,19 +88,12 @@ def test_user_and_group_custom_role_grants_round_trip(client, admin_token):
         db.add_all([user_grant, group_grant])
         db.commit()
 
-        # This table's unique
-        # constraint includes a 4th column, `scope_entity_id` (NULL for
-        # both rows here, this test's `role.scope == "project"`) — Postgres
-        # treats NULL as distinct from NULL for uniqueness purposes, so an
-        # exact-duplicate (user, role, project, NULL) row no longer raises
-        # `IntegrityError` at the DB layer, the identical NULL-distinctness
-        # caveat `0034_module_role_scope_entity.py`'s own docstring already
-        # documents for `user_module_roles` one tier up.
-        # This was never the actual dedup mechanism in practice —
-        # `grant_custom_role_to_user`'s own check-then-insert shape is (see
-        # `test_grant_custom_role_no_op_on_duplicate`, `test_custom_roles_
-        # api.py`) — so this is a documented behaviour change, not a
-        # regression to guard against here.
+        # The unique constraint includes `scope_entity_id`, NULL for both rows
+        # here (`role.scope == "project"`). Postgres treats NULL as distinct
+        # from NULL, so an exact-duplicate (user, role, project, NULL) row does
+        # not raise `IntegrityError`; deduplication is
+        # `grant_custom_role_to_user`'s check-then-insert (see
+        # `test_grant_custom_role_no_op_on_duplicate`).
         db.add(
             UserCustomRoleGrant(
                 user_id=user_id, custom_role_id=role.id, organization_id=org["id"], project_id=project["id"],
@@ -111,15 +102,10 @@ def test_user_and_group_custom_role_grants_round_trip(client, admin_token):
         db.flush()
         db.rollback()
 
-        # The constraint still does its job once *every* column is non-NULL
-        # for both rows (Postgres's NULL-distinctness is per-column, not
-        # per-constraint — `project_id` must also be set here, or this
-        # would hit the exact same NULL-distinctness non-trigger as above
-        # for that column instead). Proves the widened constraint isn't
-        # simply inert, only that a NULL column no longer triggers it.
-        # `role`'s own `scope` is irrelevant to this DB-level mechanics
-        # check (no CHECK constraint ties `scope_entity_id` to `role.scope`
-        # — that pairing is validated at the router layer).
+        # The constraint applies once every column is non-NULL for both rows
+        # (`project_id` must be set too, since NULL-distinctness is per
+        # column). `role.scope` is irrelevant here: no CHECK constraint ties
+        # `scope_entity_id` to it; the router validates that pairing.
         entity_id = uuid.uuid4()
         db.add(
             UserCustomRoleGrant(

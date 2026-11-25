@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
-import { expectHeaderOrdersText } from "../testing/sortHelpers";
+import { expectHeaderSorts, expectHeaderOrdersText } from "../testing/sortHelpers";
 import {
-  buildComponent, buildComponentPhases, buildComponentTrack, buildPhasePlan, buildStage, buildStageWorkflow, withToast,
+  buildComponent, buildComponentPhases, buildComponentTrack, buildPhasePlan, buildStage, buildStageWorkflow, buildUser, withAuth,
+  withStatefulAuth, withToast,
 } from "../testing/storybook-helpers";
 import { ComponentTracksList } from "./ComponentTracksList";
 
@@ -23,7 +24,7 @@ const tracks = [
 const meta: Meta<typeof ComponentTracksList> = {
   title: "Components/ComponentTracksList",
   component: ComponentTracksList,
-  decorators: [withToast()],
+  decorators: [withToast(), withAuth(buildUser({ ui_preferences: { column_choice_component_tracks: ["stage", "phase", "workflow", "owner", "state", "progress", "expected"] } }))],
   args: {
     projectId: "project-1", state: buildComponentPhases({ tracks }), stages: [RELEASE_1, RELEASE_2],
     components: [SOFTWARE, HARDWARE], workflows: [buildStageWorkflow()], onChanged: fn(),
@@ -136,5 +137,29 @@ export const ComponentHeaderSortsTheTracks: Story = {
   play: async ({ canvasElement }) => {
     const table = within(canvasElement).getByRole("table");
     await expectHeaderOrdersText(table, "Component");
+  },
+};
+/** The State header orders the tracks by their state badges (a track with none sorts last when ascending). */
+export const StateHeaderSortsTheTracks: Story = {
+  play: async ({ canvasElement }) => {
+    const table = within(canvasElement).getByRole("table");
+    await expectHeaderSorts(table, "State", ["Not applicable", "", "", ""]);
+  },
+};
+
+/** The Workflow column is off by default; the column chooser adds it and the reset removes it. */
+export const WorkflowColumnIsOptionalAndOffByDefault: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = canvas.getByRole("table");
+    const heads = () => within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    await expect(heads()).toEqual(["Component", "Stage", "Phase", "Owner", "State"]);
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Workflow" }));
+    await expect(heads()).toContain("Workflow");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(heads()).not.toContain("Workflow");
   },
 };

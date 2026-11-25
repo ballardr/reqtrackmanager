@@ -1,31 +1,16 @@
-"""Tests for the group-roles data migration (`alembic/versions/0022_project_group_
-roles.py`, members/groups directory rework, docs/decisions.md): every
-pre-existing `project_groups` row's scalar `role` is backfilled into exactly
-one `project_group_roles` row before the `role` column itself is dropped.
+"""Tests for the group-roles data migration (`alembic/versions/0022_project_group_roles.py`,
+docs/decisions.md): every `project_groups` row's scalar `role` is backfilled into exactly one
+`project_group_roles` row before the `role` column is dropped.
 
-Runs the *real* migration, not a reimplementation of its logic: downgrades
-the live test database to revision 0021 (re-adding `project_groups.role`),
-seeds a pre-migration-shaped row directly via raw SQL against that shape
-(the project/user setup itself goes through the normal API — only the
-`project_groups` row needs raw SQL, since `role` no longer exists on the
-`ProjectGroup` model to insert through the ORM/API at all), then upgrades
-back to head — which runs 0022's actual backfill SQL — and asserts against
-the result via the ordinary API. Always upgrades back to head, even on
-failure, so the shared session-scoped test database (`conftest.py`'s
-`_schema` fixture) is left in the state every other test in this suite
-expects — the same pattern `test_default_group_migration.py` established
-for the `is_default` column removal precedent this migration
-follows.
+Runs the real migration: downgrades the test database to revision 0021 (re-adding
+`project_groups.role`), seeds a pre-migration `project_groups` row with raw SQL (the
+`ProjectGroup` model has no `role`), upgrades to head and asserts through the API. It always
+upgrades back to head, even on failure, so the shared session-scoped database (`conftest.py`'s
+`_schema` fixture) matches what the suite expects, as in `test_default_group_migration.py`.
 
-Unlike that precedent, the project/user setup here must happen *before*
-entering the downgraded window, not inside it: `create_project`'s own
-manager-assignment fallback (`_ensure_project_has_a_manager`) unconditionally
-calls `get_effective_project_managers`, which (at head) queries the new
-`project_group_roles` table — a table that doesn't exist yet at revision
-0021. `test_default_group_migration.py`'s own downgrade target (0018) never
-had this problem, since `is_default` isn't read by any code path
-`create_project` exercises; 0022's own table genuinely is, so the ordering
-here has to be different.
+Project and user setup happens before the downgraded window: `create_project` calls
+`get_effective_project_managers`, which queries `project_group_roles`, a table absent at
+revision 0021.
 """
 
 import uuid
@@ -141,10 +126,9 @@ def test_backfill_is_idempotent_if_the_migration_ran_twice(client, admin_token, 
                 {"id": str(group_id), "project_id": project["id"]},
             )
 
-    # Already back at head (the `with` block above ran the real upgrade).
-    # Re-executing the migration's own INSERT ... SELECT ... ON CONFLICT
-    # statement directly confirms it doesn't error or duplicate if it were
-    # ever re-run against an already-populated database.
+    # Already at head (the `with` block above ran the upgrade). Re-executing the
+    # migration's INSERT ... SELECT ... ON CONFLICT statement confirms it neither
+    # errors nor duplicates when re-run on a populated database.
     with engine.begin() as conn:
         conn.execute(
             text(

@@ -1,18 +1,15 @@
 /**
  * Module: modules/stakeholders/ProjectEngagementsPage
  *
- * The project's Engagement log, mounted at `/projects/:projectId/modules/
- * stakeholders/engagements` (`module.ts`, reached via the "Engagements" nav-rail
- * entry). An engagement is project-scoped only, so there is no scope column; the
- * list/filter/create UI is the shared `RecordListView`, with the channel as its
- * "type" column and filter. An engagement has no status or archive, so those
- * controls are left out. Filters the list cannot do client-side (a participant,
- * a covered Persona, a date range, retention due) go to the API and refetch.
+ * The project's Engagement log, mounted at `/projects/:projectId/modules/stakeholders/engagements` (`module.ts`, the
+ * "Engagements" nav-rail entry). An engagement is project-scoped only, so there is no scope column; the list, filter
+ * and create UI is the shared `RecordListView`, with the channel as its "type" column and filter. An engagement has no
+ * status or archive, so those controls are left out. Filters the list cannot apply client-side (a participant, a
+ * covered Persona, a date range, retention due) go to the API and refetch.
  *
- * Also the landing route for a research finding (`?finding=<id>`, the path the
- * module registers for the `research_finding` artefact type): the finding's
- * engagement is looked up and the page redirects there, so a link to a finding
- * from the Links panel never dead-ends.
+ * It is also the landing route for a research finding (`?finding=<id>`, the path the module registers for the
+ * `research_finding` artefact type): the finding's engagement is looked up and the page redirects there, so a link to
+ * a finding from the Links panel never dead-ends.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -20,7 +17,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FilterCheckbox, FilterField } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { Spinner } from "../../components/Spinner";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { projectEngagementApi, projectPersonaApi, projectResearchApi, projectStakeholderApi, type EngagementListFilters } from "./api";
 import { EngagementFormModal } from "./EngagementFormModal";
 import { RecordListView } from "./RecordListView";
@@ -29,6 +26,7 @@ import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { rowProjectId } from "../../api/projectScope";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
@@ -45,9 +43,9 @@ export function ProjectEngagementsPage() {
   const [searchParams] = useSearchParams();
   const findingId = searchParams.get("finding");
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "engagement");
   const commitTags = useCommitTags(projectId ?? "", "engagement");
+  const announceCreated = useCreatedToast(projectId ?? "", "engagement");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [engagements, setEngagements] = useState<EngagementRow[] | null>(null);
@@ -133,7 +131,7 @@ export function ProjectEngagementsPage() {
         typeLabel="Channel"
         searchText={(e) => `${e.unique_code} ${e.title} ${e.summary}`}
         columnsBeforeType={[
-          { key: "date", label: "Date", sortable: true, sortValue: (e) => e.engagement_date, render: (e) => e.engagement_date },
+          { key: "date", label: "Date", sortable: true, hideBelow: false, sortValue: (e) => e.engagement_date, render: (e) => e.engagement_date },
         ]}
         columnsAfterScope={[
           { key: "participants", label: "Participants", sortable: true, sortValue: (e) => e.participant_count + e.anonymous_participant_count, render: (e) => e.participant_count + e.anonymous_participant_count },
@@ -161,10 +159,14 @@ export function ProjectEngagementsPage() {
         projectScope={projectScope}
         onCreate={async (values, quickLinks, tags) => {
           const created = await projectEngagementApi.create(projectId, values);
-          showToast("Engagement logged.");
-          reload();
-          await commitQuickLinks(created.id, quickLinks);
-          await commitTags(created.id, tags);
+          announceCreated("Engagement", created, "logged");
+          // Read the list after the links, tags and places exist, so its extra columns include them.
+          try {
+            await commitQuickLinks(created.id, quickLinks);
+            await commitTags(created.id, tags);
+          } finally {
+            reload();
+          }
         }}
         renderCreateModal={(props) => (
           <EngagementFormModal projectId={projectId} error={props.error} onCancel={props.onCancel} onSave={props.onSave} />

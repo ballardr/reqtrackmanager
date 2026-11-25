@@ -50,11 +50,27 @@ export const DueReviewsWithFilters: Story = {
   },
 };
 
-/** C-C-03, the audit's named "review-due lists" leak: the page heading
- * (`strings.reviews.projectTitle`) and the component-filter column heading/
- * "All X" option (`strings.admin.components`/`strings.reviews.allComponents`)
- * used to hardcode "Requirements"/"Component(s)" regardless of the
- * project's own Terminology settings. */
+/** A refused request shows what failed with Retry, not a spinner that never ends; Retry reads the list again. */
+export const FailedLoadOffersRetry: Story = {
+  beforeEach: () => {
+    let reads = 0;
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/components")) return components;
+      reads += 1;
+      if (reads === 1) throw new Error("The server is down.");
+      return items;
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The reviews due could not be loaded.");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await expect(await canvas.findByText("AUTH-LOG-001")).toBeInTheDocument();
+  },
+};
+
+/** C-C-03: the page heading (`strings.reviews.projectTitle`) and the component-filter heading and "All X" option
+ * (`strings.admin.components`/`strings.reviews.allComponents`) follow the project's Terminology settings, not hardcoded words. */
 export const TerminologyOverrideAppliesToHeadingAndFilters: Story = {
   decorators: [withTerminology({ requirement: "Spec", component: "Module" })],
   play: async ({ canvasElement }) => {

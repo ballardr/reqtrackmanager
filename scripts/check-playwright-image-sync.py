@@ -9,14 +9,14 @@ project that runs in that container.
 Why: Playwright requires the npm package and the browser build to be the same
 release. A lockfile bump without a matching image bump makes the browser fail
 to launch; vitest then runs zero tests and writes a valid, failure-free
-report, so the drift is easy to miss (it published a 0% coverage badge once).
+report, so the drift is easy to miss (a 0% coverage badge).
 
 Responsibilities:
 - Map each `mcr.microsoft.com/playwright:vX.Y.Z-*` tag to its CI job
   (JOB_LOCKFILES) and compare it with that job's lockfile.
 - Print an actionable message per mismatch; exit non-zero if any.
 
-Used by: the `frontend` and `e2e-tests` CI jobs (first step) and
+Used by: the `frontend-shard` and `e2e-tests` CI jobs (first step) and
 .githooks/pre-commit. Standard library only, so it runs in the bare
 Playwright container. Run from anywhere: paths resolve from the repo root.
 """
@@ -32,6 +32,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 # CI job key -> lockfile of the project whose tests run in that job's image.
 JOB_LOCKFILES = {
     "frontend": ROOT / "frontend" / "package-lock.json",
+    "frontend-shard": ROOT / "frontend" / "package-lock.json",
     "e2e-tests": ROOT / "tests" / "playwright" / "package-lock.json",
 }
 

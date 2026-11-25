@@ -1,28 +1,12 @@
 """
 Module: modules.stakeholders.export
 
-This module's contribution to the core org/project bundle export/import
-(`app.services.org_export`/`project_export`), registered through
-`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION`
-rather than those core files importing this module.
-
-- Org level: the Persona type vocabulary and org-scoped personas.
-- Project level: project-scoped personas (with their direct file
-  attachments), the project's type overrides/local types, and the project's
-  weight overrides.
-
-Design decisions:
-- A persona travels as its *current* content and status only. Version
-  history, comments and comment attachments are not carried: a bundle is a
-  migration artefact, and re-importing creates version 1 attributed to the
-  importer where the original creator can't be matched.
-- Cross-references use portable keys, never database ids: a persona's
-  export-scoped `ref`, a type's name, a user's email.
-- Org-level files cannot travel: `ModuleOrgBundleHooks.import_` receives no
-  attachment bytes, so an org persona's attachments are skipped with a
-  warning on export-side documentation rather than silently half-imported.
-- Merge into an existing org skips a same-named org persona/type (with a
-  warning) so a re-import is idempotent.
+Contributes Personas to the org/project bundle export and import
+(`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`): the Persona type
+vocabulary and org personas (org); project personas with attachments, type
+overrides and weight overrides (project). Only current content travels;
+cross-references use portable keys. Org-level files cannot travel (the hook
+receives no bytes); a merge skips a same-named persona or type so re-import is idempotent.
 """
 
 from __future__ import annotations
@@ -57,6 +41,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
@@ -96,6 +81,7 @@ def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, st
         "is_archived": persona.is_archived, "archived_at": _j(persona.archived_at), "created_at": _j(persona.created_at),
         "tags": record_tag_names(db, PERSONA_ARTEFACT_TYPE, persona.id),
         "placements": record_placements(db, PERSONA_ARTEFACT_TYPE, persona.id),
+        "external_references": record_references(db, PERSONA_ARTEFACT_TYPE, persona.id),
     })
     return data
 
@@ -155,6 +141,10 @@ def _create_persona_from_json(
         db, project_id=project_id, actor_id=creator_id,
         artefact_type=PERSONA_ARTEFACT_TYPE, artefact_id=persona.id, entries=data.get("placements"),
     )
+    restore_record_references(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=PERSONA_ARTEFACT_TYPE, artefact_id=persona.id, entries=data.get("external_references"),
+    )
     return persona
 
 
@@ -212,6 +202,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_links(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_record_placements(db, PERSONA_ARTEFACT_TYPE, ids)
+    prime_record_references(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_file_links(db, PersonaFile, "persona_id", ids)
     personas_json = []
     for i, persona in enumerate(personas):

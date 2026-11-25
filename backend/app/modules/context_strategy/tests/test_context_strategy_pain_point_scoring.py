@@ -1,13 +1,11 @@
-"""Tests for per-persona Pain Point scoring and the intentional flag,
-through the
+"""
+Tests for per-persona Pain Point scoring and the intentional flag through the
 real HTTP endpoints.
 
-Covers: the `is_intentional` round trip, the either/or (all-personas XOR
-per-persona) rule, level validation (wrong axis / other org), the three
-roll-up methods and their maths, the Blocker flag surviving an average,
-"not scored under this model" input gaps, retired and unavailable personas
-(including the Stakeholders module being switched off), RBAC and lock rules, level-usage
-reassignment on delete, audit logging and model/roll-up parameter checks.
+Covers the `is_intentional` round trip, the all-personas XOR per-persona rule,
+level validation, the three roll-up methods, the Blocker flag surviving an
+average, unscored, retired and unavailable personas, RBAC and lock rules,
+level-usage reassignment on delete, audit logging and parameter checks.
 """
 
 from __future__ import annotations

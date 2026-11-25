@@ -8,24 +8,19 @@ import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { SignedOutPage } from "../components/SignedOutPage";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
-import { resolveLandingPath } from "./LoginPage";
+import { resolvePostSignInPath } from "../utils/signInDestination";
 import { TextField } from "../components/FormFields";
 
 const strings = t();
 
-// Shared with OidcCompletePage.tsx: the sessionStorage key the client-generated
-// login nonce round-trips through. See generateClientNonce()'s docstring below.
+// Shared with OidcCompletePage.tsx: the sessionStorage key of the client-generated login nonce.
 export const OIDC_CLIENT_NONCE_STORAGE_KEY = "oidc_client_nonce";
 
 /**
- * Generates a fresh, unguessable nonce and stores it in this tab's
- * `sessionStorage` before the browser ever navigates to the SSO login-start
- * endpoint. The backend round-trips it through the signed `state` parameter
- * and the eventual `/oidc-complete` redirect (see
- * `security.create_oidc_state_token`'s docstring), so `OidcCompletePage` can
- * verify the token it receives belongs to *this* browser's own login
- * attempt rather than one crafted/replayed by an attacker (login-CSRF /
- * session-fixation) — a URL alone proves nothing about who is viewing it.
+ * Generates an unguessable nonce and stores it in this tab's `sessionStorage` before navigating to the SSO
+ * login-start endpoint. The backend round-trips it through the signed `state` parameter and the
+ * `/oidc-complete` redirect (`security.create_oidc_state_token`), so `OidcCompletePage` can verify the token
+ * belongs to this browser's login attempt (login CSRF / session fixation).
  */
 function generateClientNonce(): string {
   const bytes = new Uint8Array(24);
@@ -36,15 +31,11 @@ function generateClientNonce(): string {
 }
 
 /**
- * An organisation's branded login page (E-P-03), resolved by slug. Offers
- * that org's "Sign in with SSO" button when configured, and the native
- * email/password form as a fallback unless the org has set `sso_only`.
+ * An organisation's branded login page (E-P-03), resolved by slug: the "Sign in with SSO" button when
+ * configured, and the email/password form unless the organisation sets `sso_only`.
  *
- * Login here always resolves to the same global User account a login from
- * the root /login page would (C-U-02/C-U-15: one account, not one per org)
- * — this page only affects which login method is offered, never which
- * account is reached. See docs/enterprise-integration.md for the documented
- * limitation when `sso_only` is set and a user has no native password.
+ * Login resolves to the same global User account as the root /login page (C-U-02/C-U-15); the page only
+ * changes which method is offered. See docs/enterprise-integration.md for `sso_only` with no native password.
  */
 export function OrgLoginPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -73,14 +64,11 @@ export function OrgLoginPage() {
     try {
       const result = await login(email, password);
       if (result.requires2fa) {
-        // A 2FA challenge on an org-branded page falls through to the plain
-        // /login flow rather than duplicating the code-entry form here — the
-        // already-issued challenge token travels via router state so LoginPage
-        // opens straight on the code-entry step instead of asking for
-        // email/password again.
+        // A 2FA challenge continues on /login (no duplicate code form); the issued challenge token
+        // travels in router state so LoginPage opens on the code step.
         navigate("/login", { state: { challengeToken: result.challengeToken } });
       } else {
-        window.location.href = await resolveLandingPath(result.user);
+        window.location.href = await resolvePostSignInPath(result.user);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);

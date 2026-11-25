@@ -5,14 +5,14 @@ import { expect, type APIRequestContext, type Page, test } from "@playwright/tes
 
 import { chooseReport } from "./reportPicker";
 import {
-  deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openSetupReport, PASSWORD, saveNewVersion, selectOrgAdminGroup, selectProjectAdminGroup,
+  deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup,
 } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
 /**
  * Job to be done: have every downloaded or stored report named the way the team files them, for example
- * "ACME-Quarterly review-2026-10-29.pdf", from a template with placeholders that is checked as it is typed, set once
+ * "ACME-Quarterly review-<date>.pdf", from a template with placeholders that is checked as it is typed, set once
  * on a pack or for the whole organisation.
  *
  * Each test works in its own disposable organisation (created and deleted through the API) with uniquely named
@@ -102,8 +102,7 @@ test.describe("Report file names", () => {
       request.post(`${API}/projects/${project.id}/reports`, { headers, data: { format: "csv" } });
     expect((await requirementsReport()).headers()["content-disposition"]).toContain(`${project.name}-requirements.csv`);
 
-    await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Reports");
+    await page.goto(`/orgs/${org.id}/resources/reports`);
     await ensureExpanded(page, "Configuration");
 
     await test.step("an invalid default is explained and a valid one is saved", async () => {
@@ -118,7 +117,6 @@ test.describe("Report file names", () => {
 
     await test.step("the setting is kept and the report downloads under it", async () => {
       await page.reload();
-      await selectOrgAdminGroup(page, "Reports");
       await ensureExpanded(page, "Configuration");
       await expect(page.getByRole("textbox", { name: "Default report file name" })).toHaveValue("{{project_name}}-{{report_title}}");
       const disposition = (await requirementsReport()).headers()["content-disposition"];

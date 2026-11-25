@@ -13,7 +13,7 @@ export default meta;
 
 type Story = StoryObj<typeof RequestScoresPanel>;
 
-/** Each model scored sits side by side, and the derived criterion says it was worked out and from what. */
+/** Each model scored sits side by side, and the derived criterion says it was calculated and from what. */
 export const ShowsEveryModelAndTheWorkedOutDemandLevel: Story = {
   args: { request: buildRequest() },
   play: async ({ canvasElement }) => {
@@ -25,7 +25,7 @@ export const ShowsEveryModelAndTheWorkedOutDemandLevel: Story = {
   },
 };
 
-/** A level a person chose for the derived criterion says so, rather than claiming it was worked out. */
+/** A level a person chose for the derived criterion says so, rather than claiming it was calculated. */
 export const AChosenDemandLevelSaysSo: Story = {
   args: { request: buildRequest({ levels: { demand: "demand-3" } }) },
   play: async ({ canvasElement }) => {

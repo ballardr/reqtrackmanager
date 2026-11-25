@@ -62,7 +62,7 @@ function BufferedTextField({
   help?: string;
 }) {
   const [raw, setRaw] = useState(value);
-  // The host's value no longer means what the text says: it was changed from outside, so show it.
+  // The host's value no longer matches the text, so it was replaced from outside: show it.
   if (value !== canon(raw)) setRaw(value);
   const shared = { label, value: raw, disabled, hint, onChange: (next: string) => { setRaw(next); onText(next); } };
   return help ? <TextField {...shared} help={help} /> : <TextField {...shared} helpNotNeeded />;

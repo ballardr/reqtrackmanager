@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildRisk, buildRiskScheme, ORG_USERS, PROJECT_ID, RISK_TYPES } from "./riskFixtures";
 import { ProjectRisksPage } from "./ProjectRisksPage";
 import type { Risk } from "./types";
@@ -39,7 +39,7 @@ const meta: Meta<typeof ProjectRisksPage> = {
   title: "Modules/RiskManagement/ProjectRisksPage",
   component: ProjectRisksPage,
   decorators: [
-    withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
+    withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
     // `parameters.query` opens the page the way a link with a status or `open=0` does.
     (Story, context) =>
       withRouter(
@@ -53,6 +53,24 @@ export default meta;
 
 type Story = StoryObj<typeof ProjectRisksPage>;
 
+/** Every register column is shown by default; the column chooser hides Owner and the reset shows it again. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Risks" });
+    for (const name of ["Code", "Title", "Type", "Inherent", "Residual", "Status", "Owner", "Next review"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Owner" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Owner" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Owner" })).toBeInTheDocument();
+  },
+};
+
 export const RegisterShowsRatingsStatusOwnerAndOverdue: Story = {
   beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
@@ -64,7 +82,7 @@ export const RegisterShowsRatingsStatusOwnerAndOverdue: Story = {
     await expect(row.getByText("Low")).toHaveClass("badge--muted");
     await expect(row.getByText("Mitigated")).toBeInTheDocument();
     await expect(row.getByText("Safety Board")).toBeInTheDocument();
-    await expect(row.getByText("Organisation group · 2 members")).toBeInTheDocument();
+    await expect(row.getByText("Organisation group, 2 members")).toBeInTheDocument();
     await expect(row.getByText("Overdue")).toBeInTheDocument();
     await expect(within(table).getByRole("link", { name: "RSK-001" })).toHaveAttribute(
       "href", `/projects/${PROJECT_ID}/modules/risk_management/risks/risk-1`,
@@ -254,7 +272,7 @@ export const ExportCarriesTheRegistersFilters: Story = {
     await chooseExport(canvas, "CSV");
     await waitFor(() =>
       expect(api.getForBlob).toHaveBeenCalledWith(
-        `/api/v1/projects/${PROJECT_ID}/records/risk/export?status=mitigated&review_overdue=true`,
+        `/api/v1/projects/${PROJECT_ID}/records/risk/export?status=mitigated&review_overdue=true&sort=code&order=asc`,
       ),
     );
   },

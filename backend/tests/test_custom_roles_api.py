@@ -1,14 +1,12 @@
-"""Tests for Fine-Grained Access Control's backend API: the `GET .../
-permissions` vocabulary endpoint, `CustomRoleDefinition` CRUD (`ORG_ADMIN`-
-only, never delegable), its user/group grant/revoke endpoints
-(delegable via `grant_roles`), tenant isolation, the
-`scope`/`project_id` cross-validation, and the `grant_roles` wiring onto
-the six pre-existing role-assignment endpoints (including the `OrgRole.
-ORG_ADMIN` carve-out).
+"""Tests for Fine-Grained Access Control's HTTP API: the `GET .../permissions`
+vocabulary endpoint, `CustomRoleDefinition` CRUD (`ORG_ADMIN`-only, never
+delegable), its user/group grant/revoke endpoints (delegable via `grant_roles`),
+tenant isolation, the `scope`/`project_id` cross-validation, and the
+`grant_roles` wiring onto the six role-assignment endpoints (including the
+`OrgRole.ORG_ADMIN` carve-out).
 
-The data-model and resolution tests (`test_custom_roles.py`, `test_effective_
-permissions.py`) cover the data model and resolution engine directly; this
-file is the first to exercise the actual HTTP surface built on top of them.
+The data model and resolution engine are covered by `test_custom_roles.py` and
+`test_effective_permissions.py`.
 """
 
 from __future__ import annotations
@@ -109,10 +107,9 @@ def test_create_custom_role_rejects_invalid_permission_key(client, admin_token):
 
 
 def test_create_custom_role_rejects_invalid_scope(client, admin_token):
-    # Valid `scope` values include any registered module-owned entity scope (e.g.
-    # compliance's own `"standard"`, exercised in `test_entity_scope_
-    # permissions.py`) — this test now uses a scope string no module could
-    # ever register, so it stays a genuine "always invalid" case.
+    # Valid `scope` values include any registered module entity scope (e.g.
+    # compliance's `"standard"`, see `test_entity_scope_permissions.py`); this
+    # uses a scope string no module could register.
     org, org_admin_token = create_org_admin_in(client, admin_token, "Invalid Scope Org")
     resp = client.post(
         f"/api/v1/orgs/{org['id']}/custom-roles",
@@ -584,11 +581,10 @@ def test_assign_org_module_role_gate_widened(client, admin_token):
     plain_token = login(client, "org_module_role_plain@example.com", "Password123!")
     _holder_id, grant_roles_token = _grant_roles_only_user(client, org_admin_token, org)
 
-    # No real module role exists in tests generically, so exercise the gate
-    # via the 400 "not a valid module role" response, which only fires once
-    # authorization has already passed — confirms the caller reached the
-    # endpoint body at all, not the specific module-role validation logic
-    # (already covered by test_module_contributed_roles.py).
+    # No generic module role exists in tests, so the gate is exercised through
+    # the 400 "not a valid module role" response, which only fires once
+    # authorization has passed (module-role validation itself is covered by
+    # test_module_contributed_roles.py).
     grant_roles_resp = client.post(
         f"/api/v1/orgs/{org['id']}/users/{target_id}/module-roles",
         json={"module_key": "nonexistent_module", "role_key": "nonexistent_role"},

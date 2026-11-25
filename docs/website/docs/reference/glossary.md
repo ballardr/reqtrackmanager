@@ -18,6 +18,10 @@ What goes on for as long as a state is active, for example "monitor the temperat
 
 A visible approve/reject signal a stakeholder can cast on a change request. It never approves or rejects the change itself — only a manager's or administrator's explicit decision does. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
 
+#### Alias code
+
+The code a requirement has in one of its further components and categories, for example `HW-IF-017` beside its own `SW-PERF-014`. It names the same requirement: one text, approval, discussion and set of links. Removing the requirement from that component retires the code, which is never reused and still opens the requirement; **Make independent** turns it into a requirement of its own. See [Core Features → Components on every record](../core-features/components-on-records.md#requirements-in-several-components).
+
 #### Allocation
 
 A link of the type Allocated to from a requirement to an element of the architecture. Placing an element in a component suggests the requirements of that component for allocation; a person accepts or dismisses each suggestion. See [Allocation](../modules/system-architecture-module/allocation.md).
@@ -62,6 +66,10 @@ A diamond in a state machine diagram. The conditions (guards) on its outgoing tr
 
 Recording that the people who asked for an [enhancement request](#enhancement-request) were told its outcome once it was delivered or declined. Nothing is sent to them. See [Product Feedback → Relationships and closing the loop](../modules/product-feedback-module/relationships-and-closing-the-loop.md#closing-the-loop).
 
+#### Commercial licence
+
+The second licence the product is offered under, for organisations that cannot or do not wish to meet the terms of the AGPL. Terms are agreed with the licensor. See [Licensing](licensing.md).
+
 #### Composite state
 
 A state that holds other states, drawn as a frame around them, for example "Running" holding "Warming up" and "At speed". See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
@@ -72,7 +80,7 @@ A condition, written as text, that must be true for a transition to be taken, fo
 
 #### Component placement
 
-The place a record sits in the project's component and category tree. A record other than a requirement can hold several, for example *Hardware / Cooling* and *Software*, and lists, search, reports and exports can be filtered by them. A requirement keeps its own single component and category. See [Core Features → Components on every record](../core-features/components-on-records.md).
+The place a record sits in the project's component and category tree. A record other than a requirement can hold several, for example *Hardware / Cooling* and *Software*, and lists, search, reports and exports can be filtered by them. A requirement has one own place and may sit in further places called aliases. See [Core Features → Components on every record](../core-features/components-on-records.md).
 
 #### Connection
 
@@ -85,6 +93,10 @@ The kind of interface a connection is, such as REST API, message queue or I2C bu
 #### Cost of Delay
 
 A Pain Point scoring model that adds User/business value, Time criticality and Risk reduction / opportunity enablement with equal importance. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#the-criteria).
+
+#### Contributor licence agreement (CLA)
+
+The agreement a contributor signs before a contribution is accepted. It lets the licensor offer the contribution under both the AGPL and the commercial licence. See [Licensing](licensing.md) and [Contributing](contributing.md).
 
 #### Custom field
 
@@ -134,6 +146,14 @@ What triggers a transition in a state machine diagram, such as `overpressure`. S
 
 What happens each time a state is left, for example "stop the motor". It is drawn as an `exit /` line in the state. It is text for readers and is never run. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
+#### External reference
+
+A pointer from a record to an item in another tool, made of a system, a key and an optional link, role and note, for example the Jira ticket `PROJ-123` a requirement came from. Every record type can carry them. See [External references](../core-features/external-references.md).
+
+#### External system
+
+An outside tool (Jira, ServiceNow, GitHub or your own) that an external reference names, kept as a list by the organisation that each project can add to or hide from. A system can have a **link template**, an address with `{key}` in it that turns a bare key into a link. See [External references](../core-features/external-references.md#the-list-of-systems).
+
 #### Final state
 
 The ringed dot where a state machine diagram ends. A final state has no outgoing transitions and can carry a symbol label, text drawn inside the ring or beside it. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
@@ -161,6 +181,10 @@ The filled dot where a state machine diagram starts. An Active diagram needs exa
 #### Leader
 
 A line from a note on a block diagram or a state machine diagram to what the note describes: a box or a drawn connection line (block diagram), a state or a transition (state machine diagram), or a free spot on the drawing. A note can have several. A leader can start at any attach point of the note, pass through vertices, be straight or smooth, and have an arrowhead or a dot at either end. Drag from an attach point of a note to draw one; select it to change where it ends, where it starts and how its ends look. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
+
+#### Licences
+
+A built-in, read-only group on the Policies page, readable without signing in: the **Product licence** (the licence the application is offered under, with links to its text, its source code and the commercial licence), the **Third-party components** (every library and program the published images contain, with its licence, where it is used and its licence text) and the **Fonts**. It is generated from the build, not written or published by an administrator, so it has no versions, audience or acceptance, and it is separate from the [policies](#policy) the page also lists.
 
 #### Lifecycle (requirement lifecycle)
 
@@ -190,6 +214,14 @@ What happens once a requirement reaches Approved or Completed: its edit form dis
 
 The colour of the band behind an organisation's or the platform's logo and name, so a logo that is white on a transparent background stays visible and the name reads as part of the logo. Its **Logo band text colour** sets the name's colour (empty is black or white by contrast). It is drawn across the top of the sign-in card, in the header of outgoing email and (once a colour is chosen) behind the logo on reports. Unset, it is the colour of the application's top bar. See [Server administration](../workflows/server-administration.md#server-management) and [Administering an organisation](../workflows/administering-an-organisation.md).
 
+#### Markdown
+
+The text format of every long text field: plain text with a few marks for headings, lists, tables, links, equations and diagrams. It is edited in a Visual, Write or Preview view. See [Writing with Markdown, equations and diagrams](../core-features/writing-with-markdown.md).
+
+#### Mermaid diagram
+
+A diagram written as text in a fenced `mermaid` block of a Markdown field and drawn as a picture on the page and in reports. See [Diagrams](../core-features/writing-with-markdown.md#diagrams).
+
 #### Module
 
 A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
@@ -209,6 +241,10 @@ The top-level container, owning users, groups, branding, SSO configuration, and 
 #### Organisation code
 
 A short upper-case code (letters and digits, no hyphen) that goes in front of the codes of records the organisation itself owns, such as `ACME-PER-001`. It never equals a project code in the organisation. See [Administering an organisation → Organisation code](../workflows/administering-an-organisation.md#organisation-code).
+
+#### Organisation resources
+
+The page where an organisation keeps what it owns and shares with its projects: the record lists of its modules, report layouts and tags. It sits beside Organisation settings, which holds configuration only. See [Administering an organisation](../workflows/administering-an-organisation.md#settings-resources-and-the-overview).
 
 #### Organisation role
 
@@ -278,6 +314,10 @@ A relation between two connections on different layers of the model: the connect
 
 The short name of a record, such as `REQ-001` (requirement), `PP-001` (pain point), `OQ-001` (open question), `NEED-001` (stakeholder need), `EVD-001` (compliance evidence), `CR-001` (change request), or `PER-001` (Persona), `STK-001` (Stakeholder), `SGP-001` (Stakeholder group), `STR-001` (Strategy), `FUT-001` (Future State) and `GP-001` (Guiding Principle). Numbered per project, or per organisation for a record the organisation owns, and never reused. See [Qualified code](#qualified-code) for the form that is unambiguous across projects.
 
+#### Record code prefix
+
+The letters new records of a type are numbered with, such as `ADR` in `ADR-006`. An organisation or a project can choose it for each record type; records already issued keep their codes. See [Record code prefixes](../workflows/administering-an-organisation.md#record-code-prefixes).
+
 #### Requirement version
 
 One historical or current state of a requirement's content (name, reasoning, description, status, custom field values). Editing a requirement never overwrites a version — it closes the current one and opens a new one. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
@@ -289,6 +329,18 @@ A Risk owner's judgement of whether one linked Requirement or Action actually re
 #### Roll-up (rolled-up line)
 
 A line drawn at one level of a block diagram for connections between elements inside the boxes shown, for example a connection between two parts of a subsystem drawn as one line between the subsystems. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
+
+#### Self-approved
+
+A badge on a record whose latest approval was given by the person who created it. It appears where the project or organisation lets the creator approve (the default); a **separate approver** setting refuses the creator instead. See [Core Features → Lifecycles](../core-features/lifecycles.md#who-may-approve-the-creator-or-another-person).
+
+#### Separate approver
+
+A setting, for each record type with an approval step, that requires a person other than the record's creator to approve it. A project administrator sets it for the project and an organisation administrator can require it for every project. See [Core Features → Lifecycles](../core-features/lifecycles.md#who-may-approve-the-creator-or-another-person).
+
+#### Service user
+
+An account of one organisation that has no password and cannot sign in, used by an integration (an AI assistant, a build job) instead of a named person. An organisation administrator creates it, names who is responsible for it, and issues and revokes its [personal access tokens](../core-features/personal-access-tokens.md#service-users). Everything it does is recorded under its own name.
 
 #### Shared resource
 

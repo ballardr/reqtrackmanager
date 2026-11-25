@@ -1,28 +1,12 @@
 /**
  * Module: modules/compliance/ComplianceProjectOverviewTiles
  *
- * This module's overview widget (`standards_status`) — one tile per
- * compliance standard assigned to the project, clicking through to the
- * project's own Compliance page, matching every other tile on that page's
- * "click through to what was clicked" convention. The module's registration wraps the tiles in a
- * `.grid-metrics` grid, so the widget is as wide as the person makes it and the page hides it when it
- * has no tile to show.
- *
- * Extracted from a direct `getProjectComplianceStatus`/
- * `ProjectComplianceStatus` import that used to live inline in
- * `ProjectOverviewPage.tsx` (module boundary cleanup, 2026-09-08 — a core
- * page importing this module's own `api.ts`/`types.ts` directly, the same
- * "core file reaches into a specific module" mistake caught and fixed
- * elsewhere — see `docs/decisions.md`'s
- * "Module system follow-up: on_org_created / project_nav_visible hooks"
- * entry). Registered as an `overviewWidgets` entry in `./module.ts`;
- * the overview renders whatever this returns without knowing
- * anything about compliance status or standards.
- *
- * Renders nothing at all while loading or once loaded with zero assigned
- * standards — a project with neither gets no tile, rather than an empty/
- * zero-value one nobody asked to see (the same rule the pre-cleanup inline
- * version already followed).
+ * This module's overview widget (`standards_status`): one tile per compliance standard assigned to the project, each linking
+ * to the project's Compliance page. The module's registration wraps the tiles in a `.grid-metrics` grid, so the widget is as
+ * wide as the person makes it and the page hides it when it has no tile. It is registered as an `overviewWidgets` entry in
+ * `./module.ts`; the overview renders what it returns without knowing about compliance status (docs/decisions.md, "Module
+ * system follow-up: on_org_created / project_nav_visible hooks"). It renders nothing while loading or with zero assigned
+ * standards, rather than an empty tile.
  */
 import { useEffect, useState } from "react";
 

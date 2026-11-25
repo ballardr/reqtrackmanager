@@ -1,37 +1,27 @@
 """
 Module: services.report_svg
 
-Safe handling of SVG figures (diagrams, equations) that a report embeds: allow-listing the markup, drawing
-it into a PDF as vector, and rasterising it for Word.
+Safe handling of SVG figures (diagrams, equations, logos) that a report embeds: allow-listing the markup, drawing it
+into a PDF as vector and rasterising it for Word.
 
 Responsibilities:
-- `sanitize_svg`: parse untrusted SVG markup and return a copy holding only allow-listed elements and
-  attributes; refuse anything that could fetch, execute or expand.
-- `svg_flowable`: a ReportLab flowable for the PDF (vector through `svglib`, a PNG through `resvg-py` if
-  `svglib` cannot draw it).
-- `svg_png`: PNG bytes for Word (`python-docx` cannot embed SVG).
+- `sanitize_svg`: parse untrusted SVG and return a copy of allow-listed elements and attributes, refusing anything that
+  could fetch, execute or expand.
+- `svg_flowable` (vector through `svglib`, else a PNG through `resvg-py`); `svg_png` (Word cannot embed SVG).
 
 Design decisions:
-- **Untrusted until sanitised, sanitised by every consumer.** A figure may be built from record text or a
-  module's own diagram code, so the markup is never trusted. The sanitiser refuses an `ENTITY` declaration and
-  any `DOCTYPE` other than the bare reference Illustrator, Affinity and Inkscape write (`<!DOCTYPE svg PUBLIC
-  "..." "...">`, no internal subset, so nothing can be declared and expanded), parses with entity resolution,
-  DTD loading and network access off, drops every element and attribute outside an allow-list (no `script`,
-  `foreignObject`, `style` element, event handler), keeps `href` only when it points at an element of the same
-  document (`#id`) and refuses any value with an external `url(...)` or a script. Each renderer calls it again, so a
-  figure that skipped one caller's check cannot reach another.
-- **A bitmap inside the SVG is kept only as an embedded raster.** Logos from vector editors often carry one. An `image`
-  element survives only when its `href` is a `data:image/png|jpeg|gif|webp;base64,...` URI; the bytes are decoded,
-  held to the pixel limit and re-encoded without metadata by `report_raster.normalise_raster` (the treatment an
-  uploaded picture gets, so it is no riskier than uploading that picture), and the element gets the new URI. An
-  `image` that points anywhere else (a URL, a file path, `image/svg+xml`, which could nest another document) or
-  cannot be decoded is dropped, so the rest of the figure still prints. Count, pixels and total size are capped.
-- **Text needs a font.** `resvg-py` draws no text without fonts, so the bundled DejaVu directory is always
-  passed and system fonts are skipped, which also makes the output the same on every host.
-- A figure that cannot be drawn is skipped by the renderer, as a bad raster image is: it never fails a report.
+- Untrusted until sanitised, and sanitised by every consumer. The sanitiser refuses `ENTITY` declarations and any
+  `DOCTYPE` but the bare public reference editors write, parses with entity resolution, DTD loading and network off,
+  drops elements and attributes outside the allow-list (no `script`, `foreignObject`, `style`, event handlers), keeps
+  `href` only to `#id` in the same document, and refuses external `url(...)` or script values.
+- A bitmap is kept only as an embedded `data:image/png|jpeg|gif|webp;base64` raster, decoded, held to the pixel limit
+  and re-encoded without metadata by `report_raster.normalise_raster`; any other `image` (URL, path, nested SVG) or an
+  undecodable one is dropped so the figure still prints. Count, pixels and total size are capped.
+- `resvg-py` draws no text without fonts, so the bundled DejaVu directory is always passed and system fonts skipped,
+  making output identical on every host.
+- A figure that cannot be drawn is skipped by the renderer, never failing a report.
 
-Dependencies: `lxml`, `svglib`, `resvg-py`, ReportLab, `report_raster` (embedded bitmaps); the font directory is
-`app/assets/fonts`.
+Dependencies: `lxml`, `svglib`, `resvg-py`, ReportLab, `report_raster`; fonts in `app/assets/fonts`.
 """
 
 from __future__ import annotations
@@ -200,7 +190,7 @@ def _clean(element: etree._Element, embedded: _Embedded) -> None:
     for child in list(element):
         tag = child.tag
         if not isinstance(tag, str) or etree.QName(tag).namespace != SVG_NS or _local(tag) not in _KEPT:
-            element.remove(child)  # comments and processing instructions were removed by the parser
+            element.remove(child)  # comments and processing instructions are dropped here
             continue
         if _local(tag) == "image" and not _embedded_image(child, embedded):
             element.remove(child)
@@ -246,15 +236,17 @@ def svg_png(svg: str, *, width_px: int = 1200, zoom: float | None = None, backgr
         ValueError: `resvg` could not render it.
     """
     clean = sanitize_svg(svg)
+    # The generic families a drawing may name (a diagram writes `font-family="sans-serif"` on some labels) map to the
+    # bundled font too, because no system font is loaded and the rasteriser's own default would be one it does not have.
     font_dirs = [str(FONT_DIR)]
     if zoom is not None:
         return resvg_py.svg_to_bytes(
             svg_string=clean, zoom=zoom, skip_system_fonts=True, font_dirs=font_dirs, font_family="DejaVu Sans",
-            background=background,
+            sans_serif_family="DejaVu Sans", serif_family="DejaVu Sans", monospace_family="DejaVu Sans", background=background,
         )
     return resvg_py.svg_to_bytes(
         svg_string=clean, width=width_px, skip_system_fonts=True, font_dirs=font_dirs, font_family="DejaVu Sans",
-        background=background,
+        sans_serif_family="DejaVu Sans", serif_family="DejaVu Sans", monospace_family="DejaVu Sans", background=background,
     )
 
 

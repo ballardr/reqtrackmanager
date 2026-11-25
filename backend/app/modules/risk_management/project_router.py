@@ -1,20 +1,12 @@
 """
 Module: modules.risk_management.project_router
 
-Project-scoped Risk API, mounted at
-`/api/v1/projects/{project_id}/modules/risk_management`: Risk
-CRUD/archive/versions/comments/files and the project's Risk type vocabulary
-(effective list plus rename/reorder/disable/add).
-
-RBAC: sub-component enablement and project membership to view; any project member
-may propose (create) a risk; `_shared.require_risk_manage` (project Risk Manager
-role or FGAC grant) to edit, archive, attach evidence or change the project's
-types. The lifecycle `transition` endpoint needs the Risk Manager role, except a
-move to `ACCEPTED`, which needs the Risk Acceptor role and (via MCP) the
-org+project AI-approval gate. Relationships are made through the generic artefact
-link endpoints; this router lists a risk's treatment links and records the verdict
-on each (`treatment.py`): the risk's owner (a user, or a member of its owner group) or a Risk Manager
-may assess, and likewise record a periodic review (`reviews.py`). A risk's files resolve through `service.resolve_risk_file_project_id`.
+Project-scoped Risk API at `/api/v1/projects/{project_id}/modules/risk_management`:
+CRUD, archive, versions, comments, files, the project Risk type vocabulary, the
+treatment verdict (`treatment.py`) and reviews (`reviews.py`). Any member may
+propose; `_shared.require_risk_manage` gates edits; a move to `ACCEPTED` needs the
+Risk Acceptor role (and the AI-approval gate via MCP). Files resolve through
+`service.resolve_risk_file_project_id`.
 """
 
 from __future__ import annotations
@@ -78,9 +70,10 @@ from app.schemas.type_vocabulary import (
     RestoreTypesOut,
     RestoreTypesRequest,
 )
-from app.services import scoring
+from app.services import approval_separation, scoring
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
+from app.services.lifecycles import lifecycle_for
 from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled, require_project_subcomponent_enabled
@@ -236,6 +229,7 @@ def list_risks(
         """This endpoint's rows for one project of the scope."""
         project = _project(db, pid)
         ctx = load_rating_context(db, project)
+        lifecycle = lifecycle_for(db, pid, RISK_ARTEFACT_TYPE)
         risks = list_project_risks(db, pid, include_archived=include_archived)
         risks = tag_filter.keep(db, pid, RISK_ARTEFACT_TYPE, risks)
         counts = effective_treatment_counts(db, [r.id for r in risks])
@@ -247,6 +241,7 @@ def list_risks(
         out = [
             sh.risk_to_out(
                 db, r, versions[r.id], ctx, effective_treatments=counts.get(r.id, 0), labels=labels, type_names=type_names,
+                lifecycle=lifecycle,
             )
             for r in risks
         ]
@@ -304,6 +299,10 @@ def transition(
         if channel == "mcp":
             require_ai_approvals_enabled(db, project)
         sh.require_risk_accept(db, current_user, project)
+        approval_separation.enforce_record_approval(
+            db, user=current_user, artefact_type=RISK_ARTEFACT_TYPE, record=_get(db, project_id, risk_id),
+            comment=payload.comment,
+        )
     else:
         sh.require_risk_manage(db, current_user, project)
     return sh.transition_risk_from_payload(

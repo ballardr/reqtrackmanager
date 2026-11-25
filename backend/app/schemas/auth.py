@@ -83,6 +83,7 @@ class UserOut(BaseModel):
     display_name_locked: bool
     is_2fa_enabled: bool
     must_change_password: bool = False
+    is_service_account: bool = False
     email_digest_mode: DigestMode
     ui_preferences: dict[str, Any] = Field(default_factory=dict)
 
@@ -126,22 +127,15 @@ class TwoFactorEnrollResponse(BaseModel):
 
 
 class TwoFactorStatusUpdate(BaseModel):
-    """Payload for `POST /auth/2fa/status` — merges the formerly-separate
-    `confirm`/`disable` endpoints (2026-09-22, see docs/decisions.md) into
-    one, following the same "action discriminates the transition" shape
-    `OrphanedUserStatusUpdate` (`routers.system`) already uses for its own
-    merged status endpoint. Both original endpoints required exactly a
-    `code` field and nothing else, so this replaces
-    `TwoFactorConfirmRequest`/`TwoFactorDisableRequest` with one shared
-    schema rather than a `Union` of two otherwise-identical ones.
+    """Payload for `POST /auth/2fa/status`: the `confirm`/`disable` transitions in one schema, using the
+    "action discriminates the transition" shape of `OrphanedUserStatusUpdate` (`routers.system`). Both
+    transitions need only a `code`, so one schema serves rather than a `Union` of two identical ones.
 
     Attributes:
-        action: Which 2FA transition to apply — `"confirm"` completes an
-            enrollment started by `/2fa/enroll`; `"disable"` turns 2FA back
-            off for an already-enabled account.
-        code: A current TOTP code from the user's authenticator app,
-            proving control of it (initial, for `confirm`; ongoing, for
-            `disable`).
+        action: Which 2FA transition to apply: `"confirm"` completes an enrolment started by `/2fa/enroll`;
+            `"disable"` turns 2FA off for an already-enabled account.
+        code: A current TOTP code from the user's authenticator app, proving control of it (initial for
+            `confirm`; ongoing for `disable`).
     """
 
     action: Literal["confirm", "disable"]

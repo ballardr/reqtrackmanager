@@ -69,58 +69,31 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     """A snapshot of a change request's proposed content and justification.
 
     Attributes:
-        reason: Why the change is being requested and wasn't identified
-            during original scoping (introduction requirement for CR
-            submissions).
-        proposed_component_id / proposed_category_id: Only meaningful for
-            NEW_REQUIREMENT change requests.
-        changed_fields: For a MODIFY_REQUIREMENT change request, the
-            explicit list of which requirement fields this change request
-            actually proposes to change (field names matching
-            RequirementVersion's own attribute names, e.g. `"name"`,
-            `"target_stage_id"`, `"attachments"`). A `proposed_*` column not
-            named here is not part of this proposal at all — approval must
-            leave the corresponding requirement field completely untouched,
-            not silently overwrite it with a same-or-stale value (the gap
-            this replaces: every field used to be re-applied unconditionally
-            on approval). Always empty for NEW_REQUIREMENT change requests,
-            where every field is meaningful by definition (there's no
-            "current version" to diff against). See
-            `routers/change_requests.py::decide_change_request` for where
-            this is consulted, and `docs/decisions.md`'s "Change request
-            field-level tracking" entry for the full reasoning.
-        proposed_attachment_file_ids: File ids (already uploaded as an
-            organisation shared resource — the same upload path the report-
-            image picker uses, see `routers/orgs.py::upload_org_resource`)
-            this change request proposes attaching to the requirement.
-            Always additive: approval creates new `RequirementFile` links
-            for these, never removes existing attachments. Meaningful only
-            when `"attachments"` is in `changed_fields`.
-        proposed_action_link_id / proposed_action_title / proposed_action_
-            description / proposed_action_type_id / proposed_action_
-            assignee_type+_id (a principal — `models.principal`) / proposed_action_due_date: ADD_ACTION-only
-. Either
-            `proposed_action_link_id` (link an existing `RequirementAction`
-            to the target requirement) or `proposed_action_title` +
-            `proposed_action_type_id` (create a new one and link it) is
-            set, mutually exclusive — see
-            `routers/change_requests.py::create_change_request`'s
-            validation. `proposed_action_link_id` is also REMOVE_ACTION's
-            only field — which of the
-            requirement's already-linked actions to unlink on approval;
-            reusing the same column rather than adding a duplicate one,
-            since the two kinds never coexist on one version row.
-        proposed_links: The links this change request proposes,
-            merged into the requirement on approval
-            as the approver chooses. The whole payload of an ADD_LINK request
-            and an optional addition to NEW_REQUIREMENT / MODIFY_REQUIREMENT
-            ones. See `ChangeRequestProposedLink`.
-        proposed_link_id: REMOVE_LINK-only — the existing `ArtefactLink` row to remove on approval.
-            `ondelete="SET NULL"` since the link could in principle be
-            removed by some other path between submission and approval;
-            `decide_change_request` re-checks it still exists before acting,
-            the same defensive re-check `proposed_attachment_file_ids`/
-            `proposed_action_link_id` already get.
+        reason: Why the change is requested and was not identified during original scoping.
+        proposed_component_id / proposed_category_id: Meaningful only for NEW_REQUIREMENT change requests.
+        changed_fields: For a MODIFY_REQUIREMENT change request, the requirement fields it proposes to
+            change (names matching `RequirementVersion` attributes, e.g. `"name"`, `"target_stage_id"`,
+            `"attachments"`). A `proposed_*` column not named here is not part of the proposal: approval
+            leaves that requirement field untouched. Always empty for NEW_REQUIREMENT, where every field
+            is meaningful. Consulted by `routers/change_requests.py::decide_change_request`
+            (docs/decisions.md, "Change request field-level tracking").
+        proposed_attachment_file_ids: File ids (uploaded as organisation shared resources through
+            `routers/orgs.py::upload_org_resource`) proposed for attachment. Always additive: approval
+            creates `RequirementFile` links and never removes attachments. Meaningful only when
+            `"attachments"` is in `changed_fields`.
+        proposed_action_link_id / proposed_action_title / proposed_action_description /
+            proposed_action_type_id / proposed_action_assignee_type+_id (a principal, `models.principal`) /
+            proposed_action_due_date: ADD_ACTION only. Either `proposed_action_link_id` (link an existing
+            `RequirementAction`) or `proposed_action_title` + `proposed_action_type_id` (create and link a
+            new one) is set, never both (`routers/change_requests.py::create_change_request`).
+            `proposed_action_link_id` is also REMOVE_ACTION's only field (the linked action to unlink on
+            approval); the two kinds never share a version row.
+        proposed_links: The links this change request proposes, merged into the requirement on approval as
+            the approver chooses. The whole payload of an ADD_LINK request and an optional addition to
+            NEW_REQUIREMENT / MODIFY_REQUIREMENT ones. See `ChangeRequestProposedLink`.
+        proposed_link_id: REMOVE_LINK only: the `ArtefactLink` row to remove on approval. `SET NULL` because
+            another path may remove the link before approval; `decide_change_request` re-checks it exists,
+            as it does for `proposed_attachment_file_ids` and `proposed_action_link_id`.
     """
 
     __tablename__ = "change_request_versions"
@@ -135,11 +108,8 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     )
     version_number: Mapped[int] = mapped_column(Integer)
 
-    # Nullable at the DB layer even though NEW_REQUIREMENT change requests
-    # always need a real name — that requirement is enforced at the
-    # schema/router layer (ChangeRequestCreate), not here, since a
-    # MODIFY_REQUIREMENT change request that isn't proposing to rename
-    # anything legitimately has no proposed_name at all (see changed_fields).
+    # Nullable in the database: NEW_REQUIREMENT needs a name, enforced by the schema and router layer
+    # (ChangeRequestCreate), but a MODIFY_REQUIREMENT that does not rename has none (see changed_fields).
     proposed_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     proposed_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     proposed_clarification: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -150,28 +120,20 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_category_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_categories.id", ondelete="SET NULL"), nullable=True
     )
-    # Mirrors Requirement/RequirementVersion's target_stage_id/level (mock's
-    # "Target"/"Level" fields) so a change request can propose changing them,
-    # same as it can propose changing name/reasoning/clarification.
+    # Mirrors RequirementVersion's target_stage_id/level so a change request can propose changing them.
     proposed_target_stage_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="SET NULL"), nullable=True
     )
     proposed_level: Mapped[RequirementLevel | None] = mapped_column(str_enum(RequirementLevel, 20), nullable=True)
-    # Mirrors RequirementVersion's review-scheduling fields (C-R-06/08/10) so
-    # a change request can propose setting/changing them, same as any other
-    # requirement content — review_date can only change via this path once a
-    # requirement is approved.
+    # Mirrors RequirementVersion's review-scheduling fields (C-R-06/08/10); once a requirement is approved,
+    # review_date changes only through this path.
     proposed_review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     proposed_review_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     proposed_reviewer_type: Mapped[str | None] = principal_type_column(nullable=True)
     proposed_reviewer_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     proposed_attachment_file_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    # ADD_ACTION-only: either `proposed_action_link_id` (link an
-    # existing `RequirementAction`) or `proposed_action_title` +
-    # `proposed_action_type_id` (create a new one) is set, never both — see
-    # `routers.change_requests.create_change_request`'s validation. Mirrors
-    # the requirement detail page's own "Link existing action"/"Create and
-    # link a new action" split rather than inventing a third shape.
+    # ADD_ACTION-only: link an existing action or create a new one, never both (see the class docstring);
+    # mirrors the requirement detail page's "Link existing action"/"Create and link a new action" split.
     proposed_action_link_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirement_actions.id", ondelete="SET NULL"), nullable=True
     )
@@ -183,11 +145,7 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_action_assignee_type: Mapped[str | None] = principal_type_column(nullable=True)
     proposed_action_assignee_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     proposed_action_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # REMOVE_LINK-only. References `artefact_links.id` (Platform Foundations)
-    # — originally `requirement_links.id`; repointed by migration 0041
-    # when that table was folded into the generic `ArtefactLink` table,
-    # preserving each migrated row's original id so this FK never needed
-    # its stored values to change, only its target.
+    # REMOVE_LINK-only. References `artefact_links.id`.
     proposed_link_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("artefact_links.id", ondelete="SET NULL"), nullable=True
     )
@@ -212,10 +170,9 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
 class ChangeRequestProposedLink(UUIDPKMixin, Base):
     """One link a change request proposes to create, merged on approval.
 
-    A real table (not a JSON list) so the link
-    type is a foreign key: deleting an in-use link type repoints or blocks on
-    these rows (`services.link_type_usage`) instead of `SET NULL` silently
-    stripping the type from a request that could then no longer be applied.
+    A table (not a JSON list) so the link type is a foreign key: deleting an in-use link type repoints or
+    blocks on these rows (`services.link_type_usage`) instead of `SET NULL` stripping the type from a
+    request that could then not be applied.
 
     Attributes:
         change_request_version_id: The version row the link was proposed on.
@@ -275,12 +232,9 @@ class ReviewComment(UUIDPKMixin, TimestampMixin, Base):
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
-    # Set only by PATCH .../comments/{id} (author-only) when the body is
-    # actually changed — null for a never-edited comment. Deliberately its
-    # own column rather than comparing created_at/updated_at: TimestampMixin's
-    # two independent default=utcnow callables can resolve microseconds
-    # apart on the same INSERT, which would make a fresh comment
-    # intermittently read as "edited".
+    # Set only by PATCH .../comments/{id} (author-only) when the body changes; null if never edited. Its own
+    # column because TimestampMixin's two `default=utcnow` callables can differ by microseconds on one
+    # INSERT, which would make a new comment read as edited.
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

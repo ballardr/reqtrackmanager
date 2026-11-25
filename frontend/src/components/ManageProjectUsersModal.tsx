@@ -1,20 +1,13 @@
 /**
  * Module: components/ManageProjectUsersModal
  *
- * The "Manage users" dialog for one project: the shared `ProjectMembersTable` (the same one the project's own
- * Members section renders) with the staged add-member control, opened by an organisation administrator for a project
- * they hold no role in (the gear on a non-member row of the project list).
+ * The "Manage users" dialog for one project: the shared `ProjectMembersTable` with the staged add-member control,
+ * opened by an organisation administrator for a project they hold no role in (the gear on a non-member row).
  *
- * Responsibilities:
- * - Loads the project's effective members, group roles, pending invitations and available module roles when it
- *   opens, and the organisation's users and groups for the add-member control.
- * - Applies each change (role toggles, group roles, removal, conversion to direct roles, resending an invitation)
- *   through the existing project endpoints, re-reading the affected list and reporting failures as toasts.
- *
- * Design decisions:
- * - No new endpoint and no new permission: every call is one the Members section already makes, so the
- *   `require_project_view_or_manage` check applies on each, exactly as before.
- * - Self-contained: it takes the project and an `onClose`, so any page can open it without owning its state.
+ * Loads the project's effective members, group roles, invitations and module roles when it opens, and the
+ * organisation's users and groups for the add-member control. Each change goes through the existing project
+ * endpoints (no new endpoint or permission; `require_project_view_or_manage` applies on each), re-reads the
+ * affected list and reports failures as toasts. Self-contained: it takes the project and an `onClose`.
  *
  * Dependencies: `api/client`, `ProjectMembersTable`, `AddMembersModal`, `Modal`, the toast and branding contexts.
  */

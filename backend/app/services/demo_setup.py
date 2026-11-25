@@ -4,30 +4,25 @@ Module: services.demo_setup
 The rules behind the demonstration setup command (`scripts/demo_setup.py`): when it may run, what the sign-in
 details message says, when the next daily reset is, and how overlapping resets and failures are recorded.
 
-Responsibilities:
-- Refuse to run against a deployment that holds anything other than the demonstration organisation, unless the
-  operator confirms the database name (`check_guards`), and refuse a mail relay that is not a mail catcher.
-- Build the server-wide sign-in details message and the reset warning (plain text, within the message limits).
-- Work out the next reset time from a daily wall-clock time and an IANA zone (`next_reset_at`).
-- Hold a lock so a manual and a scheduled reset cannot overlap (`reset_lock`).
-- Write the Prometheus textfile the existing monitoring can alert on (`write_reset_metrics`).
-- Append each run's start and finish to a history file (`append_reset_event`), so a usage-metrics bundle can mark where
-  each cycle begins and explain a counter that falls to zero.
+Responsibilities: refuse to run against a deployment holding anything other than the demonstration
+organisation unless the operator confirms the database name (`check_guards`), and refuse a mail relay that is
+not a mail catcher; build the server-wide sign-in message and reset warning; compute the next reset from a
+daily wall-clock time and an IANA zone (`next_reset_at`); lock against overlapping resets (`reset_lock`); write
+the Prometheus textfile (`write_reset_metrics`) and the run history (`append_reset_event`), so a usage-metrics
+bundle can mark each cycle.
 
 Design decisions:
-- Every guard is a pure function of values the caller reads, so each refusal is tested without a database or a
-  network, and a scheduled run applies exactly the guards a manual one does.
-- The reset time is a future, scheduled wall-clock time: kept as local time plus an IANA zone and resolved to a
-  UTC instant only when the next wait is computed (`services.dr_schedule.Schedule`), so a zone other than UTC
-  keeps its local time across a daylight-saving change.
-- The default demonstration password is fixed and published in the sign-in details message; that is only
-  acceptable because the guards keep the command away from any deployment holding real data. A rotating random
-  password is opt-in (`generate_password`).
+- Every guard is a pure function of values the caller reads, so each refusal is tested without a database or
+  network, and a scheduled run applies the same guards as a manual one.
+- The reset time is a scheduled future wall-clock time: local time plus an IANA zone, resolved to UTC only when
+  the next wait is computed (`services.dr_schedule.Schedule`), so it survives a daylight-saving change.
+- The default demonstration password is fixed and published in the message; that is acceptable only because
+  the guards keep the command away from deployments with real data. A random password is opt-in
+  (`generate_password`).
 - The message body carries the password, so nothing here logs it, and `login_message_body` fails rather than
-  truncating when the accounts do not fit.
+  truncating when accounts do not fit.
 
-Dependencies: `services.dr_schedule` (daily schedule), `services.announcements` (message limits), the standard
-library.
+Dependencies: `services.dr_schedule`, `services.announcements` (message limits), the standard library.
 """
 
 from __future__ import annotations

@@ -41,10 +41,9 @@ export const CustomWithoutReset: Story = {
   },
 };
 
-/** For overrides with no local edit state to revert to (the org logo and
- * login-background image, which reset via an immediate `DELETE` call
- * rather than a batched Save) — `disabled` prevents a double-submit while
- * that request is in flight. */
+/** For overrides with no local edit state to revert to (the organisation logo and login-background image, which
+ * reset through an immediate `DELETE` rather than a batched Save): `disabled` prevents a double submit while that
+ * request is in flight. */
 export const CustomWithResetDisabledWhileSaving: Story = {
   args: { custom: true, onReset: fn(), disabled: true },
   play: async ({ canvasElement }) => {

@@ -1,18 +1,15 @@
 /**
  * Module: components/ReportLayoutBlockForm
  *
- * The form of one selected block in the Blocks view: its basic fields, then the collapsible groups its schema declares.
+ * The form of one selected block in the Blocks view: its basic fields, then the collapsible groups its schema
+ * declares. Arrangement only: every field is drawn through `ReportLayoutBlockField` in the order
+ * `arrangeBlockFields` reads from the schema (a type with no groups is flat), so a module's block is arranged by its
+ * own schema with no edit here.
  *
- * Responsibilities:
- * - Draw every field of the block type through `ReportLayoutBlockField`, in the arrangement `arrangeBlockFields`
- *   reads from the schema (a type with no groups is flat).
- * - Draw each group through the shared `SettingGroup`: closed unless the schema opens it, remembered per person and per
- *   block type, with an "N changed" pill and accent edge when a hidden setting is not at its default, and held open
- *   with a danger pill when the server reported a problem inside it.
- *
- * Design decisions: arrangement only. A field marked `inline` shares a row with the field before it (a value and its
- * unit), stacking when the panel is too narrow. A group's fields are the same controls, with the same names, as in a flat form,
- * so a block of a module is arranged by its own schema with no edit here.
+ * Each group is a shared `SettingGroup`: closed unless the schema opens it, remembered per person and block type,
+ * with an "N changed" pill and accent edge when a hidden setting is not at its default, and held open with a danger
+ * pill when the server reported a problem inside it. A field marked `inline` shares a row with the field before it
+ * (a value and its unit), stacking when the panel is too narrow.
  */
 import type { BlockType } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";

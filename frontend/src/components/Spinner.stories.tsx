@@ -21,10 +21,8 @@ export const CustomLabel: Story = {
   },
 };
 
-/** U-U-01: light and dark themes are both first-class — these two stories
- * pin the toolbar's theme global so both render (and get checked by
- * `npm run test-storybook`) on every run, not just whichever theme someone
- * happened to have selected while browsing. */
+/** Light and dark themes are both first-class: these two stories pin the toolbar's theme global so both render and are
+ * checked by `npm run test-storybook` on every run. */
 export const LightTheme: Story = {
   globals: { theme: "light" },
   play: async ({ canvasElement }) => {

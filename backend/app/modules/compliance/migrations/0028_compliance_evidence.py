@@ -4,28 +4,16 @@ Revision ID: 0028
 Revises: 0027
 Create Date: 2026-09-05
 
-Adds the five tables backing the Compliance Module's evidence support
-(§13-§15), built on top of the project-specific assessment layer, never
-modifying it:
+Adds the five tables of evidence support (§13-§15), built on the project assessment layer without modifying it:
 
-- `compliance_evidence` (`app.modules.compliance.models.ComplianceEvidence`)
-  — one project's own supporting evidence row (§13).
-- `compliance_evidence_revalidations` (`ComplianceEvidenceRevalidation`) —
-  append-only revalidation history (§15); never updated, only inserted into.
-- `compliance_evidence_files` (`ComplianceEvidenceFile`) — links a file
-  (direct upload or organisation shared resource) to a piece of evidence,
-  reusing `services.files.upload_file`'s existing storage mechanism (§13's
-  "reuse ReqTrackManager's existing attachment/file mechanisms").
-- `compliance_evidence_requirement_links` (`ComplianceEvidenceRequirementLink`)
-  and `compliance_evidence_action_links` (`ComplianceEvidenceActionLink`) —
-  the many-to-many linkage that lets a single piece of evidence support
-  multiple `ProjectComplianceRequirement`/`ComplianceRequiredActionAssessment`
-  rows at once (§13).
+- `compliance_evidence` (`ComplianceEvidence`): one project's own supporting evidence (§13).
+- `compliance_evidence_revalidations` (`ComplianceEvidenceRevalidation`): append-only revalidation history (§15).
+- `compliance_evidence_files` (`ComplianceEvidenceFile`): links a file (direct upload or organisation shared resource)
+  to evidence through `services.files.upload_file`'s storage (§13).
+- `compliance_evidence_requirement_links` and `compliance_evidence_action_links`: the many-to-many linkage that lets one
+  piece of evidence support several `ProjectComplianceRequirement` and `ComplianceRequiredActionAssessment` rows (§13).
 
-All five tables start empty. Table order follows the FK dependency chain:
-`compliance_evidence` first (references `projects`, already existing), then
-its four children (each references `compliance_evidence` plus one other
-already-existing table).
+The tables start empty. `compliance_evidence` is created first; its four children each reference it.
 """
 
 from collections.abc import Sequence

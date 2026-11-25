@@ -1,20 +1,13 @@
 /**
  * Module: modules/architecture/diagramOutlineModel
  *
- * The text form of a diagram as plain data, with no React: the tree of the elements shown and the table of the lines
- * drawn, built from the same layout and resolved lines the canvas draws, so the outline can never show a different
- * diagram from the one on the screen.
- *
- * Responsibilities:
- * - `outlineTree`: nest each visible box under its nearest visible placed ancestor (the rule the roll-up uses to join a
- *   line to a placed parent), so decomposition reads as a tree.
- * - `connectionRows`: one row per drawn line with its ends, direction, type, route kind (direct, rolled up, bridged) and,
- *   for a bridged line, the hidden elements it passes through, and how many vertices the line has.
- *
- * Design decisions:
- * - A box a view switch hides is left out, like the canvas; only its count is reported, so the outline follows the
- *   current switch states.
- * - A box the viewer cannot read is named by its code only, never its name.
+ * The text form of a diagram as plain data, with no React: the tree of the elements shown and the table of the lines drawn,
+ * built from the same layout and resolved lines the canvas draws, so the outline never shows a different diagram.
+ * - `outlineTree`: nests each visible box under its nearest visible placed ancestor (the roll-up's rule), so decomposition
+ *   reads as a tree. A box a view switch hides is left out like the canvas, with only its count reported; a box the viewer
+ *   cannot read is named by its code only.
+ * - `connectionRows`: one row per drawn line with its ends, direction, type, route kind (direct, rolled up, bridged), the
+ *   hidden elements a bridged line passes through and its vertex count.
  */
 import { anchorOf, boundaryNodeId, boundaryOutsideName, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
 import type { DiagramAnchor, DiagramViewEdge } from "./types";

@@ -203,10 +203,8 @@ def test_sync_org_roles_grants_nothing_when_no_group_matches():
 
 
 def test_sync_org_roles_revokes_role_once_matching_group_claim_disappears():
-    """Hardening-review regression: sync_org_roles_from_claims used to only
-    ever grant roles, never revoke them — a role granted via a matching
-    IdP group claim persisted forever even after later logins no longer
-    asserted that group."""
+    """sync_org_roles_from_claims also revokes: a role granted via a matching IdP
+    group claim is removed once later logins no longer assert that group."""
     from sqlalchemy import select
 
     from app.models.organization import OrgGroup, UserOrgRole
@@ -526,15 +524,11 @@ def test_org_group_idp_sync_target_round_trips(client, admin_token, org_id):
 
 
 def test_granted_org_role_is_masked_from_a_plain_member_but_visible_to_an_org_admin(client, admin_token, org_id):
-    """Hardening-review finding: `granted_org_role` landed on
-    `GET .../groups`, which — unlike the `ORG_ADMIN`-only
-    `GET .../advanced-settings` that held the equivalent
-    `sso_group_mappings` data before this feature replaced it — is open to
-    any org member (`require_org_role(ORG_ADMIN, PROJECT_CREATOR,
-    MEMBER)`), for legitimate reasons unrelated to this field (the org-
-    group nesting picker needs names/ids). Which SSO group auto-grants
-    `org_admin` is privilege-configuration recon that must stay
-    admin-only regardless of which endpoint happens to carry it."""
+    """`granted_org_role` is on `GET .../groups`, which is open to any org member
+    (`require_org_role(ORG_ADMIN, PROJECT_CREATOR, MEMBER)`; the org-group nesting
+    picker needs names and ids), unlike the `ORG_ADMIN`-only `GET .../advanced-settings`.
+    Which SSO group grants `org_admin` is privilege configuration that must stay
+    admin-only on whichever endpoint carries it."""
     group = client.post(
         f"/api/v1/orgs/{org_id}/groups",
         json={"name": "Role Granting Group", "idp_synced_group_name": "role-granting-group", "granted_org_role": "org_admin"},
@@ -606,15 +600,12 @@ def test_login_info_by_slug_is_public_and_omits_secrets(client, admin_token, org
 
 
 def test_oidc_callback_rejects_a_deactivated_account(client, admin_token, org_id, monkeypatch):
-    """Deeper hardening-review finding: `oidc_callback` never checked
-    account status at all — only `NativeAuthBackend.authenticate` did. A
-    deactivated account could otherwise complete SSO login and receive a
-    (functionally inert, since get_current_user also checks is_active)
-    token, but worse: consume_pending_invites/sync_org_roles_from_claims
-    would still run and commit brand-new role grants before that account
-    was ever reactivated. Driven through the real HTTP callback with the
-    network-calling OIDC steps stubbed out, not just the provisioning
-    helper directly, since the fix lives in the router between those calls."""
+    """`oidc_callback` checks account status, as `NativeAuthBackend.authenticate`
+    does. Otherwise a deactivated account would receive a token (inert, since
+    get_current_user also checks is_active) and `consume_pending_invites`/
+    `sync_org_roles_from_claims` would commit new role grants before the account
+    was reactivated. Driven through the HTTP callback with the network-calling
+    OIDC steps stubbed, since the check lives in the router between those calls."""
     _sso_org(client, admin_token, org_id, "deactivated-oidc-org")
     email = "deactivated-oidc@example.com"
     orphaned_id = _make_orphaned_user(client, admin_token, org_id, email)
@@ -640,11 +631,9 @@ def test_oidc_callback_rejects_a_banned_account_and_grants_no_pending_invite(cli
     _sso_org(client, admin_token, org_id, "banned-oidc-org")
     email = "banned-oidc@example.com"
 
-    # A PendingInvite outstanding for this email in a *different* org,
-    # created while no account for it exists yet anywhere (assign-by-email's
-    # "no account exists yet" branch — the only one that actually creates a
-    # PendingInvite row rather than checking is_banned against an existing
-    # account, see routers/projects.py::assign_project_role_by_email).
+    # A PendingInvite for this email in a different org, created while no account
+    # exists (assign-by-email's "no account exists yet" branch, the only one that
+    # creates a PendingInvite; see routers/projects.py::assign_project_role_by_email).
     other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "BannedOidcInviteTargetOrg")
     resp = client.put(
         f"/api/v1/orgs/{other_org['id']}/advanced-settings",

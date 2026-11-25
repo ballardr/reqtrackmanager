@@ -7,7 +7,7 @@ import { buildUser, withAuth, withRouter, withToast } from "../../testing/storyb
 import { buildReview, buildRisk, buildRiskScheme, buildTreatment, ORG_USERS, PROJECT_ID, RISK_ID, RISK_TYPES } from "./riskFixtures";
 import { RiskDetailPage } from "./RiskDetailPage";
 import type { Risk, RiskVersion } from "./types";
-import { recordActionNames } from "../../testing/recordActions";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/risk_management/risks/${RISK_ID}`;
 
@@ -84,19 +84,63 @@ export const OverdueAndArchivedAreFlagged: Story = {
   },
 };
 
-export const ChangeStatusPostsTheTransition: Story = {
+/** Promote opens the comment dialog for the next step; the move is posted with the comment. */
+export const PromotePostsTheTransition: Story = {
   beforeEach: () => {
     mockApis(buildRisk());
     spyOn(api, "post").mockResolvedValue(buildRisk({ status: "treatment_planned", allowed_next_statuses: ["treatment_in_progress"] }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Change status" }));
-    const dialog = within(within(document.body).getByRole("dialog", { name: "Change status of RSK-001" }));
-    await userEvent.selectOptions(dialog.getByLabelText("New status"), "treatment_planned");
-    await userEvent.click(dialog.getByRole("button", { name: "Change status" }));
+    await expect(await canvas.findByRole("listitem", { current: "step" })).toHaveTextContent("Assessed");
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Treatment planned" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Treatment planned" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Move RSK-001 to Treatment planned" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Move to Treatment planned" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/transition`, { status: "treatment_planned", comment: "" }));
     await waitFor(() => expect(canvas.getAllByText("Treatment planned").length).toBeGreaterThan(0));
+  },
+};
+
+/** Every other allowed move is a row of the actions menu (the backward and outcome moves), not a button. */
+export const OtherMovesAreMenuRows: Story = {
+  beforeEach: () => {
+    mockApis(buildRisk({ status: "treatment_planned", allowed_next_statuses: ["assessed", "treatment_in_progress", "accepted", "rejected"] }));
+    spyOn(api, "post").mockResolvedValue(buildRisk({ status: "rejected", allowed_next_statuses: ["identified", "closed"] }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Supplier firmware may be late" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Risk")).toEqual([
+      "Promote to Treatment in progress", "Return to Assessed", "Mark as Accepted", "Mark as Rejected", "Archive",
+    ]);
+    await chooseRecordAction(canvas, "Risk", "Mark as Rejected");
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Move RSK-001 to Rejected" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Move to Rejected" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/transition`, { status: "rejected", comment: "" }));
+    // The outcome is the one branch step while current, and offers Close as the next move.
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Rejected"));
+    await expect(canvas.getByRole("button", { name: "Next step: Closed" })).toBeInTheDocument();
+  },
+};
+
+/** An accepted risk shows the padlock on its step, with why. */
+export const AcceptedStepIsLocked: Story = {
+  beforeEach: () => mockApis(buildRisk({ status: "accepted", allowed_next_statuses: ["assessed", "closed"] })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("img", { name: /Locked: the rating, acceptance criteria/ })).toBeInTheDocument();
+  },
+};
+
+/** An archived risk offers no move. */
+export const ArchivedRiskOffersNoMove: Story = {
+  beforeEach: () => mockApis(buildRisk({ is_archived: true })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Supplier firmware may be late" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: /Next step/ })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Risk")).toEqual(["Unarchive"]);
   },
 };
 
@@ -149,3 +193,20 @@ export const MissingRiskShowsAnError: Story = {
 };
 
 export const DarkTheme: Story = { ...ShowsFieldsRatingsTreatmentsReviewsAndHistory, globals: { theme: "dark" } };
+
+/** Every long field of a Risk is Markdown: formatted on the page, never shown as typed marks. */
+export const ShowsItsTextFieldsFormatted: Story = {
+  beforeEach: () => mockApis(buildRisk({
+    statement: "The **supplier** may deliver late.", cause: "- no second source\n- long lead time", risk_event: "Delivery slips.",
+    consequence: "| Phase | Slip |\n| --- | --- |\n| Test | 3 weeks |", acceptance_criteria: "Accepted when:\n\n1. dates agreed\n2. buffer held",
+  })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Supplier firmware may be late" })).toBeInTheDocument());
+    await expect(canvasElement.querySelector(".markdown-view strong")).toHaveTextContent("supplier");
+    await expect(canvas.getByText("no second source").closest("li")).not.toBeNull();
+    await expect(canvas.getByRole("cell", { name: "3 weeks" })).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".markdown-view ol")).toHaveTextContent("buffer held");
+    await expect(canvasElement).not.toHaveTextContent("**supplier**");
+  },
+};

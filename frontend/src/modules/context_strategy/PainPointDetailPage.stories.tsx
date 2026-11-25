@@ -8,6 +8,10 @@ import { buildProject, buildScoringScheme, buildUser, withAuth, withRouter, with
 import { painPointScores } from "./painPointScoringFixtures";
 import { PainPointDetailPage } from "./PainPointDetailPage";
 import type { EffectivePainPointType, PainPoint } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
+import type { ProjectLifecycle } from "../../api/lifecycles";
+import { buildPainPointLifecycle, buildProjectLifecycles, PAIN_POINT_SKIPS } from "../../testing/lifecycleFixtures";
 
 const PROJECT_ID = "project-1";
 const PAIN_POINT_ID = "pain-point-1";
@@ -47,8 +51,9 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
 
 const LINKED_DECISION = buildGraphNode({ type: "decision", id: "dec-1", type_label: "Decision", label: "DEC-001 Use Postgres", status: null });
 
-function mockDetailApis(current: PainPoint) {
+function mockDetailApis(current: PainPoint, lifecycle?: ProjectLifecycle) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (lifecycle && path === `/api/v1/projects/${PROJECT_ID}/lifecycles`) return buildProjectLifecycles([lifecycle]);
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === `/api/v1/orgs/org-1/users`) return ORG_USERS;
     if (path.startsWith("/api/v1/orgs/org-1/users/search")) {
@@ -68,11 +73,7 @@ function mockDetailApis(current: PainPoint) {
   });
 }
 
-/**
- * A real routed page — stories go through `withRouter`/`withAuth` rather
- * than passing props directly, mirroring `StrategyDetailPage.stories.tsx`'s
- * own identical convention.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props, as in `StrategyDetailPage.stories.tsx`. */
 const meta: Meta<typeof PainPointDetailPage> = {
   title: "Modules/ContextStrategy/PainPointDetailPage",
   component: PainPointDetailPage,
@@ -89,38 +90,120 @@ export default meta;
 
 type Story = StoryObj<typeof PainPointDetailPage>;
 
-export const SubmittedShowsTriage: Story = {
+export const SubmittedOffersTriage: Story = {
   beforeEach: () => mockDetailApis(painPoint({ status: "submitted" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Report delays under poor connectivity" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Triage" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Triaged" })).toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Pain Point");
+    await expect(names[0]).toBe("Promote to Triaged");
   },
 };
 
-export const TriagedShowsThreeBranches: Story = {
+export const TriagedTurnedOffPromotesSubmittedToAccepted: Story = {
+  beforeEach: () => mockDetailApis(painPoint({ status: "submitted" }), buildPainPointLifecycle({ disabled: ["triaged"] })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Accepted" }));
+    const names = await recordActionNames(canvas, "Pain Point");
+    await expect(names[0]).toBe("Promote to Accepted");
+    // Reject and Mark duplicate are offered at Submitted, and the track omits Triaged.
+    await expect(names).toEqual(expect.arrayContaining(["Reject", "Mark duplicate"]));
+    await expect(canvas.queryByText("Triaged")).not.toBeInTheDocument();
+  },
+};
+
+export const SkippingStepsIsOfferedOnlyWhenTheProjectAllowsIt: Story = {
+  beforeEach: () => mockDetailApis(painPoint({ status: "submitted" })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Triaged" }));
+    await expect(await recordActionNames(canvas, "Pain Point")).not.toContain("Skip steps…");
+  },
+};
+
+export const SkipStepsMovesPastTheStepsInBetween: Story = {
+  beforeEach: () => {
+    mockDetailApis(painPoint({ status: "submitted" }), buildPainPointLifecycle({ skip_transitions: PAIN_POINT_SKIPS }));
+    spyOn(api, "post").mockImplementation(async (path: string) => {
+      if (path.endsWith("/address")) return painPoint({ status: "addressed" });
+      throw new Error(`Unmocked POST: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Pain Point actions" }));
+    await chooseRecordAction(canvas, "Pain Point", "Skip steps…");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Skip steps of this Pain Point" }));
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: /Move to/ }), "addressed");
+    await userEvent.type(dialog.getByLabelText(/Reason/), "Fixed in the hot patch");
+    await userEvent.click(dialog.getByRole("button", { name: "Skip steps" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}/address`, { comment: null },
+    ));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Addressed"));
+  },
+};
+
+/** A step a skip reaches is a bold button in the track and opens the dialog with that step chosen. */
+export const ASkipStepOfTheTrackOpensTheDialogForIt: Story = {
+  beforeEach: () => mockDetailApis(painPoint({ status: "submitted" }), buildPainPointLifecycle({ skip_transitions: PAIN_POINT_SKIPS })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Skip to Addressed" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Skip steps of this Pain Point" }));
+    await expect(dialog.getByRole("combobox", { name: /Move to/ })).toHaveValue("addressed");
+  },
+};
+
+export const ARefusedSkipShowsTheServersMessage: Story = {
+  beforeEach: () => {
+    mockDetailApis(painPoint({ status: "submitted" }), buildPainPointLifecycle({ skip_transitions: PAIN_POINT_SKIPS }));
+    spyOn(api, "post").mockRejectedValue(new Error("Insufficient permissions."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Pain Point actions" }));
+    await chooseRecordAction(canvas, "Pain Point", "Skip steps…");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Skip steps of this Pain Point" }));
+    await userEvent.type(dialog.getByLabelText(/Reason/), "Urgent");
+    await userEvent.click(dialog.getByRole("button", { name: "Skip steps" }));
+    await expect(await within(document.body).findByText("Insufficient permissions.")).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Submitted");
+  },
+};
+
+export const TriagedOffersAcceptAndTwoBranches: Story = {
   beforeEach: () => mockDetailApis(painPoint()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Accept" }));
-    await expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Mark duplicate" })).toBeInTheDocument();
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Accepted" }));
+    const names = await recordActionNames(canvas, "Pain Point");
+    await expect(names[0]).toBe("Promote to Accepted");
+    await expect(names).toEqual(expect.arrayContaining(["Reject", "Mark duplicate"]));
+    await expect(currentLifecycleStep(canvasElement)).toBe("Triaged");
   },
 };
 
-export const AcceptedShowsAddress: Story = {
+export const AcceptedOffersAddress: Story = {
   beforeEach: () => mockDetailApis(painPoint({ status: "accepted" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Address" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Addressed" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Pain Point");
+    await expect(names[0]).toBe("Promote to Addressed");
+    await expect(names).not.toContain("Reject");
   },
 };
 
-export const AddressedShowsClose: Story = {
+export const AddressedOffersClose: Story = {
   beforeEach: () => mockDetailApis(painPoint({ status: "addressed" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Close" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Closed" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Pain Point");
+    await expect(names[0]).toBe("Promote to Closed");
   },
 };
 
@@ -130,6 +213,20 @@ export const ClosedIsLockedNoNewEvidence: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument());
     await expect(canvas.getByText(/new evidence can no longer be added/)).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Closed");
+    await expect(canvas.getAllByRole("img", { name: /^Locked/ }).length).toBeGreaterThan(0);
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
+  },
+};
+
+export const RejectedShowsTheBranchStep: Story = {
+  beforeEach: () => mockDetailApis(painPoint({ status: "rejected", is_locked: true })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Rejected"));
+    await expect(canvas.queryByRole("button", { name: /^Next step/ })).not.toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Pain Point");
+    await expect(names).not.toContain("Reject");
   },
 };
 
@@ -137,8 +234,8 @@ export const RejectRequiresComment: Story = {
   beforeEach: () => mockDetailApis(painPoint()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Reject" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Reject" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Pain Point actions" }));
+    await chooseRecordAction(canvas, "Pain Point", "Reject");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Reject this Pain Point?" }));
     await expect(dialog.getByRole("button", { name: "Reject" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText("Rejection comment"), "Out of scope for this quarter.");
@@ -150,8 +247,8 @@ export const MarkDuplicateRequiresComment: Story = {
   beforeEach: () => mockDetailApis(painPoint()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Mark duplicate" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Mark duplicate" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Pain Point actions" }));
+    await chooseRecordAction(canvas, "Pain Point", "Mark duplicate");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Mark this Pain Point a duplicate?" }));
     await expect(dialog.getByRole("button", { name: "Mark duplicate" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText("Duplicate comment"), "Duplicate of PP-1.");
@@ -169,8 +266,9 @@ export const AcceptPainPoint: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Accept" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Accept" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Accepted" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Accepted" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Promote to Accepted" }));
     const dialog = within(within(document.body).getByRole("dialog", { name: "Accept this Pain Point?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Accept" }));
 
@@ -178,7 +276,21 @@ export const AcceptPainPoint: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}/accept`,
       { comment: null }
     ));
-    await waitFor(() => expect(canvas.getByText("Accepted")).toBeInTheDocument());
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Accepted"));
+  },
+};
+
+export const PromoteFromTheActionsMenuTriages: Story = {
+  beforeEach: () => {
+    mockDetailApis(painPoint({ status: "submitted" }));
+    spyOn(api, "post").mockResolvedValue(painPoint({ status: "triaged" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Pain Point actions" }));
+    await chooseRecordAction(canvas, "Pain Point", "Promote to Triaged");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}/triage`, { comment: null }));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Triaged"));
   },
 };
 
@@ -222,7 +334,7 @@ export const OwnerCanBeAnOrgGroup: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
       expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
     ));
-    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument());
   },
 };
 
@@ -255,8 +367,8 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
-    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Unassign: Pain Point owner" }));
+    await expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Clear: Pain Point owner" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
       expect.objectContaining({ owner: null })
@@ -264,8 +376,8 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
   },
 };
 
-export const LightTheme: Story = { ...TriagedShowsThreeBranches };
-export const DarkTheme: Story = { ...TriagedShowsThreeBranches, globals: { theme: "dark" } };
+export const LightTheme: Story = { ...TriagedOffersAcceptAndTwoBranches };
+export const DarkTheme: Story = { ...TriagedOffersAcceptAndTwoBranches, globals: { theme: "dark" } };
 
 /** Links live in the shared Links panel beside the page; the page adds only what is specific to it. */
 export const LinksPanelShowsLinks: Story = {

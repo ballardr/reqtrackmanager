@@ -1,20 +1,12 @@
 """
 Module: routers.system.modules
 
-Module system administration: the deployment-wide default
-module entitlement policy, the module registry listing, per-organisation
-module entitlement overrides, and the module-contributed MCP tool
-manifest. The entitlement-policy and registry/entitlement endpoints accept
-either `SERVER_ADMIN` or the narrower `MODULE_ADMINISTRATOR` server role —
-the one place this router's gating isn't uniformly `require_server_admin`.
-The per-organisation entitlement endpoints (module registry listing and
-entitlement read/write) also accept `SUBSCRIPTION_MANAGER`, who bounds
-what an organisation may use; the deployment-wide policy and defaults stay
-with `MODULE_ADMINISTRATOR`.
-
-Split out of the former flat `routers/system.py` as a pure code-organization
-refactor — see `routers/system/__init__.py`'s module docstring for the
-package layout.
+Module system administration: the deployment-wide default module entitlement policy, the module registry
+listing, per-organisation module entitlement overrides and the module-contributed MCP tool manifest. The
+entitlement-policy and registry/entitlement endpoints accept either `SERVER_ADMIN` or the narrower
+`MODULE_ADMINISTRATOR` server role (the one place this router's gating is not uniformly
+`require_server_admin`). The per-organisation entitlement endpoints also accept `SUBSCRIPTION_MANAGER`, who
+bounds what an organisation may use; the deployment-wide policy and defaults stay with `MODULE_ADMINISTRATOR`.
 """
 
 from __future__ import annotations
@@ -165,16 +157,10 @@ class OrgModuleEntitlementUpdate(BaseModel):
 
 
 class ModuleMcpToolOut(BaseModel):
-    """One module-contributed `mcp-server/` tool —
-    the wire shape of `app.modules.registry.ResolvedMcpTool`. Every field
-    here has already been through `build_mcp_tool_manifest`'s mechanical
-    verification; see that function's docstring for what that means.
-    `params` is passed through as plain dicts (`{"name", "type", "required",
-    "in", "description"}` per entry) rather than a nested model — the same
-    loosely-typed, declaration-shaped design `McpToolDefinition.params`
-    itself uses, since these values are display/JSON-Schema hints for the
-    calling AI assistant, not something this endpoint needs to validate
-    further."""
+    """One module-contributed `mcp-server/` tool: the wire shape of `app.modules.registry.ResolvedMcpTool`,
+    already verified by `build_mcp_tool_manifest`. `params` is passed through as plain dicts (`{"name", "type",
+    "required", "in", "description"}` per entry) rather than a nested model, as `McpToolDefinition.params`:
+    they are display/JSON-Schema hints for the calling AI assistant, not values this endpoint validates."""
 
     name: str
     description: str
@@ -193,14 +179,11 @@ def get_module_entitlement_policy(
     db: Session = Depends(get_db),
 ):
     """Returns the deployment-wide default module entitlement policy
-    (`ServerSettings.default_module_entitlement_policy`) — the value
-    the entitlement resolution falls back to when an organisation has
-    no explicit `organization_module_entitlements` override row.
+    (`ServerSettings.default_module_entitlement_policy`), the value entitlement resolution uses when an
+    organisation has no explicit `organization_module_entitlements` override row.
 
-    Gated the same as the PUT below (`SERVER_ADMIN` or
-    `MODULE_ADMINISTRATOR`), unlike `/branding`'s unauthenticated GET: this
-    has no unauthenticated consumer, so it stays behind the same admin gate
-    as any other module-management setting.
+    Gated as the PUT below (`SERVER_ADMIN` or `MODULE_ADMINISTRATOR`), unlike `/branding`'s unauthenticated
+    GET: it has no unauthenticated consumer.
     """
     return get_server_settings(db)
 
@@ -282,16 +265,11 @@ def update_org_module_entitlement(
     current_user: User = Depends(require_server_role(*_ENTITLEMENT_ROLES)),
     db: Session = Depends(get_db),
 ):
-    """Sets an explicit server-tier entitlement override for one
-    organisation/module pair.
+    """Sets an explicit server-tier entitlement override for one organisation/module pair.
 
-    Turning entitlement off does NOT cascade-delete any existing
-    `OrganizationModuleEnablement` row for this org/module — that's
-    intentional, not a missed cleanup: `is_module_enabled`'s effective
-    formula already ANDs entitlement with enablement, so a stale
-    `enabled=True` enablement row under a revoked entitlement is inert and
-    presents no confusing effective state. A future reader should not "fix"
-    this by adding a cascade delete.
+    Turning entitlement off does not cascade-delete an existing `OrganizationModuleEnablement` row for this
+    org/module: `is_module_enabled` ANDs entitlement with enablement, so a stale `enabled=True` row under a
+    revoked entitlement is inert. Do not add a cascade delete.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -404,29 +382,19 @@ def apply_server_module_defaults(
 
 @router.get("/modules/mcp-tools", response_model=list[ModuleMcpToolOut])
 def list_module_mcp_tools(current_user: User = Depends(get_current_user)):
-    """Returns the manifest of every module-contributed `mcp-server/` tool
-    across the live module registry —
-    what `mcp-server` fetches (lazily, on a caller's own already-presented
-    token, cached in-process for a refresh window) to register declarative
-    tools that proxy to a module's own REST endpoints.
+    """Returns the manifest of every module-contributed `mcp-server/` tool across the live module registry,
+    which `mcp-server` fetches (lazily, on a caller's own token, cached in-process for a refresh window) to
+    register declarative tools that proxy to a module's REST endpoints.
 
-    Gated by plain `get_current_user` — normal bearer-token authentication,
-    deliberately with **no exemption**, per the hardening pass
-    ("SOC2 / Security Planning" section):
-    this must never become an unauthenticated boot-time call, even though
-    the manifest itself carries no organisation-specific data. Per-call
-    access to whatever a listed tool actually proxies to is still fully
-    enforced by that endpoint's own `require_org_module_enabled`/
-    `require_project_module_enabled`/`require_module_role` dependency —
-    a tool being listed here has never implied a given caller can use it,
-    exactly like `list_projects` in `mcp-server` already works today.
+    Gated by plain `get_current_user` (bearer-token authentication) with no exemption (the "SOC2 / Security
+    Planning" section): this must never become an unauthenticated boot-time call, though the manifest carries
+    no organisation-specific data. Per-call access to what a listed tool proxies to is enforced by that
+    endpoint's `require_org_module_enabled`/`require_project_module_enabled`/`require_module_role` dependency;
+    a listed tool does not imply a caller can use it, as `list_projects` in `mcp-server`.
 
-    Every entry has already been through `build_mcp_tool_manifest`'s
-    mechanical verification — `mutates` is derived from HTTP method, never
-    module-declared; any tool whose `path_template` fell outside its
-    declaring module's own router, or that resolved to a route marked as an
-    approval action, has already been excluded. This endpoint does no
-    further filtering of its own.
+    Every entry has passed `build_mcp_tool_manifest`'s verification: `mutates` is derived from the HTTP method,
+    never module-declared, and a tool whose `path_template` falls outside its module's router or that resolves
+    to an approval action is excluded. This endpoint does no further filtering.
     """
     return [
         ModuleMcpToolOut(

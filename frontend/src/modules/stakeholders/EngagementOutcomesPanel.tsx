@@ -1,25 +1,19 @@
 /**
  * Module: modules/stakeholders/EngagementOutcomesPanel
  *
- * The Pain Points, Needs and Open Questions an engagement (or one of its
- * research findings) raised or answered — the trace from a contact to the
- * backlog. One component for both holders: the
- * caller passes the matching `OutcomeApi`. A row names the kind and target type
- * through their label maps and links to the target's own page through the
- * generic `getArtefactPath`, so no other module is imported. Only an Open
- * Question can be answered. Removal is a tier-1 confirm and only the link is
- * removed.
+ * The Pain Points, Needs and Open Questions an engagement (or one of its research findings) raised or answered: the
+ * trace from a contact to the backlog. One component serves both holders; the caller passes the matching `OutcomeApi`.
+ * A row names the kind and target type through their label maps and links to the target's page through the generic
+ * `getArtefactPath`, so no other module is imported. Only an Open Question can be answered. Removal is a tier-1
+ * confirm and removes only the link.
  *
- * Adding picks a kind, a type and a record of that type from the project; a
- * type whose module is off simply offers no records. Three fields is a lot for a
- * page that has several lists, so the form lives in a `Modal` behind a (+) button
- * and the list is a row of chips.
+ * Adding picks a kind, a type and a record of that type from the project; a type whose module is off offers no
+ * records. The three fields live in a `Modal` behind a (+) button and the list is a row of chips, to keep the page
+ * short.
  *
- * "Create new" beside the record picker opens the owning module's own create dialog
- * (`modules/linkedRecordCreators`, the one the Links panel uses) and records the outcome once
- * the record exists, so a person never leaves the page. It is offered only for a type the
- * server says the caller may create (`loadCreatableTypes`); the outcome link is made in
- * addition to any quick links the dialog collected.
+ * "Create new" beside the record picker opens the owning module's create dialog (`modules/linkedRecordCreators`, as the
+ * Links panel) and records the outcome once the record exists. It is offered only for a type the server says the
+ * caller may create (`loadCreatableTypes`); the outcome link is made in addition to any quick links the dialog collected.
  */
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -30,6 +24,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
+import { Tooltip } from "../../components/Tooltip";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { getArtefactPath } from "../artefactPaths";
 import { getLinkedRecordCreator } from "../linkedRecordCreators";
@@ -143,12 +138,14 @@ export function EngagementOutcomesPanel({
       label={heading}
       gap="0.35rem"
       action={
-        <button
-          type="button" className="btn btn-sm btn-icon" aria-label={`Add to ${heading}`} title={`Add to ${heading}`}
-          aria-haspopup="dialog" onClick={() => setAdding(true)}
-        >
-          <Plus aria-hidden="true" />
-        </button>
+        <Tooltip label={`Add to ${heading}`}>
+          <button
+            type="button" className="btn btn-sm btn-icon" aria-label={`Add to ${heading}`}
+            aria-haspopup="dialog" onClick={() => setAdding(true)}
+          >
+            <Plus aria-hidden="true" />
+          </button>
+        </Tooltip>
       }
     >
       {outcomes.length === 0 ? (

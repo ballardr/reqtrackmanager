@@ -1,28 +1,14 @@
-"""Tests for the Compliance Module's Fine-Grained Access Control:
-the `permissions`
-declared on all four of this module's `ModuleRoleDefinition`s
-(`compliance_manager`, `compliance_officer`, `standards_manager`,
-`standards_contributor`, `module.py`), and the two endpoints migrated to
-accept `require_permission` as an alternative to their existing
-`require_module_role` gate — `create_evidence`/`update_evidence`
-(`project_router/evidence.py`, the org/project composition axis) and
-`update_requirement` (`router/version_requirements.py`, the entity-scoped
-`"standard"` axis).
+"""Tests for the Compliance Module's Fine-Grained Access Control: the `permissions` declared on the four
+`ModuleRoleDefinition`s (`compliance_manager`, `compliance_officer`, `standards_manager`, `standards_contributor`) and the
+endpoints that accept `require_permission` as an alternative to `require_module_role`: `create_evidence` and
+`update_evidence` (`project_router/evidence.py`, the organisation and project axis) and `update_requirement`
+(`router/version_requirements.py`, the entity-scoped `"standard"` axis).
 
-Regression coverage first (no new grant — every existing role's access to
-these three endpoints must be unaffected), then the two new
-capability proofs a plain
-custom role reaching the evidence endpoints without ever holding
-`compliance_officer`, and an entity-scoped (`"standard"`) custom role
-reaching `update_requirement` without ever holding `standards_manager`/
-`standards_contributor`.
-
-Reuses existing helpers from `test_compliance_standards_api.py` (plain
-standard/version/requirement CRUD), `test_compliance_standard_scoped_
-rbac.py` (`compliance_manager`/standard-scoped role grants), and
-`test_project_compliance_api.py`/`test_compliance_evidence_api.py`
-(project assignment/assessment + evidence setup), the same way those files
-already reuse each other."""
+Regression coverage first (existing roles' access to these endpoints is unchanged), then two capability proofs: a custom
+role reaching the evidence endpoints without `compliance_officer`, and an entity-scoped custom role reaching
+`update_requirement` without `standards_manager` or `standards_contributor`. Setup helpers come from
+`test_compliance_standards_api.py`, `test_compliance_standard_scoped_rbac.py`, `test_project_compliance_api.py` and
+`test_compliance_evidence_api.py`."""
 
 from __future__ import annotations
 
@@ -139,10 +125,8 @@ def test_update_requirement_regression_standard_roles_and_plain_member(client, a
     )
     assert forbidden.status_code == 403
 
-    # Org-wide `compliance_manager` still overrides the standard-scoped
-    # check too (`overridden_by=(("org", "compliance_manager"),)`, unrelated
-    # to the permission fallback but exercised through the new combinator's first,
-    # role-based branch, not the `require_permission` fallback).
+    # An organisation-wide `compliance_manager` also overrides the standard-scoped check (`overridden_by`), through the
+    # combinator's role-based branch, not the `require_permission` fallback.
     manager_id = create_org_user(client, admin_token, org_id, "fgac.manager@example.com", role="member")
     _grant_compliance_manager(client, admin_token, org_id, manager_id)
     manager_token = login(client, "fgac.manager@example.com", "Password123!")
@@ -198,13 +182,9 @@ def test_evidence_manage_permission_custom_role_reaches_create_and_update_withou
 
 
 def test_evidence_manage_permission_check_still_404s_when_module_disabled(client, admin_token, org_id):
-    """The subtle edge: a
-    caller who only reaches this endpoint via the new `require_permission`
-    fallback (never `compliance_officer`) must still 404, not succeed or
-    403, once the module is disabled — `_require_evidence_manage` tries
-    `_require_officer` first, which performs its own module-enabled check
-    before ever falling back to the permission atom, so the disabled-module
-    404 is never bypassed by holding the new grant."""
+    """A caller who reaches this endpoint only through the `require_permission` fallback (never `compliance_officer`)
+    must still get 404, not success or 403, once the module is disabled: `_require_evidence_manage` tries
+    `_require_officer` first, which checks module enablement before the permission atom is considered."""
     project, _assignment, _pcr_id, _assessment_id = _setup_project_with_assessment(
         client, admin_token, org_id, project_name="FGAC Evidence Disabled Module Project"
     )
@@ -268,10 +248,8 @@ def test_standard_content_manage_entity_scoped_custom_role_reaches_update_requir
     )
     assert updated.status_code == 200, updated.text
 
-    # Tenant/entity isolation: the same grant, scoped to `standard`, must
-    # never satisfy a check against a *different* standard's own content —
-    # `require_permission`'s `entity_scope` resolution is per specific
-    # entity id, not per module/organisation.
+    # Entity isolation: a grant scoped to `standard` never satisfies a check against a different standard's content
+    # (`require_permission`'s `entity_scope` resolution is per entity id).
     other_version = _create_version(client, admin_token, org_id, other_standard["id"])
     other_requirement = _create_requirement(
         client, admin_token, org_id, other_standard["id"], other_version["id"], name="Other Standard Req"

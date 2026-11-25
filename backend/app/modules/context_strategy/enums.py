@@ -1,53 +1,18 @@
 """
 Module: modules.context_strategy.enums
 
-Context & Strategy-owned vocabulary. Kept in this package rather than
-`app.models.enums`, mirroring `app.modules.decisions.enums`'s own
-reasoning — these are domain concepts this module owns, not core
-ReqTrackManager concepts.
+Context & Strategy-owned vocabulary, kept here rather than in `app.models.enums` (as `app.modules.decisions.enums`).
 
-Future State has its own `FutureStateScope`/`FutureStateStatus` rather than
-reusing `StrategyScope`/`StrategyStatus`, **Decided by: Agent**, by direct
-analogy to how this module already keeps `DecisionStatus` and
-`StrategyStatus` separate despite both being lifecycle enums with an
-identical shape (see `StrategyStatus`'s own docstring, which cites the
-decision that Future State's lifecycle "mirrors Strategy's in full"). Two
-independent artefact types owning two textually-identical vocabularies
-avoids one artefact's future divergence (e.g. Strategy someday gaining a
-scope Future State never needs) silently reaching into the other's column
-values.
-
-Pain Point has `PainPointStatus` (a genuinely different, **branching**
-lifecycle shape — not a mirror of `StrategyStatus`'s linear chain) and
-`PainPointPriority`, kept as its own enum rather than a reuse of
-`StrategyPriority` (**Decided by: Agent**, by the same "two independent
-artefact types, two owned vocabularies" reasoning — a future divergence in
-either artefact's own priority vocabulary should not require touching the
-other's).
-
-Guiding Principle has `GuidingPrincipleScope` (same org/project discriminator
-shape as `StrategyScope`/`FutureStateScope`, its own enum for the same
-reason), `GuidingPrinciplePriority` (its own three-value enum, same reasoning
-as `PainPointPriority`), and `GuidingPrincipleStatus` — a **shorter**
-lifecycle than Strategy/Future State's seven-member one ("propose ->
-approve/activate -> retire, no 'Under Review'/'Superseded' split called out
-explicitly in §8"). See `GuidingPrincipleStatus`'s own docstring for the full
-reconciliation of that source text against the enum's actual six members
-(**Decided by: Agent**).
-
-Open Question has `OpenQuestionPriority` (its own three-value enum, same
-reasoning as `PainPointPriority`/`GuidingPrinciplePriority`) and
-`OpenQuestionStatus` — a **branching** lifecycle (§9.3:
-`Open -> Investigating -> Ready for Decision -> Resolved/Withdrawn`), built
-from the same `_PP_ALLOWED_TRANSITIONS`-style dict-of-frozensets mechanism
-Pain Point uses, not Strategy/Future State/Guiding Principle's
-linear-chain-plus-terminal-branch shape. Unlike Pain Point, Open Question has
-**no `type` field and no version-history table** (Decided by: Agent — see
-`models.OpenQuestion`'s own docstring) and is **project-scoped only**
-(Decided by: Agent — see that same docstring for the scope reasoning,
-grounded in Decision's own project-only scope since an Open Question
-ultimately resolves into a Decision per §9.5). See
-`OpenQuestionStatus`'s own docstring for the full lifecycle reasoning.
+Design decisions (**Decided by: Agent**): each artefact type owns its vocabularies even where another's has the same
+shape (`FutureStateScope` and `FutureStateStatus` beside `StrategyScope` and `StrategyStatus`, as `DecisionStatus` is
+separate), so a later divergence in one never reaches the other's column values.
+- Pain Point: `PainPointStatus` (a branching lifecycle, not Strategy's linear chain) and `PainPointPriority`.
+- Guiding Principle: `GuidingPrincipleScope`, `GuidingPrinciplePriority` and `GuidingPrincipleStatus`, a shorter lifecycle
+  than Strategy's seven members (§8: propose, approve and activate, retire; see `GuidingPrincipleStatus`).
+- Open Question: `OpenQuestionPriority` and `OpenQuestionStatus`, a branching lifecycle (§9.3: `Open -> Investigating ->
+  Ready for Decision -> Resolved/Withdrawn`) built like Pain Point's dict-of-frozensets transitions. It has no `type`
+  field or version history and is project-scoped only because it resolves into a Decision (§9.5); see
+  `models.OpenQuestion` and `OpenQuestionStatus`.
 """
 
 from __future__ import annotations
@@ -98,34 +63,13 @@ class StrategyTimeHorizon(str, enum.Enum):
 
 
 class StrategyStatus(str, enum.Enum):
-    """Lifecycle states for a `Strategy`: `Draft
-    -> Proposed -> Under Review -> Approved -> Active -> Superseded/
-    Retired`.
+    """Lifecycle states for a `Strategy`: `Draft -> Proposed -> Under Review -> Approved -> Active -> Superseded/Retired`.
 
-    **Reconciling "six-state lifecycle" with seven enum members below**
-    (Decided by: Agent, flagged for awareness — not a genuine fork, just an
-    ambiguity in the requirement's phrasing worth recording): the
-    arrow chain has six *positions*, the last of which
-    ("Superseded/Retired") reads as one slot that resolves to either of two
-    distinct terminal values — a `status` column can only ever hold one
-    concrete value at a time, so `SUPERSEDED` and `RETIRED` must be two
-    real, separate enum members, not one combined value. This mirrors
-    `DecisionStatus`'s own shape exactly (a linear chain of "in-flight"
-    states plus separate terminal branches, `REJECTED` there / `SUPERSEDED`
-    and `RETIRED` here), just with `ACTIVE` inserted between `APPROVED` and
-    the terminal branches, which Decision has no equivalent of (a Decision
-    has no separate "in force" state beyond being approved).
-
-    `REJECTED` intentionally does not exist here (unlike `DecisionStatus`)
-    — the requirement lists only the six positions above,
-    with no rejection-branch state named. A Strategy sent back for rework
-    from `PROPOSED`/`UNDER_REVIEW` instead returns to `DRAFT` (see
-    `service._ALLOWED_TRANSITIONS`) rather than landing in a new terminal
-    state nobody asked for.
-
-    Transition enforcement (`service._ALLOWED_TRANSITIONS`) is this
-    enum's sibling, not this docstring's — declared here for completeness
-    of the "what values exist" question only.
+    The last position resolves to two terminal values, so `SUPERSEDED` and `RETIRED` are separate members (seven in
+    total, **Decided by: Agent**), as `DecisionStatus` has a linear chain plus separate terminal branches (with `ACTIVE`
+    inserted, which a Decision does not need). There is no `REJECTED`: a Strategy sent back from `PROPOSED` or
+    `UNDER_REVIEW` returns to `DRAFT` (`service._ALLOWED_TRANSITIONS`). Transition enforcement is in
+    `service._ALLOWED_TRANSITIONS`.
     """
 
     DRAFT = "draft"
@@ -160,27 +104,13 @@ class PainPointSubmissionPolicy(str, enum.Enum):
 
 
 class PainPointStatus(str, enum.Enum):
-    """Lifecycle states for a `PainPoint` (§6.4) —
-    deliberately a **branching**, not linear, lifecycle: `Submitted ->
-    Triaged -> {Rejected | Duplicate | Accepted -> Addressed -> Closed}`.
-    `TRIAGED` has three legal next states, not one (`service.
-    _PP_ALLOWED_TRANSITIONS`) — the only lifecycle in this module (so far)
-    where a single status column's legal-next-set has more than two
-    members, unlike `StrategyStatus`/`FutureStateStatus`'s linear-chain-
-    plus-terminal-branch shape (each state there has at most two legal
-    next states).
+    """Lifecycle states for a `PainPoint` (§6.4): a branching lifecycle, `Submitted -> Triaged -> {Rejected | Duplicate |
+    Accepted -> Addressed -> Closed}`. `TRIAGED` has three legal next states (`service._PP_ALLOWED_TRANSITIONS`), unlike
+    the linear chain plus terminal branch of `StrategyStatus` and `FutureStateStatus`.
 
-    No version-history table backs this status ("No version-history table is
-    required for Pain Point") — a
-    `PainPoint` row is mutated in place, with every transition recorded via
-    `services.audit.log_event` (a plain audit trail), not a `PainPointVersion`
-    snapshot table. **Decided by: Agent** — the requirement
-    says no version-history table is required but doesn't explicitly
-    rule one in either; a full temporal version table exists in this module
-    only where one was explicitly asked for (Strategy, Future State,
-    and Guiding Principle), and Pain Point was
-    not named there, so this follows the absence of that instruction rather
-    than adding an unrequested version table by analogy to its siblings.
+    No version-history table backs it: a `PainPoint` row is mutated in place and every transition is recorded with
+    `services.audit.log_event` (**Decided by: Agent**); a full version table exists only for Strategy, Future State and
+    Guiding Principle.
     """
 
     SUBMITTED = "submitted"
@@ -206,20 +136,10 @@ class FutureStateScope(str, enum.Enum):
 
 
 class FutureStateStatus(str, enum.Enum):
-    """Lifecycle states for a `FutureState` — mirrors `StrategyStatus` in
-    full ("Future State's lifecycle and
-    permissions mirror Strategy's in full"): `Draft -> Proposed -> Under
-    Review -> Approved -> Active -> Superseded/Retired`, seven enum members
-    for the same reason `StrategyStatus` has seven (`SUPERSEDED` and
-    `RETIRED` are two distinct terminal values, not one combined slot), and
-    no `REJECTED` state — a Future State sent back for rework from
-    `PROPOSED`/`UNDER_REVIEW` returns to `DRAFT` instead (see
-    `service._FS_ALLOWED_TRANSITIONS`). See `StrategyStatus`'s own
-    docstring for the full reasoning this repeats; kept as its own enum
-    rather than a reuse of `StrategyStatus`, by direct analogy to
-    `DecisionStatus`/`StrategyStatus` already being separate despite
-    identical shape (Decided by: Agent — see this module's own docstring
-    above).
+    """Lifecycle states for a `FutureState`, mirroring `StrategyStatus` (`Draft -> Proposed -> Under Review -> Approved ->
+    Active -> Superseded/Retired`, seven members, no `REJECTED`: rework returns to `DRAFT`,
+    `service._FS_ALLOWED_TRANSITIONS`). It is its own enum so the two vocabularies can diverge independently
+    (**Decided by: Agent**; see the module docstring).
     """
 
     DRAFT = "draft"
@@ -254,50 +174,16 @@ class GuidingPrinciplePriority(str, enum.Enum):
 
 
 class GuidingPrincipleStatus(str, enum.Enum):
-    """Lifecycle states for a `GuidingPrinciple` (§8) —
-    **shorter** than `StrategyStatus`/`FutureStateStatus`'s seven-member
-    chain, per the scope text: "propose -> approve/activate ->
-    retire, no 'Under Review'/'Superseded' split called out explicitly in
-    §8."
+    """Lifecycle states for a `GuidingPrinciple` (§8), shorter than the seven-member `StrategyStatus` chain (**Decided by:
+    Agent**):
+    - No `UNDER_REVIEW`: §8 names only "propose -> approve", so a Guiding Principle moves `PROPOSED -> APPROVED`
+      (`service._GP_ALLOWED_TRANSITIONS`).
+    - `SUPERSEDED` is kept: a Decision that cites a Principle as rationale needs that Principle's history to stay
+      resolvable (§8.4), and "replaced by a newer one" is a more precise historical claim than `RETIRED`.
+    - `PROPOSED` can send a Principle back to `DRAFT` (`service.send_guiding_principle_back_to_draft`), as every other
+      lifecycle in this module allows rework before approval.
 
-    **Reconciling that scope text with six actual enum members below**
-    (Decided by: Agent, the same kind of phrasing-vs-implementation
-    reconciliation `StrategyStatus`'s own docstring already made explicit
-    for its "six-state lifecycle" text):
-
-    - No `UNDER_REVIEW`. §8's own text names only "propose -> approve" —
-      it never describes a Strategy/Future-State-style formal review step
-      distinct from the act of approving, so this lifecycle has no
-      standalone review state to mirror. A Guiding Principle moves directly
-      `PROPOSED -> APPROVED` (`service._GP_ALLOWED_TRANSITIONS`).
-    - `SUPERSEDED` **is** kept, despite the scope text's own "no ...
-      'Superseded' split called out explicitly" phrasing — re-examined
-      against §8.4's own reasoning ("revision control here
-      protects historical Decision rationale"): a Decision that cites a
-      Guiding Principle as its rationale needs that Principle's history to
-      remain resolvable even after a newer Principle replaces it in
-      practice, the same "a principle can be superseded by a newer one and
-      still needs its own terminal state, not silently overwritten" logic
-      `StrategyStatus`'s own docstring uses for Strategy. Dropping
-      `SUPERSEDED` here would leave "this Principle was replaced by a
-      newer one" inexpressible except by retiring it outright — a different
-      and less precise historical claim. This is the one point in this
-      enum's design where a weighed judgment call was
-      explicitly asked for rather than the literal scope-text reading;
-      the weighed reading (keep `SUPERSEDED`) mirrors Strategy's *reasoning*
-      per the brief's own instruction, without mirroring Strategy's literal
-      seven-member conclusion.
-    - `PROPOSED` can still send a Guiding Principle back to `DRAFT`
-      (`service.send_guiding_principle_back_to_draft`) — this module's
-      established "reject"-equivalent (see `StrategyStatus`'s own docstring)
-      — even though the scope text's arrow chain doesn't spell out a
-      rework path either; every other lifecycle in this module has one, and
-      nothing in §8 suggests a Guiding Principle is uniquely exempt from
-      needing rework before approval.
-
-    Transition enforcement (`service._GP_ALLOWED_TRANSITIONS`) is this
-    enum's sibling, not this docstring's — declared here for completeness
-    of the "what values exist" question only.
+    Transition enforcement is in `service._GP_ALLOWED_TRANSITIONS`.
     """
 
     DRAFT = "draft"
@@ -309,11 +195,8 @@ class GuidingPrincipleStatus(str, enum.Enum):
 
 
 class OpenQuestionPriority(str, enum.Enum):
-    """An Open Question's relative priority (§9.2) — its own
-    enum, not a reuse of `StrategyPriority`/`PainPointPriority`/
-    `GuidingPrinciplePriority` (see this module's own docstring for why).
-    Same three-value shape as its siblings since nothing in this artefact's
-    own scope asks for a different granularity."""
+    """An Open Question's relative priority (§9.2): its own enum (see the module docstring) with the three-value shape of
+    its siblings."""
 
     LOW = "low"
     MEDIUM = "medium"
@@ -321,41 +204,15 @@ class OpenQuestionPriority(str, enum.Enum):
 
 
 class OpenQuestionStatus(str, enum.Enum):
-    """Lifecycle states for an `OpenQuestion` (§9.3) —
-    deliberately a **branching**, not linear, lifecycle, the same mechanism
-    shape `PainPointStatus` already established in this module,
-    not Strategy/Future State/Guiding Principle's linear-chain-plus-
-    terminal-branch shape.
+    """Lifecycle states for an `OpenQuestion` (§9.3): a branching lifecycle, as `PainPointStatus`, not the linear chain of
+    Strategy, Future State and Guiding Principle.
 
-    Source overview §9.3's own arrow chain reads as a single, unbranched
-    line: `Open -> Investigating -> Ready for Decision -> Resolved /
-    Withdrawn`. As with `StrategyStatus`'s "six-state lifecycle" text (see
-    that enum's own docstring), the final slot reads as one position that
-    resolves to either of two distinct terminal values — `RESOLVED` and
-    `WITHDRAWN` are two real, separate enum members, not one combined value
-    (five members total, not four).
-
-    **Where this lifecycle genuinely branches mid-chain, not just at the
-    end (Decided by: Agent, the specific judgment call flagged)**: `WITHDRAWN` is reachable directly from `INVESTIGATING`
-    as well as from `READY_FOR_DECISION` — an Open Question can turn out to
-    be moot, already answered elsewhere, or no longer relevant while still
-    under active investigation, not only once it has reached the "ready for
-    a decision" point. `OPEN` itself does **not** branch directly to
-    `WITHDRAWN` — it only advances to `INVESTIGATING` — mirroring
-    `PainPointStatus`'s own precedent that only a lifecycle's *middle*
-    state(s) branch, not its very first one (`SUBMITTED` -> `TRIAGED` only,
-    never straight to a terminal state).
-
-    **No rework/"send back" transition** (unlike Strategy/Future State/
-    Guiding Principle's `PROPOSED`/`UNDER_REVIEW` -> `DRAFT` path) — this
-    lifecycle is investigatory, not a formal review-and-approval gate; there
-    is no "content under review that might be rejected back to draft"
-    concept here, the same reasoning `PainPointStatus` already applies (Pain
-    Point has no rework path either).
-
-    Transition enforcement (`service._OQ_ALLOWED_TRANSITIONS`) is this
-    enum's sibling, not this docstring's — declared here for completeness
-    of the "what values exist" question only.
+    §9.3 reads `Open -> Investigating -> Ready for Decision -> Resolved / Withdrawn`; the final position is two
+    separate members, `RESOLVED` and `WITHDRAWN` (five in total). `WITHDRAWN` is reachable from `INVESTIGATING` as well
+    as `READY_FOR_DECISION`, because a question can become moot or answered elsewhere while under investigation
+    (**Decided by: Agent**). `OPEN` advances only to `INVESTIGATING`, as `SUBMITTED` goes only to `TRIAGED`. There is no
+    rework transition: the lifecycle is investigatory, not a review-and-approval gate. Transition enforcement is in
+    `service._OQ_ALLOWED_TRANSITIONS`.
     """
 
     OPEN = "open"

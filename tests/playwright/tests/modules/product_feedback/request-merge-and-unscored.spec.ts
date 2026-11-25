@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { expectCurrentStep, installCleanupHook } from "../../e2e-workflows/helpers";
 import { createRequest, projectBase, requestLevels, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -48,9 +48,11 @@ test.describe("Enhancement requests: unscored filter and merge", () => {
       await dialog.getByLabel("Note").fill("Same ask, different words");
       await dialog.getByRole("button", { name: "Merge" }).click();
       await expect(page.getByText("Request merged.")).toBeVisible();
-      await expect(page.locator("span.badge", { hasText: /^Duplicate$/ })).toBeVisible();
+      await expectCurrentStep(page, "Duplicate");
       await expect(page.getByRole("link", { name: new RegExp(`${scored.unique_code} `) })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Undo merge" })).toBeVisible();
+      await page.getByRole("button", { name: "Request actions" }).click();
+      await expect(page.getByRole("menuitem", { name: "Undo merge" })).toBeVisible();
+      await page.keyboard.press("Escape");
     });
 
     await test.step("the note says why, in the version history and in the merge history", async () => {
@@ -60,10 +62,11 @@ test.describe("Enhancement requests: unscored filter and merge", () => {
     });
 
     await test.step("undoing the merge returns the request to its previous status", async () => {
-      await page.getByRole("button", { name: "Undo merge" }).click();
+      await page.getByRole("button", { name: "Request actions" }).click();
+      await page.getByRole("menuitem", { name: "Undo merge" }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Undo merge" }).click();
       await expect(page.getByText("Merge undone.")).toBeVisible();
-      await expect(page.locator("span.badge", { hasText: /^New$/ })).toBeVisible();
+      await expectCurrentStep(page, "New");
     });
   });
 });

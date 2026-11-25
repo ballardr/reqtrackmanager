@@ -11,16 +11,15 @@
  * project (an inbox request has no links, so no requesters), moving a request into a project to the inbox.
  * Requesters, Pain Points and Requirements are authored with the generic link endpoints (`ArtefactLinksPanel`).
  *
- * The two classified lists (external systems, request channels) have an organisation tier and a project tier, each
- * shaped as the shared `TypeVocabularyPanels` expect (`systemTypes`, `channelTypes`); the same lists feed the pickers
- * (`feedbackListApi`).
+ * The request channel list has an organisation tier and a project tier, each shaped as the shared
+ * `TypeVocabularyPanels` expect (`channelTypes`); the external systems a reference names are the shared list in
+ * `api/externalSystems`.
  */
 import { api } from "../../api/client";
+import { orgVocabularyApi, projectVocabularyApi } from "../../api/typeVocabulary";
 import { appendScopeParam, type ScopeListFilters } from "../../api/projectScope";
 import { appendTagParams, type TagListFilters } from "../../api/tags";
 import type { FileAsset } from "../../api/types";
-import type { EffectiveTypeRow, OrgTypeRow } from "../../components/TypeVocabularyPanels";
-import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type {
   ChannelUpdate, CloseTheLoop, Demand, EnhancementRequest, EnhancementRequestCreate, EnhancementRequestUpdate,
   ExternalRef, ExternalRefInput, FeedbackSettings, FeedbackAccess, InformedUpdate, OpenLoop, RequestComment, RequestMerge,
@@ -154,40 +153,8 @@ export const orgRequestApi = {
     api.post<EnhancementRequest>(`${orgBase(organizationId)}/requests/${requestId}/move-to-project`, { project_id: projectId }),
 };
 
-/** Project tier of one of the module's classified lists (`path` is `external-systems` or `request-channels`). */
-function projectVocabularyApi(path: string) {
-  const url = (projectId: string) => `${projectBase(projectId)}/${path}`;
-  return {
-    list: (projectId: string) => api.get<EffectiveTypeRow[]>(url(projectId)),
-    createLocal: (projectId: string, name: string, displayOrder?: number) =>
-      api.post<unknown>(url(projectId), { name, display_order: displayOrder ?? null }),
-    override: (
-      projectId: string, typeRefId: string,
-      values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null },
-    ) => api.put<unknown>(`${url(projectId)}/${typeRefId}`, values),
-    delete: (projectId: string, typeRefId: string) => api.delete<void>(`${url(projectId)}/${typeRefId}`),
-    listHidden: (projectId: string) => api.get<HiddenDefinition[]>(`${url(projectId)}/hidden`),
-    restore: (projectId: string, orgTypeIds?: string[]) =>
-      api.post<unknown>(`${url(projectId)}/restore`, { org_type_ids: orgTypeIds ?? null }),
-  };
-}
-
-/** Organisation tier of one of the module's classified lists. */
-function orgVocabularyApi(path: string) {
-  const url = (organizationId: string) => `${orgBase(organizationId)}/${path}`;
-  return {
-    list: (organizationId: string) => api.get<OrgTypeRow[]>(url(organizationId)),
-    create: (organizationId: string, name: string) => api.post<OrgTypeRow>(url(organizationId), { name }),
-    move: (organizationId: string, typeId: string, direction: "up" | "down") =>
-      api.post<OrgTypeRow>(`${url(organizationId)}/${typeId}/move`, { direction }),
-    update: (organizationId: string, typeId: string, values: { name?: string; is_active?: boolean }) =>
-      api.patch<OrgTypeRow>(`${url(organizationId)}/${typeId}`, values),
-    delete: (organizationId: string, typeId: string) => api.delete<void>(`${url(organizationId)}/${typeId}`),
-  };
-}
-
-/** The external system list (Jira, ServiceNow, ...), in the shapes `TypeVocabularyPanels` take. */
-export const systemTypes = { project: projectVocabularyApi("external-systems"), org: orgVocabularyApi("external-systems") };
-
 /** The request channel list (Support ticket, Call, ...), in the shapes `TypeVocabularyPanels` take. */
-export const channelTypes = { project: projectVocabularyApi("request-channels"), org: orgVocabularyApi("request-channels") };
+export const channelTypes = {
+  project: projectVocabularyApi((projectId) => `${projectBase(projectId)}/request-channels`),
+  org: orgVocabularyApi((organizationId) => `${orgBase(organizationId)}/request-channels`),
+};

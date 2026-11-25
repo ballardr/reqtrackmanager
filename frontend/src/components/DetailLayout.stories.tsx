@@ -2,13 +2,15 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, within } from "storybook/test";
 
 import { buildGraph, buildLinksApi, LINKS_ARTEFACT_ID, LINKS_PROJECT_ID } from "../testing/artefactLinksFixtures";
-import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { buildFileAsset, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ArtefactLinksPanel } from "./ArtefactLinksPanel";
+import { DetailCard } from "./DetailCard";
 import { DetailLayout } from "./DetailLayout";
+import { MarkdownEditor } from "./MarkdownEditor";
 
 /**
- * Artefact detail page frame: content plus a collapsible aside (the Links panel). Collapse
- * is stored per user; below 1280px the aside stacks and has no toggle.
+ * Artefact detail page frame: content plus a collapsible aside (the Links panel). Collapse is stored per user;
+ * below 1280px the aside stacks and has no toggle.
  */
 const meta: Meta<typeof DetailLayout> = {
   title: "Components/DetailLayout",
@@ -49,6 +51,19 @@ export const RendersContentAloneWithoutAnAside: Story = {
   args: { aside: null },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).queryByRole("complementary")).not.toBeInTheDocument();
+  },
+};
+
+/** A page's own tab (the record's Watching tab) follows Links, and is selected like the others. */
+export const ShowsAnExtraTabAfterLinks: Story = {
+  args: { extraTabs: [{ key: "watching", label: "Watching (2)", content: <div>Watching content</div> }] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Links", "Watching (2)"]);
+    await expect(canvas.getByText("Watching content")).not.toBeVisible();
+    await userEvent.click(canvas.getByRole("tab", { name: "Watching (2)" }));
+    await expect(canvas.getByText("Watching content")).toBeVisible();
+    await expect(canvas.getByText("Aside content")).not.toBeVisible();
   },
 };
 
@@ -121,5 +136,74 @@ export const CollapsedAsideHasNoCard: Story = {
     if (!hide) return; // narrow viewport: the aside cannot collapse
     await userEvent.click(hide);
     await expect(canvasElement.querySelector(".detail-layout__aside .card")).toBeNull();
+  },
+};
+
+/**
+ * The default card order: cards written in any order are drawn header, details and purpose cards, organising,
+ * supporting, then comments last (docs/ux-style-guide.md, "Pattern: detail page card order").
+ */
+export const DrawsTheCardsInTheDefaultOrder: Story = {
+  args: {
+    aside: null,
+    children: (
+      <>
+        <DetailCard heading="Discussion" rank="discussion"><p>Comments</p></DetailCard>
+        <DetailCard heading="Versions" rank="supporting"><p>Versions</p></DetailCard>
+        <DetailCard heading="Components and codes" rank="organising"><p>Places</p></DetailCard>
+        <DetailCard heading="Details"><p>Fields</p></DetailCard>
+        <>
+          <DetailCard heading="Review"><p>Review</p></DetailCard>
+          {false}
+        </>
+      </>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const headings = within(canvasElement).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    await expect(headings).toEqual(["Details", "Review", "Components and codes", "Versions", "Discussion"]);
+  },
+};
+
+/** A page whose sections are arranged by the person keeps the order it is given. */
+export const KeepsTheGivenOrderWhenTheCardsAreNotOrdered: Story = {
+  args: {
+    aside: null,
+    orderCards: false,
+    children: (
+      <>
+        <DetailCard heading="Discussion" rank="discussion"><p>Comments</p></DetailCard>
+        <DetailCard heading="Details"><p>Fields</p></DetailCard>
+      </>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const headings = within(canvasElement).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    await expect(headings).toEqual(["Discussion", "Details"]);
+  },
+};
+
+/** A page that passes its attachments gives every Markdown field in its content (the edit form included) a Picture button. */
+export const PicturesGiveItsMarkdownFieldsAPictureButton: Story = {
+  args: {
+    pictures: { files: [buildFileAsset({ id: "3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f", filename: "plot.png", content_type: "image/png" })] },
+    children: <MarkdownEditor value="" onChange={() => {}} ariaLabel="Description" rows={3} />,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("textbox", { name: "Description" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Picture" }));
+    await expect(await within(document.body).findByRole("button", { name: "Picture plot.png" })).toBeInTheDocument();
+  },
+};
+
+/** A page with no attachments passes nothing, so its Markdown fields have no Picture button. */
+export const WithoutPicturesThereIsNoPictureButton: Story = {
+  args: { children: <MarkdownEditor value="" onChange={() => {}} ariaLabel="Description" rows={3} /> },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("textbox", { name: "Description" }));
+    await expect(await canvas.findByRole("button", { name: "Bold" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Picture" })).toBeNull();
   },
 };

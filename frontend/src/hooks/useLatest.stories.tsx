@@ -5,11 +5,9 @@ import { expect, userEvent, waitFor, within } from "storybook/test";
 import { useLatest } from "./useLatest";
 
 /**
- * Harness reproducing the bug `useLatest` exists for: "Start save" begins
- * an async action that resumes later (like a post-create `reload()`); the
- * filter is changed while it's pending; when it resumes it reports the
- * filter it would list with — via the ref (latest) and via its own stale
- * closure (the bug) side by side.
+ * Harness for the stale-closure case `useLatest` covers: "Start save" begins an async action that resumes later
+ * (like a post-create `reload()`); the filter changes while it is pending; on resume it reports the filter via the
+ * ref (latest) and via its own stale closure, side by side.
  */
 function Harness() {
   const [filter, setFilter] = useState("");

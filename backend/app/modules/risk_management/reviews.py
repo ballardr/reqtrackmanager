@@ -1,33 +1,12 @@
 """
 Module: modules.risk_management.reviews
 
-Periodic risk reviews (overview §11.6).
-
-Responsibilities:
-- `record_review`: validate and store one review, snapshot the ratings it was
-  made against, and move the risk's `review_date` to the date the review sets.
-- `list_reviews`: a risk's review history, newest first.
-- `count_stale_treatments`: how many treatment verdicts are waiting for
-  reassessment (a review cannot confirm a risk while any are).
-
-Design decisions:
-- A review is an immutable record; a mistake is corrected by a newer review.
-  Nothing is updated or deleted, so the history can be relied on.
-- A review records a judgement, it does not edit the risk. Changes the reviewer
-  makes (a new rating, a status move) are ordinary versions made through the
-  normal endpoints, which keeps every edit going through its own authorisation
-  and guards; `outcome` says whether the review led to any.
-- The rating snapshot is stored because ratings are derived on read and move
-  whenever the matrix is edited; without it the history would silently rewrite
-  itself. Decided by: Agent.
-- `next_review_date` is required (nullable): a review that leaves the old date in
-  place would make the risk overdue forever, so the reviewer states the next date
-  or explicitly says there is none. Decided by: Agent.
-- A review cannot *confirm* a risk while a treatment verdict is waiting for
-  reassessment: "the assessment still stands" would contradict the flag the
-  change detection raised. Decided by: Agent.
-
-Dependencies: this module's models, `ratings`, `service.apply_new_version`.
+Periodic risk reviews: `record_review` stores one review with a snapshot of the
+ratings (derived on read, so they would otherwise change with the matrix) and
+moves `review_date`; `list_reviews` returns the history; `count_stale_treatments`
+counts verdicts awaiting reassessment, which block confirming a risk.
+A review is immutable (a mistake is corrected by a newer one) and records a
+judgement without editing the risk; `next_review_date` is required (nullable).
 """
 
 from __future__ import annotations

@@ -1,40 +1,28 @@
 """
 Module: services.dr_restore
 
-The restore run: one command that brings a backup set back as a working platform, refusing the cases that
-would damage a target, and proving the result matches what was backed up before it replaces anything.
+The restore run: brings a backup set back as a working platform, refusing cases that would damage a target and
+proving the result matches the backup before it replaces anything.
 
-Responsibilities:
-- List the sets a repository holds, resolve one (`latest`, a set id or a snapshot id) and read its manifest
-  without downloading the set.
-- Decide whether the set can be restored into this target (`compatibility_problems`, target state) and say so
-  in a dry run.
-- Fetch the set (verified against the repository), check its components against the manifest, put the objects
-  back (S3 upload or local-files extract), restore the database into a scratch database, verify it with the
-  same `dr_stats` code the backup used, optionally clear secrets the supplied key cannot read, and only then
-  swap the scratch database in.
-- Decrypt the set's age-encrypted `.env` snapshot for a fresh host (`decrypt_config`).
-- Always leave a machine-readable report that holds counts and step names only.
+Responsibilities: list and resolve sets (`latest`, a set id or a snapshot id) and read a manifest without
+downloading; decide whether a set can be restored into this target (`compatibility_problems`, shown in a dry
+run); fetch and verify the set, put objects back, restore the database into a scratch database, verify it with
+`dr_stats`, optionally clear secrets the supplied key cannot read, then swap it in; decrypt the age-encrypted
+`.env` snapshot (`decrypt_config`); always leave a machine-readable report of counts and step names.
 
 Design decisions:
-- The live database is never written to. The set is restored into `<name>_restore_<set>`, verified, then
-  renamed into place; a failure at any earlier point leaves the live database exactly as it was. In place, the
-  previous database is kept under a new name (rollback is a rename; deleting it is the operator's call). On a
-  fresh host the verified-empty database is dropped.
-- Restoring needs the image the set was taken with: the statistics are computed by the application's own
-  models, which only read a database at their own schema revision. A set from another revision is refused
-  with the image tag to use, rather than restored unverified.
-- Objects go back before the database swap and are only ever added, so a failed run cannot lose an attachment;
-  objects the set does not know are left alone (they are orphans, not data loss).
-- Unreadable encrypted values (the wrong or a replacement `APP_SECRET_ENCRYPTION_KEY`) fail the restore unless
-  the operator asks for them to be cleared; clearing is audited and removes the value, never guesses it.
-- Error text is redacted and never carries row content: `pg_restore` messages are reduced to their own
-  `pg_restore:` lines, an unexpected exception is recorded by class name.
-- Every instant is UTC.
+- The live database is never written to: the set is restored into `<name>_restore_<set>`, verified and renamed
+  into place, so an earlier failure leaves the live database unchanged. In place, the previous database is kept
+  under a new name (rollback is a rename); on a fresh host the verified-empty database is dropped.
+- The image the set was taken with is required: statistics use the application's own models, which read only
+  their own schema revision. Another revision is refused with the image tag to use.
+- Objects are restored before the swap and only ever added, so a failed run cannot lose an attachment.
+- Unreadable encrypted values (wrong or replaced `APP_SECRET_ENCRYPTION_KEY`) fail the restore unless the
+  operator asks for them to be cleared; clearing is audited and removes the value, never guesses it.
+- Error text is redacted and never carries row content. Every instant is UTC.
 
-Dependencies: SQLAlchemy and psycopg2 (database), boto3 (object store, injected), `pg_restore` 16, `restic` and
-`age` binaries, `services.dr_backup`, `services.dr_manifest`, `services.dr_restic`, `services.dr_stats`,
-`services.audit`.
+Dependencies: SQLAlchemy, psycopg2, boto3 (injected), `pg_restore` 16, `restic` and `age`, `services.dr_backup`,
+`dr_manifest`, `dr_restic`, `dr_stats`, `audit`.
 """
 
 from __future__ import annotations

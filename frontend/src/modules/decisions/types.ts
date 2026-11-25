@@ -1,21 +1,13 @@
 /**
  * Module: modules/decisions/types
  *
- * The Decision Management module's own TypeScript shapes and enum label/
- * tone maps — mirrors `backend/app/modules/decisions/schemas.py` and
- * `enums.py` field-for-field. Lives in this module's own directory, not
- * `frontend/src/api/types.ts`, per that file's own note that a module's
- * enums/label maps are that module's own display concern (mirroring the
- * backend's identical `modules.compliance.labels` split from
- * `app.services.labels`) —
+ * The Decision Management module's TypeScript shapes and enum label and tone maps, mirroring
+ * `backend/app/modules/decisions/schemas.py` and `enums.py` field for field. They live in the module's directory, not
+ * `frontend/src/api/types.ts`, because a module's enums and label maps are its own display concern (as the backend's
+ * `modules.compliance.labels` is apart from `app.services.labels`).
  *
- * `DecisionStatus` is not one of this codebase's customisable terminology
- * keys (`ProjectAdminPage.tsx`'s `TERMINOLOGY_KEYS`), so these labels are
- * plain string literals rather than routed through `useStrings()`/
- * `i18n/strings.ts` — the same "no `{term}` tokens, so a plain literal is
- * fine" reasoning `modules/compliance/module.ts`'s own docstring gives, and
- * the convention every other Compliance module component
- * (`ActionTypesPanel.tsx` etc.) already follows for its own domain text.
+ * `DecisionStatus` is not a customisable terminology key (`ProjectAdminPage.tsx`'s `TERMINOLOGY_KEYS`), so its labels
+ * are plain string literals, not routed through `useStrings()` / `i18n/strings.ts`, as in `modules/compliance/module.ts`.
  */
 
 import type { Principal, PrincipalRef } from "../../api/types";
@@ -34,13 +26,21 @@ export const DECISION_STATUS_LABEL: Record<DecisionStatus, string> = {
   superseded: "Superseded",
 };
 
+/** What each status means, the tooltip of its step in the lifecycle track. */
+export const DECISION_STATUS_DESCRIPTION: Record<DecisionStatus, string> = {
+  draft: "Being written; the Decision can be edited directly.",
+  proposed: "Put forward for consideration and not yet under review.",
+  under_review: "Being reviewed by the decision maker, who approves or rejects it.",
+  approved: "Formally approved. The content is locked.",
+  rejected: "Declined by the decision maker. The reason is recorded in the comment.",
+  superseded: "Replaced by a later Decision. The content is locked.",
+};
+
 /** Decisions still to be made (not yet approved, rejected or superseded); the Decisions list opens on these. */
 export const DECISION_OPEN_STATUSES: readonly DecisionStatus[] = ["draft", "proposed", "under_review"];
 
-// Same tone convention as `CHANGE_REQUEST_STATUS_TONE` (frontend/src/api/
-// types.ts) — a Decision's lifecycle is structurally the same "propose ->
-// review -> approve/reject" shape as a Change Request, so it maps the same
-// way: muted = not yet actionable/no-longer-current, info = awaiting a
+// Tone convention as `CHANGE_REQUEST_STATUS_TONE` (frontend/src/api/types.ts): a Decision's lifecycle has the same
+// "propose -> review -> approve/reject" shape, so muted = not yet actionable or no longer current, info = awaiting a
 // decision, accent = a positive terminal outcome, danger = a negative one.
 export const DECISION_STATUS_TONE: Record<DecisionStatus, import("../../api/types").BadgeTone> = {
   draft: "muted",
@@ -117,6 +117,8 @@ export interface Decision extends ProjectScopedRow {
   consequences: string | null;
   assumptions: string | null;
   constraints: string | null;
+  /** The decision written out in full, as Markdown (tables and diagrams allowed). */
+  document: string | null;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -126,10 +128,7 @@ export interface Decision extends ProjectScopedRow {
   updated_at: string;
 }
 
-/** The editable content fields shared by create (`DecisionCreate`) and full
- * replace (`DecisionUpdate`) — `owner` is required on update (the backend
- * defaults it to the creator only on create) and `decision_type_id` is a
- * plain id string here (not `UUID`, this being the frontend). */
+/** The editable content fields shared by create (`DecisionCreate`) and full replace (`DecisionUpdate`). `owner` is required on update (the backend defaults it to the creator only on create) and `decision_type_id` is a plain id string. */
 export interface DecisionFieldValues {
   title: string;
   decision_statement: string;
@@ -144,6 +143,7 @@ export interface DecisionFieldValues {
   consequences: string | null;
   assumptions: string | null;
   constraints: string | null;
+  document: string | null;
 }
 
 // --- Comments (no reaction mechanism — see DecisionCommentOut's own docstring) -

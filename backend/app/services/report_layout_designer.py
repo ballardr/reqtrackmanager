@@ -1,30 +1,24 @@
 """
 Module: services.report_layout_designer
 
-What the layout designer needs beyond storing layouts (`services.report_layouts`):
+What the layout designer needs beyond storing layouts (`services.report_layouts`).
 
-- The **field catalogue** for its field picker: every reportable record type the scope can use, with the fields a
-  layout may name, plus the global placeholder names.
-- The **block catalogue** for the visual designer: every registered block type with the editor schema it declared
-  (`report_layout_block_schema`), so forms are drawn from data and a module's block type needs no frontend edit.
-- A **tree check** (`check_tree`) that answers every problem with its path and never raises, for live feedback.
-- A **draft preview**: a tree that is not saved is evaluated for the caller exactly as a run would be and returned
-  as a standalone HTML page (document family) or as capped sheets (table family).
+Responsibilities:
+- The field catalogue (reportable types the scope can use, their fields, global placeholders) and the block catalogue
+  (each block type's editor schema, so a module's block needs no frontend edit).
+- `check_tree`: every problem with its path, never raising. A draft preview: an unsaved tree evaluated for the caller
+  as a run would be, returned as a standalone HTML page (document family) or capped sheets (table family).
 
 Design decisions:
-- **A preview is a run that leaves nothing behind.** It goes through `custom_report_run`, so it applies the caller's
-  own read permissions, the same work/output/time caps and the same fan-out rules; it writes no provenance row and no
-  audit event (nothing was produced for anyone to keep) and stores nothing. The layout and version it evaluates are
-  transient objects that are never added to the session.
-- **The HTML is the renderer's own page** (`report_html`): it carries a restrictive `Content-Security-Policy`, no
-  script and escaped text, and the frontend shows it in a sandboxed frame.
-- **Sheets are capped for the screen** (`PREVIEW_MAX_ROWS` per sheet): a preview confirms the shape, a download gives
-  the full table.
-- The catalogue lists a type only where its module (and a sub-component keyed by the type) is enabled, the same gate
-  the widget list uses, so an author is never offered a type the scope cannot read. Whether the *runner* may read a
-  record is still decided at run time by the link graph.
+- A preview is a run that leaves nothing behind: it goes through `custom_report_run` (the caller's own permissions,
+  the same caps and fan-out rules), writes no provenance or audit event, and its transient layout is never added to
+  the session.
+- The HTML is the renderer's own page (restrictive CSP, no script, escaped text), shown in a sandboxed frame.
+- Sheets are capped at `PREVIEW_MAX_ROWS`; a download gives the full table.
+- The catalogue lists a type only where its module (and sub-component) is enabled; whether the runner may read a record
+  is still decided at run time by the link graph.
 
-Dependencies: `services.report_fields`, `services.custom_report_run`, `services.report_render`, `modules.registry`.
+Dependencies: `report_fields`, `custom_report_run`, `report_render`, `modules.registry`.
 """
 
 from __future__ import annotations

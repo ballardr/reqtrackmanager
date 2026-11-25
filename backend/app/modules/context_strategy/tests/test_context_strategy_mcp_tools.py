@@ -1,22 +1,10 @@
-"""Tests for Context & Strategy's MCP tools (Cross-artefact relationships, "MCP tools"
-section) — mirrors `backend/app/modules/decisions/tests/test_decisions_
-mcp_tools.py`'s own "against the REAL registry" integration approach:
-Context & Strategy is already a real, permanent `INSTALLED_MODULES` entry
-with real routers, so this proves the 62 declared `McpToolDefinition`s in
-`module.py` actually resolve against real routes (not just that the
-declared strings look right) — no `fake_module` fixture / `INSTALLED_
-MODULES` mutation needed.
+"""
+Tests for this module's MCP tools against the real registry: every declared
+`McpToolDefinition` in `module.py` resolves to a real route.
 
-The five approve/decide-tier tools (`approve_strategy`/`approve_future_
-state`/`activate_guiding_principle`/`retire_guiding_principle`/`resolve_
-open_question`) resolve here as ordinary mutating tools — the actual "is
-an MCP-originated call to any of them still blocked without the org+
-project `allow_ai_approvals` opt-in" behaviour is covered by
-`test_context_strategy_relationships_api.py`'s own MCP-gate tests (one
-representative case, `approve_strategy`), not this file (this file only
-proves the manifest shape, the same division of labour `test_decisions_
-mcp_tools.py`/`test_decisions_ai_approvals_via_mcp.py` use for Decision
-Management).
+The approve/decide-tier tools resolve here as ordinary mutating tools; the
+`allow_ai_approvals` gate on an MCP-originated call is covered by
+`test_context_strategy_relationships_api.py` (`approve_strategy`).
 """
 
 from __future__ import annotations
@@ -107,10 +95,8 @@ def test_context_strategy_gated_tools_are_present_and_mutating():
         tool = by_name[name]
         assert tool.method == "POST", name
         assert tool.mutates is True, name
-    # Guiding Principle's own `approve` is declared too, but deliberately
-    # NOT one of the five gated tools above (activate/retire are; approve
-    # isn't) — see `service.py`'s own docstring for the asymmetry with
-    # Strategy/Future State's gated `approve`.
+    # Guiding Principle's `approve` is declared but not gated; its gated pair
+    # is activate/retire (asymmetric with Strategy/Future State).
     assert "approve_guiding_principle" in by_name
     assert "approve_guiding_principle" not in gated_names
 

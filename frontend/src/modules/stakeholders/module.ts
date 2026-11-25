@@ -25,36 +25,33 @@ import { ProjectPersonaTypesPanel } from "./ProjectPersonaTypesPanel";
 import { ProjectStakeholderTypesPanel } from "./ProjectStakeholderTypesPanel";
 import { ProjectStakeholderGroupsPage } from "./ProjectStakeholderGroupsPage";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
+import { ORG_PERSONAS_SECTION_KEY, ORG_STAKEHOLDER_GROUPS_SECTION_KEY, ORG_STAKEHOLDERS_SECTION_KEY } from "./orgResourceKeys";
 import { StakeholderGroupsPanel } from "./StakeholderGroupsPanel";
 import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
 
 /**
  * Module: modules/stakeholders/module
  *
- * The Stakeholders & Personas module's frontend registration (Persona, Stakeholder,
- * Stakeholder Need, Engagements), the mirror of `backend/app/modules/stakeholders/module.py`.
- * Auto-discovered by `modules/registry.ts` (`import.meta.glob('./*\/module.ts')`),
- * so no core file is edited to add it.
+ * The Stakeholders & Personas module's frontend registration (Persona, Stakeholder, Stakeholder Need, Engagements),
+ * the mirror of `backend/app/modules/stakeholders/module.py`. `modules/registry.ts` discovers it
+ * (`import.meta.glob('./*\/module.ts')`), so no core file is edited to add it.
  *
- * - `routes` (project-scoped, gated on the project's enabled-modules list):
- *   the People page (one list and New menu for Personas, Stakeholders and Groups; the old per-type list
- *   routes redirect to it), the Needs page (the tab beside People), the Engagement list, and every record's detail page (a Need and an
- *   Engagement are project-scoped only, so they have no global route or org panel). A detail route is also
- *   used for an org record opened from a project, so a persona's weight
- *   override stays reachable.
- * - `globalRoutes`: the org-scoped detail pages, for an org record opened from
- *   the org dashboard (no single project's enabled list could gate them).
- * - `orgOverviewSections`: the org Persona and Stakeholder lists and the
- *   Stakeholder group manager (org-level content); the project's own group
- *   manager is the `groups` route.
- * - `reportViews`: the custom on-screen views of reports S1 (the power/interest grid)
- *   and S4 (engagement staleness); each owns the `group_id`/`group_by` parameters so the
- *   generic form does not show a raw id box. S2, S3 and S5 use the generic viewer.
- * - `orgAdminSections`/`projectAdminSections`: the Persona and Stakeholder
- *   type vocabulary tiers, and Stakeholder scoring configuration (Influence/
- *   Interest levels, default model, rating bands) through core's shared
- *   `ScoringSchemeEditor` (org) and `ProjectScoringSettings` (project), the
- *   same way Context & Strategy configures Pain Point scoring (configuration).
+ * - `routes` (project-scoped, gated on the project's enabled modules): the People page (one list and New menu for
+ *   Personas, Stakeholders and Groups; the per-type list routes redirect to it), the Needs page (the tab beside
+ *   People), the Engagement list, and every record's detail page (a Need and an Engagement are project-scoped only, so
+ *   they have no global route or organisation panel). A detail route is also used for an organisation record opened
+ *   from a project, so a persona's weight override stays reachable.
+ * - `globalRoutes`: the organisation-scoped detail pages, for an organisation record opened from Org Resources (no
+ *   single project's enabled modules could gate them).
+ * - `orgResourceSections`: the organisation Persona and Stakeholder lists and the Stakeholder group manager
+ *   (organisation-level content); the project's own group manager is the `groups` route.
+ * - `reportViews`: the custom on-screen views of reports S1 (the power/interest grid) and S4 (engagement staleness);
+ *   each owns the `group_id` / `group_by` parameters so the generic form shows no raw id box. S2, S3 and S5 use the
+ *   generic viewer.
+ * - `orgAdminSections` / `projectAdminSections`: the Persona and Stakeholder type vocabulary tiers, and Stakeholder
+ *   scoring configuration (Influence and Interest levels, default model, rating bands) through core's shared
+ *   `ScoringSchemeEditor` (organisation) and `ProjectScoringSettings` (project), as Context & Strategy does for Pain
+ *   Point scoring.
  */
 
 /** The Persona and Stakeholder settings share one expandable entry in the project and organisation admin menus. */
@@ -127,19 +124,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     s1: { component: PowerInterestGridReportView, ownedParams: ["group_id", "group_by"] },
     s4: { component: EngagementStalenessReportView, ownedParams: ["group_id", "group_by"] },
   },
-  orgOverviewSections: [
+  orgResourceSections: [
     {
-      key: "stakeholders-org-personas",
+      key: ORG_PERSONAS_SECTION_KEY,
       label: "Personas",
       render: ({ orgId }) => createElement(OrgPersonasPanel, { orgId }),
     },
     {
-      key: "stakeholders-org-stakeholders",
+      key: ORG_STAKEHOLDERS_SECTION_KEY,
       label: "Stakeholders",
       render: ({ orgId }) => createElement(OrgStakeholdersPanel, { orgId }),
     },
     {
-      key: "stakeholders-org-groups",
+      key: ORG_STAKEHOLDER_GROUPS_SECTION_KEY,
       label: "Stakeholder Groups",
       render: ({ orgId }) => createElement(StakeholderGroupsPanel, { organizationId: orgId }),
     },

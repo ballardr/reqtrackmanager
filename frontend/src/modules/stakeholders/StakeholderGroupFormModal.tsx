@@ -1,14 +1,11 @@
 /**
  * Module: modules/stakeholders/StakeholderGroupFormModal
  *
- * Create/edit dialog for one Stakeholder group (docs/ux-style-guide.md
- * principle 3: a small entity create/edit is a `Modal`). Shared by creating a
- * top-level group, adding a child (`initial` omitted, `defaultParentId` set) and
- * editing/moving one (`initial` passed). The parent picker lists the tree
- * indented; editing offers neither the group itself nor its own descendants, so
- * a cycle cannot be built from the UI (the backend rejects one anyway).
- * "One branch per stakeholder" is the `exclusive_children` flag: it makes the
- * group behave like a single-valued column such as Client.
+ * Create/edit dialog for one Stakeholder group (docs/ux-style-guide.md principle 3: a small entity create/edit is a
+ * `Modal`). Shared by creating a top-level group, adding a child (`initial` omitted, `defaultParentId` set) and
+ * editing or moving one (`initial` passed). The parent picker lists the tree indented; editing offers neither the group
+ * nor its own descendants, so the UI cannot build a cycle (the backend rejects one anyway). "One branch per
+ * stakeholder" is the `exclusive_children` flag: the group behaves like a single-valued column such as Client.
  *
  * Creating a group in a project (`projectId` given) also offers the quick-link and tag fields every create form of a
  * linkable, taggable type has; the caller applies them once the group exists. An organisation group offers neither.

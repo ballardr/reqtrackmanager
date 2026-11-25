@@ -1,19 +1,14 @@
 """
 Module: modules.stakeholders.schemas
 
-Pydantic request/response schemas for the Stakeholders & Personas module's
-org- and project-scoped routers (Persona, persona types, weight
-overrides, comments; Stakeholder, its representation links and the
-cadence hint: Stakeholder Need and its links: Stakeholder
-Groups: Engagements and the research extras). Type-vocabulary and file schemas are shared by both artefacts.
+Pydantic request/response schemas for the org- and project-scoped routers: Persona, Stakeholder, Need,
+Stakeholder Group, Engagement and the research extras, with their types, links, weight overrides and
+comments. Type-vocabulary and file schemas are shared by both artefacts.
 
-`PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the
-request body change, so a nullable field (weight, owner, champion, type,
-cadence, levels) can be cleared by sending an explicit `null`.
-
-`owner` and `champion` are principals: a user, an organisation group or (on a
-project-scoped record) a project group. Requests send a `PrincipalRef`
-(`{type, id}`); responses return a resolved `PrincipalOut` (`_principals.py`).
+`PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the request body change, so a
+nullable field can be cleared by sending an explicit `null`. `owner` and `champion` are principals
+(`PrincipalRef` in, resolved `PrincipalOut` out): a user, an organisation group or, on a project-scoped
+record, a project group.
 """
 
 from __future__ import annotations

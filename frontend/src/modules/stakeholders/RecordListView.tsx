@@ -1,58 +1,54 @@
 /**
  * Module: modules/stakeholders/RecordListView
  *
- * The list shared by every record kind in this module (Persona, Stakeholder, Need, Engagement),
- * on both the project page and the organisation panel: the `DirectoryTable` +
- * `FilterPanel` + "New …" `Modal` shape every module artefact list uses, with
- * status and type filters and the standard archived toggle. What differs per
- * kind is passed in — the noun, the kind-specific columns, the create form —
- * rather than copied into a second list. A kind with no lifecycle (an
- * Engagement) passes no `statusLabel`/`statusTone` and no archived toggle, and
- * a kind whose "type" has another name (an Engagement's channel) passes
- * `typeLabel`.
+ * The list shared by every record kind in this module (Persona, Stakeholder, Need, Engagement), on both the project
+ * page and the organisation panel: the `DirectoryTable` + `FilterPanel` + "New ..." `Modal` shape of every module
+ * artefact list, with status and type filters and the standard archived toggle. What differs per kind is passed in
+ * (the noun, the kind-specific columns, the create form). A kind with no lifecycle (an Engagement) passes no
+ * `statusLabel` / `statusTone` and no archived toggle, and a kind whose "type" has another name (an Engagement's
+ * channel) passes `typeLabel`.
  *
- * Status, type and scope render through their label maps; status and type
- * badges are `FilterBadge`s because the same page filters on both (style
- * guide principle 10). The Name, Type, Scope and Status columns are fixed
- * (Type and Scope are left out for a kind without them, e.g. a project-only
- * Need: pass no `typeName`/`scopeLabels`); `columnsBeforeType` and
- * `columnsAfterScope` slot the kind's own columns around them.
+ * Status, type and scope render through their label maps; status and type badges are `FilterBadge`s because the page
+ * filters on both (style guide principle 10). The Name, Type, Scope and Status columns are fixed (Type and Scope are
+ * left out for a kind without them, e.g. a project-only Need: pass no `typeName` / `scopeLabels`); `columnsBeforeType`
+ * and `columnsAfterScope` slot the kind's own columns around them.
  *
  * Export and Import (`exportRecords`): on a list page the layout offers the shared Export and Import of the kind,
- * narrowed by this list's own filters (status, type, search, archived, hidden, tags, scope) plus the `extraParams` the
- * kind adds (a group filter). A list embedded in another page (an organisation panel) puts the same controls beside
- * its New button, acting on the organisation's own records.
+ * narrowed by this list's filters (status, type, search, archived, hidden, tags, scope) plus the kind's `extraParams`
+ * (a group filter). A list embedded in another page (an organisation panel) puts the same controls beside its New
+ * button, acting on the organisation's own records.
  *
- * A kind can add its own filters (`extraFilters`) and narrow `records` before
- * passing them in. A list whose records are created elsewhere (the People page's "New" menu) omits
- * `onCreate`/`renderCreateModal`: it then shows no New button and no create form.
+ * A kind can add its own filters (`extraFilters`) and narrow `records` before passing them in. A list whose records
+ * are created elsewhere (the People page's "New" menu) omits `onCreate` / `renderCreateModal` and shows no New button
+ * or create form.
  *
- * Per-project visibility: a page that lets the project hide org
- * records passes `onIncludeHiddenChange` for a "Show hidden" filter and
- * `onShowHidden`, which adds a Visibility column to a hidden row stating who
- * hid it and offering "Show". A hidden row is not openable (the project API
- * treats a hidden record as absent), so `onOpen` is skipped for it.
+ * Per-project visibility: a page that lets the project hide organisation records passes `onIncludeHiddenChange` for a
+ * "Show hidden" filter and `onShowHidden`, which adds a Visibility column to a hidden row stating who hid it and
+ * offering "Show". A hidden row is not openable (the project API treats a hidden record as absent), so `onOpen` is
+ * skipped for it.
  */
 import type { CollectedLink } from "../../api/artefactLinks";
 import { useState, type HTMLAttributes, type ReactNode } from "react";
 
 import type { BadgeTone } from "../../api/types";
+import { CellText } from "../../components/CellText";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListActions, ListActionsMenu } from "../../components/ListActions";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { TagFilterField } from "../../components/TagFilterField";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import type { TagFilterState } from "../../hooks/useTagFilter";
-import { useSortState } from "../../hooks/useTableSort";
-import { useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
-import { sortRows, type SortValue } from "../../utils/sortRows";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows, TIME_SORT_VALUES, type SortValue } from "../../utils/sortRows";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
@@ -102,6 +98,9 @@ export interface ListedRecord {
   /** Set only by project endpoints, for an org record: whether the project hides it. */
   project_hidden?: boolean | null;
   hidden_source?: HiddenSource | null;
+  /** When the record was created and last changed, for the Created and Modified sorts. */
+  created_at?: string;
+  updated_at?: string;
   /** Set only on a row of a related project in a widened list. */
   from_project_id?: string | null;
   from_project_name?: string | null;
@@ -208,17 +207,16 @@ export function RecordListView<R extends ListedRecord, V>({
   const [typeFilter, setTypeFilter] = useUrlText("type", !!page);
   // The sort follows the filters: in the URL on a list page, local when embedded.
   const sortValues: Record<string, (record: R) => SortValue> = {
+    ...TIME_SORT_VALUES,
     name: (r) => r.name,
     code: (r) => r.unique_code,
     type: (r) => typeName?.(r) ?? null,
     scope: (r) => (r.scope && scopeLabels ? scopeLabels[r.scope] : null),
     status: (r) => (r.status && statusLabel ? statusLabel[r.status] : null),
+    visibility: (r) => (r.project_hidden && r.hidden_source ? HIDDEN_SOURCE_LABEL[r.hidden_source] : null),
   };
   for (const column of [...columnsBeforeType, ...columnsAfterScope]) if (column.sortValue) sortValues[column.key] = column.sortValue;
-  const [urlSort, setUrlSort] = useUrlSort<string>(Object.keys(sortValues));
-  const localSort = useSortState();
-  const sort = page ? urlSort : localSort.sort;
-  const onSort = (key: string) => (page ? setUrlSort((current) => cycleSort(current, key)) : localSort.onSort(key));
+  const listSort = useListSort(sectionKey, Object.keys(sortValues), "code", !page);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const canCreate = !!onCreate && !!renderCreateModal;
@@ -239,6 +237,7 @@ export function RecordListView<R extends ListedRecord, V>({
     if (search) params.set("search", search);
     if (includeArchived) params.set("include_archived", "true");
     if (includeHidden) params.set("include_hidden", "true");
+    addSortParams(params, listSort.sort);
     return addSharedListFilters(params, tagFilter?.filter, projectScope).toString();
   }
 
@@ -248,30 +247,33 @@ export function RecordListView<R extends ListedRecord, V>({
         .map((kind) => ({ ...kind, filters: exportFilters(kind) }))
     : undefined;
 
+  // Every column except Name, Code, Status and Visibility is optional and drops on a narrow screen; a kind's column
+  // can opt out of either (`optional: false`, `hideBelow: false`).
+  const callerColumn = (column: RecordColumn<R>): DirectoryColumn<R> => ({ optional: true, hideBelow: true, ...column });
   const columns: DirectoryColumn<R>[] = [
-    { key: "name", label: "Name", sortable: true, render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
-    { key: "code", label: "Code", sortable: true, render: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span> },
-    ...columnsBeforeType,
+    { key: "name", label: "Name", sortable: true, minWidth: "12rem", render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
+    { key: "code", label: "Code", sortable: true, render: (r) => <span className="text-muted record-code-cell"><ScopedRecordCode record={r} /></span> },
+    ...columnsBeforeType.map(callerColumn),
     ...(typeName
       ? [{
-          key: "type", label: typeLabel, sortable: true,
+          key: "type", label: typeLabel, sortable: true, optional: true,
           render: (r: R) => {
             const name = typeName(r);
             return name ? (
               <FilterBadge active={typeFilter === name} onClick={() => setTypeFilter(typeFilter === name ? "" : name)}>
-                {name}
+                <CellText lines={3} maxWidth="6rem">{name}</CellText>
               </FilterBadge>
             ) : "—";
           },
         } as DirectoryColumn<R>]
       : []),
     ...(showScope && scopeLabels
-      ? [{ key: "scope", label: "Scope", sortable: true, render: (r: R) => (r.scope ? scopeLabels[r.scope] : "—") } as DirectoryColumn<R>]
+      ? [{ key: "scope", label: "Scope", sortable: true, optional: true, defaultHidden: true, hideBelow: true, render: (r: R) => (r.scope ? scopeLabels[r.scope] : "—") } as DirectoryColumn<R>]
       : []),
-    ...columnsAfterScope,
+    ...columnsAfterScope.map(callerColumn),
     ...(includeHidden && onShowHidden
       ? [{
-          key: "visibility", label: "Visibility",
+          key: "visibility", label: "Visibility", sortable: true,
           render: (r: R) =>
             r.project_hidden && r.hidden_source ? (
               <span className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
@@ -296,6 +298,7 @@ export function RecordListView<R extends ListedRecord, V>({
       : []),
   ];
 
+  const shown = useOptionalColumns(sectionKey, columns);
   const newButton = canCreate && (
     <button className="btn btn-primary" onClick={() => setCreating(true)}>
       {newLabel ?? `New ${noun}`}
@@ -327,6 +330,7 @@ export function RecordListView<R extends ListedRecord, V>({
           {extraFilters}
           {projectScope && <ProjectScopeFilter scope={projectScope} />}
           {tagFilter && <TagFilterField projectId={tagFilter.projectId} filter={tagFilter.filter} />}
+          <SortField list={listSort} columns={columns} titleKey="name" />
           {onIncludeArchivedChange && (
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
           )}
@@ -338,10 +342,10 @@ export function RecordListView<R extends ListedRecord, V>({
   const table = (
         <DirectoryTable
           ariaLabel={ariaLabel}
-          columns={columns}
-          rows={sortRows(filtered, sort, sortValues)}
-          sort={sort}
-          onSort={onSort}
+          columns={shown.columns}
+          rows={sortRows(filtered, listSort.sort, sortValues)}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(r) => r.id}
           placements={tagFilter && placementType ? { projectId: tagFilter.projectId, artefactType: placementType, rowId: (r) => r.id } : undefined}
           onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}
@@ -358,6 +362,7 @@ export function RecordListView<R extends ListedRecord, V>({
           tabs={page.tabs}
           contentProps={page.contentProps}
           records={exportActions}
+          columnChooser={shown.chooser}
           filter={filterPanel}
         >
           {page.above}
@@ -365,7 +370,7 @@ export function RecordListView<R extends ListedRecord, V>({
         </ListPageLayout>
       ) : (
         <>
-          {(canCreate || toolbar || exportActions) && (
+          {(canCreate || toolbar || exportActions || shown.chooser) && (
             <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
               {newButton}
               {toolbar}
@@ -374,6 +379,7 @@ export function RecordListView<R extends ListedRecord, V>({
                   {exportActions.map((kind) => <ListActions key={kind.recordType} {...kind} />)}
                 </ListActionsMenu>
               )}
+              {shown.chooser}
             </div>
           )}
           <div className="side-grid">

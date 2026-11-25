@@ -1,18 +1,10 @@
 /**
  * Module: modules/compliance/ActionTypesPanel
  *
- * The organisation-scoped required-action-type vocabulary (§6) — a plain,
- * ordered, flat "definition" list, so this reuses `DefinitionList` verbatim
- * (the same shared rename/reorder/add/delete-with-reassign component
- * `OrgAdminPage.tsx` already uses for project statuses and link types)
- * rather than reimplementing that logic a third time, per the style guide's
- * "one component per pattern" principle.
- *
- * `items`/`onReload` are owned by `ComplianceAdminPanel` (not fetched here)
- * — the same list is also needed by `RequirementTree`'s required-action
- * editor on the Standards tab, and owning a second, independent copy here
- * would let the two tabs drift out of sync with each other after a rename/
- * add/delete until an unrelated remount happened to refetch both.
+ * The organisation-scoped required-action-type vocabulary: a plain, ordered, flat list, so it reuses the shared
+ * `DefinitionList` (rename, reorder, add, delete-with-reassign) per the style guide's "one component per pattern" principle.
+ * `items` and `onReload` are owned by the parent (`ComplianceSettingsPage`), not fetched here, because `RequirementTree`'s
+ * required-action editor on the Standards tab needs the same list and a second copy would drift after a rename, add or delete.
  */
 import { DefinitionList } from "../../components/DefinitionList";
 import { useToast } from "../../context/ToastContext";

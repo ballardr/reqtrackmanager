@@ -1,52 +1,37 @@
 """
 Module: modules.context_strategy.export
 
-This module's contribution to the core org/project bundle export/import
-(`app.services.org_export`/`project_export`), registered through
-`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION` rather
-than those core files importing this module.
+This module's contribution to the core organisation and project bundles (`app.services.org_export`, `project_export`),
+registered through `ModuleOrgBundleHooks` and `ModuleProjectBundleHooks` on `MODULE_DEFINITION`.
 
-- Org level: the Pain Point type vocabulary (with definitions) and the
-  organisation-scoped Strategies, Future States and Guiding Principles.
-- Project level: the project's Pain Point type overrides, local types and hidden
-  organisation defaults; its Strategies, Future States and Guiding Principles;
-  Pain Points with their scores; Open Questions; and the links between those
-  records and to Requirements.
+- Organisation level: the Pain Point type vocabulary (with definitions) and the organisation-scoped Strategies, Future
+  States and Guiding Principles.
+- Project level: the project's Pain Point type overrides, local types and hidden organisation defaults; its Strategies,
+  Future States and Guiding Principles; Pain Points with scores; Open Questions; and the links between those records and
+  to Requirements.
+- The Pain Point submission policy travels as its own setting (the project's own, or the organisation default), only when
+  set; an organisation merge keeps a default the organisation already has.
 
-- The Pain Point submission policy travels as its own setting (project: the project's own; organisation: the
-  default) and is carried only when set. An organisation merge keeps a default the organisation already has.
+Design decisions (**Decided by: Agent**):
+- A record travels as its current content and status (Strategy, Future State and Guiding Principle as their current
+  version). Version history, comments and comment attachments are not carried: a bundle is a migration artefact, and the
+  imported record starts at version 1 attributed to the importer where the author cannot be matched.
+- Status is imported as exported, as the Requirement and Risk sections do: the bundle is a restore and an import is
+  privileged. A bundle carries no approver identity, so no approval is attributed to anyone who did not give it.
+- Codes are information only: an import numbers records afresh, in their original order; within the bundle a record is
+  addressed by its exported code (`ref`).
+- Cross-references use portable keys: type names, scoring level axis and name, persona labels, user emails; an owner is
+  `{type, email | name}`.
+- Pain Point scores are imported in `import_late`, after the Stakeholders module has recreated Personas. A score against
+  a persona the target cannot list is skipped with a warning. Scoring configuration (levels, bands, models) is not
+  bundled; a level the target lacks leaves that axis unscored with a warning rather than silently re-rating.
+- Links travel only between this module's project records and Requirements (`services.bundle_links`); links to
+  organisation-level records, other modules' records or other projects are dropped.
+- Organisation-level files cannot travel (the organisation hook receives no bytes), so organisation-scoped records import
+  without attachments. A merge skips a type, Strategy, Future State or Guiding Principle whose name the organisation
+  already has, so a re-import is idempotent.
 
-Design decisions (all Decided by: Agent):
-- A record travels as its *current* content and status only (Strategy, Future
-  State and Guiding Principle as their current version). Version history,
-  comments and comment attachments are not carried: a bundle is a migration
-  artefact, and the imported record starts at version 1 attributed to the
-  importer where the author cannot be matched. This is how the Risk and
-  Stakeholders bundles already treat their records.
-- Status is imported as exported, exactly as the core Requirement and Risk
-  sections do: the bundle is a restore, and importing a project is itself a
-  privileged action. A bundle never carries the identity of an approver, so no
-  approval is attributed to anyone who did not give it.
-- Codes are information only: an import numbers records afresh (in their original
-  order). Within the bundle a record is addressed by its exported code (`ref`).
-- Cross-references use portable keys: type names, scoring level axis+name,
-  persona labels, user emails; an owner is `{type, email | name}`.
-- Pain Point scores are imported in `import_late`, after the Stakeholders module
-  has recreated the Personas a score can target. A score against a persona the
-  target project cannot list (the module is off, or the persona is missing) is
-  skipped with a warning. Scoring configuration (levels, bands, models) is not
-  part of a bundle; a level the target lacks leaves that axis unscored, with a
-  warning, rather than silently re-rating.
-- Links travel only between this module's own project records and Requirements
-  (`services.bundle_links`). Links to organisation-level records, other modules'
-  records or other projects are dropped: those records are not in the bundle.
-- Organisation-level files cannot travel (the org hook receives no bytes), so
-  org-scoped records import without their attachments. Merging into an
-  organisation skips a type, Strategy, Future State or Guiding Principle whose
-  name the organisation already has, so a re-import is idempotent.
-
-Dependencies: `app.services.bundle_common`, `app.services.bundle_links`,
-`app.services.principals`, `app.services.tags`, this module's models and service.
+Dependencies: `app.services.bundle_common`, `bundle_links`, `principals`, `tags`, this module's models and service.
 """
 
 from __future__ import annotations
@@ -128,6 +113,7 @@ from app.services import definition_suppression
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links, prime_file_links
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.current_versions import prime_current_versions, primed_current_version
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.scoring import list_levels, seed_missing_scoring_levels
@@ -264,6 +250,7 @@ def _versioned_json(
         "archived_by_email": emails.get(record.archived_by),
         "tags": record_tag_names(db, spec.artefact_type, record.id),
         "placements": record_placements(db, spec.artefact_type, record.id),
+        "external_references": record_references(db, spec.artefact_type, record.id),
     }
     if spec.owner:
         entry["owner"] = principal_to_bundle(db, version.owner_type, version.owner_id)
@@ -310,6 +297,10 @@ def _create_versioned(
         db, project_id=project_id, actor_id=creator_id,
         artefact_type=spec.artefact_type, artefact_id=record.id, entries=entry.get("placements"),
     )
+    restore_record_references(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=spec.artefact_type, artefact_id=record.id, entries=entry.get("external_references"),
+    )
     return record
 
 
@@ -341,6 +332,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
         emails = _emails(db, {r.creator_id for r in records} | {r.archived_by for r in records})
         prime_record_tag_names(db, spec.artefact_type, [r.id for r in records])
         prime_record_placements(db, spec.artefact_type, [r.id for r in records])
+        prime_record_references(db, spec.artefact_type, [r.id for r in records])
         prime_file_links(db, spec.file_model, spec.file_fk, [r.id for r in records])
         out[spec.key] = [
             _versioned_json(db, spec, r, _current_version(db, spec, r.id), emails, None) for r in records
@@ -473,6 +465,7 @@ def _pain_point_json(
         "archived_by_email": (emails.get(pp.archived_by) if pp.archived_by else None),
         "tags": record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
         "placements": record_placements(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
+        "external_references": record_references(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
         "attachments": export_file_links(db, PainPointFile, "pain_point_id", pp.id, assets),
         "scores": scores,
     }
@@ -517,6 +510,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         prime_current_versions(db, spec.version, spec.fk, [r.id for r in records])
         prime_record_tag_names(db, spec.artefact_type, [r.id for r in records])
         prime_record_placements(db, spec.artefact_type, [r.id for r in records])
+        prime_record_references(db, spec.artefact_type, [r.id for r in records])
         prime_file_links(db, spec.file_model, spec.file_fk, [r.id for r in records])
         out[spec.key] = [
             _versioned_json(db, spec, r, _current_version(db, spec, r.id), emails, assets) for r in records
@@ -533,6 +527,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     emails.update(_emails(db, scorer_ids))
     prime_record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
     prime_record_placements(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
+    prime_record_references(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
     prime_file_links(db, PainPointFile, "pain_point_id", [p.id for p in pain_points])
     pain_point_type_rows = {
         r.id: r for r in db.scalars(select(ProjectPainPointType).where(ProjectPainPointType.id.in_({p.pain_point_type_id for p in pain_points})))
@@ -557,6 +552,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     emails = _emails(db, {q.creator_id for q in questions} | {q.archived_by for q in questions})
     prime_record_tag_names(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
     prime_record_placements(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
+    prime_record_references(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
     prime_file_links(db, OpenQuestionFile, "open_question_id", [q.id for q in questions])
     out["open_questions"] = [
         {
@@ -567,6 +563,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "archived_by_email": (emails.get(q.archived_by) if q.archived_by else None),
             "tags": record_tag_names(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
             "placements": record_placements(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
+            "external_references": record_references(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
             "attachments": export_file_links(db, OpenQuestionFile, "open_question_id", q.id, assets),
         }
         for q in questions
@@ -713,6 +710,10 @@ def import_project_data(
             db, project_id=project.id, actor_id=creator_id,
             artefact_type=PAIN_POINT_ARTEFACT_TYPE, artefact_id=pp.id, entries=entry.get("placements"),
         )
+        restore_record_references(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=PAIN_POINT_ARTEFACT_TYPE, artefact_id=pp.id, entries=entry.get("external_references"),
+        )
         import_file_links(
             db, organization_id=organization_id, file_model=PainPointFile, fk="pain_point_id", record_id=pp.id,
             entries=entry.get("attachments", []), file_bytes_by_ref=file_bytes_by_ref, current_user=current_user,
@@ -749,6 +750,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=creator_id,
             artefact_type=OPEN_QUESTION_ARTEFACT_TYPE, artefact_id=oq.id, entries=entry.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=OPEN_QUESTION_ARTEFACT_TYPE, artefact_id=oq.id, entries=entry.get("external_references"),
         )
         import_file_links(
             db, organization_id=organization_id, file_model=OpenQuestionFile, fk="open_question_id", record_id=oq.id,

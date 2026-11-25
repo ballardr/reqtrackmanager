@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
+import { addDefinition, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -152,9 +152,7 @@ test.describe("project admin: project-level link types", () => {
     const ownName = `E2E Own verb ${Date.now()}`;
     await test.step("adding the project's own type confirms with a Toast and offers it", async () => {
       const own = page.getByRole("region", { name: "Link types of this project" });
-      await own.getByPlaceholder("Forward name").fill(ownName);
-      await own.getByPlaceholder("Reverse name").fill(`${ownName} reverse`);
-      await own.getByRole("button", { name: "New link type" }).click();
+      await addDefinition(page, "New link type", { "Forward name": ownName, "Reverse name": `${ownName} reverse` }, own);
       await expect(page.getByText("Link type added.")).toBeVisible();
       await expect(own.locator(`input.input[value="${ownName}"]:not([placeholder])`)).toBeVisible();
       expect(await offeredNames(page.request, world, child, requirement)).toContain(ownName);
@@ -207,7 +205,8 @@ test.describe("project admin: project-level link types", () => {
       await page.goto(`/projects/${project.id}/admin/fieldsActions`);
       await ensureExpanded(page, "Link types");
       await expect(page.getByText("Your organisation uses one shared set of link types, so they cannot be changed here.")).toBeVisible();
-      await expect(page.getByRole("button", { name: /^Hide .* in this project$/ })).toHaveCount(0);
+      // Scoped to the link types: the External systems section on the same page also offers "Hide … in this project".
+      await expect(page.getByRole("region", { name: "Available to this project" }).getByRole("button", { name: /^Hide .* in this project$/ })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "New link type" })).toHaveCount(0);
       await expect(page.getByText(ownName)).toHaveCount(0);
       const refused = await page.request.post(`${apiBaseUrl}/api/v1/projects/${project.id}/link-types`, {

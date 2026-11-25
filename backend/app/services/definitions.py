@@ -1,38 +1,19 @@
 """
 Module: services.definitions
 
-Shared logic for the three "named row that other rows point to by FK"
-definition tables introduced alongside project statuses, typed requirement
-links, and requirement actions: `ProjectStatusDefinition` (org-scoped),
-`RequirementLinkTypeDefinition` (org-scoped), and `ActionTypeDefinition`
-(project-scoped).
+Shared logic for the three "named row that other rows point to by FK" definition tables:
+`ProjectStatusDefinition` (org-scoped), `RequirementLinkTypeDefinition` (org-scoped) and
+`ActionTypeDefinition` (project-scoped), plus their seeded defaults (`DEFAULT_PROJECT_STATUSES`,
+`DEFAULT_LINK_TYPES`, `DEFAULT_ACTION_TYPES`) and seeding helpers, called from organisation creation
+(statuses, link types) and project creation (action types).
 
-All three share one design for rename/delete/reassignment rather than three
-ad-hoc implementations:
-    - Rename is a plain name update — every reference points at the row's
-      id, never its name, so renaming never cascades.
-    - A scope (organisation, for statuses/link-types; project, for
-      action-types) must always retain at least one definition row, since
-      the referencing FK (`Project.status_id`, `RequirementAction.
-      action_type_id`) is NOT NULL — every creation flow needs at least one
-      option to default to or offer in its picker.
-    - Deleting a definition that's currently referenced requires an
-      explicit `reassign_to_id` (validated to exist, belong to the same
-      scope, and differ from the row being deleted) rather than a flat
-      block — see `delete_definition_with_reassignment`'s docstring for the
-      exact 404/409/400 behaviour.
-
-`delete_definition_with_reassignment` is deliberately more elaborate than
-`routers.projects.delete_component`'s flat "409 and stop" pattern: a
-status/link-type/action-type has an obvious "reassign every referencing row
-to a sibling" semantic a component/category doesn't, so blocking outright
-would be a worse admin experience for no safety benefit.
-
-This module also holds the three definition tables' seeded-default content
-(`DEFAULT_PROJECT_STATUSES`, `DEFAULT_LINK_TYPES`, `DEFAULT_ACTION_TYPES`)
-and the seeding helpers that write them — called from organisation creation
-(statuses, link types) and project creation (action types), and reused by
-migration 0012's backfill for every pre-existing organisation/project.
+Design decisions (one design for rename, delete and reassignment):
+- Rename is a plain name update; references use the row id, so nothing cascades.
+- A scope must keep at least one definition, because the referencing FK (`Project.status_id`,
+  `RequirementAction.action_type_id`) is NOT NULL and every creation flow needs an option to default to.
+- Deleting a referenced definition requires an explicit `reassign_to_id` (it must exist, be in the same scope
+  and differ from the deleted row; `delete_definition_with_reassignment` documents the 404/409/400 results),
+  rather than a flat block: unlike a component or category, there is an obvious sibling to reassign to.
 """
 
 from __future__ import annotations

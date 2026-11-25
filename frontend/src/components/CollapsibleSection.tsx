@@ -6,26 +6,18 @@ import { Badge } from "./Badge";
 import { FieldHelp } from "./FieldHelp";
 
 /**
- * A section that can be collapsed to just its title, remembering the
- * choice per `sectionKey` in the user's `ui_preferences` bag (keyed
- * `section_collapsed:<sectionKey>`) so it stays collapsed/expanded across
- * visits and devices.
+ * A section that can be collapsed to its title, remembering the choice per `sectionKey` in the user's
+ * `ui_preferences` (`section_collapsed:<sectionKey>`) across visits and devices.
  *
- * `variant="card"` (default) renders its own `.card` background, for a
- * page's top-level sections. `variant="plain"` renders only the header +
- * children with no background/border, for a smaller subsection nested
- * inside a parent card (e.g. "Create" within a "Personal Access Tokens"
- * card) — nesting a full card inside a card reads as visually heavy.
+ * `variant="card"` (default) draws its own `.card`, for top-level sections; `"plain"` draws only header and
+ * children, for a subsection nested in a card (a card inside a card reads as heavy).
  *
- * A closed section can say what it holds: `summary` is a pill on the bar ("2 changed"), `marked` adds an accent
- * border so a bar holding non-default content is not read as empty (text plus border, never colour alone), and
- * `forceOpen` keeps the section open (and its toggle inert) while it holds something the person must see, with the
- * pill turning to the danger tone.
+ * A closed section can say what it holds: `summary` is a pill on the bar, `marked` adds an accent border so a bar
+ * with non-default content is not read as empty (text plus border, never colour alone), and `forceOpen` keeps it
+ * open (toggle inert) while it holds something the person must see, the pill turning to the danger tone.
  *
- * `collapsible={false}` draws the section as a headed card with no toggle, for the only (or every) section of a
- * page, where the accordion would repeat the menu entry and cost a click (style guide Principle 1). `help` puts a
- * `(?)` beside the heading, for text that describes the whole section (style guide "Pattern: explain in help, not
- * in the layout"); it applies to the open and collapsed forms alike.
+ * `collapsible={false}` draws a headed card with no toggle, for the only or every section of a page (style guide
+ * Principle 1). `help` puts a `(?)` beside the heading, in the open and collapsed forms alike.
  */
 export function CollapsibleSection({
   sectionKey,
@@ -60,10 +52,8 @@ export function CollapsibleSection({
   const toggle = () => { if (!forceOpen) setCollapsed(!stored); };
   const contentId = useId();
   const pillId = useId();
-  // Disambiguates this toggle's accessible name from any same-named control
-  // inside its own content (e.g. a "Change password" section containing a
-  // "Change password" submit button) — both for assistive tech and for test
-  // locators that query by role + name.
+  // Distinguishes this toggle's accessible name from a same-named control in its content (a "Change password"
+  // section holding a "Change password" button), for assistive technology and role+name locators.
   const label = typeof title === "string" ? `${title} section` : undefined;
 
   const heading =
@@ -125,13 +115,8 @@ export function CollapsibleSection({
 
   return (
     <div className={variant === "card" ? "card stack" : "stack"}>
-      {/* `role="button"` on a <div>, not a real <button> — `title` is
-          arbitrary ReactNode and at least one caller (PreferencesPage's 2FA
-          section) nests a real interactive <button> (ToggleSwitch) inside
-          it; a <button> wrapper here would make that a `<button>` inside a
-          `<button>`, invalid HTML that breaks click/keyboard handling
-          unpredictably. Mirrors the collapsed-state branch above, which
-          already uses this same div+role pattern. */}
+      {/* `role="button"` on a <div>, not a <button>: `title` is any ReactNode and a caller nests a real <button>
+          (ToggleSwitch) in it, and a <button> inside a <button> is invalid HTML. Mirrors the collapsed branch above. */}
       <div
         onClick={toggle}
         onKeyDown={(e) => {

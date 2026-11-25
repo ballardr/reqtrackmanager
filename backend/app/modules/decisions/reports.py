@@ -1,48 +1,16 @@
 """
 Module: modules.decisions.reports
 
-Report data layer for Decision Management: four project-level reports, one `collect_*` function
-each, returning the core framework's `ReportResult`, plus the
-`REPORT_DEFINITIONS` that declare them to the registry. Result shapes, scope
-(`readable_projects`), PDF/CSV rendering, routes, MCP tools and the catalogue
-all live in `app.services.report_framework`, so this module is declarations
-and queries only.
-
-Reports: D1 Decision register, D2 Approval ageing, D3 Decision log, D4
-Rationale coverage.
-
-Design decisions (all Decided by: Agent unless stated):
-- Project-level only; no organisation-wide variant (Decided by: User). The
-  module defines no org-scoped role to gate one with.
-- The module has no sub-components, so the collectors narrow `ctx.projects` to
-  projects where the module is effectively enabled themselves (a child project
-  can have it off while its parent has it on).
-- "Overdue" in D2 is a waiting-time threshold (`overdue_days`), because a
-  Decision has no due date; "unowned" is a missing *decision maker*, because
-  `owner_id` is mandatory. Both are the nearest honest reading of
-  "overdue and unowned highlighted".
-- D2 measures the wait from the audit event that put the Decision into its
-  current status (`proposed` / `submitted_for_review`), falling back to its
-  creation time, because `updated_at` moves on any edit.
-- D3 lists Decisions that were *made*: Approved and Superseded, by
-  `decision_date`. Rejected Decisions are in the register (D1), not the log.
-- D4 counts a Decision as having rationale when it links to at least one
-  non-Decision artefact the caller can read; Decision-to-Decision links
-  (supersession, depends on) are not rationale. Rejected and Superseded
-  Decisions are history and are not expected to have it. A link to something
-  the caller cannot read counts as absent rather than leaking, so a gap list
-  may over-report but never reveals a hidden record.
-- Free text in D3 is clipped (`_CLIP`) so a long rationale cannot make a PDF
-  table row taller than a page; the Decision page holds the full text.
-- Reports never include Restricted data and are not audit-logged (framework rule).
-
-Dependencies: `app.services.report_framework`, `app.modules.registry`,
-`app.services.relationships`, the Decisions models.
+Report data layer: four project-level reports (D1 Decision register, D2
+Approval ageing, D3 Decision log, D4 Rationale coverage) as `collect_*`
+functions returning `ReportResult`, plus `REPORT_DEFINITIONS`. Rendering and
+routes live in `services.report_framework`. Collectors narrow `ctx.projects`
+to projects where the module is enabled; D2 measures from the audit event that
+set the status; free text is clipped Markdown plain text (`_CLIP`).
 """
 
 from __future__ import annotations
 
-import re
 import uuid
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
@@ -68,6 +36,7 @@ from app.modules.registry import (
     is_module_enabled_for_project,
 )
 from app.services import relationships
+from app.services.markdown_text import plain_text
 from app.services.principals import PrincipalRef, principal_labels, principal_text
 from app.services.report_framework import (
     ReportContext,
@@ -102,9 +71,9 @@ def _fmt_date(value: date | datetime | None) -> str:
 
 
 def _clip(text: str | None, limit: int = _CLIP) -> str:
-    """Collapses whitespace and cuts `text` to `limit` characters with an ellipsis."""
-    flat = re.sub(r"\s+", " ", text or "").strip()
-    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+    """The readable text of a Markdown field (no marks; a diagram reads "Diagram"), on one line, cut to `limit`
+    characters with an ellipsis."""
+    return plain_text(text or "", limit=limit)
 
 
 class _PrincipalText(Protocol):
@@ -191,7 +160,7 @@ def _supersession(db: Session, req: ReportContext, decisions: list[Decision]) ->
 
 
 def _load(db: Session, projects: list[Project], *statuses: DecisionStatus, include_archived: bool = False) -> list[Decision]:
-    """Decisions of `projects`, optionally narrowed to `statuses`, oldest code first."""
+    """Decisions of `projects`, optionally narrowed to `statuses`, in no particular order (a report orders what it lists)."""
     if not projects:
         return []
     query = select(Decision).where(Decision.project_id.in_([p.id for p in projects]))
@@ -199,7 +168,7 @@ def _load(db: Session, projects: list[Project], *statuses: DecisionStatus, inclu
         query = query.where(Decision.is_archived.is_(False))
     if statuses:
         query = query.where(Decision.status.in_(statuses))
-    return list(db.scalars(query.order_by(Decision.unique_code)).all())
+    return list(db.scalars(query).all())
 
 
 # --- D1: Decision register ---------------------------------------------------------
@@ -242,7 +211,7 @@ def collect_decision_register(db: Session, req: ReportContext) -> ReportResult:
         and (date_from is None or (d.decision_date is not None and d.decision_date >= date_from))
         and (date_to is None or (d.decision_date is not None and d.decision_date <= date_to))
     ]
-    decisions.sort(key=lambda d: (names[d.project_id].lower(), d.unique_code))
+    decisions = req.order_records(decisions, code=lambda d: d.unique_code, title=lambda d: d.title, group=lambda d: names[d.project_id])
     people = _people(db, decisions)
     supersedes, superseded_by, codes = _supersession(db, req, decisions)
 
@@ -349,7 +318,7 @@ def collect_approval_ageing(db: Session, req: ReportContext) -> ReportResult:
     ]
     for e in entries:
         e["overdue"] = e["days"] > threshold
-    entries.sort(key=lambda e: (-e["days"], e["decision"].unique_code))
+    entries.sort(key=lambda e: (-e["days"], e["decision"].unique_code))  # ranked: the longest wait first
 
     tags = req.tag_text(db, DECISION_TYPE, [d.id for d in decisions])
 
@@ -410,7 +379,7 @@ def collect_decision_log(db: Session, req: ReportContext) -> ReportResult:
         d for d in _load(db, projects, *MADE_STATUSES)
         if d.decision_date is not None and date_from <= d.decision_date <= date_to
     ]
-    decisions.sort(key=lambda d: (d.decision_date, names[d.project_id].lower(), d.unique_code))
+    decisions.sort(key=lambda d: (d.decision_date, names[d.project_id].lower(), d.unique_code))  # ranked: a log reads oldest first
     type_names = _type_names(db, decisions)
     people = _people(db, decisions, owner=False)
     result = _result(req, "d3", "Decision log", eligible=len(projects), notes=[
@@ -484,7 +453,10 @@ def collect_rationale_coverage(db: Session, req: ReportContext) -> ReportResult:
     for link in relationships.get_links_to_many(db, ArtefactType.REQUIREMENT.value, req_ids):
         if link.source_type == DECISION_TYPE and link.source_id in decision_id_set:
             covered.add(link.target_id)
-    uncovered = [(r, v) for r, v in requirements if r.id not in covered]
+    uncovered = req.order_records(
+        [(r, v) for r, v in requirements if r.id not in covered],
+        code=lambda pair: pair[0].unique_code, title=lambda pair: pair[1].name, group=lambda pair: names[pair[0].project_id],
+    )
 
     decision_tags = req.tag_text(db, DECISION_TYPE, [d.id for d in bare])
     requirement_tags = req.tag_text(db, ArtefactType.REQUIREMENT.value, [r.id for r, _ in uncovered])
@@ -495,7 +467,7 @@ def collect_rationale_coverage(db: Session, req: ReportContext) -> ReportResult:
             [
                 [req.code(d.unique_code, d.project_id), d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
                  decision_status_label(d.status.value), decision_tags.get(d.id, "")]
-                for d in sorted(bare, key=lambda d: (names[d.project_id].lower(), d.unique_code))
+                for d in req.order_records(bare, code=lambda d: d.unique_code, title=lambda d: d.title, group=lambda d: names[d.project_id])
             ],
             gap=True,
         ),
@@ -530,7 +502,7 @@ def _readable_artefact(db: Session, artefact_type: str, artefact_id: uuid.UUID, 
 
 
 def _requirements(db: Session, project_ids: set[uuid.UUID]) -> list[tuple[Requirement, RequirementVersion]]:
-    """Non-archived Requirements (current version) of `project_ids`, by code."""
+    """Non-archived Requirements (current version) of `project_ids`, in no particular order (a report orders what it lists)."""
     if not project_ids:
         return []
     rows = db.execute(
@@ -540,7 +512,6 @@ def _requirements(db: Session, project_ids: set[uuid.UUID]) -> list[tuple[Requir
             Requirement.project_id.in_(project_ids), Requirement.is_archived.is_(False),
             RequirementVersion.valid_to.is_(None),
         )
-        .order_by(Requirement.unique_code)
     ).all()
     return [(r, v) for r, v in rows]
 

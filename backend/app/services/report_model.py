@@ -1,63 +1,29 @@
 """
 Module: services.report_model
 
-The neutral report document every renderer consumes . A report is built once, as a
-`ReportDocument` of simple blocks, and then rendered by `report_pdf`
-(ReportLab) and `report_docx` (python-docx), so a layout change is made in one
-place rather than once per output format.
+The neutral report document every renderer consumes: a report is built once as a `ReportDocument` of simple blocks and
+rendered by `report_pdf`, `report_docx`, `report_odt` and `report_html`.
 
 Responsibilities:
-- Block types: `Heading`, `Paragraph`, `Equation` (a display equation), `Note`, `BulletList`, `Image` (raster bytes or SVG markup), `Table`,
-  `Grid` (an author-written table: merged cells, per-cell alignment and colour), `Gap`, `VerticalSpace`,
-  `BottomStart`/`BottomEnd` (a run placed at the page foot), `PageBreak`,
-  `PageStyleChange` (a new page in another `PageStyle`: paper, orientation, `Margins`), and the
-  `ReportDocument` that holds them with the title, branding and the page style of its own pages; `RunningBand` (a
-  header or footer: an invisible left, centre and right table, with page fields and an optional logo).
-- `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
-  document block, so it is never inside a `ReportDocument`. Its cells are text or a typed `DataCell` (a real number,
-  date or UTC instant, so a spreadsheet can sort, sum and filter it); `typed_cell` is the one place a value is judged
-  safe to type.
-- Cell tones: `Table.tones` marks cells the screen colours (a rating band, a
-  matrix cell) and `TONE_FILL` is the one tone-to-colour table both renderers use;
-  `text_on` picks black or white text for any fill by contrast.
-- `markdown_to_blocks`: the restricted Markdown reader (headings, paragraphs,
-  bullet and numbered lists, bold, italic and code spans, images on their own line) that turns author-written
-  text (a layout's text block, and the introduction, chapters and appendices) into blocks.
+- Block types (`Heading`, `Paragraph`, `Equation`, `Note`, lists, `CodeBlock`, `Quote`, `Image`, `Table`, `Grid`, `Gap`,
+  `VerticalSpace`, `BottomStart`/`BottomEnd`, `PageBreak`, `PageStyleChange`), `RunningBand`, `ReportDocument`.
+- `Sheet` for table-family reports (typed `DataCell`s via `typed_cell`); cell tones (`Table.tones`, `TONE_FILL`, `text_on`).
+- `markdown_to_blocks`: the restricted author Markdown reader.
 
 Design decisions:
-- Blocks hold plain strings and bytes only. Nothing here knows about ReportLab
-  markup or Word XML, so escaping is the renderer's job, done at one choke
-  point per renderer.
-- Inline Markdown is read for four things only: bold (`**x**`), italic (`*x*`, `_x_`), code (`` `x` ``) and links
-  (`[words](address)`). They ride in `MathText` as `Styled` runs, so every string-only consumer sees the plain words
-  without the markers. Everything else stays the author's source verbatim, as it always was: bare addresses and
-  autolinks, reference-style links, images inside a sentence, raw HTML and entities. The reader runs on the author's
-  text alone, before any `{{value}}` is filled in, so a record value holding `**` or a backtick is plain text, never a
-  style. Math (`\\( \\)`, `$$ $$`) is set aside first and put back unread, so `\\(a_1 * b_2\\)` is never taken for
-  emphasis.
-- A link is the one place text points somewhere else, so it is the most guarded: `link_problem` allows only an absolute
-  http, https or mailto address (or `#heading` in the same document) and refuses whitespace, control characters, quotes,
-  angle brackets and backslashes; an address with a `{{placeholder}}` is checked again after it is filled; a link that
-  fails stays as written text; `finalize_links` (called first by every renderer) gives each heading an anchor and turns a
-  link to a missing heading into plain words; and each renderer writes the address only as an attribute or relationship
-  target, never as markup.
-- Images arrive pre-resolved as bytes (`report_document.resolve_report_images`
-  does the tenant check) or as SVG markup (sanitised by `report_svg` in each renderer), so this module
-  and the renderers never fetch anything.
-- A tone is a name (the same five as the on-screen `BadgeTone`), never a colour,
-  so a collector cannot put an arbitrary value into PDF or Word XML. The text of
-  a toned cell still carries its meaning (the band name), so a greyscale print
-  reads the same.
-- An equation is TeX source in the model, never a drawing: each renderer asks `report_math` for the form it needs
-  (SVG for PDF and HTML, native markup or a picture for Word) and prints the source when it cannot draw it. Inline
-  equations ride in `MathText`, a `str` subclass, so headings, paragraphs, list items and table cells need no new
-  field and every string-only consumer is unaffected. Only the layout evaluator makes `Equation`, from text where
-  math is switched on, so a module report's ordinary text is never scanned for delimiters.
-- `Gap` is a vertical-whitespace hint kept so the PDF layout is exactly what it
-  was before the model existed; the DOCX renderer ignores it and relies on
-  paragraph spacing.
+- Blocks hold plain strings and bytes only; each renderer escapes at one choke point.
+- Inline Markdown is read for bold, italic, code and links only, on the author's text before any `{{value}}` is filled
+  in (a record value holding `**` is plain text), with math set aside first. Everything else stays verbatim.
+- A link is the most guarded text: `link_problem` allows only absolute http, https, mailto or `#heading` and refuses
+  whitespace, control characters, quotes, angle brackets and backslashes; `finalize_links` anchors headings and
+  neutralises links to missing ones; renderers write an address only as an attribute or relationship target.
+- Images arrive as pre-resolved bytes or SVG markup sanitised by `report_svg`; nothing is fetched here.
+- A tone is a name (the five `BadgeTone`s), never a colour, and the cell text keeps its meaning for greyscale print.
+- An equation is TeX source in the model; each renderer asks `report_math` for its form. Inline equations ride in
+  `MathText` (a `str` subclass); only the layout evaluator makes `Equation`.
+- `Gap` is a whitespace hint for the PDF; DOCX relies on paragraph spacing.
 
-Dependencies: markdown-it-py. `ReportBranding` is imported for typing only.
+Dependencies: markdown-it-py; `ReportBranding` is imported for typing only.
 """
 
 from __future__ import annotations
@@ -79,8 +45,12 @@ from app.services.branding import contrast_text_hex
 from app.services.report_column_width import resolve_table_widths_cm
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from app.services.report_diagram import DiagramBudget
     from app.services.report_document import ReportBranding
     from app.services.report_fonts import FontFamily
+
 
 class _ReportMarkdown(MarkdownIt):
     """The Markdown reader with the author's link addresses left exactly as written.
@@ -96,12 +66,13 @@ class _ReportMarkdown(MarkdownIt):
         return True
 
 
-# The reader understands emphasis, code spans and `[words](address)` links and leaves the rest of the inline syntax as
-# written text: no autolinks or bare addresses, no reference-style links, no raw HTML, no entities and no images inside
-# a sentence. Backslash escapes are not the reader's either: only the six this module documents are honoured (see
-# `_set_aside`), so a backslash anywhere else, as in `C:\temp` or an unclosed `\(`, prints as written.
-_md = _ReportMarkdown().disable(["image", "autolink", "html_inline", "entity", "strikethrough", "escape", "reference"])
-_IMAGE_ONLY = re.compile(r"^!\[[^\]]*\]\(([^)\s]+)[^)]*\)$")
+# The reader understands emphasis, code spans and `[words](address)` links; the rest of the inline syntax (autolinks,
+# reference links, raw HTML, entities, inline images) stays as written text. Only the six backslash escapes documented
+# here are honoured (see `set_aside`), so `C:\temp` or an unclosed `\(` prints as written.
+author_reader = (
+    _ReportMarkdown().disable(["image", "autolink", "html_inline", "entity", "strikethrough", "escape", "reference"]).enable("table")
+)
+IMAGE_ONLY = re.compile(r"^!\[[^\]]*\]\(([^)\s]+)[^)]*\)$")
 # Where math or an escaped character was set aside while reading: a private-use pair around its number.
 _MATH_MARK = re.compile("\ue000(\\d+)\ue001")
 
@@ -341,24 +312,92 @@ class Note:
 class BulletList:
     """A bulleted list of items (plain text, or `MathText` with styles and equations).
 
-    `font` and `size` are as on `Paragraph`: set for this list alone, `None` for the document's body.
+    `font` and `size` are as on `Paragraph`: set for this list alone, `None` for the document's body. A list read from
+    Markdown may nest: `levels` and `ordered` then hold, per item, its depth (0 is the list itself) and whether the list it
+    belongs to is numbered; both are empty for a flat list (`list_entries` reads either).
     """
 
     items: list[str]
     font: FontFamily | None = None
     size: float | None = None
+    levels: tuple[int, ...] = ()
+    ordered: tuple[bool, ...] = ()
 
 
 @dataclass(frozen=True)
 class NumberedList:
     """A numbered list of items (plain text, or `MathText` with styles and equations); numbering starts at 1.
 
-    `font` and `size` are as on `Paragraph`.
+    `font`, `size`, `levels` and `ordered` are as on `BulletList`.
     """
 
     items: list[str]
     font: FontFamily | None = None
     size: float | None = None
+    levels: tuple[int, ...] = ()
+    ordered: tuple[bool, ...] = ()
+
+
+@dataclass(frozen=True)
+class ListEntry:
+    """One item of a list with its depth and kind, as `list_entries` returns it.
+
+    Attributes:
+        text: The item's words (plain, or `MathText`).
+        level: 0 for the list itself, 1 for a list inside an item, and so on.
+        ordered: Whether the list the item belongs to is numbered.
+    """
+
+    text: str
+    level: int
+    ordered: bool
+
+
+#: The deepest list nesting a renderer draws; a deeper item is drawn at this level.
+MAX_LIST_LEVEL = 3
+
+
+def list_entries(block: BulletList | NumberedList) -> list[ListEntry]:
+    """The items of a list with their depth and kind, whether it is flat or nested.
+
+    Args:
+        block: A bulleted or numbered list.
+
+    Returns:
+        One entry per item, in reading order, with the level clamped to `MAX_LIST_LEVEL`.
+    """
+    if not block.levels:
+        return [ListEntry(text, 0, isinstance(block, NumberedList)) for text in block.items]
+    return [
+        ListEntry(text, min(max(level, 0), MAX_LIST_LEVEL), ordered)
+        for text, level, ordered in zip(block.items, block.levels, block.ordered, strict=True)
+    ]
+
+
+@dataclass(frozen=True)
+class CodeBlock:
+    """Preformatted text: code, or the source of a diagram that could not be drawn. Spaces and line breaks are kept.
+
+    Attributes:
+        text: The lines, with their indentation.
+        language: The fence's language word (`python`, `mermaid`), shown nowhere; no highlighting is applied.
+        label: A line printed above the block (`Diagram source`), empty for none.
+    """
+
+    text: str
+    language: str = ""
+    label: str = ""
+
+
+@dataclass(frozen=True)
+class Quote:
+    """A quoted paragraph (a Markdown `>` block): indented with a bar at its left edge.
+
+    Attributes:
+        text: The words (plain, or `MathText` with styles and equations).
+    """
+
+    text: str
 
 
 @dataclass(frozen=True)
@@ -387,6 +426,9 @@ class Image:
             (the corner of the text area of its page) or `page` (the corner of the sheet).
         offset_x_cm: Distance right of the anchor's corner (a layered picture), negative for left.
         offset_y_cm: Distance below the anchor's corner (a layered picture), negative for above.
+        raster: A drawing whose vector form `svglib` draws wrongly (a diagram, which relies on markers and relative text
+            offsets): PDF places it as a picture drawn from the SVG at print resolution, as Word and OpenDocument do.
+            HTML keeps the vector.
     """
 
     data: bytes = b""
@@ -403,6 +445,7 @@ class Image:
     anchor: str = "paragraph"
     offset_x_cm: float = 0.0
     offset_y_cm: float = 0.0
+    raster: bool = False
 
     @property
     def floats(self) -> bool:
@@ -410,7 +453,7 @@ class Image:
         return self.placement in ("wrap", "behind", "front")
 
 
-def _markdown_image(data: bytes) -> Image:
+def markdown_image(data: bytes) -> Image:
     """An `Image` for resolved bytes of a Markdown picture: vector markup for an SVG (each renderer sanitises it), else raster."""
     head = data.lstrip()[:200]
     if head.startswith((b"<svg", b"<?xml")) and b"<svg" in head + data[:2000]:
@@ -657,8 +700,8 @@ class Contents:
 
 
 Block = (
-    Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Grid | Gap | VerticalSpace | BottomStart | BottomEnd
-    | PageBreak | PageStyleChange | Contents
+    Heading | Paragraph | Equation | Note | BulletList | NumberedList | CodeBlock | Quote | Image | Table | Grid | Gap | VerticalSpace
+    | BottomStart | BottomEnd | PageBreak | PageStyleChange | Contents
 )
 
 
@@ -1080,9 +1123,10 @@ def page_dimensions_cm(document: ReportDocument) -> tuple[float, float]:
 _ESCAPED = re.compile(r"\\([*_`\\\[\]])")
 
 
-def _set_aside(text: str) -> tuple[str, list[str]]:
-    """Replaces each equation (`\\( \\)` or `$$ $$`) and each escaped marker (`\\*`, `\\_`, `` \\` ``, `\\[`, `\\]`, `\\\\`) with a
-    marker, so the Markdown reader never sees what is inside an equation or takes an escaped character for syntax.
+def set_aside(text: str, *, escapes: bool = True) -> tuple[str, list[str]]:
+    """Replaces each equation (`\\( \\)` or `$$ $$`) and, with `escapes`, each escaped marker (`\\*`, `\\_`, `` \\` ``, `\\[`, `\\]`,
+    `\\\\`) with a marker, so the Markdown reader never sees what is inside an equation or takes an escaped character for
+    syntax. A reader that handles backslash escapes itself (the record reader) asks for `escapes=False`.
 
     Returns:
         The text with markers, and what each stood for as it should be printed (put back with `_MATH_MARK`): an
@@ -1099,7 +1143,7 @@ def _set_aside(text: str) -> tuple[str, list[str]]:
             written.append(match.group(1))
             return f"\ue000{len(written) - 1}\ue001"
 
-        kept.append(_ESCAPED.sub(mark, value))
+        kept.append(_ESCAPED.sub(mark, value) if escapes else value)
 
     for segment in split_math(text):
         if segment.kind == "text":
@@ -1110,7 +1154,12 @@ def _set_aside(text: str) -> tuple[str, list[str]]:
     return "".join(kept), written
 
 
-def _inline_parts(
+def restore_set_aside(text: str, written: list[str]) -> str:
+    """`text` with each marker `set_aside` left put back as what it stood for (an equation as written, an escaped character bare)."""
+    return _MATH_MARK.sub(lambda match: written[int(match.group(1))], text)
+
+
+def inline_parts(
     token, written: list[str], placeholders: Mapping[str, str] | None,
 ) -> list[str | Styled]:
     """The runs of one inline token: plain text and `Styled` runs (bold, italic, code, links), equations put back as written.
@@ -1162,6 +1211,10 @@ def _inline_parts(
                 add("\n", href)
             elif kind == "code_inline":
                 add(child.content, href, code=True)
+            elif kind == "image":
+                # A record's attachment picture in a sentence prints as its alternative text; any other image stays as typed.
+                source = str(child.attrGet("src") or "")
+                add(child.content if source.startswith("attachment:") else f"![{child.content}]({source})", href)
             elif kind == "strong_open":
                 bold += 1
             elif kind == "strong_close":
@@ -1176,7 +1229,7 @@ def _inline_parts(
     return parts
 
 
-def _rich_text(parts: list[str | Styled]) -> str:
+def rich_text(parts: list[str | Styled]) -> str:
     """Model text for runs: a plain string when nothing is styled, else a `MathText` carrying the runs."""
     if all(isinstance(part, str) for part in parts):
         return "".join(str(part) for part in parts)
@@ -1195,23 +1248,21 @@ def inline_markdown(markdown_text: str) -> str:
     Returns:
         A plain string when nothing is marked, else a `MathText` carrying the runs.
     """
-    source, written = _set_aside(markdown_text)
-    tokens = _md.parseInline(source)
-    return _rich_text(_inline_parts(tokens[0], written, None)) if tokens else markdown_text
-
-
-_LIST_OPEN = ("bullet_list_open", "ordered_list_open")
-_LIST_CLOSE = ("bullet_list_close", "ordered_list_close")
+    source, written = set_aside(markdown_text)
+    tokens = author_reader.parseInline(source)
+    return rich_text(inline_parts(tokens[0], written, None)) if tokens else markdown_text
 
 
 def markdown_to_blocks(
     markdown_text: str, images: dict[str, bytes] | None = None, placeholders: Mapping[str, str] | None = None,
+    *, diagrams: DiagramBudget | None = None, warn: Callable[[str], None] | None = None,
 ) -> list[Block]:
-    """Converts a Markdown string into blocks.
+    """Converts a Markdown string an author wrote into blocks.
 
-    Covers headings, paragraphs, bullet and numbered lists, bold (`**x**`), italic (`*x*`, `_x_`) and code
-    (`` `x` ``) spans, and images on their own line. Links, autolinks, raw HTML, entities and images inside a
-    sentence stay as written; equations are set aside and put back unread.
+    Covers headings, paragraphs, bullet and numbered lists (nested), quotations, fenced code and Mermaid diagrams, tables,
+    bold (`**x**`), italic (`*x*`, `_x_`) and code (`` `x` ``) spans, links, and images on their own line. Autolinks, raw
+    HTML, entities and images inside a sentence stay as written; equations are set aside and put back unread. The walk
+    itself is `report_markdown.author_blocks`.
 
     Args:
         markdown_text: The Markdown source.
@@ -1224,57 +1275,17 @@ def markdown_to_blocks(
         placeholders: Values for the `PLACEHOLDER_NAMES` placeholders. They are
             substituted into the parsed runs, never into the Markdown source, so a value is ordinary text that
             cannot introduce headings, lists, images or styles.
+        diagrams: The run's diagram budget; with `None` a Mermaid block is printed as its source.
+        warn: Receives a sentence for each diagram that could not be drawn and each table that was cut.
 
     Returns:
         The blocks (empty for blank input). Text with styles is a `MathText`; the rest is a plain `str`.
     """
-    blocks: list[Block] = []
-    if not markdown_text.strip():
-        return blocks
-    images = images or {}
-    source, written = _set_aside(markdown_text)
+    from app.services.report_markdown import author_blocks  # noqa: PLC0415 - report_markdown imports this module
 
-    tokens = _md.parse(source)
-    i = 0
-    while i < len(tokens):
-        token = tokens[i]
-        if token.type == "heading_open":
-            level = int(token.tag[1:]) if token.tag[1:].isdigit() else 3
-            heading = "".join(part if isinstance(part, str) else part.text for part in _inline_parts(tokens[i + 1], written, placeholders))
-            blocks.append(Heading(heading, min(level, 4)))
-            i += 3
-        elif token.type == "paragraph_open":
-            inline = tokens[i + 1]
-            picture = _IMAGE_ONLY.match(inline.content.strip())
-            if picture:
-                image_bytes = images.get(picture.group(1))
-                if image_bytes:
-                    blocks.append(_markdown_image(image_bytes))
-                    blocks.append(Gap(0.2))
-            else:
-                blocks.append(Paragraph(_rich_text(_inline_parts(inline, written, placeholders))))
-                blocks.append(Gap(0.2))
-            i += 3
-        elif token.type in _LIST_OPEN:
-            items: list[str] = []
-            depth = 0
-            j = i + 1
-            while j < len(tokens):
-                kind = tokens[j].type
-                if kind in _LIST_OPEN:
-                    depth += 1
-                elif kind in _LIST_CLOSE:
-                    if depth == 0:
-                        break
-                    depth -= 1
-                elif kind == "inline":
-                    items.append(_rich_text(_inline_parts(tokens[j], written, placeholders)))
-                j += 1
-            blocks.append(BulletList(items) if token.type == "bullet_list_open" else NumberedList(items))
-            i = j + 1
-        else:
-            i += 1
-    return blocks
+    return author_blocks(
+        markdown_text, images, placeholders, diagrams=diagrams, warn=warn or (lambda _message: None),
+    )
 
 
 def _resolved_links(value: str, targets: set[str]) -> str:
@@ -1328,6 +1339,8 @@ def finalize_links(document: ReportDocument) -> ReportDocument:
             block = replace(block, items=[_resolved_links(item, taken) for item in block.items])
         elif isinstance(block, NumberedList):
             block = replace(block, items=[_resolved_links(item, taken) for item in block.items])
+        elif isinstance(block, Quote):
+            block = replace(block, text=_resolved_links(block.text, taken))
         elif isinstance(block, Grid):
             block = replace(block, rows=[
                 replace(row, cells=[replace(cell, paragraphs=tuple(_resolved_links(p, taken) for p in cell.paragraphs)) for cell in row.cells])

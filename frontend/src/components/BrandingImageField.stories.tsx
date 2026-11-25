@@ -22,7 +22,7 @@ export const Empty: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByLabelText("Default logo")).toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Remove" })).toBeNull();
+    await expect(canvas.queryByRole("button", { name: /^Remove/ })).toBeNull();
     await expect(canvas.queryByText("Platform default")).toBeNull();
   },
 };
@@ -33,7 +33,7 @@ export const ShowsThePlatformPicture: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Platform default")).toBeVisible();
-    await expect(canvas.queryByRole("button", { name: "Remove" })).toBeNull();
+    await expect(canvas.queryByRole("button", { name: /^Remove/ })).toBeNull();
   },
 };
 
@@ -44,7 +44,7 @@ export const OwnFileCanBeRemoved: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.queryByText("Custom")).toBeNull();
     await expect(canvas.queryByText("Platform default")).toBeNull();
-    await userEvent.click(canvas.getByRole("button", { name: "Remove" }));
+    await userEvent.click(canvas.getByRole("button", { name: /^Remove/ }));
     await expect(args.onRemove).toHaveBeenCalledOnce();
   },
 };
@@ -56,6 +56,6 @@ export const BusyWithMessages: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("alert")).toHaveTextContent("The file is too large.");
     await expect(canvas.getByText("Logo uploaded.")).toBeVisible();
-    await expect(canvas.getByRole("button", { name: "Remove" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: /^Remove/ })).toBeDisabled();
   },
 };

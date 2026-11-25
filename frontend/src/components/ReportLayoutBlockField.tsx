@@ -1,18 +1,17 @@
 /**
  * Module: components/ReportLayoutBlockField
  *
- * One field of a block in the outline: picks the control for the field's `kind` (from the block's schema) and
- * shows the server's problems for that field beneath it.
+ * One field of a block in the outline: picks the control for the field's `kind` (from the block's schema) and shows
+ * the server's problems for that field beneath it.
  *
- * Responsibilities:
- * - Draw simple kinds (text, long text, whole and decimal numbers, yes/no, choice, TeX, name, image, a list of lines) with the shared field
- *   components, and composite kinds (source, columns, joins, condition, widget parts, variables) with their own
- *   editors.
- * - Fall back to a JSON box for a kind it does not know, so a module's block type is always editable.
- * - Offer a [+] beside the title of text that allows `{{placeholders}}`, opening a searchable list of what the enclosing blocks name.
+ * - Simple kinds (text, long text, whole and decimal numbers, yes/no, choice, TeX, name, image, a list of lines) use
+ *   the shared field components; composite kinds (source, columns, joins, condition, widget parts, variables) use
+ *   their own editors. An unknown kind falls back to a JSON box, so a module's block type is always editable.
+ * - Text that allows `{{placeholders}}` gets a [+] beside the title that opens a searchable list of what the
+ *   enclosing blocks name.
  *
- * Design decisions: the field only edits its own key; it never judges the value. An optional key that is
- * emptied is removed from the node, a required one keeps an empty value so the server says it is missing.
+ * The field only edits its own key and never judges the value. An optional key that is emptied is removed from the
+ * node; a required one keeps an empty value so the server says it is missing.
  */
 import type { BlockCatalogue, BlockField, ReportFieldCatalogue, ReportFontChoice, ReportImageLibrary, ReportWidget } from "../api/reportLayouts";
 import type { PackVariableDeclaration } from "../api/reportPacks";
@@ -192,7 +191,7 @@ export function ReportLayoutBlockField({
       break;
     case "longtext":
       control = (
-        <TextAreaField
+        <TextAreaField plainText="Report layout content is read by the report engine's own inline reader"
           label={field.label} value={asText} onChange={setText} disabled={disabled} help={help} required={field.required} rows={4}
           labelExtra={beside} inputProps={{ maxLength: field.max_length ?? undefined, ...selectionProps }}
         />

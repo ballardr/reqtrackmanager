@@ -1,36 +1,30 @@
 """
 Module: modules.architecture.record_tables
 
-The `RecordTableProvider`s of the module's five record types, the element, the connection, the diagram, the state machine diagram and the state: each
-list as a table, so it exports to CSV, PDF and Word and (element and connection) imports from the same CSV (a row
-with a code updates that record, a blank code creates one). A diagram, a state machine diagram and a state export only (`NOT_IMPORTABLE` says why).
+The `RecordTableProvider`s of the element, connection, diagram, state machine diagram and state types: each lists as a
+table, so it exports to CSV, PDF and Word. Elements and connections import from the same CSV (a row with a code updates
+that record, a blank code creates one); the others export only (`NOT_IMPORTABLE` says why).
 
-Responsibilities:
-- Declare the columns (name, type, symbol, parent, owner, status, ports; or type, ends, ports, protocol) and
-  filters, and share the create and edit logic with the endpoints (`records.create_element` and so on), so
-  validation, the version counter and the audit event are the ones the screen applies.
+Responsibilities: declare the columns and filters, and share create and edit logic with the endpoints
+(`records.create_element` and so on) so validation, the version counter and the audit event are the screen's.
 
 Design decisions:
-- The type is written by its name (the project's effective list, or the organisation's rows at the organisation
-  tier); the parent by the code of an element of the same owner, which must already exist. A connection end
-  that another owner shares is written qualified by the owner's code (`PLAT-ELM-004`, or the organisation's code),
-  because a bare code would name one of the project's own elements; the parser resolves it through
-  `visibility`, so a file cannot reach an element the person cannot read.
-- The symbol is written by its name (the owner's effective library) and left blank for the type's own; a name is shown
-  only for a symbol the reader may read (`symbols.visible_symbol_ids`), so an element another owner shares never
-  discloses a symbol the person cannot see.
-- `status` is importable because the module has no approval gate (a record may make any move
-  `transitions.STATUS_MOVES` lists, and a row asking for another is a row error); a new record can be created
-  `Draft`, `Proposed` or `Active`, not `Retired` or `Rejected`.
-- `ports` is one list cell, `name:direction` per port (`Main:both;Debug:in`), the way the export writes it. An
-  import *adds* the ports a cell names that the element lacks and never removes or edits one, so a round trip
-  changes nothing and removing a port stays a deliberate act on the element.
-- An import update quotes the record's current `version`: a file is applied to the record as it is now.
+- A type is written by its name (the project's effective list, or the organisation's rows at the organisation tier), a
+  parent by the code of an element of the same owner that already exists. A connection end another owner shares is
+  written qualified by the owner's code (`PLAT-ELM-004`), because a bare code would name one of the project's own
+  elements; the parser resolves it through `visibility`, so a file cannot reach an element the person cannot read.
+- A symbol is written by name (the owner's effective library), blank for the type's own, and only for a symbol the
+  reader may read (`symbols.visible_symbol_ids`).
+- `status` is importable (no approval gate): a row may make any move `transitions.STATUS_MOVES` lists, and a new record
+  may be `Draft`, `Proposed` or `Active`.
+- `ports` is one cell, `name:direction` per port (`Main:both;Debug:in`). An import adds missing ports and never removes
+  or edits one, so a round trip changes nothing.
+- An import update quotes the record's current `version`.
 
-The organisation tier (`OrganizationRecordTable`) lists the organisation-owned elements the person may read and
-imports through the organisation endpoints' own path (`records.ElementOwner.of_organization`).
+The organisation tier (`OrganizationRecordTable`) lists the organisation-owned elements the person may read and imports
+through `records.ElementOwner.of_organization`.
 
-Dependencies: `records` (rules), `record_routes` (filters), `visibility`, `services.record_tables_core`.
+Dependencies: `records`, `record_routes` (filters), `visibility`, `services.record_tables_core`.
 """
 
 from __future__ import annotations
@@ -88,7 +82,6 @@ from app.modules.architecture.service import (
     DIAGRAM_ARTEFACT_TYPE,
     DIAGRAM_SUBCOMPONENT_KEY,
     ELEMENT_ARTEFACT_TYPE,
-    ELEMENT_CODE_PREFIX,
     ELEMENT_SUBCOMPONENT_KEY,
     ELEMENT_TYPES,
     STATE_ARTEFACT_TYPE,
@@ -233,10 +226,11 @@ def _end_parser(field_name: str) -> Callable[[RecordImportContext, str], uuid.UU
     own = _element_by_code_parser(field_name, blank_clears=False)
 
     def parse(ctx: RecordImportContext, text: str) -> uuid.UUID | None:
-        owner_code, separator, rest = text.upper().rpartition(f"-{ELEMENT_CODE_PREFIX}-")
-        if not text or not separator or not owner_code:
+        # `PLAT-ELM-004`: the owner's code (never containing a hyphen), then the element's own code, whose prefix may
+        # be one the organisation or project chose; a bare code has one hyphen only.
+        owner_code, separator, code = text.upper().partition("-")
+        if not text or not separator or "-" not in code:
             return own(ctx, text)
-        code = f"{ELEMENT_CODE_PREFIX}-{rest}"
         organization_id = ctx.organization_id
         found = ctx.db.scalar(
             select(ArchitectureElement.id).join(Project, Project.id == ArchitectureElement.project_id).where(
@@ -385,7 +379,7 @@ def _list_org_elements(db: Session, user: User, organization: Organization, filt
 def _element_columns(db: Session, project: Project | Organization) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False, required=True),
-        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser, markdown=True),
         RecordColumn("display_note", "Display note", lambda t, r: r.display_note, text_parser),
         RecordColumn(
             "type", "Type", lambda t, r: t.element_types.get(r.element_type_id, ""), _type_parser(ELEMENT_TYPES, "element"),
@@ -479,6 +473,7 @@ def _find_org_element(db: Session, organization: Organization, code: str) -> Arc
 
 
 ELEMENT_TABLE = RecordTableProvider(
+    title_column="name",
     label="Elements",
     columns=_element_columns,
     list_records=_list_elements,
@@ -569,7 +564,7 @@ def _connection_columns(db: Session, project: Project) -> list[RecordColumn]:
         ),
         end("source"), port("source"), end("target"), port("target"),
         RecordColumn("protocol", "Protocol", lambda t, r: r.protocol, text_parser),
-        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser, markdown=True),
         _folder_column("connection"),
         _status_column(),
         _tags_column(),
@@ -626,6 +621,7 @@ def _find_connection(db: Session, project: Project, code: str) -> ArchitectureCo
 
 
 CONNECTION_TABLE = RecordTableProvider(
+    title_column="name",
     label="Connections",
     columns=_connection_columns,
     list_records=_list_connections,
@@ -681,7 +677,7 @@ def _list_diagrams(db: Session, user: User, project_id: uuid.UUID, filters: Reco
 def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
-        RecordColumn("purpose", "Purpose", lambda t, r: r.purpose, text_parser),
+        RecordColumn("purpose", "Purpose", lambda t, r: r.purpose, text_parser, markdown=True),
         RecordColumn("scope", "Scope element", lambda t, r: t.scopes.get(r.scope_element_id, "") if r.scope_element_id else "", text_parser),
         RecordColumn(
             "connection_detail", "Connection detail", lambda t, r: "Yes" if r.connection_detail else "No", text_parser,
@@ -714,6 +710,7 @@ NOT_IMPORTABLE: dict[str, str] = {
 }
 
 DIAGRAM_TABLE = RecordTableProvider(
+    title_column="name",
     label="Diagrams",
     columns=_diagram_columns,
     list_records=_list_diagrams,
@@ -780,7 +777,7 @@ def _list_machines(
 def _machine_columns(db: Session, project: Project) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
-        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser, markdown=True),
         RecordColumn("element", "Element", lambda t, r: t.outs[r.id].element_code or "", text_parser),
         RecordColumn("states", "States", lambda t, r: str(t.outs[r.id].state_count), text_parser),
         RecordColumn("transitions", "Transitions", lambda t, r: str(t.outs[r.id].transition_count), text_parser),
@@ -832,7 +829,7 @@ def _list_states(db: Session, user: User, project_id: uuid.UUID, filters: Record
 def _state_columns(db: Session, project: Project) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
-        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser, markdown=True),
         RecordColumn(
             "kind", "Kind", lambda t, r: STATE_KIND_LABEL[r.kind], text_parser, kind="enum",
             choices=tuple(STATE_KIND_LABEL.values()),
@@ -870,6 +867,7 @@ NOT_IMPORTABLE.update({
 })
 
 STATE_MACHINE_TABLE = RecordTableProvider(
+    title_column="name",
     label="State machine diagrams",
     columns=_machine_columns,
     list_records=_list_machines,
@@ -883,6 +881,7 @@ STATE_MACHINE_TABLE = RecordTableProvider(
 )
 
 STATE_TABLE = RecordTableProvider(
+    title_column="name",
     label="States",
     columns=_state_columns,
     list_records=_list_states,

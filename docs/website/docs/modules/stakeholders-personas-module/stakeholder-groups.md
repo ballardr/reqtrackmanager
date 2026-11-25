@@ -30,7 +30,7 @@ flowchart TD
 
 | | Organisation group | Project group |
 | --- | --- | --- |
-| Managed in | Organisation overview → **Stakeholder Groups** | The project's **Groups** page |
+| Managed in | Organisation resources → **Stakeholder Groups** | The project's **Groups** page |
 | Parent can be | An organisation group | An organisation group, or a group of the same project |
 | Members can be | Organisation Stakeholders only | Organisation Stakeholders and the project's own |
 | Seen by | Every project in the organisation | That project only |
@@ -39,7 +39,9 @@ A project sees the organisation's groups read-only and can nest its own groups u
 
 ## Managing groups
 
-Create a group from **New group** or the **+** beside an existing one; **Edit** renames it, changes its description and the "one branch" setting, and moves it by choosing a new parent (a group can't be moved under itself or its own descendants, and trees are limited to 10 levels). The up and down arrows reorder siblings. Select a group to see its members, including those in groups beneath it, and to add or remove Stakeholders directly.
+The groups are drawn as a grid with the columns **Name**, **Code**, **Members** (a count), **Scope** (in a project) and **Rule** (the "one branch" setting). A group with child groups is a folder row: its name opens and closes it, and the folders you close stay closed on your next visit. A group without child groups is a plain row; its name selects it.
+
+Create a group from **New group**, or from **Add group under** in a row's **⋮** menu. **Edit** renames it, changes its description and the "one branch" setting, and moves it by choosing a new parent (a group can't be moved under itself or its own descendants, and trees are limited to 10 levels). **Move up** and **Move down** reorder siblings. Select a group, by its name or its **Members** count, to see its members under the grid, including those in groups beneath it, and to add or remove Stakeholders directly; a member who is only in a child group is listed as "Via a child group" and is removed from that group instead.
 
 **Delete** removes the group's memberships and moves its child groups up one level. No Stakeholder is deleted. The confirmation states how many memberships and child groups are affected. Deletion is refused if moving a child up would give it the same name as one of its new siblings — rename one first.
 

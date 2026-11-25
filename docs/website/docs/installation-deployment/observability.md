@@ -74,7 +74,8 @@ A demonstration stack (`scripts/demo.sh`) starts its own Prometheus that scrapes
 | Metric | What it shows |
 |--------|---------------|
 | `http_requests_total`, `http_request_duration_seconds` | Which routes are used (the route template, never an identifier), how often, how long they take and how they end |
-| `login_attempts_total` | Sign-in outcomes |
+| `login_attempts_total` | Sign-in outcomes (success, failure, throttled) by method (password, including the second factor, or single sign-on) |
+| `active_users` | How many signed-in users made a request in the last five minutes, as a count per worker; no user identifier is exported |
 | `requirements_*_total`, `change_requests_*_total` | Lifecycle transitions |
 | `db_statements_total`, `db_pool_connections`, `worker_resident_memory_bytes` | Database activity and worker load |
 

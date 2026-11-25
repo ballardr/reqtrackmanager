@@ -1,28 +1,24 @@
 """
 Module: services.report_shapes
 
-The `shape` layout block: a coloured rectangle, ellipse, line or arrow (or an author's own SVG) that sits in line with
-the text, beside it, or behind or in front of it.
+The `shape` layout block: a coloured rectangle, ellipse, line or arrow (or an author's own SVG) in line with the text,
+beside it, or behind or in front of it.
 
 Responsibilities:
-- Name the kinds, colour tokens and limits the tree validator, the block schema and the text format share.
-- `shape_svg`: draw a preset shape as SVG markup at its printed size, in the colours the run resolved.
-- `colour_hex`: resolve a colour word (hex, reserved word or scheme name; `services.report_colours`) to `#rrggbb`.
-- `svg_problem`: why an author's SVG cannot be used (the report image sanitiser plus a size check), or `None`.
+- Name the kinds, colour tokens and limits the validator, block schema and text format share; `shape_svg` (a preset as
+  SVG at its printed size); `colour_hex` (a colour word to `#rrggbb`, `report_colours`); `svg_problem` (why an author's
+  SVG cannot be used: the image sanitiser plus a size check).
 
 Design decisions:
-- **A shape is a generated picture.** The evaluator hands the SVG to the report model's `Image`, so a shape inherits the
-  placements, anchors, offsets and layering the four document formats already draw for pictures (vector in PDF and HTML,
-  a transparent PNG in Word and OpenDocument), and a layer drawn later in the document is drawn above an earlier one.
-  Native Word and ODT shape objects were not built: they add a second drawing path per format for a flat colour.
-- **Nothing the author types becomes markup.** A preset is built here from validated numbers and a validated colour; a
-  custom SVG is allow-listed by `report_svg.sanitize_svg`, which every renderer applies again.
-- **Sizes are exact.** A preset has an explicit width and height in cm or mm (no percentage: the size of the text area
-  is unknown when the picture is drawn, and a stretched outline or corner would print wrongly). A shape wider than the
-  text is scaled down with its proportions kept.
-- A line or arrow is drawn in the outline colour across the middle of its box; its height is the arrowhead's room.
+- A shape is a generated picture handed to the model's `Image`, so it inherits placements, anchors, offsets and layering
+  the four formats draw for pictures (vector in PDF and HTML, transparent PNG in Word and OpenDocument); native shape
+  objects would add a second drawing path per format for a flat colour.
+- Nothing the author types becomes markup: presets come from validated numbers and a validated colour; a custom SVG is
+  allow-listed by `report_svg.sanitize_svg`, which every renderer applies again.
+- Sizes are exact (cm or mm, no percentage, since the text area is unknown when drawn); a shape wider than the text is
+  scaled down keeping proportions. A line or arrow runs across the middle of its box in the outline colour.
 
-Dependencies: `lxml`, `services.report_svg`, `services.report_colours`.
+Dependencies: `lxml`, `report_svg`, `report_colours`.
 """
 
 from __future__ import annotations

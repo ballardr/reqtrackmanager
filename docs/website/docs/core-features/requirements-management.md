@@ -56,7 +56,7 @@ If the [Risk Management module](../modules/risk-management-module/overview.md) i
 
 ## Owners, reviewers and groups
 
-Every requirement has an **owner**, defaulting to whoever created it, and may have an assigned **reviewer**. Either can be a user, an organisation group or one of the project's groups, so a team stays accountable when one person leaves. The page shows a group's name, its kind (Organisation group or Project group) and how many people it stands for, and the version history records who owned each version. An owner is required, so a requirement can never be left without one.
+Every requirement has an **owner**, defaulting to whoever created it, and may have an assigned **reviewer**. Either can be a user, an organisation group or one of the project's groups, so a team stays accountable when one person leaves. The page shows a group's icon and name (hover to see its kind, Organisation group or Project group, and how many people it stands for), and the version history records who owned each version. An owner is required, so a requirement can never be left without one.
 
 ```mermaid
 flowchart LR

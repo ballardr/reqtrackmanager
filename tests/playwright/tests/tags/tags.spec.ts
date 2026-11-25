@@ -1,7 +1,33 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
-import { installCleanupHook } from "../e2e-workflows/helpers";
+import { chooseRecordAddition, installCleanupHook, RECORD_ADD_NAME } from "../e2e-workflows/helpers";
 import { API_BASE_URL, openNew, openPeople, setUpOrg } from "../modules/stakeholders/helpers";
+
+/**
+ * Adds a tag on a Tags administration page: the page draws no creation fields, so "New tag" opens the dialog the
+ * tag is named and coloured in (docs/ux-style-guide.md, "Pattern: creation controls on demand").
+ */
+async function addAdminTag(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "New tag", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New tag" });
+  await dialog.getByRole("textbox", { name: "Name", exact: true }).fill(name);
+  await dialog.getByRole("button", { name: "Add tag", exact: true }).click();
+  await expect(page.getByText("Tag added.")).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+}
+
+/** The Tags page shows no creation fields until "New tag" is pressed, and the new tag then appears in the table. */
+test("the Tags page creates a tag on request, not from fields drawn above the table", async ({ page }) => {
+  const { suffix, project } = await setUpOrg(page, "TagsOnDemand");
+  const name = `On request ${suffix}`;
+  await page.goto(`/projects/${project.id}/admin/tags`);
+  await expect(page.getByRole("button", { name: "New tag", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveCount(0);
+
+  await addAdminTag(page, name);
+  await expect(page.getByRole("table", { name: "Tags", exact: true }).getByText(name)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveCount(0);
+});
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -30,8 +56,8 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
 
   await test.step("a tag is added from the record's header and survives a reload", async () => {
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${tagged.id}`);
-    const plus = page.getByRole("button", { name: "Add tag" });
-    await plus.click();
+    const plus = page.getByRole("button", { name: RECORD_ADD_NAME });
+    await chooseRecordAddition(page, "Add tag");
     const box = page.getByRole("combobox", { name: "Tags" });
     await box.fill(tagName);
     // The chip shows at once and is saved in the background: wait for the save before reloading.
@@ -39,10 +65,10 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
     await page.getByRole("option", { name: `Add tag "${tagName}"` }).click();
     await expect(page.getByRole("button", { name: `Remove tag ${tagName}` })).toBeVisible();
     await saved;
-    // The `[+]` is the same height as the tag chip beside it.
-    const chipHeight = (await page.locator(".tag-chip").first().boundingBox())!.height;
-    const plusHeight = (await plus.boundingBox())!.height;
-    expect(Math.abs(chipHeight - plusHeight)).toBeLessThan(1);
+    // The (+) is level with the tag chip beside it (their vertical centres match).
+    const chipBox = (await page.locator(".tag-chip").first().boundingBox())!;
+    const plusBox = (await plus.boundingBox())!;
+    expect(Math.abs((chipBox.y + chipBox.height / 2) - (plusBox.y + plusBox.height / 2))).toBeLessThan(1.5);
     await page.reload();
     await expect(page.getByRole("button", { name: `Remove tag ${tagName}` })).toBeVisible();
   });
@@ -75,6 +101,21 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
     await expect(page.getByRole("button", { name: `Remove tag ${renamed}` })).toBeVisible();
   });
 
+  await test.step("the record count opens where the tag is used, in a dialog and not a page section", async () => {
+    await page.goto(`/projects/${project.id}/admin/tags`);
+    await expect(page.getByRole("heading", { name: "Where tags are used" })).toHaveCount(0);
+    await page.getByRole("button", { name: `Show where ${renamed} is used`, exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: `Where "${renamed}" is used` });
+    const row = dialog.getByRole("row", { name: /Persona/ });
+    await expect(row).toContainText("1 record");
+    await row.getByRole("button", { name: /Reclassify/ }).click();
+    const reclassify = page.getByRole("dialog", { name: `Reclassify records tagged "${renamed}"` });
+    await expect(reclassify.getByRole("combobox", { name: "Only these record types" })).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(reclassify).toHaveCount(0);
+  });
+
   await test.step("a custom colour is typed as a hex code and shown on the tag; a bad code is refused", async () => {
     await page.goto(`/projects/${project.id}/admin/tags`);
     await page.getByRole("button", { name: renamed, exact: true }).click();
@@ -93,9 +134,7 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
 
   await test.step("a previewed reclassify moves the record to another tag", async () => {
     await page.goto(`/projects/${project.id}/admin/tags`);
-    await page.getByRole("textbox", { name: "New tag" }).fill(replacement);
-    await page.getByRole("button", { name: "Add tag" }).click();
-    await expect(page.getByText("Tag added.")).toBeVisible();
+    await addAdminTag(page, replacement);
     await page.getByRole("button", { name: renamed, exact: true }).click();
     await page.getByRole("menuitem", { name: `Reclassify records tagged ${renamed}` }).click();
     const dialog = page.getByRole("dialog", { name: `Reclassify records tagged "${renamed}"` });
@@ -141,12 +180,10 @@ test("a restricted project accepts only listed tags", async ({ page }) => {
   await page.goto(`/projects/${project.id}/admin/tags`);
   await page.getByRole("combobox", { name: "Who can add a new tag" }).selectOption("restricted");
   await expect(page.getByText("Tag setting saved.")).toBeVisible();
-  await page.getByRole("textbox", { name: "New tag" }).fill(listed);
-  await page.getByRole("button", { name: "Add tag" }).click();
-  await expect(page.getByText("Tag added.")).toBeVisible();
+  await addAdminTag(page, listed);
 
   await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
-  await page.getByRole("button", { name: "Add tag" }).click();
+  await chooseRecordAddition(page, "Add tag");
   const box = page.getByRole("combobox", { name: "Tags" });
   await expect(box).toHaveAttribute("placeholder", "Choose a tag…");
   await box.fill(`Made up ${suffix}`);
@@ -226,10 +263,10 @@ test("a create form applies the chosen tags, and the Requirements list tags the 
 });
 
 /**
- * A record the organisation owns uses the organisation's tags, kept in Org Admin: tagged from a project
+ * A record the organisation owns uses the organisation's tags, kept on Org Resources: tagged from a project
  * that shows it, the tag appears there with its usage, and not in the project's own list.
  */
-test("an organisation-owned persona is tagged from a project and managed in Org Admin", async ({ page }) => {
+test("an organisation-owned persona is tagged from a project and managed in Org Resources", async ({ page }) => {
   const { suffix, org, project, adminHeaders } = await setUpOrg(page, "TagsOrg");
   const persona = (await (await page.request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/modules/stakeholders/personas`, {
     headers: adminHeaders, data: { name: `Org persona ${suffix}` },
@@ -238,14 +275,18 @@ test("an organisation-owned persona is tagged from a project and managed in Org 
 
   await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
   const saved = page.waitForResponse((r) => r.url().includes("/tags") && r.request().method() === "PUT" && r.ok());
-  await page.getByRole("button", { name: "Add tag" }).click();
+  await chooseRecordAddition(page, "Add tag");
   await page.getByRole("combobox", { name: "Tags" }).fill(tag);
   await page.getByRole("option", { name: `Add tag "${tag}"` }).click();
   await saved;
 
-  await page.goto(`/orgs/${org.id}/admin/tags`);
+  await page.goto(`/orgs/${org.id}/resources/tags`);
   await expect(page.getByRole("table", { name: "Tags", exact: true }).getByText(tag)).toBeVisible();
-  await expect(page.getByRole("table", { name: "Where tags are used: Persona" }).getByText(tag)).toBeVisible();
+  await page.getByRole("button", { name: `Show where ${tag} is used`, exact: true }).click();
+  const usage = page.getByRole("dialog", { name: `Where "${tag}" is used` });
+  await expect(usage.getByRole("row", { name: /Persona/ })).toContainText("1 record");
+  await page.keyboard.press("Escape");
+  await expect(usage).toHaveCount(0);
 
   await page.goto(`/projects/${project.id}/admin/tags`);
   await expect(page.getByRole("table", { name: "Tags", exact: true })).toHaveCount(0);

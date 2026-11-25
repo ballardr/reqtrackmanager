@@ -1,32 +1,28 @@
 """
 Module: services.policy_acknowledgements
 
-Acceptance of policies that require it: who must accept, recording an acceptance, the administrators' status view and
-export, reminders, and the block on changing records until a required policy is accepted.
+Acceptance of policies that require it: who must accept, recording an acceptance, the administrators' status
+view and export, reminders, and the block on changing records until a required policy is accepted.
 
-Responsibilities:
-- Decide which required, published policies apply to a person (a server policy: every active user; an organisation
-  policy: the people who may read it, `org_policies.can_view`) and which of them the person has not yet accepted for the
-  current version.
-- Record an acceptance per person and version with a hash of the accepted text (`PolicyAcknowledgement`).
-- List, for an administrator, who has and has not accepted the current version, as rows and as a CSV.
-- Notify people with an unaccepted policy, once when a required version is published or the requirement is switched
-  on, and again on request.
-- Refuse requests that change data from a person with an unaccepted policy (`enforce_accepted`), leaving reading,
-  searching, the policies themselves, account sign-in and sign-out, and the administrators' policy routes open.
+Responsibilities: decide which required, published policies apply to a person (server policy: every active
+user; organisation policy: those who may read it, `org_policies.can_view`) and which they have not accepted for
+the current version; record an acceptance per person and version with a hash of the text
+(`PolicyAcknowledgement`); list who has and has not accepted, as rows and CSV; notify people with an unaccepted
+policy (on publication, when a requirement is switched on, and on request); refuse data-changing requests from
+a person with an unaccepted policy (`enforce_accepted`).
 
 Design decisions:
-- Blocking is narrow on purpose: a published mistake must not become an outage. Only a request that changes data is
-  refused (403 `policy_acknowledgement_required`); the policy text stays readable and the person can sign out. A
-  requirement is a live setting, so an administrator switches it off at once, without publishing.
-- When no policy requires acceptance (the normal case) the check is one indexed existence query.
-- A group is never asked as a unit: acceptance is personal. A requirement reaches the people of the policy's audience,
-  with effective group membership, exactly as reading does.
-- The record holds the person, policy, version, text hash and UTC time only, and states no more than a click by an
-  account. It is personal data (Confidential) and is not carried in any bundle.
-- Audit events and notifications carry counts and keys, never the policy text.
+- Blocking is narrow so a published mistake is not an outage: only a request that changes data is refused
+  (403 `policy_acknowledgement_required`); reading, searching, the policies, sign-in and sign-out and the
+  administrators' policy routes stay open. A requirement is a live setting an administrator switches off at once.
+- With no required policy (the normal case) the check is one indexed existence query.
+- Acceptance is personal: a group is never asked as a unit. A requirement reaches the policy's audience with
+  effective group membership, as reading does.
+- The record holds person, policy, version, text hash and UTC time only, and states no more than a click by an
+  account. It is Confidential personal data and is in no bundle.
+- Audit events and notifications carry counts and keys, never policy text.
 
-External dependencies: `services.policies`, `services.org_policies`, `services.notifications`, `services.csv_safety`.
+Dependencies: `services.policies`, `org_policies`, `notifications`, `csv_safety`.
 """
 
 from __future__ import annotations
@@ -48,6 +44,7 @@ from sqlalchemy.orm import Session
 from app.models.notification import NotificationType
 from app.models.organization import Organization, UserOrgRole
 from app.models.policy import PolicyAcknowledgement, PolicyDocument, PolicyDocumentVersion, PolicyState
+from app.models.service_user import ServiceUserProfile
 from app.models.user import User
 from app.services import org_policies, policies
 from app.services.audit import log_event
@@ -181,7 +178,9 @@ def enforce_accepted(db: Session, user: User, method: str, path: str) -> None:
     Raises:
         HTTPException: 403 with `BLOCK_CODE` in the detail.
     """
-    if is_open_request(method, path) or not any_required(db):
+    if user.is_service_account or is_open_request(method, path) or not any_required(db):
+        # A service user has no person to read and accept a policy; recording an acceptance on its behalf would be
+        # false evidence, so it is exempt from the gate and never appears in the acceptance counts.
         return
     waiting = pending(db, user)
     if waiting:
@@ -216,18 +215,35 @@ class StatusRow:
 
 
 def required_people(db: Session, row: PolicyDocument) -> list[User]:
-    """The active people a policy applies to: everyone for a server policy, its readers for an organisation policy."""
+    """The active people a policy applies to: everyone for a server policy, its readers for an organisation policy.
+
+    A service user is never one (`not_applicable_service_users` lists them apart).
+    """
     if row.organization_id is None:
-        people = list(db.scalars(select(User).where(User.is_active.is_(True), User.is_archived.is_(False))))
+        people = list(db.scalars(select(User).where(
+            User.is_active.is_(True), User.is_archived.is_(False), User.is_service_account.is_(False),
+        )))
     else:
         audience = org_policies.audience_of(db, [row.id])[row.id]
         members = db.scalars(
             select(User).join(UserOrgRole, UserOrgRole.user_id == User.id).where(
                 UserOrgRole.organization_id == row.organization_id, User.is_active.is_(True), User.is_archived.is_(False),
+                User.is_service_account.is_(False),
             ).distinct()
         )
         people = [u for u in members if org_policies.can_view(db, u, row.organization_id, audience)]
     return sorted(people, key=lambda u: (u.display_name or u.email).lower())
+
+
+def not_applicable_service_users(db: Session, row: PolicyDocument) -> list[User]:
+    """The active service users the policy does not apply to, so a status view can name them apart from the people
+    whose acceptance it counts (every service user for a server policy, the organisation's own for an organisation one)."""
+    query = select(User).where(User.is_service_account.is_(True), User.is_active.is_(True), User.is_archived.is_(False))
+    if row.organization_id is not None:
+        query = query.join(ServiceUserProfile, ServiceUserProfile.user_id == User.id).where(
+            ServiceUserProfile.organization_id == row.organization_id
+        )
+    return list(db.scalars(query.order_by(User.display_name)))
 
 
 def status_rows(db: Session, row: PolicyDocument) -> list[StatusRow]:

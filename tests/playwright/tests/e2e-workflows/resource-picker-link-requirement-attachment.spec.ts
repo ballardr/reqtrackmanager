@@ -6,22 +6,14 @@ import { deleteOrgOnCleanup, installCleanupHook } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: `Pattern: resource picker dialog` — `RequirementDetailPage.tsx`'s Attachments card can
- * reach into the organisation's shared-resource pool and link an existing
- * file onto the requirement, via `POST /{requirement_id}/files/link`
- * (already existed backend-side, but had zero frontend callers before this
- * pass — "Shared org resources have almost
- * no way to consume them").
+ * Job to be done: `Pattern: resource picker dialog`: `RequirementDetailPage.tsx`'s Attachments card can reach into
+ * the organisation's shared-resource pool and link an existing file onto the requirement, via
+ * `POST /{requirement_id}/files/link`.
  *
- * Builds its own throwaway org/admin/project/component/category/
- * requirement via the API first (same pattern report-image-attachment.spec.ts
- * already uses for its own picker-driven flow) rather than reusing a seeded
- * project's requirement — Alpha-1's own first requirement (HW-FN-001) is
- * deliberately locked by the seed script for the CR-approval workflow, and
- * this spec needs an unlocked one (the "Link from shared resources" button
- * is hidden once a requirement is locked, matching the direct-upload
- * trigger's own gating) without having to reason about which other seeded
- * requirement is safe to depend on staying unlocked across the whole suite.
+ * Builds its own throwaway org, admin, project, component, category and requirement through the API first (as
+ * report-image-attachment.spec.ts does) rather than reusing a seeded requirement: Alpha-1's first requirement
+ * (HW-FN-001) is locked by the seed script for the CR-approval workflow, and this spec needs an unlocked one (the
+ * "Link from shared resources" button is hidden once a requirement is locked, like the direct-upload trigger).
  */
 
 const ADMIN_EMAIL = "admin@example.com";

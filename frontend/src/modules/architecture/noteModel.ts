@@ -1,23 +1,16 @@
 /**
  * Module: modules/architecture/noteModel
  *
- * The annotation notes of a diagram, as plain functions with no React, for both diagram editors (block diagram and state
- * machine diagram): the note and its leader lines while being edited, the edits a person makes, the request body of a save and
- * the mapping to the shared canvas's nodes and leader lines.
- *
- * Responsibilities:
- * - `EditorNote` / `EditorLeader`: a note with its title, text, tone, alignment, size mode and none or several leader lines. A
- *   leader ends at a box (`element`) or a line (`connection`) of a block diagram, a state or a transition of a state machine
- *   diagram, or a free point (`NoteLeaderTarget`).
- * - Edits over any layout that holds `notes` (`NotesLayout`): they return a new layout of the same kind, so one set of functions
- *   serves both editors and each keeps the rest of its own layout.
- * - `canvasNoteNodes` / `noteLeaderLines`: the shared canvas's nodes for notes and the lines for leaders; what a target is on
- *   the canvas (a node, a line, a point) is the caller's, so no diagram type is known here.
- *
- * Design decisions:
- * - A note's canvas node id is `NOTE_NODE_PREFIX + key`, whatever the diagram type, so a selection tells a note from a box
- *   by its id alone.
- * - The size a note is drawn at comes from `noteLayout` (the same measure the server's drawing uses), never from here.
+ * The annotation notes of a diagram as plain functions with no React, for both diagram editors (block and state machine): the
+ * note and its leader lines while being edited, the edits a person makes, the request body of a save and the mapping to the
+ * shared canvas's nodes and leader lines.
+ * - `EditorNote` / `EditorLeader`: a note with its title, text, tone, alignment, size mode and none or several leader lines; a
+ *   leader ends at a box or line of a block diagram, a state or transition of a state machine diagram, or a free point
+ *   (`NoteLeaderTarget`).
+ * - Edits work over any layout holding `notes` (`NotesLayout`) and return a layout of the same kind, so one set of functions
+ *   serves both editors. `canvasNoteNodes` / `noteLeaderLines` map to the canvas; what a target is on the canvas is the caller's.
+ * - A note's canvas node id is `NOTE_NODE_PREFIX + key` for every diagram type, so a selection tells a note from a box by id.
+ *   The drawn size comes from `noteLayout` (the measure the server's drawing uses).
  */
 import type { GraphCanvasLeader, GraphCanvasNode } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";

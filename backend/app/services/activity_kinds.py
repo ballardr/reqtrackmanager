@@ -5,29 +5,26 @@ The *kind* of an activity event ("how it changed"): the small fixed vocabulary t
 filters and labels by, over the open-ended `AuditEvent.action` strings.
 
 Responsibilities:
-- Name the kinds (`KIND_LABELS`) and map every core action to one (`CORE_ACTION_KINDS`).
-- Merge in the actions a module declares through `ModuleDefinition.activity_action_kinds`
-  (`action_kinds`), so a module never edits this file.
-- Turn a set of wanted kinds into the actions to match (`actions_for_kinds`), and an action into its kind
-  (`kind_of`).
-- Group the entity types of the events (`classify_entity`, `entity_groups`): a registered record type under its
-  owning module (or Core), anything else under one metadata group (links and files, tags and places, access,
-  structure and settings, other), so the Type filter is a short two-level list.
+- Name the kinds (`KIND_LABELS`), map every core action to one (`CORE_ACTION_KINDS`), merge the actions a
+  module declares (`ModuleDefinition.activity_action_kinds`, via `action_kinds`), and convert between kinds
+  and actions (`actions_for_kinds`, `kind_of`).
+- Group entity types (`classify_entity`, `entity_groups`): a registered record type under its module (or
+  Core), anything else under one metadata group (links and files, tags and places, access, structure and
+  settings, other), so the Type filter is a short two-level list.
 
 Design decisions:
-- An action in no map is kind `other`, so a filter by kind can never hide an event nobody classified, and a
-  module that registers nothing still appears under Other.
-- A kind filter is resolved to actions in Python and sent to the database as `action IN (...)` (with
-  `NOT IN (all known)` for Other), so it narrows each source query instead of filtering after the merge.
-- The version-derived entries (`created` for version 1, `updated` after) go through the same functions.
-- A kind is decided by the entity type first: every event of a link, tag, role or group entity is *Links and
-  files*, *Tags and places* or *Access* whatever its action (`created` of a link is a link event, never *Created*),
-  and the action decides only for a record's own events and for the structure and settings groups.
-- Metadata entity types are a registry: the core map here, the `_link` and `_definition` naming conventions, and
-  `ModuleDefinition.activity_metadata_types` for a module's own, so a module never edits this file. A type in none
-  of them is the metadata group Other, so it stays reachable.
+- An action in no map is kind `other`, so a kind filter never hides an unclassified event.
+- A kind filter is resolved to actions in Python and sent as `action IN (...)` (`NOT IN (all known)` for
+  Other), so it narrows each source query instead of filtering after the merge; version-derived entries use
+  the same functions.
+- The entity type decides first: every event of a link, tag, role or group entity is *Links and files*,
+  *Tags and places* or *Access* whatever its action; the action decides only for a record's own events and the
+  structure and settings groups.
+- Metadata entity types are a registry: the core map, the `_link` and `_definition` naming conventions, and
+  `ModuleDefinition.activity_metadata_types`, so a module never edits this file. A type in none of them is the
+  group Other and stays reachable.
 
-External dependencies: `modules.registry` (module contributions).
+Dependencies: `modules.registry`.
 """
 
 from __future__ import annotations
@@ -77,12 +74,16 @@ CORE_ACTION_KINDS: dict[str, str] = {
                      "activated", "retired", "superseded", "proposed", "accepted", "archived", "unarchived", "restored",
                      "investigating", "triaged", "ready_for_decision", "addressed", "workflow_changed", "reconciled",
                      "approval_invalidated", "draft_discarded", "acknowledged", "enabled", "disabled",
-                     "treatment_needs_reassessment"), STATUS),
+                     "treatment_needs_reassessment", "steps_skipped", "self_approved"), STATUS),
     **dict.fromkeys(("linked", "unlinked", "relationship_added", "relationship_removed", "requirement_linked",
                      "requirement_unlinked", "action_linked", "action_unlinked", "evidence_linked", "evidence_unlinked",
                      "file_attached", "file_linked", "file_unlinked", "comment_file_attached", "comment_file_removed",
-                     "link_type_changed", "represents_added", "represents_removed", "policy_links_changed"), LINKS),
-    **dict.fromkeys(("tagged", "untagged", "placed", "unplaced"), TAGS),
+                     "link_type_changed", "represents_added", "represents_removed", "policy_links_changed",
+                     "reference_added", "reference_updated", "reference_removed"), LINKS),
+    **dict.fromkeys(
+        ("tagged", "untagged", "placed", "unplaced", "alias_added", "alias_retired", "alias_promoted", "alias_made_independent"),
+        TAGS,
+    ),
     **dict.fromkeys(("granted", "revoked", "role_granted", "role_revoked", "role_assigned", "member_added",
                      "member_removed", "nested_group_added", "holder_added", "holder_removed", "watcher_added",
                      "watcher_removed", "inherited_access_materialized"), ACCESS),
@@ -124,11 +125,13 @@ CORE_METADATA_TYPES: dict[str, str] = {
         "user_project_role", "user_module_role", "user_org_role", "user_server_role", "org_group_project_role",
         "group_module_role", "user_custom_role_grant", "group_custom_role_grant", "project_group", "org_group",
         "project_member_source", "pending_invite", "personal_access_token", "user", "credential_reset", "imported_person",
+        "service_user",
     ), "access"),
     **dict.fromkeys((
         "project", "project_stage", "project_component", "project_category", "stage_workflow", "stage_phase_plan",
         "component_stage_state", "overview_layout", "nav_labels", "project_module", "project_module_subcomponent",
-        "tag_settings", "pain_point_submission_settings", "project_feedback_settings", "record_sensitivity_policy",
+        "tag_settings", "requirement_alias_settings", "lifecycle_settings", "approval_separation", "pain_point_submission_settings",
+        "project_feedback_settings", "record_sensitivity_policy",
         "scoring_model", "scoring_level", "scoring_axis", "scoring_threshold_set", "scoring_model_default",
         "scoring_enabled_models", "scoring_cell_rating_set", "scoring_band_set", "report_layout", "report_pack",
         "report_pack_set", "report_snippet", "report_folder", "report_placement", "report_run", "generated_report",

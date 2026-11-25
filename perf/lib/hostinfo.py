@@ -9,11 +9,10 @@ Responsibilities:
 - Validate the host label (`validate_label`) so a bundle is never named after the machine or its owner.
 
 Design decisions:
-- Allowlist, never denylist: every field is read by name and reduced to a generic value. Raw output of
-  `docker info`, `uname -a`, `hostname`, `/proc/cpuinfo`, `system_profiler`, `ip addr`, `env` or `git log` is never
-  copied, because it carries hostnames, serial numbers, usernames, addresses and daemon ids.
+- Allowlist, never denylist: every field is read by name and reduced to a generic value. Raw output of `docker info`,
+  `uname -a`, `hostname`, `/proc/cpuinfo`, `ip addr` or `env` is never copied: it carries hostnames, serial numbers,
+  usernames and addresses.
 - Every value passes `_generic`, which rejects anything that is not a short plain token, as a last guard.
-- Python 3.9+, standard library only.
 
 Dependencies: the host's `docker`, and on Linux `/proc` and `/sys`.
 """

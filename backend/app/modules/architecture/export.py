@@ -1,58 +1,50 @@
 """
 Module: modules.architecture.export
 
-The Architecture module's contribution to the organisation and project bundles:
-the organisation's default element and connection types and symbols, and a project's own types
-and symbols with the organisation defaults it has hidden, its elements (with ports, tags, places)
-and connections, and the links between them and Requirements. Registered through
-`ModuleOrgBundleHooks` and `ModuleProjectBundleHooks`, so no core export file
-names this module.
+The Architecture module's contribution to the organisation and project bundles: the organisation's default
+element and connection types and symbols; a project's own types and symbols with the organisation defaults it
+has hidden, its elements (with ports, tags, places) and connections, and their links to Requirements.
+Registered through `ModuleOrgBundleHooks` and `ModuleProjectBundleHooks`, so no core export file names this module.
 
 Design decisions:
-- A project exports the configuration it owns (rows and tombstones), not an
-  ancestor's it merely inherits: the project the bundle is imported into has its own
-  ancestors.
-- Types travel by name. An import skips a name the target already lists (so a fresh
-  organisation's seeded defaults are not doubled) and reports a hidden default the
-  organisation does not have.
-- An element or connection travels with its original code as information only; an
-  import numbers its records afresh, and the codes key the parent, the two ends of
-  a connection and the links within the bundle. The `version` counter is not carried
-  (an imported record starts at 1). A record's type is matched by name among the
-  organisation's rows and the project's own, including a default the project hides;
-  a type the target lacks is created in the project so the record keeps its type.
-- Links travel through the shared `services.bundle_links`, so only links to records
-  in this bundle and to Requirements are carried.
-- Symbols: an organisation's library travels in the organisation bundle (its files embedded) and a project's own
-  uploads in the project bundle, with the organisation symbols the project hides. A symbol travels by name and an
-  upload with its file, which an import checks and sanitises again like an upload; a built-in travels by key
-  alone. A type or element names its symbol as `{"tier", "name"}`, never by id, and an import takes no id from a
-  bundle, so a bundle can never point a record at a symbol of another organisation.
-- The four vocabulary keys are template configuration; the records, the collections and their links
-  are template records, reset to fresh drafts without creator or archived records.
-- Diagrams: a diagram travels with its element boxes (keyed by element code, or a foreign reference for an element
-  another owner shares), notes, line anchors (the two elements and their attach points, and
-  the connection code for a connection's own route) and toggles. A toggle's rule
-  names vocabulary rows by name (never an id) and its manual members by code, so a bundle holds no ids; an import
-  numbers the diagram afresh and drops, with a warning, a box, member, anchor or scope it cannot resolve. A diagram is a
-  template record, reset to a fresh draft that places only the template's own elements.
-- State machine diagrams: a diagram travels with its states and transitions (`state_machine_export`); a state names its parent
-  and a transition its two states by the state's name, and the codes are information only. A template keeps only the
-  diagrams of elements it carries, as fresh drafts.
-- Realisations and boundary boxes: a connection lists the codes of the outer connections it realises (`realises`) and a
-  diagram its boundary boxes (the outer connection's code and the box); both name connections of the same bundle only.
-  An import re-applies each realisation through the same rule as the editor and drops, with a warning, one that no
-  longer holds, and drops a box whose connection is not an outer connection of the imported diagram's scope.
-- Folders: a project's folders travel as `{kind, path, sort_order}` (parents before children) and the organisation's element
-  folders in its bundle; a record names its folder by path (`folder`), never by id. An import reuses a folder that already
-  has the path and creates the rest (also for a record whose path the folder list lacks), so a record is never dropped
-  for its folder. The folder list is template configuration; a record's path is part of the record.
-- Sharing: a collection and its members (element codes) travel in its owner's bundle, **grants never do**, so
-  an import can never publish anything to a project or a group by itself. An organisation bundle carries the
-  organisation-owned elements (ports, no tags or places, which an organisation-owned record does not have) and
-  collections. A connection end another owner shares travels as a reference (the owner's code and the
-  element's code, never a name); an import resolves it through `visibility` for the person importing, and
-  drops the connection with a warning when it cannot be read.
+- A project exports the configuration it owns (rows and tombstones), not an ancestor's it inherits; the
+  importing project has its own ancestors.
+- Types travel by name. An import skips a name the target already lists (so seeded defaults are not doubled)
+  and reports a hidden default the organisation lacks.
+- An element or connection travels with its code as information only; an import numbers records afresh, and
+  the codes key the parent, a connection's two ends and the links within the bundle. `version` is not
+  carried (an imported record starts at 1). A record's type is matched by name among the organisation's rows
+  and the project's own (including a hidden default); a type the target lacks is created in the project.
+- Links travel through `services.bundle_links`: only links to records in this bundle and to Requirements.
+- Symbols: the organisation's library (files embedded) travels in the organisation bundle, a project's
+  uploads in the project bundle with the organisation symbols it hides. A symbol travels by name and an
+  upload with its file, which an import checks and sanitises as an upload; a built-in travels by key. A type
+  or element names its symbol as `{"tier", "name"}`, never an id, so a bundle cannot point a record at
+  another organisation's symbol.
+- The four vocabulary keys are template configuration; records, collections and their links are template
+  records, reset to fresh drafts without creator or archived records.
+- Diagrams travel with their element boxes (keyed by element code, or a foreign reference for an element
+  another owner shares), notes, line anchors (two elements and their attach points, plus the connection code
+  for a connection's own route) and toggles. A toggle rule names vocabulary rows by name and manual members
+  by code, so a bundle holds no ids. An import numbers the diagram afresh and drops, with a warning, a box,
+  member, anchor or scope it cannot resolve. A diagram is a template record, reset to a draft placing only
+  the template's own elements.
+- State machine diagrams travel with their states and transitions (`state_machine_export`); a state names
+  its parent and a transition its two states by name, codes being information only. A template keeps only
+  the diagrams of elements it carries, as drafts.
+- Realisations and boundary boxes: a connection lists the codes of the outer connections it realises
+  (`realises`) and a diagram its boundary boxes (outer connection code and box), both naming connections of
+  the same bundle only. An import re-applies each realisation through the editor's rule, dropping with a
+  warning one that fails it, and a box whose connection is not an outer connection of the scope.
+- Folders travel as `{kind, path, sort_order}` (parents first); a record or uploaded symbol names its folder
+  by path (`folder`), never an id. An import reuses a folder with the path and creates the rest, so a record
+  is never dropped for its folder. The folder list is template configuration; a record's path is part of
+  the record.
+- Sharing: a collection and its members (element codes) travel in its owner's bundle; grants never do, so an
+  import cannot publish anything to a project or group. An organisation bundle carries organisation-owned
+  elements (ports; no tags or places) and collections. A connection end another owner shares travels as a
+  reference (owner code and element code, never a name); an import resolves it through `visibility` for the
+  importing person and drops the connection with a warning when it cannot be read.
 """
 
 from __future__ import annotations
@@ -125,6 +117,7 @@ from app.services import definition_suppression, report_images
 from app.services.bundle_comments import export_comments, import_comments, strip_comments
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.bundle_links import export_artefact_links, import_artefact_links
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.report_raster import ImageRejectedError
@@ -298,13 +291,17 @@ def _add_rows(
 
 
 def _symbol_entries(db: Session, rows: Sequence[ArchitectureSymbol], assets: dict[UUID, FileAsset]) -> list[dict[str, Any]]:
-    """Symbol rows in bundle form: name, order and either the built-in key or the file (added to `assets`)."""
+    """Symbol rows in bundle form: name, order, folder path and either the built-in key or the file (added to `assets`)."""
+    folder_paths = folder_rules.paths_for(db, (r.folder_id for r in rows))
     files = {
         a.id: a for a in db.scalars(select(FileAsset).where(FileAsset.id.in_([r.file_asset_id for r in rows if r.file_asset_id])))
     } if any(r.file_asset_id for r in rows) else {}
     out = []
     for row in rows:
-        entry: dict[str, Any] = {"name": row.name, "sort_order": row.sort_order, "builtin_key": row.builtin_key}
+        entry: dict[str, Any] = {
+            "name": row.name, "sort_order": row.sort_order, "builtin_key": row.builtin_key,
+            "folder": folder_paths.get(row.folder_id) if row.folder_id else None,
+        }
         asset = files.get(row.file_asset_id) if row.file_asset_id else None
         if asset is not None:
             assets[asset.id] = asset
@@ -317,10 +314,12 @@ def _symbol_entries(db: Session, rows: Sequence[ArchitectureSymbol], assets: dic
 def _import_symbols(
     db: Session, entries: list[dict[str, Any]], file_bytes: dict[str, bytes], *, project_id: UUID | None,
     organization_id: UUID, actor_id: UUID, taken: set[str], warnings: BundleImportWarnings,
+    folder_importer: folder_rules.FolderImporter,
 ) -> None:
     """Recreates the bundle's symbols for one owner. A name the owner already lists is skipped; a built-in whose key is
     unknown, or an upload with no file or an unsafe one, is reported. A file is checked and sanitised again, as an upload
-    is, and stored under the importing organisation."""
+    is, and stored under the importing organisation. An upload is filed in the folder its path names (created when
+    missing); a built-in stays at the top level."""
     for entry in entries:
         name = str(entry.get("name") or "").strip()[:100]
         if not name or name.lower() in taken:
@@ -346,10 +345,22 @@ def _import_symbols(
                 db, organization_id=organization_id, uploaded_by=actor_id, filename=str(entry.get("filename") or f"{name}.svg"),
                 content_type=report_images.SVG_TYPE, data=clean,
             )
-            fields = {"file_asset_id": asset.id}
+            fields = {"file_asset_id": asset.id, "folder_id": folder_importer.ensure("symbol", entry.get("folder"))}
         SYMBOLS.create(db, project_id=project_id, organization_id=organization_id, name=name, **fields)
         taken.add(name.lower())
     db.flush()
+
+
+def _symbol_folder_importer(
+    db: Session, owner: ElementOwner, actor_id: UUID, folders: list[dict[str, Any]], warnings: BundleImportWarnings,
+) -> folder_rules.FolderImporter:
+    """A folder importer with the bundle's `symbol` folders already created, so their order is kept; the symbols are imported
+    before the rest of the folders (the types and elements name them), so these cannot wait for that pass."""
+    importer = folder_rules.FolderImporter(db, owner, actor_id, warnings)
+    for folder in folders:
+        if folder.get("kind") == "symbol":
+            importer.ensure("symbol", folder.get("path"), folder.get("sort_order"))
+    return importer
 
 
 def _symbol_lookup(
@@ -473,6 +484,9 @@ def import_org_files(
     _import_symbols(
         db, data.get(ORG_SYMBOLS_KEY, []), file_bytes, project_id=None, organization_id=org.id, actor_id=actor.id,
         taken={r.name.lower() for r in SYMBOLS.org_rows(db, org.id)}, warnings=warnings,
+        folder_importer=_symbol_folder_importer(
+            db, ElementOwner.of_organization(org), actor.id, data.get(ORG_FOLDERS_KEY, []), warnings,
+        ),
     )
 
 
@@ -730,7 +744,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_record_tag_names(db, ELEMENT_ARTEFACT_TYPE, element_ids)
     prime_record_tag_names(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
     prime_record_placements(db, ELEMENT_ARTEFACT_TYPE, element_ids)
+    prime_record_references(db, ELEMENT_ARTEFACT_TYPE, element_ids)
     prime_record_placements(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
+    prime_record_references(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
     element_comments = export_comments(db, ELEMENT_ARTEFACT_TYPE, element_ids, _no_anchor)
     connection_comments = export_comments(db, CONNECTION_ARTEFACT_TYPE, connection_ids, _no_anchor)
     emails = _emails(
@@ -760,6 +776,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "is_archived": e.is_archived, "archived_at": _stamp(e.archived_at), "archived_by_email": _email(emails, e.archived_by),
             "tags": record_tag_names(db, ELEMENT_ARTEFACT_TYPE, e.id),
             "placements": record_placements(db, ELEMENT_ARTEFACT_TYPE, e.id),
+            "external_references": record_references(db, ELEMENT_ARTEFACT_TYPE, e.id),
             **element_comments.get(e.id, _NO_COMMENTS),
         }
         for e in elements
@@ -786,6 +803,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "is_archived": c.is_archived, "archived_at": _stamp(c.archived_at), "archived_by_email": _email(emails, c.archived_by),
             "tags": record_tag_names(db, CONNECTION_ARTEFACT_TYPE, c.id),
             "placements": record_placements(db, CONNECTION_ARTEFACT_TYPE, c.id),
+            "external_references": record_references(db, CONNECTION_ARTEFACT_TYPE, c.id),
             **connection_comments.get(c.id, _NO_COMMENTS),
         }
         for c in connections
@@ -892,6 +910,7 @@ def _diagrams_json(
     foreign = foreign_refs(db, {e for e in wanted if e not in codes})
     prime_record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, ids)
     prime_record_placements(db, DIAGRAM_ARTEFACT_TYPE, ids)
+    prime_record_references(db, DIAGRAM_ARTEFACT_TYPE, ids)
 
     def anchor_code(kind: str, key: str) -> str | None:
         """The code of a pin's box (an element) or line (a connection), or `None` when it is not in this bundle."""
@@ -970,6 +989,7 @@ def _diagrams_json(
             "is_archived": d.is_archived, "archived_at": _stamp(d.archived_at), "archived_by_email": _email(emails, d.archived_by),
             "tags": record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, d.id),
             "placements": record_placements(db, DIAGRAM_ARTEFACT_TYPE, d.id),
+            "external_references": record_references(db, DIAGRAM_ARTEFACT_TYPE, d.id),
             **diagram_comments.get(d.id, _NO_COMMENTS),
         }
         for d in rows
@@ -1068,8 +1088,8 @@ def _rule_domain_ids(rule: dict[str, Any], db: Session, project: Project) -> lis
 
 
 def _legacy_leader(entry: dict[str, Any]) -> list[dict[str, Any]]:
-    """The leader of a note written before a note could have several (`leader` with a `kind` and `arrow`), as the list of
-    one the bundle now carries; none for a note that had no leader."""
+    """The leader of a note in the single-leader bundle format (`leader` with a `kind` and `arrow`), as the list of
+    one that the current format carries; none for a note with no leader."""
     old = entry.get("leader") or {}
     if old.get("kind", LeaderKind.NONE.value) == LeaderKind.NONE.value:
         return []
@@ -1289,6 +1309,10 @@ def _import_diagrams(
             db, project_id=project.id, actor_id=creator, artefact_type=DIAGRAM_ARTEFACT_TYPE, artefact_id=diagram.id,
             entries=entry.get("placements"),
         )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=creator,
+            artefact_type=DIAGRAM_ARTEFACT_TYPE, artefact_id=diagram.id, entries=entry.get("external_references"),
+        )
     db.flush()
     return created
 
@@ -1329,6 +1353,9 @@ def import_project_data(
         db, data.get(PROJECT_SYMBOLS_KEY, []), file_bytes_by_ref, project_id=project.id, organization_id=project.organization_id,
         actor_id=current_user.id,
         taken={r.name.lower() for r in SYMBOLS.resolve_effective(db, project.id, project.organization_id).rows}, warnings=warnings,
+        folder_importer=_symbol_folder_importer(
+            db, ElementOwner.of_project(project), current_user.id, data.get(FOLDERS_KEY, []), warnings,
+        ),
     )
     for name in SYMBOLS.hide_by_names(db, project.id, project.organization_id, data.get(HIDDEN_SYMBOLS_KEY, [])):
         warnings.add(f"Symbol {name!r} was hidden in the source project but the organisation has no such symbol.")
@@ -1407,6 +1434,10 @@ def import_project_data(
             db, project_id=project.id, actor_id=creator, artefact_type=ELEMENT_ARTEFACT_TYPE, artefact_id=element.id,
             entries=entry.get("placements"),
         )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=creator,
+            artefact_type=ELEMENT_ARTEFACT_TYPE, artefact_id=element.id, entries=entry.get("external_references"),
+        )
     for entry in data.get(ELEMENTS_KEY, []):
         parent_code = entry.get("parent_code")
         if not parent_code or entry.get("unique_code") not in elements:
@@ -1456,6 +1487,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=creator, artefact_type=CONNECTION_ARTEFACT_TYPE,
             artefact_id=connection.id, entries=entry.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=creator,
+            artefact_type=CONNECTION_ARTEFACT_TYPE, artefact_id=connection.id, entries=entry.get("external_references"),
         )
     _import_realisations(db, data.get(CONNECTIONS_KEY, []), connections, warnings)
     diagram_ids = _import_diagrams(

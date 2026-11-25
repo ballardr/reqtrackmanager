@@ -1,30 +1,22 @@
 """
 Module: services.report_grid
 
-The custom table (`grid` block): its closed vocabularies and limits, the one span check every caller shares, and the
-placement of finished cells that the four document renderers read.
+The custom table (`grid` block): its limits, closed vocabularies, the one span check every caller shares and the cell
+placement the four document renderers read.
 
 Responsibilities:
-- Name the limits (`MAX_GRID_COLUMNS`, `MAX_GRID_ROWS`, `MAX_CELL_CHARS`, row height bounds) and the closed vocabularies
-  (alignment, vertical alignment, borders) the tree validator, the text view and the renderers agree on.
-- `place_spans`: place cells, given only each cell's `(colspan, rowspan)`, and report every merge problem with the row
-  and cell it concerns. The tree validator calls it on the saved tree, `place_grid` on the finished model, so the rule
-  lives once.
-- `place_grid`: a finished `Grid` as `PlacedCell`s (row, column, cell) in reading order; covered positions are the ones
-  no cell starts at.
-- `border_edges`: which edges of a cell are drawn for a `borders` setting, so PDF, Word, OpenDocument and the preview
-  draw the same lines.
-- `cell_paragraphs`: the paragraphs of a cell from the blocks its Markdown text reads as (a heading is bold, a list item
-  carries its bullet or number, a line break starts a new paragraph).
-- `low_contrast`: whether a cell's text and fill fall below the readable ratio (a warning, never an error).
+- Name the limits (`MAX_GRID_COLUMNS`, `MAX_GRID_ROWS`, `MAX_CELL_CHARS`, row heights) and vocabularies (alignment,
+  vertical alignment, borders) shared by the validator, text view and renderers.
+- `place_spans` (place cells from `(colspan, rowspan)` and report merge problems), `place_grid` (a finished `Grid` as
+  `PlacedCell`s in reading order), `border_edges`, `cell_paragraphs`, `low_contrast` (a warning, never an error).
 
 Design decisions:
-- A merged region is stored on its top-left cell (`colspan`, `rowspan`) and the covered positions are omitted from the
-  row, as in HTML: a covered cell cannot hold text by mistake, and the check is one pass.
-- Header rows are the leading rows only, and a merge may not cross from the header into the body (ODF, ReportLab and
-  Word each repeat a leading group of rows).
+- A merge is stored on its top-left cell and covered positions are omitted from the row, as in HTML, so a covered
+  cell cannot hold text and the check is one pass.
+- Header rows are the leading rows only; a merge may not cross from header into body (ODF, ReportLab and Word each
+  repeat a leading group of rows).
 
-Dependencies: `services.branding` (contrast ratio), `services.report_model` (the `Grid` model).
+Dependencies: `services.branding` (contrast ratio), `services.report_model` (`Grid`).
 """
 
 from __future__ import annotations
@@ -36,6 +28,7 @@ from app.services.branding import contrast_ratio
 from app.services.report_model import (
     Block,
     BulletList,
+    CodeBlock,
     Equation,
     Grid,
     GridCell,
@@ -43,7 +36,9 @@ from app.services.report_model import (
     MathText,
     NumberedList,
     Paragraph,
+    Quote,
     Styled,
+    list_entries,
     text_runs,
 )
 
@@ -216,10 +211,18 @@ def cell_paragraphs(blocks: Sequence[Block]) -> tuple[str, ...]:
             out.extend(text_lines(block.text))
         elif isinstance(block, Heading):
             out.extend(_bolded(line) for line in text_lines(block.text))
-        elif isinstance(block, BulletList):
-            out.extend(_prefixed("\u2022 ", item) for item in block.items)
-        elif isinstance(block, NumberedList):
-            out.extend(_prefixed(f"{number}. ", item) for number, item in enumerate(block.items, start=1))
+        elif isinstance(block, BulletList | NumberedList):
+            counters: dict[int, int] = {}
+            for entry in list_entries(block):
+                counters[entry.level] = counters.get(entry.level, 0) + 1
+                for deeper in [level for level in counters if level > entry.level]:
+                    del counters[deeper]
+                marker = f"{counters[entry.level]}. " if entry.ordered else "\u2022 "
+                out.append(_prefixed("\u00a0\u00a0" * entry.level + marker, entry.text))
+        elif isinstance(block, Quote):
+            out.extend(text_lines(block.text))
+        elif isinstance(block, CodeBlock):
+            out.extend(line.replace(" ", "\u00a0") for line in block.text.splitlines() or [""])
         elif isinstance(block, Equation):
             out.append(MathText([Equation(block.tex, display=False)]))
     return tuple(out) or ("",)

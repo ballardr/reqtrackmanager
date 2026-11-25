@@ -1,31 +1,22 @@
 """
 Module: services.email
 
-Outgoing email delivery (C-N-03) via SMTP. In development and the bundled
-Docker Compose stack this points at MailHog, a local SMTP catcher with a web
-UI, so sent mail is genuinely visible during verification rather than only
-logged; in production it should point at a real SMTP relay.
+Outgoing email delivery (C-N-03) via SMTP. Development and the bundled Docker Compose stack point at
+MailHog, a local SMTP catcher, so sent mail is visible during verification; production points at a real relay.
 
-`send_email`/`send_email_async` always use the deployment-wide `Settings.
-smtp_*` (`config.py`) unless called with an explicit `SmtpOverride` — the
-one exception being the organisation-scoped "send test email" action
-(`routers/orgs.py`), which exercises an org's own `Organization.smtp_*`
-override on demand. Everything else (notifications, digests, disk-space
-alerts) always goes through the deployment-wide relay.
-
-Every send is a `multipart/alternative` message (plain text first, HTML
-second) built with stdlib `email.message.EmailMessage` — `set_content` for
-the text part, `add_alternative` for the HTML part, and `add_related` to
-embed an inline branding logo (if any) as a `multipart/related` `cid:`
-attachment under the HTML part, so outgoing mail never depends on loading
-an externally-hosted image (see `services/email_templates.py` for how the
-HTML/text bodies themselves are rendered).
-
-`Settings.email_delivery == "disabled"` is a deployment-wide kill switch: every send, including the
-organisation test-email action and an explicit `SmtpOverride`, raises `EmailDeliveryDisabled` before a
-connection is opened. It is for copies of the platform that must not contact anyone (the disaster-recovery
-restore-test stack). A raised error is the honest signal: notifications are not marked as emailed and the
-test-email actions report why nothing was sent.
+Design decisions:
+- `send_email`/`send_email_async` use the deployment-wide `Settings.smtp_*` (`config.py`) unless given an
+  explicit `SmtpOverride`. The organisation "send test email" action (`routers/orgs.py`) is the one use of an
+  organisation's own `Organization.smtp_*`; notifications, digests and disk-space alerts always use the
+  deployment relay.
+- Every send is `multipart/alternative` (plain text, then HTML) built with stdlib `EmailMessage`
+  (`set_content`, `add_alternative`); an inline branding logo is embedded with `add_related` as a `cid:`
+  attachment, so mail never depends on an externally hosted image (bodies come from
+  `services/email_templates.py`).
+- `Settings.email_delivery == "disabled"` is a deployment-wide kill switch for copies that must not contact
+  anyone (the disaster-recovery restore-test stack): every send, including the test-email action and an
+  explicit `SmtpOverride`, raises `EmailDeliveryDisabled` before any connection opens. The error is the honest
+  signal: notifications are not marked as emailed and the test-email actions report why nothing was sent.
 """
 
 from __future__ import annotations

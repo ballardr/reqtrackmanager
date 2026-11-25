@@ -2,13 +2,13 @@
  * Module: components/ReportLayoutSettings
  *
  * The layout-level part of the block editor: the keys that belong to the layout rather than to a block (page
- * orientation, variables), shown in the block editor beside the canvas when the layout block is selected.
+ * orientation, variables), shown beside the canvas when the layout block is selected.
  *
- * Responsibilities: draw the layout fields the block catalogue lists for the layout's family with the shared field
- * forms, arranged in the shared setting groups (`LayoutSettingGroup`: all collapsible, remembered per person and marked
- * when they hold a non-default value; Page and Margins say their effective value on the bar), and list the server's problems that are not about any block (and not already shown on a settings field).
- * An organisation layout that prints a project's name or code without being limited to one project gets a hint to
- * set "Projects it runs for" (a hint only, never an automatic change).
+ * It draws the layout fields the block catalogue lists for the layout's family with the shared field forms,
+ * arranged in the shared setting groups (`LayoutSettingGroup`: all collapsible, remembered per person and marked
+ * when non-default; Page and Margins state their effective value on the bar), and lists the server's problems that
+ * are not about any block or a settings field. An organisation layout that prints a project's name or code without
+ * being limited to one project gets a hint to set "Projects it runs for" (a hint only, never an automatic change).
  */
 import type { BlockCatalogue, LayoutFamily, TreeProblem } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";

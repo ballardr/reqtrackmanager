@@ -1,17 +1,13 @@
 /**
  * Module: utils/platform
  *
- * Which keyboard convention the person's device follows, for shortcut handling and the shortcut text a tooltip shows.
- *
- * Responsibilities:
- * - Report whether the device is an Apple one (Command is the shortcut modifier) or not (Control is).
- * - Name the shortcut modifier for display.
- *
- * Design decisions:
- * - Read from the browser each call, never cached at import, so a story or test can change it; the check takes the platform
- *   as an optional argument for the same reason.
- * - `userAgentData.platform` is preferred where the browser offers it; `navigator.platform` and the user agent are the
- *   fallbacks, since neither is guaranteed.
+ * Which keyboard convention the person's device follows, for shortcut handling
+ * and tooltip shortcut text: whether it is an Apple device (Command is the
+ * modifier) or not (Control), and the modifier's display name.
+ * Design: read from the browser on each call, never cached at import, so a story
+ * or test can change it (the check also takes the platform as an optional
+ * argument). `userAgentData.platform` is preferred; `navigator.platform` and the
+ * user agent are fallbacks, since neither is guaranteed.
  */
 
 /** The parts of `navigator` this module reads (a test supplies its own). */

@@ -1,14 +1,12 @@
 /**
  * Module: modules/stakeholders/ResearchFindingsPanel
  *
- * Research extras: what an engagement taught the team. A finding has a project-scoped
- * code (FND-001), a title and a description, and links to other records through the one
- * shared `ArtefactLinksPanel` (so it can raise or answer Pain Points, Needs and Open
- * Questions, and take any other link a project allows) in its compact form, leaving out the
- * engagement it already sits in; a link to a finding lands on its card (`#finding-<id>`). A
- * finding is created and edited in a `Modal` (principle 3) and deleted behind a
- * tier-1 confirm; it has no comments or files of its own and is deleted with its
- * engagement, because it can quote participants.
+ * Research extras: what an engagement taught the team. A finding has a project-scoped code (FND-001), a title and a
+ * description, and links to other records through the shared `ArtefactLinksPanel` (so it can raise or answer Pain
+ * Points, Needs and Open Questions, and take any other link a project allows) in its compact form, leaving out the
+ * engagement it sits in; a link to a finding lands on its card (`#finding-<id>`). A finding is created and edited in a
+ * `Modal` (principle 3) and deleted behind a tier-1 confirm; it has no comments or files of its own and is deleted with
+ * its engagement, because it can quote participants.
  */
 import { RecordCode } from "../../components/RecordCode";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -17,6 +15,7 @@ import { useLocation } from "react-router-dom";
 
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { Tooltip } from "../../components/Tooltip";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
 import type { CollectedLink } from "../../api/artefactLinks";
@@ -24,6 +23,7 @@ import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { FindingFormModal } from "./FindingFormModal";
 import type { ResearchFinding } from "./types";
+import { MarkdownView } from "../../components/MarkdownView";
 
 /** A finding sits in its engagement's page, so its link list leaves the engagement out (the trace still shows it). */
 const HIDE_ENGAGEMENT = ["engagement"] as const;
@@ -98,9 +98,11 @@ export function ResearchFindingsPanel({
     <div className="stack" style={{ gap: "var(--space-3)" }}>
       <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Findings</span>
-        <button type="button" className="btn btn-sm btn-icon" aria-label="Add finding" title="Add finding" aria-haspopup="dialog" onClick={() => setCreating(true)}>
-          <Plus aria-hidden="true" />
-        </button>
+        <Tooltip label="Add finding">
+          <button type="button" className="btn btn-sm btn-icon" aria-label="Add finding" aria-haspopup="dialog" onClick={() => setCreating(true)}>
+            <Plus aria-hidden="true" />
+          </button>
+        </Tooltip>
       </span>
       {findings.length === 0 && <span className="text-muted">No findings recorded for this engagement.</span>}
       {findings.map((f) => (
@@ -115,7 +117,7 @@ export function ResearchFindingsPanel({
               <button className="btn btn-sm btn-icon" aria-label={`Delete ${f.title}`} title={`Delete ${f.title}`} onClick={() => setDeleting(f)}><Trash2 /></button>
             </span>
           </div>
-          {f.description && <div style={{ whiteSpace: "pre-wrap" }}>{f.description}</div>}
+          {f.description && <MarkdownView text={f.description} />}
           <ArtefactLinksPanel projectId={projectId} artefactType="research_finding" artefactId={f.id} compact hideLinkedTypes={HIDE_ENGAGEMENT} />
         </div>
       ))}

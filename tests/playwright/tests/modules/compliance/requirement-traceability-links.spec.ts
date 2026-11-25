@@ -5,16 +5,13 @@ import { createStandardWithVersion } from "./helpers";
 import { openAddLinkDialog } from "../linksPanel";
 
 /**
- * Job to be done: a core requirement traces to the compliance standard's clause it
- * satisfies. The clause is an ordinary link target (replacing the former dedicated table and section): it is
- * found from the shared Links panel's "Add a link" finder, either by searching its text
- * across every record type or by narrowing step by step (Standard -> Version ->
- * Requirement), appears in the panel under the clause's record type, survives a reload,
- * and is removed like any other link.
+ * Job to be done: a core requirement traces to the compliance standard's clause it satisfies. The clause is
+ * an ordinary link target: it is found from the shared Links panel's "Add a link" finder, either by searching
+ * its text across every record type or by narrowing step by step (Standard -> Version -> Requirement),
+ * appears in the panel under the clause's record type, survives a reload, and is removed like any other link.
  *
- * Every fixture this spec creates (standard, version, clause, core requirement) is
- * dynamically named with a per-run timestamp suffix, per this repo's standing
- * test-idempotency rule — nothing here mutates or depends on another spec's named fixtures.
+ * Every fixture (standard, version, clause, core requirement) is named with a per-run timestamp suffix, so
+ * nothing depends on another spec's fixtures.
  */
 test.describe("Compliance: core requirement <-> standard clause links through the Links panel", () => {
   test("find a clause by searching and by narrowing, link it, see it persist and remove it", async ({ page }) => {

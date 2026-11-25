@@ -1,34 +1,27 @@
 """
 Module: modules.architecture.state_machine_mermaid
 
-Renders a state machine diagram (`schemas.StateMachineModel`) as Mermaid `stateDiagram-v2` text, for the Mermaid export
+Renders a state machine diagram (`schemas.StateMachineModel`) as Mermaid `stateDiagram-v2` text for the Mermaid export
 endpoint, so a diagram can be pasted into documentation that renders Mermaid.
 
-Responsibilities:
-- Write one declaration per state (code and name; a choice as `<<choice>>`), its entry, exit and do lines as descriptions,
-  a composite state as a nested block of its child states, and one line per transition labelled `event [guard] / action`.
-- Write an initial state as the start mark (`[*] --> target`) and a transition into a final state as an arrow to the end
-  mark (`source --> [*]`), in the block they belong to.
-- Make every user-supplied text safe, so no name, action or label can end its line, close a block or start a directive.
+Responsibilities: one declaration per state (code and name; a choice as `<<choice>>`) with entry, exit and do lines as
+descriptions; a composite state as a nested block; an initial state as `[*] --> target` and a transition into a final
+state as `source --> [*]`, in their own block; one line per transition labelled `event [guard] / action`; every
+user-supplied text made safe so none can end its line, close a block or start a directive.
 
 Design decisions:
-- **Same data as the screen and the SVG.** It reads the model the editor reads, so the text cannot disagree with the drawing;
-  the label rule is the shared `state_shapes.transition_label` with its line break written as a space (Mermaid reads one line).
-- **A transition is written in the block of its two states** when they share a parent and at the top level when they do not,
-  because Mermaid scopes the start and end marks to a block and draws a line that crosses blocks only from the top.
-- An annotation note is written as `note left|right of <state>` (the side the note lies on), its title then its typed lines, beside
-  the first state its leaders point at, in that state's block. A note with no leader to a drawn, declared state (none, a leader to
-  a transition or a point, or to an initial or final state, which Mermaid has no name for) is not written, as Mermaid has no
-  free note and cannot point at a line; the SVG, PNG and bundle keep every note.
-- Positions, sizes, attach points and vertices are left out: Mermaid lays the graph out itself. Several final states in one block
-  collapse into the block's single end mark, which Mermaid cannot tell apart.
-- A transition that leaves an initial state, or enters a final one, for a state in another block is not written: the marks
-  belong to their own block and Mermaid has no mark that reaches across.
-- A composite state's entry, exit and do lines are not written: Mermaid refuses a description on a block (its label is all
-  it takes). The SVG omits them for the same reason of room.
-- A choice's name and symbol label are left out (Mermaid draws the diamond without text, and the start and end marks cannot
-  carry one); the choice's code and its label are written as a comment line so the text still names it. The label is not lost
-  from the SVG, PNG or bundle. Mermaid has no place for text beside a symbol, so a label's position is not written either.
+- It reads the model the editor reads, with the shared `state_shapes.transition_label` (line break written as a space),
+  so the text cannot disagree with the drawing.
+- A transition is written in the block of its two states when they share a parent, else at the top level, because
+  Mermaid scopes start and end marks to a block. One leaving an initial state or entering a final one across blocks is
+  not written.
+- An annotation note is written as `note left|right of <state>` beside the first drawn, declared state its leaders point
+  at. A note with no such leader (none, or only to a transition, a point, or an initial or final state) is not written:
+  Mermaid has no free note and cannot point at a line. The SVG, PNG and bundle keep every note.
+- Positions, sizes, attach points and vertices are left out (Mermaid lays out the graph); several final states in one
+  block collapse into one end mark.
+- Mermaid accepts no description on a composite state, so its entry, exit and do lines are not written. A choice's name
+  and label are not drawn (the diamond has no text), so its code and label are written as a comment line.
 
 Dependencies: `schemas` (the model), `state_shapes` (the label rules).
 """

@@ -1,15 +1,14 @@
 /**
  * Module: components/TagFilterField
  *
- * The tag filter of a list's `FilterPanel`: a dropdown of the project's tags (tick any number)
- * and, once two or more are ticked, whether a record needs any or all of them. The list page
- * owns the state (`useTagFilter`) and sends it to the server. It is also where every list gets its component
- * filter (`ComponentFilterField`), since both narrow the same rows through one server filter; a page that has
- * its own component filter (the requirements list) passes `components={false}`.
+ * The tag filter of a list's `FilterPanel`: a dropdown of the project's tags (tick any number) and, once two or more are
+ * ticked, whether a record needs any or all of them. The list page owns the state (`useTagFilter`) and sends it to the
+ * server. It also gives every list its component filter (`ComponentFilterField`) and external reference filter
+ * (`ReferenceFilterField`), since all three narrow the same rows through one server filter; a page with its own
+ * component filter (the requirements list) passes `components={false}`.
  *
- * It lists the vocabulary the project offers; a tag still used by records but no longer in the
- * list can be found by typing it on the record, not here. Renders nothing while the project has
- * no tags, so a project that never tags sees no new control.
+ * It lists the vocabulary the project offers; a tag still used by records but absent from the list is found by typing it
+ * on the record. The tag filter renders nothing while the project has no tags (the other two are still offered).
  */
 import { useEffect, useState } from "react";
 
@@ -20,6 +19,7 @@ import { ComponentFilterField } from "./ComponentFilterField";
 import { FilterField } from "./FilterPanel";
 import { FilterSelect } from "./FilterSelect";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
+import { ReferenceFilterField } from "./ReferenceFilterField";
 
 /**
  * @param projectId The project whose tags are offered.
@@ -43,7 +43,12 @@ export function TagFilterField({
     };
   }, [api, projectId]);
 
-  const componentFilter = components ? <ComponentFilterField projectId={projectId} filter={filter} /> : null;
+  const componentFilter = (
+    <>
+      {components && <ComponentFilterField projectId={projectId} filter={filter} />}
+      <ReferenceFilterField projectId={projectId} filter={filter} />
+    </>
+  );
   if (tags.length === 0) return componentFilter;
   const chosen = new Set(filter.tags.map((t) => t.toLowerCase()));
   return (

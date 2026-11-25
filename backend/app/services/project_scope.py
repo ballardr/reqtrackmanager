@@ -1,36 +1,26 @@
 """
 Module: services.project_scope
 
-The `?project_scope=` list filter: a project's list widened to its parent and/or child
-projects, with the same query parameter on every list endpoint.
+The `?project_scope=` list filter: a project's list widened to its parent and/or child projects, with the
+same query parameter on every list endpoint.
 
-Responsibilities:
-- Parse the `project_scope` parameter (`ProjectScope`, a FastAPI dependency like
-  `services.tags.TagFilter`).
-- Resolve the projects a scope covers once per request (`ProjectScope.projects`), reusing
-  `services.link_nesting.related_projects` so lists and the link graph apply one rule.
-- Fan an endpoint's own single-project list logic out over those projects
-  (`ProjectScope.collect`), keeping only what the caller may see there, and label every row
-  that comes from another project.
-- Sum a per-project count the same way (`ProjectScope.total`), so an overview count and the list agree.
-- Say which scope choices a project offers (`scope_options`).
+Responsibilities: parse the parameter (`ProjectScope`, a FastAPI dependency like `services.tags.TagFilter`);
+resolve the covered projects once per request (`ProjectScope.projects`, reusing
+`services.link_nesting.related_projects` so lists and the link graph share one rule); fan an endpoint's
+single-project list logic out over them (`ProjectScope.collect`), keeping what the caller may see and labelling
+rows from other projects; sum counts the same way (`ProjectScope.total`); say which choices a project offers
+(`scope_options`).
 
 Design decisions:
-- Fan-out, not a rewritten query: each endpoint passes a callback that returns its rows for
-  one project, so its filters, tag narrowing and row building stay in one place and a new
-  filter reaches the widened list for free.
-- A project other than the request project contributes only if the caller can open it
-  (a genuine role, and a token scoped to one project does not reach its parent or child:
-  `link_nesting.can_open_project`), its module and sub-component are enabled *there*, and the
-  caller holds the record type's `view` permission *there*. Anything else is omitted, never redacted, so
-  a list cannot reveal that a hidden row exists.
-- Organisation-owned records (rows whose `project_id` is `None`) come from the request
-  project only, exactly as in `services.link_graph.ArtefactResolver`; another project's
-  copy of the same organisation list is dropped, so they appear once and unlabelled.
-- Archived related projects are left out: their records are history, not live work.
-- Project-local filters (a component, a stage, an action type) keep their meaning: a row of
-  another project that does not match is simply not in the result.
-- Cross-organisation is impossible: the hierarchy stays inside one organisation.
+- Fan-out, not a rewritten query: each endpoint passes a callback returning its rows for one project, so its
+  filters, tag narrowing and row building stay in one place and a new filter reaches the widened list.
+- Another project contributes only if the caller can open it (a genuine role; a token scoped to one project
+  does not reach its parent or child: `link_nesting.can_open_project`), its module and sub-component are enabled
+  there, and the caller holds the type's `view` permission there. Anything else is omitted, never redacted.
+- Organisation-owned records (`project_id` is `None`) come from the request project only, as in
+  `services.link_graph.ArtefactResolver`, so they appear once and unlabelled.
+- Archived related projects are omitted (history, not live work). Project-local filters (component, stage,
+  action type) keep their meaning. Cross-organisation is impossible: the hierarchy stays in one organisation.
 
 Dependencies: `services.link_nesting`, `services.rbac`, `modules.registry`, `models.project`.
 """

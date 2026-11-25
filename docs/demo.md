@@ -10,6 +10,8 @@ scripts/demo.sh                      # start the stack, seed every demonstration
 
 Open https://localhost (the browser warns about the certificate until the local authority is trusted: see [HTTPS](#https)). The sign-in details (accounts, role, password, next reset) are shown on the login page.
 
+The defaults suit a small host: the published images, one backend worker (`BACKEND_WORKERS=2 scripts/demo.sh` raises it) and no Keycloak. Sizing for the application itself is in [performance.md](performance.md); the demonstration's own footprint (proxy, MailHog, Prometheus) is not measured there.
+
 ## Commands
 
 | Command | Effect |
@@ -20,7 +22,9 @@ Open https://localhost (the browser warns about the certificate until the local 
 | `scripts/demo.sh --rotate-passwords` | A new random password for every account on each run (default: fixed). |
 | `scripts/demo.sh --clarity <project id>` | Also loads Microsoft Clarity (see [Microsoft Clarity](#microsoft-clarity)). |
 | `scripts/demo.sh --schedule` | Also starts the in-container daily reset service (which cannot update images). |
-| `scripts/demo.sh --pull [--reset]` | Pulls the latest published images, recreates only the services whose image changed, then seeds or resets (see [Daily reset](#daily-reset)). Refused with `--schedule`. `--no-prune` skips the disk clean-up. |
+| `scripts/demo.sh --no-pull` | Builds the images from the working tree instead of pulling the published ones (the default is to pull). |
+| `scripts/demo.sh --sso` | Also starts Keycloak, the OIDC identity provider for the single sign-on test (off by default). It advertises `http://localhost:8080`, so the sign-in test works on the local machine only. |
+| `scripts/demo.sh --pull [--reset]` | The default. Pulls the latest published images, recreates only the services whose image changed, then seeds or resets (see [Daily reset](#daily-reset)). Refused with `--schedule`, which builds the working tree. `--no-prune` skips the disk clean-up. |
 | `scripts/demo.sh --no-metrics` | Does not start the usage-metrics Prometheus (it starts by default). |
 | `scripts/demo.sh --export-metrics [path] [--since 7d] [--no-snapshot]` | Writes a metrics bundle and starts nothing (see [Usage metrics](#usage-metrics)). |
 | `scripts/demo.sh --view-metrics <bundle>` | Opens a bundle in a throwaway Prometheus on `127.0.0.1:9091`. |
@@ -144,13 +148,13 @@ A reset removes the demonstration organisation and seeds again at `DEMO_RESET_AT
 
 | Arrangement | Updates images | Use when |
 | --- | --- | --- |
-| Host timer or cron entry running `scripts/demo.sh --pull --reset` | Yes | The demonstration should always show the latest published build. |
+| Host timer or cron entry running `scripts/demo.sh --reset` (pulls by default; the shipped units spell out `--pull`) | Yes | The demonstration should always show the latest published build. |
 | `demo-scheduler` (Compose profile `demo-schedule`, `scripts/demo.sh --schedule`) | No | The demonstration builds the working tree and only needs its data reset. |
 | Host cron entry running `scripts/demo.sh --reset` | No | As above, with the host's own scheduler. |
 
 ### Latest images on each reset
 
-The demonstration stack builds from source. `--pull` loads `tests/container/docker-compose.demo-images.yml`, which names the images CI publishes on every passing merge to `main` (`ghcr.io/ballardr/reqtrackmanager-backend`, `-frontend`, `-mcp-server`, `-converter`, `-docs`), and runs the steps below. A developer or test run of the stack never loads that file and keeps building the working tree. The reset is the one moment the demonstration is already empty and its users already signed out, so the update costs no extra outage. It runs on the host because a container cannot replace its own image or its neighbours without the Docker socket, which is host-root access and is never mounted.
+A run pulls the published images unless `--no-pull` builds the working tree. Pulling loads `tests/container/docker-compose.demo-images.yml`, which names the images CI publishes on every passing merge to `main` (`ghcr.io/ballardr/reqtrackmanager-backend`, `-frontend`, `-mcp-server`, `-converter`, `-docs`), and runs the steps below. A developer or test run of the stack never loads that file and keeps building the working tree. The reset is the one moment the demonstration is already empty and its users already signed out, so the update costs no extra outage. It runs on the host because a container cannot replace its own image or its neighbours without the Docker socket, which is host-root access and is never mounted.
 
 ```mermaid
 flowchart TD
@@ -207,7 +211,7 @@ flowchart LR
     T --> V["demo.sh --view-metrics"]
 ```
 
-**What the metrics can say.** Request count and latency per route template, method and status (`http_requests_total`, `http_request_duration_seconds`), shed requests, requirement and change request transitions, sign-in results (`login_attempts_total`), database statements by operation, and pool and memory gauges. They show which screens' routes are used and how the server behaves. They cannot say who did something or why: no metric carries a user, record, title, code or search text. Pair them with Microsoft Clarity (below) for on-screen behaviour, matching the two by time only.
+**What the metrics can say.** Request count and latency per route template, method and status (`http_requests_total`, `http_request_duration_seconds`), shed requests, requirement and change request transitions, sign-in results by method (`login_attempts_total{result,auth_method}`: password or single sign-on), the number of signed-in users with a request in the last five minutes (`active_users`, one series per worker: exact with the default single worker, and with several workers the maximum is a lower bound and the sum an upper bound), database statements by operation, and pool and memory gauges. They show which screens' routes are used and how the server behaves. They cannot say who did something or why: no metric carries a user, record, title, code or search text. Pair them with Microsoft Clarity (below) for on-screen behaviour, matching the two by time only.
 
 **The bundle.** `scripts/demo.sh --export-metrics [path]` (default `demo-metrics-<UTC timestamp>.tar.gz` in the current directory) writes:
 

@@ -1,12 +1,12 @@
 /**
  * Module: hooks/useCreatableRecordTypes
  *
- * Which record types a person may create and link from a record's Links panel: each type a link type from the
- * page's record reaches (the server's link options, already filtered by restriction, enabled modules and what the
+ * Which record types a person may create and link from a record's Links panel: each type reached by a link type
+ * from the page's record (the server's link options, already filtered by restriction, enabled modules and what the
  * caller may link) that the owning module can create (`modules/linkedRecordCreators`) and that the server says the
- * caller may create (`can_create` on each option's record type, the type's own record-table check). An empty list means the panel offers no create choice, so a
- * record never offers one that would be refused. The relationship that leads is the page record's module's preferred
- * one (`preferredLinkPhrases`), else a specific link type; the symmetric "Related to" leads only when it is all there is.
+ * caller may create (`can_create` on the option's record type). An empty list means the panel offers no create
+ * choice. The leading relationship is the page record module's preferred one (`preferredLinkPhrases`), else a
+ * specific link type; the symmetric "Related to" leads only when it is the only one.
  */
 import { useEffect, useMemo, useState } from "react";
 

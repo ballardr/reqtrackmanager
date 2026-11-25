@@ -1,16 +1,13 @@
 /**
  * Module: components/ScoringBandsEditor
  *
- * Edits one scoring model's rating bands (generic scoring-matrix core)
- * at org or project level. A band is a label, a lower
- * threshold (entered as a percentage of the model's maximum score) and a
- * tone from the shared `BadgeTone` palette. Client-side validation mirrors
- * the backend's `validate_scoring_bands` so mistakes show before saving.
+ * Edits one scoring model's rating bands at organisation or project level. A band is a label, a lower threshold (a
+ * percentage of the model's maximum score) and a tone from the shared `BadgeTone` palette. Client-side validation
+ * mirrors the backend's `validate_scoring_bands` so mistakes show before saving.
  *
- * Override visibility follows the style guide's "platform default vs.
- * override" pattern via `OverridePill`: the caller says whether the bands
- * shown are this level's own (`custom`) and what they otherwise inherit
- * from (`defaultLabel`); resetting clears the override.
+ * Override visibility follows the style guide's "platform default vs. override" pattern via `OverridePill`: the caller
+ * says whether the bands are this level's own (`custom`) and what they otherwise inherit from (`defaultLabel`);
+ * resetting clears the override.
  */
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -106,7 +103,7 @@ export function ScoringBandsEditor({
         <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel} platformFallback={platformFallback}
           onReset={() => void run(onReset)} disabled={busy} />
       </div>
-      <div className="definition-grid" style={{ gridTemplateColumns: "minmax(8rem, 1fr) 6.5rem 8rem 6rem max-content" }}>
+      <div className="definition-grid" style={{ gridTemplateColumns: "minmax(8rem, 1fr) 6.5rem 8rem 6rem max-content" /* grid-text-ok: the last column holds only the row's fixed-size buttons */ }}>
         <span className="definition-grid__head">Label</span>
         <span className="definition-grid__head">From (% of maximum)</span>
         <span className="definition-grid__head">Colour</span>

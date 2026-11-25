@@ -194,6 +194,87 @@ class SymbolOut(BaseModel):
     builtin_key: str | None
     is_builtin: bool
     sort_order: int
+    folder_id: UUID | None = None
+
+
+class SymbolLibraryRow(BaseModel):
+    """One symbol on the library page: the entry, the folder it is filed in, what kind of file it came from and how it is
+    used.
+
+    Attributes:
+        tier: Whose symbol it is from the viewer's place: `organization`, `project` (the project's own) or `inherited`
+            (a symbol of an ancestor project the project falls back to).
+        folder_path: The folder's path (names from the top, joined by `/`), or `None` at the top level. An organisation
+            symbol's folder belongs to the organisation; an inherited symbol is never filed (a folder is per-owner content).
+        file_type: `builtin` (drawn in code), `svg`, or `eps` / `pdf` (an upload converted to SVG when it was stored).
+        can_file: Whether the viewer's own folders may hold it (not a built-in, not another tier's).
+        usage_count: How many element types and elements refer to it (within the project, on a project's page).
+        used_by: The names of the owners (projects, or the organisation) that use it, when there are at most two.
+        usage_owner_count: How many owners use it.
+    """
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    name: str
+    builtin_key: str | None
+    is_builtin: bool
+    sort_order: int
+    tier: str
+    folder_id: UUID | None
+    folder_path: str | None
+    file_type: str
+    can_file: bool
+    usage_count: int
+    used_by: list[str]
+    usage_owner_count: int
+
+
+class SymbolLibraryFolderOut(BaseModel):
+    """A folder of the organisation that holds symbols the project's library offers (the read-only branch of a project's tree)."""
+
+    path: str
+    symbol_count: int
+
+
+class SymbolLibraryPageOut(BaseModel):
+    """A page of the symbol library after the filters and the sort.
+
+    Attributes:
+        items: The page's rows.
+        total: Rows matching the filters.
+        library_total: Rows in the library before any filter (tells an empty library from a filter with no match).
+        converter_available: Whether an EPS or PDF upload is accepted (the converter is configured).
+        organization_folders: A project's view only: the organisation's folders that hold symbols of its library, each
+            with how many; empty at the organisation level.
+    """
+
+    items: list[SymbolLibraryRow]
+    total: int
+    library_total: int
+    offset: int
+    limit: int
+    converter_available: bool
+    organization_folders: list[SymbolLibraryFolderOut]
+
+
+class SymbolUsageOwnerOut(BaseModel):
+    """One owner that uses a symbol: a project, the organisation, or the projects the viewer cannot open, together.
+
+    Element names are never listed (an element may be restricted); element type names are vocabulary.
+    """
+
+    kind: str
+    name: str
+    element_type_count: int
+    element_count: int
+    element_types: list[str]
+
+
+class SymbolUsageOut(BaseModel):
+    """Where a symbol is used: the owners, by name, with how many element types and elements each has using it."""
+
+    owners: list[SymbolUsageOwnerOut]
 
 
 # --- Elements, ports and connections ---------------------------------------
@@ -359,7 +440,7 @@ class ConnectionRef(BaseModel):
 class ConnectionOut(ProjectScopedRow):
     """A connection with its type and end names.
 
-    An end is `locked` when the viewer can no longer read it (only its code is shown) and `shared` when another
+    An end is `locked` when the viewer cannot read it (only its code is shown) and `shared` when another
     owner shares it with the project."""
 
     id: UUID
@@ -820,7 +901,7 @@ class ViewPort(BaseModel):
 class ViewNode(BaseModel):
     """A placed element as the diagram draws it.
 
-    A `locked` node is an element the viewer can no longer read: only its code is shown. `hidden` is a node a toggle
+    A `locked` node is an element the viewer cannot read: only its code is shown. `hidden` is a node a toggle
     switches off (kept in the placements, drawn on no export). `internal_connection_ids` are the connections wholly
     inside the element (drawn on no line)."""
 

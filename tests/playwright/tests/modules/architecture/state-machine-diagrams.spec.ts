@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { buttonHeightGeometry } from "../../../../../frontend/src/testing/buttonHeights";
-import { installCleanupHook, loginAs, logout, PASSWORD } from "../../e2e-workflows/helpers";
+import { chooseRecordAction, installCleanupHook, loginAs, logout, PASSWORD } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 import { clickMenuRow } from "../../menuTree";
 
@@ -183,8 +183,7 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect(list.getByText(/no initial state at the top level/)).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(list).toBeHidden();
-      await page.getByRole("button", { name: "Change status", exact: true }).click();
-      await clickMenuRow(page, "Move from Draft to Active");
+      await chooseRecordAction(page, "State machine diagram", "Activate directly");
       await expect(page.getByRole("alert").filter({ hasText: /cannot be activated until its errors are resolved/ })).toBeVisible();
       await expect(page.getByRole("button", { name: "Reload state machine diagram" })).toHaveCount(0);
     });
@@ -256,8 +255,7 @@ test.describe("System Architecture: state machine diagrams", () => {
     });
 
     await test.step("a sound diagram is activated", async () => {
-      await page.getByRole("button", { name: "Change status", exact: true }).click();
-      await clickMenuRow(page, "Move from Draft to Active");
+      await chooseRecordAction(page, "State machine diagram", "Activate directly");
       await expect(page.getByText("Active", { exact: true }).first()).toBeVisible();
       await expect(page.getByText(/moved to Active/).first()).toBeVisible();
     });

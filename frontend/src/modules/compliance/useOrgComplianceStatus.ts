@@ -2,18 +2,11 @@
  * Module: modules/compliance/useOrgComplianceStatus
  *
  * Shared, deduplicated fetch of `listOrgProjectComplianceStatus(orgId)`: the organisation's compliance widgets
- * (`OrgComplianceWidgets.tsx`) and the Compliance sections of the organisation overview need these exact rows and can
- * mount together, so one request serves them all and they cannot disagree if an assessment changes between two
- * separate requests resolving.
+ * (`OrgComplianceWidgets.tsx`) and the Compliance sections of the organisation overview can mount together, so one
+ * request serves them all and they cannot disagree between two requests.
  *
- * Deliberately a **self-contained hook backed by a tiny module-level
- * external store** (`useSyncExternalStore`), mirroring
- * `useComplianceNavVisibility.ts`'s own identical shape one directory up —
- * same "module-level cache + in-flight guard + `useSyncExternalStore`"
- * mechanism, just keyed by `orgId` instead of the current user's id, and
- * caching a resolved value per key rather than a single global one. A
- * `useEffect`, not a direct call during render, triggers the lazy fetch
- * (`getSnapshot` must stay pure per `useSyncExternalStore`'s own contract).
+ * A module-level external store (`useSyncExternalStore`) with a per-`orgId` cache and in-flight guard, the same shape
+ * as `useComplianceNavVisibility.ts`. A `useEffect` triggers the lazy fetch because `getSnapshot` must stay pure.
  */
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -56,11 +49,7 @@ function getSnapshot(orgId: string): ProjectComplianceStatus[] | null {
   return cache.get(orgId)?.data ?? null;
 }
 
-/** `null` while the (shared, deduplicated) fetch for this `orgId` is still
- * in flight; the rows once resolved (an empty array on either a genuinely
- * empty org or a fetch error — callers can't distinguish the two, matching
- * every other org-wide compliance list's own "swallow and render empty"
- * convention in this module). */
+/** `null` while the shared fetch for `orgId` is in flight; the rows once resolved (empty both for an empty organisation and on a fetch error, matching the module's other organisation-wide lists). */
 export function useOrgComplianceStatus(orgId: string): ProjectComplianceStatus[] | null {
   useEffect(() => {
     ensureFetchedFor(orgId);
@@ -68,14 +57,7 @@ export function useOrgComplianceStatus(orgId: string): ProjectComplianceStatus[]
   return useSyncExternalStore(subscribe, () => getSnapshot(orgId));
 }
 
-/** Forces a refetch for one org and notifies every subscriber once it
- * resolves — call after any action that could change this org's
- * project-compliance rows (e.g. an assessment update) while a page reading
- * this hook is mounted. No known call site yet (both current consumers are
- * read-only dashboards reached via fresh navigation), included for the same
- * reason `useComplianceNavVisibility.ts`'s own `refresh*` export exists:
- * cache invalidation should be a first-class part of the hook's contract,
- * not bolted on the first time it's needed. */
+/** Refetches one organisation's rows and notifies every subscriber; call after an action that changes its project-compliance rows while a page reading this hook is mounted. */
 export function refreshOrgComplianceStatus(orgId: string): void {
   if (!cache.has(orgId)) return;
   cache.delete(orgId);

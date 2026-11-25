@@ -1,36 +1,47 @@
 /**
  * Module: modules/stakeholders/StakeholderGroupsPanel
  *
- * The Stakeholder group manager: the group tree with create, rename,
- * move, reorder, "one branch per stakeholder" and delete, the selected group's
- * members, and the "create groups from Organisation / group text" action. One
- * component serves both tiers — the organisation overview (`organizationId`) and
- * a project (`projectId`) — because the tree, rules and controls are identical;
- * only the API and which groups are editable differ.
+ * The Stakeholder group manager: the group tree with create, rename, move, reorder, "one branch per stakeholder" and
+ * delete, the selected group's members, and the "create groups from Organisation / group text" action. One component
+ * serves both tiers, the organisation overview (`organizationId`) and a project (`projectId`), because the tree, rules
+ * and controls are identical; only the API and the editable groups differ.
  *
- * In a project the tree also shows the organisation's groups, marked
- * "Organisation" and read-only (they are edited from the organisation view; their Export is on the People page); a
- * project group can be created under one. Deleting is a tier-1 `ConfirmDialog`
- * that states the member and child counts, since it removes memberships and
- * moves child groups up but never deletes a stakeholder. Every mutating control
- * always renders; the backend enforces the Stakeholder manage permission and a
- * 403 surfaces as a toast. The organisation view also offers the shared Export and Import of its own groups.
+ * Layout: the groups are the shared `FolderTreeList` grid (Name, Code, Members, Scope, Rule and a row actions menu), so
+ * columns line up whatever the names hold, and the selected group's members are a `DirectoryTable` under it. A group
+ * with child groups is a folder row (its name opens and closes it) and a group without is an item row (its name
+ * selects it); the Members count selects either, and the selected row is outlined. Collapsed folders are remembered
+ * per list (`useOpenFolders`); every folder starts open.
+ *
+ * In a project the tree also shows the organisation's groups, marked "Organisation" and read-only (edited from the
+ * organisation view; their Export is on the People page); a project group can be created under one. Deleting is a
+ * tier-1 `ConfirmDialog` stating the member and child counts, since it removes memberships and moves child groups up
+ * but never deletes a stakeholder. Mutating controls always render; the backend enforces the Stakeholder manage
+ * permission and a 403 surfaces as a toast. The organisation view also offers the shared Export and Import of its
+ * groups.
  */
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CollectedLink } from "../../api/artefactLinks";
+import { ActionMenu, type ActionMenuItem } from "../../components/ActionMenu";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
+import { FolderTreeList, type FolderTreeColumn } from "../../components/FolderTreeList";
 import { ListActions } from "../../components/ListActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 import { Spinner } from "../../components/Spinner";
-import { TreeView } from "../../components/TreeView";
+import { cycleSort } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useOpenFolders } from "../../hooks/useOpenFolders";
+import { useUrlSort } from "../../hooks/useUrlFilter";
+import type { FolderNode } from "../../utils/reportFolders";
+import { sortRows, type SortValue } from "../../utils/sortRows";
 import { orgStakeholderApi, orgStakeholderGroupApi, projectStakeholderApi, projectStakeholderGroupApi } from "./api";
-import { type GroupNode, buildGroupTree } from "./groupTree";
+import { type GroupNode, ancestorsOf, buildGroupTree, groupFolderNodes, parentGroupIds } from "./groupTree";
 import { GroupsFromTextModal } from "./GroupsFromTextModal";
 import { StakeholderGroupFormModal } from "./StakeholderGroupFormModal";
 import type {
@@ -38,6 +49,20 @@ import type {
 } from "./types";
 import { STAKEHOLDER_SCOPE_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
+import { MarkdownView } from "../../components/MarkdownView";
+
+const MEMBER_SORT_KEYS = ["name", "membership"] as const;
+
+/** The text of the Membership column: a direct member of the group, or one of a group beneath it. */
+function membershipLabel(member: StakeholderGroupMember): string {
+  return member.direct ? "Direct" : "Via a child group";
+}
+
+/** The sortable value of each member column, as its cell shows it. */
+const MEMBER_SORT_VALUES: Record<string, (member: StakeholderGroupMember) => SortValue> = {
+  name: (m) => m.name,
+  membership: membershipLabel,
+};
 
 type FormState = { initial?: StakeholderGroup; parentId?: string | null } | null;
 
@@ -74,6 +99,10 @@ export function StakeholderGroupsPanel({
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
+  // The hook keeps a set of ids per list; here it holds the collapsed groups, so a new group under a parent is visible.
+  const [collapsed, setCollapsed] = useOpenFolders(`stakeholder-groups-collapsed-${tier}-${scopeId}`);
+  const [memberSort, setMemberSort] = useUrlSort(MEMBER_SORT_KEYS);
+  const opened = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -109,8 +138,29 @@ export function StakeholderGroupsPanel({
   }, [stakeholderApi, scopeId]);
 
   const tree = useMemo(() => buildGroupTree(groups ?? []), [groups]);
+  const nodes = useMemo(() => groupFolderNodes(tree), [tree]);
+  const expanded = useMemo(() => new Set(parentGroupIds(tree).filter((id) => !collapsed.has(id))), [tree, collapsed]);
+  // A group's siblings of its own tier, in order: Move up and Move down act among them.
+  const siblingsById = useMemo(() => {
+    const found = new Map<string, GroupNode[]>();
+    const visit = (level: GroupNode[]) => {
+      for (const n of level) {
+        found.set(n.id, level.filter((g) => g.scope === n.scope));
+        visit(n.children);
+      }
+    };
+    visit(tree);
+    return found;
+  }, [tree]);
   const selected = groups?.find((g) => g.id === selectedId) ?? null;
   const editable = (g: StakeholderGroup) => g.scope === tier;
+
+  // A group opened from a link is shown, so the folders above it are opened once the list has loaded.
+  useEffect(() => {
+    if (opened.current || !groups || !initialGroupId) return;
+    opened.current = true;
+    for (const parent of ancestorsOf(groups, initialGroupId)) setCollapsed(parent.id, false);
+  }, [groups, initialGroupId, setCollapsed]);
 
   async function act(action: () => Promise<unknown>, success: string, failure: string): Promise<boolean> {
     try {
@@ -132,6 +182,7 @@ export function StakeholderGroupsPanel({
       else createdId = (await groupApi.create(scopeId, values)).id;
       showToast(form?.initial ? "Group updated." : "Group created.");
       setForm(null);
+      if (values.parent_group_id) setCollapsed(values.parent_group_id, false);
       if (createdId && projectId) {
         await commitQuickLinks(createdId, quickLinks);
         await commitTags(createdId, tags);
@@ -166,6 +217,80 @@ export function StakeholderGroupsPanel({
   if (groups === null) return <Spinner />;
 
   const memberIds = new Set((members ?? []).map((m) => m.stakeholder_id));
+  // With no sort chosen the members read by name.
+  const shownMembers = sortRows(members ?? [], memberSort ?? { key: "name", direction: "asc" }, MEMBER_SORT_VALUES);
+
+  const membersButton = (group: GroupNode) => (
+    <button
+      type="button" className="btn btn-sm" aria-label={`Show members of ${group.name}`} title={`Show members of ${group.name}`}
+      aria-pressed={group.id === selectedId} onClick={() => setSelectedId(group.id)}
+    >
+      {group.member_count}
+    </button>
+  );
+  const scopeBadge = (g: GroupNode) => (g.scope !== tier ? <Badge>{STAKEHOLDER_SCOPE_LABEL[g.scope]}</Badge> : null);
+  const ruleBadge = (g: GroupNode) =>
+    g.exclusive_children ? <Badge title="A stakeholder can be in only one child group.">One branch</Badge> : null;
+
+  // A folder row carries its group as `item`, so one renderer serves folders and items.
+  const columns: FolderTreeColumn<GroupNode>[] = [
+    {
+      id: "code", header: "Code", width: "minmax(8rem, 12rem)",
+      render: (g) => <ScopedRecordCode record={g} />,
+      renderFolder: (node) => (node.item ? <ScopedRecordCode record={node.item} /> : null),
+    },
+    {
+      id: "members", header: "Members", width: "minmax(5rem, 7rem)",
+      render: membersButton,
+      renderFolder: (node) => (node.item ? membersButton(node.item) : null),
+    },
+    ...(projectId
+      ? [{
+        id: "scope", header: "Scope", width: "minmax(6rem, 9rem)", hideBelow: true,
+        render: scopeBadge,
+        renderFolder: (node: FolderNode<GroupNode>) => (node.item ? scopeBadge(node.item) : null),
+      }]
+      : []),
+    {
+      id: "rule", header: "Rule", width: "minmax(6rem, 9rem)", hideBelow: true,
+      render: ruleBadge,
+      renderFolder: (node) => (node.item ? ruleBadge(node.item) : null),
+    },
+  ];
+
+  /** The row's actions menu; a group of the other tier (the organisation's, in a project) has none. */
+  function actionsFor(group: GroupNode) {
+    return editable(group) ? <ActionMenu triggerLabel={`Actions for ${group.name}`} items={menuFor(group)} /> : null;
+  }
+
+  function menuFor(group: GroupNode): ActionMenuItem[] {
+    const siblings = siblingsById.get(group.id) ?? [];
+    const index = siblings.findIndex((g) => g.id === group.id);
+    const moveFailed = "Could not move this group.";
+    return [
+      { label: "Edit", onSelect: () => { setFormError(null); setForm({ initial: group }); } },
+      { label: `Add group under ${group.name}`, onSelect: () => { setFormError(null); setForm({ parentId: group.id }); } },
+      { label: "Move up", disabled: index <= 0, onSelect: () => void act(() => groupApi.move(scopeId, group.id, "up"), "Group moved.", moveFailed) },
+      { label: "Move down", disabled: index === siblings.length - 1, onSelect: () => void act(() => groupApi.move(scopeId, group.id, "down"), "Group moved.", moveFailed) },
+      { label: "Delete", danger: true, onSelect: () => setDeleting(group) },
+    ];
+  }
+
+  const memberColumns: DirectoryColumn<StakeholderGroupMember>[] = [
+    { key: "name", label: "Name", sortable: true, render: (m) => <PeopleKindLabel kind="stakeholder" name={m.name} /> },
+    { key: "membership", label: "Membership", sortable: true, render: membershipLabel },
+    {
+      key: "actions", label: <span className="sr-only">Actions</span>,
+      render: (m) => selected && m.direct && editable(selected) ? (
+        <button
+          type="button" className="btn btn-sm" aria-label={`Remove ${m.name} from ${selected.name}`}
+          onClick={() => act(() => groupApi.removeMember(scopeId, selected.id, m.stakeholder_id), "Removed from the group.", "Could not remove this stakeholder.")}
+        >
+          Remove
+        </button>
+      ) : null,
+    },
+  ];
 
   return (
     <div className="stack">
@@ -177,71 +302,36 @@ export function StakeholderGroupsPanel({
         {organizationId && <ListActions organizationId={organizationId} recordType="stakeholder_group" onImported={reload} />}
       </div>
 
-      {groups.length === 0 ? (
-        <p className="text-muted">
-          No Stakeholder groups yet. Groups classify stakeholders — for example by client or business group — and
-          can be nested.
-        </p>
-      ) : (
-        <div role="tree" aria-label="Stakeholder groups">
-          <TreeView<GroupNode>
-            nodes={tree}
-            nodeLabel={(n) => n.name}
-            renderNode={(n) => (
-              <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
-                <button
-                  className="btn" style={{ fontWeight: n.id === selectedId ? 700 : 400 }}
-                  aria-pressed={n.id === selectedId} onClick={() => setSelectedId(n.id)}
-                >
-                  {n.name}
-                </button>
-                <span className="text-muted" style={{ fontSize: "0.85rem" }}><ScopedRecordCode record={n} /></span>
-                <span className="text-muted">{n.member_count}</span>
-                {n.scope !== tier && <Badge>{STAKEHOLDER_SCOPE_LABEL[n.scope]}</Badge>}
-                {n.exclusive_children && <Badge title="A stakeholder can be in only one child group.">One branch</Badge>}
-                {editable(n) && (
-                  <>
-                    <button className="btn btn-sm btn-icon" title={`Add a group under ${n.name}`} aria-label={`Add a group under ${n.name}`}
-                      onClick={() => { setFormError(null); setForm({ parentId: n.id }); }}><Plus /></button>
-                    <button className="btn btn-sm btn-icon" title={`Edit ${n.name}`} aria-label={`Edit ${n.name}`}
-                      onClick={() => { setFormError(null); setForm({ initial: n }); }}><Pencil /></button>
-                    <button className="btn btn-sm btn-icon" title={`Move ${n.name} up`} aria-label={`Move ${n.name} up`}
-                      onClick={() => act(() => groupApi.move(scopeId, n.id, "up"), "Group moved.", "Could not move this group.")}><ArrowUp /></button>
-                    <button className="btn btn-sm btn-icon" title={`Move ${n.name} down`} aria-label={`Move ${n.name} down`}
-                      onClick={() => act(() => groupApi.move(scopeId, n.id, "down"), "Group moved.", "Could not move this group.")}><ArrowDown /></button>
-                    <button className="btn btn-sm btn-icon" title={`Delete ${n.name}`} aria-label={`Delete ${n.name}`}
-                      onClick={() => setDeleting(n)}><Trash2 /></button>
-                  </>
-                )}
-              </span>
-            )}
-          />
-        </div>
-      )}
+      <FolderTreeList<GroupNode>
+        nodes={nodes}
+        order="given"
+        label="Stakeholder groups"
+        expanded={expanded}
+        onToggle={(id, open) => setCollapsed(id, !open)}
+        folderIcon={() => <Users aria-hidden="true" />}
+        itemView={() => ({ icon: <Users aria-hidden="true" />, iconLabel: "Stakeholder group" })}
+        onOpenItem={(g) => setSelectedId(g.id)}
+        isSelected={(g) => g.id === selectedId}
+        columns={columns}
+        emptyText="No Stakeholder groups yet. Groups classify stakeholders — for example by client or business group — and can be nested."
+        renderItemActions={actionsFor}
+        renderFolderActions={(node) => (node.item ? actionsFor(node.item) : null)}
+      />
 
       {selected && (
         <div className="stack" style={{ gap: "var(--space-3)" }} aria-label={`Members of ${selected.name}`} role="region">
           <h2 style={{ margin: 0, fontSize: "1rem" }}>Members of {selected.name}</h2>
-          {selected.description && <p className="text-muted" style={{ margin: 0 }}>{selected.description}</p>}
-          {members === null ? <Spinner /> : members.length === 0 ? (
-            <p className="text-muted" style={{ margin: 0 }}>No stakeholders in this group yet.</p>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-              {members.map((m) => (
-                <li key={m.stakeholder_id}>
-                  {m.name}
-                  {!m.direct && <span className="text-muted"> · via a child group</span>}
-                  {m.direct && editable(selected) && (
-                    <button
-                      className="btn" style={{ marginLeft: "var(--space-3)" }} aria-label={`Remove ${m.name} from ${selected.name}`}
-                      onClick={() => act(() => groupApi.removeMember(scopeId, selected.id, m.stakeholder_id), "Removed from the group.", "Could not remove this stakeholder.")}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+          {selected.description && <MarkdownView className="text-muted" text={selected.description} />}
+          {members === null ? <Spinner /> : (
+            <DirectoryTable
+              ariaLabel={`Members of ${selected.name}`}
+              columns={memberColumns}
+              rows={shownMembers}
+              rowKey={(m) => m.stakeholder_id}
+              sort={memberSort}
+              onSort={(key) => setMemberSort(cycleSort(memberSort, key as (typeof MEMBER_SORT_KEYS)[number]))}
+              emptyState={<p className="text-muted" style={{ margin: 0 }}>No stakeholders in this group yet.</p>}
+            />
           )}
           {editable(selected) && (
             <div className="row" style={{ gap: "var(--space-3)", alignItems: "flex-end" }}>

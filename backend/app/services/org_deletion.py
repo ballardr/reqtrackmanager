@@ -1,50 +1,24 @@
 """
 Module: services.org_deletion
 
-Application-level cleanup required before an organisation row can be hard-
-deleted (`routers/orgs.py::delete_organization`) — everything a database
-foreign-key cascade can't do on its own:
+Application-level cleanup required before an organisation row is hard-deleted
+(`routers/orgs.py::delete_organization`): everything a database cascade cannot do.
 
-- Removing the stored output of every background custom report run (`GeneratedReport.output_key`), whose
-  rows a database cascade deletes but whose objects it would leave behind.
-- Removing every uploaded file's actual bytes from storage, not just its
-  `FileAsset` row (a DB-only cascade would silently orphan the object in
-  S3/local storage — see docs/soc2/policies/data-retention-and-disposal-
-  policy.md's disposal-completeness requirement).
-- Descoping/auto-revoking every Personal Access Token that reaches this
-  org — `PersonalAccessToken.allowed_organization_ids` is a JSONB list of
-  id strings chosen by the token's own owner, not a foreign key, so nothing
-  else would ever clean it up.
-- Deleting `ReviewComment`/`Subscription` rows that reference a requirement
-  or change request *polymorphically* (a plain UUID column, not a real FK)
-  — these would otherwise become silently orphaned rather than erroring,
-  which is its own disposal-completeness gap even though it wouldn't break
-  the delete itself.
-- Deleting `ArtefactLink` rows that touch any of the org's artefacts (core
-  requirements/actions, plus every module's via its registered
-  `artefact_ids_in_organization` hook) or use one of its link types —
-  `ArtefactLink` endpoints are polymorphic UUIDs with no FK, and a link
-  type still referenced made the org delete fail (found 2026-10-05). Module
-  artefacts' comments/subscriptions are swept the same way.
-- Deleting the org's artefact-type link rules and their entries before its
-  link types: an entry's foreign key to a link type has no cascade (a deleted
-  type must never dangle in a rule), so the database cannot order the two
-  itself.
-- Deleting the org's projects explicitly, before the org row, so project-
-  scoped rows never outlive the org-level definitions they reference
-  (cascade order between the two isn't otherwise fixed).
-- Nulling `Organization.logo_file_id`/`login_background_file_id` before any
-  of the org's `FileAsset` rows are touched — both are self-referential FKs
-  back to `file_assets` with no `ondelete` action, so deleting the file they
-  point at would otherwise raise an `IntegrityError` partway through the
-  file-deletion loop below.
+- Remove the stored output of background custom report runs (`GeneratedReport.output_key`) and every uploaded
+  file's bytes from storage, not only its `FileAsset` row (disposal completeness, data-retention policy).
+- Deactivate and archive the organisation's service users, which belong to it alone.
+- Descope or revoke every Personal Access Token that reaches the organisation
+  (`allowed_organization_ids` is a JSONB list, not a foreign key).
+- Delete `ReviewComment`/`Subscription` rows that reference records polymorphically (no FK), and
+  `ArtefactLink` rows that touch the organisation's artefacts (core and every module's, via
+  `artefact_ids_in_organization`) or use its link types.
+- Delete link rules and their entries before the link types (the entry FK has no cascade), and the
+  projects before the organisation row.
+- Null `Organization.logo_file_id`/`login_background_file_id` before any `FileAsset` is deleted (FKs to
+  `file_assets` with no `ondelete`).
 
-Everything else scoped to this organisation (projects, requirements,
-change requests, groups, report templates, custom field definitions,
-notifications, ...) is removed by the `ondelete="CASCADE"`/`"SET NULL"`
-foreign keys declared across the relevant models once the caller deletes
-the `Organization` row itself — see docs/decisions.md for the full design
-and the reasoning behind each cascade choice.
+Everything else scoped to the organisation is removed by the `ondelete="CASCADE"`/`"SET NULL"` foreign keys
+once the `Organization` row is deleted (`docs/decisions.md`).
 """
 
 from __future__ import annotations
@@ -70,6 +44,8 @@ from app.models.requirement_link_type import (
     ArtefactTypeLinkRuleEntry,
     RequirementLinkTypeDefinition,
 )
+from app.models.service_user import ServiceUserProfile
+from app.models.user import User
 from app.modules.registry import get_module_artefact_ids_in_organization
 from app.services.files import delete_file, get_storage_backend
 
@@ -112,21 +88,9 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
     db.execute(delete(ArtefactTypeLinkRuleEntry).where(ArtefactTypeLinkRuleEntry.rule_id.in_(rule_ids)))
     db.execute(delete(ArtefactTypeLinkRule).where(ArtefactTypeLinkRule.organization_id == organization_id))
 
-    # Organization.logo_file_id/login_background_file_id are self-referential
-    # FKs to file_assets with no ondelete action (models/organization.py) —
-    # deleting a FileAsset row still referenced there raises a raw
-    # IntegrityError, which a hardening-review pass found is only ever
-    # discovered via SQLAlchemy's autoflush partway through the loop below,
-    # by which point that loop's earlier storage-backend deletes (which
-    # aren't transactional/rollback-able) had already run: an org that ever
-    # had a logo or login-background image set could not be hard-deleted at
-    # all, and the crash destroyed some of its other files' storage bytes
-    # without the org (or those rows) actually being deleted. Nulling both
-    # columns first, before any FileAsset is touched, removes the reference
-    # so the loop below can never hit this — a raw Core update rather than
-    # loading the ORM object, since the caller may already hold its own
-    # `Organization` instance in the session identity map and this only
-    # needs to affect what's persisted before the row itself is deleted.
+    # Organization.logo_file_id/login_background_file_id are FKs to file_assets with no ondelete action:
+    # clearing them first keeps the FileAsset deletes below from failing midway, after storage bytes
+    # (which cannot be rolled back) are already gone. A Core update avoids touching the caller's loaded Organization.
     db.execute(
         update(Organization)
         .where(Organization.id == organization_id)
@@ -161,13 +125,18 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
         if not pat.allowed_organization_ids:
             pat.revoked_at = datetime.now(UTC)
 
-    # Projects go first, explicitly, so everything project-scoped (including
-    # module rows such as project pain-point type overrides) is removed
-    # before the org row's own cascade reaches org-level definitions. Left
-    # to the org row's cascade, Postgres's order between the two is not
-    # fixed: reaching a definition first nulled a project override's FK into
-    # a CHECK violation (or was blocked by rows still referencing it), so
-    # the org delete failed (found 2026-10-05).
+    # A service user belongs to this organisation alone; with the organisation gone nothing can reach it, so the
+    # account is deactivated and archived (its profile row goes with the organisation) rather than left active.
+    db.execute(
+        update(User).where(
+            User.is_service_account.is_(True),
+            User.id.in_(select(ServiceUserProfile.user_id).where(ServiceUserProfile.organization_id == organization_id)),
+        ).values(is_active=False, is_archived=True, deactivated_at=datetime.now(UTC))
+    )
+
+    # Projects go first so project-scoped rows (including module rows such as project type overrides)
+    # are removed before the org row's cascade reaches the org-level definitions they reference; the
+    # cascade order between the two is not fixed and can violate a CHECK or FK.
     db.execute(delete(Project).where(Project.organization_id == organization_id))
 
     db.flush()

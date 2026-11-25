@@ -1,10 +1,9 @@
 /**
  * Module: components/FileFilterFields
  *
- * The filter fields the project and organisation Files pages share, laid out inside a `FilterPanel`: source, file
- * type, uploader and the upload window (the file-name search is the panel's own search box).
- *
- * The state lives in the page (`useFileFilters`), so each page adds its own scope control beside these fields.
+ * The filter fields the project and organisation Files pages share inside a `FilterPanel`: source, file type,
+ * uploader and upload window (file-name search is the panel's own box). The state lives in the page
+ * (`useFileFilters`), so each page adds its own scope control beside them.
  */
 import { PROJECT_FILE_SOURCES, type ProjectFileUploader } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";

@@ -2,18 +2,15 @@
  * Module: utils/reportSetupRows
  *
  * The one row model of the Report setup list: every report a scope can arrange (module and platform reports, custom
- * layouts and report packs) as a single typed row, merged on the client from the three lists the server already serves
- * (placements, layouts, packs) and the filter that narrows them.
+ * layouts, report packs) as a single typed row, plus the filter that narrows them.
  *
  * Responsibilities:
- * - Join the placement list (which holds the folder a report files under now and whether a module report is hidden)
- *   with the layout and pack lists (which hold what only the owner can change) by the report's placement key.
- * - Add the layouts and packs a project has hidden, which the placement list leaves out, so they can be shown again.
- * - Say, per row, which of the row's actions apply (`rowCan`), so the list and its stories share one rule.
+ * - Join the placement list (folder, hidden state) with the layout and pack lists (what only the owner can change)
+ *   by placement key, and add the hidden layouts and packs the placement list leaves out.
+ * - Say which actions apply to a row (`rowCan`), so the list and its stories share one rule.
  *
- * Design decisions: a client-side merge, not a combined endpoint: the three lists are small and each is already
- * authorised per row by the server (a 403 on any shows the load failure). A hidden row keeps its folder so it does not
- * jump to the top level. Pure functions over plain data.
+ * Design decisions: a client-side merge, not a combined endpoint: the lists are small and each is authorised per row
+ * by the server. A hidden row keeps its folder. Pure functions over plain data.
  */
 import type { LayoutOrigin } from "../api/reportLayouts";
 import type { ReportLayoutSummary } from "../api/reportLayouts";

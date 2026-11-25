@@ -1,20 +1,12 @@
 """
 Module: modules.product_feedback.ratings
 
-Derives a request's scores from its scoring levels (one per axis) and its weighted demand, using core's scoring
-service so the effective models, rating bands (project -> nearest ancestor -> organisation -> registry default)
-and the level weights all apply with no request-specific maths.
-
-A score is derived on every read, never stored: re-weighting a level or editing a band re-scores every request at
-once, and several models are scored side by side from the same data (`scoring_model` picks them when viewing,
-else the project's enabled models), so ICE and RICE can be compared without anything being written. One
-`RatingContext` is loaded per project (or per organisation, for the inbox) and reused for every request in it, so
-a list costs a fixed number of statements however many requests it holds.
-
-The Demand axis is derived (`scoring.WEIGHTED_DEMAND_SOURCE`): with no level chosen manually it is the level the
-request's weighted demand falls in, by the thresholds in force for its project (the organisation's, unless the project sets its own).
-
-Dependencies: `services.scoring`, `scoring.py` (the scheme).
+Derives a request's scores from its scoring levels and weighted demand using
+core's scoring service (effective models, bands, level weights). Scores are
+derived on every read, never stored, and several models are scored side by side
+(`scoring_model`). One `RatingContext` per project or organisation serves a
+whole list in fixed statements. The Demand axis is the level the weighted demand
+falls in, unless a level is chosen manually.
 """
 
 from __future__ import annotations

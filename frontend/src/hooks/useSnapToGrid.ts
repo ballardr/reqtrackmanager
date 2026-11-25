@@ -9,10 +9,10 @@
  * - Give the props a `GraphCanvas` takes (grid size, setting, invert key).
  *
  * Design decisions:
- * - A per-viewer convenience: kept in `localStorage`, never sent to the server, and not part of any diagram, so it
- *   changes nothing another person sees and needs no bundle entry. Every storage call is wrapped; blocked storage means the
- *   choice lasts until the page is reloaded (a module-level copy serves reads) and the canvas still renders.
- * - Off by default. Switching it on moves no existing box.
+ * - A per-viewer convenience: kept in `localStorage`, never sent to the server and not part of any diagram, so it
+ *   needs no bundle entry. Every storage call is wrapped; blocked storage means the choice lasts until the page is
+ *   reloaded (a module-level copy serves reads) and the canvas still renders.
+ * - Off by default; switching it on moves no existing box.
  */
 import { useCallback, useSyncExternalStore } from "react";
 

@@ -8,7 +8,8 @@
  */
 import { useCallback, useState } from "react";
 
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { projectElementApi } from "./api";
@@ -21,7 +22,7 @@ import type { ElementFieldValues } from "./types";
  * @returns `error` (the last refusal, or null), `clearError`, and `create`, which the form's `onSave` calls.
  */
 export function useCreateElement(projectId: string, onCreated: (id: string) => void) {
-  const { showToast } = useToast();
+  const announceCreated = useCreatedToast(projectId, "architecture_element");
   const commitQuickLinks = useCommitQuickLinks(projectId, "architecture_element");
   const commitTags = useCommitTags(projectId, "architecture_element");
   const [error, setError] = useState<string | null>(null);
@@ -29,13 +30,13 @@ export function useCreateElement(projectId: string, onCreated: (id: string) => v
     setError(null);
     try {
       const created = await projectElementApi(projectId).create({ ...values, activate: extras.activate, ports: extras.ports });
-      showToast("Element created.");
+      announceCreated("Element", created);
       await commitQuickLinks(created.id, extras.quickLinks);
       await commitTags(created.id, extras.tags);
       onCreated(created.id);
     } catch (err) {
       setError(toErrorMessage(err, "Could not create the element."));
     }
-  }, [projectId, showToast, commitQuickLinks, commitTags, onCreated]);
+  }, [projectId, announceCreated, commitQuickLinks, commitTags, onCreated]);
   return { error, clearError: useCallback(() => setError(null), []), create };
 }

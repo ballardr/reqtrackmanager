@@ -1,35 +1,30 @@
 """
 Module: modules.context_strategy.edits
 
-The list queries and create / edit paths of Context & Strategy's five record types, shared by the HTTP
-endpoints (`project_router`, and `router` for the organisation's own records) and the record-table export and
-import (`record_tables`) so a filter or rule added here reaches both.
+The list queries and create and edit paths of the five record types, shared by the HTTP endpoints (`project_router`, and
+`router` for organisation records) and the record-table export and import (`record_tables`) so a filter or rule added
+here reaches both.
 
 Responsibilities:
-- Select a project's Strategies, Future States, Guiding Principles, Pain Points or Open Questions the way the
-  list endpoint does (own project, project scope, archived only when asked, oldest first), and the
-  organisation's own Strategies, Future States and Guiding Principles the same way.
-- Create a Strategy, Future State, Guiding Principle (a project's or the organisation's, named by a
-  `RecordOwner`) or a Pain Point or Open Question (a project's) with its principal validation, and record the
-  `created` audit event.
-- Edit one in place with the checks the edit endpoint makes (the content lock past review, the closed
-  lifecycle of a Pain Point and an Open Question, the principal check, the version lock row), and record the
-  `updated` audit event.
+- Select a project's Strategies, Future States, Guiding Principles, Pain Points or Open Questions as the list endpoint does
+  (own project, project scope, archived only when asked, oldest first), and the organisation's own Strategies, Future
+  States and Guiding Principles likewise.
+- Create a Strategy, Future State or Guiding Principle (a project's or the organisation's, named by a `RecordOwner`) or a
+  Pain Point or Open Question with principal validation, and record the `created` audit event.
+- Edit one in place with the endpoint's checks (content lock past review, the closed lifecycle of a Pain Point and an
+  Open Question, principal check, version lock row) and record the `updated` audit event.
 
 Design decisions:
-- Strategy, Future State and Guiding Principle live at two tiers, so their paths take a `RecordOwner` (the
-  `*_project_*` names are the project wrappers the project endpoints and the import use); the rules about the
-  record's own state are the same at both.
-- Nothing here commits and nothing here checks who may do it: the caller owns the transaction and the role
-  gate (the endpoint's `require_*_manage_role`, the import's `can_update`), because the gates differ by caller
-  context while the rules about the record's own state do not.
-- A refusal is an `HTTPException` (409 for a locked record, 400 for an unusable Pain Point type), the shape the
-  endpoints already answered with and the import turns into that row's error.
-- Edits mirror the underlying `service` functions' "left `None` means unchanged" convention; a nullable field
-  (an owner, a target date, a due date) is changed only when its `*_explicitly_set` flag is true.
+- Strategy, Future State and Guiding Principle live at two tiers, so their paths take a `RecordOwner` (the `*_project_*`
+  names are project wrappers for the endpoints and the import).
+- Nothing here commits or checks who may do it: the caller owns the transaction and the role gate (the endpoint's
+  `require_*_manage_role`, the import's `can_update`), because gates differ by caller while the record-state rules do not.
+- A refusal is an `HTTPException` (409 for a locked record, 400 for an unusable Pain Point type), which the import turns
+  into that row's error.
+- Edits follow `service`'s "left `None` means unchanged" convention; a nullable field (owner, target date, due date)
+  changes only when its `*_explicitly_set` flag is true.
 
-Dependencies: `modules.context_strategy.service` (the create / version / update functions),
-`services.principals`, `services.audit`.
+Dependencies: `modules.context_strategy.service`, `services.principals`, `services.audit`.
 """
 
 from __future__ import annotations

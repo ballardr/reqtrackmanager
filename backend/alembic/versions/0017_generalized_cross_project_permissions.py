@@ -4,22 +4,16 @@ Revision ID: 0017
 Revises: 0016
 Create Date: 2026-08-28
 
-Two additions to the cross-project RBAC model, both requested directly (see
-docs/decisions.md's entry on this migration for the full identify->verify->
-remediate security review):
+Two additions to the cross-project RBAC model (docs/decisions.md's entry on this migration records the
+identify, verify, remediate security review):
 
-1. `project_member_sources` gains `mirror_mode`/`mirror_filter_role`, and
-   its `source_project_id` is no longer required to be a direct child of
-   the owning project (that constraint lives in application code —
-   `services.rbac`/`routers.projects` — not the database; see
-   `models.project.ProjectMemberSource`'s docstring). Existing rows are
-   backfilled to `mirror_mode = 'member_only'`, which reproduces their
-   original MEMBER-only behavior exactly.
-2. `project_group_members` gains `source_project_id` ("this group's
-   members = that project's own direct members"), and its two-way
-   "exactly one of user_id/org_group_id" check constraint becomes
-   three-way. Existing rows are unaffected (`source_project_id` is NULL for
-   all of them, same as before this column existed).
+1. `project_member_sources` gains `mirror_mode`/`mirror_filter_role`; its `source_project_id` need not be
+   a direct child of the owning project (application code enforces the rules in
+   `services.rbac`/`routers.projects`; see `models.project.ProjectMemberSource`). Existing rows are
+   backfilled to `mirror_mode = 'member_only'`, their original MEMBER-only behaviour.
+2. `project_group_members` gains `source_project_id` ("this group's members are that project's direct
+   members") and its "exactly one of user_id/org_group_id" check becomes a three-way check. Existing
+   rows have a NULL `source_project_id`.
 """
 
 from collections.abc import Sequence

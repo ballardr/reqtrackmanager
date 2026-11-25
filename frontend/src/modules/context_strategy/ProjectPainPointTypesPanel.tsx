@@ -1,16 +1,12 @@
 /**
  * Module: modules/context_strategy/ProjectPainPointTypesPanel
  *
- * The project-scoped tier of Pain Point's type vocabulary (§6.2) — a thin wrapper over the shared
- * `ProjectTypeVocabularyPanel` (`components/TypeVocabularyPanels.tsx`, which
- * documents the shared behaviour, including the client-side reorder and why
- * delete blocks instead of offering reassignment). Shows this project's
- * effective type list; a `pain_point_manager` can rename/reorder/disable an
- * org type's project-local override, add a project-local type, and delete an
- * override or local type.
+ * The project-scoped tier of Pain Point's type vocabulary: a thin wrapper over the shared
+ * `ProjectTypeVocabularyPanel` (`components/TypeVocabularyPanels.tsx`, which documents the shared behaviour). Shows
+ * the project's effective type list; a `pain_point_manager` can rename, reorder or disable an organisation type's
+ * project-local override, add a project-local type, and delete an override or local type.
  *
- * **Placement: `projectAdminSections` (Project Admin)**, matching
- * `DecisionTypesPanel.tsx` (Decided by: Agent).
+ * Placement is `projectAdminSections` (Project Admin), as `DecisionTypesPanel.tsx`.
  */
 import { ProjectTypeVocabularyPanel } from "../../components/TypeVocabularyPanels";
 import { projectPainPointApi } from "./api";

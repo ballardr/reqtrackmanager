@@ -1,14 +1,13 @@
 /**
  * Module: components/SettingsPopoverButton
  *
- * A small gear button that opens a `Popover` holding a few settings of one control, such as a column or a
- * view, instead of leaving them as a row of selects above it all the time. It is the settings counterpart
- * of `AddPopoverButton` (which adds a record): same anchored `Popover`, same Escape / outside-click closing.
+ * A small gear button that opens a `Popover` holding a few settings of one control (a column, a view) instead of a row
+ * of selects always shown. It is the settings counterpart of `AddPopoverButton`: same anchored `Popover`, same Escape
+ * and outside-click closing.
  *
- * Design decisions: the settings are hidden until opened, so the current choice must still show. The
- * `label` (accessible name and tooltip) states it, and `marked` draws an accent border when the choice
- * is not the default. Changes apply as they are made; there is no Save, so the popover has none. `defaultOpen`
- * opens it on first render (a row the person has just added, whose settings they must fill in).
+ * Design decisions: the settings are hidden until opened, so the current choice must still show: `label` (accessible
+ * name and tooltip) states it and `marked` draws an accent border when it is not the default. Changes apply as made, so
+ * there is no Save. `defaultOpen` opens it on first render (a row just added, whose settings must be filled in).
  */
 import { Settings } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";

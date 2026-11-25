@@ -4,18 +4,9 @@ Revision ID: 0059
 Revises: 0058
 Create Date: 2026-10-05
 
-Adds the Stakeholder tables: `stakeholder_type_definitions`/`project_stakeholder_types`
-(two-tier type vocabulary), `stakeholders`/`stakeholder_versions` (identity +
-temporal content, org or project scope, with the Influence/Interest scoring
-level references, engagement cadence and optional platform-user link) and the
-module-local comment/attachment tables.
-
-The versions' type references are `ON DELETE SET NULL` (see 0060 for why).
-
-Existing organisations get the default §10.2 types backfilled, since
-`on_org_created` only seeds organisations created afterwards. Scoring levels
-for the new `stakeholder` scheme are seeded by `sync_scoring_levels` at
-process start, so need no backfill here.
+Adds the Stakeholder tables (type vocabulary, versioned stakeholders with
+Influence/Interest levels, comment and file tables; type references are
+`ON DELETE SET NULL`, see 0060) and backfills default types.
 """
 
 from collections.abc import Sequence

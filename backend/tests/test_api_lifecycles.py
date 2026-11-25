@@ -35,11 +35,9 @@ def test_organization_create_and_get_lifecycle(client, admin_token):
 
 
 def test_organization_list_is_alphabetically_ordered(client, admin_token):
-    """`list_organizations` (routers/orgs.py) previously had no `ORDER BY`
-    on either branch, so Postgres was free to return rows in any order —
-    this is what caused a real CI failure in
-    `project-list-org-scoping.spec.ts`, whose org-filter dropdown
-    intermittently showed two orgs swapped (see docs/decisions.md). Creates
+    """`list_organizations` (routers/orgs.py) orders by name on both branches;
+    without an `ORDER BY` Postgres may return rows in any order, which made the
+    org-filter dropdown of `project-list-org-scoping.spec.ts` unstable. Creates
     orgs in reverse-alphabetical order deliberately, so a regression back to
     unordered/insertion-order behaviour would fail this immediately rather
     than coincidentally still pass. Covers both branches: the server-admin

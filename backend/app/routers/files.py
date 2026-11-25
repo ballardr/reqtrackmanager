@@ -1,30 +1,17 @@
 """
 Module: routers.files
 
-A single generic download endpoint for uploaded files (I-M-10), and `GET /{file_id}/details` (a picture's size and EXIF),
-which follows exactly the same read rule. Upload and
-delete are handled by context-specific endpoints elsewhere (org shared
-resources and org logo in routers/orgs.py, requirement attachments in
-routers/requirements.py, avatars in routers/auth.py) since each has a
-different payload/validation shape — but downloading only ever needs the
-file id, so it is unified here with context-sensitive authorization:
-- Organisation/platform logos and login-page background images are public
-  (no authentication required at all) — they're rendered on the pre-login
-  pages (`/login`, `/login/{slug}`) before any session exists, as well as in
-  authenticated UI chrome.
-- Avatars are viewable by any authenticated user (shown in shared UI chrome
-  regardless of org membership), but not anonymously.
+The generic download endpoint for uploaded files (I-M-10) and `GET /{file_id}/details` (a picture's size and
+EXIF), which follows the same read rule. Upload and delete are context-specific endpoints elsewhere (each has its
+own payload and validation); downloading needs only the file id, so authorisation is context-sensitive here:
+- Organisation/platform logos and login-page backgrounds are public: they render on the pre-login pages.
+- Avatars are viewable by any authenticated user (shared UI chrome), not anonymously.
 - Organisation shared resources require membership in that organisation.
-- Direct requirement attachments, requirement action attachments, and
-  comment attachments (on either a requirement or a change request's
-  discussion thread), require project view access to whichever project the
-  attachment's requirement/action/change request belongs to.
-- A module-owned attachment (e.g. Compliance evidence) is resolved to its owning project via `app.modules.
-  registry.resolve_module_file_project_id` — a generic hook every module
-  can implement, so this core, module-agnostic router never needs to
-  import a specific module's own file-link table directly (the same
-  "core code shouldn't need much modification per module" goal the rest
-  of the modular feature system already serves for HTTP endpoints).
+- Requirement, action and comment attachments (on a requirement or change request) require project view
+  access to the owning project.
+- A module-owned attachment (e.g. Compliance evidence) resolves to its project via
+  `app.modules.registry.resolve_module_file_project_id`, a generic hook, so this router never imports a
+  specific module's file-link table.
 """
 
 from __future__ import annotations
@@ -65,18 +52,12 @@ from app.services.rbac import (
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
-# Content types safe to render inline in a browser tab. Everything else is
-# forced to download as an attachment instead — `content_type` is whatever
-# the uploader's client claimed at upload time (never validated against the
-# actual bytes), so serving an arbitrary claimed type "inline" would let any
-# user with upload rights (a low bar: any project editor, or any user at all
-# for their own avatar) store e.g. `text/html` or `image/svg+xml` content
-# and have it execute as a same-origin page when a more privileged user
-# opens the link — including reading the `?token=` query parameter this
-# same endpoint accepts (see `get_current_user_header_or_query`) and
-# `localStorage`, i.e. a stored-XSS-to-account-takeover path. SVG is
-# deliberately excluded even though it's an image format, since it can
-# embed `<script>`/event-handler payloads the same way HTML can.
+# Content types safe to render inline in a browser tab; everything else is forced to download. `content_type`
+# is whatever the uploader's client claimed (never validated against the bytes), so serving an arbitrary
+# claimed type inline would let an uploader (any project editor, or any user for their own avatar) store
+# `text/html` or `image/svg+xml` that runs as a same-origin page when a more privileged user opens it,
+# reading the `?token=` query parameter this endpoint accepts and `localStorage` (stored XSS to account
+# takeover). SVG is excluded though it is an image format, since it can embed script and event handlers.
 _INLINE_SAFE_CONTENT_TYPES = {
     "image/png", "image/jpeg", "image/gif", "image/webp", "image/x-icon", "application/pdf",
 }
@@ -92,17 +73,12 @@ def _authorise_read(request: Request, db: Session, file_asset: FileAsset, curren
         HTTPException: 401 with no credential (anything but public branding), 403 without a role that reaches the file.
     """
     file_id = file_asset.id
-    # No server-admin bypass (I-M-05): uploaded files are "data within
-    # organisations". Logos and login-page background images are public,
-    # served with no authentication at all, since they're rendered on the
-    # pre-login pages (`/login`, `/login/{slug}`) before any session exists
-    # — also deliberately exempt from the Personal Access Token org-scope
-    # check below, for the same reason /auth/me and other personal,
-    # cross-org endpoints are (see docs/decisions.md's "Personal Access
-    # Tokens" section). The platform-wide defaults
-    # (`ServerSettings.default_logo_file_id` /
-    # `default_login_background_file_id`) belong in this same bucket for the
-    # same reason; their `FileAsset` rows are platform-owned (no organisation).
+    # No server-admin bypass (I-M-05): uploaded files are data within organisations. Logos and login-page
+    # backgrounds are public (no authentication) because they render on the pre-login pages, and are exempt
+    # from the Personal Access Token org-scope check below as /auth/me and other personal cross-org endpoints
+    # are (docs/decisions.md's "Personal Access Tokens" section). The platform-wide defaults
+    # (`ServerSettings.default_logo_file_id` / `default_login_background_file_id`) belong here too; their
+    # `FileAsset` rows are platform-owned (no organisation).
     is_public_branding = (
         db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None
         or db.scalar(select(Organization).where(Organization.login_background_file_id == file_id)) is not None
@@ -124,14 +100,10 @@ def _authorise_read(request: Request, db: Session, file_asset: FileAsset, curren
         is_avatar = db.scalar(select(User).where(User.avatar_file_id == file_id)) is not None
         if not is_avatar:
             if file_asset.is_org_resource:
-                # This endpoint resolves the current user via
-                # get_current_user_header_or_query_optional rather than one
-                # of services.rbac's require_* dependency factories (it
-                # needs to accept a ?token= query param for <img src> use,
-                # which those don't support) — so the Personal Access Token
-                # org-scope restriction those factories apply isn't
-                # automatic here and must be checked explicitly, in addition
-                # to (not instead of) the real RBAC role check below.
+                # The user is resolved through get_current_user_header_or_query_optional, not a
+                # services.rbac `require_*` factory (it must accept a `?token=` query parameter for
+                # `<img src>`), so the Personal Access Token org-scope restriction those factories apply is
+                # not automatic and is checked explicitly, in addition to the RBAC role check below.
                 check_pat_scope(request, owner_org_id)
                 _require_org_active(db, owner_org_id)
                 if not get_effective_org_roles(db, current_user.id, owner_org_id):
@@ -144,32 +116,18 @@ def _authorise_read(request: Request, db: Session, file_asset: FileAsset, curren
                     requirement = db.get(Requirement, link.requirement_id)
                     project_id = requirement.project_id if requirement is not None else None
                 elif project_id is None:
-                    # Not a requirement attachment — check whether it's a
-                    # requirement action attachment instead
-                    # (routers/actions.py::upload_action_attachment).
-                    # Regression fix: this branch didn't exist before, so an
-                    # action-attached file's project_id always stayed None
-                    # here and fell through to the unconditional 403 below —
-                    # action attachments could never actually be downloaded
-                    # by anyone, including the uploader, even though
-                    # upload/list/delete all worked. `RequirementAction` has
-                    # its own direct `project_id` (unlike a requirement
-                    # attachment, an action isn't owned by exactly one
-                    # requirement — it can be linked to several via an
-                    # untyped `ArtefactLink` row — so there's no single
-                    # requirement to resolve through).
+                    # Not a requirement attachment: check for a requirement action attachment
+                    # (routers/actions.py::upload_action_attachment). `RequirementAction` has its own
+                    # `project_id`: an action can be linked to several requirements via untyped
+                    # `ArtefactLink` rows, so there is no single requirement to resolve through.
                     action_link = db.scalar(select(RequirementActionFile).where(RequirementActionFile.file_id == file_id))
                     if action_link is not None:
                         action = db.get(RequirementAction, action_link.action_id)
                         project_id = action.project_id if action is not None else None
                     else:
-                        # Not an action attachment either — check whether
-                        # it's a comment attachment instead
-                        # (routers/requirements.py and
-                        # routers/change_requests.py's
-                        # upload_comment_attachment), which resolves to a
-                        # project via whichever entity the comment itself is
-                        # on.
+                        # Not an action attachment either: check for a comment attachment
+                        # (`upload_comment_attachment` in routers/requirements.py and routers/change_requests),
+                        # which resolves to a project through the entity the comment is on.
                         comment_link = db.scalar(select(CommentFile).where(CommentFile.file_id == file_id))
                         comment = db.get(ReviewComment, comment_link.comment_id) if comment_link else None
                         if comment is not None and comment.target_type == ReviewTargetType.REQUIREMENT:
@@ -179,11 +137,9 @@ def _authorise_read(request: Request, db: Session, file_asset: FileAsset, curren
                             cr = db.get(ChangeRequest, comment.target_id)
                             project_id = cr.project_id if cr is not None else None
                         if project_id is None:
-                            # Not a core attachment type either — try every
-                            # registered module's own file-ownership hook
-                            # (e.g. Compliance evidence) before
-                            # giving up. Generic by design: this router
-                            # never imports a specific module's models.
+                            # Not a core attachment type: try every registered module's file-ownership hook
+                            # (e.g. Compliance evidence). Generic by design: this router never imports a
+                            # specific module's models.
                             project_id = resolve_module_file_project_id(db, file_id)
                 if project_id is not None:
                     check_pat_scope_for_project(request, db, project_id)
@@ -251,13 +207,13 @@ def set_file_confidential(
 ) -> FileAsset:
     """Marks a file confidential (or clears the mark): a confidential file is never printed by a report.
 
-    The mark affects only reports' record-image rules; who may open the file is unchanged. Allowed to the person who
-    uploaded the file and to those who manage its project (an organisation resource: the organisation's admins). Anyone
-    else who can read the file gets 403, so the mark cannot be removed by a reader. Audited with the file id and the new
-    value, never the file name.
+    The mark affects only reports' record-image rules; who may open the file is unchanged. Allowed to the
+    uploader and to those who manage its project (an organisation resource: the organisation's admins); any
+    other reader gets 403, so a reader cannot remove the mark. Audited with the file id and new value, never
+    the file name.
 
-    A write: it takes the bearer header only, never the URL media token (which exists to load files into the page and
-    nothing else), and so also passes the policy acknowledgement gate.
+    A write: it takes the bearer header only, never the URL media token (which only loads files into the
+    page), and so also passes the policy acknowledgement gate.
 
     Raises:
         HTTPException: 401 without a credential, 404 for an unknown file, 403 when the caller may not change the mark.

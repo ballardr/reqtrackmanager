@@ -1,13 +1,12 @@
 """Tests for the core report framework (`services.report_framework`).
 
-Everything here runs against a synthetic `report_probe` module that is *not*
-Context & Strategy, so the framework is proven generic: parameter validation,
-registry validation (duplicate slug, unknown role/sub-component), the org gate,
-scope rules (readable vs every project, child projects, cross-org isolation),
-CSV/PDF rendering with injection neutralised and template branding, the
-catalogue endpoints and the MCP tools. The module's routers are mounted on a
-throw-away FastAPI app (the real app's routes are built once at import), while
-setup and the catalogue use the real app.
+Runs against a synthetic `report_probe` module (not a real content module), so the
+framework is proven generic: parameter validation, registry validation (duplicate
+slug, unknown role/sub-component), the org gate, scope rules (readable vs every
+project, child projects, cross-org isolation), CSV/PDF rendering with injection
+neutralised and template branding, the catalogue endpoints and the MCP tools. The
+module's routers are mounted on a throw-away FastAPI app (the real app's routes
+are built once at import); setup and the catalogue use the real app.
 """
 
 from __future__ import annotations

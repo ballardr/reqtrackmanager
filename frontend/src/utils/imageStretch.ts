@@ -1,14 +1,11 @@
 /**
  * Module: utils/imageStretch
  *
- * Tells whether an image block's Width and Height, both set, would stretch the picture out of its own shape.
- *
- * Responsibilities:
- * - Turn the block's width and height into one ratio when both are absolute lengths (cm or mm).
- * - Compare it with the picture's pixel ratio and report how far apart they are.
- *
- * Design decisions: a width as a share of the text cannot be compared without the page width, so it is never judged. The
- * result is advice for a warning, never an error: stretching is the author's choice.
+ * Tells whether an image block's Width and Height, both set, would stretch the
+ * picture out of its own shape: turns absolute lengths (cm or mm) into one ratio
+ * and compares it with the picture's pixel ratio. A width as a share of the text
+ * cannot be compared without the page width, so it is never judged. The result
+ * is advice for a warning, never an error: stretching is the author's choice.
  */
 
 /** How far (as a fraction) the ratios may differ before the form says the picture is stretched. */

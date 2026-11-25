@@ -1,8 +1,8 @@
 /**
  * Module: modules/architecture/useSymbolUpload
  *
- * Uploading a symbol to a project's or an organisation's library, shared by the Symbols settings panel and the symbol
- * picker so both show the same refusal and success wording. The server's sanitiser is the only gate (it refuses a file that is
+ * Uploading one symbol to a project's or an organisation's library from the symbol picker (the library page uploads several
+ * files through `SymbolUploadDialog`), and whether the person may change the library at all (`useCanUploadSymbols`). The server's sanitiser is the only gate (it refuses a file that is
  * not an SVG, holds a script or is too large; the upload endpoints need `architecture_admin` or
  * `architecture_org_admin`), so `useCanUploadSymbols` only decides whether the control is offered.
  */

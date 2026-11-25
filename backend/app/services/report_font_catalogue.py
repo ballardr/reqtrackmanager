@@ -1,23 +1,19 @@
 """
 Module: services.report_font_catalogue
 
-The one lookup for the report fonts on offer: the four bundled families plus the extra families found in the mounted
-font directory, with the server administrator's per-family settings laid over them.
+The one lookup for the report fonts on offer: the four bundled families plus the extra families in the mounted font
+directory, with the administrator's per-family settings laid over them.
 
 Responsibilities:
-- Keep this worker's scan of `REPORT_FONTS_DIR` current: scanned at start, forced by `rescan`, and re-read within
-  `REFRESH_SECONDS` of the directory changing, so every worker follows a changed mount without a restart.
-- `describe_fonts`: every family for the administrator (hidden and missing ones included).
-- `author_choices`: what an author's picker lists (bundled, then enabled extras).
-- `effective_families`: key to `FontFamily` with the administrator's name and generic applied, for the renderers.
-- `family_or_fallback` and `font_problems`: what a layout naming an absent family gets, and the warning it is shown.
-- `update_font`: upsert one family's settings.
+- Keep each worker's scan of `REPORT_FONTS_DIR` current (at start, on `rescan`, and within `REFRESH_SECONDS` of a change).
+- `describe_fonts` (administrator view), `author_choices` (picker), `effective_families` (renderers),
+  `family_or_fallback` and `font_problems` (absent families), `update_font`.
 
 Design decisions:
-- Only settings are in the database; the font files never are. A settings row whose files have gone stays, and the
-  family shows as missing to administrators only.
-- Hiding a family removes it from pickers but does not break a layout already using it.
-- A family that is gone falls back to the bundled family of the same generic kind and a note, never an error.
+- Only settings are stored, never font files; a settings row whose files are gone stays and shows as missing to
+  administrators only.
+- Hiding a family removes it from pickers without breaking a layout that uses it; a missing family falls back to the
+  bundled family of the same generic kind with a note, never an error.
 
 Dependencies: `report_fonts`, `report_font_directory`, `models.report_font`, `config`.
 """

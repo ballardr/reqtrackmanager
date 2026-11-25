@@ -3,13 +3,11 @@ Pins the bundled object storage's least-privilege credential: the backend's S3
 identity can use its own bucket and nothing else.
 
 Two layers:
-- `test_backend_identity_*` run against the live storage service the test stack
-  starts, authenticating exactly as the backend does (`STORAGE_S3_*`). Skipped
-  when that service is unreachable (for example host pytest, where the endpoint
-  `storage:9000` does not resolve; set `STORAGE_S3_ENDPOINT_URL=http://localhost:9000`).
-- `test_*_compose_*` read the compose files and check how the storage service is
-  declared. Skipped when the repository root is not visible (the backend
-  container mounts only backend/).
+- `test_backend_identity_*` run against the live storage service of the test stack,
+  authenticating as the backend does (`STORAGE_S3_*`); skipped when it is unreachable
+  (host pytest cannot resolve `storage:9000`; set `STORAGE_S3_ENDPOINT_URL=http://localhost:9000`).
+- `test_*_compose_*` read the compose files and check how the storage service is declared;
+  skipped when the repository root is not visible (the backend container mounts only backend/).
 """
 
 import json
@@ -43,7 +41,7 @@ def _construct_merge_tag(loader: yaml.SafeLoader, node: yaml.Node):
 for _tag in ("!reset", "!override"):
     _ComposeLoader.add_constructor(_tag, _construct_merge_tag)
 
-COMPOSES = [ROOT / "docker-compose.yml", ROOT / "tests" / "container" / "docker-compose.yml"]
+COMPOSES = [ROOT / "deployments" / "full" / "docker-compose.yml", ROOT / "tests" / "container" / "docker-compose.yml"]
 
 
 def _client(access_key: str, secret_key: str):

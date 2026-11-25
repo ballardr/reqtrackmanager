@@ -1,31 +1,12 @@
 """
 Module: modules.product_feedback.triage
 
-Triage of an organisation-inbox request into a project: the one change of a request's owner tier.
-
-Responsibilities:
-- `move_to_project`: re-owns an inbox request as a project request without changing its id, so its
-  versions, comments, links and audit history stay attached, and fixes up everything the owner tier
-  decides: the code, the tag vocabulary and the files' visibility.
-
-Design decisions:
-- The row is updated in place, never copied: a copy would orphan the comment threads, the audit
-  trail and anything holding the id (a notification, a search hit, a bookmark).
-- The code is renumbered from the project's `ENH` counter (a project and the organisation number
-  separately) and the old code is returned so the caller can leave it in the audit detail.
-- Tags are re-resolved by name in the project's vocabulary, whatever its mode, as a bundle import
-  does: the triager is carrying existing tags across, not coining new ones.
-- Files are organisation shared resources in the inbox and project-authorised in a project
-  (`FileAsset.is_org_resource`), so the flag is cleared on every file the request holds, directly
-  or on a comment.
-- A link blocks the move. A project record's link is validated against its own project, so an
-  inbox request cannot normally have one; if one exists the move refuses rather than leave a link
-  silently pointing into another project.
-- A request in a merge (as duplicate or canonical) cannot move: a merge joins requests of one owner, so moving
-  one end would split it. The triager unmerges first.
-- Nothing here commits or checks who may do it.
-
-Dependencies: `services.sequences` (codes), `services.tags` (vocabulary), `models.file`.
+Triage of an inbox request into a project (`move_to_project`): re-owns the row
+in place (versions, comments, links and audit stay attached) and fixes what the
+owner tier decides: the code is renumbered from the project's `ENH` counter,
+tags are re-resolved by name, files lose `is_org_resource`. A link or a merge
+(either end) blocks the move. Nothing commits or checks the role.
+Dependencies: `services.sequences`, `services.tags`, `models.file`.
 """
 
 from __future__ import annotations

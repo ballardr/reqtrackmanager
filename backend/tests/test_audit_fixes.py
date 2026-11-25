@@ -1,5 +1,5 @@
-"""Regression tests for gaps found by the Ossa (v1) / Pelion (v2) requirements
-compliance audit (see docs/decisions.md "Requirements audit fixes" section):
+"""Regression tests for the requirements-compliance audit fixes (see
+docs/decisions.md "Requirements audit fixes"):
 
 - I-M-05: server admins no longer bypass organisation/project data access.
 - I-M-06: an existing server admin can grant/revoke the role on another user.
@@ -191,8 +191,8 @@ def test_last_manager_guard_applies_to_group_based_removal(client, admin_token, 
     """C-U-08: removing a project's only manager via group membership must
     be blocked, the same as direct role revocation already is.
 
-    A fresh project's creator now holds their initial manager role via a
-    direct grant, not group membership (C-U-10, 2026-08-31 removed the auto-created default groups) — so this test
+    A project's creator holds the initial manager role via a direct grant,
+    not group membership (C-U-10: no auto-created default groups) — so this test
     first builds a manager-role group with a *different* user as its sole
     member, then revokes the creator's own direct grant, leaving that group
     membership as the project's only remaining manager source, the

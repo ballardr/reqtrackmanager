@@ -1,20 +1,15 @@
 /**
  * Module: components/DesignerSidePanel
  *
- * The report designer's right-hand panel: one tab strip over the tools of the view being edited (Block, Preview, Fields,
- * Widgets), that collapses to a rail with an expand button like a record list's filter panel and the detail page's
- * aside (`DetailLayout`).
+ * The report designer's right-hand panel: one tab strip (`Tabs`) over the tools of the view being edited (Block,
+ * Preview, Fields, Widgets) that collapses to a rail with an expand button, like `DetailLayout`'s aside. It holds
+ * no tab or collapsed state; the designer remembers both per person with `useUiPreference`.
  *
- * Responsibilities:
- * - Draw the tab strip (`Tabs`) and the collapse/expand button; hold no tab or collapsed state itself (the designer
- *   remembers both per person with `useUiPreference`, as `DetailLayout` does).
- * - Keep the tab panels mounted while another tab or the collapsed rail is showing: the caller renders each panel with
- *   `tabPanelProps(idPrefix, key)` and `hidden`, so a preview result and the block editor's form survive a switch.
- * - Below the designer's stacking breakpoint the panel sits under the editor as a full-width card with no collapse
- *   button (hiding what the author scrolled down to find would only hide it).
+ * - Tab panels stay mounted while another tab or the rail shows (`tabPanelProps(idPrefix, key)` and `hidden`), so a
+ *   preview result and the block editor's form survive a switch.
+ * - Below the designer's stacking breakpoint it is a full-width card under the editor with no collapse button.
+ * - The toggle, icons and `aria-expanded` reading are `DetailLayout`'s, so both asides behave alike.
  *
- * Design decisions: the collapse toggle, its icons and its `aria-expanded` reading are `DetailLayout`'s, so the two
- * collapsible asides behave alike. The collapsed rail is the button alone; the body is hidden, not unmounted.
  * Depends on `Tabs`, `useNarrowViewport` and the designer's grid classes in `theme.css`.
  */
 import { PanelRightClose, PanelRightOpen } from "lucide-react";

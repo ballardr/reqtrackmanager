@@ -1,31 +1,16 @@
 /**
  * Module: modules/compliance/RequirementAssessmentPanel
  *
- * The per-requirement detail workspace opened from `ApplicabilityTree` (a
- * `SidePanel`, per style guide "Pattern: entity detail panel" — viewing an
- * existing entity's full detail without leaving the tree behind it, never a
- * `Modal`). Covers §21's own drill-down diagram for one requirement:
- * Applicability (§9), Assessment (§10, §16), Required Actions (§6),
- * Evidence (§13), Approval/Sign-off (§12), and history (§8/§11/§16 — "view
- * compliance history").
- *
- * Mandatory-justification rules are enforced here purely as a UX
- * convenience (disabling Save until filled) — the backend is the actual
- * enforcement (`project_router.py::update_requirement_applicability`/
- * `update_requirement_assessment`, 400 on a missing justification), so a
- * stale client check can never let a bad payload through undetected: any
- * 400 still surfaces as a toast either way.
- *
- * Evidence section: alongside linking already-existing evidence,
- * "Upload new evidence" reuses `EvidenceFormModals.tsx`'s exported
- * `EvidenceFormModal` to create a new `Evidence` record the same way that
- * panel does, immediately auto-links it to this assessment (no separate
- * manual "link existing" step), then reuses `FileAttachmentList`/
- * `ResourcePickerModal` — again exactly as `EvidenceDetailPage.tsx` already does
- * — so the actual file attaches in the same flow. `EvidenceFormModal`'s create form itself stages files before save, so
- * `createAndLinkEvidence` uploads those in the same step and only falls
- * back to the follow-up "Attach files" modal when none were staged —
- * a user who already attached a file at creation time isn't asked again.
+ * The per-requirement detail workspace opened from `ApplicabilityTree`, a `SidePanel` (style guide "Pattern: entity detail
+ * panel": full detail without leaving the tree behind it, never a `Modal`). It covers §21's drill-down for one requirement:
+ * Applicability (§9), Assessment (§10, §16), Required Actions (§6), Evidence (§13), Approval and Sign-off (§12) and history.
+ * - Mandatory-justification rules here only disable Save until filled; the backend enforces them
+ *   (`project_router.py::update_requirement_applicability` and `update_requirement_assessment` return 400), and any 400 still
+ *   surfaces as a toast.
+ * - Evidence: besides linking existing evidence, "Upload new evidence" reuses `EvidenceFormModal` to create an `Evidence`
+ *   record, links it to this assessment, then reuses `FileAttachmentList` and `ResourcePickerModal` (as `EvidenceDetailPage.tsx`
+ *   does) to attach the file. The create form stages files before save, so `createAndLinkEvidence` uploads them in the same
+ *   step and shows the follow-up "Attach files" modal only when none were staged.
  */
 import { FolderOpen } from "lucide-react";
 import { useState } from "react";
@@ -64,6 +49,8 @@ import { InlineSelect, LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { COMPLIANCE_HELP } from "./help";
+import { MarkdownView } from "../../components/MarkdownView";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 const APPLICABILITY_OPTIONS: ComplianceApplicability[] = ["applicable", "not_applicable"];
 const STATUS_OPTIONS: ComplianceStatus[] = [
@@ -311,7 +298,7 @@ export function RequirementAssessmentPanel({
       onClose={onClose}
     >
       <div className="stack">
-        {requirement.description && <p className="text-muted" style={{ margin: 0 }}>{requirement.description}</p>}
+        {requirement.description && <MarkdownView className="text-muted" text={requirement.description} />}
 
         <section className="stack">
           <h3 style={{ margin: 0 }}>Applicability</h3>
@@ -328,7 +315,7 @@ export function RequirementAssessmentPanel({
             placeholder={null}
           />
           {applicability === "not_applicable" && (
-            <TextAreaField helpNotNeeded
+            <TextAreaField markdown="simple" helpNotNeeded
               required
               label="Justification"
               value={applicabilityJustification}
@@ -356,7 +343,7 @@ export function RequirementAssessmentPanel({
               placeholder={null}
             />
             {status === "non_compliant" && (
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown="simple" helpNotNeeded
                 required
                 label="Justification"
                 value={statusJustification}
@@ -364,7 +351,7 @@ export function RequirementAssessmentPanel({
                 rows={2}
               />
             )}
-            <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} />
             <button
               className="btn btn-primary" style={{ alignSelf: "flex-start" }}
               disabled={status === "non_compliant" && !statusJustification.trim()}
@@ -486,7 +473,7 @@ export function RequirementAssessmentPanel({
           )}
           {pcr.approval_state === "pending_approval" && (
             <div className="stack">
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown="simple" helpNotNeeded
                 label="Decision note"
                 hint="Required to reject."
                 value={decisionNote}
@@ -502,7 +489,7 @@ export function RequirementAssessmentPanel({
           {pcr.approval_decided_at && (
             <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
               Decided {new Date(pcr.approval_decided_at).toLocaleString()} by {userDisplayName(orgUsers, pcr.approval_decided_by)}
-              {pcr.decision_note && ` — "${pcr.decision_note}"`}
+              {pcr.decision_note && ` — "${markdownPlainText(pcr.decision_note)}"`}
             </p>
           )}
         </section>
@@ -582,7 +569,7 @@ export function RequirementAssessmentPanel({
       {rejecting && (
         <Modal title="Reject this assessment?" onClose={() => setRejecting(false)}>
           <div className="stack">
-            <TextAreaField helpNotNeeded required label="Decision note" value={decisionNote} onChange={setDecisionNote} rows={3} />
+            <TextAreaField markdown="simple" helpNotNeeded required label="Decision note" value={decisionNote} onChange={setDecisionNote} rows={3} />
             <FormActions
               onCancel={() => setRejecting(false)} onSave={reject} saveLabel="Reject" saveTone="danger"
               saveDisabled={!decisionNote.trim()}

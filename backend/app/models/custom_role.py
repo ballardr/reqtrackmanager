@@ -1,33 +1,18 @@
 """
 Module: models.custom_role
 
-Fine-Grained Access Control — an organisation-definable role, composed from atomic
-permissions, additive to the fixed `OrgRole`/`ProjectRole` enums and every
-module-contributed `ModuleRoleDefinition` (never a replacement for either).
+Fine-Grained Access Control: an organisation-definable role composed from atomic permissions, additive to
+the fixed `OrgRole`/`ProjectRole` enums and every module-contributed `ModuleRoleDefinition`.
 
-`CustomRoleDefinition` is this org's own named role; `CustomRolePermission`
-is its permission-atom membership, one row per atom, mirroring this
-codebase's established normalised-join-table convention (never a serialized
-array/JSON blob for a set that needs per-row operations — see
-`app.models.relationship.ArtefactLink`'s own precedent for the identical
-choice, applied there to link types). `UserCustomRoleGrant`/
-`GroupCustomRoleGrant` grant one such role to a user or an organisation
-group, shaped exactly like `app.models.module_role.UserModuleRole`/
-`GroupModuleRole` — the same grant-table family, one tier further down (a
-custom role instead of a module-contributed one).
+`CustomRoleDefinition` is the org's named role; `CustomRolePermission` holds its permission atoms, one row
+per atom in a normalised join table (as `app.models.relationship.ArtefactLink`, for a set needing per-row
+operations). `UserCustomRoleGrant`/`GroupCustomRoleGrant` grant a role to a user or an organisation group,
+shaped like `app.models.module_role.UserModuleRole`/`GroupModuleRole`.
 
-Tenant isolation: every table here carries its own
-`organization_id`, and a `CustomRoleDefinition` is only ever resolvable
-within the organisation that defined it — `app.services.rbac.
-get_effective_permissions` must never resolve a grant against a
-role from a different organisation, the same constraint every other
-cross-project mechanism in this codebase already enforces.
-
-No self-escalation: only `ORG_ADMIN` may create, edit,
-or delete a `CustomRoleDefinition` — enforced at the router layer,
-not by anything in this module, the same "authorization is a router/service
-concern, not a model concern" split `app.models.relationship`'s own
-docstring already states for tenant-scoping checks.
+Tenant isolation: every table carries `organization_id`, and a role resolves only within the organisation
+that defined it; `app.services.rbac.get_effective_permissions` must never resolve a grant against another
+organisation's role. Only `ORG_ADMIN` may create, edit or delete a role; the router enforces that, as
+authorisation is a router and service concern (see `app.models.relationship`).
 """
 
 from __future__ import annotations

@@ -21,9 +21,7 @@ const CHILD_REQ = buildGraphNode({
 });
 
 /**
- * The Links panel every artefact detail page shows beside its content
- *. All calls go through an
- * injected fake API.
+ * The Links panel every artefact detail page shows beside its content. All calls go through an injected fake API.
  */
 const meta: Meta<typeof ArtefactLinksPanel> = {
   title: "Components/ArtefactLinksPanel",
@@ -98,7 +96,7 @@ export const HeaderButtonsKeepOneOrderInBothLayouts: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
     const order = () =>
-      [...canvasElement.querySelectorAll(".artefact-links__buttons > button")].map((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").trim());
+      [...canvasElement.querySelectorAll(".artefact-links__buttons button")].map((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").trim());
     await waitFor(() => expect(order()).toEqual(["Add link", "Trace", "View options"]));
     await userEvent.click(canvas.getByRole("button", { name: "View options" }));
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "View options" })).getByRole("checkbox", { name: "Compact view" }));
@@ -194,6 +192,13 @@ export const Empty: Story = {
   args: { api: buildLinksApi() },
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(within(canvasElement).getByText("No links yet.")).toBeInTheDocument());
+  },
+};
+
+export const ShowsWhereACarriedOverLinkWasCopiedFrom: Story = {
+  args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION, { note: "Copied from SW-PERF-001" }]])) }) },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(within(canvasElement).getByText("Copied from SW-PERF-001")).toBeInTheDocument());
   },
 };
 

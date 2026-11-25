@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, test } from "@playwright/test";
 
-import { approveRequirementFromDetail, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
+import { approveRequirementFromDetail, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, expectRecordLocked } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -46,7 +46,7 @@ test.describe("Equations in requirement text", () => {
 
     await page.goto(`/projects/${project.id}/requirements/${requirement.id}`);
     await approveRequirementFromDetail(page);
-    await expect(page.getByText("Locked (approved)")).toBeVisible();
+    await expectRecordLocked(page);
 
     await test.step("allowed equations are typeset, inline and as a block", async () => {
       await expect(page.locator(".math-text .katex")).toHaveCount(2);

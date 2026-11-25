@@ -1,37 +1,12 @@
 """
 Module: modules.product_feedback.module
 
-Registers the Product Feedback module into the modular feature system's registry via `MODULE_DEFINITION`.
-
-Product Feedback captures enhancement requests: proposed solutions asked for by stakeholders, staff or support.
-A request is a versioned record owned by a project or, where the organisation allows it, by the organisation
-(its inbox). Delivery tracking stays in the organisation's own delivery tool; a request carries external
-references to it (each in one of the organisation's external systems).
-
-- Roles: `feedback_triager` (project) and `org_feedback_triager` (organisation) edit, move, archive and attach
-  evidence to requests; each carries the matching `(enhancement_request, manage)` permission atom. Submitting
-  needs no role (a project administrator can restrict it to triagers).
-- Sub-components: `enhancement_request` gates the project list; `organization_requests` gates the
-  organisation's inbox, so an organisation administrator switches the inbox off without touching its projects.
-- `default_enabled` stays `False`: an organisation opts in explicitly (**Decided by: Agent**).
-- Link types, all authored with the generic link tools: "Requested by" (request -> Stakeholder, Persona or
-  Engagement; `demand.py` turns those links into demand through the registry's `demand_party_providers` hook),
-  "Addresses" (request -> Pain Point) and "Realised by" (request -> Requirement) (`relationships.py`).
-- Closing the loop: a triager records which requesters were told a delivered or declined request's outcome
-  (`loop.py`); nothing is sent to anyone.
-- Merging: a duplicate is merged into a canonical request, reversibly (`merge.py`); demand is the union.
-- Scoring: the `enhancement_request` scheme (`scoring.py`) scores a request on Reach, Impact, Confidence and
-  Effort (a divisor); ICE or RICE is chosen when viewing and the score is derived on every read (`ratings.py`).
-- External references and channels: a request lists the items it points to in outside tools (`references.py`), and each
-  requester says how they asked (`channels.py`); both are chosen from organisation lists a project can extend and
-  hide entries of (`vocabularies.py`, administered with the `feedback_list_admin` role).
-- Reports F1-F5 (`reports.py`): demand ranking, unlinked requests, close the loop, triage ageing and problem demand, for a
-  project and (with the `org_feedback_triager` role) the organisation.
-- MCP tools: write-enabled (`mcp_tools.py`), plus a read tool per report.
-
-- `frontend_manifest` (Tier A; `frontend/src/modules/product_feedback/module.ts` serves the list and detail routes,
-  the organisation inbox panel, the scoring settings and the submission setting). The nav entry is gated on the
-  `enhancement_request` sub-component.
+Registers Product Feedback (enhancement requests, versioned, owned by a project
+or the organisation inbox) through `MODULE_DEFINITION`: triager roles,
+sub-components `enhancement_request` and `organization_requests`, link types,
+demand, merging, close-the-loop, the `enhancement_request` scoring scheme,
+external references, requester channels, reports F1-F5, write-enabled MCP tools
+and the Tier A frontend manifest. `default_enabled` is `False`.
 """
 
 from __future__ import annotations
@@ -46,6 +21,8 @@ from sqlalchemy.orm import Session
 from app.modules.product_feedback import export as bundle_export
 from app.modules.product_feedback._shared import REQUEST_MANAGE_PERMISSION
 from app.modules.product_feedback.demand import REQUESTED_BY_SEED
+from app.modules.product_feedback.lifecycles import LIFECYCLES
+from app.modules.product_feedback.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.product_feedback.mcp_tools import build_mcp_tools
 from app.modules.product_feedback.models import EnhancementRequestVersion
 from app.modules.product_feedback.perf_dataset import generate_requests
@@ -62,6 +39,7 @@ from app.modules.product_feedback.service import (
     ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY,
     PRODUCT_FEEDBACK_MODULE_KEY,
     REQUEST_ARTEFACT_TYPE,
+    REQUEST_CODE_PREFIX,
     REQUEST_SUBCOMPONENT_KEY,
 )
 from app.modules.product_feedback.summaries import REQUEST_SUMMARY_PROVIDER
@@ -147,11 +125,14 @@ MODULE_DEFINITION = ModuleDefinition(
     migrations_dir="app/modules/product_feedback/migrations",
     artefact_types=(REQUEST_ARTEFACT_TYPE,),
     link_type_seeds=(REQUESTED_BY_SEED, ADDRESSES_SEED, REALISED_BY_SEED),
+    default_code_prefixes={REQUEST_ARTEFACT_TYPE: REQUEST_CODE_PREFIX},
     artefact_type_labels={REQUEST_ARTEFACT_TYPE: "Enhancement request"},
     artefact_ids_in_organization=_artefact_ids_in_organization,
     on_org_created=seed_org_defaults,
     artefact_summary_providers={REQUEST_ARTEFACT_TYPE: REQUEST_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
+    markdown_fields=MARKDOWN_FIELDS,
+    plain_text_fields=PLAIN_TEXT_FIELDS,
     scoring_schemes=(REQUEST_SCORING_SCHEME,),
     report_fields=REPORT_FIELDS,
     reports=REPORT_DEFINITIONS,
@@ -159,6 +140,7 @@ MODULE_DEFINITION = ModuleDefinition(
     no_record_attachments=NO_RECORD_ATTACHMENTS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    lifecycles=LIFECYCLES,
     perf_generators={REQUEST_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_requests, order=166)},
     sub_components=(
         ModuleSubComponentDefinition(key=REQUEST_SUBCOMPONENT_KEY, name="Enhancement requests", default_enabled=True),
@@ -172,7 +154,7 @@ MODULE_DEFINITION = ModuleDefinition(
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
         import_late=bundle_export.import_late_project_data,
-        template_configuration_keys=frozenset({"feedback_settings", "scoring_definitions", "external_systems", "request_channels"}),
+        template_configuration_keys=frozenset({"feedback_settings", "scoring_definitions", "request_channels"}),
         template_record_keys=frozenset({"enhancement_requests", "enhancement_request_links"}),
         template_reset=bundle_export.reset_for_template,
     ),
@@ -197,7 +179,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
         ModuleRoleDefinition(
             role_key=LIST_ADMIN_ROLE_KEY, name="Feedback List Admin",
-            description="Edits the organisation's external system and request channel lists.",
+            description="Edits the organisation's request channel list.",
             scope="org",
         ),
         ModuleRoleDefinition(

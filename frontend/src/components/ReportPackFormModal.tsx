@@ -1,12 +1,10 @@
 /**
  * Module: components/ReportPackFormModal
  *
- * The create and edit dialog of a report pack: its name, description and folder, through the one `ReportPackFields` group
- * so a field added later reaches both. Creating starts the pack with no reports; the editor is where they are
- * chosen.
- *
- * Responsibilities: validate the name locally, call the API, show the server's refusal (a taken name) in the dialog.
- * The caller owns the toast, the reload and any navigation, through `onSaved`.
+ * The create and edit dialog of a report pack: its name, description and folder, through the one `ReportPackFields`
+ * group so a field added to one reaches both. Creating starts the pack with no reports; the editor is where they
+ * are chosen. It validates the name locally, calls the API and shows the server's refusal (a taken name) in the
+ * dialog. The caller owns the toast, the reload and any navigation, through `onSaved`.
  */
 import { useMemo, useState } from "react";
 
@@ -35,7 +33,7 @@ export function ReportPackFields({
       <TextField helpNotNeeded required
         label={text.nameLabel} value={name} onChange={onName} inputProps={{ maxLength: 200, autoFocus: true }}
       />
-      <TextAreaField helpNotNeeded label={text.descriptionLabel} value={description} onChange={onDescription} />
+      <TextAreaField plainText="Configuration text shown in pickers and tooltips" helpNotNeeded label={text.descriptionLabel} value={description} onChange={onDescription} />
       <ReportFolderField value={folder} onChange={onFolder} api={folderApi} onChanged={onFoldersChanged} onBusyChange={onFolderBusy} />
     </>
   );

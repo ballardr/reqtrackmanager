@@ -1,14 +1,11 @@
 /**
  * Module: utils/keyboardTargets
  *
- * Where a key press belongs to something other than an editor's own shortcut (Undo, Redo, Delete).
- *
- * Responsibilities:
- * - Say whether a key press happened in a text-entry control, which keeps its keys for its text.
- * - Say whether a dialog, menu or pop-over is open over the page, which owns the keyboard while it is shown.
- *
- * Design decisions:
- * - Plain functions over the DOM, shared by every editor shortcut, so the rule is written once and tested without a browser event.
+ * Where a key press belongs to something other than an editor's own shortcut
+ * (Undo, Redo, Delete): whether it happened in a text-entry control (which keeps
+ * its keys for its text) and whether a dialog, menu or pop-over is open over the
+ * page (which owns the keyboard). Plain functions over the DOM, shared by every
+ * editor shortcut and testable without a browser event.
  */
 
 /** Elements that open over the page and own the keyboard while they are shown. */

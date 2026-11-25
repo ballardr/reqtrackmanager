@@ -33,15 +33,9 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
 }
 
 /**
- * `ProjectComplianceDetail` renders `ApplicabilityTree`/`ReviewsPanel`
- * underneath its own header/status summary — every nested fetch (the
- * requirement tree, per-requirement assessments, reviews) is mocked to
- * resolve empty here so the drill-in settles cleanly without duplicating
- * `ApplicabilityTree.stories.tsx`'s own, deeper coverage of that behaviour
- * — the same "settle cleanly, don't duplicate" precedent
- * `StandardVersionsSection.stories.tsx` (the retired `StandardsPanel.
- * stories.tsx`'s successor) set
- * for its own `VersionWorkspace` drill-in.
+ * `ProjectComplianceDetail` renders `ApplicabilityTree` and `ReviewsPanel` under its header and status summary. Every nested
+ * fetch (requirement tree, assessments, reviews) resolves empty here so the drill-in settles without duplicating
+ * `ApplicabilityTree.stories.tsx`, as `StandardVersionsSection.stories.tsx` does for its `VersionWorkspace` drill-in.
  */
 function mockApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {

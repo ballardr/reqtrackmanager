@@ -1,13 +1,12 @@
 """
 Module: services.template_reset
 
-Returns a module's exported starter records to a fresh-draft state when a project is created from a
-template (see `services.template_content`). Kept dependency-free so every module's export file can
-import it without a cycle.
+Returns a module's exported starter records to a fresh-draft state when a project is created from a template
+(`services.template_content`). Dependency-free so every module's export file can import it without a cycle.
 
-The same reset removes imported approval state when an organisation does not allow it
-(`services.bundle_approval_state`). There it runs inside `keeping_history()`, which keeps archived records and
-their authorship, since an import is not a template: only approvals, decisions, reviews and votes are removed.
+The same reset removes imported approval state when an organisation does not allow it (`services.bundle_approval_state`),
+there inside `keeping_history()`, which keeps archived records and their authorship: only approvals, decisions, reviews
+and votes are removed.
 """
 
 from __future__ import annotations

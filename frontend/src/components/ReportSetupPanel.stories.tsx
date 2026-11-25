@@ -92,6 +92,16 @@ export const ListsLayoutsPacksTablesAndModuleReportsInOneFolderList: Story = {
   },
 };
 
+/** The setup list's folders are real folders, so they keep the folder icon. */
+export const FoldersKeepTheFolderIcon: Story = {
+  args: fresh(),
+  play: async ({ canvasElement }) => {
+    const grid = await list(canvasElement);
+    const toggle = grid.getByRole("button", { name: "Expand Handover" });
+    await expect(toggle.querySelector(".folder-tree-folder-icon svg")).toHaveClass("lucide-folder");
+  },
+};
+
 /** Version, Type and Folder are off until chosen (the icon shows the type, the nesting the folder); Name cannot be hidden. */
 export const VersionTypeAndFolderColumnsAreOffUntilChosen: Story = {
   args: fresh(),

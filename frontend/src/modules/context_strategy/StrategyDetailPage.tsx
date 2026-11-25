@@ -1,34 +1,20 @@
 /**
  * Module: modules/context_strategy/StrategyDetailPage
  *
- * A single Strategy's full detail — full field display, current lifecycle
- * status, version history, comments, attachments, and relationships, plus
- * every lifecycle action. Mirrors `modules/decisions/DecisionDetailPage.tsx`'s
- * exact structure and its `docs/ux-style-guide.md` "Pattern: entity detail
- * panel" reasoning for being a real routed page rather than a `SidePanel`:
- * a comment thread, file attachments, a relationships section, and several
- * lifecycle actions each with their own `ConfirmDialog` are all present
- * here too.
+ * A single Strategy's full detail: fields, lifecycle status, versions, comments, attachments, relationships and every
+ * lifecycle action. It has `modules/decisions/DecisionDetailPage.tsx`'s structure and its reason for being a routed
+ * page rather than a `SidePanel` (`docs/ux-style-guide.md` "Pattern: entity detail panel"): a comment thread, file
+ * attachments, relationships and several lifecycle actions each with a `ConfirmDialog`.
  *
- * **Scope-aware, Decided by: Agent:** unlike Decision (project-scoped
- * only), a Strategy is org- **or** project-scoped, so this one
- * component serves both `ProjectStrategiesPage.tsx`'s row-click navigation
- * (`/projects/:projectId/modules/context_strategy/strategies/:strategyId`,
- * registered via `module.ts`'s `routes`) and `OrgStrategiesPanel.tsx`'s own
- * (`/orgs/:organizationId/modules/context_strategy/strategies/:strategyId`,
- * registered via `module.ts`'s `globalRoutes` — org-scoped, not gated by
- * any one project's own enabled-modules list, the same reasoning Compliance's
- * Standards detail route already established for a cross-cutting entity)
- * — exactly one of `projectId`/`organizationId` route params is present at
- * a time, mirroring the backend's own scope discriminator exactly, rather
- * than building two near-identical page components.
+ * Scope-aware: a Strategy is organisation- or project-scoped, so one component serves `ProjectStrategiesPage.tsx`
+ * (`/projects/:projectId/modules/context_strategy/strategies/:strategyId`, `module.ts` `routes`) and
+ * `OrgStrategiesPanel.tsx` (`/orgs/:organizationId/modules/context_strategy/strategies/:strategyId`, `globalRoutes`,
+ * not gated by a project's enabled modules). Exactly one of the `projectId`/`organizationId` route parameters is
+ * present, mirroring the backend's scope discriminator.
  *
- * Every mutating control always renders regardless of the caller's actual
- * role (same posture `DecisionDetailPage.tsx` establishes) — the backend
- * enforces `strategy_owner`/`strategy_approver` (or their org-scoped
- * equivalents) and a 403 surfaces as a toast. Edit/archive/file-attach
- * controls specifically for *content* are hidden (not just toast-blocked)
- * once `strategy.is_locked`.
+ * Mutating controls always render whatever the caller's role (as `DecisionDetailPage.tsx`); the backend enforces
+ * `strategy_owner` / `strategy_approver` (or the organisation equivalents) and a 403 surfaces as a toast. Content edit,
+ * archive and file-attach controls are hidden once `strategy.is_locked`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -48,14 +34,23 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgStrategyApi, projectStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
-import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL } from "./types";
+import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_DESCRIPTION, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL, REVIEWED_LOCKED_REASON } from "./types";
 import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { RecordField } from "../../components/RecordDetailParts";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_STRATEGIES_SECTION_KEY } from "./orgResourceKeys";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -85,6 +80,8 @@ const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; c
   },
 };
 
+const MAIN_PATH = ["draft", "proposed", "under_review", "approved", "active"] as const;
+
 export function StrategyDetailPage() {
   const { projectId, organizationId, strategyId } = useParams<{
     projectId?: string;
@@ -97,10 +94,13 @@ export function StrategyDetailPage() {
   const scopeId = projectId ?? organizationId;
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/strategies`
-    : `/org-overview`;
-  const backLabel = projectId ? "Strategies" : "Organisation overview";
+    : organizationId ? orgResourcesPath(organizationId, ORG_STRATEGIES_SECTION_KEY) : "/org-resources";
 
   const [strategy, setStrategy] = useState<Strategy | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "strategy");
+  const approval = useApprovalStatus(
+    projectId ? { projectId } : organizationId ? { organizationId } : null, "strategy", strategy?.id, strategy?.status,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [versions, setVersions] = useState<StrategyVersion[] | null>(null);
   const [comments, setComments] = useState<StrategyComment[] | null>(null);
@@ -174,12 +174,57 @@ export function StrategyDetailPage() {
   });
 
   const codeOwner = useRecordOwnerCode(strategy ?? {});
+  const skipSteps = useSkipSteps<Strategy>({
+    lifecycle, current: strategy?.status ?? "", labels: STRATEGY_STATUS_LABEL, noun: "Strategy",
+    move: (target, reason) => {
+      if (!scopeId || !strategy) return Promise.reject(new Error("This move is not available."));
+      if (target === "under_review") return withLifecycleSkip(reason, () => scopedApi.submitForReview(scopeId, strategy.id));
+      if (target === "approved") return withLifecycleSkip(reason, () => scopedApi.approve(scopeId, strategy.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setStrategy,
+  });
+
   if (!scopeId || !strategyId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategy === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await scopedApi.uploadFile(scopeId, strategy.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
+  // The next forward move: a plain call, or the comment dialog of the approval and activation steps.
+  // It goes to the next step the project uses (a project may turn Proposed and Under review off).
+  const next = lifecycle.nextOnPath(MAIN_PATH, strategy.status);
+  let promote: LifecyclePromote | undefined;
+  if (next === "proposed") {
+    promote = { to: "proposed", onPromote: () => runTransition(() => scopedApi.propose(scopeId, strategy.id), "Strategy proposed.") };
+  } else if (next === "under_review") {
+    promote = { to: "under_review", onPromote: () => runTransition(() => scopedApi.submitForReview(scopeId, strategy.id), "Strategy submitted for review.") };
+  } else if (next === "approved") {
+    promote = approval.approve("approved", () => setTransitionAction("approve"));
+  } else if (next === "active") {
+    promote = { to: "active", onPromote: () => setTransitionAction("activate") };
+  }
+
+  // An ended Strategy sits after the last main step it reached: any retired one was approved, and was active if a version says so.
+  const offPath = strategy.status === "superseded" || strategy.status === "retired"
+    ? {
+        key: strategy.status,
+        label: STRATEGY_STATUS_LABEL[strategy.status],
+        description: STRATEGY_STATUS_DESCRIPTION[strategy.status],
+        locked: true,
+        lockedReason: REVIEWED_LOCKED_REASON,
+        after: strategy.status === "superseded" || versions?.some((v) => v.status === "active") ? "active" : "approved",
+      }
+    : undefined;
+
   return (
     <DetailLayout
+      pictures={{ files, upload: strategy.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="strategy" artefactId={strategy.id} refreshToken={recordActivityKey(strategy)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -207,9 +252,10 @@ export function StrategyDetailPage() {
         recordLabel="Strategy"
         title={strategy.title}
         code={strategy.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="strategy" artefactId={strategy.id} /> : undefined}
         codeOwner={codeOwner}
-        back={{ to: backLink, label: backLabel }}
+        back={{ to: backLink, label: "Strategies" }}
         badges={
           <>
           <Badge tone={STRATEGY_STATUS_TONE[strategy.status]}>
@@ -220,60 +266,40 @@ export function StrategyDetailPage() {
         version={strategy.version_number}
         subtitle={`${STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · ${STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]}`}
         onEdit={strategy.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {strategy.status === "draft" && (
-            <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, strategy.id), "Strategy proposed.")}>
-              Propose
-            </button>
-          )}
-          {strategy.status === "proposed" && (
-            <>
-              <button
-                className="btn btn-primary"
-                onClick={() => runTransition(() => scopedApi.submitForReview(scopeId, strategy.id), "Strategy submitted for review.")}
-              >
-                Submit for review
-              </button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-              )}
-              {strategy.status === "under_review" && (
-                <>
-                  <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-                  <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-                </>
-              )}
-              {strategy.status === "approved" && (
-                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-              )}
-              {strategy.status === "active" && (
-                <>
-                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-                </>
-              )}
-          </>
-        }
+        actions={[
+          skipSteps.menuRow,
+          lifecycle.canMove(strategy.status, "draft", strategy.status === "proposed" || strategy.status === "under_review") && { label: "Send back", onSelect: () => setSendingBack(true) },
+          strategy.status === "active" && { label: "Supersede", onSelect: () => setTransitionAction("supersede") },
+          strategy.status === "active" && { label: "Retire", danger: true, onSelect: () => setTransitionAction("retire") },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, STRATEGY_STATUS_LABEL, { descriptions: STRATEGY_STATUS_DESCRIPTION, locked: { approved: REVIEWED_LOCKED_REASON, active: REVIEWED_LOCKED_REASON } }),
+            strategy.status,
+          ),
+          current: strategy.status,
+          offPath,
+          promote,
+          skip: skipSteps.track,
+        }}
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
-          <Field label="Objective / strategic theme" value={strategy.objective} />
-          {strategy.current_state && <Field label="Current state" value={strategy.current_state} />}
-          {strategy.desired_future_state && <Field label="Desired future state" value={strategy.desired_future_state} />}
-          {strategy.rationale && <Field label="Rationale" value={strategy.rationale} />}
-          {strategy.expected_outcomes && <Field label="Expected outcomes" value={strategy.expected_outcomes} />}
-          {strategy.constraints && <Field label="Constraints" value={strategy.constraints} />}
-          {strategy.measures_of_success && <Field label="Measures of success" value={strategy.measures_of_success} />}
+          <RecordField markdown label="Objective / strategic theme" value={strategy.objective} />
+          {strategy.current_state && <RecordField markdown label="Current state" value={strategy.current_state} />}
+          {strategy.desired_future_state && <RecordField markdown label="Desired future state" value={strategy.desired_future_state} />}
+          {strategy.rationale && <RecordField markdown label="Rationale" value={strategy.rationale} />}
+          {strategy.expected_outcomes && <RecordField markdown label="Expected outcomes" value={strategy.expected_outcomes} />}
+          {strategy.constraints && <RecordField markdown label="Constraints" value={strategy.constraints} />}
+          {strategy.measures_of_success && <RecordField markdown label="Measures of success" value={strategy.measures_of_success} />}
         </DetailCard>
 
 
         {versions && versions.length > 1 && (
-          <DetailCard heading="Versions">
+          <DetailCard heading="Versions" rank="supporting">
             <table className="table">
               <thead>
                 <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>
@@ -292,15 +318,12 @@ export function StrategyDetailPage() {
           </DetailCard>
         )}
 
-        <DetailCard heading="Attachments">
+        <DetailCard heading="Attachments" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={strategy.is_locked}
             emptyHint={strategy.is_locked ? "This Strategy is past review; new attachments can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await scopedApi.uploadFile(scopeId, strategy.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await scopedApi.unlinkFile(scopeId, strategy.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
@@ -329,7 +352,6 @@ export function StrategyDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <StrategyFormModal
@@ -340,6 +362,8 @@ export function StrategyDetailPage() {
           onSave={saveEdit}
         />
       )}
+
+      {skipSteps.dialog}
 
       {sendingBack && (
         <CommentConfirmDialog
@@ -372,14 +396,5 @@ export function StrategyDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

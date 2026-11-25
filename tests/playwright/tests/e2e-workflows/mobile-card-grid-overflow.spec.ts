@@ -3,16 +3,10 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * The tile/card views on Requirements, Change Requests, Project List, and
- * Favourites all used a fixed `minmax(280px, 1fr)` grid track. Below
- * roughly 431px wide the collapsed nav rail (56px) plus `.app-content`'s
- * own padding (24px each side) leaves less than 280px for the grid itself,
- * so the single column that fits was forced wider than its container —
- * concretely, ~9px of horizontal overflow at a 375px viewport (iPhone
- * SE/mini class), producing a page-level horizontal scrollbar. Fixed by
- * clamping the track minimum to `min(280px, 100%)` so it never exceeds
- * whatever width is actually available. This only asserts the absence of
- * horizontal overflow at a narrow width — it isn't a visual/layout test.
+ * The tile and card views on Requirements, Change Requests, Project List and Favourites use a grid track minimum of
+ * `min(280px, 100%)`, so at a 375px viewport (collapsed nav rail 56px plus 24px content padding each side leaves
+ * less than 280px) a column is never forced wider than its container. Asserts only the absence of horizontal
+ * overflow at that width; it is not a visual test.
  */
 test.describe("mobile: card/tile grids never overflow the viewport width", () => {
   test.use({ viewport: { width: 375, height: 900 } });

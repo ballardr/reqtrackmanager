@@ -26,10 +26,8 @@ export default meta;
 
 type Story = StoryObj<typeof MultiSelectDropdown>;
 
-/** Closed by default, showing every currently-checked option's own label as
- * its summary text — visually a single dropdown, matching every other
- * `<select className="input">` in the app, even though more than one value
- * can be checked at once. */
+/** Closed by default, showing every checked option's label as its summary text: it looks like a single dropdown
+ * (as every `<select className="input">`) although several values can be checked. */
 export const ClosedShowsCheckedOptionsAsSummary: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -71,10 +69,8 @@ export const OpenListLinesUpWithTheTrigger: Story = {
   },
 };
 
-/** Toggling one option calls that option's own `onToggle` immediately —
- * there's no separate "apply"/"save" step, matching every other immediate
- * toggle in the app (Principle 7, feedback on every mutation is the
- * caller's job, not this component's). */
+/** Toggling an option calls its `onToggle` immediately, with no separate apply step (as every immediate toggle;
+ * feedback on every mutation is the caller's job, Principle 7). */
 export const TogglingAnOptionFiresItsOwnCallback: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
@@ -122,6 +118,31 @@ export const DisabledOption: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
     const group = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
     await expect(within(group).getByRole("checkbox", { name: "Revoke Org admin from Alex Morgan" })).toBeDisabled();
+    // The reason is the shared tooltip over the row, never a native `title`.
+    await expect(group.querySelectorAll("[title]")).toHaveLength(0);
+    await userEvent.hover(within(group).getByText("Org admin"));
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent("You cannot change your own organisation role here.");
+  },
+};
+
+/** A summary that fits has no tooltip, and a collapsed one ("2 selected") names the choices in the shared tooltip. */
+export const TriggerTooltipOnlyWhenItAddsInformation: Story = {
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Alex Morgan's roles" });
+    await expect(trigger).not.toHaveAttribute("title");
+    await userEvent.hover(trigger);
+    await expect(within(document.body).queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
+  },
+};
+
+export const CollapsedSummaryNamesTheChoicesInATooltip: Story = {
+  args: { summaryLimit: 1 },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Alex Morgan's roles" });
+    await userEvent.hover(trigger);
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent("Member, Org admin");
+    await userEvent.click(trigger);
+    await expect(within(document.body).queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
   },
 };
 

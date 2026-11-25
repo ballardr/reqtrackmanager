@@ -6,7 +6,7 @@ import { buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { withToast } from "../testing/storybook-helpers";
 import { OrgTagsPanel } from "./OrgTagsPanel";
 
-/** Org Admin's Tags section: the tag admin bound to the organisation's own vocabulary (organisation-owned records). */
+/** Org Resources' Tags section: the tag admin bound to the organisation's own vocabulary (organisation-owned records). */
 const meta: Meta<typeof OrgTagsPanel> = {
   title: "Components/OrgTagsPanel",
   component: OrgTagsPanel,

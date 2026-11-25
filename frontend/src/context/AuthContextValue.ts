@@ -1,13 +1,10 @@
 /**
  * Module: context/AuthContextValue
  *
- * The `AuthContext` object and its value type, split out of AuthContext.tsx
- * so that file can keep exporting only components/hooks (`AuthProvider`,
- * `useAuth`) — a file mixing component and non-component exports breaks
- * Fast Refresh (react-refresh/only-export-components). Storybook stories
- * import `AuthContext` from here directly to supply a fixture user via
- * `<AuthContext.Provider value={...}>` without round-tripping through real
- * `login()`/`/auth/me` calls.
+ * The `AuthContext` object and its value type, kept apart from AuthContext.tsx so that file exports only components and
+ * hooks (`AuthProvider`, `useAuth`); a file mixing both breaks Fast Refresh (`react-refresh/only-export-components`).
+ * Storybook stories import `AuthContext` from here to supply a fixture user through `<AuthContext.Provider value={...}>`
+ * without real `login()` or `/auth/me` calls.
  */
 import { createContext } from "react";
 
@@ -26,10 +23,9 @@ export interface AuthContextValue {
   refreshUser: () => Promise<void>;
   /** Sets one `ui_preferences` key; `null` removes it (and persists the removal). */
   setUiPreference: (key: string, value: UiPreferenceValue | null) => void;
-  /** Applies several keys in one request (`null` removes) — use when keys must change together,
-   * since separate concurrent PATCHes are read-modify-write on the same server-side bag.
-   * Applied optimistically; rejects if the server refused it (e.g. the size bound), after the
-   * local copy has been re-synced from the server. Callers that report success must await it. */
+  /** Applies several keys in one request (`null` removes); use when keys must change together, since separate concurrent
+   * PATCHes are read-modify-write on the same server-side bag. Applied optimistically; rejects if the server refused it
+   * (e.g. the size bound), after the local copy is re-synced from the server. Callers that report success must await it. */
   setUiPreferences: (patch: Record<string, UiPreferenceValue | null>) => Promise<void>;
 }
 

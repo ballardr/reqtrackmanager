@@ -1,15 +1,12 @@
 /**
  * Module: modules/stakeholders/RecordVisibilityControl
  *
- * The "Visibility in this project" field on an organisation Stakeholder's or
- * Persona's detail page when it is opened from a project: states whether this project
- * has an override of its own (`OverridePill`, style guide "Pattern: platform
- * default vs. override") and offers "Hide from this project". Hiding is
- * reversible and non-destructive, so it is a tier-1 `ConfirmDialog` that says
- * what stays recorded. A hidden record never reaches this page (the
- * project API treats it as absent); it is shown again from the list's "Show
- * hidden" filter, so the only override seen here is an explicit "shown" that
- * beats a parent project's hide.
+ * The "Visibility in this project" field on an organisation Stakeholder's or Persona's detail page when opened from a
+ * project: states whether this project has an override of its own (`OverridePill`, style guide "Pattern: platform
+ * default vs. override") and offers "Hide from this project". Hiding is reversible and non-destructive, so it is a
+ * tier-1 `ConfirmDialog` that says what stays recorded. A hidden record never reaches this page (the project API
+ * treats it as absent); it is shown again from the list's "Show hidden" filter, so the only override seen here is an
+ * explicit "shown" that beats a parent project's hide.
  *
  * Purely presentational: the parent owns the API calls and navigation.
  */

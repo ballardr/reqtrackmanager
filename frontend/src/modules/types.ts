@@ -3,35 +3,19 @@ import type { ComponentType, ReactNode } from "react";
 import type { ProjectScope } from "../api/projectScope";
 import type { ReportCatalogueEntry, ReportResult, ReportRunValues } from "../api/reports";
 import type { ReportFigureActionResolver } from "../components/ReportViewer";
+import type { Notification } from "../api/types";
 
 /**
- * One route a Tier A ("installed") module contributes — a plain React
- * Router route spliced into `App.tsx`'s `<Routes>` alongside the core
- * pages, compiled directly into this bundle.
- * `path` must match the `nav_path` the module's backend
- * `ModuleFrontendManifest` declares, so the nav entry `Layout.tsx` renders
- * (from `GET /projects/{id}/enabled-modules`) actually links somewhere.
+ * One route a Tier A ("installed") module contributes: a plain React Router route spliced into `App.tsx`'s `<Routes>`
+ * beside the core pages. `path` must match the `nav_path` of the module's backend `ModuleFrontendManifest`, so the nav
+ * entry `Layout.tsx` renders (from `GET /projects/{id}/enabled-modules`) links somewhere.
  */
 export interface TierAModuleRoute {
   path: string;
   element: ReactNode;
 }
 
-/**
- * One org-admin `ResourceMenu` group a Tier A module contributes to
- * `OrgAdminPage.tsx` (see `docs/decisions.md`'s "Module system follow-up: dynamic org-admin panel
- * registration" entry). The routing/nav-discovery mechanism
- * (`TierAModuleRoute` above) is project-scoped end to end and has no
- * org-level equivalent — this is that missing org-level half,
- * a declared-by-the-module mechanism rather than panels hand-mounted into
- * `OrgAdminPage.tsx`. Shaped after `ResourceMenuGroupDef`
- * (`components/ResourceMenu.tsx`) — `key`/`label` mirror that type exactly
- * (the module doesn't compute `href` itself; `OrgAdminPage.tsx` derives it
- * from `key` the same way it does for every core group) — plus a
- * `render` prop-function, this codebase's existing convention for handing a
- * parent a piece of UI to mount with parent-owned data
- * (`ResourceMenuGroupDef`'s own `children`, `DirectoryColumn.render`,
- * `DefinitionList`'s `renderExtra`), rather than inventing a new shape. */
+/** A named menu group that several sections of one module can share. */
 export interface AdminSectionGroup {
   /** Menu group key and the `:group` URL segment of every section that declares it. Must differ from every core group
    * key and every section key. */
@@ -40,12 +24,18 @@ export interface AdminSectionGroup {
   label: string;
 }
 
+/**
+ * One org-admin `ResourceMenu` group a Tier A module contributes to `OrgAdminPage.tsx` (`docs/decisions.md` "Module
+ * system follow-up: dynamic org-admin panel registration"). The routing and nav discovery of `TierAModuleRoute` is
+ * project-scoped, so this is its organisation-level half, declared by the module and not hand-mounted into
+ * `OrgAdminPage.tsx`. It follows `ResourceMenuGroupDef` (`components/ResourceMenu.tsx`): `key` and `label` mirror it
+ * (`OrgAdminPage.tsx` derives `href` from `key` as for core groups) and a `render` function hands the parent a piece
+ * of UI to mount, as `DirectoryColumn.render` and `DefinitionList`'s `renderExtra` do.
+ */
 export interface OrgAdminSectionDef {
-  /** This section's `ResourceMenu` group key and `/orgs/:orgId/admin/:group`
-   * route segment — must be unique across every installed module's
-   * contributed sections (and distinct from every core group key
-   * `OrgAdminPage.tsx` itself declares), the same uniqueness assumption
-   * `TierAModuleRoute.path` already relies on for project routes. */
+  /** This section's `ResourceMenu` group key and `/orgs/:orgId/admin/:group` route segment; unique across every
+   * installed module's sections and distinct from every core group key `OrgAdminPage.tsx` declares, as
+   * `TierAModuleRoute.path` is for project routes. */
   key: string;
   label: string;
   /** The module's sub-component this section configures. The page leaves the section out while that sub-component is
@@ -58,13 +48,11 @@ export interface OrgAdminSectionDef {
   render: (props: { orgId: string }) => ReactNode;
 }
 
-/** `OrgAdminSectionDef`'s project-scoped counterpart (2026-09-22) — same shape, scoped by `projectId` instead of `orgId` for
- * `ProjectAdminPage.tsx`'s own `ResourceMenu` groups. */
+/** `OrgAdminSectionDef`'s project-scoped counterpart: the same shape, scoped by `projectId` instead of `orgId`, for
+ * `ProjectAdminPage.tsx`'s `ResourceMenu` groups. */
 export interface ProjectAdminSectionDef {
-  /** This section's `ResourceMenu` group key and
-   * `/projects/:projectId/admin/:group` route segment — must be unique
-   * across every installed module's contributed sections (and distinct
-   * from every core group key `ProjectAdminPage.tsx` itself declares). */
+  /** This section's `ResourceMenu` group key and `/projects/:projectId/admin/:group` route segment; unique across every
+   * installed module's sections and distinct from every core group key `ProjectAdminPage.tsx` declares. */
   key: string;
   label: string;
   /** The module's sub-component this section configures. The page leaves the section out while that sub-component is
@@ -76,60 +64,43 @@ export interface ProjectAdminSectionDef {
 }
 
 /**
- * One top-level nav-rail link a Tier A module contributes to `Layout.tsx`'s
- * "Global" section ("Compliance
- * Standards" as a first-class, cross-org, project-like nav entity). Unlike
- * `OrgAdminSectionDef`, this has no parent-owned data to hand the module
- * (`Layout.tsx` doesn't know which org/project is relevant to a global tab)
- * — `railCollapsed` is the only prop, purely so the module's own link can
- * render consistently with every other rail entry (`NavRailLink`, exported
- * from `components/NavRailLink.tsx` for exactly this reuse). The module's
- * `render` function owns *all* of its own visibility logic (e.g. Compliance
- * gates its link on its own `useComplianceNavVisibility()` hook) and
- * returns `null` when the tab shouldn't show at all — `Layout.tsx` invites
- * every installed module's global nav items to render unconditionally and
- * never itself decides whether a given one applies, the same "core doesn't
- * decide, the module decides" boundary `orgAdminSections`'s own filtering
- * already establishes for `OrgAdminPage.tsx` (there the filter is enablement
- * state Layout.tsx doesn't have a project/org to check against here; a
- * global tab's own applicability is the module's call to make, every time).
+ * One top-level nav-rail link a Tier A module contributes to `Layout.tsx`'s "Global" section ("Compliance Standards"
+ * as a cross-organisation, project-like entity). It has no parent-owned data for the module (`Layout.tsx` does not know
+ * which organisation or project a global tab concerns): `railCollapsed` is the only prop, so the link renders like
+ * every other rail entry (`NavRailLink`, exported from `components/NavRailLink.tsx`). The module's `render` owns all its
+ * visibility logic (Compliance gates its link on `useComplianceNavVisibility()`) and returns `null` when the tab should
+ * not show: `Layout.tsx` renders every installed module's global nav items unconditionally and never decides whether
+ * one applies.
  */
 export interface GlobalNavItemDef {
-  /** Must be unique across every installed module's global nav items —
-   * used only as this item's React list `key`, never rendered. */
+  /** Must be unique across every installed module's global nav items; used only as the React list `key`. */
   key: string;
   render: (props: { railCollapsed: boolean }) => ReactNode;
 }
 
 /**
- * One "standalone workspace" nav-rail section a Tier A module contributes —
- * a project-like drill-down entity that isn't a `Project` (Compliance's "Standard" section is the first of these:
- * Overview/Details, Versions, History, rendered as a sibling structural
- * pattern to the "Project" section, not nested inside it, whenever a
- * Standard's own id is present in the URL). `Layout.tsx` tests `matchPath`
- * against the current path for every installed module's contributed
- * workspaces and renders the first match's own section — it has no
- * built-in notion of what a "Standard" (or any future such entity) even is;
- * the module supplies both the URL shape it owns and the nav markup for it.
+ * One "standalone workspace" nav-rail section a Tier A module contributes: a project-like drill-down entity that is
+ * not a `Project` (Compliance's "Standard" section: Overview/Details, Versions, History, rendered beside the "Project"
+ * section, not inside it, whenever a Standard's id is in the URL). `Layout.tsx` tests `matchPath` against the current
+ * path for every installed module's workspaces and renders the first match; it has no notion of what a "Standard" is,
+ * and the module supplies the URL shape and the nav markup.
  */
 export interface StandaloneWorkspaceDef {
-  /** Must be unique across every installed module's standalone workspaces —
-   * used only as this workspace's React list `key`, never rendered. */
+  /** Must be unique across every installed module's standalone workspaces; used only as the React list `key`. */
   key: string;
-  /** Tested against `location.pathname`; this workspace is active exactly
-   * when it matches, and its own first capture group is passed to `render`
-   * as `entityId` (the same "id in the URL selects the entity" shape
-   * `Layout.tsx`'s existing `projectId` regex already uses, generalised to
-   * a module-declared pattern instead of a hardcoded `/projects/` one). */
+  /** Tested against `location.pathname`; the workspace is active when it matches, and its first capture group is
+   * passed to `render` as `entityId` (the id in the URL selects the entity, as `Layout.tsx`'s `projectId` regex does,
+   * but with a module-declared pattern). */
   matchPath: RegExp;
   render: (props: { entityId: string; railCollapsed: boolean }) => ReactNode;
 }
 
 /**
- * A widget type a module contributes to the project overview (`TierAModuleDefinition.overviewWidgets`), for
- * example Compliance's per-standard status tiles or a risk heat map. The backend declares the same key in `ModuleDefinition.overview_widgets`, which is
- * what lets the server validate a stored layout and offer the type only where the module is enabled; this is
- * the renderer. The overview never imports the module: it looks the renderer up by `<module key>:<key>`.
+ * A widget type a module contributes to the project overview (`TierAModuleDefinition.overviewWidgets`), for example
+ * Compliance's per-standard status tiles or a risk heat map. The backend declares the same key in
+ * `ModuleDefinition.overview_widgets`, so the server validates a stored layout and offers the type only where the
+ * module is enabled; this is the renderer. The overview never imports the module: it looks the renderer up by
+ * `<module key>:<key>`.
  */
 export interface ProjectOverviewWidgetDef {
   /** Unique within the module; the widget's type is `<module key>:<key>`. */
@@ -139,10 +110,7 @@ export interface ProjectOverviewWidgetDef {
   render: (props: { projectId: string; projectScope: ProjectScope; title: string; config: Record<string, unknown> }) => ReactNode;
 }
 
-/**
- * A search scope a module offers beyond the built-in "This project" and "All projects" (see
- * `TierAModuleDefinition.searchScopes`). Requests carry it as `<module key>:<key>:<ref id>`.
- */
+/** A search scope a module offers beyond the built-in "This project" and "All projects" (`TierAModuleDefinition.searchScopes`); requests carry it as `<module key>:<key>:<ref id>`. */
 export interface SearchScopeDefinition {
   /** Identifies the scope within its module (`"standard"`); matches the backend `search_scopes` key. */
   key: string;
@@ -156,11 +124,11 @@ export interface SearchScopeDefinition {
 }
 
 /**
- * A widget type a module contributes to an organisation's overview dashboards
- * (`TierAModuleDefinition.orgOverviewWidgets`), the organisation counterpart of `ProjectOverviewWidgetDef`: the
- * module hands the page a render function and the page never imports the module. The backend declares the same key in
- * `ModuleDefinition.org_overview_widgets`, which lets the server validate a stored layout and offer the type only
- * while the organisation has the module enabled. It is looked up by `<module key>:<key>`.
+ * A widget type a module contributes to an organisation's overview dashboards (`TierAModuleDefinition.orgOverviewWidgets`),
+ * the organisation counterpart of `ProjectOverviewWidgetDef`: the module hands the page a render function and the page
+ * never imports the module. The backend declares the same key in `ModuleDefinition.org_overview_widgets`, so the
+ * server validates a stored layout and offers the type only while the organisation has the module enabled. It is
+ * looked up by `<module key>:<key>`.
  */
 export interface OrgOverviewWidgetDef {
   /** Unique within the module; the widget's type is `<module key>:<key>`. */
@@ -171,43 +139,30 @@ export interface OrgOverviewWidgetDef {
 }
 
 /**
- * One extra section a Tier A module contributes to
- * `pages/RequirementDetailPage.tsx`'s own "Links" card (the first consumer is Compliance's own linked-
- * compliance-requirements list plus a picker to add one). Mirrors
- * `ProjectOverviewWidgetDef`'s "module hands the parent a render
- * function, parent has no idea what's inside it" shape, gated the same
- * way (this project's own currently-enabled-modules list) — `render`
- * decides everything about what it shows, including rendering nothing.
- * `RequirementDetailPage.tsx` never imports a specific module's own entity
- * (e.g. it has no notion of what a "compliance requirement" is) — see
- * that page's aside for where these render, and CLAUDE.md's
- * "Modular Feature System Boundary" for the rule this satisfies.
+ * One extra section a Tier A module contributes to `pages/RequirementDetailPage.tsx`'s "Links" card (first consumer:
+ * Compliance's linked compliance requirements list with a picker to add one). Like `ProjectOverviewWidgetDef`, the
+ * module hands the parent a render function and the parent does not know what is inside it, gated by the project's
+ * enabled modules; `render` decides everything it shows, including nothing. `RequirementDetailPage.tsx` never imports
+ * a module's entity (CLAUDE.md "Modular Feature System Boundary").
  */
 export interface RequirementDetailSectionDef {
-  /** Must be unique across every installed module's requirement-detail
-   * sections — used only as this contribution's React list `key`, never
-   * rendered. */
+  /** Must be unique across every installed module's requirement-detail sections; used only as the React list `key`. */
   key: string;
   render: (props: {
     projectId: string;
     requirementId: string;
     organizationId: string;
-    /** Bumped by `RequirementDetailPage.tsx` whenever any link involving
-     * this page reloads (e.g. after a change request is decided). A section
-     * that owns its own link list (e.g. Compliance's
-     * `RequirementTraceabilityLinksSection`) should re-fetch on a
-     * `refreshToken` change. Purely a plumbing signal — core has no idea
-     * what changed, only that something did. */
+    /** Bumped by `RequirementDetailPage.tsx` whenever a link involving the page reloads (e.g. after a change request is
+     * decided). A section that owns its own link list (e.g. Compliance's `RequirementTraceabilityLinksSection`) should
+     * re-fetch when it changes; it is a plumbing signal, and core does not know what changed. */
     refreshToken: number;
   }) => ReactNode;
 }
 
 /**
- * Props a module's custom report view receives. The shared
- * `ReportRunner` runs the report, owns loading/error/empty states, the
- * parameter form and downloads, and hands the view only the collected
- * `result` plus enough context to render it. Rendering a table of
- * `result.sections` needs no view at all (`ReportViewer` is the fallback).
+ * Props a module's custom report view receives. The shared `ReportRunner` runs the report, owns loading, error and
+ * empty states, the parameter form and downloads, and hands the view the collected `result` plus its context. A table
+ * of `result.sections` needs no view (`ReportViewer` is the fallback).
  */
 export interface ReportViewProps {
   entry: ReportCatalogueEntry;
@@ -222,10 +177,7 @@ export interface ReportViewProps {
   figureAction?: ReportFigureActionResolver;
 }
 
-/**
- * One custom on-screen view for a module's report, keyed by the backend
- * `ReportDefinition.key` in `TierAModuleDefinition.reportViews`.
- */
+/** One custom on-screen view for a module's report, keyed by the backend `ReportDefinition.key` in `TierAModuleDefinition.reportViews`. */
 export interface ReportViewDef {
   component: ComponentType<ReportViewProps>;
   /** Declared parameters the view draws its own controls for (e.g. a scoring-model switcher); the shared parameter form hides them so one parameter never has two controls. */
@@ -253,176 +205,113 @@ export interface LinkedRecordCreator {
 }
 
 /**
- * A first-party (or npm-installed third-party) Tier A module's frontend
- * registration — the module ships its own route components and registers
- * them here, the same way this file's own first-party pages are declared
- * in `App.tsx`, rather than through any dynamic/remote-loading mechanism
- * (that's Tier B, `<ModuleFrame>`). See `registry.ts`'s own docstring.
+ * A first-party (or npm-installed third-party) Tier A module's frontend registration: it ships its route components and
+ * registers them here, as `App.tsx` declares the core pages, with no dynamic or remote loading (that is Tier B,
+ * `<ModuleFrame>`). See `registry.ts`.
  */
 export interface TierAModuleDefinition {
-  /** Must match the `module_key` the backend `ModuleDefinition` registers
-   * (`backend/app/modules/registry.py`), so `App.tsx` can look up which
-   * routes to mount for a given currently-enabled module, and so
-   * `OrgAdminPage.tsx` can tell whether this module is actually enabled for
-   * the org it's rendering before showing any of its `orgAdminSections`. */
+  /** Must match the `module_key` the backend `ModuleDefinition` registers (`backend/app/modules/registry.py`), so
+   * `App.tsx` can look up the routes to mount for an enabled module and `OrgAdminPage.tsx` can tell whether the module
+   * is enabled for the organisation before showing its `orgAdminSections`. */
   key: string;
-  /** This module's project-scoped routes. Defaults to none — a
-   * module contributing only org-admin sections (see below) and no
-   * project-scoped UI of its own doesn't need to declare any. Only ever
-   * mounted for a project where the backend currently reports this module
-   * as enabled (`buildModuleRoutes`, keyed off `useProjectEnabledModules`'s
-   * `enabledModules` list) — contrast with `globalRoutes` below, which is
-   * always mounted for every installed module regardless of any one
-   * project's/org's own enablement state. */
+  /** This module's project-scoped routes. Defaults to none: a module contributing only org-admin sections needs none.
+   * Mounted only for a project where the backend reports the module enabled (`buildModuleRoutes`, keyed off
+   * `useProjectEnabledModules`'s `enabledModules`), unlike `globalRoutes`, which is always mounted. */
   routes?: TierAModuleRoute[];
-  /** This module's always-mounted, top-level routes — reuses
-   * `TierAModuleRoute`'s exact `{path, element}` shape, but spliced into
-   * `App.tsx`'s `<Routes>` unconditionally for every installed module, the
-   * same way `/projects`/`/orgs` are, rather than gated on a specific
-   * project's/org's own currently-enabled-modules list the way `routes`
-   * above is. For a cross-org, always-present surface with no single
-   * project/org to check enablement against in the first place (Compliance
-   * Standards' `/standards`, `/standards/:standardId`, `/standards/
-   * settings/:orgId` — none of these has a `projectId` in the URL for
-   * `buildModuleRoutes`'s existing mechanism to key an enablement check
-   * off). `App.tsx` consumes this generically (`installedModules.flatMap(m
-   * => m.globalRoutes ?? [])`) and never imports a specific module's page
-   * components directly — the same "core doesn't hardcode one module"
-   * boundary `globalNavItems`/`standaloneWorkspaces` above already
-   * establish, and the reason a Tier A module's own page components (e.g.
-   * `modules/compliance/StandardListPage.tsx`) live inside the module's own
-   * directory, never under `frontend/src/pages/` (see `docs/decisions.md` for the
-   * `App.tsx`-side instance of this same violation being caught and
-   * corrected). Omitted (or
-   * empty) for a module with no such route of its own. */
+  /** This module's always-mounted, top-level routes, with `TierAModuleRoute`'s `{path, element}` shape, spliced into
+   * `App.tsx`'s `<Routes>` for every installed module and not gated on a project's or organisation's enabled modules as
+   * `routes` is. For a cross-organisation surface with no single project or organisation to check enablement against
+   * (Compliance Standards' `/standards`, `/standards/:standardId`, `/standards/settings/:orgId`). `App.tsx` consumes
+   * this generically (`installedModules.flatMap(m => m.globalRoutes ?? [])`) and never imports a module's pages, which
+   * live in the module's directory, never under `frontend/src/pages/`. Omitted (or empty) for a module with no such
+   * route. */
   globalRoutes?: TierAModuleRoute[];
-  /** This module's org-admin `ResourceMenu` groups, if any — merged into
-   * `OrgAdminPage.tsx`'s own fixed core groups and filtered to this org's
-   * actually-enabled modules. Omitted (or empty) for a module with no
-   * org-level admin surface. */
+  /** This module's org-admin `ResourceMenu` groups, merged into `OrgAdminPage.tsx`'s fixed core groups and filtered to
+   * the organisation's enabled modules. Omitted (or empty) for a module with no organisation-level admin surface. */
   orgAdminSections?: OrgAdminSectionDef[];
-  /** This module's `ResourceMenu` groups on `pages/ProjectAdminPage.tsx`
-   * — merged into that page's own fixed
-   * six groups and filtered to this project's actually-enabled modules,
-   * the same "module hands the parent a render function, parent has no
-   * idea what's inside it" shape `orgAdminSections` already establishes,
-   * just scoped by `projectId` instead of `orgId` (a distinct interface
-   * from `OrgAdminSectionDef` for that reason, not a second declaration of
-   * the same shape). First contributor: Decision Types, moved off
-   * `ProjectDecisionsPage.tsx`'s own tab bar to sit alongside the
-   * project's other definition-table settings (Action Types, Custom
-   * Fields) rather than the module's day-to-day working page — see
-   * `docs/decisions.md`. Omitted (or empty) for a module with no
-   * project-level admin surface. */
+  /** This module's `ResourceMenu` groups on `pages/ProjectAdminPage.tsx`, merged into that page's fixed groups and
+   * filtered to the project's enabled modules, as `orgAdminSections` but scoped by `projectId` (a distinct interface
+   * from `OrgAdminSectionDef`). Omitted (or empty) for a module with no project-level admin surface. */
   projectAdminSections?: ProjectAdminSectionDef[];
-  /** This module's top-level nav-rail links, rendered in
-   * `Layout.tsx`'s "Global" section. Omitted (or empty) for a module with
-   * no global tab of its own. */
+  /** This module's top-level nav-rail links, rendered in `Layout.tsx`'s "Global" section. Omitted (or empty) for a
+   * module with no global tab. */
   globalNavItems?: GlobalNavItemDef[];
-  /** This module's "standalone workspace" nav-rail sections,
-   * rendered as a sibling to `Layout.tsx`'s "Project" section whenever the
-   * current path matches one of them. Omitted (or empty) for a module with
-   * no such entity of its own. */
+  /** This module's "standalone workspace" nav-rail sections, rendered beside `Layout.tsx`'s "Project" section when the
+   * current path matches one. Omitted (or empty) for a module with no such entity. */
   standaloneWorkspaces?: StandaloneWorkspaceDef[];
-  /** Widget types this module contributes to the project overview's "Add widget" list, rendered by
+  /** Widget types this module adds to the project overview's "Add widget" list, rendered by
    * `components/overview/OverviewWidgetGrid.tsx` through the registry; each is an ordinary widget the person can
-   * place, size, hide or remove. Declared on the backend too
-   * (`ModuleDefinition.overview_widgets`). Omitted (or empty) for a module with no overview widget of its own. */
+   * place, size, hide or remove. Declared on the backend too (`ModuleDefinition.overview_widgets`). Omitted for a
+   * module with no overview widget. */
   overviewWidgets?: ProjectOverviewWidgetDef[];
-  /** This module's `ResourceMenu` groups on `pages/OrgOverviewPage.tsx`
-   * (the "Organisation Overview"
-   * page), below that page's own core stats header. Reuses
-   * `OrgAdminSectionDef`'s exact `{key, label, render({orgId})}` shape —
-   * the two pages need identical things from a module (a `ResourceMenu`
-   * group's own menu item plus the content it renders) — rather than
-   * declaring a second, identically-shaped interface. `OrgOverviewPage.tsx`
-   * filters these to this org's actually-enabled modules the same way
-   * `OrgAdminPage.tsx` already filters `orgAdminSections`. Omitted (or
-   * empty) for a module with no org-overview surface of its own. */
-  orgOverviewSections?: OrgAdminSectionDef[];
+  /** This module's `ResourceMenu` sections on `pages/OrgResourcesPage.tsx` (Org Resources): the records and content an
+   * organisation owns and shares with its projects (an organisation Strategy list, a request inbox, a status table over
+   * every project). It has `OrgAdminSectionDef`'s shape, since both pages need a menu entry and the content to draw,
+   * and is filtered to the organisation's enabled modules and sub-components as `orgAdminSections` is. Keys must be
+   * unique across modules, distinct from the page's core sections (Reports, Tags) and from every `orgAdminSections`
+   * key. Omitted for a module with no organisation-owned content. Configuration (vocabularies, scoring, defaults) stays
+   * in `orgAdminSections`; computed figures are `orgOverviewWidgets`. */
+  orgResourceSections?: OrgAdminSectionDef[];
   /** This module's widgets for an organisation's overview dashboards, offered only while the organisation has the
    * module enabled. Omitted (or empty) for a module with no organisation-level figures of its own. */
   orgOverviewWidgets?: OrgOverviewWidgetDef[];
-  /** This module's extra sections on `pages/RequirementDetailPage.tsx`'s
-   * own Links card, gated on this
-   * project's own `enabled-modules` list the same way `overviewWidgets`
-   * are. Omitted (or empty) for a module with no requirement-detail
-   * contribution of its own. */
+  /** This module's extra sections on `pages/RequirementDetailPage.tsx`'s Links card, gated on the project's
+   * `enabled-modules` list as `overviewWidgets` are. Omitted for a module with no requirement-detail contribution. */
   requirementDetailSections?: RequirementDetailSectionDef[];
-  /** This module's own accent colour for `.entity-accent-card`/`.entity-
-   * accent-row` styling (`styles/theme.css`) — the left-border stripe a list
-   * row showing this module's own entity kind (e.g. a compliance
-   * requirement, alongside core requirement-to-requirement links, in
-   * `pages/RequirementDetailPage.tsx`'s own mixed Links card) renders with,
-   * so a user scanning a list mixing several entity kinds can tell them
-   * apart at a glance (see `modules/entityAccentColor.ts`'s own docstring
-   * for the full mechanism). One literal hex pair per module, not a CSS
-   * variable declared in `theme.css` — `theme.css` is a core file and must
-   * never carry a per-module colour token, the same boundary violation as a
-   * per-module value hand-added to a core enum/column (`ProjectSequenceCounter
-   * .artefact_type`'s own corrected history, CLAUDE.md's "Modular Feature
-   * System Boundary") applied to a colour token instead of an enum member —
-   * `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR` briefly grew a
-   * `"compliance"`/`"decision"` entry this exact way before being corrected
-   * back to only the 3 genuinely core-owned kinds (requirement/action/
-   * change_request). Keyed implicitly by this definition's own `key` at the
-   * call site (`useEntityAccentColor(moduleKey)`) — no separate "kind"
-   * identifier, since one module contributes exactly one entity kind today.
-   * Omitted for a module with no entity of its own ever shown in a mixed
-   * list (falls back to a neutral grey — see `entityAccentColor.ts`). */
+  /** This module's accent colour for `.entity-accent-card` / `.entity-accent-row` styling (`styles/theme.css`): the
+   * left-border stripe of a list row showing this module's entity kind among others (see
+   * `modules/entityAccentColor.ts`). One literal hex pair per module, never a CSS variable in `theme.css`: a core file
+   * must not carry a per-module colour token, the same boundary violation as a per-module value in a core enum
+   * (CLAUDE.md "Modular Feature System Boundary"). `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR` holds only the
+   * three core kinds (requirement, action, change_request). Keyed by this definition's `key` at the call site
+   * (`useEntityAccentColor(moduleKey)`), since a module contributes one entity kind. Omitted for a module with no
+   * entity shown in a mixed list (falls back to neutral grey). */
   entityAccentColor?: { light: string; dark: string };
-  /** Where each of this module's own artefact types has its detail page, keyed
-   * by the backend's artefact-type string (e.g. `"pain_point"`) — so another
-   * module's relationship list can link to a record it doesn't own without
-   * hardcoding this module's URLs (`modules/artefactPaths.ts` resolves them;
-   * the frontend counterpart of the backend's `artefact_summary_providers`).
-   * Omitted for a module whose records nothing else links to. */
+  /** Where each of this module's artefact types has its detail page, keyed by the backend's artefact-type string (e.g.
+   * `"pain_point"`), so another module's relationship list can link to a record it does not own
+   * (`modules/artefactPaths.ts`, the frontend counterpart of the backend's `artefact_summary_providers`). Omitted for a
+   * module whose records nothing else links to. */
   artefactPaths?: Record<string, (projectId: string, id: string) => string>;
+  /** Where a notification kind only this module can open leads, keyed by the target kind the backend's
+   * `ModuleDefinition.notification_target_kinds` declares (e.g. `"standard"`): given the notification, the page to
+   * open, or `null` when it lacks the data (the next kind its type lists is then tried). Core never names these kinds
+   * (`modules/notificationTargets.ts`). Omitted for a module that declares none. */
+  notificationTargets?: Record<string, (notification: Notification) => string | null>;
   /** Record types this module can create from another record's Links panel, keyed by artefact type (e.g.
-   * `"pain_point"`): the panel offers "Create new" for a type a link type from the page's record reaches (the
-   * server has already left out types of a module or sub-component that is off), shows the module's own create
-   * dialog and links the new record. The module owns the dialog, its validation and its permission errors, so
-   * core never imports a module's form (`modules/linkedRecordCreators.ts` resolves them). */
+   * `"pain_point"`): the panel offers "Create new" for a type a link type from the page's record reaches (the server
+   * has left out types of a module or sub-component that is off), shows the module's create dialog and links the new
+   * record. The module owns the dialog, its validation and permission errors (`modules/linkedRecordCreators.ts`). */
   linkedRecordCreators?: Record<string, LinkedRecordCreator>;
   /** The relationship this module's records prefer when another record is created and linked from their Links panel
-   * (`linkedRecordCreators`), keyed by this module's artefact type then by the other record's type, as the
-   * relationship reads from this record (its `phrase`, e.g. `"Addresses"`). Several relationships can reach a type
-   * and only the owner of the page's record knows which one carries meaning (a request's Pain Points are the ones
-   * it "Addresses"); the person can still pick another. Omitted where the first specific relationship will do. */
+   * (`linkedRecordCreators`), keyed by this module's artefact type then the other record's type, as it reads from this
+   * record (its `phrase`, e.g. `"Addresses"`). Several relationships can reach a type and only the owner of the page's
+   * record knows which carries meaning; the person can pick another. Omitted where the first specific one will do. */
   preferredLinkPhrases?: Record<string, Record<string, string>>;
-  /** Where each of this module's own artefact types has its list page in a project, keyed by artefact type
-   * (`modules/artefactPaths.ts`'s `getArtefactListPath`), so core views that summarise records by type (the
-   * project overview's total-records chart) can open a type's list without naming a module's URL. A type with no
-   * list page of its own names the page it appears on. */
+  /** Where each of this module's artefact types has its list page in a project, keyed by artefact type
+   * (`modules/artefactPaths.ts`'s `getArtefactListPath`), so core views that summarise records by type (the project
+   * overview's total-records chart) can open a list without naming a module's URL. A type with no list page names the
+   * page it appears on. */
   artefactListPaths?: Record<string, (projectId: string) => string>;
-  /** Where each of this module's organisation-owned artefact types that has an organisation-level page opens,
-   * keyed by artefact type (a shared Strategy opens at its organisation page, not through a project). The
-   * global search uses it for a result that belongs to the organisation and was not found through a project
-   * (`modules/artefactPaths.ts`'s `getSearchHitPath`). Omitted for a module with no such type. */
+  /** Where each of this module's organisation-owned artefact types with an organisation-level page opens, keyed by
+   * artefact type. The global search uses it for a result that belongs to the organisation and was not found through
+   * a project (`modules/artefactPaths.ts`'s `getSearchHitPath`). Omitted for a module with no such type. */
   orgArtefactPaths?: Record<string, (organizationId: string, id: string) => string>;
-  /** Display labels for the lifecycle status of each of this module's own artefact
-   * types, keyed by artefact type then by the backend's status string — so the
-   * shared Links panel can show a linked record's status without a raw enum
-   * string (`modules/artefactPaths.ts`'s `getArtefactStatusLabel` resolves them).
-   * Omitted for a module whose records carry no status; a type or status with no
-   * entry shows no status badge rather than the raw value. */
+  /** Display labels for the lifecycle status of each of this module's artefact types, keyed by artefact type then
+   * backend status string, so the shared Links panel shows a linked record's status without a raw enum string
+   * (`modules/artefactPaths.ts`'s `getArtefactStatusLabel`). Omitted for a module whose records carry no status; a
+   * type or status with no entry shows no badge. */
   artefactStatusLabels?: Record<string, Record<string, string>>;
-  /** Statuses that mean a record is no longer live (superseded, retired, rejected, withdrawn…),
-   * keyed by registered artefact type, for the views that offer to hide such records (the link
-   * trace). Optional: a type with no entry is never treated as inactive by status. An archived
-   * record is inactive whatever its status, so `archived` need not be listed. Resolved by
-   * `modules/artefactPaths.ts`'s `isArtefactInactive`; core never names a module's statuses. */
+  /** Statuses that mean a record is no longer live (superseded, retired, rejected, withdrawn...), keyed by artefact
+   * type, for the views that offer to hide such records (the link trace). A type with no entry is never inactive by
+   * status; an archived record is inactive whatever its status. Resolved by `modules/artefactPaths.ts`'s
+   * `isArtefactInactive`. */
   artefactInactiveStatuses?: Record<string, string[]>;
-  /** Extra scopes this module adds to the global search's Scope filter (Compliance: one standard), the
-   * frontend half of the backend's `ModuleDefinition.search_scopes`. Core never names a module's scope:
-   * it asks every registered `match` which scopes apply to the page the viewer is on and offers those
-   * (`modules/searchScopes.ts`). Omitted for a module with no such unit. */
+  /** Extra scopes this module adds to the global search's Scope filter (Compliance: one standard), the frontend half
+   * of the backend's `ModuleDefinition.search_scopes`. Core asks every registered `match` which scopes apply to the
+   * page the viewer is on (`modules/searchScopes.ts`). Omitted for a module with no such unit. */
   searchScopes?: SearchScopeDefinition[];
-  /** Custom on-screen views for this module's reports, keyed by the backend
-   * `ReportDefinition.key`. The Reports pages list every
-   * report from the backend catalogue and render `ReportViewer` (a generic
-   * table view) for any report with no entry here, so a module adds a view
-   * only where a table genuinely fails the reader. Core resolves it through
-   * `getReportView` in `registry.ts` and never imports a module's view. */
+  /** Custom on-screen views for this module's reports, keyed by the backend `ReportDefinition.key`. The Reports pages
+   * render `ReportViewer` (a generic table view) for any report with no entry here, so a module adds a view only where
+   * a table fails the reader. Core resolves it through `getReportView` in `registry.ts` and never imports a view. */
   reportViews?: Record<string, ReportViewDef>;
 }

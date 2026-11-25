@@ -1,13 +1,10 @@
 /**
  * Module: modules/context_strategy/OpenQuestionRegisterReportView
  *
- * The on-screen view of report R4 (Open Question register), registered as
- * `TierAModuleDefinition.reportViews.r4`. The generic
- * tables list overdue and unowned questions separately from the register, so
- * a reader has to cross-reference; this view shows one ageing table with
- * overdue and unowned rows highlighted in place, then the by-priority and
- * by-owner counts as the generic section tables. Statuses and priorities go
- * through the module's label maps.
+ * The on-screen view of report R4 (Open Question register), registered as `TierAModuleDefinition.reportViews.r4`.
+ * It shows one ageing table with overdue and unowned rows highlighted in place, instead of the generic separate
+ * overdue and unowned tables, then the by-priority and by-owner counts as generic section tables. Statuses and
+ * priorities go through the module's label maps.
  */
 import { Link } from "react-router-dom";
 
@@ -16,6 +13,7 @@ import type { ReportViewProps } from "../types";
 import type { OpenQuestionRegisterData } from "./reportTypes";
 import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import { Badge } from "../../components/Badge";
+import { MarkdownSummary } from "../../components/MarkdownSummary";
 
 /** Sections replaced by the ageing table (the register and the two gap lists it highlights). */
 const REPLACED_SECTIONS = new Set(["open", "overdue", "unowned"]);
@@ -56,7 +54,7 @@ export function OpenQuestionRegisterReportView({ result, scope, values, figureAc
                   <tr key={item.id} data-overdue={item.is_overdue || undefined}>
                     <td className="text-muted">{item.code}</td>
                     <td>
-                      <Link to={`/projects/${item.project_id}/modules/context_strategy/open-questions/${item.id}`}>{item.question}</Link>
+                      <Link to={`/projects/${item.project_id}/modules/context_strategy/open-questions/${item.id}`}><MarkdownSummary text={item.question} math lines={2} /></Link>
                     </td>
                     {showProject && <td>{item.project_name}</td>}
                     <td>{OPEN_QUESTION_PRIORITY_LABEL[item.priority]}</td>

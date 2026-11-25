@@ -1,10 +1,9 @@
 /**
  * Module: modules/context_strategy/CreateLinkedRecordDialogs
  *
- * The "Create new" dialogs the Links panel shows for this module's records other than a Pain Point (registered as
- * `TierAModuleDefinition.linkedRecordCreators`): a Strategy, Future State, Guiding Principle and Open Question. Each is
- * the type's own form modal, the one its list page uses, so every field the edit form has is present, together with
- * quick links and tags; `useLinkedRecordSave` creates the record and reports its id.
+ * The "Create new" dialogs the Links panel shows for a Strategy, Future State, Guiding Principle and Open Question
+ * (registered as `TierAModuleDefinition.linkedRecordCreators`). Each is the type's own form modal, as on its list page,
+ * with quick links and tags; `useLinkedRecordSave` creates the record and reports its id.
  */
 import { useLinkedRecordSave } from "../../hooks/useLinkedRecordSave";
 import type { LinkedRecordCreatorProps } from "../types";

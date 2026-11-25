@@ -3,34 +3,12 @@ const NONE: Strategy[] = [];
 /**
  * Module: modules/context_strategy/OrgStrategiesPanel
  *
- * The org-scoped equivalent of `ProjectStrategiesPage.tsx` — an
- * organisation's own org-scoped Strategy records (the org/project
- * scope discriminator), rendered as an `OrgOverviewPage.tsx` `ResourceMenu`
- * group (`module.ts`'s `orgOverviewSections`).
+ * The organisation-scoped equivalent of `ProjectStrategiesPage.tsx`: an organisation's own Strategy records, rendered
+ * as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s `orgResourceSections`).
  *
- * **Placement decision, Decided by: Agent:** checked this module's own
- * existing precedent before picking a surface — `modules/compliance/
- * module.ts` puts its org-wide *dashboards* (Compliance by standard,
- * Outstanding) on `orgOverviewSections` (Org Dashboard) and its
- * *management* surfaces (standards/action types CRUD) on the standalone
- * `/standards` nav tab; `modules/decisions/module.ts` puts its org-scoped
- * *template library* on `orgAdminSections` (Org Management), reasoning
- * explicitly that "an org admin manages the template library on Org
- * Management, not the Org Dashboard." An org-scoped **Strategy** is neither
- * a dashboard nor a pure admin-configuration table — it's org-level
- * *content* a Strategy Owner/Approver works with day to day, the closest
- * analogue being Decision Management's own Decision list (which has no org
- * scope to compare against directly). Landed on `orgOverviewSections`
- * (Org Dashboard) rather than `orgAdminSections` (Org Management):
- * `OrgOverviewPage.tsx` is this codebase's "what's the current state of
- * things in this organisation" surface (stats header, Compliance's own
- * dashboard panels), which fits an org-level Strategy list better than
- * Org Management's administration-focused framing (roles, modules, org
- * settings) — a Strategy Owner reviewing/approving Strategy is checking on
- * organisational state, not configuring the org. Revisit if a later
- * artefact type (e.g. Guiding Principle, also org/project
- * scoped) suggests a different, more consistent placement across all of
- * Context & Strategy's org-scoped surfaces.
+ * Placement: an organisation Strategy is content its owners work with and projects reuse, so it sits in Org
+ * Resources, not Organisation Settings (configuration) or the Organisation Overview (computed figures). Guiding
+ * Principle and Future State follow the same placement.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -42,15 +20,18 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { STRATEGY_SORT_VALUES } from "./contextStrategySort";
+import { STRATEGY_SORT_KEYS, STRATEGY_SORT_VALUES } from "./contextStrategySort";
 import { orgStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useTableSort } from "../../hooks/useTableSort";
-import { filterString } from "../../utils/listFilterParams";
+import { useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows } from "../../utils/sortRows";
+import { filterStringWithSort } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
 
@@ -80,27 +61,31 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reloadStrategies, [orgId, includeArchived]);
 
-  const table = useTableSort(strategies ?? NONE, STRATEGY_SORT_VALUES);
+  const listSort = useListSort("org_strategies", STRATEGY_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(strategies ?? NONE, listSort.sort, STRATEGY_SORT_VALUES);
+
+  const columns: DirectoryColumn<Strategy>[] = [
+    { key: "title", label: "Title", sortable: true, render: (s) => s.title },
+    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (s) => `v${s.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("org_strategies", columns);
+
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategies === null) return <Spinner />;
 
-  const filtered = table.rows.filter((s) => {
+  const filtered = sortedRows.filter((s) => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (priorityFilter && s.priority !== priorityFilter) return false;
     if (search && !`${s.unique_code} ${s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
-
-  const columns: DirectoryColumn<Strategy>[] = [
-    { key: "title", label: "Title", sortable: true, render: (s) => s.title },
-    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
-    { key: "priority", label: "Priority", sortable: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
-    },
-    { key: "version", label: "Version", sortable: true, render: (s) => `v${s.version_number}` },
-  ];
 
   return (
     <div className="stack">
@@ -109,16 +94,17 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
           New Strategy
         </button>
         <ListActions
-          organizationId={orgId} recordType="strategy" filters={filterString({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived })} onImported={reloadStrategies}
+          organizationId={orgId} recordType="strategy" filters={filterStringWithSort({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived }, listSort.sort)} onImported={reloadStrategies}
         />
+        {shown.chooser}
       </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Organisation Strategy"
-          columns={columns}
+          columns={shown.columns}
           rows={filtered}
-          sort={table.sort}
-          onSort={table.onSort}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(s) => s.id}
           onRowClick={(s) => navigate(`/orgs/${orgId}/modules/context_strategy/strategies/${s.id}`)}
           emptyState={<p className="text-muted">No organisation-scoped Strategy recorded yet.</p>}
@@ -141,6 +127,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
             allLabel="All priorities"
             options={labelOptions(STRATEGY_PRIORITY_LABEL)}
           />
+          <SortField list={listSort} columns={columns} titleKey="title" />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

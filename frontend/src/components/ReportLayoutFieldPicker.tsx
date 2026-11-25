@@ -1,18 +1,16 @@
 /**
  * Module: components/ReportLayoutFieldPicker
  *
- * The designer's field picker: one searchable list of everything a `{{...}}` placeholder can name at the caret,
- * and a click inserts it.
+ * The designer's field picker: one searchable list of everything a `{{...}}` placeholder can name at the caret;
+ * a click inserts it.
  *
- * Responsibilities:
- * - Combine, in one list, the report and project placeholders (`{{project_name}}`, `{{project_description}}`,
- *   `{{report_title}}` ...) and the fields of every name in scope (`as req` in an enclosing For each, the `value` /
- *   `count` of a group), each row saying where it comes from.
- * - Search by label, key or source, and filter by source (all, report and project, or one name in scope).
- * - Show each field's kind.
+ * The list combines the report and project placeholders (`{{project_name}}`, `{{report_title}}` ...) and the fields
+ * of every name in scope (`as req` in an enclosing For each, the `value` / `count` of a group), each row saying
+ * where it comes from and its kind. It searches by label, key or source and filters by source (all, report and
+ * project, or one name in scope).
  *
- * It only inserts text; the server's parser and validator remain the judge of what is valid, so a field not
- * offered here can still be typed by hand. Controlled: the caller computes `aliases` from the caret's line
+ * It only inserts text; the server's parser and validator judge validity, so a field not offered here can still be
+ * typed manually. Controlled: the caller computes `aliases` from the caret's line
  * (`utils/reportLayoutText.aliasesInScope`) and performs the insertion.
  */
 import { useMemo, useState } from "react";

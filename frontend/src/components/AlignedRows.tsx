@@ -1,11 +1,9 @@
 /**
  * Module: components/AlignedRows
  *
- * A list of rows that each have a leading marker, a main text and trailing actions (move up, move
- * down, edit, delete), laid out in ONE grid so the action column lines up across every row however
- * long the text is (docs/ux-style-guide.md, "Pattern: compact forms and add-on-demand": controls that
- * repeat align). A row may also carry a detail line under its text. Rows are list items, so the list
- * keeps its semantics (use `ordered` for a numbered list).
+ * A list of rows with a leading marker, a main text and trailing actions, laid out in ONE grid so the action
+ * column lines up across rows however long the text is (docs/ux-style-guide.md, "Pattern: compact forms and
+ * add-on-demand"). A row may carry a detail line. Rows are list items (`ordered` for a numbered list).
  */
 import type { ReactNode } from "react";
 

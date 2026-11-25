@@ -3,8 +3,7 @@
  *
  * The save step every "Create new" dialog of the Links panel shares (`TierAModuleDefinition.linkedRecordCreators`):
  * create the record through the type's own API, apply the quick links and tags its form collected, report the new id,
- * and keep the form open with the message when the create is refused. One implementation, so a dialog is a form plus
- * a create call and no module repeats the error handling.
+ * and keep the form open with the message when the create is refused.
  */
 import { useCallback, useState } from "react";
 

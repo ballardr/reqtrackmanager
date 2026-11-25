@@ -1,13 +1,10 @@
 """Tests for organisation renaming and the "send test email" admin actions:
 the deployment-wide one (`POST /system/test-email`, server-admin only,
 always via `Settings.smtp_*`) and the organisation-scoped one
-(`POST /orgs/{id}/test-email`, org-admin only, via that org's own
-`Organization.smtp_*` override — see `services/email.py`'s module
-docstring and docs/decisions.md's "SMTP/SSO organisation settings are a
-storage-only seam" entry for why this is currently the only thing that
-reads those columns). Email delivery itself is mocked (verified for real
-against MailHog in docs/decisions.md's manual verification), matching
-`test_digest.py`'s existing approach.
+(`POST /orgs/{id}/test-email`, org-admin only, via that org's `Organization.smtp_*`
+override; see `services/email.py`'s module docstring and docs/decisions.md's
+"SMTP/SSO organisation settings are a storage-only seam" entry for why it is the only
+reader of those columns). Email delivery is mocked, as in `test_digest.py`.
 """
 
 from unittest.mock import Mock, patch

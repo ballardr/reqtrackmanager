@@ -1,35 +1,28 @@
 """
 Module: services.dr_stats
 
-The disaster-recovery statistics document: one JSON-serialisable summary of a database and its file store
-that the backup tool records in the manifest and the restore verifier recomputes, so "the restore matches
-the source" is decided by the same code on both sides.
+The disaster-recovery statistics document: a JSON-serialisable summary of a database and its file store that
+the backup records in the manifest and the restore verifier recomputes, so "the restore matches the source" is
+decided by the same code on both sides.
 
-Responsibilities:
-- Count every table found in the database catalogue (a table a new module adds is covered with no list to
-  edit) and the Alembic revision.
-- Summarise the business content (organisations, users, projects, groups, records per registered artefact
-  type, links, file records and bytes).
-- Run integrity probes: every file record resolves to a stored object, and every encrypted column decrypts
-  with the configured key (so a wrong or missing `APP_SECRET_ENCRYPTION_KEY` is caught, not mistaken for
-  "no secret configured").
-- Compare two documents (`compare_stats`) and list the probe failures of one (`probe_failures`).
+Responsibilities: count every table in the database catalogue (a new module's table is covered with no list
+to edit) and the Alembic revision; summarise business content (organisations, users, projects, groups,
+records per registered artefact type, links, file records and bytes); run integrity probes (every file record
+resolves to an object, every encrypted column decrypts with the configured key, so a wrong
+`APP_SECRET_ENCRYPTION_KEY` is caught); compare documents (`compare_stats`) and list probe failures
+(`probe_failures`).
 
 Design decisions:
-- Counts and ids only: no row content, filename, storage key or secret ever enters the document (the
-  data classification policy treats those as Confidential or Restricted). A missing file is named by its
-  file-record id.
-- Deterministic: no timestamps or host names, so two documents of the same data are equal. Volatile
-  identity (when, which image) belongs to the manifest.
-- Consistent with a dump: `collect_stats` reads inside one REPEATABLE READ transaction, optionally joined
-  to the snapshot a `pg_dump --snapshot` run exported, so the counts match the dump exactly while the system
-  is live. Object-store probes cannot join that snapshot; they are applied to the snapshot's file rows.
-- Records per type are counted through each type's registered search provider (its table, id column and
-  standing conditions), the one declaration every artefact type already makes; a type without one is listed
-  in `uncounted_types` rather than silently omitted (the table counts still cover its rows).
+- Counts and ids only: no row content, filename, storage key or secret (the data classification policy treats
+  those as Confidential or Restricted); a missing file is named by its file-record id.
+- Deterministic: no timestamps or host names; volatile identity belongs to the manifest.
+- Consistent with a dump: `collect_stats` reads in one REPEATABLE READ transaction, optionally joined to the
+  snapshot a `pg_dump --snapshot` run exported. Object-store probes cannot join it and apply to that
+  snapshot's file rows.
+- Records per type are counted through each type's registered search provider; a type without one is listed
+  in `uncounted_types` rather than omitted (table counts still cover its rows).
 
-Dependencies: SQLAlchemy, `app.models` (metadata), `app.modules.registry`, `app.models.encrypted_type`,
-`app.storage_backends`.
+Dependencies: SQLAlchemy, `app.models`, `app.modules.registry`, `app.models.encrypted_type`, `app.storage_backends`.
 """
 
 from __future__ import annotations

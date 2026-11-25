@@ -1,31 +1,28 @@
 """
 Module: services.project_actions_bundle
 
-Requirement actions in a project bundle: the project's own action types, every action with its comments,
+Requirement actions in a project bundle: the project's action types, every action with its comments,
 attachments, tags and component placements, and the links between actions and requirements.
 
-Responsibilities:
-- `export_project_actions`: the `action_types`, `actions` and `action_links` sections of `project.json`, collecting
-  the attachments' `FileAsset`s so the bundle embeds their bytes.
-- `import_project_actions`: recreates them in a new project, after its requirements exist.
-- `import_project_action_types`: the action types a new project starts with (the bundle's own, else the defaults).
+Responsibilities: `export_project_actions` writes the `action_types`, `actions` and `action_links` sections and
+collects attachment `FileAsset`s so the bundle embeds their bytes; `import_project_actions` recreates them
+after the requirements exist; `import_project_action_types` gives a new project the bundle's types, else the
+defaults.
 
 Design decisions (Decided by: Agent):
-- An action keeps its `unique_code` (`ACT-003`), as a requirement does, so a link by code and a person's reference
-  still mean the same record; the project's action counter is moved past the imported codes. A code that is missing,
-  malformed or repeated is numbered afresh with a warning.
-- Action types are exported by name, and an action refers to its type by name. A type the action uses but the bundle
-  does not list as the project's own (a child project's action may use its parent's type) is created in the new
-  project, which has no parent, so the action keeps a valid type.
-- A bundle written before actions were carried has no `actions` section: it imports as before, with the default
-  action types and no actions.
-- Links reuse `services.bundle_links`: an end is an action (by code) or a requirement (by code). A link to a record
-  of another module is carried by that module's own bundle, which does not know actions, so it is left out, as every
-  cross-module link already is.
+- An action keeps its `unique_code` (`ACT-003`) as a requirement does, so links by code and references still
+  mean the same record, and the project's action counter moves past the imported codes. A missing, malformed
+  or repeated code is numbered afresh with a warning.
+- Action types are exported by name and an action refers to its type by name. A type an action uses that the
+  bundle does not list as the project's own (a child's action may use its parent's type) is created in the new
+  project, which has no parent.
+- A bundle with no `actions` section imports with the default action types and no actions.
+- Links reuse `services.bundle_links`: an end is an action or a requirement, by code. A link to another
+  module's record is carried by that module's bundle, which does not know actions, so it is left out like every
+  cross-module link.
 - Comments carry author, text and attachments; reactions are not carried (as for requirement comments).
 
-External dependencies: `services.bundle_common` (users, files), `services.bundle_links`, `services.tags`,
-`services.placements`, `services.actions` (code numbering), `services.definitions` (default types).
+Dependencies: `services.bundle_common`, `bundle_links`, `tags`, `placements`, `actions`, `definitions`.
 """
 
 from __future__ import annotations
@@ -56,12 +53,13 @@ from app.services.bundle_common import (
 )
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.definitions import seed_action_types
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 ACTION_ARTEFACT_TYPE = ArtefactType.REQUIREMENT_ACTION.value
-_CODE = re.compile(r"^ACT-(\d+)$")
+_CODE = re.compile(r"^[A-Z]{2,5}-(\d+)$")
 
 
 def _iso(value: datetime | date | None) -> str | None:
@@ -131,6 +129,7 @@ def export_project_actions(db: Session, project: Project, assets: dict[uuid.UUID
 
     prime_record_tag_names(db, ACTION_ARTEFACT_TYPE, ids)
     prime_record_placements(db, ACTION_ARTEFACT_TYPE, ids)
+    prime_record_references(db, ACTION_ARTEFACT_TYPE, ids)
     prime_file_links(db, RequirementActionFile, "action_id", ids)
 
     def email(user_id: uuid.UUID | None) -> str | None:
@@ -154,6 +153,7 @@ def export_project_actions(db: Session, project: Project, assets: dict[uuid.UUID
             ],
             "tags": record_tag_names(db, ACTION_ARTEFACT_TYPE, a.id),
             "placements": record_placements(db, ACTION_ARTEFACT_TYPE, a.id),
+            "external_references": record_references(db, ACTION_ARTEFACT_TYPE, a.id),
         }
         for a in actions
     ]
@@ -282,6 +282,10 @@ def import_project_actions(
         restore_record_placements(
             db, project_id=project.id, actor_id=current_user.id,
             artefact_type=ACTION_ARTEFACT_TYPE, artefact_id=action.id, entries=entry.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=ACTION_ARTEFACT_TYPE, artefact_id=action.id, entries=entry.get("external_references"),
         )
 
     import_artefact_links(

@@ -4,18 +4,18 @@
 # stored as an encrypted restic snapshot, copied to every BACKUP_DESTINATIONS repository, pruned to the
 # retention policy and sampled for integrity.
 #
-# Usage (from the repo root, with the stack's .env in place; cron-safe: no TTY needed):
+# Usage (the stack's .env is in deployments/full; run from any directory; cron-safe: no TTY needed):
 #   ./scripts/dr-backup.sh              # one backup (same as `run`)
 #   ./scripts/dr-backup.sh bundle --output FILE   # latest set as one age-encrypted tar, for scp or a USB disk
 #
 # Exit status: 0 success, 1 failed (see status.json in the `reqtrack_backup_status` volume), 75 another
 # backup is already running. `db` and `storage` are started on demand; nothing else needs to be up.
 #
-# Sets written here are restic snapshots. Until the matching restore tool lands, scripts/restore.sh restores
-# only the legacy files scripts/backup.sh writes; keep using scripts/backup.sh for those.
+# Sets written here are restic snapshots; scripts/restore.sh restores only the files scripts/backup.sh writes.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# The Compose project lives in deployments/full, with its .env beside it.
+cd "$(dirname "$0")/../deployments/full"
 
 if [ $# -eq 0 ]; then
   set -- run

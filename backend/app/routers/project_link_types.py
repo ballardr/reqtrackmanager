@@ -335,16 +335,14 @@ def delete_project_link_type(
 ):
     """Deletes one of this project's own link types (`services.link_type_usage.delete_link_type`).
 
-    Same contract as the organisation's delete: an unused type goes outright; one
-    in use needs `reassign_to_id`/`mode=reassign` or `mode=remove_links`. With
-    `keep_in_projects`, descendant projects that use the type keep it by copy
-    instead. Passing `mode` or `keep_in_projects` returns 200 with what happened;
-    the legacy forms return 204.
+    Same contract as the organisation's delete: an unused type goes outright; one in use needs
+    `reassign_to_id`/`mode=reassign` or `mode=remove_links`. With `keep_in_projects`, descendant projects that
+    use the type keep it by copy instead. Passing `mode` or `keep_in_projects` returns 200 with what happened;
+    otherwise 204.
 
     Raises:
-        HTTPException: 403 locked; 404 not this project's own type; 409 see the
-            service (in use with no mode, pending change requests, a rule would be
-            emptied, links held by projects the caller cannot manage).
+        HTTPException: 403 locked; 404 not this project's own type; 409 see the service (in use with no mode,
+            pending change requests, a rule would be emptied, links held by projects the caller cannot manage).
     """
     assert_not_locked(db, project)
     outcome = delete_link_type_in_use(

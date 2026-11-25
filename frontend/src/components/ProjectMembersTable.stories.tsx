@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import type { EffectiveMember, ModuleRoleDefinition, OrgGroupProjectRoleSummary, PendingInvite } from "../api/types";
+import { expectTooltip, reasonTarget } from "../testing/tooltips";
 import { ProjectMembersTable } from "./ProjectMembersTable";
 
 const MEMBERS: EffectiveMember[] = [
@@ -108,15 +109,35 @@ export const MixedMembersAndInvited: Story = {
     await expect(canvas.getByText("invitee@example.com")).toBeInTheDocument();
     await expect(canvas.getByText("Pending")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Resend invite to invitee@example.com" })).toBeInTheDocument();
-    // Follow-up UX fix: this table's Role (`MultiSelectDropdown`) and
-    // Source (multi-line provenance text) columns crowded the old
-    // `.side-grid` sidebar on both call sites, so its own `FilterPanel`
-    // now renders `layout="top"` (a full-width bar above the table) —
-    // see docs/ux-style-guide.md's "Pattern: filter panel placement —
-    // side vs. top". Both call sites (`ProjectAdminPage.tsx`'s Members
-    // section, `OrgAdminPage.tsx`'s "Manage users" modal) inherit this
-    // automatically since it's composed inside this shared component.
+    // The Role (`MultiSelectDropdown`) and Source (multi-line provenance text) columns are too wide for a side
+    // panel, so the table's `FilterPanel` renders `layout="top"` (docs/ux-style-guide.md, "Pattern: filter panel
+    // placement — side vs. top"); both call sites inherit it from this shared component.
     await expect(canvasElement.querySelector(".filter-panel-top")).toBeInTheDocument();
+  },
+};
+
+/** A service user carries the Service badge beside its name, so an integration is never mistaken for a person. */
+export const ServiceUserMember: Story = {
+  args: {
+    members: [
+      ...MEMBERS,
+      {
+        user_id: "u-agent", display_name: "Build agent", email: "svc-1@service.invalid", effective_role: "member",
+        is_service_account: true,
+        sources: [
+          {
+            kind: "direct_role", role: "member", via_project_id: null, via_project_name: null,
+            via_mode: null, via_group_id: null, via_group_name: null,
+          },
+        ],
+        module_roles: [],
+      },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Service")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Service")).toHaveLength(1);
   },
 };
 
@@ -159,13 +180,10 @@ export const AtScalePaginated: Story = {
   },
 };
 
-/** A `direct_group` source names the actual granting `ProjectGroup`
- * (`via_group_name`) instead of the generic "Via group" — the members/groups directory rework. Priya's fixture source carries
- * `via_group_id`/`via_group_name` for the "Reviewers" group. That detail
- * now lives inside the Source column's click-to-open popover (platform
- * review 2026-09 follow-up) rather than always-visible in the cell — the
- * cell itself just shows the "Group" summary word (see
- * `SourceSummaryDirectAndGroup` below for the mixed-sources case). */
+/** A `direct_group` source names the granting `ProjectGroup` (`via_group_name`) instead of the generic "Via group".
+ * Priya's fixture source carries `via_group_id`/`via_group_name` for the "Reviewers" group. That detail is inside the
+ * Source column's click-to-open popover; the cell shows the "Group" summary word (`SourceSummaryDirectAndGroup`
+ * covers the mixed case). */
 export const NamedGroupSourceLine: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -177,13 +195,9 @@ export const NamedGroupSourceLine: Story = {
   },
 };
 
-/** Alex Morgan's only source is `direct_role` — the Source cell reads
- * plain "Direct", with no popover-opening button at all (nothing to
- * disclose beyond the one word). Jordan Lee holds both a `direct_role`
- * (member) and a `forward_inherited` (stakeholder) source at once — the
- * mixed case reads "Direct and group" and its popover lists both lines,
- * confirming the summary/detail split doesn't lose either source when a
- * member's access comes from more than one place. */
+/** Alex Morgan's only source is `direct_role`: the Source cell reads "Direct" with no popover button. Jordan Lee
+ * holds a `direct_role` (member) and a `forward_inherited` (stakeholder) source: the cell reads "Direct and group"
+ * and its popover lists both lines, so the summary and detail split loses neither source. */
 export const SourceSummaryDirectAndGroup: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -200,13 +214,10 @@ export const SourceSummaryDirectAndGroup: Story = {
   },
 };
 
-/** `direct_org_group_role` (the members/groups directory rework) — an org group holding a role *directly* on this project, granted
- * from the Members section's own "Add member" autocomplete. Distinct
- * wording ("(direct)") from `direct_org_group`'s "Via nested org group"
- * (a different mechanism — nesting inside a `ProjectGroup`), and — like
- * every non-`direct_role` kind — checked-but-disabled with an explanatory
- * title, never a silently-broken toggle (see
- * `DisabledRoleWithExplanatoryTitle` below for that shared behaviour). */
+/** `direct_org_group_role`: an org group holding a role directly on this project, granted from the Members section's
+ * "Add member" autocomplete. Its wording "(direct)" differs from `direct_org_group`'s "Via nested org group" (nesting
+ * inside a `ProjectGroup`), and like every non-`direct_role` kind it is checked but disabled with an explanatory
+ * title (`DisabledRoleWithExplanatoryTitle`). */
 export const NamedOrgGroupRoleSourceLine: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -217,26 +228,18 @@ export const NamedOrgGroupRoleSourceLine: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "Morgan Casey's roles" }));
     const group = within(document.body).getByRole("group", { name: "Morgan Casey's roles" });
-    // Never a freely toggle-off-able direct grant from this row (the
-    // backing `OrgGroupProjectRole` belongs to the *group*, not this one
-    // user — see `isDirectRoleKind`'s own doc comment for why) — checked
-    // but disabled, same as every other non-`direct_role` kind, and its
-    // own label now carries the same "(by group)" suffix inline (platform
-    // review 2026-09 follow-up) rather than relying on the `title` alone.
+    // The backing `OrgGroupProjectRole` belongs to the group, not this user (`isDirectRoleKind`), so the option is
+    // checked but disabled, with the "(by group)" suffix inline as for every other non-`direct_role` kind.
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Member from Morgan Casey" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("is not a direct grant"));
+    await expectTooltip(reasonTarget(checkbox), /is not a direct grant/);
     await expect(within(group).getByText("Member (by group)")).toBeInTheDocument();
   },
 };
 
-/** A role sourced from a group (not a genuine `direct_role` grant) shows
- * checked but disabled, with a title explaining it must be changed at its
- * actual source — the core fix: `DELETE /roles` would silently
- * no-op against this option, so it must never look freely toggle-off-able.
- * Its own visible label also carries the "(by group)" suffix inline
- * (platform review 2026-09 follow-up) so the reason is visible without
- * hovering for the `title`. */
+/** A role sourced from a group (not a `direct_role` grant) shows checked but disabled, with a title and a visible
+ * "(by group)" label suffix saying it must be changed at its source: `DELETE /roles` would not affect it, so it must
+ * not look togglable. */
 export const DisabledRoleWithExplanatoryTitle: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -244,17 +247,14 @@ export const DisabledRoleWithExplanatoryTitle: Story = {
     const group = within(document.body).getByRole("group", { name: "Priya Shah's roles" });
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Stakeholder from Priya Shah" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("is not a direct grant"));
+    await expectTooltip(reasonTarget(checkbox), /is not a direct grant/);
     await expect(within(group).getByText("Stakeholder (by group)")).toBeInTheDocument();
   },
 };
 
-/** This table's only `direct_role`-sourced `project_manager` has its role
- * control disabled (a fast client-side C-U-08 hint — see the component's
- * own docstring for why the backend guard remains authoritative
- * regardless), its visible label carrying the distinct "(only manager)"
- * suffix (platform review 2026-09 follow-up) rather than "(by group)" —
- * this option *is* a genuine direct grant, just not currently revocable. */
+/** This table's only `direct_role`-sourced `project_manager` has its role control disabled (a client-side
+ * last-manager hint; the backend guard is authoritative), with the distinct "(only manager)" suffix: the option is
+ * a direct grant, just not currently revocable. */
 export const LastManagerRoleControlDisabled: Story = {
   args: {
     invites: [],
@@ -266,7 +266,7 @@ export const LastManagerRoleControlDisabled: Story = {
     const group = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Project manager from Alex Morgan" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("only manager source"));
+    await expectTooltip(reasonTarget(checkbox), /only manager source/);
     await expect(within(group).getByText("Project manager (only manager)")).toBeInTheDocument();
   },
 };
@@ -284,10 +284,8 @@ export const SearchNarrowed: Story = {
   },
 };
 
-/** The role `FilterField` narrows to only members holding the selected role
- * via *any* source — Jordan Lee's forward-inherited stakeholder source
- * counts just like Priya's group-derived one, even though neither is a
- * `direct_role` grant. */
+/** The role `FilterField` narrows to members holding the selected role through any source: Jordan Lee's
+ * forward-inherited stakeholder source counts like Priya's group-derived one. */
 export const RoleFiltered: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -310,10 +308,8 @@ export const ShowInvitedToggledOff: Story = {
   },
 };
 
-/** The caller-supplied `addControl` slot renders above the table — this
- * story stands in a plain button since the real controls
- * (`UserAutocomplete` + a role `<select>`) are exercised by the pages that
- * actually compose them. */
+/** The caller-supplied `addControl` slot renders above the table; the story uses a plain button because the real
+ * controls (`UserAutocomplete` and a role `<select>`) are exercised by the pages that compose them. */
 export const WithAddControl: Story = {
   args: {
     addControl: <button className="btn btn-primary">Add member…</button>,
@@ -324,12 +320,10 @@ export const WithAddControl: Story = {
   },
 };
 
-/** Per-row Actions column — hidden entirely when the caller doesn't supply either handler
- * (every story above), so this and the following two stories opt in via
- * `onRemoveAllAccess`/`onConvertToDirect` args. Alex's only source is a
- * genuine `direct_role` grant, so "Remove all access" is offered but
- * "Convert inherited access to direct roles" is not (nothing inherited to
- * convert) — confirming the `ConfirmDialog` calls `onRemoveAllAccess`. */
+/** The per-row Actions column is hidden unless the caller supplies a handler, so this and the next two stories opt in
+ * through `onRemoveAllAccess`/`onConvertToDirect`. Alex's only source is a `direct_role` grant, so "Remove all
+ * access" is offered but "Convert inherited access to direct roles" is not; confirming the `ConfirmDialog` calls
+ * `onRemoveAllAccess`. */
 export const ActionsMenuOffersRemoveAllAccess: Story = {
   args: {
     invites: [],
@@ -352,12 +346,9 @@ export const ActionsMenuOffersRemoveAllAccess: Story = {
   },
 };
 
-/** Jordan holds a `direct_role` (member) alongside a `forward_inherited`
- * (stakeholder) source — mixed, so "Remove all access" is withheld (it
- * would silently leave the inherited access behind while claiming to
- * remove "all" of it), but "Convert inherited access to direct roles" is
- * offered and, unlike the destructive action above, calls straight
- * through with no confirm step. */
+/** Jordan holds a `direct_role` (member) and a `forward_inherited` (stakeholder) source, so "Remove all access" is
+ * withheld (it would leave the inherited access in place) while "Convert inherited access to direct roles" is
+ * offered and, being additive, calls straight through with no confirm step. */
 export const ActionsMenuOffersConvertToDirect: Story = {
   args: {
     invites: [],
@@ -377,10 +368,8 @@ export const ActionsMenuOffersConvertToDirect: Story = {
   },
 };
 
-/** Priya's only source is `direct_group` — neither a genuine direct grant
- * (so not safely "remove all"-able) nor an inherited one (nothing to
- * convert) — so the Actions column renders no trigger at all for her row,
- * rather than an empty, useless menu. */
+/** Priya's only source is `direct_group`: not a direct grant (so not "remove all"-able) and not inherited (nothing
+ * to convert), so her row renders no Actions trigger rather than an empty menu. */
 export const ActionsMenuHiddenWhenNoEligibleAction: Story = {
   args: {
     invites: [],
@@ -394,16 +383,10 @@ export const ActionsMenuHiddenWhenNoEligibleAction: Story = {
   },
 };
 
-/** `availableModuleRoles` merges module-contributed
- * role options into the same Role `MultiSelectDropdown` as the four core
- * `ProjectRole` options — Alex holds one (checked) and not the other
- * (unchecked), and neither is ever disabled the way a group/inherited-
- * sourced core-role option would be, since module roles are direct-grant-
- * only with no inheritance concept (see the component's own docstring).
- * Every other story on this page implicitly covers the opposite,
- * real-world-default case — `availableModuleRoles` simply isn't passed, so
- * it defaults to `[]` and the dropdown shows only the four core roles,
- * unchanged (no module has any roles registered in this case). */
+/** `availableModuleRoles` merges module-contributed role options into the Role `MultiSelectDropdown` beside the
+ * four core `ProjectRole` options. Alex holds one (checked) and not the other (unchecked); neither is ever disabled,
+ * because module roles are direct-grant-only. Without `availableModuleRoles` (every other story) it defaults to `[]`
+ * and only the four core roles show. */
 const MODULE_ROLES: ModuleRoleDefinition[] = [
   { module_key: "compliance", role_key: "compliance_officer", name: "Compliance Officer", description: "Manages this project's compliance assessments." },
   { module_key: "compliance", role_key: "evidence_reviewer", name: "Evidence Reviewer", description: "Reviews submitted compliance evidence." },
@@ -432,45 +415,31 @@ export const ModuleRolesAvailable: Story = {
 
 // --- Group rows -----------
 //
-// An org group holding a direct `OrgGroupProjectRole` grant on this project
-// now gets its own `kind: "group"` row (previously visible only through a
-// member's own `direct_org_group_role` Source line — see
-// `NamedOrgGroupRoleSourceLine` above, which pins that provenance line's
-// own continued existence unchanged).
+// An org group holding a direct `OrgGroupProjectRole` grant on this project has its own `kind: "group"` row;
+// `NamedOrgGroupRoleSourceLine` above pins the provenance line the same grant gives a member.
 
 const GROUP_ROLES: OrgGroupProjectRoleSummary[] = [
   { org_group_id: "og-engineering", org_group_name: "Engineering", roles: ["stakeholder", "member"] },
 ];
 
-/** The group row's Name cell carries a "Group" badge (this table has no
- * dedicated Type column — see the component's own docstring for why a
- * badge in an existing cell was chosen instead), its Email cell is blank
- * (a group has none), and its Source column just states "Direct" plainly
- * — no per-role breakdown or popover, unlike a member row (platform review
- * 2026-09 follow-up), since there's nothing upstream of the group's own
- * direct grant to disclose and the Role column already names which roles
- * it holds. */
+/** The group row's Name cell carries a "Group" badge (the table has no Type column), its Email cell is blank and its
+ * Source cell states "Direct" with no per-role breakdown or popover, because nothing upstream of the group's direct
+ * grant exists to disclose and the Role column names the roles. */
 export const GroupRow: Story = {
   args: { groupRoles: GROUP_ROLES },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Scoped via the group's own (unique) role-dropdown trigger, not a
-    // `getByRole("row", { name: /Engineering/ })` lookup — Morgan Casey's
-    // fixture row also mentions "Engineering" in its own Source popover
-    // (`NamedOrgGroupRoleSourceLine`'s `direct_org_group_role` provenance),
-    // which would otherwise match too and make the row lookup ambiguous.
+    // Scoped through the group's own role-dropdown trigger: a `getByRole("row", { name: /Engineering/ })` lookup
+    // is ambiguous because Morgan Casey's row also mentions "Engineering" in its Source popover.
     const row = canvas.getByRole("button", { name: "Engineering's roles" }).closest("tr")!;
     await expect(within(row).getByText("Group")).toBeInTheDocument();
     await expect(within(row).getByText("Direct")).toBeInTheDocument();
   },
 };
 
-/** A group row's Role options are always freely togglable in both
- * directions — no `purelyDirect`/"last manager" disabling the way a
- * member row's options get, since the row's very existence already means
- * every option reflects this group's own direct grant (see the component's
- * own docstring for why a client-side "last manager" hint would be
- * actively misleading here). */
+/** A group row's Role options are always togglable both ways, with no `purelyDirect`/last-manager disabling: the
+ * row's existence means every option is the group's own direct grant, so a client-side last-manager hint would
+ * mislead. */
 export const GroupRowRoleToggle: Story = {
   args: { groupRoles: GROUP_ROLES, onToggleGroupRole: fn() },
   play: async ({ canvasElement, args }) => {
@@ -490,10 +459,8 @@ export const GroupRowRoleToggle: Story = {
   },
 };
 
-/** "Remove group" (Actions column) revokes every role the group holds at
- * once, behind the same Tier-1 `ConfirmDialog` "Remove all access" already
- * uses for a member row — `onRemoveGroup` is only ever called after
- * confirming. */
+/** "Remove group" revokes every role the group holds at once, behind the Tier 1 `ConfirmDialog` that "Remove all
+ * access" uses; `onRemoveGroup` is called only after confirming. */
 export const GroupRowRemoveAction: Story = {
   args: { groupRoles: GROUP_ROLES, onRemoveGroup: fn() },
   play: async ({ canvasElement, args }) => {
@@ -518,10 +485,8 @@ export const GroupRowAlongsideMembersAndSearch: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("cell", { name: "Alex Morgan" })).toBeInTheDocument();
     await expect(canvas.getByText("invitee@example.com")).toBeInTheDocument();
-    // Not a `getByRole("row", { name: /Engineering/ })` lookup here — before
-    // filtering, Morgan Casey's fixture row also mentions "Engineering" in
-    // its own Source line, making that query ambiguous (see `GroupRow`'s own
-    // comment above for the same reason).
+    // Not a `getByRole("row", { name: /Engineering/ })` lookup: before filtering, Morgan Casey's row also mentions
+    // "Engineering" in its Source line (see `GroupRow`).
     await expect(canvas.getByRole("button", { name: "Engineering's roles" })).toBeInTheDocument();
 
     await userEvent.type(canvas.getByPlaceholderText("Search by name or email"), "Engin");
@@ -535,3 +500,82 @@ export const GroupRowAlongsideMembersAndSearch: Story = {
 
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+/** A member whose only source is one direct role cannot have it cleared from the dropdown: the row exists only
+ * through its grants, so clearing it would remove the member at once (a person changing roles clears the old one
+ * after granting the new one). Removal stays the confirmed "Remove all access" action. Once a second role is held,
+ * the first is clearable again. */
+export const OnlyRoleCannotBeCleared: Story = {
+  args: {
+    members: [
+      {
+        user_id: "u-sam",
+        display_name: "Sam Ortiz",
+        email: "sam@example.com",
+        effective_role: "member",
+        sources: [
+          {
+            kind: "direct_role", role: "member", via_project_id: null, via_project_name: null,
+            via_mode: null, via_group_id: null, via_group_name: null,
+          },
+        ],
+        module_roles: [],
+      },
+    ],
+    invites: [],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Sam Ortiz's roles" }));
+    const only = within(document.body).getByRole("checkbox", { name: "Revoke Member from Sam Ortiz" });
+    await expect(only).toBeChecked();
+    await expect(only).toBeDisabled();
+    await expectTooltip(reasonTarget(only), /only role/);
+    await expect(within(document.body).getByRole("checkbox", { name: "Grant Stakeholder to Sam Ortiz" })).toBeEnabled();
+  },
+};
+
+/** A member with many roles reads "N roles" in the Role cell instead of widening the column; the names stay in the
+ * trigger's tooltip and the opened list. A short list still shows the names. */
+export const ManyRolesCollapseToCount: Story = {
+  args: {
+    members: [
+      { ...MEMBERS[0], user_id: "u-many", display_name: "Riley Park", email: "riley@example.com",
+        sources: (["project_manager", "project_administrator", "stakeholder", "member"] as const).map((role) => ({
+          kind: "direct_role" as const, role, via_project_id: null, via_project_name: null,
+          via_mode: null, via_group_id: null, via_group_name: null,
+        })),
+        module_roles: [] },
+      MEMBERS[1],
+    ],
+    invites: [],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const many = canvas.getByRole("button", { name: "Riley Park's roles" });
+    await expect(many).toHaveTextContent("4 roles");
+    await expectTooltip(many, /Project administrator/);
+    await expect(canvas.getByRole("button", { name: "Priya Shah's roles" })).toHaveTextContent("Stakeholder");
+  },
+};
+
+/** Role and Source sort by the text the cell shows: the joined role names, and the one-phrase source summary. */
+export const SortByRoleAndSource: Story = {
+  args: { invites: [] },
+  play: async ({ canvasElement }) => {
+    const table = within(canvasElement).getByRole("table", { name: "Project members" });
+    const names = () => within(table).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
+    const header = (name: string) => within(table).getByRole("columnheader", { name });
+
+    await userEvent.click(within(table).getByRole("button", { name: "Role" }));
+    await expect(header("Role")).toHaveAttribute("aria-sort", "ascending");
+    await expect(names()).toEqual(["Morgan Casey", "Alex Morgan", "Priya Shah", "Jordan Lee"]);
+    await userEvent.click(within(table).getByRole("button", { name: "Role" }));
+    await expect(header("Role")).toHaveAttribute("aria-sort", "descending");
+    await expect(names()).toEqual(["Jordan Lee", "Priya Shah", "Alex Morgan", "Morgan Casey"]);
+
+    await userEvent.click(within(table).getByRole("button", { name: "Source" }));
+    await expect(header("Source")).toHaveAttribute("aria-sort", "ascending");
+    await expect(names()).toEqual(["Alex Morgan", "Jordan Lee", "Priya Shah", "Morgan Casey"]);
+  },
+};

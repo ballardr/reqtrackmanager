@@ -1,13 +1,8 @@
-"""Regression pins for the `ServerSettings` singleton race found
-incidentally on 2026-08-31
-(docs/decisions.md) — unrelated to the work being verified, but a real bug:
-`get_server_settings` (`backend/app/services/branding.py`) used to be a
-pure application-level "read then insert if absent" check with no DB
-constraint backing it, so two concurrent requests could both observe "no
-row yet" and both insert, leaving two real rows an unordered `SELECT`
-could return either of unpredictably. Migration 0020 adds a `singleton_
-guard` (`UNIQUE`, always `True`) column that makes a second `INSERT` fail
-outright; `get_server_settings` catches that and re-reads.
+"""Pins the `ServerSettings` singleton (docs/decisions.md): `get_server_settings`
+(`backend/app/services/branding.py`) reads then inserts if absent, so two concurrent
+requests could both see "no row yet" and both insert. Migration 0020's `singleton_guard`
+column (`UNIQUE`, always `True`) makes a second `INSERT` fail; `get_server_settings`
+catches that and re-reads.
 """
 
 from sqlalchemy import func, select

@@ -3,6 +3,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { userEvent as pointer } from "vitest/browser";
 
 import { buttonHeightViolations } from "../testing/buttonHeights";
+import { markdownViewState } from "../testing/markdownViews";
 import { orphanedControlViolations } from "../testing/orphanedControls";
 import { buildComment, buildPin } from "../testing/recordCommentsFake";
 import { CommentThreadView } from "./CommentThreadView";
@@ -110,5 +111,18 @@ export const ResolvedThreadOffersReopen: Story = {
   args: { ...args, pin: buildPin({ id: "p-1", resolved: true }) },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByRole("button", { name: "Reopen" })).toHaveClass("btn-icon");
+  },
+};
+
+/** A comment is Markdown: it is shown formatted, and its reply box offers Write and Preview only. */
+export const CommentsAreFormattedAndRepliesAreWrittenInSimpleMarkdown: Story = {
+  args: {
+    ...args,
+    comments: [buildComment({ id: "c-9", pin_id: "p-1", body: "Please **check** the wiring:\n\n- left rail\n- right rail" })],
+  },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector("strong")).toHaveTextContent("check");
+    await expect(canvasElement.querySelectorAll("li")).toHaveLength(2);
+    await expect((await markdownViewState(canvasElement)).offered).toEqual(["Write", "Preview"]);
   },
 };

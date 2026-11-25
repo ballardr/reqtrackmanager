@@ -1,25 +1,13 @@
-# Configures GitVersion (.github/workflows/ci.yml's `docker-build` job) to
-# compute the SemVer tag applied to every pushed container image.
-#
-# This repo has one long-lived branch (`main`), no release branches, and no
-# git tags yet. GitVersion 6 splits what used to be `mode: Mainline` into two
-# separate axes, and both are needed here:
-#   - `mode: ContinuousDeployment` controls prerelease-label *rendering*
-#     only: unlike ContinuousDelivery, it produces a clean `X.Y.Z` on every
-#     commit with no prerelease suffix, which is what a container-image tag
-#     needs. It does NOT make the version increment by itself.
-#   - `strategies: [Mainline]` is the opt-in *version-incrementing* strategy
-#     (confusingly also named Mainline) that makes every commit on `main`
-#     bump the version. Without it, GitVersion 6 falls back to its default
-#     strategy set (ConfigNextVersion, MergeMessage, TaggedCommit,
-#     TrackReleaseBranches, VersionInBranchName), none of which find
-#     anything to increment from when there are no tags, version-tagged
-#     branch names, or version bump markers in commit messages — so
-#     ConfigNextVersion always wins and just echoes `next-version` verbatim,
-#     leaving every build stuck at the same version.
-# `next-version: 0.1.0` sets the starting point in the absence of any
-# existing tags — GitVersion's own default would otherwise start the very
-# first release at 0.0.1.
+# Configures GitVersion (.github/workflows/ci.yml's `version` job) to compute the SemVer tag applied to
+# every pushed container image. The repository has one long-lived branch (`main`) and no release branches.
+# GitVersion 6 has two separate settings, and both are needed:
+#   - `mode: ContinuousDeployment` controls prerelease-label rendering only: it produces a clean `X.Y.Z`
+#     on every commit with no prerelease suffix, as a container-image tag needs. It does not increment.
+#   - `strategies: [Mainline]` makes every commit on `main` bump the version. The default strategy set
+#     (ConfigNextVersion, MergeMessage, TaggedCommit, TrackReleaseBranches, VersionInBranchName) finds
+#     nothing to increment from without tags, version-named branches or commit-message bump markers, so
+#     ConfigNextVersion would echo `next-version` verbatim on every build.
+# `next-version: 0.1.0` is the starting point when no tags exist; GitVersion's default would start at 0.0.1.
 mode: ContinuousDeployment
 strategies: [Mainline]
 next-version: 0.1.0

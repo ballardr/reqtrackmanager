@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook, PASSWORD, selectOrgAdminGroup, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
+import { addDefinition, installCleanupHook, PASSWORD, selectOrgAdminGroup, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
+import { chooseColumn } from "../../columnChooser";
 import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -54,7 +55,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     await expect(page.getByTestId("cadence")).toContainText("Target cadence: Quarterly (suggested by their position: Monthly)");
 
     // --- Activate behind a confirm dialog; no approval step.
-    await page.getByRole("button", { name: "Activate" }).click();
+    await chooseRecordAction(page, "Stakeholder", "Promote to Active");
     await page.getByRole("dialog", { name: "Activate this Stakeholder?" }).getByRole("button", { name: "Activate" }).click();
     await expect(statusBadge(page, "Active")).toBeVisible();
 
@@ -172,8 +173,7 @@ test.describe("Stakeholders & Personas: organisation Stakeholders, types and sco
     await selectOrgAdminGroup(page, "Stakeholder Types", "Personas and Stakeholders");
     await expect(page.locator(`input[value="Customer"]`)).toBeVisible();
     await expect(page.locator(`input[value="Regulator"]`)).toBeVisible();
-    await page.getByPlaceholder("Stakeholder type name").fill(typeName);
-    await page.getByRole("button", { name: "Add Stakeholder type" }).click();
+    await addDefinition(page, "Add Stakeholder type", { Name: typeName });
     await expect(page.getByText("Stakeholder type created.")).toBeVisible();
     await expect(page.locator(`input[value="${typeName}"]`)).toHaveCount(1);
 
@@ -191,8 +191,9 @@ test.describe("Stakeholders & Personas: organisation Stakeholders, types and sco
       data: { name, stakeholder_type_id: types.find((t) => t.name === typeName)!.id },
     });
 
-    // --- From the project it appears with an Organisation scope badge, and opens read-only.
+    // --- From the project it appears with an Organisation scope badge (Scope is an optional column, so it is chosen first), and opens read-only.
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders`);
+    await chooseColumn(page, "Scope");
     const row = page.locator("tr", { hasText: name });
     await expect(row.getByText("Organisation", { exact: true })).toBeVisible();
     await expect(row.getByText(typeName)).toBeVisible();

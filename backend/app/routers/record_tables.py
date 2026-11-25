@@ -42,6 +42,7 @@ from app.schemas.record_tables import (
     RowResultOut,
 )
 from app.services.downloads import filename_safe
+from app.services.list_sort import ListSort, list_sort
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_view
 from app.services.record_policy import TagDecision, tag_decisions
@@ -148,7 +149,7 @@ def record_columns(
 @router.get("/export")
 def export_records(
     project_id: UUID, record_type: str, request: Request,
-    tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(),
+    tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(), sort_by: ListSort = Depends(list_sort),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ) -> Response:
     """The list as a CSV that re-imports (`POST .../import`), narrowed by the list's own filters.
@@ -156,6 +157,8 @@ def export_records(
     The query string carries the same filter parameters as the type's list endpoint (`tag`, `tag_mode` and
     `project_scope` for every type; the rest are the type's own, listed by `.../columns`). A parameter the type
     cannot honour is refused rather than ignored, so a filtered-looking screen never downloads everything.
+    `sort` and `order` give the list's order (code, title, created, modified or a column); the default is code
+    ascending, and a key the type does not offer is ignored.
 
     Raises:
         HTTPException: 404 the type or project is not found or the module is off; 403 no `view` permission;
@@ -167,6 +170,7 @@ def export_records(
     filters = split_params(provider, request.query_params.multi_items())
     table = build_table(
         db, current_user, project, record_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
+        sort=sort_by,
     )
     audit_export(db, current_user, project, record_type, table, "csv")
     stem = f"{filename_safe(project.name, fallback='project')}-{filename_safe(provider.label.lower())}"
@@ -213,7 +217,7 @@ def _grid_row_out(row: GridRow) -> GridRowOut:
 @router.get("/grid", response_model=RecordGridOut)
 def record_grid(
     project_id: UUID, record_type: str, request: Request,
-    tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(),
+    tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(), sort_by: ListSort = Depends(list_sort),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ) -> RecordGridOut:
     """The list as rows of cells for the bulk edit grid, narrowed by the list's own filters (as `.../export` is).
@@ -231,6 +235,7 @@ def record_grid(
     filters = split_params(provider, request.query_params.multi_items())
     grid = build_grid(
         db, current_user, project, record_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
+        sort=sort_by,
     )
     return RecordGridOut(
         label=provider.label,

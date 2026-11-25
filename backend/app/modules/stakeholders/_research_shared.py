@@ -1,16 +1,11 @@
 """
 Module: modules.stakeholders._research_shared
 
-Handler bodies behind the research-extras routes (`research_project_router.py`):
-session prompts, anonymous participants and findings of an Engagement
-The routes are gated by the
-`research_extras` sub-component, so a project that has it off still has the full
-engagement log.
-
-RBAC and tenancy are the engagement's (`_engagement_shared`): every write needs
-`require_engagement_manage`, and an item is only reachable through an engagement
-of the request's project. Audit events carry ids only, since prompts, labels and
-findings can quote participants.
+Handler bodies behind the research-extras routes: session prompts, anonymous
+participants and findings of an Engagement, gated by the `research_extras`
+sub-component. RBAC and tenancy are the engagement's (`require_engagement_manage`;
+items are reachable only through an engagement of the project). Audit events
+carry ids only, since the text can quote participants.
 """
 
 from __future__ import annotations
@@ -45,6 +40,7 @@ from app.modules.stakeholders.schemas import (
 )
 from app.modules.stakeholders.service import get_current_persona_version
 from app.services.audit import log_event
+from app.services.external_references import forget_record_references
 from app.services.ordering import move_ordered
 from app.services.placements import forget_record_placements
 from app.services.relationships import delete_link, get_all_links
@@ -284,6 +280,7 @@ def delete_finding(db: Session, finding: ResearchFinding, actor: User, project: 
         delete_link(db, link)
     forget_record_tags(db, FINDING_ARTEFACT_TYPE, finding.id)
     forget_record_placements(db, FINDING_ARTEFACT_TYPE, finding.id)
+    forget_record_references(db, FINDING_ARTEFACT_TYPE, finding.id)
     finding_id = finding.id
     db.delete(finding)
     log_event(

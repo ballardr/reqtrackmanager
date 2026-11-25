@@ -1,22 +1,12 @@
 /**
  * Module: modules/compliance/EvidencePanel
  *
- * The project's supporting-evidence library (§13-§15) — project-scoped, not
- * nested under one standard assignment, since a single piece of evidence
- * may support requirements across more than one of a project's standard
- * assignments at once (§13's "multiple compliance requirements and/or
- * standards"). A `DirectoryTable` + `FilterPanel` list (style guide
- * "Pattern: directories at scale") and a `Modal` create flow (Principle 3).
- * A row links straight to `EvidenceDetailPage` (files, links, revalidation,
- * archive) — evidence carries attachments and a Links panel, so it is a page,
- * not a `SidePanel` (style guide "Pattern: entity detail panel").
- *
- * Linking evidence to a specific requirement/required-action assessment is
- * done from the requirement side (`RequirementAssessmentPanel`'s own
- * "Link existing evidence" control, plus the "Upload new evidence"
- * inline create-and-link flow, which reuses `EvidenceFormModals.tsx`'s
- * `EvidenceFormModal`) — this panel is the canonical evidence list and
- * create surface, not a second place to manage linkage.
+ * The project's supporting-evidence library (§13-§15), project-scoped rather than nested under one standard assignment, since
+ * one piece of evidence may support requirements across several assignments. A `DirectoryTable` + `FilterPanel` list (style
+ * guide "Pattern: directories at scale") with a `Modal` create flow. A row links to `EvidenceDetailPage` (files, links,
+ * revalidation, archive): evidence carries attachments and a Links panel, so it is a page, not a `SidePanel`. Linking evidence
+ * to a requirement is done from `RequirementAssessmentPanel` ("Link existing evidence", "Upload new evidence" reusing
+ * `EvidenceFormModal`); this panel is the canonical list and create surface, not a second place to manage linkage.
  */
 import { useState } from "react";
 
@@ -31,15 +21,20 @@ import { EvidenceFormModal } from "./EvidenceFormModals";
 import { COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL, type ComplianceEvidence } from "./types";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useTableSort } from "../../hooks/useTableSort";
-import type { SortValue } from "../../utils/sortRows";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows, TIME_SORT_VALUES, type SortValue } from "../../utils/sortRows";
 import { evidencePath } from "./paths";
 
 const NO_EVIDENCE: ComplianceEvidence[] = [];
 
 /** Sortable value of each sortable column; the same text the cell shows, so the order matches what is read. */
+const EVIDENCE_SORT_KEYS = ["title", "code", "issuing_organisation", "expiry_date", "validity", "status", ...TIME_SORT_KEYS] as const;
 const EVIDENCE_SORT_VALUES: Record<string, (e: ComplianceEvidence) => SortValue> = {
+  ...TIME_SORT_VALUES,
   title: (e) => e.title,
   code: (e) => e.unique_code,
   issuing_organisation: (e) => e.issuing_organisation,
@@ -57,6 +52,7 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId, "compliance_evidence");
   const commitTags = useCommitTags(projectId, "compliance_evidence");
+  const announceCreated = useCreatedToast(projectId, "compliance_evidence");
   const [evidence, setEvidence] = useState<ComplianceEvidence[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -79,25 +75,28 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (includeArchived) params.set("include_archived", "true");
-    return params;
+    return addSortParams(params, listSort.sort);
   }
 
-  const table = useTableSort(evidence ?? NO_EVIDENCE, EVIDENCE_SORT_VALUES);
-  if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
-  if (evidence === null) return <Spinner />;
-
-  const filtered = table.rows
-    .filter((e) => includeArchived || !e.is_archived)
-    .filter((e) => !search || `${e.unique_code} ${e.title}`.toLowerCase().includes(search.toLowerCase()));
-
+  const listSort = useListSort("compliance_evidence", EVIDENCE_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(evidence ?? NO_EVIDENCE, listSort.sort, EVIDENCE_SORT_VALUES);
   const columns: DirectoryColumn<ComplianceEvidence>[] = [
     { key: "title", label: "Title", sortable: true, render: (e) => e.title },
     { key: "code", label: "Code", sortable: true, render: (e) => <RecordCode code={e.unique_code} /> },
-    { key: "issuing_organisation", label: "Issuing organisation", sortable: true, render: (e) => e.issuing_organisation ?? "—" },
-    { key: "expiry_date", label: "Expiry", sortable: true, render: (e) => e.expiry_date ?? "—" },
-    { key: "validity", label: "Validity", sortable: true, render: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state] },
+    { key: "issuing_organisation", label: "Issuing organisation", sortable: true, optional: true, render: (e) => e.issuing_organisation ?? "—" },
+    { key: "expiry_date", label: "Expiry", sortable: true, optional: true, render: (e) => e.expiry_date ?? "—" },
+    { key: "validity", label: "Validity", sortable: true, optional: true, render: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state] },
     { key: "status", label: "Status", sortable: true, render: (e) => (e.is_archived ? "Archived" : "Active") },
   ];
+
+  const shown = useOptionalColumns("compliance_evidence", columns);
+
+  if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
+  if (evidence === null) return <Spinner />;
+
+  const filtered = sortedRows
+    .filter((e) => includeArchived || !e.is_archived)
+    .filter((e) => !search || `${e.unique_code} ${e.title}`.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="stack">
@@ -106,14 +105,15 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
           Add evidence
         </button>
         <ListActions projectId={projectId} recordType="compliance_evidence" filters={filterParams().toString()} onImported={reload} />
+        {shown.chooser}
       </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Compliance evidence"
-          columns={columns}
+          columns={shown.columns}
           rows={filtered}
-          sort={table.sort}
-          onSort={table.onSort}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(e) => e.id}
           placements={{ projectId, artefactType: "compliance_evidence", rowId: (e) => e.id }}
           rowHref={(e) => evidencePath(projectId, e.id)}
@@ -123,6 +123,7 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
           sectionKey="compliance.evidence" total={evidence.length} matching={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder="Search evidence…" searchAriaLabel="Search evidence"
         >
+          <SortField list={listSort} columns={columns} titleKey="title" />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -137,7 +138,7 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
               for (const file of files) {
                 await complianceApi.uploadEvidenceAttachment(projectId, created.id, file);
               }
-              showToast(files.length > 0 ? "Evidence created and file(s) attached." : "Evidence created.");
+              announceCreated("Evidence", created, files.length > 0 ? "created and file(s) attached" : "created");
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

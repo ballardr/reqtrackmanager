@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "./helpers";
+import { installCleanupHook, promoteTo } from "./helpers";
 import { API_BASE_URL, setUpOrg } from "../modules/stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 /**
- * Job to be done: the display fixes of the fourth review show up on real pages. A versioned record shows
+ * Job to be done: record pages and lists display correctly on real data. A versioned record shows
  * a labelled "Version 1" and no bare "v1"; the aside is one card whose "Links" appears once, wide and
  * stacked; the Pain Points list opens on open items and a link naming a status shows that slice; the
  * Score column carries its settings behind a gear that never sorts; a checkbox's text sits beside its box;
@@ -94,7 +94,7 @@ test("detail header, aside card, Pain Points list defaults, score settings and t
 
   await test.step("addressing through the dialog records its comment too", async () => {
     await page.goto(`${list}/${open.id}`);
-    await page.getByRole("button", { name: "Address" }).click();
+    await promoteTo(page, "Addressed");
     const dialog = page.getByRole("dialog", { name: "Mark this Pain Point addressed?" });
     await dialog.getByLabel("Transition comment").fill("Shipped in the March release");
     await dialog.getByRole("button", { name: "Address" }).click();

@@ -1,42 +1,32 @@
 """
 Module: services.custom_report_run
 
-Runs a custom report layout for a caller and turns the result into what the report framework serves:
-a `ReportResult` (the Reports page's on-screen run), a `ReportDocument` (PDF, Word) or a CSV, with the
-provenance row and the catalogue entries that make a layout appear beside the module reports.
+Runs a custom report layout for a caller and produces what the report framework serves: a `ReportResult`
+(the on-screen run), a `ReportDocument` (PDF, Word) or a CSV, plus the provenance row and the catalogue
+entries that list a layout beside the module reports.
 
 Responsibilities:
-- Project run: one layout, one project (optionally with its readable child projects), through the
-  caller's `ArtefactResolver`.
-- Organisation-wide run: the same layout evaluated once **per project** the caller can read (narrowed by
-  the caller's project selection), each with that project's own resolver, merged into one report.
-- Merge: a document gets one top-level heading per project (authored headings move one level down) and a
-  page break between projects; a table layout's sheets of the same name are concatenated with a leading
-  `Project` column.
-- Output: `result_for` (on-screen), `document_for` (branding),
-  `render_input_for`, `available_formats`.
-- Provenance: `record_run` writes the `GeneratedReport` row (D11).
-- Catalogue: `project_entries` / `org_entries` describe the runnable layouts like any other report.
+- Project run (one layout, one project, optionally its readable child projects, through the caller's
+  `ArtefactResolver`) and organisation-wide run (the layout evaluated once per readable project, each with
+  that project's resolver, merged: a document gets a top-level heading per project and a page break between;
+  table sheets of the same name are concatenated with a leading `Project` column).
+- Output: `result_for`, `document_for`, `render_input_for`, `available_formats`; provenance via `record_run`
+  (a `GeneratedReport` row); catalogue via `project_entries` / `org_entries`.
 
 Design decisions:
-- **Authorisation is per project and is the traversal layer's.** The organisation-wide run adds no
-  visibility rule: each project is evaluated with `ArtefactResolver(project, caller)`, so a record the
-  caller cannot see is counted and never named, exactly as in a project run. The projects offered are the
-  ones the caller holds a role in (`readable_projects`) and a selection can only narrow them.
-- **A project that hid the layout is skipped** in an organisation-wide run, as it does not offer the layout
-  to its runners; the report says how many were skipped.
-- **One budget for the whole run.** The wall-clock limit is shared by all projects (each gets what is left)
-  and the output limit applies to the total, so a fan-out cannot multiply the single-project caps;
-  `MAX_FANOUT_PROJECTS` bounds the number of evaluations.
-- **The on-screen form is a table view of the document.** Each table becomes a section titled by the
-  headings above it, with the text between them as its note; text after the last table becomes a report
-  note. The PDF and Word are the faithful forms.
-- **Formats follow the layout family and come from the renderer registry** (`services.report_render`): a
-  document layout gives `json` plus `pdf`, `docx`, `html`, `odt`; a table layout `json` plus `csv` (a zip when it has
-  several sheets), `xlsx` and `ods`. A new format is one registration there.
+- Authorisation is per project and is the traversal layer's: the organisation-wide run adds no visibility
+  rule, so a record the caller cannot see is counted and never named. Only projects where the caller holds a
+  role are offered (`readable_projects`); a selection can only narrow them.
+- A project that hid the layout is skipped in an organisation-wide run, and the report says how many.
+- One budget for the whole run: the wall-clock limit is shared and the output limit applies to the total, so
+  a fan-out cannot multiply the caps; `MAX_FANOUT_PROJECTS` bounds the evaluations.
+- The on-screen form is a table view of the document: each table becomes a section titled by the headings
+  above it, with the text between tables as its note; the PDF and Word are the faithful forms.
+- Formats follow the layout family from the renderer registry (`services.report_render`): a document gives
+  `json`, `pdf`, `docx`, `html`, `odt`; a table layout gives `json`, `csv` (a zip for several sheets), `xlsx`, `ods`.
 
-Dependencies: `services.report_layout_eval`, `services.report_layout_scope`, `services.report_framework`,
-`services.report_document`, `models.generated_report`.
+Dependencies: `services.report_layout_eval`, `report_layout_scope`, `report_framework`, `report_document`,
+`models.generated_report`.
 """
 
 from __future__ import annotations
@@ -100,6 +90,7 @@ from app.services.report_model import (
     Block,
     BulletList,
     CellLink,
+    CodeBlock,
     Contents,
     DataCell,
     Equation,
@@ -110,12 +101,14 @@ from app.services.report_model import (
     NumberedList,
     PageBreak,
     Paragraph,
+    Quote,
     ReportDocument,
     Sheet,
     SheetCell,
     Table,
     contents_sheet,
     linked,
+    list_entries,
     project_report_label,
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
@@ -513,10 +506,17 @@ def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection],
             unused.append(block.text)
         elif isinstance(block, Paragraph | Note | Equation):  # an equation is shown as written
             lines.append(block.text)
-        elif isinstance(block, BulletList):
-            lines += [f"• {item}" for item in block.items]
-        elif isinstance(block, NumberedList):
-            lines += [f"{number}. {item}" for number, item in enumerate(block.items, start=1)]
+        elif isinstance(block, BulletList | NumberedList):
+            counters: dict[int, int] = {}
+            for entry in list_entries(block):
+                counters[entry.level] = counters.get(entry.level, 0) + 1
+                for deeper in [level for level in counters if level > entry.level]:
+                    del counters[deeper]
+                lines.append("  " * entry.level + (f"{counters[entry.level]}. " if entry.ordered else "• ") + entry.text)
+        elif isinstance(block, Quote):
+            lines.append(f"> {block.text}")
+        elif isinstance(block, CodeBlock):
+            lines += block.text.splitlines()
         elif isinstance(block, Grid):  # a custom table reads on screen as one line per row
             lines += [" | ".join(" ".join(cell.paragraphs).strip() for cell in row.cells) for row in block.rows]
         elif isinstance(block, Table):

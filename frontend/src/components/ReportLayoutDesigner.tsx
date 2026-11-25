@@ -1,46 +1,41 @@
 /**
  * Module: components/ReportLayoutDesigner
  *
- * The report layout designer: where a person writes a layout as text, sees its problems and a live preview, keeps
- * the work in the layout's shared draft and publishes it as a new version. One component for an organisation's and a project's layouts over `ReportLayoutApi`.
+ * The report layout designer: where a person writes a layout, sees its problems and a live preview, keeps the work
+ * in the layout's shared draft and publishes it as a new version. One component for an organisation's and a
+ * project's layouts over `ReportLayoutApi`.
  *
- * Responsibilities:
- * - Load a layout and show its current tree as the text view (`ReportLayoutApi.formatTree`), editable in a
- *   monospace box with block shortcuts; a layout shared from elsewhere opens read-only with a "make a copy" route.
- * - Edit the same tree in three views, switchable at any time and opening on Blocks: the block editor
- *   (`ReportLayoutBlocks`), the text view and the JSON view (the raw tree, for advanced use, with no helpers and no side
- *   panel; it is checked with the server's `validate` and a switch away from invalid JSON is refused). The block editor edits one copy of the tree, which it checks with the server's `validate` a
- *   moment after each change and uses to keep the text view's text up to date, so the preview, Save and the switch
- *   back to text all read one layout. A switch from text that has problems is refused, with the reason.
- * - Check the text a moment after typing stops (`parseText`) and list every problem by line, each jumping to its
- *   line; Save new version is available only for text that parsed cleanly and publishes the shared draft, so a
+ * - Loads a layout and edits one tree in three views, switchable at any time and opening on Blocks: the block
+ *   editor (`ReportLayoutBlocks`), the text view (`ReportLayoutApi.formatTree`, a monospace box with block
+ *   shortcuts) and the JSON view (the raw tree for advanced use, no helpers, no side panel). A layout shared from
+ *   elsewhere opens read-only with a "make a copy" route. The block editor edits one copy of the tree, checked by
+ *   the server's `validate` shortly after each change, and keeps the text view's text current, so the preview, Save
+ *   and the switch back to text read one layout. A switch from text or JSON with problems is refused, with the
+ *   reason; the blocks may be shown as text or JSON whatever their problems.
+ * - Checks the text shortly after typing stops (`parseText`) and lists every problem by line, each jumping to its
+ *   line. Save new version is available only for text that parsed cleanly and publishes the shared draft, so a
  *   concurrent save is reported (409) instead of overwritten.
- * - Keep the work in the shared draft (`useLayoutDraft`): with Autosave on (a per-person switch) the tree is written a few seconds
- *   after editing pauses, with it off Save draft writes it and Discard changes puts the editor back. The status line, the draft
- *   notice, the conflict banner and the History draft row are shared components over that one session, the same in every view.
- *   A layout with a draft opens on the draft. A version exists only once published.
- * - Offer, in one right-hand panel (`DesignerSidePanel`) shared by both views, tabs for the live preview (run on screen, or
- *   downloaded as a file in any format of the layout's family), and, in the Text view, the field picker and the widget picker, which insert at the caret, or, in the Blocks
- *   view, the selected block's form (the block editor draws it into the panel). The panel collapses to a rail; the
- *   collapsed state and the last tab of each view are remembered per person. The version history and comparison are a
- *   second main tab.
- * - Insert a snippet (`ReportSnippetPicker`) from either view and report what the server did as a toast (`useSnippetToast`). In
- *   the Blocks view the editor places the blocks itself (Ctrl+Z undoes them); in the Text view the draft is read as a
- *   layout, the server inserts the snippet at the start or end of it and the text is written again from the result,
- *   with an Undo while that text stands.
- * - Save a selection as a snippet (`ReportSaveSnippetDialog`): the selected block of the Blocks view, or the top-level blocks
- *   the Text view's selection or caret touches (the server's parse says which line each block starts on).
- * - Keep Save at the top: the view tabs, Save, the count of problems that block it and any problems the server returned
- *   on save sit in one pinned bar (`.designer-bar`); a second Save appears at the foot only when the view's content is
- *   taller than the window (`useTallerThanViewport`). Both are the same button over the same `saving` state.
- * - Warn before leaving with changes the draft does not hold (the Back link and the browser's own unload prompt): with autosave on
- *   that is only while a write is pending or has failed.
+ * - Keeps the work in the shared draft (`useLayoutDraft`): with Autosave on (a per-person switch) the tree is
+ *   written a few seconds after editing pauses; with it off Save draft writes it and Discard changes restores the
+ *   editor. A layout with a draft opens on the draft; a version exists only once published. Leaving with changes
+ *   the draft does not hold (the Back link, the browser's unload prompt) asks first.
+ * - One right-hand panel (`DesignerSidePanel`) with tabs for the live preview (on screen, or downloaded in any
+ *   format of the layout's family) and, in the Text view, the field and widget pickers that insert at the caret, or
+ *   in the Blocks view the selected block's form. It collapses to a rail; the collapsed state and each view's last
+ *   tab are remembered per person. The version history and comparison are a second main tab.
+ * - Snippets (`ReportSnippetPicker`, `ReportSaveSnippetDialog`): inserting reports the server's outcome as a toast
+ *   (`useSnippetToast`). The Blocks view places the blocks itself (Ctrl+Z undoes them); in the Text view the server
+ *   inserts at the start or end of the draft read as a layout and the text is rewritten, with an Undo while it
+ *   stands. A selection is saved as a snippet from the selected block or the top-level blocks the Text view's
+ *   selection or caret touches (the server's parse says which line each starts on).
+ * - Save stays at the top: view tabs, Save, the count of blocking problems and any server problems on save sit in
+ *   one pinned bar (`.designer-bar`); a second Save appears at the foot only when the content is taller than the
+ *   window (`useTallerThanViewport`), over the same `saving` state.
  *
- * Design decisions: the text view is the only editing surface here and the server the only parser, so the client
- * holds no block model that could drift from the tree (the WYSIWYG editor later edits the same tree). The saved
- * text is the author's own, not re-formatted, so Save never reflows what they typed. Pickers only insert text.
- * What the server holds (the draft's tree, else the saved version's) is the baseline for "unsaved"; the text view,
- * opened and not typed in, is never written back, so merely looking at a layout cannot create a draft.
+ * The server is the only parser, so the client holds no block model that could drift from the tree. The saved text
+ * is the author's own and never re-formatted. What the server holds (the draft's tree, else the saved version's)
+ * is the baseline for "unsaved"; a text view that is opened and not typed in is never written back, so merely
+ * looking at a layout cannot create a draft.
  */
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -846,6 +841,7 @@ export function ReportLayoutDesigner({
                 </div>
               )}
               <AutoGrowTextarea
+                plainText="The report layout's source text, read by the layout parser"
                 textareaRef={editor}
                 className="input layout-editor"
                 value={draft}
@@ -885,6 +881,7 @@ export function ReportLayoutDesigner({
               <div {...tabPanelProps("layout-view", "json")} className="stack">
                 <p className="text-muted" role="note" style={{ margin: 0 }}>{outline.jsonNote}</p>
                 <AutoGrowTextarea
+                  plainText="The report layout as JSON, not prose"
                   className="input layout-editor"
                   value={jsonText}
                   onChange={setJsonText}

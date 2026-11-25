@@ -1,24 +1,16 @@
 /**
  * Module: modules/architecture/noteLayout
  *
- * The layout of an annotation note's text on a diagram: where its lines break and, for a note whose size is Automatic, the
- * frame that holds them. Pure functions, no React.
- *
- * Responsibilities:
- * - Break a note's title (bold) and text into lines (`noteLines`) at a given inner width, keeping the line breaks a person typed
- *   (a blank line stays one empty line) and wrapping between words only.
- * - Size an Automatic note to its content (`automaticFrame`): the widest line and the line count, each with `NOTE_PADDING` around
- *   them, wrapped at `NOTE_MAX_WIDTH` (a single word wider than that is kept whole and sets the width).
- * - Give the frame a note is drawn in (`drawnSize`): the computed one for an Automatic note with content, the stored size otherwise.
- *
- * Design decisions:
- * - The server draws the same lines in the same frame with a Python copy (`diagram_note_layout.py`); `noteLayoutCases.json`
- *   holds the cases both are tested against, so a change is made in both. Widths come from the symbol label's width table at the
- *   note's font size (wider than the system fonts' glyphs), so a note may draw a little larger than its text needs and never
- *   smaller; the bold title is measured `TITLE_PERCENT` wider than regular text.
- * - `NOTE_PADDING` is the distance from the frame's edge to the text on every side, borders included, so a leader that ends at
- *   the frame ends that close to the words. A toned note's caption adds `NOTE_CAPTION_HEIGHT`.
- * - An empty note has no content frame: it keeps its stored size, which is what the editor shows for the placeholder.
+ * The layout of an annotation note's text on a diagram: where its lines break and, for an Automatic size, the frame holding
+ * them. Pure functions, no React.
+ * - `noteLines`: breaks the bold title and the text at an inner width, keeping typed line breaks (a blank line stays one
+ *   empty line) and wrapping between words only.
+ * - `automaticFrame`: the widest line and the line count with `NOTE_PADDING` around them, wrapped at `NOTE_MAX_WIDTH` (a
+ *   single wider word is kept whole and sets the width). `drawnSize`: that frame for an Automatic note with content, else the
+ *   stored size (an empty note keeps it, as the editor shows the placeholder). A toned note's caption adds `NOTE_CAPTION_HEIGHT`.
+ * - The server draws the same lines with `diagram_note_layout.py`; `noteLayoutCases.json` holds the cases both are tested
+ *   against, so a change is made in both. Widths come from the symbol label's width table (wider than system glyphs), so a
+ *   note may draw a little larger than its text needs and never smaller; the title is measured `TITLE_PERCENT` wider.
  */
 
 import { textWidth, wrapLabel } from "./symbolLabelLayout";

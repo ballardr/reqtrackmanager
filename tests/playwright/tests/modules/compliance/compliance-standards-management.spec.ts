@@ -1,52 +1,24 @@
 import { expect, test } from "@playwright/test";
 
-import { apiHeaders, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
+import { addDefinition, apiHeaders, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
+import { chooseListAction } from "../../listActions";
 import { createStandardWithVersion } from "./helpers";
 
 /**
- * Job to be done: "Compliance Standards" promoted from three clicks deep inside Org Admin
- * to its own top-level, cross-org nav-rail tab. Covers:
+ * Job to be done: "Compliance Standards" is its own top-level, cross-org nav-rail tab. Covers tab visibility
+ * (absent for a plain member with no relevant role and no standards, present once granted), one-step standard
+ * and version creation from `/standards`, Standard workspace navigation (Overview/Details, Versions, History)
+ * and org compliance settings (`/standards/settings/:orgId`, Action types / Mapping types via `ResourceMenu`).
  *
- * - Tab visibility: absent for a plain member with no relevant role and no
- *   standards in any org they belong to, present once granted.
- * - One-step standard+version creation from the new `/standards` page.
- * - Standard workspace navigation (Overview/Details, Versions, History) —
- *   the "Standard" nav-rail section, a sibling structural pattern to
- *   "Project."
- * - Org compliance settings (`/standards/settings/:orgId`, Action types /
- * Mapping types via `ResourceMenu`) — replaces the old org-admin
- *   "Compliance" group entirely (`ComplianceAdminPanel.tsx`, now deleted).
- *
- * `orgAdminAlphaBeta` is used rather than a dedicated `compliance_manager`
- * persona — `require_module_role("compliance", "compliance_manager")`
- * composes with `OrgRole.ORG_ADMIN` by design, and
- * this persona is already seeded as Alpha's (and Beta's) org admin
- * (`backend/scripts/seed_e2e_dataset.py`), so no new seed persona or
- * module-role grant is needed for this spec specifically. Because this
- * persona manages *two* orgs, the "New standard" dialog exercises its own
- * organisation picker (`StandardFormModal.tsx`), not just the single-org
- * path.
- *
- * Every fixture this spec creates (standard, action type) is dynamically
- * named with a per-run timestamp suffix, per this repo's standing test-
- * idempotency rule — nothing here mutates or depends on another spec's
- * named fixtures, and re-running this spec (alone, repeated, or out of
- * order) only ever adds new, uniquely-named rows rather than colliding with
- * a previous run's.
+ * `orgAdminAlphaBeta` is used rather than a `compliance_manager` persona: `require_module_role("compliance",
+ * "compliance_manager")` composes with `OrgRole.ORG_ADMIN`. It manages two orgs, so "New standard" exercises
+ * its organisation picker (`StandardFormModal.tsx`). Fixtures carry a per-run timestamp suffix.
  */
 test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail tab", () => {
   installCleanupHook();
   test("tab is hidden for a user with no org memberships, and visible for a compliance manager", async ({ page }) => {
-    // `orphan` has zero org memberships at all (seed_e2e_dataset.py — left
-    // Alpha via self-service for the user-directory/ban workflow), so
-    // `GET /api/v1/compliance/nav-visibility` is vacuously `false` for
-    // them regardless of how many standards Alpha/Beta accumulate across
-    // this suite's own runs. `memberAlphaBeta` (a genuine plain member of
-    // both orgs) is deliberately *not* used here instead: this spec's own
-    // "create a standard" test below adds a standard to Alpha every run,
-    // which would flip a plain Alpha member's own visibility to `true` via
-    // the "org has ≥1 non-archived standard" branch — an assertion against
-    // a shared, cross-spec org's *content* would be flaky by construction.
+    // `orphan` has no org memberships, so `nav-visibility` is false for it whatever Alpha/Beta hold. A plain
+    // member such as `memberAlphaBeta` is not used: this suite adds standards to Alpha, which flips their visibility.
     await loginAs(page, PERSONAS.orphan.email);
     await expect(page.getByRole("link", { name: "Compliance Standards" })).toHaveCount(0);
 
@@ -62,20 +34,12 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
 
-    // --- Org compliance settings: create an action type, needed for the
-    // required action below (`/standards/settings/:orgId`, superseding the
-    // old org-admin "Compliance" -> "Action types" tab).
-    // `exact: true`: the default tiles view renders every standard
-    // as its own card link whose accessible name also contains the org
-    // name (name + reference + org), so a plain substring match on
-    // `ORG_NAMES.alpha` now resolves to every tile card too, not just the
-    // "Compliance settings" link below — that link's own accessible name
-    // is the org name alone, so `exact` disambiguates it from every card.
+    // --- Org compliance settings: create an action type, needed for the required action below
+    // (`/standards/settings/:orgId`). Compliance settings is a row of the page's actions menu, one per organisation.
     await page.goto("/standards");
-    await page.getByRole("link", { name: ORG_NAMES.alpha, exact: true }).click();
+    await chooseListAction(page, ORG_NAMES.alpha);
     await expect(page).toHaveURL(/\/standards\/settings\/[^/]+$/);
-    await page.getByPlaceholder("Action type name").fill(actionTypeName);
-    await page.getByRole("button", { name: "Add action type" }).click();
+    await addDefinition(page, "Add action type", { "Action type name": actionTypeName });
     await expect(async () => {
       const values = await page.locator("input.input").evaluateAll((inputs) => inputs.map((i) => (i as HTMLInputElement).value));
       expect(values).toContain(actionTypeName);
@@ -88,16 +52,13 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await page.getByRole("link", { name: "Action types" }).click();
     await expect(page).toHaveURL(/\/standards\/settings\/[^/]+\/actionTypes$/);
 
-    // --- Standards: create one, with its mandatory first (draft) version,
-    // in the single combined "New standard" dialog — a standard is never
-    // left with zero versions. `orgAdminAlphaBeta` manages two orgs, so this
-    // exercises the dialog's own organisation picker.
+    // Standards: create one, with its mandatory first (draft) version, in the combined "New standard" dialog
+    // (a standard always has a version). `orgAdminAlphaBeta` manages two orgs, so this exercises the dialog's
+    // organisation picker.
     await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
 
-    // --- Standard workspace navigation: Overview (landed here already) ->
-    // Versions -> drill into v1.0. `exact: true` disambiguates the plain
-    // nav-rail link from the "N Versions" Overview stat tile,
-    // whose accessible name ("1 Versions") otherwise substring-matches too.
+    // Standard workspace navigation: Overview -> Versions -> drill into v1.0. `exact: true` disambiguates the
+    // nav-rail link from the "N Versions" Overview stat tile ("1 Versions").
     await page.getByRole("link", { name: "Versions", exact: true }).click();
     await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/versions$/);
     await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
@@ -155,12 +116,9 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/versions\/[0-9a-f-]+$/);
     await expect(page.getByText(`${reference} — v1.0`)).toBeVisible();
 
-    // --- Expandable "Versions" nav-rail group: already on this version's
-    // own route (via the tile click above), so the auto-expand has
-    // it open — showing this standard's one version — without ever
-    // clicking the disclosure toggle, and deep-links straight into that
-    // version's own workspace URL, the nav-rail's own route, not just a
-    // visual affordance.
+    // Expandable "Versions" nav-rail group: this version's own route is already open, so the group auto-expands
+    // showing the standard's one version without a click on the disclosure toggle, and the link deep-links
+    // into the version's workspace URL.
     const versionNavLink = page.getByRole("link", { name: /v1\.0/ }).filter({ hasText: "Draft" });
     await expect(versionNavLink).toBeVisible();
     await expect(page.getByRole("button", { name: "Collapse versions" })).toBeVisible();
@@ -173,10 +131,8 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await page.getByRole("button", { name: "Collapse versions" }).click();
     await expect(page.getByRole("link", { name: /v1\.0/ }).filter({ hasText: "Draft" })).toHaveCount(0);
 
-    // --- Requirement browsing: add two requirements, then use the new
-    // list view's search filter and detail panel (distinct from the tree
-    // view's own inline expand/edit, which the earlier test in this file
-    // already covers).
+    // Requirement browsing: add two requirements, then use the list view's search filter and detail panel
+    // (the tree view's inline expand/edit is covered by the earlier test in this file).
     await page.getByRole("button", { name: "Add requirement" }).click();
     await page.getByLabel("Requirement name").fill("Access control policy");
     await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
@@ -187,12 +143,8 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Asset inventory")).toBeVisible();
 
-    // View mode (`useViewMode`) is a per-user preference shared across
-    // every standard this shared `orgAdminAlphaBeta` persona ever opens —
-    // not scoped to this one test — so this switches back to tree view in
-    // a `finally` regardless of what happens in between, rather than
-    // leaving a later, unrelated spec run to unexpectedly land on list
-    // view for this persona if an assertion here ever throws first.
+    // View mode (`useViewMode`) is a per-user preference shared across every standard this persona opens, so
+    // a `finally` switches back to tree view even when an assertion throws first.
     await page.getByRole("button", { name: "List view" }).click();
     try {
       await page.getByPlaceholder("Search requirements…").fill("access");
@@ -226,11 +178,9 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
 
-    // `view_mode:standards` is a per-user preference shared by every run of
-    // this persona, so the test starts from tiles explicitly (an interrupted
-    // run used to leave it on "list", failing the next one) and resets it in
-    // an afterEach cleanup that runs even on timeout. The tiles *default*
-    // itself is covered by StandardListPage's TogglesBetweenTilesAndListView story.
+    // `view_mode:standards` is a per-user preference shared by every run of this persona, so the test starts
+    // from tiles explicitly and resets the preference in an `onCleanup` that runs even on timeout. The tiles
+    // default is covered by StandardListPage's TogglesBetweenTilesAndListView story.
     onCleanup(async (request) => {
       await request.patch("http://localhost:8000/api/v1/auth/me/preferences", {
         headers: await apiHeaders(request, PERSONAS.orgAdminAlphaBeta.email),

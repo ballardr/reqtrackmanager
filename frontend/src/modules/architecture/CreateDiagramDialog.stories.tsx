@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildUser, withAuth, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildDiagram, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { CreateDiagramDialog } from "./CreateDiagramDialog";
 
@@ -10,7 +10,8 @@ const meta: Meta<typeof CreateDiagramDialog> = {
   title: "Modules/Architecture/CreateDiagramDialog",
   component: CreateDiagramDialog,
   args: { projectId: PROJECT_ID, onCreated: fn(), onCancel: fn() },
-  decorators: [withAuth(buildUser({ id: "user-1" })), withToast()],
+  // `useCreatedToast` (the created confirmation's Open link) navigates, so the dialog needs a router.
+  decorators: [withAuth(buildUser({ id: "user-1" })), withToast(), withRouter("/")],
   beforeEach: () => {
     mockArchitectureReads();
     spyOn(api, "post").mockResolvedValue(buildDiagram({ id: "dgm-new" }) as never);

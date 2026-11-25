@@ -1,8 +1,7 @@
 """
 Module: modules.decisions.project_router.comments
 
-Comment CRUD/edit and comment-file attach/detach. See the package's own
-`__init__.py` docstring for the full router-split account.
+Comment CRUD/edit and comment-file attach/detach; see the package `__init__.py`.
 """
 
 from __future__ import annotations
@@ -146,12 +145,8 @@ def remove_decision_comment_attachment(
     db.delete(link)
     db.flush()
     if asset is not None:
-        # Unlike `routers.requirements.remove_comment_attachment` (which
-        # plain-deletes the `FileAsset` row without freeing its storage
-        # backend bytes), this uses `delete_file` so the underlying object
-        # is actually removed, not just its metadata row — a same-shape
-        # improvement kept local to this module rather than editing that
-        # unrelated core file. **Decided by: Agent.**
+        # `delete_file` removes the stored object as well as its metadata row
+        # (unlike `routers.requirements.remove_comment_attachment`).
         delete_file(db, asset)
     log_event(db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=decision_id, action="comment_file_removed",
               actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})

@@ -4,51 +4,22 @@ Revision ID: 0043
 Revises: 0042
 Create Date: 2026-09-21
 
-Replaces this module's own `compliance_evidence_requirement_links`
-(`ComplianceEvidenceRequirementLink` — Evidence<->ProjectComplianceRequirement)
-and `compliance_evidence_action_links` (`ComplianceEvidenceActionLink` —
-Evidence<->ComplianceRequiredActionAssessment) tables with rows in the core
-`artefact_links` table (`app.models.relationship.ArtefactLink`), mirroring
-exactly how core migration 0041 retired `requirement_links`/
-`requirement_action_links` — this module's own two evidence-link tables
-were, per their own original docstrings, "deliberately owned by this
-module, not core" only because no shared relationship infrastructure
-existed yet when they were built; this migration is that gap closing,
+Replaces `compliance_evidence_requirement_links` (Evidence to ProjectComplianceRequirement) and
+`compliance_evidence_action_links` (Evidence to ComplianceRequiredActionAssessment) with rows in core `artefact_links`
+(`ArtefactLink`), as migration 0041 did for `requirement_links` and `requirement_action_links`.
 
+Column widening: `artefact_links.source_type` and `target_type` are widened from `VARCHAR(20)` to `VARCHAR(40)` first,
+because this module's artefact types are longer (`compliance_required_action_assessment` is 37 characters).
 
-**Column widening**: `artefact_links.source_type`/`target_type` were
-`VARCHAR(20)`, sized for the two core `ArtefactType` values only. This
-module's own artefact-type values (`app.modules.compliance.module.
-MODULE_DEFINITION.artefact_types`) are wider — the longest,
-`compliance_required_action_assessment`, is 37 characters — so both
-columns are widened to `VARCHAR(40)` first.
+Column mapping:
+- `compliance_evidence_requirement_links` row -> `source_type='compliance_evidence'`, `source_id=evidence_id`,
+  `target_type='project_compliance_requirement'`, `target_id=project_compliance_requirement_id`, `link_type_id=NULL`,
+  `created_by=linked_by`, `created_at` preserved, `updated_at=created_at` (the table had no `updated_at`).
+- `compliance_evidence_action_links` row -> `source_type='compliance_evidence'`, `source_id=evidence_id`,
+  `target_type='compliance_required_action_assessment'`, `target_id=required_action_assessment_id`,
+  `link_type_id=NULL`, `created_by=linked_by`, timestamps as above.
 
-**Column mapping**:
-
-- `compliance_evidence_requirement_links` row -> `source_type=
-  'compliance_evidence'`, `source_id=evidence_id`, `target_type=
-  'project_compliance_requirement'`, `target_id=
-  project_compliance_requirement_id`, `link_type_id=NULL` (this table
-  never had a type, exactly like the old `requirement_action_links`),
-  `created_by=linked_by`, `created_at` preserved, `updated_at=created_at`
-  (this table had no separate `updated_at` column, same as
-  `requirement_action_links`).
-- `compliance_evidence_action_links` row -> `source_type=
-  'compliance_evidence'`, `source_id=evidence_id`, `target_type=
-  'compliance_required_action_assessment'`, `target_id=
-  required_action_assessment_id`, `link_type_id=NULL`, `created_by=
-  linked_by`, `created_at`/`updated_at` as above.
-
-**Row ids preserved** across the backfill (`INSERT ... SELECT id, ...`),
-matching migration 0041's own precedent, even though a full-codebase grep
-found no external FK referencing either old table's `id` column — free,
-and consistent.
-
-No application code changes ship in this migration file — `service.py`,
-`reports.py`, `export.py`, and `project_router.py` were repointed onto
-`app.services.relationships` in the same commit; see `docs/decisions.md`'s
-Platform Foundations entry for the full call-site
-list.
+Row ids are preserved (`INSERT ... SELECT id, ...`), as in migration 0041.
 """
 
 from collections.abc import Sequence

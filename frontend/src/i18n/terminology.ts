@@ -1,30 +1,21 @@
 /**
  * Module: i18n/terminology
  *
- * Pure logic (no React) behind C-C-03's per-project terminology overrides:
- * the fixed set of overridable terms, pluralisation, and the `{token}`
- * substitution mechanism that makes `strings.ts` itself terminology-aware.
- * Split out of `TerminologyContext.tsx` the same way `ProjectContextValue.ts`
- * was — so that file keeps exporting only the provider and hooks React's
- * Fast Refresh expects, and this file stays trivially unit-testable without
- * a React tree.
+ * Pure logic (no React) behind C-C-03's per-project terminology overrides: the fixed set of overridable terms,
+ * pluralisation, and the `{token}` substitution that makes `strings.ts` terminology-aware. Kept apart from
+ * `TerminologyContext.tsx` so that file exports only the provider and hooks Fast Refresh expects, and this file is
+ * unit-testable without a React tree.
  *
- * Any `en` string in `strings.ts` (or the fixed template part of a
- * function-valued entry there) may embed a token — `{requirement}`,
- * `{Requirements}`, `{changeRequest}`, etc. — from `TOKEN_MAP` below.
- * `useStrings()` (in `TerminologyContext.tsx`) is the terminology-aware
- * replacement for calling `t()` directly: it walks the whole string table
- * and substitutes every token for the current project's resolved term (or
- * its English default outside a project, or where no override is set).
- * Plain `t()` is still correct for any string with no token in it.
+ * Any `en` string in `strings.ts` (or the fixed template part of a function-valued entry) may embed a token
+ * (`{requirement}`, `{Requirements}`, `{changeRequest}`) from `TOKEN_MAP`. `useStrings()` (in
+ * `TerminologyContext.tsx`) walks the string table and substitutes every token for the current project's resolved
+ * term (its English default outside a project or where no override is set). Plain `t()` suits a string with no token.
  */
 
 export type TerminologyKey = "project" | "stage" | "component" | "category" | "requirement" | "change_request";
 
-// Lower case: these are substituted mid-phrase ("New requirement") as often
-// as they're used standalone (a nav label, a page heading) — `useTerm`
-// returns the raw lower-case form for the former; `useTermPlural`/token
-// substitution capitalise on request (see `TOKEN_MAP`).
+// Lower case: terms are substituted mid-phrase ("New requirement") as often as they stand alone;
+// `useTerm` returns the raw lower-case form, `useTermPlural` and token substitution capitalise on request (see `TOKEN_MAP`).
 export const DEFAULT_TERMS: Record<TerminologyKey, string> = {
   project: "project",
   stage: "stage",
@@ -39,12 +30,9 @@ function capitalize(word: string): string {
 }
 
 /**
- * Pluralises a resolved term. Handles the one irregular default term
- * (category -> categories, not "categorys"); every other default is a
- * regular noun. A project overriding a term with a different irregular
- * plural (e.g. "Story"/"Stories") still needs to type the plural form
- * directly as its override to read correctly — this covers the built-in
- * defaults and regular-noun overrides only.
+ * Pluralises a resolved term. Handles the one irregular default term (category -> categories); every other default
+ * is a regular noun. An override with a different irregular plural (e.g. "Story"/"Stories") must supply the plural
+ * form itself.
  */
 export function pluralize(word: string): string {
   if (/[^aeiou]y$/i.test(word)) return `${word.slice(0, -1)}ies`;
@@ -92,12 +80,9 @@ function resolveToken(spec: TokenSpec, terminology: Record<string, string>): str
 }
 
 /**
- * Substitutes every recognised `{token}` in `value` for the project's
- * resolved terminology. Tokens not in `TOKEN_MAP` (the existing
- * `{org}`/`{name}`/`{email}`/etc. call-site placeholders used throughout
- * `strings.ts`, substituted manually via `.replace()` at each call site)
- * are left untouched — this only ever recognises the fixed terminology
- * token set, so it composes safely with that existing convention.
+ * Substitutes every recognised `{token}` in `value` for the project's resolved terminology. Tokens not in
+ * `TOKEN_MAP` (the `{org}`/`{name}`/`{email}` call-site placeholders substituted with `.replace()`) are left
+ * untouched, so the two conventions compose.
  */
 export function applyTerminology(value: string, terminology: Record<string, string>): string {
   if (!value.includes("{")) return value;
@@ -108,13 +93,10 @@ export function applyTerminology(value: string, terminology: Record<string, stri
 }
 
 /**
- * Deep-walks a string table (see `Strings` in `strings.ts`), applying
- * `applyTerminology` to every string leaf and to the return value of every
- * function leaf. Function-valued entries (e.g. `notProvisioned: (org) =>
- * ...`) keep taking their own params unchanged — only what they return is
- * substituted, so an existing `{org}`/`{name}` param placeholder embedded
- * in a template literal's fixed text still resolves the same way it always
- * has, via the caller's own `.replace()` or template interpolation.
+ * Deep-walks a string table (see `Strings` in `strings.ts`), applying `applyTerminology` to every string leaf and
+ * to the return value of every function leaf. Function-valued entries keep their own parameters; only what they
+ * return is substituted, so a `{org}`/`{name}` placeholder in a template literal still resolves through the
+ * caller's `.replace()` or interpolation.
  */
 export function resolveTerminologyDeep<T>(node: T, terminology: Record<string, string>): T {
   if (typeof node === "string") return applyTerminology(node, terminology) as unknown as T;

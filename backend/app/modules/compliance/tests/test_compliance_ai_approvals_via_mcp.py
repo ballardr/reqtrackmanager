@@ -1,37 +1,19 @@
-"""Tests for the AI-approval-via-MCP gate as applied to Compliance's own
-`approve_requirement`/`reject_requirement` (`project_router.py`), added
-2026-09-22 alongside the "Compliance MCP write tools + generalized AI
-approval gate" reversal (docs/decisions.md) — mirrors `backend/tests/
-test_ai_approvals_via_mcp.py`'s exact pattern for the three core endpoints,
-proving `app.services.rbac.require_ai_approvals_enabled` behaves
-identically when called from a module's own router: an MCP-originated call
-(`X-Reqtrack-Client: mcp-server`, see `app.deps.get_request_channel`) is
-rejected unless both the project's and its organisation's `allow_ai_
-approvals` flags are true, a plain UI/API call is entirely unaffected by
-either flag, and the calling account's own `compliance_officer`/
-`PROJECT_MANAGER` role is still required regardless of either flag (the
-gate only narrows, it never widens, real RBAC).
+"""Tests for the AI-approval-via-MCP gate on Compliance's `approve_requirement` and `reject_requirement`
+(`project_router`), following `backend/tests/test_ai_approvals_via_mcp.py`. They pin that
+`app.services.rbac.require_ai_approvals_enabled` behaves as it does for core endpoints when called from a module router:
+an MCP-originated call (`X-Reqtrack-Client: mcp-server`, `app.deps.get_request_channel`) is rejected unless both the
+project's and its organisation's `allow_ai_approvals` flags are true, a UI or API call is unaffected by either flag, and
+the caller's `compliance_officer` or `PROJECT_MANAGER` role is still required (the gate only narrows RBAC).
 
-`submit_requirement_for_approval` is also proven unaffected by the gate —
-it no longer carries `APPROVAL_ACTION_ROUTE_EXTRA` and needs no `allow_ai_
-approvals` opt-in, since it only queues a decision rather than deciding
-anything.
+`submit_requirement_for_approval` is unaffected by the gate (no `APPROVAL_ACTION_ROUTE_EXTRA`): it only queues a
+decision.
 
-Also covers `complete_required_action_assessment` (2026-09-23 hardening
-pass): this endpoint's own docstring names `complete_requirement` (core)
-as its shape template, but it was missing that endpoint's MCP gate
-entirely — found and fixed in that pass. `uncomplete_required_action_
-assessment` is deliberately left ungated, mirroring core's own documented
-complete/uncomplete asymmetry (`uncomplete_requirement` is also ungated) —
-not tested here for the gate itself, only that it remains reachable.
+`complete_required_action_assessment` carries the MCP gate of core's `complete_requirement`; `uncomplete_required_action_
+assessment` is ungated, as `uncomplete_requirement` is, and is tested only for staying reachable.
 
-And `complete_project_review`/`complete_standard_review` (same pass):
-these were found declared as plain, ungated MCP write tools despite
-recording a review outcome being core's one categorically MCP-excluded
-action in every configuration (`mcp-server/server.py`'s own instructions).
-Fixed by marking both routes `APPROVAL_ACTION_ROUTE_EXTRA` and removing
-their `McpToolDefinition` declarations — proven below by asserting neither
-resolves via MCP at all, gate flags on or off, rather than a 403.
+`complete_project_review` and `complete_standard_review` are `APPROVAL_ACTION_ROUTE_EXTRA` routes with no
+`McpToolDefinition`: recording a review outcome is excluded from MCP in every configuration
+(`mcp-server/server.py`), asserted by neither resolving through MCP at all, gate flags on or off.
 """
 
 from __future__ import annotations
@@ -179,7 +161,7 @@ def test_mcp_approve_still_requires_real_rbac_role_even_with_both_flags_on(clien
     assert "AI approval" not in resp.text
 
 
-# --- complete_required_action_assessment: MCP gate (2026-09-23 hardening pass) ----
+# --- complete_required_action_assessment: MCP gate ----
 
 
 def _setup_required_action_assessment(client, admin_token, org_id):
@@ -248,8 +230,7 @@ def test_mcp_uncomplete_required_action_assessment_remains_ungated(client, admin
     assert resp.json()["is_completed"] is False
 
 
-# --- complete_project_review / complete_standard_review: categorical MCP
-# exclusion (2026-09-23 hardening pass) --------------------------------------------
+# --- complete_project_review / complete_standard_review: categorical MCP exclusion --------------------
 
 
 def test_complete_project_review_and_complete_standard_review_are_not_mcp_tools(client, admin_token):

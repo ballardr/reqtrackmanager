@@ -78,7 +78,7 @@ Every role above composes with roles that already carry equivalent authority els
 
 ## Groups as owners
 
-The **Owner** of a Pain Point, a Guiding Principle and an Open Question can be a user, an organisation group or a project group, so a team can stand behind a record instead of one nominee who may leave. The record shows the group's name, its kind (Organisation group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the roles above still decide who can edit.
+The **Owner** of a Pain Point, a Guiding Principle and an Open Question can be a user, an organisation group or a project group, so a team can stand behind a record instead of one nominee who may leave. The record shows the group's icon and name; hover to see its kind (Organisation group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the roles above still decide who can edit.
 
 - A project group can be named on a Pain Point, an Open Question or a project-level Guiding Principle in that project. An organisation-level Guiding Principle is shared by every project, so it can name users and organisation groups only.
 - A Guiding Principle's version history lists who owned each version. If a group is later deleted, older versions show it as a deleted group.

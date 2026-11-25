@@ -18,8 +18,9 @@ const TILE_SIZE = 44;
  * Draws one symbol, requesting its content only once the tile is on screen.
  *
  * @param src The API path of the symbol's content. The tile's own name is the accessible name, so the image is decorative.
+ * @param size The width and height in pixels.
  */
-function LazySymbolImage({ src }: { src: string }) {
+export function LazySymbolImage({ src, size = TILE_SIZE }: { src: string; size?: number }) {
   const holder = useRef<HTMLSpanElement>(null);
   // Without IntersectionObserver (an old browser) every tile reads at once, as the List view's preview does.
   const [seen, setSeen] = useState(() => typeof IntersectionObserver === "undefined");
@@ -35,8 +36,8 @@ function LazySymbolImage({ src }: { src: string }) {
     return () => observer.disconnect();
   }, [seen]);
   return (
-    <span ref={holder} style={{ display: "inline-flex", width: TILE_SIZE, height: TILE_SIZE, alignItems: "center", justifyContent: "center" }}>
-      {seen ? <SymbolImage src={src} alt="" size={TILE_SIZE} /> : null}
+    <span ref={holder} style={{ display: "inline-flex", width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      {seen ? <SymbolImage src={src} alt="" size={size} /> : null}
     </span>
   );
 }
@@ -104,10 +105,10 @@ export function SymbolGallery({
   return (
     <div className="stack" style={{ gap: "var(--space-2)", minWidth: 0 }}>
       <div
-        role="radiogroup" aria-label="Symbols"
+        role="radiogroup" aria-label="Symbols" className="scroll-region"
         style={{
           display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(5.5rem, 1fr))", gap: "var(--space-2)",
-          maxHeight: "min(20rem, 50vh)", overflowY: "auto", padding: "2px",
+          maxHeight: "min(20rem, 50vh)", padding: "2px",
         }}
       >
         <Tile

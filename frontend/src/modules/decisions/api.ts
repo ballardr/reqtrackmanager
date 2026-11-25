@@ -1,14 +1,9 @@
 /**
  * Module: modules/decisions/api
  *
- * Thin wrapper functions over `api` (frontend/src/api/client.ts) for every
- * endpoint `backend/app/modules/decisions/{project_router,router}.py`
- * exposes — mirrors `modules/compliance/api.ts`'s own dedicated-per-module-
- * file precedent (that file's own docstring notes this isn't a repo-wide
- * requirement, just reasonable once a module's endpoint surface is large
- * enough that inline `api.get(...)` calls at every call site would repeat
- * the same path-building logic many times over; Decision Management's ~30
- * endpoints clear that bar the same way Compliance's did).
+ * Thin wrapper functions over `api` (frontend/src/api/client.ts) for every endpoint of
+ * `backend/app/modules/decisions/{project_router,router}.py`, as `modules/compliance/api.ts` does for its module: with
+ * about 30 endpoints, inline `api.get(...)` calls would repeat the path-building logic at every call site.
  */
 import { api } from "../../api/client";
 import { appendTagParams, type TagListFilters } from "../../api/tags";

@@ -1,51 +1,12 @@
 """
 Module: modules.context_strategy.reports
 
-Report data layer for Context & Strategy: the nine reports R1–R9 as one `collect_*`
-function each, returning the core framework's `ReportResult`, plus the
-`REPORT_DEFINITIONS` that declare them to the registry. Everything
-module-neutral — result shapes, scope rule (`readable_projects`), PDF/CSV
-rendering, routes, MCP tools, the catalogue — lives in
-`app.services.report_framework`; every output form (PDF, CSV, on-screen JSON,
-MCP) reads the same `ReportResult`, so a figure is computed exactly once.
-
-Responsibilities:
-- Collectors R1–R9. Pain Point scoring is not recomputed here: R1 and R9 are
-  built on `pain_point_scores.build_pain_point_scoring`.
-- Collectors never widen `ctx.projects` and further narrow it per
-  sub-component (`pain_point`, `strategy`, ...) that is enabled.
-- `REPORT_DEFINITIONS`: key, slug, gating sub-component, organisation role and
-  declared parameters per report.
-
-Design decisions (all Decided by: Agent unless stated; the report list,
-formats, model/roll-up choice and access rules are Decided by:
-User):
-- "Open" Pain Points are Submitted, Triaged and Accepted. Addressed means
-  the problem is fixed and Rejected/Duplicate/Closed are finished, so none
-  of them belong in a fix ranking.
-- Org-wide reports group Pain Points by the scoring model actually applied
-  (the project's resolved default unless a model is requested), never
-  ranking different models together.
-- Cross-artefact checks ("has a Requirement", "has a Strategy") count only
-  artefacts inside the report's readable scope. A link to something the
-  caller cannot read is treated as absent rather than leaked, so a gap list
-  may over-report; it never reveals a hidden record.
-- R2, R5, R6 and R7 are project-level only; R1, R3, R4, R8 and R9 also run
-  organisation-wide, gated by the `org_reports_viewer` role and
-  the framework's default `readable_projects` scope. Organisation-scoped
-  Strategies, Future States and Guiding Principles appear in the project
-  reports they relate to (R2 parents, R6 and R7 rows) because every org
-  member can already read them.
-- Report reads are not audit-logged, following `modules.compliance.reports`:
-  every field here is already returned to the same caller by the module's
-  JSON endpoints, and nothing Restricted (no file content, no secrets) is
-  included.
-- R9 has no tier columns yet: `intentional_in`/`removed_by` stay reserved
-  until Product Tiers exists, so the report says so in a note.
-
-Dependencies: core `services.relationships`/`services.scoring`/
-`services.report_framework`, the `registry` artefact-summary hook (Decisions,
-without importing Decision Management) and this module's own models.
+Report data layer: reports R1-R9 as `collect_*` functions returning
+`ReportResult`, plus the `REPORT_DEFINITIONS` declaring them; rendering,
+routes and MCP tools live in `services.report_framework`.
+- "Open" Pain Points are Submitted, Triaged and Accepted.
+- Links to unreadable records count as absent, never leaked.
+- R2, R5, R6, R7 are project-level; the rest also run organisation-wide.
 """
 
 from __future__ import annotations
@@ -579,13 +540,17 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
     open_count = scored = 0
     for group in groups:
         fixable = [i for i in group.items if not i.is_intentional]
-        ranked = sorted((i for i in fixable if i.score is not None), key=lambda i: (-(i.score or 0), i.title.lower()))
+        ranked = sorted(  # ranked: the highest score first
+            (i for i in fixable if i.score is not None), key=lambda i: (-(i.score or 0), i.title.lower()),
+        )
         for n, item in enumerate(ranked, start=1):
             item.rank = n
         ranking_items += ranked
         unscored_items += [i for i in fixable if i.score is None]
         blocker_items += [i for i in fixable if i.is_blocker]
-        intentional_items += sorted((i for i in group.items if i.is_intentional), key=lambda i: (-(i.score or 0), i.title.lower()))
+        intentional_items += sorted(  # ranked: the highest score first
+            (i for i in group.items if i.is_intentional), key=lambda i: (-(i.score or 0), i.title.lower()),
+        )
         for i in group.items:
             breakdown += [
                 [i.model_key, i.label, i.project_name, p.persona, label(SCORE_TARGET_STATUS_LABEL, p.target_status),
@@ -706,7 +671,7 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
                "Persona severity", "Score (0–100)", "Band", "Assessment", "Tags"]
     rows, churn_rows = [], []
     for group in groups:
-        for i in sorted(group.items, key=lambda i: (-(i.score or 0), i.title.lower())):
+        for i in sorted(group.items, key=lambda i: (-(i.score or 0), i.title.lower())):  # ranked: the highest score first
             persona_severity = "; ".join(f"{p.persona}: {p.severity}" for p in i.personas if p.severity) or "Not scored"
             row = [
                 i.model_key, i.label, i.project_name, i.status_label, "", "", persona_severity, _fmt_score(i.score),
@@ -816,14 +781,16 @@ def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
                 parent_of.setdefault(s.id, other)
     children_of: dict[uuid.UUID, list[CascadeNode]] = defaultdict(list)
     tree: list[CascadeNode] = []
-    for s in sorted(project_strategies, key=lambda s: versions[s.id].title.lower()):
+    for s in req.order_records(project_strategies, code=lambda s: s.unique_code, title=lambda s: versions[s.id].title):
         node = strategy_node(s)
         if s.id in parent_of:
             children_of[parent_of[s.id]].append(node)
         else:
             tree.append(node)
     org_nodes: list[CascadeNode] = []
-    for org_id in sorted(children_of, key=lambda i: versions[i].title.lower()):
+    for org_id in req.order_records(
+        list(children_of), code=lambda i: org_strategies[i].unique_code, title=lambda i: versions[i].title,
+    ):
         node = strategy_node(org_strategies[org_id])
         node.children = children_of[org_id] + node.children
         org_nodes.append(node)
@@ -1058,7 +1025,7 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
         )
         for q in questions
     ]
-    items.sort(key=lambda i: (_PRIORITY_ORDER.get(i.priority, 9), i.due_date or date.max, i.question.lower()))
+    items.sort(key=lambda i: (_PRIORITY_ORDER.get(i.priority, 9), i.due_date or date.max, i.question.lower()))  # ranked: priority, then due date
 
     def row(i: OpenQuestionRow) -> list[str]:
         return [
@@ -1125,7 +1092,7 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
             "has_success_measures": bool(v.success_measures.strip()),
             "days_to_target": (v.target_date - req.today).days if v.target_date else None,
         })
-    items.sort(key=lambda i: (i["target_date"] is None, i["target_date"] or date.max, i["title"].lower()))
+    items.sort(key=lambda i: (i["target_date"] is None, i["target_date"] or date.max, i["title"].lower()))  # ranked: the nearest target date first
 
     def row(i: dict[str, Any]) -> list[str]:
         return [
@@ -1216,7 +1183,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
             "priority": v.priority.value, "owner": owners(v),
             "decisions": decisions, "requirements": reqs, "applied": decisions + reqs > 0,
         })
-    items.sort(key=lambda i: (-(i["decisions"] + i["requirements"]), i["name"].lower()))
+    items.sort(key=lambda i: (-(i["decisions"] + i["requirements"]), i["name"].lower()))  # ranked: the most applied first
 
     def row(i: dict[str, Any]) -> list[str]:
         return [

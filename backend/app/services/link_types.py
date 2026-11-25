@@ -1,39 +1,28 @@
 """
 Module: services.link_types
 
-The rules that decide which links may be created: link types (an org-managed
-vocabulary) and the two optional restrictions around them.
+The rules that decide which links may be created: link types (an organisation-managed vocabulary) and the two
+optional restrictions around them.
 
 Responsibilities:
 - Create an organisation's link types from registered seeds (core defaults and
-  `ModuleDefinition.link_type_seeds`), lazily and only when absent
-  (`ensure_org_link_type`, `ensure_org_seeds`).
-- Validate a link at creation (`validate_link_allowed`): the link type's own
-  source/target artefact-type restriction, and each end's artefact-type rule
-  (the closed list of link types that artefact type may use). Either side can
-  veto; the message names which rule failed.
-- Work out which link types are usable from a given artefact
-  (`list_usable_link_types`), for the link authoring pickers.
-- Read and write artefact-type rules (`get_artefact_rules`, `set_artefact_rule`,
-  `clear_artefact_rule`).
+  `ModuleDefinition.link_type_seeds`), lazily and only when absent (`ensure_org_link_type`, `ensure_org_seeds`).
+- Validate a link at creation (`validate_link_allowed`): the type's own source/target restriction and each
+  end's artefact-type rule (the closed list of link types that type may use). Either side can veto and the
+  message names the rule.
+- Work out the link types usable from an artefact (`list_usable_link_types`) and read and write artefact-type
+  rules (`get_artefact_rules`, `set_artefact_rule`, `clear_artefact_rule`).
 
 Design decisions:
-- Any two registered artefact types can be linked by default; a restriction only
-  narrows. Everything is checked at creation only, so editing a restriction or
-  rule never deletes or invalidates existing links.
-- Restrictions are plain strings checked against the registry-merged artefact
-  types on write and tolerated on read, so uninstalling a module never breaks a
-  stored restriction (it simply matches nothing).
-- A seed is only ever used when the organisation has no type with that forward
-  name, so an admin's edits are never overwritten.
+- Any two registered artefact types can be linked by default; a restriction only narrows. Checks run at
+  creation only, so editing a restriction never deletes or invalidates existing links.
+- Restrictions are plain strings checked against the registry-merged artefact types on write and tolerated on
+  read, so uninstalling a module never breaks a stored restriction.
+- A seed is used only when the organisation has no type with that forward name, so admin edits are kept.
+- Functions here work on the organisation-wide scope (`project_id IS NULL`); a project's view (local types,
+  hiding, the lock) is resolved in `services.link_type_scope`.
 
-- Organisation-level functions here work on the organisation-wide scope
-  (`project_id IS NULL`); what a *project* sees (its own and ancestors' local
-  types, hiding, the lock) is resolved in `services.link_type_scope`, which
-  every creator and picker goes through.
-
-Dependencies: `modules.registry` (seeds, artefact types, labels, enablement),
-`services.link_type_scope` (project scope).
+Dependencies: `modules.registry`, `services.link_type_scope`.
 """
 
 from __future__ import annotations

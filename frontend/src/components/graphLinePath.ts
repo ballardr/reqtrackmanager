@@ -2,24 +2,22 @@
  * Module: components/graphLinePath
  *
  * The shape of a drawn line that has waypoints on the shared graph canvas. Pure functions, no React, so the canvas, the
- * editors and the tests use the one rule.
+ * editors and the tests share one rule.
  *
- * Responsibilities:
- * - Turn a line's two end points, its ordered waypoints and its shape (Straight, Curved or Spline) into an SVG path.
- * - Give the middle of the line, where a label and a comment pin sit, and the middle of each segment (where a drag adds a vertex).
- * - Resolve a line's own shape against its diagram's default.
- * - Offer the edits a route allows: insert, move and remove a waypoint, within the cap.
+ * Responsibilities: turn a line's two end points, ordered waypoints and shape (Straight, Curved or Spline) into an SVG
+ * path; give the middle of the line (label and comment pin) and of each segment (where a drag adds a vertex); resolve a
+ * line's shape against its diagram's default; offer the route edits (insert, move, remove a waypoint, within the cap).
  *
  * Design decisions:
- * - Coordinates are absolute canvas units, so a box nested in another and the snap grid behave the same.
- * - Straight is segments through the waypoints; Spline is a Catmull-Rom curve (tension one half) written as cubic Beziers through
- *   them (straight with none) with free ends. Curved leaves each box along its outward direction (`graphAttachPoints`'
- *   `outwardDirection`, passed as `LineDirections`): with no vertices it is one cubic whose control points lie that direction from
- *   each end (`outwardSpan`), so boxes facing each other give a straight line and a line bends only as much as the boxes need; with
- *   vertices it is the Spline through them with its two end tangents set to those directions. Without directions a Curved line
- *   with no vertices is straight. A line stores its own shape or none, which follows its diagram's default.
- * - The server draws the same line with a Python copy (`diagram_line_path.py`); `graphLinePathCases.json` holds the cases
- *   both are tested against, so a change to the rule is made in both.
+ * - Coordinates are absolute canvas units, so a nested box and the snap grid behave the same.
+ * - Straight is segments through the waypoints; Spline is a Catmull-Rom curve (tension one half) written as cubic Beziers
+ *   through them (straight with none) with free ends. Curved leaves each box along its outward direction
+ *   (`outwardDirection` of `graphAttachPoints`, passed as `LineDirections`): with no vertices it is one cubic whose
+ *   control points lie that direction from each end (`outwardSpan`), so facing boxes give a straight line; with vertices
+ *   it is the Spline with its end tangents set to those directions. Without directions a vertex-free Curved line is
+ *   straight. A line stores its own shape or none, which follows its diagram's default.
+ * - The server draws the same line with `diagram_line_path.py`; `graphLinePathCases.json` holds the cases both are tested
+ *   against, so a change is made in both.
  */
 
 /** The most waypoints one line may have. */

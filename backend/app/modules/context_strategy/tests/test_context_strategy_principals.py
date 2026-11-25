@@ -1,15 +1,10 @@
-"""Tests for groups as Pain Point, Guiding Principle and Open Question owners
-(users and groups on parity).
+"""
+Tests for groups as Pain Point, Guiding Principle and Open Question owners.
 
-Covers: each principal kind on create/update/clear and the display fields of a
-group; Guiding Principle versions carrying the owner so history shows who owned
-each version; validation (a foreign organisation's group or user, another
-project's group, a project group on an organisation-scoped Guiding Principle);
-deleting a group that owns records (usage counts, blocked, reassigned, cleared,
-the audit event names the principle not its version row, older versions keep a
-deleted group); the Open Question register and Guiding Principle usage report
-printing and grouping by owner principal; and the migration backfilling
-existing rows to `user`.
+Covers each principal kind on create/update/clear, version owners in history,
+validation (foreign or wrong-scope groups and users), deleting a group that
+owns records (usage counts, blocked, reassigned, cleared, audit event), report
+grouping by owner and the migration backfilling existing rows to `user`.
 """
 
 from __future__ import annotations
@@ -88,7 +83,7 @@ def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(clien
     updated = _update_pain_point(client, token, project["id"], pain_point, owner={"type": "org_group", "id": team})
     assert updated.status_code == 200, updated.text
     assert updated.json()["owner"] == {
-        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False,
+        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False, "service": False,
     }
     second_pp = _create_pain_point(client, token, project["id"], title="Second")
     _update_pain_point(client, token, project["id"], second_pp, owner={"type": "project_group", "id": squad})

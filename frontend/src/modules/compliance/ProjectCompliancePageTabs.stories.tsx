@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
 
 const PROJECT_ID = "proj-1";
@@ -21,7 +21,7 @@ function mockApis() {
 const meta: Meta<typeof ProjectCompliancePage> = {
   title: "Modules/Compliance/ProjectCompliancePage/Tabs",
   component: ProjectCompliancePage,
-  decorators: [withToast()],
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" })), withToast()],
 };
 export default meta;
 

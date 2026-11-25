@@ -1,37 +1,12 @@
 """
 Module: modules.context_strategy.record_tables
 
-The `RecordTableProvider`s of Context & Strategy's five record types (Strategy, Future State, Guiding
-Principle, Pain Point, Open Question): the columns of each list as a table, so every one of them exports to
-CSV, PDF and Word and imports from the same CSV (a row with a code updates, a blank code creates).
-
-Responsibilities:
-- Declare, per type, the columns (key, label, cell text, parser, editable flag) and how a row is created or
-  updated.
-- Share the list query with the list endpoint and the create / edit logic with the edit endpoint
-  (`edits.py`), so a filter, lock or audit event added there reaches the file too.
-
-Design decisions:
-- Create and update go through the same checks as the endpoints: any project member may create (the
-  endpoints' gate; a Pain Point only where the project or organisation opted in to member submission), a record's owner
-  role (`strategy_owner`, `pain_point_manager`, ...) may update, and a
-  record past review or at a terminal outcome refuses the edit (the row's error carries the endpoint's message).
-- `status` is export-only for every type: a Strategy, Future State and Guiding Principle move through
-  propose / review / approve, and a Pain Point and an Open Question through decide-tier transitions that need a
-  comment, so a file never moves a record through its lifecycle (a created record starts as the endpoints
-  start it: `draft`, `submitted`, `open`). All five are marked approval-gated for that reason.
-- `Tags` is export-only: tags are governed by the tag vocabulary and tag authority, which a column cannot
-  carry. Every scoring criterion the project offers (Severity, Frequency, Cost of Delay's, its own) is a column
-  holding the Pain Point's General level; the levels of individual personas are edited on the Pain Point page.
-  Writing them is the manager tier, as scoring is.
-- A Pain Point or Open Question owner is assigned by a manager (the create form has no owner field), so an
-  import that names one on a new row needs the manager role and says so otherwise.
-- The project tier lists only a project's own records. Organisation-owned Strategies, Future States and Guiding
-  Principles have no project: their `OrganizationRecordTable` lists and writes them for the organisation pages,
-  through the same column definitions and the organisation endpoints' own create / edit functions.
-
-Dependencies: `modules.context_strategy.edits` (queries and write paths), `models`, `labels`, `_shared` (role
-checks), `services.record_tables_core` (cell helpers), `services.tags`.
+The `RecordTableProvider`s of the five record types: list columns exported to
+CSV, PDF and Word and imported from the same CSV.
+- Create and update use the endpoints' own checks and write paths (`edits.py`).
+- `status` and `Tags` are export-only; a file never moves a record through its
+  lifecycle. Pain Point scoring columns hold the General level (manager tier).
+- Organisation-owned types also declare an `OrganizationRecordTable`.
 """
 
 from __future__ import annotations
@@ -223,11 +198,25 @@ def _tags_column() -> RecordColumn:
     return RecordColumn("tags", "Tags", lambda t, r: list_cell(t.tags.get(r.id, [])), kind="list")
 
 
+#: The `_text` columns whose cells are Markdown source (the rest are titles and names).
+_MARKDOWN_KEYS = frozenset({
+    "objective", "current_state", "desired_future_state", "rationale", "expected_outcomes", "constraints",
+    "measures_of_success", "desired_state", "outcomes", "success_measures", "assumptions", "principle_statement",
+    "description", "source", "impact", "evidence", "question", "context",
+})
+
+
 def _text(key: str, label: str, attr: str, *, required: bool = False, versioned: bool = True) -> RecordColumn:
     """An editable text column read from the current version (or the record itself)."""
+    markdown = key in _MARKDOWN_KEYS
     if versioned:
-        return RecordColumn(key, label, lambda t, r: getattr(t.versions[r.id], attr) or "", text_parser, editable=True, required=required)
-    return RecordColumn(key, label, lambda t, r: getattr(r, attr) or "", text_parser, editable=True, required=required)
+        return RecordColumn(
+            key, label, lambda t, r: getattr(t.versions[r.id], attr) or "", text_parser, editable=True, required=required,
+            markdown=markdown,
+        )
+    return RecordColumn(
+        key, label, lambda t, r: getattr(r, attr) or "", text_parser, editable=True, required=required, markdown=markdown,
+    )
 
 
 def _enum(key: str, label: str, attr: str, enum_class: Any, labels: Mapping[str, str], default: Any, *, versioned: bool = True) -> RecordColumn:
@@ -607,6 +596,7 @@ def _update_org_guiding_principle(ctx: RecordImportContext, guiding_principle: G
 
 
 GUIDING_PRINCIPLE_TABLE = RecordTableProvider(
+    title_column="name",
     label="Guiding principles",
     columns=_guiding_principle_columns,
     list_records=_list_guiding_principles,
@@ -938,6 +928,7 @@ def _find_open_question(db: Session, project: Project, code: str) -> OpenQuestio
 
 
 OPEN_QUESTION_TABLE = RecordTableProvider(
+    title_column="question",
     label="Open questions",
     columns=_open_question_columns,
     list_records=_list_open_questions,

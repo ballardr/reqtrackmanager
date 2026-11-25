@@ -5,8 +5,9 @@
  * (`StateFormModal`, opened by double-clicking a state), so a field added later reaches both: the name (required), the kind,
  * and, for an ordinary state, the description and the entry, exit and activity lines. A marker (initial state, final state,
  * choice) is a shape with no inside, so it takes a name, a symbol label (up to 256 characters) and where the label is drawn:
- * inside the symbol (which grows to hold it, and a word too long for the largest symbol is warned about) or beside it. A state is added to a diagram with no form (its kind is chosen
- * in the Add to diagram menu), so this group has no creation variant.
+ * inside the symbol (which grows to hold it, and a word too long for the largest symbol is warned about) or beside it.
+ * A state is added to a diagram with no form (its kind is chosen in the Add to diagram menu), so this group has no
+ * creation variant.
  */
 import { TextAreaField, TextField } from "../../components/FormFields";
 import { FormGridFull } from "../../components/FormGrid";
@@ -75,7 +76,7 @@ export function StateFieldGroup({
       />
       {marker && (
         <FormGridFull>
-          <TextAreaField
+          <TextAreaField plainText="Text drawn inside the state's symbol"
             help={ARCHITECTURE_HELP.stateLabel} label="Symbol label" value={values.label} rows={1} hint={symbolLabelHint(values)}
             inputProps={{ maxLength: SYMBOL_LABEL_MAX }} onChange={(value) => onChange("label", value)}
           />
@@ -90,7 +91,7 @@ export function StateFieldGroup({
       {!marker && (
         <>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
+            <TextAreaField markdown helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
           </FormGridFull>
           <TextField help={ARCHITECTURE_HELP.stateEntry} label="Entry action" value={values.entry_action} onChange={(value) => onChange("entry_action", value)} />
           <TextField help={ARCHITECTURE_HELP.stateExit} label="Exit action" value={values.exit_action} onChange={(value) => onChange("exit_action", value)} />

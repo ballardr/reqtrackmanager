@@ -11,15 +11,13 @@ Responsibilities:
 - Poll connection counts on a thread while a scenario runs, so the peak is measured and not the idle pool.
 
 Design decisions:
-- Only DML statements (`select`, `with`, `insert`, `update`, `delete`) are kept. `pg_stat_statements` replaces the
-  constants of those with `$n`, but a utility statement (`SET`, `CREATE ROLE ... PASSWORD`) keeps its literals, and
-  the results are committed to a public repository. Nothing from `pg_stat_activity` except counts is read.
-- Plans come from `EXPLAIN (GENERIC_PLAN)`: it needs no parameter values (a stored statement has none), executes
-  nothing, and is therefore safe. It shows the planner's choice and estimates, not actual times; actual cost per
-  statement is in `pgstat.csv` (calls, total and mean time, blocks read). A statement whose parameter types cannot
-  be inferred is skipped and counted.
-- Query text is whitespace-collapsed and cut to `QUERY_LIMIT` characters in the bundle; the full text is only used
-  to ask for a plan.
+- Only DML statements (`select`, `with`, `insert`, `update`, `delete`) are kept: `pg_stat_statements` replaces their
+  constants with `$n`, but a utility statement (`SET`, `CREATE ROLE ... PASSWORD`) keeps its literals, and results are
+  committed to a public repository. Only counts are read from `pg_stat_activity`.
+- Plans come from `EXPLAIN (GENERIC_PLAN)`, which needs no parameter values and executes nothing. It shows the
+  planner's choice and estimates; actual cost per statement is in `pgstat.csv`. A statement whose parameter types
+  cannot be inferred is skipped and counted.
+- Query text is whitespace-collapsed and cut to `QUERY_LIMIT` characters; the full text is used only to ask for a plan.
 
 Dependencies: standard library only (Python 3.9+); the SQL runs inside the stack's database container.
 """

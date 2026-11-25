@@ -1,23 +1,13 @@
 /**
  * Module: modules/architecture/ValidationButton
  *
- * The toolbar button for a state machine diagram's validation: a count badge (the errors, or else the warnings, or none)
- * and a list, in a popover, of every error and warning with the state it concerns. The issues come from the server's one
- * checking function (`state_machine_checks`); nothing here works one out.
- *
- * Responsibilities:
- * - Show the count on the button so a problem is visible without opening anything (an error blocks activation, a warning
- *   never does).
- * - List each issue (its message already names the state by code), a row that concerns a state selecting it on the canvas;
- *   an issue about the whole diagram is plain text.
- * - Say plainly when there is nothing to report, since an empty list is the answer the person is looking for.
- *
- * Design decisions:
- * - The open state belongs to the page, so the Selection card's "N issues" link can open the list at that state
- *   (`focusSubject` marks its rows); the button only reports a press.
- * - The button is a small toolbar button with its help as a tooltip (docs/ux-style-guide.md, "Pattern: help on
- *   interactive elements"); its accessible name begins with the visible word (WCAG 2.5.3).
- * - Rows are the shared `menu-item` text rows, never bordered buttons ("Pattern: action menu").
+ * The toolbar button for a state machine diagram's validation: a count badge (errors, else warnings, or none; an error blocks
+ * activation, a warning never does) and a popover list of every issue with the state it concerns. The issues come from the
+ * server's one checking function (`state_machine_checks`); nothing here computes them. A row about a state selects it on the
+ * canvas; a whole-diagram issue is plain text; an empty list says so plainly.
+ * - The open state belongs to the page, so the Selection card's "N issues" link can open the list at a state (`focusSubject`).
+ * - A small toolbar button with its help as a tooltip (docs/ux-style-guide.md, "Pattern: help on interactive elements"); its
+ *   accessible name begins with the visible word (WCAG 2.5.3). Rows are shared `menu-item` text rows ("Pattern: action menu").
  */
 import { useId, useRef } from "react";
 

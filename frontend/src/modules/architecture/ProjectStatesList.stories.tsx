@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildState, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ProjectStatesList } from "./ProjectStatesList";
 
@@ -52,5 +52,24 @@ export const NameHeaderSortsTheList: Story = {
     await userEvent.click(within(table).getByRole("button", { name: "Name" }));
     await waitFor(() => expect(within(table).getAllByRole("link").map((link) => link.textContent)).toEqual(["STE-001", "STE-000"]));
     await expect(within(table).getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "ascending");
+  },
+};
+
+/** Every optional column is on by default; the column chooser hides one and the reset shows it again. */
+export const ColumnChooserHidesAndRestoresAColumn: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  beforeEach: () => { mockArchitectureReads({ states: STATES }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "States" });
+    for (const name of ["Code", "Name", "State machine diagram", "Kind", "Element"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Element" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Element" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Element" })).toBeInTheDocument();
   },
 };

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, openOrgGroupPanel, recordCodeText } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, expectCurrentStep, installCleanupHook, loginAs, PASSWORD, promoteTo, selectOrgAdminGroup, openOrgGroupPanel, recordCodeText } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -74,22 +74,25 @@ test.describe("Decision Management: groups as owners and decision makers", () =>
     await dialog.getByRole("option", { name: new RegExp(squadName) }).click();
     await dialog.getByRole("button", { name: "Save" }).click();
 
-    // The list's Owner column names the group with its kind and size.
+    // The list's Owner cell is the group's icon and name on one line; the kind and size are its accessible name.
     const row = page.getByRole("row", { name: /DEC-001/ });
     await expect(row.getByText(groupName)).toBeVisible();
-    await expect(row.getByText("Organisation group · 1 member")).toBeVisible();
+    await expect(row.getByText("Organisation group, 1 member")).toHaveClass(/sr-only/);
+    const ownerCell = row.getByRole("cell").filter({ hasText: groupName });
+    await expect(ownerCell.locator(".badge")).toHaveCount(0);
 
-    // The quick view shows both the owner group and the decision-maker group.
-    await page.getByRole("button", { name: "DEC-001" }).click();
-    const quickView = page.getByRole("dialog", { name: "DEC-001" });
-    await expect(quickView.getByText(groupName)).toBeVisible();
-    await expect(quickView.getByText(squadName)).toBeVisible();
-    await expect(quickView.getByText(/^Project group/)).toBeVisible();
-    await page.keyboard.press("Escape");
+    // The Decision page shows both the owner group and the decision-maker group.
+    await page.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
+    await expect(page.getByRole("table")).toHaveCount(0);
+    await expect(page.getByText(groupName).first()).toBeVisible();
+    await expect(page.getByText(squadName).first()).toBeVisible();
+    await expect(page.getByText(/^Project group/).first()).toBeVisible();
+    await page.goBack();
 
     // The "owned by me or my groups" filter hides it for the admin, who is not in the group.
     await page.getByLabel("Owned by me or my groups").check();
-    await expect(page.getByRole("button", { name: "DEC-001" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /^(\w+-)?DEC-001$/ })).toHaveCount(0);
     await page.getByLabel("Owned by me or my groups").uncheck();
 
     // --- A member of the owner group can propose it (the owner gate), though they hold no edit role.
@@ -99,11 +102,10 @@ test.describe("Decision Management: groups as owners and decision makers", () =>
       await loginAs(memberPage, memberEmail, PASSWORD);
       await memberPage.goto(`/projects/${project.id}/modules/decisions`);
       await memberPage.getByLabel("Owned by me or my groups").check();
-      await memberPage.getByRole("button", { name: "DEC-001" }).click();
-      await memberPage.getByRole("dialog", { name: "DEC-001" }).getByRole("link", { name: "View full details" }).click();
+      await memberPage.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();
       await expect(memberPage.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
-      await memberPage.getByRole("button", { name: "Propose" }).click();
-      await expect(memberPage.getByText("Proposed", { exact: true }).first()).toBeVisible();
+      await promoteTo(memberPage, "Proposed");
+      await expectCurrentStep(memberPage, "Proposed");
     } finally {
       await memberContext.close();
     }
@@ -126,9 +128,9 @@ test.describe("Decision Management: groups as owners and decision makers", () =>
 
     // The Decision now names the admin as its owner.
     await page.goto(`/projects/${project.id}/modules/decisions`);
-    await page.getByRole("button", { name: "DEC-001" }).click();
-    const afterQuickView = page.getByRole("dialog", { name: "DEC-001" });
-    await expect(afterQuickView.getByText(/E2E Group Admin/).first()).toBeVisible();
-    await expect(afterQuickView.getByText(groupName)).toHaveCount(0);
+    await page.getByRole("link", { name: /^(\w+-)?DEC-001$/ }).click();
+    await expect(page.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
+    await expect(page.getByText(/E2E Group Admin/).first()).toBeVisible();
+    await expect(page.getByText(groupName)).toHaveCount(0);
   });
 });

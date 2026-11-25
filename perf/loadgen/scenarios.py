@@ -4,9 +4,9 @@ Module: loadgen.scenarios
 The Locust user classes, one per scenario, that drive the application's HTTP API.
 
 Responsibilities:
-- Define what each simulated person does (browse, search, edit, export, report, bundle, attachment, and the other record
-  types and the links between them) against the
-  generated dataset, addressing records through the dataset manifest rather than listing first.
+- Define what each simulated person does (browse, search, edit, export, report, bundle, attachment, the other record
+  types and the links between them) against the generated dataset, addressing records through the dataset manifest
+  rather than listing first.
 - Name every request after its endpoint template, not its URL, so statistics aggregate per endpoint.
 
 Design decisions:

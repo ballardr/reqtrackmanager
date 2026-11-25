@@ -1,16 +1,15 @@
 /**
  * Module: utils/reportSnippetSelection
  *
- * Pure helpers that turn what a person has selected in the designer into the run of blocks "Save as snippet" saves.
+ * Pure helpers that turn a designer selection into the run of blocks "Save as snippet" saves.
  *
  * Responsibilities:
- * - Blocks view: a selected block's tree path becomes `{ container, start, count: 1 }` (`selectionOfBlock`).
- * - Text view: the lines covered by the text selection (or the caret's line) become the top-level blocks they touch, from
- *   the line each block starts on that the server's parse reports (`selectionFromLines`).
+ * - Blocks view: a block's tree path becomes `{ container, start, count: 1 }` (`selectionOfBlock`).
+ * - Text view: the selected lines (or the caret's line) become the top-level blocks they touch, using the block start
+ *   lines of the server's parse (`selectionFromLines`).
  *
- * Design decisions: the Text view saves whole top-level blocks, never part of one, so what the caret or selection touches
- * is always something the server can store as written; nested blocks are saved from the Blocks view. The server checks
- * the result (a block that needs something outside it is refused with the reason), so nothing here judges validity.
+ * Design decisions: the Text view saves whole top-level blocks only; nested blocks are saved from the Blocks view. The
+ * server validates the result, so nothing here judges validity.
  */
 import type { SnippetSelection } from "../api/reportSnippets";
 import { formatPath, type Seg } from "./reportLayoutTree";

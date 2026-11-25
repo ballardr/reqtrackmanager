@@ -21,10 +21,8 @@ const baseComments: Comment[] = [
   }),
 ];
 
-/** All I/O is via callback props, so despite its size CommentThread is
- * fully mockable with props alone (see the QA inventory) — this wrapper
- * keeps posted/edited comments in local state so a story reads like the
- * real controlled usage in RequirementDetailPage/ChangeRequestDetailPage. */
+/** All I/O is via callback props, so CommentThread is mockable with props alone; this wrapper keeps posted and
+ * edited comments in local state, like the controlled usage in the detail pages. */
 function Interactive({ currentUserId = AUTHOR_ID }: { currentUserId?: string }) {
   const [comments, setComments] = useState<Comment[]>(baseComments);
   return (

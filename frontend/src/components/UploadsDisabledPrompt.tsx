@@ -1,14 +1,13 @@
 /**
  * Module: components/UploadsDisabledPrompt
  *
- * The choice an import or a create from a template offers when its source carries files and file uploads are
- * disabled: cancel, or continue without the files. It replaces the form inside the dialog (the same dialog, one
- * step further) so the person never meets a bare error.
+ * The choice an import or a create from a template offers when its source carries files and file uploads are disabled:
+ * cancel, or continue without the files. It replaces the form inside the dialog (one step further) so the person never
+ * meets a bare error.
  *
- * Responsibilities: state how many files (and how much data) cannot be stored and which rule stops them (the deployment's switch, the
- * organisation's switch or its storage limit), and offer exactly two actions.
- * The caller repeats the request with `skip_files` when the person continues; the server ignores that flag
- * while files can be stored, so the default is always to import them.
+ * Responsibilities: state how many files (and how much data) cannot be stored and which rule stops them (the deployment's
+ * switch, the organisation's switch or its storage limit), and offer exactly two actions. The caller repeats the request
+ * with `skip_files` on continue; the server ignores that flag while files can be stored, so the default is to import them.
  */
 import { useStrings } from "../context/TerminologyContext";
 import { formatFileSize } from "../utils/formatFileSize";

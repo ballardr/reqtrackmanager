@@ -29,13 +29,8 @@ export default meta;
 
 type Story = StoryObj<typeof OrgListPage>;
 
-// `mine=true` is asserted, not just supplied, in every story below (the
-// mock only returns data for that exact path): `OrgListPage` backs the nav
-// rail's "My organisations" link, a *personal* membership list, not the
-// server-admin platform-wide directory `GET /orgs` (no `mine`) returns —
-// a regression back to the bare path would leave these mocks unmatched and
-// the assertions below failing, rather than silently passing against the
-// wrong endpoint.
+// The mocks answer only the exact `mine=true` path: the page is the personal membership list, not the
+// platform-wide directory `GET /orgs` returns, so a request to the bare path fails the assertions.
 export const MultipleOrganisations: Story = {
   decorators: [withRouter("/orgs")],
   beforeEach: () => {
@@ -53,6 +48,25 @@ export const MultipleOrganisations: Story = {
   },
 };
 
+/** A refused request shows what failed with Retry, not a spinner that never ends; Retry loads the list again. */
+export const FailedLoadOffersRetry: Story = {
+  decorators: [withRouter("/orgs")],
+  beforeEach: () => {
+    let calls = 0;
+    spyOn(api, "get").mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("The server is down.");
+      return [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })];
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The organisation list could not be loaded.");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await expect(await canvas.findByText("Beta Inc")).toBeInTheDocument();
+  },
+};
+
 const withOrgsAndAdminRoutes: Decorator = (Story) => (
   <MemoryRouter initialEntries={["/orgs"]}>
     <Routes>
@@ -62,9 +76,7 @@ const withOrgsAndAdminRoutes: Decorator = (Story) => (
   </MemoryRouter>
 );
 
-/** A user in exactly one organisation skips the list and lands straight on
- * that org's admin page — rendered here with a matching `<Route>` so the
- * `<Navigate>` target is observable. */
+/** A user in exactly one organisation skips the list and lands on that organisation's admin page (a matching `<Route>` makes the target observable). */
 export const SingleOrganisationRedirects: Story = {
   decorators: [withOrgsAndAdminRoutes],
   beforeEach: () => {
@@ -102,9 +114,7 @@ const withOrgOverviewRoutes: Decorator = (Story) => (
   </MemoryRouter>
 );
 
-/** `target="overview"` — `/org-overview`
- * reuses this same single-org/multi-org auto-redirect convention, targeting
- * `/orgs/:id/overview` instead of the default `/orgs/:id/admin`. */
+/** `target="overview"` (`/org-overview`) redirects to `/orgs/:id/overview` instead of `/orgs/:id/admin`. */
 export const SingleOrganisationRedirectsToOverview: Story = {
   args: { target: "overview" },
   decorators: [withOrgOverviewRoutes],
@@ -162,10 +172,7 @@ export const MultipleOrganisationsListForFiles: Story = {
   },
 };
 
-/** Rebuilt onto `DirectoryTable` + `FilterPanel` (search) — see the
- * component's own module docstring for why this search is client-side.
- * Typing narrows the table to matching organisation names only, and
- * `FilterPanel`'s `ResultCount` header reflects the narrowed count. */
+/** Typing in the client-side search narrows the table to matching organisation names and `ResultCount` shows the narrowed count. */
 export const SearchFiltersTheTable: Story = {
   decorators: [withRouter("/orgs")],
   beforeEach: () => {

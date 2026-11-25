@@ -3,15 +3,10 @@ import { expect, test } from "@playwright/test";
 import { PERSONAS, loginAs, selectPreferencesGroup } from "./helpers";
 
 /**
- * End-to-end proof that a Personal Access Token created through the real
- * UI is a genuinely working, independently revocable bearer credential —
- * not just correctly rendered. The deep RBAC-scoping/expiry logic (org
- * scope restriction, dynamic expiry, bulk/per-token org- and server-admin
- * revocation) is already exhaustively covered by
- * backend/tests/test_personal_access_tokens.py; this spec's job is the
- * thing only a real browser+API round trip can prove: the token the UI
- * hands the user actually authenticates, and revoking it through the UI
- * actually kills it, immediately, for real.
+ * End-to-end proof that a Personal Access Token created through the UI is a working, independently revocable
+ * bearer credential. RBAC scoping and expiry are covered by backend/tests/test_personal_access_tokens.py; this spec
+ * proves what only a browser and API round trip can: the token the UI hands the user authenticates, and revoking it
+ * through the UI invalidates it immediately.
  */
 
 const apiBaseUrl = "http://localhost:8000";

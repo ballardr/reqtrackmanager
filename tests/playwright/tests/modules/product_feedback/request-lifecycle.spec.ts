@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { expectCurrentStep, installCleanupHook, promoteTo } from "../../e2e-workflows/helpers";
 import { enablePainPoints, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -51,25 +51,27 @@ test.describe("Enhancement requests: submit, score and decide", () => {
       await page.getByRole("link", { name: "ENH-001" }).click();
       await expect(page.getByRole("heading", { name: new RegExp(title) })).toBeVisible();
       await expect(page.getByText("No Pain Point linked")).toBeVisible();
-      await page.getByRole("button", { name: "Mark under review" }).click();
+      await promoteTo(page, "Under review");
       await page.getByRole("dialog").getByRole("button", { name: "Mark under review" }).click();
-      await expect(page.locator("span.badge", { hasText: /^Under review$/ })).toBeVisible();
+      await expectCurrentStep(page, "Under review");
     });
 
     await test.step("declining needs a reason, which is then shown", async () => {
-      await page.getByRole("button", { name: "Decline", exact: true }).click();
+      await page.getByRole("button", { name: "Request actions" }).click();
+      await page.getByRole("menuitem", { name: "Decline", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByRole("button", { name: "Decline", exact: true })).toBeDisabled();
       await dialog.getByLabel(/Decline reason/).fill("Out of scope for this product.");
       await dialog.getByRole("button", { name: "Decline", exact: true }).click();
-      await expect(page.locator("span.badge", { hasText: /^Declined$/ })).toBeVisible();
+      await expectCurrentStep(page, "Declined");
       await expect(page.getByRole("region", { name: "Details" }).getByText("Out of scope for this product.")).toBeVisible();
     });
 
     await test.step("a declined request can be reopened to New", async () => {
-      await page.getByRole("button", { name: "Reopen" }).click();
+      await page.getByRole("button", { name: "Request actions" }).click();
+      await page.getByRole("menuitem", { name: "Reopen", exact: true }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Reopen" }).click();
-      await expect(page.locator("span.badge", { hasText: /^New$/ })).toBeVisible();
+      await expectCurrentStep(page, "New");
     });
   });
 });

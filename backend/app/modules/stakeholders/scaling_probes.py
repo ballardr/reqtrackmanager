@@ -1,12 +1,9 @@
 """
 Module: modules.stakeholders.scaling_probes
 
-The `ScalingProbe`s for the Stakeholders module's artefact types (stakeholder, persona, need, group, engagement,
-research finding): how the scaling-shape guard fills and reads them through the API.
-
-Responsibilities:
-- Create N records of each type through its real create endpoint and name its list endpoint. A finding belongs to an
-  engagement, so its probe creates one engagement and N findings in it.
+The `ScalingProbe`s for the Stakeholders module's artefact types (stakeholder, persona, need, group,
+engagement, research finding): each creates N records through its real create endpoint and names its
+list endpoint. A finding belongs to an engagement, so its probe creates one engagement and N findings in it.
 
 Dependencies: `modules.registry` (`ScalingProbe`).
 """

@@ -6,29 +6,17 @@ import { deleteOrgOnCleanup, installCleanupHook, selectProjectAdminGroup } from 
 installCleanupHook();
 
 /**
- * End-to-end proof of the "add a project user by email" flow
- * (`Organization.external_user_policy`, `services/invites.py`): a project
- * admin invites someone with no existing account, via the same
- * autocomplete used to add existing org members
- * (`components/UserAutocomplete.tsx`), a real invite email lands in
- * MailHog with a working signup link, and completing that signup grants
- * the project access promised at invite time. See docs/decisions.md's
- * "Self-signup, invites, and SSO" entry.
+ * End-to-end proof of adding a project user by email (`Organization.external_user_policy`, `services/invites.py`): a
+ * project admin invites someone with no account through the autocomplete used for org members
+ * (`components/UserAutocomplete.tsx`), an invite email with a working signup link reaches MailHog, and completing the
+ * signup grants the project access promised at invite time (docs/decisions.md, "Self-signup, invites, and SSO").
  *
- * Also covers "resend a pending invite" (docs/decisions.md): the invite shows up
- * as a row in the unified `ProjectMembersTable` (`components/
- * ProjectMembersTable.tsx`, folded in from the retired
- * `PendingInvitesSection.tsx`) with a "Pending" status badge in its Role
- * cell, hideable via the "Show invited" `FilterCheckbox`, and clicking
- * Resend retriggers a fresh email — verified the same way, via MailHog's
- * real HTTP API, rather than asserting only that the backend attempted a
- * send.
+ * Also covers resending a pending invite: it is a row in `ProjectMembersTable` with a "Pending" badge in its Role
+ * cell, hideable through the "Show invited" `FilterCheckbox`, and Resend sends a fresh email.
  *
- * Configures the organisation via API first (setup), then drives the
- * actual invite through the browser's project-admin UI, and verifies the
- * email through MailHog's real HTTP API (the same SMTP relay
- * tests/container/docker-compose.yml wires the backend to) rather than
- * asserting only that the backend attempted a send.
+ * The organisation is configured through the API, the invite is driven through the project-admin UI, and the email is
+ * verified through MailHog's HTTP API (the SMTP relay of tests/container/docker-compose.yml), not by asserting that
+ * the backend attempted a send.
  */
 
 const ADMIN_EMAIL = "admin@example.com";
@@ -118,10 +106,8 @@ test("project admin invites a brand-new external user by email, and they can sig
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  // No group is auto-created on project creation any more (2026-08-31) — invite via the Members section's own
-  // add control instead, which grants the by-email invite a *direct*
-  // role (`assign_project_role_by_email`) the exact same way a project
-  // group's own member picker used to.
+  // A project has no automatic group: invite through the Members section's add control, which grants the by-email
+  // invite a direct role (`assign_project_role_by_email`).
   await selectProjectAdminGroup(page, "Members");
 
   await test.step("invite the new email via the Members section's own add control", async () => {
@@ -198,8 +184,7 @@ test("project admin sees a pending invite listed and can resend it, retriggering
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  // No group is auto-created on project creation any more (2026-08-31) — invite via the Members section's own
-  // add control instead, which is also where pending invites now live.
+  // A project has no automatic group: invite through the Members section's add control, which also lists pending invites.
   await selectProjectAdminGroup(page, "Members");
 
   await test.step("invite the new email via the Members section's own add control", async () => {
@@ -238,8 +223,8 @@ test("project admin sees a pending invite listed and can resend it, retriggering
 
   await test.step("see the invite listed as Pending, and hideable via Show invited", async () => {
     await page.reload();
-    // Pending invites moved onto the new "Members" section (docs/decisions.md), folded directly into the unified
-    // `ProjectMembersTable` as a per-row status — no separate "Pending invites" section any more.
+    // Pending invites are rows of the unified `ProjectMembersTable` in the "Members" section (docs/decisions.md), shown
+    // as a per-row status.
     await selectProjectAdminGroup(page, "Members");
     const row = page.getByRole("row", { name: new RegExp(inviteeEmail) });
     await expect(row).toBeVisible();

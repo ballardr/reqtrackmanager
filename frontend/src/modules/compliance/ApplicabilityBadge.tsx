@@ -1,19 +1,12 @@
 /**
  * Module: modules/compliance/ApplicabilityBadge
  *
- * §9's own explicit, non-optional UI requirement — "The UI must clearly
- * distinguish: Explicitly set applicability, Applicability inherited from
- * a parent, An overridden inherited value" — as one shared component, so
- * `ApplicabilityTree`'s tree rows and `RequirementAssessmentPanel`'s detail
- * header render the exact same three visual treatments rather than two
- * independently-drifting copies of the same logic. EXPLICIT (a real user
- * decision, or nothing decided and no ancestor conflicts — both render
- * identically per `ComplianceApplicabilitySource`'s own backend docstring)
- * is a plain, undecorated badge; INHERITED is greyed/italic with an
- * explanatory `title`; OVERRIDDEN is in the warning colour with its own
- * explanatory `title` — three genuinely distinct treatments, not just three
- * label strings, so the distinction survives a quick scan, not just a
- * hover.
+ * The applicability indicator that clearly distinguishes explicitly set applicability, applicability inherited from a parent
+ * and an overridden inherited value, as one shared component so `ApplicabilityTree`'s rows and `RequirementAssessmentPanel`'s
+ * header render the same three treatments. EXPLICIT (a user decision, or nothing decided with no conflicting ancestor, which
+ * render identically per the backend's `ComplianceApplicabilitySource`) is a plain badge; INHERITED is muted and italic with an
+ * explanatory `title`; OVERRIDDEN is in the warning colour with its own `title`. The treatments differ visually, not only in
+ * label, so the distinction survives a quick scan.
  */
 import { COMPLIANCE_APPLICABILITY_LABEL, type ProjectComplianceRequirement } from "./types";
 import { Badge } from "../../components/Badge";

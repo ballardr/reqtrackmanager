@@ -9,10 +9,8 @@ import {
   subscribeFederatedLoader,
 } from "../modules/federatedLoader";
 
-/** The minimal shape this hook needs from an enabled-module entry — matches
- * both `ModuleNavEntry` (project scope, `useProjectEnabledModules`) and
- * `OrgModule` (org scope, `OrgAdminPage.tsx`) structurally, so either can be
- * passed directly without an adapter. */
+/** The shape this hook needs from an enabled-module entry; both `ModuleNavEntry`
+ * (`useProjectEnabledModules`) and `OrgModule` (`OrgAdminPage.tsx`) satisfy it structurally. */
 export interface FederatedModuleCandidate {
   module_key: string;
   frontend_manifest: ModuleFrontendManifest | null;
@@ -25,41 +23,25 @@ export interface FederatedModuleState {
 
 /**
  * Triggers a Tier C ("federated") load for every entry in `entries` whose
- * `frontend_manifest.tier === "federated"`, and re-renders the calling
- * component whenever any Tier C load's status changes anywhere on the page
- * — necessary because a successful load mutates `federatedLoader.ts`'s
- * module-level state (and pushes into `registry.ts`'s `installedModules`
- * array), which is otherwise invisible to React. `App.tsx` (`ProtectedRoutes`)
- * and `OrgAdminPage.tsx` each call this independently with their own
- * project-/org-scoped enabled-module list, mirroring this codebase's
- * existing "each concern fetches/derives its own data" convention
- * (`useProjectEnabledModules`'s own docstring) rather than a shared
- * provider.
+ * `frontend_manifest.tier === "federated"`, and re-renders the calling component
+ * whenever any Tier C load's status changes: a successful load mutates
+ * `federatedLoader.ts`'s module-level state (and `registry.ts`'s `installedModules`),
+ * which is invisible to React. Each caller (`App.tsx`, `OrgAdminPage.tsx`) passes its own
+ * project- or organisation-scoped enabled-module list.
  *
- * Deliberately returns per-module `{status, error}` (not just "done yet?")
- * so a caller can render a loading/failed affordance rather than the
- * module's nav entry/route silently never appearing — see `docs/modules.md`'s
- * "Tier C" section for the UX this backs, and this hook's own Storybook
- * coverage (`federatedLoader.stories.tsx`) for the loading/loaded/failed/
- * disabled states exercised.
+ * Returns per-module `{status, error}` so a caller can render a loading or failed state
+ * instead of the module's nav entry or route silently missing (`docs/modules.md`, "Tier C").
  *
- * Once a module has loaded successfully this session, it stays merged into
- * `installedModules` for the lifetime of the page — calling this hook again
- * (even with a different `entries` array) is a cheap no-op for an
- * already-loaded module (`loadFederatedModule`'s own idempotency).
+ * A module that has loaded stays merged into `installedModules` for the page's lifetime, so
+ * calling this hook again is a no-op for it (`loadFederatedModule` is idempotent).
  */
 export function useFederatedModules(entries: FederatedModuleCandidate[]): Record<string, FederatedModuleState> {
   const [, forceRerender] = useReducer((count: number) => count + 1, 0);
 
   useEffect(() => subscribeFederatedLoader(forceRerender), []);
 
-  // Only the (module_key, remote_entry_url, exposed_module) triple actually
-  // matters for whether a new load needs triggering — re-running this
-  // effect merely because `entries`'s own array identity changed (a new
-  // fetch result with byte-identical content, e.g.) would be harmless but
-  // wasteful, since `loadFederatedModule` already no-ops for an
-  // already-loaded/in-flight module; keyed on a stable string so this
-  // effect doesn't need `entries` itself in its dependency array.
+  // Only the (module_key, remote_entry_url, exposed_module) triple decides whether a load is
+  // needed; keying the effect on a stable string avoids re-running it when `entries` changes identity.
   const federatedKey = entries
     .filter((entry) => entry.frontend_manifest?.tier === "federated")
     .map((entry) => `${entry.module_key}:${entry.frontend_manifest?.remote_entry_url}:${entry.frontend_manifest?.exposed_module}`)

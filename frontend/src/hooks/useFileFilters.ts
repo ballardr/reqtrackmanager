@@ -1,16 +1,15 @@
 /**
  * Module: hooks/useFileFilters
  *
- * The filters the project and organisation Files pages share: file name, source, file type, uploader and an upload
- * window, each kept in the URL so a list comes back as it was left after opening a record.
+ * The filters the project and organisation Files pages share (file name, source, file type, uploader, upload
+ * window), each kept in the URL.
  *
  * Responsibilities:
  * - Hold the five filters (`useUrlText` / `useUrlChoice`) and expose them for `FileFilterFields`.
  * - Build the request body both search endpoints take (`body`), with the upload window as the two UTC instants
- *   bounding the person's local days (`localDayWindow`), because only the browser knows the person's timezone.
+ *   bounding the person's local days (`localDayWindow`); only the browser knows the timezone.
  *
- * Design decisions:
- * - The file name is only ever sent in a POST body, never in a URL the server logs.
+ * Design decision: the file name is only sent in a POST body, never in a URL the server logs.
  */
 import {
   PROJECT_FILE_SOURCES,

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability, expectCurrentStep, promoteTo, expectRecordLocked } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -8,39 +8,14 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: Playwright e2e coverage for Future State's
- * create -> propose -> submit-for-review -> approve -> activate flow.
- * Exercises the full Future State frontend
- * (`frontend/src/modules/context_strategy/{ProjectFutureStatesPage,
- * FutureStateDetailPage,FutureStateFormModal}.tsx`) against a real backend:
- * creating a project-scoped Future State, moving it through its lifecycle to
- * Active on its own detail page, reached via the "Future
- * State" nav-rail entry.
+ * Job to be done: e2e coverage of Future State's create -> propose -> submit-for-review -> approve -> activate flow
+ * (`frontend/src/modules/context_strategy/`) against a real backend, ending Active on its detail page.
  *
- * Mirrors `strategy-lifecycle.spec.ts`'s own structure and reasoning
- * directly — Future State's backend is itself "an exact structural mirror"
- * of Strategy's (same org/project scope
- * discriminator, same seven-state lifecycle, same owner/approver RBAC
- * pattern), so this spec follows the same conventions rather than
- * inventing new ones:
- *
- * - **Disposable org + admin + project, created via the API**, not shared
- *   seeded state — same reasoning as `strategy-lifecycle.spec.ts`: Context
- *   & Strategy is `default_enabled=False`, so this spec must toggle it on
- *   for whichever org it runs against, and every identifier below is
- *   suffixed with `Date.now()` per CLAUDE.md's "tests must not depend on
- *   state left behind by another test" rule.
- * - **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
- *   (Decided by: Agent), matching `strategy-lifecycle.spec.ts`'s own
- *   precedent exactly** — this spec creates its own disposable org/project
- *   via the API rather than adding unused fixed fixture data to that
- *   script.
- * - The project-scoped flow only (org-scoped Future State's own lifecycle
- *   is identical server-side — same schemas, same transition endpoints,
- *   `orgFutureStateApi`/`projectFutureStateApi` share one factory,
- *   `modules/context_strategy/api.ts` — so it is not independently at risk
- *   here; matches `strategy-lifecycle.spec.ts`'s own "project-scoped at
- *   minimum" bar).
+ * Mirrors `strategy-lifecycle.spec.ts`: Future State's backend is a structural mirror of Strategy's. Uses a
+ * disposable org + admin + project created via the API (Context & Strategy is `default_enabled=False`, so the
+ * spec enables it), `Date.now()`-suffixed names, and no `seed_e2e_dataset.py` fixtures. Project-scoped flow
+ * only: the org-scoped lifecycle is identical server-side (`orgFutureStateApi`/`projectFutureStateApi` share
+ * one factory in `modules/context_strategy/api.ts`).
  */
 test.describe("Context & Strategy: create -> propose -> approve -> activate a Future State", () => {
   test("moves a project-scoped Future State through its lifecycle to Active", async ({ page }) => {
@@ -50,12 +25,9 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a Fu
     const projectName = `E2E Context Strategy FS Project ${suffix}`;
     const futureStateTitle = `Regional number one by 2028 ${suffix}`;
 
-    // --- Disposable org + admin + project, via the API (server admin
-    // creates the org and its first admin; that admin then creates their
-    // own project, becoming its ProjectRole.PROJECT_MANAGER — which
-    // auto-composes with every module-contributed project-scoped role's
-    // override, so this one persona can both propose and approve, same
-    // reasoning `strategy-lifecycle.spec.ts` already relies on).
+    // Disposable org + admin + project, via the API: the server admin creates the org and its first admin, who
+    // creates their own project and becomes its ProjectRole.PROJECT_MANAGER, which composes with every
+    // module-contributed project-scoped role's override, so this one persona can both propose and approve.
     const serverAdminLoginResp = await page.request.post(`${API_BASE_URL}/api/v1/auth/login`, {
       data: { email: "admin@example.com", password: "ChangeMe123!" },
     });
@@ -92,11 +64,8 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a Fu
     await expect(page.getByRole("combobox", { name: "Context & Strategy availability", exact: true })).toHaveValue("off");
     await setOrgModuleAvailability(page, "Context & Strategy", "default_on");
 
-    // --- Navigate into the project's own "Future State" nav entry
-    // (`exact: true` disambiguates from the header's own user-menu link,
-    // whose display name — "E2E Context Strategy FS Admin" — also contains
-    // no "Future State" substring here, but kept for symmetry with
-    // `strategy-lifecycle.spec.ts`'s own disambiguation).
+    // Navigate into the project's "Future State" nav entry. `exact: true` disambiguates from the header's user-menu
+    // link, whose display name ("E2E Context Strategy FS Admin") contains the same substring.
     await page.goto(`/projects/${project.id}`);
     await page.getByRole("link", { name: "Future State", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/future-states(?:\\?.*)?$`));
@@ -114,24 +83,25 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a Fu
     await page.getByRole("button", { name: futureStateTitle }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/future-states/[^/]+$`));
     await expect(page.getByRole("heading", { name: futureStateTitle })).toBeVisible();
-    await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Draft");
 
     // --- Walk the lifecycle: Draft -> Proposed -> Under review -> Approved -> Active.
-    await page.getByRole("button", { name: "Propose" }).click();
-    await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
+    await promoteTo(page, "Proposed");
+    await expectCurrentStep(page, "Proposed");
 
-    await page.getByRole("button", { name: "Submit for review" }).click();
-    await expect(page.getByText("Under review", { exact: true })).toBeVisible();
+    await promoteTo(page, "Under review");
+    await expectCurrentStep(page, "Under review");
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    await promoteTo(page, "Approved");
     const approveDialog = page.getByRole("dialog", { name: "Approve this Future State?" });
     await approveDialog.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Approved");
+    await expectRecordLocked(page);
 
-    await page.getByRole("button", { name: "Activate" }).click();
+    await promoteTo(page, "Active");
     const activateDialog = page.getByRole("dialog", { name: "Activate this Future State?" });
     await activateDialog.getByRole("button", { name: "Activate" }).click();
-    await expect(page.getByText("Active", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Active");
 
     // --- Back on the list, the Future State shows its final status.
     await page.getByRole("link", { name: "← Future States", exact: true }).click();

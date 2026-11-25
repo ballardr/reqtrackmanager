@@ -48,6 +48,8 @@ stateDiagram-v2
     Addressed --> Closed: close
 ```
 
+A project may turn **Triaged** off: a Pain Point then goes from Submitted straight to Accepted, and Reject and Mark duplicate are available at Submitted. See [Lifecycles](../../core-features/lifecycles.md).
+
 A genuinely **branching** lifecycle, unlike Strategy/Future State/Guiding Principle's linear-chain-plus-terminal-branch shape — `Triaged` has three legal next states, not one.
 
 **Content lock:** only the three true terminal states lock — **Rejected**, **Duplicate**, and **Closed**. `Accepted` and `Addressed` stay unlocked, deliberately, since a Pain Point Manager may still need to reassign its owner or adjust its priority while work is genuinely in progress.

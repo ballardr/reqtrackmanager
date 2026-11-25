@@ -1,38 +1,26 @@
 """
 Module: services.link_graph
 
-Builds the artefact link graph: the records connected to one artefact by
-`ArtefactLink` rows, out to a few hops, with every edge's direction (upstream /
-downstream / related) resolved from the organisation's link-type `flow`.
+Builds the artefact link graph: the records connected to one artefact by `ArtefactLink` rows, out to a few
+hops, with each edge's direction (upstream / downstream / related) resolved from the link type's `flow`.
 
-Responsibilities:
-- Breadth-first traversal with one batched link query per level.
-- Resolve and authorise every node (this is the authorisation point for
-  traversal: `services.relationships` deliberately does none).
-- Resolve each edge's `flow` relative to the direction of travel.
+Responsibilities: breadth-first traversal with one batched link query per level; resolve and authorise every
+node (the authorisation point for traversal, since `services.relationships` does none); resolve each edge's
+`flow` relative to the direction of travel.
 
 Design decisions:
-- A node is shown only if it is in the requesting project (or an org record the
-  owning module makes visible there) or in an ancestor/descendant project the
-  caller can open, its module/sub-component is enabled for *that* project, and
-  the caller holds the artefact type's `view` permission *in that project*
-  (Fine-Grained Access Control). A failing node is counted in `hidden_count`
-  and never traversed through, so paths cannot reveal that it exists. Siblings
-  reached through a shared parent are outside the scope and count as hidden.
-- A cross-level link whose two projects are no longer in one ancestry line
-  (reparent, detach) is dormant: counted in `unavailable_count`, not traversed,
-  and shown again if the chain is restored.
-- Core types (`requirement`, `requirement_action`) are resolved here; every
-  other type goes through its module's `artefact_summary_providers` entry, so
-  core never imports a module.
-- A type no installed module can display counts toward `unavailable_count`
-  rather than `hidden_count`, since it is a gap in display, not in access.
-- The node cap (`MAX_NODES`) bounds work and response size; hitting it sets
-  `truncated`.
+- A node is shown only if it is in the requesting project (or an organisation record its module makes visible
+  there) or an ancestor/descendant project the caller can open, its module is enabled for that project, and the
+  caller holds the type's `view` permission in that project. A failing node is counted in `hidden_count` and
+  never traversed, so paths cannot reveal it. Siblings reached through a shared parent count as hidden.
+- A cross-level link whose projects are not in one ancestry line (after a reparent or detach) is dormant:
+  counted in `unavailable_count`, not traversed, and shown again if the chain is restored.
+- Core types (`requirement`, `requirement_action`) are resolved here; every other type goes through its
+  module's `artefact_summary_providers` entry, so core never imports a module. A type no installed module can
+  display counts as unavailable, not hidden: it is a display gap, not an access one.
+- `MAX_NODES` bounds work and response size; hitting it sets `truncated`.
 
-Dependencies: `services.relationships` (link queries), `services.rbac`
-(effective permissions), `services.link_nesting` (related projects, dormancy),
-`modules.registry` (providers, enablement, labels).
+Dependencies: `services.relationships`, `services.rbac`, `services.link_nesting`, `modules.registry`.
 """
 
 from __future__ import annotations
@@ -425,7 +413,7 @@ def build_link_graph(
                 flow=LinkGraphFlow.RELATED if link_type is None else _hop_flow(link_type.flow, outgoing),
                 cross_project=cross,
                 nesting_permitted=not cross or link_type is None or _nesting_permitted(link, link_type, chain_cache),
-                dedicated=link_type is None or link_type.dedicated_endpoint,
+                dedicated=link_type is None or link_type.dedicated_endpoint, note=link.note,
             )
         frontier = next_frontier
 

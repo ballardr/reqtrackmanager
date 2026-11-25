@@ -110,9 +110,8 @@ def create_access_token(subject: str, token_version: int = 0, expires_minutes: i
             embedded as the `tv` claim. `deps._resolve_user_from_token`
             rejects any token whose `tv` doesn't match the user's *current*
             `token_version` — password change / 2FA disable increment it,
-            deterministically invalidating every previously issued token
-            (see `User.token_version`'s docstring for why this is a version
-            counter and not a timestamp comparison).
+            invalidating every previously issued token
+            (a version counter, not a timestamp comparison).
         expires_minutes: Optional override for token lifetime in minutes.
 
     Returns:

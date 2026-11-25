@@ -2,11 +2,10 @@
  * Module: modules/architecture/DiagramOutline
  *
  * The editor's "Outline" card: the text alternative to the canvas, with the same content in a form a keyboard or screen
- * reader can use. It lists the elements shown as a tree (nested by their parent among the elements placed), the notes (each with
- * what its leader points at, and whether that is drawn), and the
- * lines drawn as a table with their ends, direction, type, count and, for a bridged line, the hidden elements it passes
- * through. On a diagram of an element's inside the outer connections (boundary boxes) are a table too, each with its
- * direction and whether it is covered.
+ * reader can use. It lists the elements shown as a tree (nested by their parent among the elements placed), the notes (each
+ * with what its leader points at, and whether that is drawn), and the lines drawn as a table with their ends,
+ * direction, type, count and, for a bridged line, the hidden elements it passes through. On a diagram of an element's
+ * inside the outer connections (boundary boxes) are a table too, each with its direction and whether it is covered.
  *
  * Responsibilities:
  * - Follow the page: it is built from the layout being edited, the lines resolved for the current view switches and the
@@ -15,12 +14,12 @@
  *   Selection card, and the reverse.
  *
  * Design decisions:
- * - Elements a switch hides are not listed; only how many are hidden is stated, since that is what the person needs to see
- *   every time to read the diagram correctly.
- * - The elements can be read as a tree or as a table like the lines (the shared `ViewToggle`, remembered per person); the
- *   tree has Expand all and Collapse all, and each section collapses (the shared `CollapsibleSection`, remembered too).
- * - Built on the shared `TreeView` shell and the shared table styles; every row is a real button, so the whole outline is
- *   operable from the keyboard.
+ * - Elements a switch hides are not listed; only how many are hidden is stated, since the diagram cannot be read
+ *   correctly without it.
+ * - The elements can be read as a tree or as a table (the shared `ViewToggle`, remembered per person); the tree has
+ *   Expand all and Collapse all, and each section collapses (the shared `CollapsibleSection`, remembered too).
+ * - Built on the shared `TreeView` shell and table styles; every row is a real button, so the outline is operable
+ *   from the keyboard.
  */
 import { useState } from "react";
 
@@ -39,6 +38,7 @@ import {
 } from "./diagramOutlineModel";
 import type { DiagramAnchor, DiagramViewEdge, ModelStateMachine } from "./types";
 import { ARCHITECTURE_HELP } from "./help";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 const ROUTE_LABEL: Record<ConnectionRow["route"], string> = { direct: "Direct", rolled_up: "Rolled up", bridged: "Bridged" };
 
@@ -150,7 +150,7 @@ export function DiagramOutline({
                       <td>{row.box.locked ? "—" : row.box.element_type_name}</td>
                       <td>{row.parent ?? "—"}</td>
                       <td style={{ whiteSpace: "pre-line" }}>{row.box.locked ? "—" : row.box.display_note || "—"}</td>
-                      <td style={{ whiteSpace: "pre-line" }}>{row.box.locked ? "—" : descriptions.get(row.id) || "—"}</td>
+                      <td>{row.box.locked ? "—" : markdownPlainText(descriptions.get(row.id) ?? "") || "—"}</td>
                       <td>{row.box.locked ? "—" : machineButtons(row.id)}</td>
                     </tr>
                   ))}

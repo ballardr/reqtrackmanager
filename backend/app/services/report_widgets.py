@@ -1,38 +1,25 @@
 """
 Module: services.report_widgets
 
-The widget catalogue: a widget is one component of a module report (`ReportDefinition`) that a custom report
-layout embeds with a `widget` block: one of the report's tables, its headline figures, or its caveat notes.
-This module is the one place that says which widgets exist, what they are called, what they accept and
-whether a project or organisation can use them.
+The widget catalogue: a widget is one component of a module report (`ReportDefinition`) that a layout embeds with a
+`widget` block (one of its tables, its headline figures or its caveat notes).
 
 Responsibilities:
-- Name a widget: `<module key>.<report slug>.<part>` (`risk_management.risk-register.register`), built from the
-  registry. A part is a table the report declares (`ReportDefinition.parts`) or one of the two every report
-  offers, `figures` and `notes`.
-- List widgets (`list_widgets`, `find_widget`), and narrow the list to the ones an organisation or project
-  can use (`widgets_for_organization`, `widgets_for_project`, `widget_available`).
-- Check a block's parameter values against the report's `ReportParamDefinition`s (`param_problems`) and
-  turn them into the typed values a collector expects (`typed_params`).
+- Name a widget `<module key>.<report slug>.<part>` from the registry; a part is a declared table
+  (`ReportDefinition.parts`) or `figures` or `notes`.
+- `list_widgets`, `find_widget`, `widgets_for_organization`, `widgets_for_project`, `widget_available`.
+- `param_problems` and `typed_params`: check parameter values against the report's `ReportParamDefinition`s.
 
 Design decisions:
-- **A widget is a component; the layout owns the words.** A widget produces a table (or the figures, or the
-  caveat notes) and never a heading or a sentence of its own, so the same component can sit under any
-  heading and explanation in any layout. The report's tables are declared once, on the report.
-- **Nothing else is declared twice.** Title, parameters, module and sub-component gate come from the
-  `ReportDefinition`; the parameters belong to the report, so every part of a report accepts the same ones.
-- **The key is qualified by the module.** Slugs are unique only within a module, so a bare slug could
-  become ambiguous when another module adds one and would change what a stored layout means. The module
-  key, the slug and the part key are all stable.
-- **Literal parameters only.** A value is a JSON literal of the declared type; there is no placeholder or
-  expression in a parameter, so a layout cannot make a report read something its author did not write.
-- **Validation is by registry key; availability is decided at run time.** A layout may name a widget the
-  author's project has switched off (an organisation layout runs in many projects); each run checks the
-  module for the project it runs in.
-- This module is deliberately light (registry only, no report framework) so the layout validator can use
-  it without importing the rendering stack.
+- A widget is a component and the layout owns the words, so a component sits under any heading in any layout.
+- Nothing is declared twice: title, parameters, module and sub-component gate come from the `ReportDefinition`.
+- The key is qualified by the module because slugs are unique only within one, which keeps stored layouts unambiguous.
+- Parameters are JSON literals of the declared type, never placeholders or expressions.
+- Validation is by registry key; availability is decided per run for the project it runs in (an organisation layout runs
+  in many projects).
+- The module is light (registry only) so the layout validator can use it without importing the rendering stack.
 
-Dependencies: `modules.registry` (reports, enablement).
+Dependencies: `modules.registry`.
 """
 
 from __future__ import annotations

@@ -6,13 +6,13 @@ Create Date: 2026-10-31
 
 Adds the organisation's report look to `organizations` (`report_accent_color_hex`, `report_include_logo`,
 `report_footer_text`, `report_include_cover_page`, `report_chapters_per_component`), fills it from the organisation's
-default report template (else its only template; an organisation with neither keeps the plain look its reports have
-always had), then drops `report_templates`, `report_layouts.report_template_id` and a pack's `template` name.
+default report template (else its only template; an organisation with neither keeps the plain look), then drops `report_templates`,
+`report_layouts.report_template_id` and a pack's `template` name.
 
-A custom layout used to be forced to print its template's footer text, logo and cover page. It now prints them only
-where it reads them (`{{org.footer_text}}`, the `org_logo` image, `if org.include_cover_page`), so each existing
-document layout whose effective template (its own, else the default) had any of them is saved as a new version that reads
-them where the old output printed them. Every other layout is left as it is.
+A custom layout prints the footer text, logo and cover page only where it reads them (`{{org.footer_text}}`,
+the `org_logo` image, `if org.include_cover_page`). Each existing document layout whose effective template (its own,
+else the default) had any of them is saved as a new version that reads them where the old output printed them; other
+layouts are unchanged.
 
 Extra templates (more than the one that became the look) are dropped; their number is logged. Guarded so a database built
 from the current models, which has no `report_templates`, passes through.

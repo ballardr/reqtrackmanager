@@ -11,6 +11,7 @@
  * so the admin panel is one component for both).
  */
 import { api } from "./client";
+import { appendReferenceParams, type ReferenceListFilters } from "./externalReferences";
 import { appendPlacementParams, type PlacementListFilters } from "./placements";
 import { appendScopeParam, type ProjectScope } from "./projectScope";
 
@@ -201,16 +202,18 @@ export function tagQuery(tags: string[], mode: "any" | "all"): string {
   return query.toString();
 }
 
-/** What a list's filters carry for tags and placements: the chosen names, whether a record needs any or all, and the
- * components and categories it must sit in. The server reads both as one shared filter. */
-export interface TagListFilters extends PlacementListFilters {
+/** What a list's filters carry for tags, placements and external references: the chosen names, whether a record needs any
+ * or all, the components and categories it must sit in, and the external systems and key it must be referenced by. The
+ * server reads them as one shared filter. */
+export interface TagListFilters extends PlacementListFilters, ReferenceListFilters {
   tags?: string[];
   tag_mode?: "any" | "all";
 }
 
-/** Adds the `tag`, `tag_mode`, `component_id` and `category_id` parameters of `filters` to a list read. */
+/** Adds the `tag`, `tag_mode`, `component_id`, `category_id`, `external_system` and `external_key` parameters of `filters` to a list read. */
 export function appendTagParams(params: URLSearchParams, filters: TagListFilters): void {
   appendPlacementParams(params, filters);
+  appendReferenceParams(params, filters);
   if (!filters.tags || filters.tags.length === 0) return;
   for (const tag of filters.tags) params.append("tag", tag);
   params.set("tag_mode", filters.tag_mode ?? "any");

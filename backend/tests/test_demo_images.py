@@ -70,7 +70,7 @@ def test_the_base_file_for_developers_names_no_image_for_what_it_builds():
 
 
 def test_the_overlay_images_are_the_ones_the_production_file_names():
-    production = yaml.safe_load((ROOT / "docker-compose.yml").read_text())["services"]
+    production = yaml.safe_load((ROOT / "deployments" / "full" / "docker-compose.yml").read_text())["services"]
     overlay = _load(CONTAINER / "docker-compose.demo-images.yml")["services"]
     for name in SERVICES:
         assert overlay[name]["image"] == production[name]["image"], name
@@ -248,20 +248,20 @@ def test_the_lock_is_released_after_a_failed_run(fake, tmp_path):
     assert not (tmp_path / "host" / "pull.lock").exists()
 
 
-def test_the_published_images_are_loaded_only_with_pull(fake):
+def test_the_published_images_are_loaded_unless_no_pull_is_given(fake):
     env, state, log = fake
     log_env = state / "compose-file"
     docker = Path(env["PATH"].split(":")[0]) / "docker"
     record = 'echo "$@" >> "$FAKE/log"'
     docker.write_text(docker.read_text().replace(record, f'{record}; echo "$COMPOSE_FILE" >> "$FAKE/compose-file"'))
-    assert _run(env).returncode == 0
+    assert _run(env, "--no-pull").returncode == 0
     assert "demo-images" not in log_env.read_text()
     assert any(" up " in f" {line} " and "--build" in line for line in _lines(log))
     assert not any(line.startswith("compose pull") for line in _lines(log))
     assert "--image-update" not in _exec_line(log)
     log_env.unlink()
-    assert _run(env, "--pull").returncode == 0
-    assert "docker-compose.demo-images.yml" in log_env.read_text()
+    assert _run(env).returncode == 0
+    assert "docker-compose.demo-images.yml" in log_env.read_text(), "pulling the published images is the default"
 
 
 def test_a_pinned_tag_and_registry_prefix_are_the_ones_inspected(fake):
@@ -385,7 +385,7 @@ def test_no_prune_keeps_everything_and_a_run_without_pull_never_prunes(fake):
     assert _run(env, "--pull", "--no-prune", FAKE_PULL="changed").returncode == 0
     assert not any("prune" in line for line in _lines(log))
     log.write_text("")
-    assert _run(env).returncode == 0
+    assert _run(env, "--no-pull").returncode == 0
     assert not any("prune" in line for line in _lines(log))
 
 

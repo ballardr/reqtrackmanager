@@ -22,6 +22,11 @@ test.describe("Report setup list", () => {
     return { Authorization: `Bearer ${(await resp.json()).access_token}` };
   }
 
+  /** The Reports list's own column chooser; the Report snippets list below it has one too. */
+  function reportsChooser(page: Page) {
+    return page.getByRole("button", { name: "Export several as file…" }).locator("..").getByRole("button", { name: "Choose columns" });
+  }
+
   /** A disposable organisation and project with Decision Management on, a document layout, a table layout and a pack. */
   async function setup(page: Page, request: APIRequestContext) {
     const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -150,7 +155,7 @@ test.describe("Report setup list", () => {
     });
 
     await test.step("ticking Type and Folder shows them, and Name cannot be hidden", async () => {
-      await page.getByRole("button", { name: "Choose columns" }).click();
+      await reportsChooser(page).click();
       const chooser = page.getByRole("dialog", { name: "Columns" });
       await expect(chooser.getByRole("checkbox", { name: "Name" })).toBeDisabled();
       await chooser.getByRole("checkbox", { name: "Type" }).check();
@@ -164,7 +169,7 @@ test.describe("Report setup list", () => {
       await page.reload();
       await selectProjectAdminGroup(page, "Reports");
       await expect(grid.getByRole("columnheader", { name: /Type/ })).toBeVisible();
-      await page.getByRole("button", { name: "Choose columns" }).click();
+      await reportsChooser(page).click();
       await page.getByRole("dialog", { name: "Columns" }).getByRole("button", { name: "Show the default columns" }).click();
       await expect(grid.getByRole("columnheader", { name: "Type" })).toHaveCount(0);
       await page.keyboard.press("Escape");

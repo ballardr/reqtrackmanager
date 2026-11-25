@@ -1,23 +1,14 @@
 """
 Module: modules.compliance.router.version_requirements
 
-A standard version's own hierarchical requirements:
-create/list/get/update/delete/reorder, all `DRAFT`-version-only
-(`_require_draft_version`) except `clarify_requirement`, a
-narrow published-version, mandatory-note exception. Required actions
-nested under a requirement are `version_required_actions.py`'s own
-sibling bucket, split out separately since this one was still large
-on its own.
+A standard version's hierarchical requirements: create, list, get, update, delete and reorder, all `DRAFT`-version-only
+(`_require_draft_version`) except `clarify_requirement`, a narrow published-version exception with a mandatory note.
+Required actions nested under a requirement are in `version_required_actions.py`.
 
-`update_requirement` is the Fine-Grained Access Control
-entity-scoped-axis migration — `_require_standard_content_manage` (below) tries the
-existing `_require_standard_manage_or_contribute` gate first, falling back
-to `require_permission(..., entity_scope="standard")`'s `(project_
-compliance_requirement, manage)` atom only on a 403 (never a 404 — both
-role checks already perform their own module-enabled check first, so a 403
-here means the module was confirmed enabled). Every other endpoint in this
-file stays on `_require_standard_manage_or_contribute`/`_require_standard_
-manage`, unchanged.
+`update_requirement` also accepts the Fine-Grained Access Control entity-scoped axis: `_require_standard_content_manage`
+tries `_require_standard_manage_or_contribute` first and falls back to `require_permission(...,
+entity_scope="standard")` with the `(project_compliance_requirement, manage)` atom only on a 403 (both role checks check
+the module is enabled first, so a 403 means it is). Every other endpoint stays on the role gates.
 """
 
 import uuid
@@ -226,48 +217,21 @@ def clarify_requirement(
     payload: ComplianceRequirementClarifyRequest,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
-    """Applies a non-substantive correction/elaboration to a requirement
-    already belonging to a **`PUBLISHED`** version — a distinct,
-    narrower sibling of `update_requirement` above, for exactly the one
-    case that endpoint's own `_require_draft_version` gate forbids.
+    """Applies a non-substantive correction or elaboration to a requirement of a `PUBLISHED` version: a narrower sibling
+    of `update_requirement` for the one case its `_require_draft_version` gate forbids. §4 and §31 forbid silently
+    altering a published version's assessed wording, not every change, so this is restricted and audited:
 
-    This is a deliberate, explicitly-flagged revision of the "a
-    published version's requirements become immutable" rule
-    (`_require_draft_version`, still governing every other requirement
-    mutation unchanged), not a reopening of it — §4/§31 forbid *silently*/
-    *unexpectedly* altering a published version's historical compliance
-    assessment, not *every* change outright. What makes this endpoint
-    satisfy the letter and spirit of that rule, rather than violate it:
+    - 409 if the version is `DRAFT` (use `update_requirement`) or `RETIRED` (retired stays frozen).
+    - 400 if `clarification_note` is blank. A text diff cannot show whether a change is substantive, so the mandatory
+      note makes the distinction accountable.
+    - Gated to `standards_manager` or an override (`_require_standard_manage`, composing with `compliance_manager`,
+      `OrgRole.ORG_ADMIN`, `is_server_admin`), not `_require_standard_manage_or_contribute`: a `standards_contributor`
+      authors drafts only.
+    - Every call stamps `last_clarified_at`, `last_clarified_by` and `last_clarification_note`, increments
+      `clarification_count` and logs `services.audit.log_event` (action `"clarified"`, before and after values).
 
-    - **409** if the version is `DRAFT` (use the ordinary `update_requirement`
-      endpoint instead — this endpoint's whole reason to exist is the one
-      case that endpoint forbids) or `RETIRED` (retired stays fully frozen,
-      as designed — a clarification is only ever
-      offered on the version projects are actively being assessed against).
-    - **400** if `clarification_note` is blank — mandatory, mirroring every
-      other conditionally-mandatory-justification field in this module
-      (Not Applicable, Non-Compliant, Rejection). There is no reliable way
-      to detect "substantive" vs. "non-substantive" from a text diff alone
-      (see `models.py`'s clarification design decisions) — the note is what makes this
-      human-asserted distinction accountable and auditable, never silent.
-    - Gated to `standards_manager`-or-override only (`_require_standard_manage`,
-      composing with org-scoped `compliance_manager`/`OrgRole.ORG_ADMIN`/
-      `is_server_admin`) — **not** `_require_standard_manage_or_contribute`:
-      a `standards_contributor`'s role is deliberately scoped to
-      draft-stage authoring (as defined); extending it to
-      also touch published content would quietly widen that boundary.
-    - Every call stamps `last_clarified_at`/`last_clarified_by`/
-      `last_clarification_note` and increments `clarification_count`, and
-      is logged via `services.audit.log_event` (action `"clarified"`,
-      before/after values for every field this endpoint can change) —
-      exactly the "explicit, restricted, and fully audited" shape that
-      keeps this compliant with §4/§31 rather than in tension with them.
-
-    Per an explicitly-flagged open question: a clarification deliberately does
-    **not** call `service.invalidate_approval_if_in_flight` — a
-    clarification never changes the compliance obligation itself, so an
-    already-in-flight approval is not invalidated by one, unlike an
-    applicability or assessment change."""
+    It does not call `service.invalidate_approval_if_in_flight`: a clarification does not change the compliance
+    obligation, so an in-flight approval stands."""
     _, version, requirement = _get_requirement_or_404(db, organization_id, standard_id, version_id, requirement_id)
     if version.status != ComplianceStandardVersionStatus.PUBLISHED:
         raise HTTPException(

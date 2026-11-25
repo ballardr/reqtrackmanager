@@ -1,25 +1,16 @@
 /**
  * Module: components/FileAttachmentList
  *
- * Shared "list of files + upload/remove controls" block, extracted from the
- * pattern that used to live inline in `RequirementDetailPage.tsx`'s
- * Attachments card (C-M-02) so `ActionDetailPage.tsx` can reuse it for an
- * action's own direct file attachments without duplicating the markup.
- * Fully prop-driven, like `CommentThread` — no knowledge of which entity
- * (requirement, action, ...) it's attached to, or of the API path used to
- * upload/remove a file; the caller supplies those via `onUpload`/`onRemove`.
+ * Shared "list of files + upload/remove controls" block for requirement and action attachments (C-M-02). It is
+ * fully prop-driven, like `CommentThread`: it knows neither the entity nor the API path; the caller supplies
+ * `onUpload`/`onRemove`.
  *
- * `disabled` covers the requirement-specific "approved, use a change
- * request instead" lock (C-G-12) — actions have no such lock concept, so
- * callers there simply never pass it. When `disabled` is true and
- * `emptyHint` is provided, the hint is shown in place of the upload control
- * so the reason attachments can't be added right now is explained rather
- * than the control silently disappearing.
+ * `disabled` covers the requirement lock "approved, use a change request instead" (C-G-12). When `disabled` and
+ * `emptyHint` are both given, the hint replaces the upload control so the reason is explained.
  *
- * A picture's row also carries an info button that shows its details (`FileDetailsToggle`) and a lock button that marks it
- * confidential, which keeps it out of reports (and nothing else). The list makes the call itself and remembers the answer
- * for the rows it shows, so every page that lists attachments has the mark without wiring; the server decides who may
- * change it and a refusal appears as a toast.
+ * A picture's row also has an info button for its details (`FileDetailsToggle`) and a lock button marking it
+ * confidential, which keeps it out of reports only. The list makes the call itself and remembers the answer for
+ * its rows; the server decides who may change it and a refusal appears as a toast.
  */
 import { Lock, Paperclip, Trash2 } from "lucide-react";
 import { useState } from "react";

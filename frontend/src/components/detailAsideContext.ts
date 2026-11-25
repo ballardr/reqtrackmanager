@@ -1,11 +1,9 @@
 /**
  * Module: components/detailAsideContext
  *
- * Tells a panel it is drawn inside `DetailLayout`'s aside card. The aside is one card whose tab strip
- * (or single "Links" heading) is its title, so a panel inside it draws no card and no title of its own
- * (`ArtefactLinksPanel` is the one that does today). It is a context, not a prop, so a detail page
- * passes its panel as it always did and a panel used elsewhere (a card of its own, or inside another
- * record's card) is unaffected.
+ * Tells a panel it is drawn inside `DetailLayout`'s aside card. The aside is one card whose tab strip (or single "Links"
+ * heading) is its title, so a panel inside it draws no card and no title of its own (`ArtefactLinksPanel` does this). It is
+ * a context, not a prop, so a panel used elsewhere (a card of its own, or inside another record's card) is unaffected.
  */
 import { createContext, useContext } from "react";
 

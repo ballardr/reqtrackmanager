@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { installCleanupHook, selectOrgResourcesGroup } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -19,8 +19,8 @@ test.describe("System Architecture: organisation elements", () => {
     const element = `Sign-in ${suffix}`;
 
     await test.step("the Elements tab lists an element the organisation owns", async () => {
-      await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Elements and Collections", "System Architecture");
+      await page.goto(`/orgs/${org.id}/resources`);
+      await selectOrgResourcesGroup(page, "Architecture Elements and Collections");
       await expect(page.getByText("The organisation has no elements of its own yet.")).toBeVisible();
       await page.getByRole("button", { name: "New element" }).click();
       const dialog = page.getByRole("dialog", { name: "New element" });

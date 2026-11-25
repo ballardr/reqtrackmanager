@@ -1,27 +1,16 @@
 /**
  * Module: components/FileUploadTrigger
  *
- * Shared "styled button, hidden input" file picker trigger. Extracted from
- * `CommentThread.tsx`'s own hand-rolled `<label className="btn">...<input
- * type="file" style={{ display: "none" }} /></label>` shape — the one place
- * in the app that already rendered file pickers as a real button rather
- * than the browser's bare native control — so every other file input
- * (attachments, avatar, org/platform logo & login background, shared
- * resources) can share one implementation instead of re-deriving the same
- * JSX per call site. See "File upload triggers:
- * three different visual treatments".
+ * Shared "styled button, hidden input" file picker trigger used by every file input (attachments, avatar,
+ * organisation and platform logo and login background, shared resources), so each does not re-derive the markup.
  *
- * Deliberately not used for the three bundle-import (.zip) forms
- * (`ServerOrganisationsPage`, `OrgAdminPage`'s import/merge,
- * `ProjectListPage`) — those keep the file picker as a visible,
- * `.input`-classed form field alongside other visible text fields ahead of
- * a separate submit step, which is a genuinely different shape (a form
- * field to fill in, not a one-click trigger that acts immediately) than
- * every other call site converted here. See docs/decisions.md.
+ * Not used for the bundle-import (.zip) forms (`ServerOrganisationsPage`, `OrgAdminPage`, `ProjectListPage`): they
+ * keep a visible `.input` file field among other text fields ahead of a submit step, a form field rather than a
+ * one-click trigger (docs/decisions.md).
  *
- * While file uploads are disabled for the deployment or for the organisation in view (`Branding.fileUploadsDisabledBy`) every
- * trigger renders as an unavailable button that explains which in a tooltip, and the input is disabled: one place covers every
- * call site, and the control stays visible so it does not read as a defect.
+ * While file uploads are disabled for the deployment or the organisation in view (`Branding.fileUploadsDisabledBy`)
+ * every trigger renders as an unavailable button explaining which in a tooltip, with the input disabled; it stays
+ * visible so it does not read as a defect.
  */
 import type { ChangeEvent, ReactNode } from "react";
 import { forwardRef } from "react";
@@ -34,6 +23,8 @@ export const FileUploadTrigger = forwardRef<
   HTMLInputElement,
   {
     onSelect: (file: File) => void;
+    /** Several files at once: the input accepts more than one and this is called with all of them (in place of `onSelect`). */
+    onSelectMany?: (files: File[]) => void;
     children: ReactNode;
     id?: string;
     accept?: string;
@@ -47,7 +38,7 @@ export const FileUploadTrigger = forwardRef<
     showTrigger?: boolean;
   }
 >(function FileUploadTrigger(
-  { onSelect, children, id, accept, disabled, title, "aria-label": ariaLabel, className, showTrigger = true },
+  { onSelect, onSelectMany, children, id, accept, disabled, title, "aria-label": ariaLabel, className, showTrigger = true },
   ref
 ) {
   const { fileUploadsDisabledBy: disabledBy } = useBranding();
@@ -55,8 +46,13 @@ export const FileUploadTrigger = forwardRef<
   const unavailable = disabledBy !== null;
 
   function handleChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) onSelect(file);
+    if (onSelectMany) {
+      const files = Array.from(e.target.files ?? []);
+      if (files.length > 0) onSelectMany(files);
+    } else {
+      const file = e.target.files?.[0];
+      if (file) onSelect(file);
+    }
     e.target.value = "";
   }
 
@@ -65,6 +61,7 @@ export const FileUploadTrigger = forwardRef<
       ref={ref}
       id={id}
       type="file"
+      multiple={onSelectMany !== undefined}
       accept={accept}
       disabled={disabled || unavailable}
       style={{ display: "none" }}

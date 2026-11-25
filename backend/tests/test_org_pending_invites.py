@@ -6,12 +6,10 @@
   - `POST /orgs/{id}/pending-invites/{invite_id}/resend` — token rotation.
 
 Mirrors `test_invites_and_external_users.py`'s coverage of the equivalent
-project-level endpoints (`routers/projects.py`'s `list_pending_project_
-invites`/`resend_pending_project_invite`), which these used
-as their template.
+project-level endpoints (`routers/projects.py`'s `list_pending_project_invites`/
+`resend_pending_project_invite`).
 
-Also covers `GET /orgs/{id}/users`'s `org_role` filter (already implemented
-server-side but previously unwired from the frontend and untested)."""
+Also covers `GET /orgs/{id}/users`'s `org_role` filter."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
@@ -280,16 +278,12 @@ def test_org_pending_invite_endpoints_are_gated_at_org_admin_tier(client, admin_
 
 
 def test_org_pending_invite_endpoints_reject_a_server_admin_with_no_role_in_the_org(client, admin_token):
-    """Hardening-pass regression test (docs/decisions.md's I-M-05 entry): these three endpoints previously reused
-    `require_org_admin_or_server_admin` — the single, narrow carve-out
-    documented for `create_org_user` only (bootstrapping the first user of
-    a brand-new org). A server admin with no genuine role in an
-    *already-existing* org must not be able to read that org's invitee PII
-    or seed/rotate invites into it — I-M-05's "does not give access to
-    data within organisations" invariant applies here same as everywhere
-    else. `admin_token` is the bootstrap server admin, who holds no
-    `UserOrgRole` in the org `create_org_admin_in` creates below (that
-    helper hands org-admin standing to a brand-new, separate user)."""
+    """These three endpoints do not use `require_org_admin_or_server_admin`, the narrow
+    carve-out for `create_org_user` only (bootstrapping a new org's first user). A server
+    admin with no role in an existing org cannot read its invitee PII or seed/rotate
+    invites (docs/decisions.md's I-M-05 entry: server admins have no access to data within
+    organisations). `admin_token` is the bootstrap server admin, who holds no `UserOrgRole`
+    in the org `create_org_admin_in` creates (it gives org-admin standing to a separate user)."""
     org, org_admin_token = create_org_admin_in(client, admin_token, "OrgInviteServerAdminGateOrg")
     with patch.object(invites_module, "send_email", new=Mock()):
         resp = client.post(

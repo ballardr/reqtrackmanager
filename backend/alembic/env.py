@@ -16,15 +16,10 @@ import_all_module_models()  # populates Base.metadata for every registered modul
 
 config = context.config
 if config.config_file_name is not None:
-    # disable_existing_loggers defaults to True, which would silently set
-    # `.disabled = True` on every already-configured logger not named in
-    # alembic.ini's [loggers] section — including uvicorn's own loggers and
-    # this app's `logging.getLogger(__name__)` loggers, since migrations run
-    # on every app startup (app/migrations.py) *after* uvicorn has already
-    # set its loggers up. That silently swallowed all uvicorn access/error
-    # logging and all app-level `logger.exception(...)` calls in every
-    # deployment, which is how a real backend bug went undiagnosed for a
-    # while (see docs/decisions.md).
+    # `disable_existing_loggers=False`: the default (True) would disable every already-configured logger
+    # not named in alembic.ini's [loggers] section, including uvicorn's and this app's, because migrations
+    # run at every app startup (app/migrations.py) after uvicorn has set its loggers up; that would swallow
+    # all access, error and `logger.exception(...)` output (see docs/decisions.md).
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # The owner connection when the deployment separates it from the application's own role (`audit_runtime_role`).

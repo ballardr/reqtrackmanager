@@ -8,7 +8,8 @@
  *
  * Design decisions:
  * - The draft and its commit are the shared `useSelectionDraft`; an element is stored at once, not with the drawing.
- * - The Save button (`SelectionSaveButton`) is on the card's heading line, always present and disabled while nothing has changed, so the header does not change size as the person types.
+ * - The Save button (`SelectionSaveButton`) is on the card's heading line, always present and disabled while nothing
+ *   has changed, so the header keeps its size as the person types.
  * - A component or category, tags and ports are separate controls of the card (each stored on its own), not part of this draft.
  */
 import { useEffect, useRef } from "react";

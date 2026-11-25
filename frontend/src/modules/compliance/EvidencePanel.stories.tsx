@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
-import { buildFileAsset, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildFileAsset, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { EvidencePanel } from "./EvidencePanel";
 import type { ComplianceEvidence } from "./types";
 import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
@@ -80,7 +80,7 @@ function mockApis(initial: ComplianceEvidence[]) {
 const meta: Meta<typeof EvidencePanel> = {
   title: "Modules/Compliance/EvidencePanel",
   component: EvidencePanel,
-  decorators: [withToast(), withRouter("/")],
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" })), withToast(), withRouter("/")],
   args: { projectId: PROJECT_ID },
 };
 export default meta;
@@ -115,12 +115,8 @@ export const AddEvidence: Story = {
   },
 };
 
-/** Attaching file(s) at evidence
- * creation time itself, rather than saving first and attaching afterwards
- * from the newly-created record's own Files section. One staged file is
- * removed before save (proving the local staging list, not just the upload
- * call), and the remaining file is uploaded immediately after the evidence
- * record is created — one user action, not two. */
+/** Files are attached at evidence creation, not after saving. One staged file is removed before save (proving the local
+ * staging list, not only the upload call) and the remaining file uploads as soon as the evidence record is created. */
 export const AddEvidenceWithFileAttachment: Story = {
   beforeEach: () => mockApis([]),
   play: async ({ canvasElement }) => {
@@ -186,8 +182,26 @@ export const ExportCarriesTheListsFilters: Story = {
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
     await waitFor(() =>
-      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/compliance_evidence/export?search=IPX&include_archived=true`),
+      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/compliance_evidence/export?search=IPX&include_archived=true&sort=code&order=asc`),
     );
+  },
+};
+
+/** Every column is shown by default; the column chooser hides Expiry and the reset shows it again. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockApis([evidence()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Compliance evidence" });
+    for (const name of ["Title", "Code", "Issuing organisation", "Expiry", "Validity", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Expiry" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Expiry" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Expiry" })).toBeInTheDocument();
   },
 };
 

@@ -15,7 +15,7 @@ A project's **Overview** is a page of widgets. Every member sees the same overvi
 | Chart | A breakdown (requirements by status, change requests by outcome, records by type) as a pie or a bar chart |
 | Stage progress | How complete each stage is |
 | Record totals | How many records of each type the project holds |
-| Activity | The latest changes, from 1 to 25 entries |
+| Activity | The latest changes, from 1 to 25 entries, as the same table the Project history page shows (time, type, event, record and person), with a **View all history** link; a narrow widget stacks each row |
 | Text | A note for the people who open the overview, written in markdown |
 | Module widgets | Any widget an enabled module contributes, such as Compliance's tile for each assigned standard |
 
@@ -56,4 +56,6 @@ An organisation administrator sets the organisation default under **Projects →
 
 ## Text widgets
 
-A text widget supports headings (`# Title`), bullet and numbered lists, **bold**, *italic*, `code`, quotes (`> text`), rules (`---`) and links in the form `[text](https://example.com)`. Raw HTML and images are not shown, and only `http` and `https` links are links.
+A text widget is written in Markdown. Its **Text** field has **Visual** (formatted editing), **Write** (the source, with a formatting toolbar) and **Preview** (the result) views; the three view buttons and the formatting toolbar appear while you are working in the field. It supports headings (`# Title`), bullet and numbered lists, **bold**, *italic*, `code`, fenced code, quotations (`> text`), tables, rules (`---`) and links in the form `[text](https://example.com)`. Raw HTML and images are not shown, and only `http`, `https` and `mailto` links are links.
+
+A fenced block that starts with ```` ```mermaid ```` is drawn as a diagram (flowchart, sequence diagram and the other [Mermaid](https://mermaid.js.org/) types). The drawing follows the light or dark theme, and the diagram text stays available under **Diagram source**; a diagram that cannot be drawn shows its text and the reason. A diagram is limited to 20,000 characters and 300 connections.

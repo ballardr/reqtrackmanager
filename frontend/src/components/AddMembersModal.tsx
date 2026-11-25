@@ -1,52 +1,14 @@
 /**
  * Module: components/AddMembersModal
  *
- * Shared "staged multi-add" member picker — extracted from two near-
- * identical bespoke modals (`OrgAdminPage.tsx`'s "Manage users" add-member
- * step and `ProjectAdminPage.tsx`'s own Members-section add-member modal)
- * that both wrapped `UserAutocomplete` around an immediate-submit-per-
- * selection flow: picking a person/group/email fired one `POST` and closed
- * the modal on the spot, so adding three people cost three full round
- * trips and three modal open/close cycles, and the role `<select>` had to
- * be set *before* picking anyone since selection submitted immediately.
+ * Shared staged multi-add member picker for the organisation and project member pages: each staged entry (person,
+ * group or email) carries its own editable role and one commit adds them all (style guide "Pattern: bulk
+ * operations on a list"). With no batch endpoint, commit loops the caller's `onAddEntry` once per row, tolerating
+ * failures: a failed row stays staged with its inline error and can be retried or removed. `onCommitted` fires once
+ * after every row settles, so the caller reloads once.
  *
- * Modeled on `ResourcePickerModal`'s existing staged-review precedent
- * (checkbox list + one "Attach selected" commit, not one call per item) —
- * see that component's own docstring — but each staged entry here also
- * carries its own role, editable per-row before committing, since adding a
- * person and picking their role are two separate decisions rather than one
- * shared "checked or not" state.
- *
- * Commit behaviour follows the style guide's "Pattern: bulk operations on
- * a list" tail exactly, even though this isn't a `DirectoryTable` selection
- * — no batch backend endpoint exists (`POST /{project_id}/roles` grants
- * one role to one user at a time; checked directly against
- * `backend/app/routers/projects.py::assign_project_role` before building
- * this), so committing loops the caller's own single-entry `onAddEntry`
- * sequentially, once per staged row, tolerating individual failures rather
- * than aborting the batch. A row that fails stays staged with its own
- * inline error and can be retried (press the commit button again) or
- * removed; rows that succeed disappear from the staged list immediately so
- * a partial failure is visible as "these two went through, this one
- * didn't," never a silent partial success. `onCommitted` fires once after
- * every row in a commit pass has settled, so callers can do one shared
- * reload (re-fetch the member list) instead of one reload per row — the
- * granular per-row `onAddEntry` stays a single-purpose "make this one grant
- * happen" call with no reload of its own.
- *
- * Preserves `ProjectAdminPage.tsx`'s extra "add into an existing
- * `ProjectGroup`" branch as a variant rather than dropping it: passing
- * `projectGroups` (mirroring `UserAutocomplete`'s own optional third match
- * kind) lets a project-group name also match in the picker, but selecting
- * one is a fundamentally different action from staging a member — it names
- * a *destination*, not a person to add, and grants no role at all (a
- * group's roles are separate, possibly-zero, possibly-several grants). So
- * it doesn't go through the staged list; it calls `onSelectProjectGroup`
- * directly and the caller re-renders this same component in its "roleless,
- * add into that group" configuration (`showRole={false}`, `groups`/`users`
- * narrowed to non-members, `onAddEntry` calling the existing
- * `addGroupMember`/`addOrgGroupMember` endpoint) — two configurations of
- * one component, not two components.
+ * With `projectGroups`, a group name also matches, but selecting one names a destination, not a person:
+ * `onSelectProjectGroup` is called and the caller re-renders this component roleless (`showRole={false}`).
  */
 import { useState, type ReactNode } from "react";
 
@@ -115,19 +77,15 @@ export function AddMembersModal({
   /** Pre-selected role for a freshly-staged row — still overridable per
    * row via that row's own `<select>` before committing. */
   defaultRole?: ProjectRole;
-  /** False for the "add into an existing ProjectGroup" variant, where
-   * membership itself is granted with no role attached — hides the
-   * per-row role `<select>` entirely rather than showing a control with no
-   * effect. */
+  /** False for the "add into an existing ProjectGroup" variant, where membership carries no role: hides the
+   * per-row role `<select>`. */
   showRole?: boolean;
   /** Optional explanatory copy shown above the picker (e.g. "Adding
    * someone here makes them a member of X — it does not grant a role by
    * itself."). */
   hint?: ReactNode;
-  /** Called once per staged row when the commit button is pressed. A
-   * thrown/rejected error keeps that row staged with the error shown
-   * inline; a row that resolves is removed from the staged list
-   * immediately. */
+  /** Called once per staged row on commit. A rejected call keeps that row staged with the error shown inline; a
+   * resolved one removes the row. */
   onAddEntry: (entry: StagedMember) => Promise<void>;
   /** Called once after a commit pass finishes (whether or not every row
    * succeeded) — the caller's one shared place to re-fetch whatever list
@@ -137,12 +95,8 @@ export function AddMembersModal({
    * group's id instead of staging anything. The caller is expected to
    * close or reconfigure this modal in response (see module docstring). */
   onSelectProjectGroup?: (groupId: string) => void;
-  /** Shows a "Back" button alongside Cancel/commit, calling this instead of
-   * `onClose` — for a caller that re-renders this component in a second
-   * configuration (e.g. `ProjectAdminPage.tsx`'s project-group hand-off,
-   * see module docstring) and wants a way back to the first one without a
-   * full close. Omit for a plain single-step modal, unchanged from before
-   * this prop existed. */
+  /** Shows a "Back" button beside Cancel/commit, calling this instead of `onClose`: for a caller that re-renders
+   * this component in a second configuration and wants a way back to the first. Omit for a single-step modal. */
   onBack?: () => void;
 }) {
   const strings = useStrings();

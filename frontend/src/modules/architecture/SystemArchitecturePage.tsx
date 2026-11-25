@@ -1,17 +1,14 @@
 /**
  * Module: modules/architecture/SystemArchitecturePage
  *
- * The one System Architecture page, mounted at `/projects/:projectId/modules/architecture` (the module's single
- * navigation entry). A shared `Tabs` strip switches between the Elements, Connections, Diagrams and Baselines lists; the
- * chosen tab is the `tab` query parameter and each list keeps its own filters in the same address.
- *
+ * The one System Architecture page, at `/projects/:projectId/modules/architecture` (the module's single navigation entry).
+ * A shared `Tabs` strip switches between the Elements, Connections, Diagrams and Baselines lists; the `tab` query parameter
+ * names the tab and each list keeps its filters in the same address.
  * - A tab whose sub-component is off for the project is not offered; an address naming one opens the default tab.
- * - An address with no tab (the navigation entry) opens the tab the person last chose on the strip, else Diagrams.
- *   The choice is kept per person across projects in this browser (`localStorage`, guarded); a link that names a tab
- *   opens it without changing the remembered one.
- * - Leaving a tab remembers its filters for the browser session (`sessionStorage`, guarded), and returning to it
- *   restores them, so moving between tabs does not reset a search or a status filter.
- * - `ArchitectureListRedirect` carries the earlier list addresses (`/elements`, `/connections`, `/diagrams`) here.
+ * - An address with no tab opens the person's last chosen tab (`localStorage`, guarded), else Diagrams; a link naming a tab
+ *   does not change the remembered one.
+ * - Leaving a tab saves its filters for the browser session (`sessionStorage`, guarded) and returning restores them.
+ * - `ArchitectureListRedirect` sends the `/elements`, `/connections` and `/diagrams` addresses to their tabs.
  */
 import { useEffect, useMemo } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -135,10 +132,10 @@ export function SystemArchitecturePage() {
 }
 
 /**
- * Sends an earlier list address to its tab of the System Architecture page, keeping the filters in its query.
+ * Sends a list address to its tab of the System Architecture page, keeping the filters in its query.
  *
  * Args:
- *   tab: The tab the old address now means.
+ *   tab: The tab the address means.
  *
  * Returns:
  *   A replacing redirect.

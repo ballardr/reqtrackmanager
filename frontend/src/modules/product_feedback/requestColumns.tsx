@@ -83,6 +83,6 @@ export function requestColumns({
     })),
     ...(shown.includes("owner") ? [{ key: "owner", label: "Owner", sortable: true, render: (r: EnhancementRequest) => (r.owner ? <PrincipalBadge principal={r.owner} /> : "–") }] : []),
     ...(shown.includes("created") ? [{ key: "created", label: "Created", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{instantText(r.created_at)}</span> }] : []),
-    ...(shown.includes("updated") ? [{ key: "updated", label: "Last updated", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{instantText(r.updated_at)}</span> }] : []),
+    ...(shown.includes("updated") ? [{ key: "modified", label: "Last updated", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{instantText(r.updated_at)}</span> }] : []),
   ];
 }

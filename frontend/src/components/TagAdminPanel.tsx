@@ -1,30 +1,30 @@
 /**
  * Module: components/TagAdminPanel
  *
- * The tag administration surface, one component for a project (Project Admin) and for the
- * organisation (Org Admin, for organisation-owned records): who may add a new tag, the vocabulary
- * (add, rename, colour, merge, reclassify, delete) and the usage tables, one per kind of record.
+ * The tag administration surface, one component for a project (Project Admin) and for the organisation (Org Admin, for
+ * organisation-owned records): who may add a new tag, the vocabulary (add, rename, colour, merge, reclassify, delete)
+ * and, per tag, its usage by kind of record.
  *
  * Responsibilities:
  * - Show and set the mode: free, restricted, and for a project "follow the parent project".
- * - Maintain the vocabulary through `TagAdminApi`; a vocabulary inherited from a parent project
- *   is read-only here (adding a tag gives the project a list of its own).
- * - Show tag x record-type usage with a filter box and tick boxes that hide tags while reviewing,
- *   and launch "reclassify" for a tag, optionally limited to one kind of record.
- * - Follow the style guide's confirmation tiers: delete is Tier 2 (type the tag's name) and names
- *   how many records lose it; merge and reclassify confirm with a count and, for reclassify, a
- *   preview before anything is written. Every change ends in a toast.
+ * - Maintain the vocabulary through `TagAdminApi`; a vocabulary inherited from a parent project is read-only (adding a
+ *   tag gives the project its own list). A new tag is made in `TagCreateModal` from the "New tag" button.
+ * - Show where a tag is used (`TagUsageModal`, from the record count in the Used on column) and launch "reclassify",
+ *   optionally limited to one kind of record.
+ * - Confirmation tiers: delete is Tier 2 (type the name) and names how many records lose the tag; merge and reclassify
+ *   confirm with a count and, for reclassify, a preview before anything is written. Every change ends in a toast.
  *
  * `api` is injectable for stories; the factories in `api/tags` bind it to a project or the organisation.
  */
+import { Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
-import type { ReclassifyResult, Tag, TagAdminApi, TagMode, TagUsage, TagUsageRow, TagVocabulary } from "../api/tags";
+import type { ReclassifyResult, Tag, TagAdminApi, TagMode, TagUsage, TagVocabulary } from "../api/tags";
 import { TAG_NAME_MAX_LENGTH, tagNameProblem } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useTableSort } from "../hooks/useTableSort";
-import { sortRows, type SortValue } from "../utils/sortRows";
+import type { SortValue } from "../utils/sortRows";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { ActionMenu } from "./ActionMenu";
 import { Badge } from "./Badge";
@@ -38,7 +38,9 @@ import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { Modal } from "./Modal";
 import { Spinner } from "./Spinner";
 import { TagChip } from "./TagChip";
-import { cycleSort, type SortState } from "./sortState";
+import { TagCreateModal } from "./TagCreateModal";
+import { TagUsageModal } from "./TagUsageModal";
+import { Tooltip } from "./Tooltip";
 import { TAG_COLOURS } from "./tagColours";
 
 type Dialog =
@@ -46,6 +48,7 @@ type Dialog =
   | { kind: "colour"; tag: Tag }
   | { kind: "merge"; tag: Tag }
   | { kind: "delete"; tag: Tag }
+  | { kind: "usage"; tag: Tag }
   | { kind: "reclassify"; tag: Tag; artefactType?: string };
 
 const NO_TAGS: Tag[] = [];
@@ -55,13 +58,6 @@ const TAG_SORT_VALUES: Record<string, (tag: Tag) => SortValue> = {
   name: (tag) => tag.name,
   colour: (tag) => tag.colour,
   used: (tag) => tag.usage_count,
-};
-
-/** Sortable value of each sortable column of a usage table. */
-const USAGE_SORT_VALUES: Record<string, (row: TagUsageRow) => SortValue> = {
-  tag: (row) => row.name,
-  count: (row) => row.count,
-  last: (row) => row.last_used,
 };
 
 /**
@@ -77,8 +73,7 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
   const [usage, setUsage] = useState<TagUsage | null>(null);
   const [failed, setFailed] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [newName, setNewName] = useState("");
-  const [newColour, setNewColour] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -107,16 +102,10 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
   if (failed && !vocabulary) return <p className="text-muted" role="alert">{text.loadFailed}</p>;
   if (!vocabulary || !usage) return <Spinner />;
 
-  const nameProblem = newName.trim() === "" ? null : tagNameProblem(newName);
-
-  async function addTag() {
-    const colour = newColour || null;
-    await run(async () => {
-      await api.create(newName.trim(), colour);
-      setNewName("");
-      setNewColour("");
-      return text.created;
-    });
+  async function addTag(name: string, colour: string | null) {
+    await api.create(name, colour);
+    showToast(text.created);
+    await reload();
   }
 
   const modes: Array<{ value: string; label: string }> = [
@@ -139,7 +128,23 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
         </span>
       ) : <span className="text-muted">{text.noColour}</span>,
     },
-    { key: "used", label: text.usedHeading, sortable: true, render: (tag) => text.recordsCount(tag.usage_count) },
+    {
+      key: "used",
+      label: text.usedHeading,
+      sortable: true,
+      render: (tag) => tag.usage_count > 0 ? (
+        <Tooltip label={text.showUsage(tag.name)}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            aria-label={text.showUsage(tag.name)}
+            onClick={() => setDialog({ kind: "usage", tag })}
+          >
+            {text.recordsCount(tag.usage_count)}
+          </button>
+        </Tooltip>
+      ) : text.recordsCount(tag.usage_count),
+    },
     {
       key: "actions",
       label: <span className="sr-only">{strings.common.moreOptions}</span>,
@@ -186,37 +191,9 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
       )}
       {vocabulary.inherited && <p className="text-muted" style={{ margin: 0 }}>{text.inheritedNotice}</p>}
 
-      <form
-        className="row"
-        style={{ alignItems: "flex-end" }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (newName.trim() !== "" && !nameProblem) void addTag();
-        }}
-      >
-        <TextField helpNotNeeded required
-          label={text.addLabel}
-          value={newName}
-          onChange={setNewName}
-          placeholder={text.addPlaceholder}
-          inputProps={{ maxLength: TAG_NAME_MAX_LENGTH * 2 }}
-        />
-        <ColorField helpNotNeeded
-          label={text.colourHeading}
-          value={newColour}
-          onChange={setNewColour}
-          presets={TAG_COLOURS}
-          emptyLabel={text.noColour}
-        />
-        <button type="submit" className="btn btn-primary" disabled={newName.trim() === "" || !!nameProblem}>
-          {text.addButton}
-        </button>
-      </form>
-      {nameProblem && (
-        <span role="alert" style={{ fontSize: "0.8rem", color: "var(--color-danger)" }}>
-          {nameProblem === "too_long" ? strings.tags.tooLong(TAG_NAME_MAX_LENGTH) : strings.tags.invalidCharacters}
-        </span>
-      )}
+      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+        <Plus /> {text.addLabel}
+      </button>
 
       <DirectoryTable
         ariaLabel={text.title}
@@ -228,11 +205,16 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
         emptyState={<p className="text-muted">{strings.tags.filter.none}</p>}
       />
 
-      <UsageTables usage={usage} editable={!vocabulary.inherited} onReclassify={(tagId, artefactType) => {
-        const tag = vocabulary.tags.find((t) => t.id === tagId);
-        if (tag) setDialog({ kind: "reclassify", tag, artefactType });
-      }} />
-
+      {creating && <TagCreateModal onCreate={addTag} onClose={() => setCreating(false)} />}
+      {dialog?.kind === "usage" && (
+        <TagUsageModal
+          tag={dialog.tag}
+          usage={usage}
+          editable={!vocabulary.inherited}
+          onReclassify={(artefactType) => setDialog({ kind: "reclassify", tag: dialog.tag, artefactType })}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog?.kind === "rename" && (
         <RenameDialog
           tag={dialog.tag}
@@ -304,109 +286,6 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
             await reload();
           }}
         />
-      )}
-    </div>
-  );
-}
-
-/** One table per kind of record: tags as rows with counts, a filter box and tick boxes that hide tags while reviewing. */
-function UsageTables({
-  usage, editable, onReclassify,
-}: { usage: TagUsage; editable: boolean; onReclassify: (tagId: string, artefactType: string) => void }) {
-  const strings = useStrings();
-  const text = strings.tags.admin;
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState<Record<string, string>>({});
-  const [sorts, setSorts] = useState<Record<string, SortState | null>>({});
-
-  return (
-    <div className="stack">
-      <h3 style={{ margin: 0 }}>{text.usageHeading}</h3>
-      <p className="text-muted" style={{ margin: 0 }}>{text.usageDescription}</p>
-      {hidden.size > 0 && (
-        <div className="row">
-          <span className="text-muted">{text.usageHiddenCount(hidden.size)}</span>
-          <button type="button" className="btn btn-sm" onClick={() => setHidden(new Set())}>{text.usageShowAll}</button>
-        </div>
-      )}
-      {usage.tables.length === 0 && <p className="text-muted">{text.usageEmpty}</p>}
-      {usage.tables.map((table) => {
-        const needle = (filters[table.artefact_type] ?? "").trim().toLowerCase();
-        const sort = sorts[table.artefact_type] ?? null;
-        const rows = sortRows(table.rows.filter((r) => !hidden.has(r.tag_id) && r.name.toLowerCase().includes(needle)), sort, USAGE_SORT_VALUES);
-        const columns: DirectoryColumn<(typeof table.rows)[number]>[] = [
-          {
-            key: "hide",
-            label: <span className="sr-only">{text.usageHide("")}</span>,
-            render: (row) => (
-              <input
-                type="checkbox"
-                aria-label={text.usageHide(row.name)}
-                checked={hidden.has(row.tag_id)}
-                onChange={(e) => setHidden((current) => {
-                  const next = new Set(current);
-                  if (e.target.checked) next.add(row.tag_id);
-                  else next.delete(row.tag_id);
-                  return next;
-                })}
-              />
-            ),
-          },
-          { key: "tag", label: text.nameHeading, sortable: true, render: (row) => <TagChip tag={{ name: row.name, colour: row.colour }} /> },
-          { key: "count", label: text.usedHeading, sortable: true, render: (row) => text.recordsCount(row.count) },
-          {
-            key: "last",
-            label: text.lastUsedHeading,
-            sortable: true,
-            render: (row) => (row.last_used ? new Date(row.last_used).toLocaleDateString() : ""),
-          },
-          {
-            key: "actions",
-            label: <span className="sr-only">{strings.common.moreOptions}</span>,
-            render: (row) => editable ? (
-              <button
-                type="button"
-                className="btn btn-sm"
-                aria-label={`${text.reclassify(row.name)} (${table.label})`}
-                onClick={() => onReclassify(row.tag_id, table.artefact_type)}
-              >
-                {text.reclassifyButton}
-              </button>
-            ) : null,
-          },
-        ];
-        return (
-          <section key={table.artefact_type} className="stack" aria-label={table.label}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <h4 style={{ margin: 0 }}>{table.label}</h4>
-              <input
-                className="input"
-                style={{ maxWidth: 220 }}
-                placeholder={text.usageFilter}
-                aria-label={`${text.usageFilter} (${table.label})`}
-                value={filters[table.artefact_type] ?? ""}
-                onChange={(e) => setFilters({ ...filters, [table.artefact_type]: e.target.value })}
-              />
-            </div>
-            <DirectoryTable
-              ariaLabel={`${text.usageHeading}: ${table.label}`}
-              columns={columns}
-              rows={rows}
-              sort={sort}
-              onSort={(key) => setSorts({ ...sorts, [table.artefact_type]: cycleSort(sort, key) })}
-              rowKey={(row) => row.tag_id}
-              emptyState={<p className="text-muted">{text.usageEmpty}</p>}
-            />
-          </section>
-        );
-      })}
-      {usage.unused.length > 0 && (
-        <div className="stack" style={{ gap: "var(--space-1)" }}>
-          <h4 style={{ margin: 0 }}>{text.unusedHeading}</h4>
-          <div className="row" style={{ gap: "var(--space-2)" }}>
-            {usage.unused.map((tag) => <TagChip key={tag.id} tag={tag} />)}
-          </div>
-        </div>
       )}
     </div>
   );

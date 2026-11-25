@@ -31,6 +31,7 @@ from app.models.policy import PolicyDocument, PolicyDocumentVersion, PolicyState
 from app.models.user import User
 from app.schemas.policies import (
     AcknowledgeIn,
+    AcknowledgementNotApplicableOut,
     AcknowledgementOut,
     AcknowledgementStatusOut,
     AcknowledgementStatusRowOut,
@@ -107,6 +108,10 @@ def _status_out(db: Session, row: PolicyDocument) -> AcknowledgementStatusOut:
                 accepted_at=r.accepted_at, current=r.current,
             )
             for r in rows[: acks.STATUS_LIMIT]
+        ],
+        not_applicable=[
+            AcknowledgementNotApplicableOut(user_id=u.id, display_name=u.display_name)
+            for u in acks.not_applicable_service_users(db, row)[: acks.STATUS_LIMIT]
         ],
     )
 

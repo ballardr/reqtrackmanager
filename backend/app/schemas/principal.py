@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.models.enums import PrincipalType
 
@@ -25,6 +25,7 @@ class PrincipalOut(BaseModel):
             an owner group stands for.
         exists: False once a group has been deleted but a history row still names it.
         imported: True for an imported person (a stand-in for someone named in an import bundle), so a badge can say so.
+        service: True for a service user, so a badge can say so.
     """
 
     type: PrincipalType
@@ -33,12 +34,16 @@ class PrincipalOut(BaseModel):
     member_count: int | None = None
     exists: bool = True
     imported: bool = False
+    service: bool = False
 
 
 class WatcherCreate(BaseModel):
-    """Adds a group as a watcher of a requirement or change request (its members all follow it)."""
+    """Adds a user or group as a watcher of a requirement or change request (a group's members all follow it).
 
-    group: PrincipalRef
+    `group` is accepted as an alias of `principal`.
+    """
+
+    principal: PrincipalRef = Field(validation_alias=AliasChoices("principal", "group"))
 
 
 class PrincipalUsageItem(BaseModel):

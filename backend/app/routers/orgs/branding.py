@@ -1,13 +1,9 @@
 """
 Module: routers.orgs.branding
 
-Organisation branding: logo/login-background image upload and revert
-(U-C-02, E-P-03), accent colour/wordmark/email-footer branding, the default
-template project (C-E-04), and the public branded-login-page lookup.
-
-Split out of the former flat `routers/orgs.py` as a pure code-organization
-refactor — see `routers/orgs/__init__.py`'s module docstring for the
-package layout.
+Organisation branding: logo/login-background image upload and revert (U-C-02, E-P-03), accent
+colour/wordmark/email-footer branding, the default template project (C-E-04) and the public
+branded-login-page lookup.
 """
 
 from __future__ import annotations
@@ -49,11 +45,8 @@ async def upload_org_branding_image(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Uploads this organisation's logo (U-C-02) or login-page background
-    image (E-P-03) — merges the formerly-separate `POST /logo`/
-    `POST /login-background` endpoints (2026-09-22, see docs/decisions.md)
-    into one, dispatching on `kind`. Each branch preserves its original
-    endpoint's exact file-handling/FK-field/audit-log-string logic."""
+    """Uploads this organisation's logo (U-C-02) or login-page background image (E-P-03), dispatching on
+    `kind`; each branch has its own file-handling, FK-field and audit-log logic."""
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
@@ -85,13 +78,9 @@ def delete_org_branding_image(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Reverts this organisation's logo or login-page background image back
-    to the platform default by clearing the override (U-C-02/E-P-03's
-    missing revert path) — merges the formerly-separate `DELETE /logo`/
-    `DELETE /login-background` endpoints (2026-09-22, see docs/decisions.md)
-    into one, dispatching on `kind`. A no-op, not a 404, when there's
-    nothing set for the requested `kind` — this is a "make sure it's unset"
-    action, not a delete of a specific known record."""
+    """Reverts this organisation's logo or login-page background image to the platform default by clearing
+    the override, dispatching on `kind`. A no-op, not a 404, when nothing is set for `kind`: it ensures the
+    override is unset rather than deleting a specific known record."""
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")

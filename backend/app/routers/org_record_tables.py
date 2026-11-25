@@ -1,21 +1,20 @@
 """
 Module: routers.org_record_tables
 
-The generic table routes of the records an **organisation** owns (its Strategies, Future States, Guiding
-Principles, Personas, Stakeholders and Stakeholder Groups), one set for every such type:
+The generic table routes of the records an organisation owns (Strategies, Future States, Guiding
+Principles, Personas, Stakeholders, Stakeholder Groups), one set for every such type, under
+`/api/v1/orgs/{organization_id}/`:
+- `records/{record_type}/columns`: the type's columns and import rules.
+- `records/{record_type}/export`: the organisation's own records as CSV, with the list's filters.
+- `records/{record_type}/import`: create and update the organisation's own records from an exported CSV;
+  a preview unless `dry_run=false`.
+- `reports/record-list`: the same table as a PDF, Word or CSV document.
 
-- `GET  /api/v1/orgs/{organization_id}/records/{record_type}/columns`: the type's columns and import rules.
-- `GET  /api/v1/orgs/{organization_id}/records/{record_type}/export`: the organisation's own records as CSV, with
-  the organisation list's filters.
-- `POST /api/v1/orgs/{organization_id}/records/{record_type}/import`: create and update the organisation's own
-  records from the CSV an export writes; a preview unless `dry_run=false`.
-- `GET  /api/v1/orgs/{organization_id}/reports/record-list`: the same table as a PDF, Word or CSV document.
-
-Access: a member of the organisation with the type's module (and the sub-component its organisation list needs)
-on there, answered 404 otherwise. An import additionally needs what the organisation endpoints need to create
-and update the type (`OrganizationRecordTable.can_create` / `can_update`). Which columns may leave or enter is the
-engine's one rule (`resolve_export_columns`), with the organisation-level `export_personal_data` grant. Nothing
-here knows a record type or module.
+Access: a member of the organisation with the type's module (and the sub-component its list needs) on;
+404 otherwise. An import also needs what the organisation endpoints need to create and update the type
+(`OrganizationRecordTable.can_create` / `can_update`). Which columns may leave or enter is the engine's one
+rule (`resolve_export_columns`), with the organisation-level `export_personal_data` grant. Nothing here
+knows a record type or module.
 """
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ from app.modules.registry import RecordTableProvider, artefact_type_module
 from app.routers.record_tables import columns_out, import_result_out
 from app.schemas.record_tables import ImportResultOut, RecordColumnsOut
 from app.services.downloads import file_response, filename_safe
+from app.services.list_sort import ListSort, list_sort
 from app.services.rbac import check_pat_scope, require_org_access_and_module_enabled
 from app.services.record_list_report import MAX_DOCUMENT_ROWS, REPORT_KEY, collect
 from app.services.record_policy import tag_decisions
@@ -98,7 +98,7 @@ def org_record_columns(
 
 @router.get("/records/{record_type}/export")
 def export_org_records(
-    organization_id: UUID, record_type: str, request: Request,
+    organization_id: UUID, record_type: str, request: Request, sort_by: ListSort = Depends(list_sort),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> Response:
     """The organisation's own records as a CSV that re-imports (`POST .../import`), narrowed by the list's filters.
@@ -111,7 +111,7 @@ def export_org_records(
     """
     organization, provider = authorise(db, current_user, request, organization_id, record_type)
     filters = split_org_params(provider, request.query_params.multi_items())
-    table = build_org_table(db, current_user, organization, provider, filters=filters)
+    table = build_org_table(db, current_user, organization, record_type, provider, filters=filters, sort=sort_by)
     audit_export(db, current_user, organization, record_type, table, "csv")
     stem = f"{filename_safe(organization.name, fallback='organisation')}-{filename_safe(provider.label.lower())}"
     headers = {
@@ -152,6 +152,7 @@ def org_record_list_report(
     organization_id: UUID, request: Request,
     record_type: str = Query(..., description="The record type to list, e.g. `strategy`."),
     format: ReportFormat = Query("pdf", description="pdf, docx, html, odt, csv, xlsx or ods."),
+    sort_by: ListSort = Depends(list_sort),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> Response:
     """The organisation's own records of `record_type` as a document or spreadsheet, with the list's filters.
@@ -166,7 +167,7 @@ def org_record_list_report(
     if format == "json":
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Use pdf, docx, html, odt, csv, xlsx or ods.")
     filters = split_org_params(provider, [(k, v) for k, v in request.query_params.multi_items() if k != "record_type"])
-    table = build_org_table(db, current_user, organization, provider, filters=filters)
+    table = build_org_table(db, current_user, organization, record_type, provider, filters=filters, sort=sort_by)
     if format in DOCUMENT_FORMATS and len(table.rows) > MAX_DOCUMENT_ROWS:
         raise HTTPException(
             status.HTTP_413_CONTENT_TOO_LARGE,

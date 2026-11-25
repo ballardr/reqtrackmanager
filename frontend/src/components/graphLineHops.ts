@@ -1,27 +1,25 @@
 /**
  * Module: components/graphLineHops
  *
- * Where one drawn line crosses another and which of the two draws a small arc over the other (a hop), so a crossing reads as
- * a crossing and not as a junction. Pure functions, no React, so the canvas and the tests use the one rule.
+ * Where one drawn line crosses another and which of the two draws a small arc over the other (a hop), so a crossing reads
+ * as a crossing and not a junction. Pure functions, no React, so the canvas and the tests share one rule.
  *
- * Responsibilities:
- * - Flatten each line (curves included) to segments, find where segments of different lines cross, and decide which crossings
- *   are drawn as a hop.
- * - Give the SVG path of each line that hops, with the arcs in place.
+ * Responsibilities: flatten each line (curves included) to segments, find where segments of different lines cross, decide
+ * which crossings are hops, and give the SVG path of each line that hops.
  *
  * Design decisions:
- * - One rule for every line: connections, transitions and leaders are all lines of one set; a line never hops over itself, and
- *   a loop on one box is not in the set.
- * - The later line hops: of two lines that cross, the one whose id sorts later is drawn with the arc, so the same crossing looks
- *   the same on every screen and in every export.
- * - No hop where it would not read: none within `HOP_CLEARANCE` canvas units (along the line) of either line's end, between two
- *   lines that share an end point, where the arc would not fit inside one segment or one curve span of the hopping line, or
- *   closer than one arc's width to the previous hop of that line.
- * - Arcs are semicircles that bulge up for a line running left to right and right for one running top to bottom.
- * - The server draws the same hops with a Python copy (`diagram_line_hops.py`); `graphLineHopCases.json` holds the cases both
- *   are tested against, so a change to the rule is made in both. Only +, -, *, / and square roots are used so both agree.
- * - Not quadratic in the number of lines: segments are put in a grid of cells and only segments sharing a cell are compared; a
- *   segment that covers more than `MAX_CELLS` cells is compared with every other segment instead.
+ * - One rule for every line (connections, transitions and leaders): a line never hops over itself, and a loop on one box
+ *   is not in the set.
+ * - The later line hops: of two crossing lines the one whose id sorts later draws the arc, so a crossing looks the same
+ *   on every screen and in every export.
+ * - No hop where it would not read: within `HOP_CLEARANCE` canvas units (along the line) of either line's end, between
+ *   lines sharing an end point, where the arc would not fit inside one segment or curve span of the hopping line, or
+ *   closer than one arc's width to that line's previous hop.
+ * - Arcs are semicircles bulging up for a line running left to right and right for one running top to bottom.
+ * - The server draws the same hops with `diagram_line_hops.py`; `graphLineHopCases.json` holds the cases both are tested
+ *   against, so a change is made in both. Only +, -, *, / and square roots are used so both agree.
+ * - Not quadratic in the number of lines: segments go in a grid of cells and only segments sharing a cell are compared; a
+ *   segment covering more than `MAX_CELLS` cells is compared with every other segment.
  */
 
 import { formatPoint, shapeSpans, type LineDirections, type LinePoint, type LineShape } from "./graphLinePath";

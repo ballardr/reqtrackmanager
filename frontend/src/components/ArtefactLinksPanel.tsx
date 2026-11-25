@@ -1,51 +1,22 @@
 /**
  * Module: components/ArtefactLinksPanel
  *
- * The one Links panel every artefact detail page shows beside its content (in
- * `DetailLayout`'s aside): the record's direct links grouped by the type of record
- * at the other end, each phrased by its link type ("Implements", "Is addressed
- * by"), with where it lives, its status and whether it is archived; an "Add link"
- * dialog and a remove action for those who may change links.
+ * The one Links panel every artefact detail page shows in `DetailLayout`'s aside: the record's direct links grouped
+ * by the type at the other end, each phrased by its link type, with where it lives, its status and whether it is
+ * archived; an "Add link" dialog and a remove action for those who may change links. Link kinds come from the
+ * server (`link-types`, restriction- and rule-filtered), so a new type needs no change here; dedicated actions
+ * (Supersede) come from the page through `actions`.
  *
- * It replaces the per-module relationship sections: link kinds are not listed per
- * page, they come from the server (`link-types`, restriction- and rule-filtered), so
- * a new artefact type or link type needs no change here. Dedicated actions with
- * their own semantics (Supersede) are supplied by the page through `actions`.
- *
- * Responsibilities:
- * - Load the depth-1 link graph (`artefactLinksApi.graph`); the server has already
- *   hidden what the user may not see and says how many it left out.
- * - Show links to other projects (a parent or child) with a project badge, and flag
- *   a link its link type no longer permits instead of hiding it.
- * - Offer "Add link" as a menu of linking an existing record or, for a record type another module can create and a
- *   link type reaches (`CreateLinkedRecord`), creating and linking a new one in one step (a record type and
- *   relationship step, then the owning module's form). Where nothing can be created it is the plain button.
- * - Open the trace (tree and map) of the record's links in a modal.
- * - Remove a link behind a Tier-1 confirmation; route through a change request when
- *   the page says links are locked (`changeRequest`).
- *
- * Design decisions:
- * - `projectId` is undefined for an organisation-owned record; links are
- *   project-scoped, so the panel then shows a note instead of an add control.
- * - Other modules' statuses are shown through their registered label maps
- *   (`getArtefactStatusLabel`); a status with no label shows no badge, never the raw value.
- * - API calls are injectable (`api`) so stories and tests need no network.
- * - `compact` is the variant for a panel that sits inside another record's card (a finding in its
- *   engagement): no card chrome, a caption-sized "Links" title with icon buttons (+ to add, a branch
- *   icon to trace) beside it, and tighter spacing. `hideLinkedTypes` leaves out links to records of
- *   those artefact types where the page already shows them (the engagement a finding sits in); the
- *   trace and the records themselves are unchanged.
- * - Rows carry no pills. A group is a record type (a chevron toggle and a plain count), and inside it
- *   the relationship is a small label above its rows ("Has participant · 3"), so several links of one
- *   kind read as a list under one label rather than a repeated pill. A count shows only when it
- *   says something: more than one link, or a collapsed group. A record's code is a small muted
- *   suffix after its title (`LinkedRecordSummary`'s `list` layout).
- * - The relationship labels are off by default (the trace shows them, and each row's hover text
- *   names its relationship), and a "View options" popover turns them, and the compact layout, on or
- *   off for this panel. The relationship choice is remembered per viewer (local storage, optional).
- * - Each record-type group can be collapsed to its heading and count (a chevron toggle). A page
- *   that expects a long group of little interest passes `collapsedTypes` to start those groups
- *   collapsed (an engagement starts with its findings collapsed); the viewer's own toggling then wins.
+ * - Loads the depth-1 link graph (`artefactLinksApi.graph`); the server hides what the user may not see and counts
+ *   it. Links to other projects carry a badge; a link its type no longer permits is flagged, not hidden.
+ * - "Add link" is a menu: link an existing record or, where another module can create one (`CreateLinkedRecord`),
+ *   create and link in one step. Trace opens in a modal. Removal needs Tier-1 confirmation, or goes through a change
+ *   request when links are locked (`changeRequest`). `projectId` is undefined for an organisation-owned record,
+ *   which shows a note instead of an add control. Statuses use `getArtefactStatusLabel` (no label, no badge).
+ * - `compact` is the variant inside another record's card; `hideLinkedTypes` omits types the page already shows.
+ *   A group is a record type (chevron, count when more than one link or collapsed; `collapsedTypes` starts them
+ *   collapsed). Relationship labels are off by default; "View options" toggles them, remembered per viewer.
+ * - `api` is injectable so stories and tests need no network.
  */
 import { ChevronDown, ChevronRight, FilePlus, GitBranch, Link2, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -65,6 +36,7 @@ import { LinkTraceModal } from "./LinkTraceModal";
 import { MenuButton } from "./MenuButton";
 import { useInDetailAside } from "./detailAsideContext";
 import { TextAreaField } from "./FormFields";
+import { Tooltip } from "./Tooltip";
 
 export type { LinksChangeRequestMode } from "./AddArtefactLinkModal";
 
@@ -284,12 +256,14 @@ export function ArtefactLinksPanel({
                 />
               )
             ) : compactView ? (
-              <button
-                className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.addLink} title={strings.artefactLinks.addLink}
-                aria-haspopup="dialog" onClick={() => setAdding(true)}
-              >
-                <Plus aria-hidden="true" />
-              </button>
+              <Tooltip label={strings.artefactLinks.addLink}>
+                <button
+                  className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.addLink}
+                  aria-haspopup="dialog" onClick={() => setAdding(true)}
+                >
+                  <Plus aria-hidden="true" />
+                </button>
+              </Tooltip>
             ) : (
               <button className="btn btn-primary" onClick={() => setAdding(true)}>
                 <Plus /> {strings.artefactLinks.addLink}
@@ -298,12 +272,14 @@ export function ArtefactLinksPanel({
           )}
           {(compactView ? graph !== null : groups.length > 0) && (
             compactView ? (
-              <button
-                className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.traceButton} title={strings.artefactLinks.traceButton}
-                aria-haspopup="dialog" onClick={() => setTracing(true)}
-              >
-                <GitBranch aria-hidden="true" />
-              </button>
+              <Tooltip label={strings.artefactLinks.traceButton}>
+                <button
+                  className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.traceButton}
+                  aria-haspopup="dialog" onClick={() => setTracing(true)}
+                >
+                  <GitBranch aria-hidden="true" />
+                </button>
+              </Tooltip>
             ) : (
               <button className="btn" onClick={() => setTracing(true)}>
                 <GitBranch /> {strings.artefactLinks.traceButton}
@@ -420,7 +396,7 @@ export function ArtefactLinksPanel({
             changeRequest ? (
               <span className="stack" style={{ gap: "var(--space-3)" }}>
                 <span>{strings.artefactLinks.removeConfirmViaChangeRequest}</span>
-                <TextAreaField helpNotNeeded
+                <TextAreaField plainText="A link's reason is one line shown beside the link" helpNotNeeded
                   label={strings.artefactLinks.reasonLabel}
                   value={removeReason}
                   onChange={setRemoveReason}

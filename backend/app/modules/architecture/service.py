@@ -1,40 +1,26 @@
 """
 Module: modules.architecture.service
 
-The domain, element type and connection type vocabularies and the symbol library: seeding
-an organisation's defaults, resolving a project's effective list, and creating,
-editing, hiding and deleting rows.
+The domain, element type and connection type vocabularies and the symbol library: seeding an organisation's defaults,
+resolving a project's effective list, and creating, editing, hiding and deleting rows.
 
 Responsibilities:
-- `ArchitectureVocabulary`, one instance per vocabulary, holds every rule so the
-  two vocabularies and their routers cannot drift.
-- The default rows an organisation is created with.
-- `ElementTypeVocabulary` adds the suggested connection types (guidance a connection picker lists first; validated like a
-  parent and copied with an inherited configuration).
-- `ConnectionTypeVocabulary` adds the type tree: a type's parents are validated (same tier or a visible
-  organisation default, no cycle, depth cap in `connection_tree`) and copied with an inherited configuration.
-- `DomainVocabulary` is the vocabulary of domains (Software, Hardware, ...) a type can be in: any number, none meaning every
-  domain. Links are validated like a parent; when a project copies an inherited configuration, `heal_links` re-points the
-  project's type links and its diagrams' toggle rules at the project's own copy of a domain (matched by name).
-- `SymbolLibrary` is a vocabulary of drawings (built-in or an uploaded SVG file) that
-  element types and elements are assigned; it uses the same two tiers, hiding and nested
-  fallback as the types. A symbol file is shared by the copies of an inherited project row,
-  so it is deleted with the last row that names it. The upload checks are in `symbols`.
+- `ArchitectureVocabulary` (one instance per vocabulary) holds every rule so the vocabularies and routers cannot drift.
+- `ElementTypeVocabulary` adds suggested connection types (guidance a picker lists first); `ConnectionTypeVocabulary`
+  adds the type tree (same tier or visible organisation default, no cycle, depth cap in `connection_tree`);
+  `DomainVocabulary` holds the domains a type can be in (none means every domain; `heal_links` re-points a project's
+  type links and toggle rules at its own copy of a domain, matched by name); `SymbolLibrary` holds built-in and uploaded
+  SVG drawings with the same tiers, hiding and fallback. A symbol file is shared by copies of an inherited row and is
+  deleted with the last row naming it; upload checks are in `symbols`.
 
 Design decisions:
-- A project's effective list is the organisation's rows it has not hidden plus
-  the project's own rows. Nested projects (**Decided by: Agent**): a project with
-  no configuration of its own (no row and no hidden default) shows the nearest
-  ancestor's configuration, else the organisation's list. The first change made in
-  such a project copies the inherited rows and hidden defaults into it
-  (`materialize_inherited`), so a change never edits the ancestor's rows.
-- Hiding stops new use only. A record that holds a hidden default keeps it,
-  because it references the organisation's row directly.
-- A row that records use is never deleted; `usage_checks` is where a record type
-  registers its check.
-- Seeding runs when an organisation is created and never for a project; a migration seeds nothing.
-- A parent a project row already has stays allowed after the organisation default is hidden (hiding stops new
-  use only), so editing the row does not silently drop the link.
+- A project's effective list is the organisation's rows it has not hidden plus its own. A project with no configuration
+  of its own shows the nearest ancestor's, else the organisation's (**Decided by: Agent**); its first change copies the
+  inherited rows and hidden defaults into it (`materialize_inherited`), so a change never edits the ancestor's rows.
+- Hiding stops new use only: a record holding a hidden default keeps it (it references the organisation's row), and a
+  parent a project row already has stays allowed.
+- A row that records use is never deleted; `usage_checks` is where a record type registers its check.
+- Seeding runs when an organisation is created, never for a project; a migration seeds nothing.
 """
 
 from __future__ import annotations
@@ -931,6 +917,11 @@ class SymbolLibrary(ArchitectureVocabulary):
     A row is either a built-in drawing or an uploaded file (`symbols` checks and stores an upload; this class holds the
     rows). A built-in cannot be renamed, since a bundle names it by its key.
     """
+
+    def copied_columns(self) -> tuple[str, ...]:
+        """The base columns without `folder_id`: a folder is per-owner content, so a project's copy of an inherited symbol
+        is filed nowhere rather than in a folder of the project it was copied from."""
+        return tuple(c for c in super().copied_columns() if c != "folder_id")
 
     def add_builtins(self, db: Session, organization_id: uuid.UUID) -> dict[str, uuid.UUID]:
         """Adds the built-in symbols to a new organisation and returns `{builtin key: row id}`. The ids are set here, not at

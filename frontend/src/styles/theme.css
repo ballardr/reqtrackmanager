@@ -6,13 +6,13 @@
 */
 
 /*
-  App-chrome (header) colours. Deliberately outside the [data-theme] blocks
-  below: the top bar is a fixed dark anchor independent of the active
-  light/dark theme (Power Apps/Dynamics/ServiceNow-style shell), not a
-  themed surface — see docs/decisions.md, "Header chrome is theme-
-  independent."
+  App-chrome (header) colours, outside the [data-theme] blocks on purpose: the
+  top bar is a fixed dark anchor independent of the active theme, not a themed
+  surface (docs/decisions.md, "Header chrome is theme-independent").
 */
 :root {
+  /* One step of indentation per level in every tree (`TreeView`, `FolderTreeList`, the link trace). */
+  --tree-indent: 1rem;
   --color-header-bg: #14161c;
   --color-header-text: #ffffff;
   --color-header-text-muted: #a7adb8;
@@ -43,6 +43,7 @@
 :root[data-theme="light"] {
   --color-bg: #eef1f5;
   --color-surface: #ffffff;
+  --scroll-edge-color: rgba(0, 0, 0, 0.22);
   --color-surface-alt: #eef0f3;
   --color-border: #c3c9d1;
   --color-text: #1a202c;
@@ -54,20 +55,14 @@
   --color-accent: #2f855a;
   --color-danger: #c53030;
   --color-warning: #b7791f;
-  /* "awaiting decision" status tone
-     (reviewed/submitted/in_review/pending), deliberately distinct from
-     --color-warning so routine in-progress states don't compete visually
-     with things that actually need attention (e.g. an applicability
-     override, an overdue review). See docs/decisions.md. */
+  /* "awaiting decision" status tone (reviewed/submitted/in_review/pending),
+     distinct from --color-warning so routine in-progress states do not compete
+     with things that need attention. See docs/decisions.md. */
   --color-info: #0e7490;
-  /* Entity-type accent — the 3 entity kinds core itself
-     owns (requirement/action/change_request) only. A *module's* own accent
-     colour (e.g. Compliance's) is never a variable here — see
-     frontend/src/modules/entityAccentColor.ts's own docstring for why a
-     `--color-entity-compliance` var briefly lived here and was corrected
-     back out: a module's colour is registered on its own `module.ts`
-     (`TierAModuleDefinition.entityAccentColor`) and resolved client-side,
-     not declared in this core stylesheet. */
+  /* Entity-type accent for the 3 entity kinds core owns (requirement/action/
+     change_request) only. A module's accent colour is registered on its own
+     `module.ts` (`TierAModuleDefinition.entityAccentColor`) and resolved
+     client-side, never declared here (frontend/src/modules/entityAccentColor.ts). */
   --color-entity-requirement: #3b5bdb;
   --color-entity-action: #0f766e;
   --color-entity-change-request: #7c3aed;
@@ -77,6 +72,7 @@
 :root[data-theme="dark"] {
   --color-bg: #14181f;
   --color-surface: #1c222c;
+  --scroll-edge-color: rgba(0, 0, 0, 0.6);
   --color-surface-alt: #242b37;
   --color-border: #333c4a;
   --color-text: #e6e9ef;
@@ -142,6 +138,21 @@ textarea {
   padding: var(--space-5);
 }
 
+/* A licence text (Policies, Licences): preformatted, wrapped, scrollable, never wider than its column. */
+.licence-text {
+  margin: 0;
+  padding: var(--space-3);
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -164,18 +175,23 @@ textarea {
   background: var(--color-surface-alt);
 }
 
+/* A button whose label holds text a person typed (an "Add <name> level" button): it may be narrower than its label,
+   which is a `CellText` inside it, so a long name cuts the label and never widens the row or the page. */
+.btn.btn--fit {
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .btn-primary {
   background: var(--color-primary);
   color: var(--color-primary-contrast);
   border-color: var(--color-primary);
 }
 
-/* .btn:hover's var(--color-surface-alt) is right for the plain/default
-   button (its light card-toned background against normal text), but
-   applied to .btn-primary it swapped a solid, high-contrast button for a
-   near-white/near-black chip still using --color-primary-contrast text —
-   unreadable in both themes. Darken/lighten the primary colour itself
-   instead of switching backgrounds. */
+/* The default `.btn:hover` (var(--color-surface-alt)) would leave a primary
+   button's contrast text unreadable in both themes, so the primary colour itself
+   darkens or lightens. */
 .btn-primary:hover {
   background: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
@@ -193,10 +209,9 @@ textarea {
   cursor: not-allowed;
 }
 
-/* Button sizes (docs/ux-style-guide.md, "Pattern: button sizes"). Two sizes: the default `.btn`
-   (medium, 36px tall) and `.btn-sm` (28px). `.btn-icon` makes an icon-only button square at its
-   size, so an icon button and a text button of the same size are the same height. Buttons that sit
-   next to each other share a size. */
+/* Button sizes (docs/ux-style-guide.md, "Pattern: button sizes"): the default
+   `.btn` (medium, 36px) and `.btn-sm` (28px). `.btn-icon` makes an icon-only
+   button square at its size. Buttons that sit together share a size. */
 .btn-sm {
   height: 1.75rem;
   min-height: 0;
@@ -218,6 +233,12 @@ textarea {
   height: 1.75rem;
 }
 
+/* `.btn-round` draws an icon button as a circle (the navigation and filter-panel collapse toggles). It
+   only sets the corner radius; the size is `.btn-icon`'s, so a square box is guaranteed and 50% is a circle. */
+.btn-round {
+  border-radius: 50%;
+}
+
 /* One icon size per button size (style guide "Pattern: button sizes"): the button decides, not a
    `size` prop on each icon, so the rule cannot drift per call site. `flex: none` stops a long label
    squeezing the icon. The pill rule (`.badge svg`, 12px) sits with the pill styles. */
@@ -233,10 +254,8 @@ textarea {
 }
 
 /* `SplitButtonTrigger` (style guide "Pattern: split-button trigger"): two
-   adjacent `.btn`s read as one joined control — the primary action on the
-   left, a narrow chevron affordance revealing alternatives on the right,
-   sharing one border instead of each getting its own rounded corners on
-   every side. */
+   adjacent `.btn`s read as one joined control, the primary action on the left
+   and a narrow chevron revealing alternatives on the right, sharing one border. */
 .split-button {
   display: inline-flex;
 }
@@ -254,11 +273,9 @@ textarea {
   padding-right: var(--space-3);
 }
 
-/* `Tabs` (style guide "Pattern: Tabs") — deliberately distinct from `.btn`:
-   the active tab used to be styled `.btn btn-primary`, making it
-   pixel-identical to a primary button (see docs/decisions.md). An underline indicator reads as "the current
-   view of this object," not "an action to take," which a filled button
-   shape doesn't. */
+/* `Tabs` (style guide "Pattern: Tabs"), distinct from `.btn` so the active tab is
+   not identical to a primary button (docs/decisions.md). An underline reads as
+   "the current view of this object", not "an action to take". */
 .tabs-list {
   display: flex;
   flex-wrap: wrap;
@@ -294,11 +311,10 @@ textarea {
   border-bottom-color: var(--color-primary);
 }
 
-/* Solid dark top bar (U-C-01 override): fixed chrome colour, not a themed
-   surface, so it stays the same in light and dark theme. `.btn`/`.text-muted`
-   need their own rule here because their base styles pull --color-surface/
-   -border/-text, which would render as a jarring white chip (light theme)
-   or a near-invisible ~1.1:1 ghost (dark theme) against a black bar. */
+/* Solid dark top bar (U-C-01 override): fixed chrome colour, the same in both
+   themes. `.btn`/`.text-muted` need their own rules because their base styles
+   pull --color-surface/-border/-text, which would be a white chip (light) or a
+   near-invisible ghost (dark) against a black bar. */
 .app-header {
   background: var(--color-header-bg);
   color: var(--color-header-text);
@@ -344,13 +360,13 @@ textarea.input {
   padding: var(--space-3) 0.6rem;
 }
 
-/* Every single-value <select> draws the same chevron, at the same place: the browser's own arrow
-   (appearance: auto) sits at a different distance from the edge in each browser and at different
-   widths, so two selects in one panel could disagree, and it never matched the chevron of the custom
-   dropdowns (`MultiSelectDropdown`, the tag filter). The chevron is the lucide `ChevronDown`, 14px, in
-   the theme's text colour (`--select-chevron`, set per theme), 0.6rem from the right edge, which is
-   where `MultiSelectDropdown` puts its own. Right padding keeps the value text clear of it. A
-   multi-line (`multiple`, `size`) select keeps its native look. */
+/* Every single-value <select> draws the same chevron at the same place: the
+   browser's own arrow (appearance: auto) differs in position and width between
+   browsers and does not match the custom dropdowns (`MultiSelectDropdown`, the
+   tag filter). The chevron is the lucide `ChevronDown`, 14px, in the theme's text
+   colour (`--select-chevron`, per theme), 0.6rem from the right edge as in
+   `MultiSelectDropdown`; right padding keeps the value clear. A `multiple` or
+   `size` select keeps its native look. */
 select.input:not([multiple]):not([size]) {
   appearance: none;
   padding-right: 2rem;
@@ -429,14 +445,11 @@ select.input[size] {
   --badge-min-width: 8rem;
 }
 
-/* Status colour, applied as a modifier
-   on top of the plain `.badge` shape rather than a parallel badge
-   implementation. Text + border colour only (fill stays the neutral
-   --color-surface-alt) to keep this additive to the graphite palette
-   rather than a set of solid filled pills. Driven by the *_TONE maps next
-   to each status/outcome enum's *_LABEL map in api/types.ts — a status
-   should never get an inline one-off colour, only one of these 5 tones
-   (`warning` = needs attention, e.g. a "High" scoring band). */
+/* Status colour as a modifier on the plain `.badge` shape: text and border
+   colour only (the fill stays --color-surface-alt). Driven by the *_TONE maps
+   beside each status/outcome enum's *_LABEL map in api/types.ts; a status gets
+   one of these 5 tones, never an inline colour (`warning` = needs attention,
+   e.g. a "High" scoring band). */
 .badge--muted {
   color: var(--color-text-muted);
   border-color: var(--color-border);
@@ -458,13 +471,11 @@ select.input[size] {
   border-color: var(--color-warning);
 }
 
-/* Entity-type accent: a left-border stripe applied to a
-   list row or card, coloured via the `--entity-accent-color` custom
-   property each call site sets from `ENTITY_ACCENT_COLOR` (api/types.ts)
-   — not a bespoke colour per call site. `<tr>` uses a box-shadow inset
-   (a border on `<tr>` itself is inconsistently painted across browsers
-   even with border-collapse); non-table rows/cards use border-left
-   directly via the `.entity-accent-card` variant. */
+/* Entity-type accent: a left-border stripe on a list row or card, coloured by
+   the `--entity-accent-color` custom property each call site sets from
+   `ENTITY_ACCENT_COLOR` (api/types.ts). `<tr>` uses an inset box-shadow (a
+   border on `<tr>` paints inconsistently across browsers); non-table rows and
+   cards use border-left through `.entity-accent-card`. */
 .entity-accent-row {
   box-shadow: inset 3px 0 0 0 var(--entity-accent-color, transparent);
 }
@@ -472,15 +483,11 @@ select.input[size] {
   border-left: 3px solid var(--entity-accent-color, transparent);
 }
 
-/* The unread-notification count needs to read as "something needs your
-   attention" at a glance, which the plain `.badge` (a quiet, low-contrast
-   outline chip meant for neutral labels like a status or role) doesn't
-   convey — a small solid red bubble pinned to the bell icon's corner, the
-   conventional shape for this exact kind of count. Uses a fixed vivid red
-   rather than the theme's `--color-danger` (which is tuned to read as
-   text/border against a page background, not as a solid fill behind white
-   text — too pale for that in dark theme) so it reads the same "urgent"
-   way in both themes. */
+/* The unread-notification count must read as "needs attention" at a glance,
+   which the quiet `.badge` does not: a small solid red bubble on the bell's
+   corner. It uses a fixed vivid red, not --color-danger (tuned as text/border,
+   too pale as a fill behind white text in dark theme), so it reads the same in
+   both themes. */
 .notification-count-badge {
   position: absolute;
   top: -4px;
@@ -498,20 +505,16 @@ select.input[size] {
   box-shadow: 0 0 0 2px var(--color-header-bg);
 }
 
-/* The notification bell's dropdown (components/NotificationBell.tsx) is a
-   normal light `.card` surface, but it's rendered as a DOM descendant of
-   `.app-header` (the bell lives in the header bar) — so without this reset
-   it inherits `.app-header`'s white `color` and its `.btn`/`.text-muted`
-   overrides (tuned for text sitting directly on the dark header bar), and
-   every bit of text/buttons inside the dropdown render as white-on-white
-   against the card's own light background. This selector is more specific
-   than `.app-header .text-muted`/`.app-header .btn`, so it wins regardless
-   of source order. */
+/* The notification bell's dropdown is a light `.card` rendered inside
+   `.app-header`, so it would inherit the header's white `color` and its
+   `.btn`/`.text-muted` overrides (white-on-white). This selector is more
+   specific than `.app-header .text-muted`/`.app-header .btn`, so it resets them
+   regardless of source order. */
 .app-header .notification-dropdown {
   color: var(--color-text);
 }
 
-.app-header .notification-dropdown /* Custom table editor (components/ReportGridEditor.tsx). The cells are drawn as the printed page shows them, so an unset
+/* Custom table editor (components/ReportGridEditor.tsx). The cells are drawn as the printed page shows them, so an unset
    fill and text colour are paper white and black in both themes (the colours the author sets are drawn as they are). */
 .grid-editor__toolbar {
   align-items: flex-end;
@@ -736,6 +739,7 @@ select.input[size] {
   margin-left: auto;
   max-width: 10rem;
   overflow: hidden;
+/* grid-text-ok: a one-line search result in a popover, not a cell of a grid */
   text-overflow: ellipsis;
 }
 
@@ -749,6 +753,7 @@ select.input[size] {
   display: block;
   min-width: 0;
   overflow: hidden;
+/* grid-text-ok: a one-line search result in a popover, not a cell of a grid */
   text-overflow: ellipsis;
 }
 
@@ -766,16 +771,12 @@ select.input[size] {
   padding: 0 1px;
 }
 
-/* See components/Tooltip.tsx — appears immediately on hover/focus rather
-   than relying on the native `title` attribute's slow, OS-dependent delay.
-   Rendered through a portal into `document.body` with `top`/`left` set
-   inline as viewport-relative pixel coordinates computed in JS (screen-
-   aware: flipped/clamped to stay on-screen near any viewport edge) —
-   `position: fixed` here, not `absolute`, is what lets it escape any
-   scrollable/clipping ancestor (e.g. the collapsed nav rail, whose own
-   `overflow-y: auto` implicitly makes it clip horizontally too — a plain
-   `position: absolute` bubble nested inside it would get cut off at the
-   rail's edge no matter how correctly its left/right were computed). */
+/* See components/Tooltip.tsx: shown at once on hover/focus (the native `title`
+   delay is slow and OS-dependent). Rendered through a portal into
+   `document.body` with `top`/`left` set inline as viewport pixels computed in
+   JS (flipped and clamped to stay on screen). `position: fixed`, not
+   `absolute`, lets it escape a scrollable or clipping ancestor such as the
+   collapsed nav rail (its `overflow-y: auto` also clips horizontally). */
 .tooltip-bubble {
   position: fixed;
   background: var(--color-header-bg);
@@ -807,28 +808,23 @@ select.input[size] {
   gap: var(--space-5);
 }
 
-/* Track minimum (220px) must match `StatCard`'s own inline `minWidth: 220`
-   (components/StatCard.tsx) — `MetricTile` (components/MetricTile.tsx) sets
-   no minWidth of its own, so it just gets a slightly roomier column, but a
-   track minimum *smaller* than an item's own minimum content width made
-   `auto-fit` resolve columns narrower than the `StatCard`s placed in them,
-   overlapping neighbouring tiles at moderate viewport widths (confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
-   grid once a module contributes headline tiles). */
+/* The track minimum (220px) must match `StatCard`'s inline `minWidth: 220`
+   (components/StatCard.tsx). A smaller minimum than an item's own minimum
+   content width makes `auto-fit` resolve columns narrower than the cards in
+   them, overlapping tiles at moderate widths (`OrgOverviewPage.tsx` can carry
+   up to 7 tiles in one grid). `MetricTile` sets no minWidth of its own. */
 .grid-metrics {
   /* `min(100%, 220px)` lets a track shrink below 220px in a narrow container instead of overflowing it. */
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
-/* `StatBar` (components/StatBar.tsx) — a compact block of labelled numbers.
-   Flat layout: a CSS grid of equal-width columns, never `flex-wrap` plus
-   per-item borders (that produced ragged rows and stray dividers once the
-   entries wrapped). Dividers are box-shadows drawn by each cell on its right
-   and bottom edge; the container's `overflow: hidden` clips the outer ones,
-   so only inner dividers show whatever the column count. No media queries:
-   `auto-fit` sizes to the container, which also suits narrow panes. The
-   `.stat-groups` / `.stat-group*` (components/StatGroups.tsx) is the grouped-card
-   layout for blocks beyond the flat budget. See docs/ux-style-guide.md
-   ("Pattern: stat blocks") for which applies where. */
+/* `StatBar` (components/StatBar.tsx): a compact block of labelled numbers as
+   a CSS grid of equal-width columns, never `flex-wrap` with per-item borders
+   (ragged rows, stray dividers). Dividers are box-shadows on each cell's right
+   and bottom edge; the container's `overflow: hidden` clips the outer ones. No
+   media queries: `auto-fit` sizes to the container. `.stat-groups` /
+   `.stat-group*` (components/StatGroups.tsx) is the grouped-card layout for
+   blocks beyond the flat budget (docs/ux-style-guide.md, "Pattern: stat blocks"). */
 .stat-bar {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
@@ -1136,13 +1132,9 @@ a.figure-projects-link:hover {
   color: var(--color-text-muted);
 }
 
-/* Left navigation rail: same theme-aware surface as every other panel
-   (--color-surface/-border/-text), not a fixed dark "chrome" independent
-   of the active theme — it follows light/dark like the rest of the UI.
-   Pinned full-height against the true left edge (position: fixed, not
-   sticky-in-flow) so it stays visible while the content column scrolls,
-   rather than living inside the same centred/padded .container as the
-   page content and floating as a short, inset card. */
+/* Left navigation rail: a theme-aware surface like every other panel, not a
+   fixed dark chrome. Pinned full-height to the left edge (position: fixed) so
+   it stays visible while the content column scrolls. */
 .nav-rail {
   background: var(--color-surface);
   border: none;
@@ -1160,39 +1152,22 @@ a.figure-projects-link:hover {
   transition: width 0.15s ease;
 }
 
-/* The rail's item list is its scroll container, not the rail itself, and starts level with the top
-   of the rail (the first link is level with the collapse toggle, not below it). The toggle
-   (.nav-rail-toggle-wrapper: 12px below the header, 28px tall) straddles the rail's right edge, so
-   the inner half of it, --nav-toggle-overhang, lies over the rail. The container leaves that
-   strip free (margin-right) so neither a link nor the scrollbar can run under the toggle, in
-   every browser: a WebKit-only track inset would leave Firefox's thin bar under it. The bar is
-   thin and drawn from theme tokens so it suits both themes. */
+/* The rail's item list is its scroll container and starts level with the rail's
+   top. The collapse toggle (.nav-rail-toggle-wrapper) straddles the rail's right
+   edge, its inner half (--nav-toggle-overhang) over the rail; the container
+   leaves that strip free (margin-right) so neither a link nor the scrollbar runs
+   under it in any browser. The bar is thin and drawn from theme tokens. */
 .nav-rail-scroll {
   flex: 1 1 auto;
   min-height: 0;
   margin-right: var(--nav-toggle-overhang);
   padding: var(--space-5) var(--space-3) var(--space-4) var(--space-4);
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
 }
 
 .nav-rail-icons .nav-rail-scroll {
   padding-left: var(--space-2);
   padding-right: var(--space-2);
-}
-
-.nav-rail-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-
-.nav-rail-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.nav-rail-scroll::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: var(--radius-sm);
 }
 
 .nav-rail-icons {
@@ -1271,31 +1246,20 @@ a.figure-projects-link:hover {
   margin-left: var(--nav-rail-width-collapsed);
 }
 
-/* Collapse/expand toggle: a small circular button straddling the rail/
-   content divider, rather than living inside the rail's own scrolling
-   content — a fixed-position element whose vertical position never
-   moves with rail scroll or content length. `left` is set inline from
-   Layout.tsx (`var(--nav-rail-width)` / `var(--nav-rail-width-collapsed)`,
-   the same two tokens .app-content's own margin above uses) rather than
-   via a `.nav-rail ~ .nav-rail-toggle` sibling selector, since the button
-   renders wrapped in `Tooltip`'s own `.tooltip-trigger` span and so is not
-   actually a DOM sibling of `.nav-rail`, only a visual neighbour of one —
-   a sibling-combinator rule here would silently never match.
+/* Collapse/expand toggle: a small circular button straddling the rail/content
+   divider, fixed so its vertical position never moves with rail scroll. `left`
+   is set inline from Layout.tsx (`var(--nav-rail-width)` /
+   `var(--nav-rail-width-collapsed)`, the tokens .app-content's margin uses), not
+   by a `.nav-rail ~ .nav-rail-toggle-wrapper` sibling selector: the button is
+   wrapped in `Tooltip`'s `.tooltip-trigger` span, so it is not a DOM sibling of
+   `.nav-rail` and that rule would never match.
 
-   The fixed positioning itself lives on `.nav-rail-toggle-wrapper` (the
-   `Tooltip`-rendered `.tooltip-trigger` span, via its `className`/`style`
-   props — see Tooltip.tsx), not on the `.nav-rail-toggle` button inside
-   it. The button is `position: fixed` independent of its parent's layout
-   position, so if the *wrapper* were left as an ordinary in-flow span
-   (sized to fit an out-of-flow child, i.e. collapsing to a zero-size box
-   wherever the DOM puts it), `Tooltip`'s own measurement of that wrapper
-   would land nowhere near the button — this was a real bug: the bubble
-   showed up near the collapsed-rail position even while expanded, because
-   the collapsed-flow span happened to sit close to that edge. Putting the
-   fixed placement on the wrapper instead makes the measured element and
-   the visible button the same box. transform: translateX(-50%) is what
-   actually centres the button on that left value rather than sitting to
-   one side of it. */
+   The fixed positioning lives on `.nav-rail-toggle-wrapper` (the
+   `Tooltip`-rendered span, via its `className`/`style` props), not the button.
+   A fixed child of an in-flow wrapper leaves the wrapper a zero-size box, so
+   `Tooltip` would measure the wrong place; fixing the wrapper makes the measured
+   element and the visible button the same box. transform: translateX(-50%)
+   centres the button on that `left` value. */
 .nav-rail-toggle-wrapper {
   position: fixed;
   top: calc(var(--header-height) + var(--announcement-height) + 12px);
@@ -1304,29 +1268,17 @@ a.figure-projects-link:hover {
   transition: left 0.15s ease;
 }
 
-.nav-rail-toggle,
-.filter-panel-toggle {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 50%;
-}
-
-/* Content-width preference (U-U-01-adjacent display preference, stored
-   like nav-rail-collapsed): "boxed" caps and centres content at the same
-   1200px the app used everywhere before this pass, for readability on
-   very wide monitors. The default is full-bleed — content simply fills
-   the space next to the rail. */
+/* Content-width preference (stored like nav-rail-collapsed): "boxed" caps and
+   centres content at 1200px for readability on very wide monitors; the default
+   is full-bleed, filling the space next to the rail. */
 .app-content.boxed .content-inner {
   max-width: 1200px;
   margin: 0 auto;
 }
 
 /* Artefact detail page frame (components/DetailLayout.tsx): content plus a
-   sticky, collapsible aside at >=1280px, stacked below that. minmax(0, 1fr)
-   for the same reason as .side-grid: wide unbreakable content must not push
-   the aside column off-screen. */
+   sticky, collapsible aside at >=1280px, stacked below. minmax(0, 1fr) as for
+   .side-grid: wide unbreakable content must not push the aside off-screen. */
 .detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1358,6 +1310,7 @@ a.figure-projects-link:hover {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
   .detail-layout--collapsed {
+    /* grid-text-ok: the folded aside's column holds only its toggle */
     grid-template-columns: minmax(0, 1fr) auto;
   }
   .detail-layout__aside {
@@ -1612,8 +1565,8 @@ a.figure-projects-link:hover {
 }
 
 .link-trace__children {
-  margin: var(--space-2) 0 0 0.6rem;
-  padding-left: 0.9rem;
+  margin: var(--space-2) 0 0 calc(var(--tree-indent) * 0.4);
+  padding-left: calc(var(--tree-indent) * 0.6);
   border-left: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -1919,10 +1872,8 @@ a.figure-projects-link:hover {
    right). Collapses to one column alongside the nav rail below. */
 .side-grid {
   display: grid;
-  /* minmax(0, 1fr), not a bare 1fr — without the 0 floor, unbreakable wide
-     content in the main column can grow that track past its intended size
-     and push the 240px FilterPanel column off-screen (UX review). The
-     narrow-viewport override below already learned this the same way. */
+  /* minmax(0, 1fr), not a bare 1fr: without the 0 floor, unbreakable wide
+     content can grow the main track and push the 240px FilterPanel off-screen. */
   grid-template-columns: minmax(0, 1fr) 240px;
   align-items: start;
   gap: var(--space-5);
@@ -1934,6 +1885,43 @@ a.figure-projects-link:hover {
   letter-spacing: 0.06em;
   color: var(--color-text-muted);
   padding: 0.6rem 0.6rem 0.2rem;
+}
+
+/* Foldable group heading (components/NavGroup.tsx): the whole label is the disclosure button, borderless
+   like the other rail disclosure controls, with the chevron before the text. */
+.nav-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  margin: 0;
+  padding: 0.1rem 0.2rem 0.1rem 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.nav-group-toggle:hover,
+.nav-group-toggle:focus-visible {
+  color: var(--color-text);
+}
+.nav-group-toggle[aria-disabled="true"] {
+  cursor: default;
+}
+.nav-group-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.nav-group-chevron > svg {
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.nav-group-body[hidden] {
+  display: none;
 }
 
 .nav-link {
@@ -1954,11 +1942,9 @@ a.figure-projects-link:hover {
   flex: none;
 }
 
-/* Wraps a nav-rail link while the rail is collapsed (see
-   components/Tooltip.tsx) — without this, the tooltip's own shrink-wrapped
-   `inline-flex` box would only cover the icon's own width, not the full
-   row, so the same "click/highlight is full width" fix above needs to
-   apply one level up too whenever a link is Tooltip-wrapped. */
+/* Wraps a nav-rail link while the rail is collapsed (components/Tooltip.tsx):
+   without it the tooltip's shrink-wrapped `inline-flex` box covers only the
+   icon, not the full row, so the full-width click and highlight must apply here. */
 .tooltip-trigger {
   display: inline-flex;
 }
@@ -1977,13 +1963,10 @@ a.figure-projects-link:hover {
   color: var(--color-primary-contrast) !important;
 }
 
-/* Joins a disclosure toggle to its own nav-rail link into one shared
-   hover/active surface (e.g.
-   StandardNavSection.tsx's expandable "Versions" row). The background
-   moves to this wrapping row rather than the inner link, so hovering
-   anywhere in the row — including the toggle's own area — highlights the
-   whole thing as one control, even though the link and the toggle stay
-   two separately focusable/clickable elements underneath. */
+/* Joins a disclosure toggle to its nav-rail link (e.g. StandardNavSection.tsx's
+   expandable "Versions" row) into one hover/active surface: the background is on
+   this wrapping row, so hovering anywhere in it highlights the whole row while the
+   link and the toggle stay separately focusable. */
 .nav-link-row {
   display: flex;
   align-items: center;
@@ -2081,16 +2064,11 @@ a.figure-projects-link:hover {
   display: none;
 }
 
-/* `EntitySwitcher`'s chevron trigger
-   — the same "no separately bordered chip" fix `.nav-link-row-toggle`
-   above already applies to the expandable nav-rail disclosure toggle,
-given to the entity quick-switch chevron itself since it
-   has no wrapping row of its own to inherit a shared hover surface from
-   (it sits directly beside a page's plain `<h1>` text, owned by each
-   caller, not by this component). Borderless and transparent at rest so
-   it reads as part of the adjacent entity name rather than a bolted-on
-   control; a hover/focus background gives it the same affordance any
-   other icon-only button in the app has. */
+/* `EntitySwitcher`'s chevron trigger: no separately bordered chip (as
+   `.nav-link-row-toggle` above), since it has no wrapping row to inherit a hover
+   surface from and sits beside a page's plain `<h1>`. Borderless and transparent
+   at rest so it reads as part of the entity name; a hover/focus background gives
+   it the affordance of any icon-only button. */
 .entity-switcher-trigger {
   display: inline-flex;
   align-items: center;
@@ -2117,11 +2095,10 @@ given to the entity quick-switch chevron itself since it
   height: 14px;
 }
 
-/* Collapsed section labels ("Project", "Global", "Server Management")
-   become a thin divider line rather than vanishing outright — the text is
-   pushed off-screen (text-indent), not deleted, so it stays available to
-   assistive tech — so the icon rows below don't visibly jump up compared
-   to where they sit when the rail is expanded. */
+/* Collapsed section labels ("Project", "Global", "Server Management") become a
+   thin divider, with the text pushed off-screen (text-indent) so it stays
+   available to assistive tech and the icon rows do not shift against the
+   expanded rail. */
 .nav-rail-icons .nav-section-label {
   height: 1px;
   padding: 0;
@@ -2131,24 +2108,27 @@ given to the entity quick-switch chevron itself since it
   background: var(--color-border);
 }
 
-/* In-page resource menu (ResourceMenu.tsx) — the enterprise-console shape
-   from the UX style guide's "Pattern: settings hierarchy", first used to
-   split Org Admin's 15-way flat accordion into 6 groups. Reuses
-   .nav-link/.nav-link.active for its items so the visual language matches
-   the app's own persistent nav rail exactly (style guide Principle 4: one
-   component per pattern), but unlike .nav-rail this sits in normal
-   document flow (not position: fixed) since it's scoped to one page's
-   content area, not the whole app shell.
-   Deliberately its own class rather than the shared .row utility (which
-   this otherwise resembles) — see ResourceMenu.tsx's own comment on its
-   root element for why reusing .row here broke a real Playwright locator. */
+/* In-page resource menu (ResourceMenu.tsx): the enterprise-console shape of the
+   UX style guide's "Pattern: settings hierarchy". Reuses .nav-link/.nav-link.active
+   for its items so it matches the nav rail (Principle 4: one component per
+   pattern), but sits in normal document flow (not position: fixed) since it is
+   scoped to one page's content area. Its own class, not the shared .row utility:
+   see ResourceMenu.tsx's comment on its root element. */
 .resource-menu {
   display: flex;
   align-items: flex-start;
   flex-wrap: nowrap;
   gap: var(--space-6);
+  /* A section change scrolls the container to the top edge below the sticky app header (ResourceMenu.tsx). */
+  scroll-margin-top: calc(var(--header-height) + var(--announcement-height) + var(--space-3));
 }
 
+/* Sticky below the app header and no taller than the window below where it
+   starts, so a long list scrolls on its own from the first view.
+   `--sticky-viewport-top` is the list's distance from the top of the window
+   (`useStickyViewportTop`, never less than the sticky offset); the fallback is the
+   stuck offset until the first measurement. Sticky implies `position: relative`,
+   so the active link's `offsetTop` is measured from the list. */
 .resource-menu-nav {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -2156,6 +2136,13 @@ given to the entity quick-switch chevron itself since it
   padding: var(--space-3);
   width: 220px;
   flex-shrink: 0;
+  position: sticky;
+  top: calc(var(--header-height) + var(--announcement-height) + var(--space-3));
+  max-height: calc(
+    100vh - var(--sticky-viewport-top, calc(var(--header-height) + var(--announcement-height) + var(--space-3))) - var(--space-3)
+  );
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 /* A list of several fields per row (DefinitionList layout="grid"; the scoring bands editor): one grid with a heading
@@ -2192,6 +2179,8 @@ given to the entity quick-switch chevron itself since it
   display: flex;
   align-items: center;
   min-height: 2.25rem;
+  /* A plain text cell (a read-only row) breaks an unbroken word inside its column instead of widening the grid. */
+  overflow-wrap: anywhere;
 }
 
 .definition-grid__cell > .input,
@@ -2209,8 +2198,99 @@ given to the entity quick-switch chevron itself since it
   min-height: 2.25rem;
 }
 
-.definition-grid__add {
-  padding-top: var(--space-2);
+/* `CellText` (components/CellText.tsx): user text stays inside its cell. One line cut with an ellipsis, or a clamp of
+   `--cell-text-lines` lines; an unbroken word is broken so it cannot widen a column. The trigger is a block that may
+   shrink (`min-width: 0`), so beside a control in a flex row the text gives way and the control keeps its size. */
+.tooltip-trigger.cell-text-trigger {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cell-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+/* grid-text-ok: this is CellText's own clipping rule */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.cell-text--clamp {
+  /* A clamped text may break anywhere, so in an auto-layout table its column can give way (a one-line text cannot:
+     a table column is never narrower than its unbreakable text), while the other columns keep their words whole. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--cell-text-lines, 2);
+  line-clamp: var(--cell-text-lines, 2);
+  white-space: normal;
+}
+
+/* `MarkdownSummary`: an equation drawn in a clamped summary may not make a line taller than its neighbours, so the
+   box is capped at the clamp's own height and a tall fraction is clipped instead of moving the card. */
+.markdown-summary {
+  max-height: calc(var(--cell-text-lines, 3) * 1.5em);
+}
+
+.markdown-summary .math-text {
+  display: inline;
+}
+
+.markdown-summary .katex {
+  line-height: 1.2;
+}
+
+.activity-table__day {
+  display: block;
+}
+
+/* The activity table of the overview widget measures its own container, not the window's, because the widget sits in a
+   card of any width: below 34rem each row is a block, the type, time and person on the first line, then the event and
+   the record. A table that sorts keeps its header and does not stack. */
+.activity-table--stacks {
+  container-type: inline-size;
+}
+
+@container (max-width: 34rem) {
+  .activity-table--stacks thead {
+    display: none;
+  }
+
+  .activity-table--stacks table,
+  .activity-table--stacks tbody {
+    display: block;
+  }
+
+  .activity-table--stacks tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .activity-table--stacks td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .activity-table--stacks td:nth-child(1) { order: 2; }
+  .activity-table--stacks td:nth-child(2) { order: 1; }
+  .activity-table--stacks td:nth-child(5) { order: 3; margin-left: auto; }
+  .activity-table--stacks td:nth-child(3),
+  .activity-table--stacks td:nth-child(4) { flex: 1 1 100%; }
+  .activity-table--stacks td:nth-child(3) { order: 4; }
+  .activity-table--stacks td:nth-child(4) { order: 5; }
+
+  .activity-table--stacks .activity-table__day {
+    display: inline;
+    margin-right: var(--space-2);
+  }
 }
 
 /* A list with a per-row control (`renderExtra`) measures its own width, not the window's, because the same list sits in
@@ -2223,6 +2303,28 @@ given to the entity quick-switch chevron itself since it
 .definition-grid__extra {
   min-width: 0;
   flex-wrap: wrap;
+}
+
+/* A text column (`extraContent="text"`): its width is a share of the grid, never the text's. The row of text and
+   controls never wraps, the text (a `CellText`) gives way, and the controls keep their size and their line. */
+.definition-grid__extra--text {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+
+.definition-grid__extra--text > * {
+  min-width: 0;
+  width: 100%;
+  flex-wrap: nowrap;
+}
+
+/* The text takes what the controls leave, so the controls end every row at the same place. */
+.definition-grid__extra--text .cell-text-trigger {
+  flex: 1 1 0;
+}
+
+.definition-grid__extra--text > * > :not(.cell-text-trigger) {
+  flex: none;
 }
 
 .definition-grid__extra span,
@@ -2270,10 +2372,6 @@ given to the entity quick-switch chevron itself since it
     order: 3;
     flex: 1 0 100%;
     justify-content: flex-start;
-    padding-top: 0;
-  }
-
-  .definition-list--extra .definition-grid__add {
     padding-top: 0;
   }
 }
@@ -2375,12 +2473,12 @@ th:has(> .th-with-action > .th-sort) {
   color: var(--color-primary);
 }
 
-/* `FolderTreeList`: a file manager's list view. The list is one grid (the component sets the column template as
-   `--ftl-columns`, and `--ftl-columns-narrow` without the `hideBelow` columns) and each row a subgrid of it, so the
-   columns line up and, when they do not fit, the list scrolls sideways inside its own region with the Name cell held
-   at the left edge. Rows are grid rows (not a <table>) so a row can be a tree-grid row with its own keyboard focus.
-   Banded rows have rounded ends and an open report is outlined. See docs/ux-style-guide.md's "Pattern: folder tree
-   list". */
+/* `FolderTreeList`: a file manager's list view. One grid (the component sets
+   the column template as `--ftl-columns`, and `--ftl-columns-narrow` without the
+   `hideBelow` columns) with each row a subgrid, so columns line up and, when they
+   do not fit, the list scrolls sideways with the Name cell held at the left edge.
+   Rows are grid rows (not a <table>) so a row can be a tree-grid row with its own
+   keyboard focus. See docs/ux-style-guide.md "Pattern: folder tree list". */
 .folder-tree-list {
   /* Positioned so an absolutely placed child (the screen-reader-only header text) scrolls with the list instead of
      escaping its clipping and widening the page. */
@@ -2428,6 +2526,8 @@ th:has(> .th-with-action > .th-sort) {
   border-bottom: 0;
   min-width: 0;
   padding: 0;
+  /* A long unbroken word in a column breaks inside it rather than widening the list. */
+  overflow-wrap: anywhere;
 }
 /* The Name cell stays put while the other columns scroll under it, so it needs the row's own opaque background. */
 .folder-tree-name-cell {
@@ -2472,6 +2572,11 @@ th:has(> .th-with-action > .th-sort) {
 .folder-tree-toggle {
   display: inline-flex;
 }
+.folder-tree-toggle > strong {
+  /* A folder name wraps like an item name (an unbroken word breaks) instead of widening the Name column. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .folder-tree-toggle > svg {
   flex-shrink: 0;
   height: 1rem;
@@ -2479,6 +2584,12 @@ th:has(> .th-with-action > .th-sort) {
 }
 .folder-tree-folder-icon {
   color: var(--color-info);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.folder-tree-folder-icon > svg {
+  height: 1rem;
+  width: 1rem;
 }
 .folder-tree-item {
   display: block;
@@ -2512,18 +2623,78 @@ th:has(> .th-with-action > .th-sort) {
   grid-column: 1 / -1;
 }
 
-/* Borderless expand/collapse control that fills its own table cell — for a
-   plain disclosure toggle whose label and chevron are one single clickable
-   unit (unlike `.nav-link-row-toggle`, which sits beside a separately
-   navigable link). Mirrors `.th-sort` immediately above (zero the cell's
-   own padding, let the button re-add the same padding so it lines up with
-   a plain cell next to it), but with a hover *background* rather than a
-   text-colour change, since this control's whole row is the click target,
-   not just its text. Introduced for `OrgComplianceStandardsPanel.tsx`
- — the third instance of "no
-   bolted-on `.btn` chip on a disclosure control" after `.nav-link-row-
-   toggle` and `.entity-switcher-trigger`; see
-   docs/ux-style-guide.md's "Pattern: expandable nav-rail group". */
+/* `TreeToggle` (components/TreeToggle.tsx): the one expand/collapse chevron of every tree. A plain
+   disclosure control (no border, background or padding of a button) that keeps a 1.75rem hit area. */
+.tree-toggle,
+.tree-toggle-gap {
+  flex-shrink: 0;
+  height: 1.75rem;
+  width: 1.75rem;
+}
+.tree-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+}
+.tree-toggle > svg {
+  height: 1rem;
+  width: 1rem;
+}
+.tree-toggle:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+.tree-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.tree-toggle-gap {
+  display: inline-block;
+}
+
+/* `TreeSelect` row: the label takes the row and its checkbox sits in one column at the right edge, so the
+   boxes line up whatever the depth. The whole row is the click target and highlights to tie the box to its label. */
+.tree-select-option {
+  align-items: center;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 0;
+  font-size: 0.85rem;
+  gap: var(--space-3);
+  justify-content: space-between;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+}
+.tree-select-option:hover,
+.tree-select-option:focus-within {
+  background: var(--color-surface-alt);
+}
+.tree-select-option:has(input:disabled) {
+  cursor: not-allowed;
+}
+.tree-select-option-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tree-select-option > input[type="checkbox"] {
+  flex: none;
+  margin: 0;
+}
+
+/* Borderless expand/collapse control that fills its table cell, for a plain
+   disclosure toggle whose label and chevron are one clickable unit (unlike
+   `.nav-link-row-toggle`, which sits beside a separate link). Like `.th-sort`
+   above (zero the cell padding, let the button re-add it so it lines up with a
+   plain cell), but with a hover background since the whole row is the click
+   target. See docs/ux-style-guide.md "Pattern: expandable nav-rail group". */
 td:has(> .disclosure-toggle) {
   padding: 0;
 }
@@ -2546,11 +2717,21 @@ td:has(> .disclosure-toggle) {
   background: var(--color-surface-alt);
 }
 
-/* `DirectoryTable`'s row-opening first-column control — a real <button>
-   (`onRowClick`) or <Link> (`rowHref`), styled identically either way so a
-   directory row that opens a side panel and one that navigates to a URL
-   read the same, matching this app's default `a { color: var(--color-
-   primary) }` link look rather than an inset button control. */
+/* The organisation a Compliance status row belongs to (`modules/compliance/OrganisationCell.tsx`): a `CellText` of
+   one line. `--label` leads an item of a sentence-style list at a fixed width, so the project after it starts at the
+   same place in every item. */
+.org-cell--label {
+  display: inline-block;
+  width: 10rem;
+  max-width: 100%;
+  margin-right: var(--space-3);
+  vertical-align: bottom;
+}
+
+/* `DirectoryTable`'s row-opening first-column control: a <button>
+   (`onRowClick`) or <Link> (`rowHref`), styled identically so a row that opens a
+   side panel and one that navigates read the same, matching the default
+   `a { color: var(--color-primary) }` link look. */
 .directory-table-row-trigger {
   background: none;
   border: none;
@@ -2561,6 +2742,38 @@ td:has(> .disclosure-toggle) {
   text-decoration: underline;
   text-align: left;
   cursor: pointer;
+}
+
+/* `DirectoryTable` column options. A column with a floor width (the Name column) never shrinks below it, wraps its text
+   beyond it and stays at the left edge when the table scrolls sideways; a `hideBelow` column drops when the table is narrow. */
+.directory-table-floor {
+  overflow-wrap: anywhere;
+}
+td.directory-table-floor,
+th.directory-table-floor {
+  position: sticky;
+  left: 0;
+  background: var(--color-surface);
+}
+/* A record code stays whole up to 12rem, then breaks, so a long organisation-qualified code cannot widen its column. */
+.record-code-cell {
+  display: inline-block;
+  max-width: 12rem;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+/* A table with `hideBelow` columns measures the room it is given (the list column, which the filter panel narrows),
+   not the window's: under 40rem those columns drop so the Name column keeps its width. Below 720px every table
+   stacks its cells as a card (above) and there is nothing to squeeze, so nothing drops there. */
+.directory-table-scroll--responsive {
+  container-type: inline-size;
+}
+@media (min-width: 721px) {
+  @container (max-width: 40rem) {
+    .directory-table-wide {
+      display: none;
+    }
+  }
 }
 
 /* Bulk edit grid (components/RecordGrid): compact cells so a row of controls stays on one line; a changed cell is
@@ -2606,16 +2819,13 @@ td:has(> .disclosure-toggle) {
   border-bottom: 1px solid var(--color-border);
 }
 
-/* Below 860px there isn't room for a full-width nav rail, a content
-   column, and a 240px filter/activity sidebar side by side (confirmed:
-   the page overflows past the viewport at 600px without this) — force the
-   rail into its existing icon-only layout and stack the sidebar under the
-   content, regardless of the user's manual expand/collapse preference. */
+/* Below 860px there is no room for a full-width nav rail, a content column and
+   a 240px filter/activity sidebar side by side: the rail is forced into its
+   icon-only layout and the sidebar stacks under the content, regardless of the
+   manual expand/collapse preference. */
 @media (max-width: 860px) {
-  /* The rail is force-collapsed below this breakpoint (see the rules
-     below), so the manual expand/collapse toggle has nothing left to do —
-     leaving it visible reads as a broken button rather than an
-     unavailable one. Hide it rather than show a control that never
+  /* The rail is force-collapsed below this breakpoint, so the manual toggle has
+     nothing to do; it is hidden rather than shown as a control that never
      changes the layout. */
   .nav-rail-toggle-wrapper {
     display: none;
@@ -2645,40 +2855,25 @@ td:has(> .disclosure-toggle) {
     text-indent: -9999px;
     background: var(--color-border);
   }
-  /* `minmax(0, 1fr)`, not bare `1fr` (shorthand for `minmax(auto, 1fr)`):
-     a bare `1fr`'s automatic minimum is the column's content's min-content
-     size, and one of this class's users nests another `repeat(auto-fill,
-     minmax(min(280px, 100%), 1fr))` grid inside it (ProjectListPage's tile
-     view) — that inner grid's own `100%` can't resolve while an ancestor
-     grid is computing ITS min-content contribution (the container size
-     it'd resolve against is, at that point, exactly what's being
-     computed), so it falls back to the literal `280px` floor instead of
-     the intended container-clamped value. On content wide enough to need
-     that clamp (e.g. a role list of "Member, Project administrator,
-     Project manager, Stakeholder"), that forced the whole `.side-grid`
-     column — everything in it, not just the nested grid — wider than the
-     viewport at narrow widths, defeating the collapse this rule exists to
-     do. `minmax(0, 1fr)` overrides the automatic minimum to 0 so nothing
-     inside this column can force it wider than the space actually
-     available. Confirmed empirically (`document.documentElement.
-     scrollWidth - clientWidth` at a 375px viewport, ProjectListPage tile
-     view): 44px of overflow with `1fr`, 0px with `minmax(0, 1fr)`. */
+  /* `minmax(0, 1fr)`, not bare `1fr` (`minmax(auto, 1fr)`): a bare `1fr`'s
+     automatic minimum is the content's min-content size. A user of this class
+     nests a `repeat(auto-fill, minmax(min(280px, 100%), 1fr))` grid
+     (ProjectListPage's tile view), whose `100%` cannot resolve while the ancestor
+     computes its min-content contribution, so it falls back to the 280px floor and
+     forces the whole column wider than the viewport at narrow widths. `minmax(0,
+     1fr)` sets the minimum to 0 (measured at a 375px viewport: 44px of overflow
+     with `1fr`, 0px with `minmax(0, 1fr)`). */
   .side-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  /* On mobile the filter panel is always the second DOM child of
-     .side-grid (list/detail content first, filters second), so users had
-     to scroll past the entire list to reach it. Reorder it first in the
-     single-column mobile layout only — desktop's two-column grid position
-     is untouched since this rule lives inside the mobile-only breakpoint
-     above. */
+  /* On mobile the filter panel is the second DOM child of .side-grid, so it is
+     reordered first in the single-column layout only (desktop is untouched). */
   .side-grid > .filter-panel {
     order: -1;
   }
-  /* Below this same breakpoint ResourceMenu.tsx swaps its .resource-menu-nav
-     link list for a <select> entirely (own useNarrowViewport check), so
-     .resource-menu-nav itself never renders here — only stack the select
-     above the content pane. */
+  /* Below this breakpoint ResourceMenu.tsx swaps .resource-menu-nav for a
+     <select> (its own useNarrowViewport check), so only the select stacks above
+     the content pane. */
   .resource-menu {
     flex-direction: column;
   }
@@ -2715,11 +2910,10 @@ td:has(> .disclosure-toggle) {
   }
 }
 
-/* Toast (style guide "Pattern: confirmation, in two tiers — and feedback,
-   always" / Principle 7). Success reuses the same solid dark chip both
-   themes' text tokens already give good contrast on; error follows this
-   app's existing convention for danger (.btn-danger is an outline, never a
-   solid red fill) — the accent colour marks it, it doesn't flood it. */
+/* Toast (style guide "Pattern: confirmation, in two tiers, and feedback, always"
+   / Principle 7). Success is a solid dark chip with good contrast in both
+   themes; error follows the danger convention (.btn-danger is an outline, never a
+   solid red fill): the accent colour marks it without flooding it. */
 .toast-stack {
   position: fixed;
   right: 1rem;
@@ -2797,9 +2991,8 @@ td:has(> .disclosure-toggle) {
 }
 
 /* Popover (style guide "Pattern: create panels, popovers, and one door for
-   bulk" / Principle 3). Fixed width in Popover.tsx's own inline style is
-   the common case; this caps it on viewports narrower than that width so
-   it can't get pushed past the screen edge on a phone. */
+   bulk" / Principle 3). Popover.tsx's inline fixed width is the common case; this
+   caps it on viewports narrower than that width. */
 /* Modal / SidePanel frame: pinned header (title, form actions, close, save error) over a scrolling body. */
 .dialog-card {
   display: flex;
@@ -2858,6 +3051,118 @@ td:has(> .disclosure-toggle) {
 
 .popover-bubble {
   max-width: calc(100vw - 1rem);
+}
+
+/* The one scroll region (style guide "Pattern: scroll region"): every capped or scrolling list takes the thin themed
+   scrollbar from this rule, and `ScrollRegion` / `.scroll-region` adds the edge indicators on top of it. */
+.scroll-region,
+.nav-rail-scroll,
+.dialog-body,
+.detail-card__scroll,
+.detail-layout__aside,
+.search-dropdown,
+.resource-menu-nav,
+.picture-picker__grid,
+.report-image-grid,
+.link-trace__map,
+.licence-text,
+.layout-diff {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.scroll-region::-webkit-scrollbar,
+.nav-rail-scroll::-webkit-scrollbar,
+.dialog-body::-webkit-scrollbar,
+.detail-card__scroll::-webkit-scrollbar,
+.detail-layout__aside::-webkit-scrollbar,
+.search-dropdown::-webkit-scrollbar,
+.resource-menu-nav::-webkit-scrollbar,
+.picture-picker__grid::-webkit-scrollbar,
+.report-image-grid::-webkit-scrollbar,
+.link-trace__map::-webkit-scrollbar,
+.licence-text::-webkit-scrollbar,
+.layout-diff::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-region::-webkit-scrollbar-track,
+.nav-rail-scroll::-webkit-scrollbar-track,
+.dialog-body::-webkit-scrollbar-track,
+.detail-card__scroll::-webkit-scrollbar-track,
+.detail-layout__aside::-webkit-scrollbar-track,
+.search-dropdown::-webkit-scrollbar-track,
+.resource-menu-nav::-webkit-scrollbar-track,
+.picture-picker__grid::-webkit-scrollbar-track,
+.report-image-grid::-webkit-scrollbar-track,
+.link-trace__map::-webkit-scrollbar-track,
+.licence-text::-webkit-scrollbar-track,
+.layout-diff::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-region::-webkit-scrollbar-thumb,
+.nav-rail-scroll::-webkit-scrollbar-thumb,
+.dialog-body::-webkit-scrollbar-thumb,
+.detail-card__scroll::-webkit-scrollbar-thumb,
+.detail-layout__aside::-webkit-scrollbar-thumb,
+.search-dropdown::-webkit-scrollbar-thumb,
+.resource-menu-nav::-webkit-scrollbar-thumb,
+.picture-picker__grid::-webkit-scrollbar-thumb,
+.report-image-grid::-webkit-scrollbar-thumb,
+.link-trace__map::-webkit-scrollbar-thumb,
+.licence-text::-webkit-scrollbar-thumb,
+.layout-diff::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+/* The scrolling element itself: it ends flush with its container, never scrolls the page behind it, and shows an edge
+   only on a side where content continues beyond it. The indicators are the classic scroll shadow (a shadow fixed to the
+   box under a cover that moves with the content), so there is no scroll listener: the cover hides a shadow at an end. */
+.scroll-region {
+  --scroll-region-bg: var(--color-surface);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background-color: var(--scroll-region-bg);
+  background-image:
+    linear-gradient(var(--scroll-region-bg) 30%, transparent),
+    linear-gradient(transparent, var(--scroll-region-bg) 70%),
+    radial-gradient(farthest-side at 50% 0, var(--scroll-edge-color), transparent),
+    radial-gradient(farthest-side at 50% 100%, var(--scroll-edge-color), transparent);
+  background-position: top, bottom, top, bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 1.5rem, 100% 1.5rem, 100% 0.5rem, 100% 0.5rem;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* The ring of a focused row is drawn inside the region, never clipped at its edge. */
+.scroll-region:focus-visible,
+.scroll-region :focus-visible {
+  outline-offset: -2px;
+}
+
+/* A `Popover` whose content brings its own padding and scroll region (`flush`): the panel is a column with a fixed
+   header (search, clear row) above the one scrolling list, and the list meets the panel's border and rounded corners. */
+.popover-flush {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.popover-flush > .scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.popover-flush-header {
+  flex: none;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* An action menu's panel (`Popover menu`): tighter than a form popover, with a caret toward the trigger. The caret
@@ -2954,10 +3259,11 @@ td:has(> .disclosure-toggle) {
   font-weight: 600;
 }
 
-/* A parent row (an item with `children`, or a group of several items): a chevron that turns down while it is
-   open, and the product's selected-state colour (the primary slate, with a heavier weight) on the open entry; the
-   accent colour is for focus and selection outlines, never a menu's text. Its rows follow in `.menu-tree-group`,
-   indented under a thin guide line. */
+/* A parent row (an item with `children`, or a group of several items): a chevron
+   that turns down while open, and the selected-state colour (primary slate, heavier
+   weight) on the open entry; the accent colour is for focus and selection
+   outlines, never a menu's text. Its rows follow in `.menu-tree-group`, indented
+   under a thin guide line. */
 .menu-parent[aria-expanded="true"] {
   color: var(--color-primary);
   font-weight: 600;
@@ -3027,6 +3333,14 @@ td:has(> .disclosure-toggle) {
   flex: none;
 }
 
+/* Controls at the far end of a caption line (`FieldCaption` `actions`): the toolbar-size buttons are taller than the caption
+   text, so they overlap the line's own spacing instead of making this field's caption line taller than its neighbours'. */
+.field-caption__actions {
+  display: inline-flex;
+  margin-inline-start: auto;
+  margin-block: -0.25rem;
+}
+
 /* Form and detail fields laid out in a grid (`FormGrid`): as many equal columns as fit at the
    minimum width, one on a narrow screen; `.form-grid__full` spans the whole row. */
 .form-grid {
@@ -3053,6 +3367,7 @@ td:has(> .disclosure-toggle) {
    as wide as the widest row and each action sits in the same place (`AlignedRows`). */
 .aligned-rows {
   display: grid;
+/* grid-text-ok: the first and last columns hold the product's own numbers and the row's buttons */
   grid-template-columns: auto minmax(0, 1fr) auto;
   column-gap: var(--space-4);
   row-gap: var(--space-3);
@@ -3096,12 +3411,22 @@ td:has(> .disclosure-toggle) {
   background: var(--color-surface-alt);
   padding: 0.1rem var(--space-1) 0.1rem 0.65rem;
   font-size: 0.9rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.removable-item__remove {
+/* The compact X that empties a value or removes an item (`ClearButton`). The ::after widens the
+   clickable area to a touch target without adding to the layout box. */
+.clear-button-wrap {
+  flex: none;
+}
+
+.clear-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   background: none;
   border: none;
   border-radius: var(--radius-pill);
@@ -3110,9 +3435,20 @@ td:has(> .disclosure-toggle) {
   cursor: pointer;
 }
 
-.removable-item__remove:hover,
-.removable-item__remove:focus-visible {
+.clear-button::after {
+  content: "";
+  position: absolute;
+  inset: -0.3rem;
+}
+
+.clear-button:hover,
+.clear-button:focus-visible {
   color: var(--color-danger);
+}
+
+.clear-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Clamp text to two lines (e.g. `ModuleSettingsList`'s descriptions). */
@@ -3186,10 +3522,9 @@ td:has(> .disclosure-toggle) {
   padding: var(--space-2) 0;
 }
 
-/* Scoring matrix (components/ScoringMatrixChart.tsx):
-   cells tinted with the same 5 BadgeTone colours as `.badge--<tone>`,
-   mixed into the surface so text stays readable in both themes. The
-   wrapper scrolls horizontally rather than the page on narrow screens. */
+/* Scoring matrix (components/ScoringMatrixChart.tsx): cells tinted with the 5
+   BadgeTone colours of `.badge--<tone>`, mixed into the surface so text stays
+   readable in both themes; the wrapper scrolls horizontally, not the page. */
 .scoring-matrix {
   overflow-x: auto;
   max-width: 100%;
@@ -3265,6 +3600,15 @@ td:has(> .disclosure-toggle) {
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
 }
+
+/* The title, its code and its switcher flow as one inline run (RecordHeader): the code follows the last word of a title that wraps. */
+.record-header__title { min-width: 0; }
+.record-header__heading { display: inline; margin: 0; }
+.record-header__code { font-size: 0.9rem; white-space: nowrap; }
+.record-header__addon { display: inline-block; vertical-align: baseline; }
+
+/* The line under a record's title (badges, version, `RecordTags`): when the record has none of them the line leaves no gap. */
+.record-header__line:empty { display: none; }
 
 /* A tag: the user's own colour (inline `--tag-colour`) marks the left edge; the label keeps the theme's text colour. */
 .tag-chip {
@@ -3357,6 +3701,41 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   padding-left: var(--space-2);
 }
 
+/* Tile view (`TileGrid`, `TileCard`): the one grid and card of every list's tiles. The title is the link; badges follow
+   it on the row and an actions control sits at the right, so a long title is cut with an ellipsis, not the actions. */
+.tile-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+}
+.tile-card {
+  gap: var(--space-3);
+  /* A grid item may not be narrower than its content by default; a card must give way to its track, not widen it. */
+  min-width: 0;
+  /* An unbroken word in the body breaks rather than widening the card. */
+  overflow-wrap: anywhere;
+}
+.tile-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: var(--space-3);
+}
+.tile-card-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--space-3);
+}
+.tile-card-title {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.tile-card-head > :not(.tile-card-heading),
+.tile-card-heading > :not(.tile-card-title) {
+  flex-shrink: 0;
+}
+
 /* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */
 .badge-after {
   margin-inline-start: var(--space-3);
@@ -3387,6 +3766,27 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 }
 
 .people-kind-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+/* A person record named in a chip, list or cell (`PeopleKindLabel`): icon, optional code, name, optional note on one
+   line; only the name gives way. */
+.people-kind-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.people-kind-label > :not(.cell-text-trigger):not(.people-kind-label__name) {
+  flex: none;
+}
+
+.people-kind-label__name {
+  min-width: 0;
   display: inline-flex;
 }
 
@@ -3478,6 +3878,7 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   }
 
   .layout-designer--panel-folded {
+    /* grid-text-ok: the folded panel's column holds only its toggle */
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
@@ -3721,7 +4122,13 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .picture-backdrop[data-backdrop="light"] { background: #ffffff; }
 .picture-backdrop[data-backdrop="dark"] { background: #1c222c; }
 .file-thumb { width: 2.5rem; height: 2.5rem; flex: none; object-fit: contain; border-radius: var(--radius-sm, 4px); }
-.file-thumb--icon { display: inline-flex; align-items: center; justify-content: center; color: var(--color-text-muted, inherit); background: var(--color-surface-alt); }
+.file-thumb--icon { display: inline-flex; align-items: center; justify-content: center; color: var(--color-text-muted, inherit); }
+/* A picture's thumbnail is a button that opens the larger preview; the frame shows the focus ring and the pointer. */
+.file-thumb-button { display: inline-flex; flex: none; padding: 0; border: 0; background: none; border-radius: var(--radius-sm, 4px); cursor: zoom-in; }
+.file-thumb-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+/* The preview fits the window: a raster keeps its natural size up to the dialog, an SVG (no natural size) fills it. */
+.image-preview { display: block; max-width: 100%; max-height: 65vh; margin: 0 auto; object-fit: contain; border-radius: var(--radius-sm, 4px); }
+.image-preview--vector { width: 100%; height: 65vh; }
 .report-image-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--space-3); max-height: 50vh; overflow-y: auto; }
 .report-image-card { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); min-width: 0; }
 .report-image-card[data-selected] { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
@@ -3922,11 +4329,6 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   font-size: 0.7rem;
   pointer-events: none;
 }
-.overview-text > :first-child { margin-top: 0; }
-.overview-text > :last-child { margin-bottom: 0; }
-.overview-text h3, .overview-text h4, .overview-text h5 { margin: var(--space-2) 0 var(--space-1); }
-.overview-text p, .overview-text ul, .overview-text ol, .overview-text blockquote { margin: 0 0 var(--space-2); }
-.overview-text blockquote { border-left: 3px solid var(--color-border); padding-left: var(--space-3); color: var(--color-text-muted); }
 @media (max-width: 1000px) {
   .overview-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .overview-widget { grid-column: span var(--w-md); }
@@ -4114,6 +4516,47 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 }
 
 /* Policy text: the read-only view and the editor's editable area share one look. */
+/* Rendered Markdown (MarkdownView): the text of a long field, wherever it is shown. */
+.markdown-view { line-height: 1.6; overflow-wrap: anywhere; }
+.markdown-view > :first-child { margin-top: 0; }
+.markdown-view > :last-child { margin-bottom: 0; }
+.markdown-view h3, .markdown-view h4, .markdown-view h5, .markdown-view h6 { margin: var(--space-3) 0 var(--space-1); line-height: 1.3; }
+.markdown-view p, .markdown-view ul, .markdown-view ol, .markdown-view blockquote, .markdown-view pre, .markdown-view .markdown-table { margin: 0 0 var(--space-2); }
+.markdown-view ul, .markdown-view ol { padding-left: var(--space-5); }
+.markdown-view blockquote { border-left: 3px solid var(--color-border); padding-left: var(--space-3); color: var(--color-text-muted); }
+.markdown-view hr { border: 0; border-top: 1px solid var(--color-border); margin: var(--space-3) 0; }
+.markdown-view code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; background: var(--color-surface-alt); padding: 0.1em 0.3em; border-radius: var(--radius-sm, 3px); }
+.markdown-view pre { background: var(--color-surface-alt); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm, 3px); overflow-x: auto; }
+.markdown-view pre code { background: none; padding: 0; }
+.markdown-view .markdown-table { overflow-x: auto; }
+.markdown-view table { border-collapse: collapse; width: auto; }
+.markdown-view th, .markdown-view td { border: 1px solid var(--color-border); padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }
+.markdown-view th { background: var(--color-surface-alt); }
+.markdown-diagram { margin: 0 0 var(--space-2); }
+.markdown-diagram img { display: block; background: transparent; }
+.markdown-diagram summary { cursor: pointer; color: var(--color-text-muted); font-size: 0.85rem; margin-top: var(--space-1); }
+.markdown-diagram-error { color: var(--color-danger); margin: 0 0 var(--space-1); }
+/* One box for the three views of a Markdown field (Visual, Write, Preview): the same border, padding, line height and
+   minimum height, so the field is the same size whichever view shows and an empty one is no taller than `--md-rows` lines
+   (set on the element from the field's `rows`). Each view grows with its content from there. */
+.md-box {
+  --md-line: 1.6;
+  --md-pad-y: var(--space-3);
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--md-pad-y) 0.6rem;
+  line-height: var(--md-line);
+  min-height: calc(var(--md-rows, 2) * 1lh + 2 * var(--md-pad-y) + 2px);
+}
+.md-box:focus-within,
+.md-box:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.md-box > :first-child { margin-top: 0; }
+.md-box > :last-child { margin-bottom: 0; }
 .policy-body { line-height: 1.6; overflow-wrap: anywhere; }
 .policy-body h1, .policy-body h2, .policy-body h3, .policy-body h4 { margin: var(--space-4) 0 var(--space-2); line-height: 1.3; }
 .policy-body p, .policy-body ul, .policy-body ol, .policy-body blockquote { margin: 0 0 var(--space-3); }
@@ -4123,3 +4566,152 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .policy-editor { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); padding: var(--space-3); min-height: 12rem; }
 .policy-editor .policy-editor-content { outline: none; min-height: 10rem; }
 .policy-editor:focus-within { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.visual-markdown-editor .visual-markdown-content { outline: none; min-height: calc(var(--md-rows, 2) * 1lh); line-height: var(--md-line); }
+/* The field's hint in an empty Visual view (the Placeholder extension), grey like the Write view's placeholder. */
+.visual-markdown-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+.visual-markdown-content h1 { font-size: 1.17em; margin: var(--space-3) 0 var(--space-1); line-height: 1.3; }
+.visual-markdown-content h2 { font-size: 1em; margin: var(--space-3) 0 var(--space-1); line-height: 1.3; }
+.visual-markdown-content h3 { font-size: 0.83em; margin: var(--space-3) 0 var(--space-1); line-height: 1.3; }
+.visual-markdown-content .tableWrapper { overflow-x: auto; margin: 0 0 var(--space-2); }
+.visual-markdown-content table { border-collapse: collapse; width: auto; }
+.visual-markdown-content th, .visual-markdown-content td { border: 1px solid var(--color-border); padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; min-width: 4rem; }
+.visual-markdown-content th { background: var(--color-surface-alt); }
+.visual-markdown-content .selectedCell { background: var(--color-surface-alt); }
+.visual-markdown-content .visual-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; white-space: pre-wrap; outline: none; }
+.visual-markdown-content pre { background: var(--color-surface-alt); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm, 3px); overflow-x: auto; margin: 0 0 var(--space-2); }
+/* Toolbars of the rich text fields: small buttons, with a tighter separator between groups. */
+.editor-toolbar .toolbar-divider { margin-inline: var(--space-1); }
+/* An equation in the Visual view: drawn as an equation, pressed to change its TeX. */
+.visual-math { display: inline; }
+.visual-math--display { display: block; text-align: center; margin: var(--space-1) 0; }
+/* One box (not a run of inline fragments), so the whole equation is the pressable area. */
+.visual-math__equation { display: inline-block; cursor: pointer; border-radius: var(--radius-sm, 3px); padding: 0 2px; }
+.visual-math--display .visual-math__equation { display: block; }
+.visual-math__equation:hover, .visual-math__equation:focus-visible, .visual-math.is-selected .visual-math__equation {
+  background: var(--color-surface-alt);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+/* The equation panel's live preview: the equation as readers see it, centred, wide formulas scrolling inside. */
+.math-edit__preview { min-height: 3rem; display: flex; align-items: center; justify-content: center; overflow-x: auto; padding: var(--space-2); }
+/* A picture in a record's Markdown text (an attachment): never wider than its text, capped in height, framed so a
+   missing file is a visible, labelled gap and not an empty line. */
+.markdown-picture { max-width: 100%; max-height: 28rem; height: auto; vertical-align: middle; border-radius: var(--radius-sm, 3px); }
+.markdown-picture--missing { display: inline-block; padding: var(--space-1) var(--space-2); border: 1px dashed var(--color-border); color: var(--color-text-muted); }
+.markdown-view .markdown-figure { margin: 0 0 var(--space-2); }
+.markdown-view figcaption { color: var(--color-text-muted); font-size: 0.85rem; margin-top: var(--space-1); }
+/* A picture in the Visual view: the whole picture is the pressable area, as an equation is. */
+.visual-picture { display: inline-block; max-width: 100%; }
+.visual-picture__button { display: inline-block; max-width: 100%; padding: 2px; border: 0; background: none; cursor: pointer; border-radius: var(--radius-sm, 3px); }
+.visual-picture__button:hover, .visual-picture__button:focus-visible, .visual-picture.is-selected .visual-picture__button {
+  background: var(--color-surface-alt);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+/* The picture panel: the record's pictures as a grid of thumbnails, one choice per button. */
+.picture-picker__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: var(--space-2); max-height: 16rem; overflow-y: auto; }
+.picture-picker__choice { display: flex; flex-direction: column; gap: var(--space-1); align-items: center; padding: var(--space-1); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 3px); background: var(--color-surface); cursor: pointer; font-size: 0.8rem; text-align: center; overflow-wrap: anywhere; }
+.picture-picker__choice:hover, .picture-picker__choice:focus-visible, .picture-picker__choice[aria-pressed="true"] { border-color: var(--color-accent); outline: 2px solid var(--color-accent); outline-offset: -1px; }
+.picture-picker__thumb { width: 100%; height: 4.5rem; object-fit: contain; }
+.picture-picker__preview { max-width: 100%; max-height: 8rem; object-fit: contain; align-self: center; }
+.visual-diagram-block { margin: 0 0 var(--space-2); }
+.visual-diagram-block pre { margin-bottom: var(--space-1); }
+
+/* A foldable nav group the person has folded while it holds the current page keeps only that entry
+   (components/NavGroup.tsx): the page they are on is never hidden. */
+.nav-group-body-peek .nav-link:not(.active),
+.nav-group-body-peek .nav-link-row:not(.active),
+.nav-group-body-peek .nav-more-list {
+  display: none;
+}
+
+/* Lifecycle track (components/LifecycleTrack): full-width chevron steps. Each step is two clipped layers, the border
+   colour and a 1px-inset fill, so the outline follows the point. Done steps carry a tint of the primary colour, the
+   current step is the primary colour, later steps are plain. The tint is a mix, so both themes derive it from their
+   own tokens. */
+.lifecycle-track,
+.lifecycle-track__popover {
+  --lifecycle-height: 2.25rem; /* the medium button's height, so the track sits level with the header's buttons */
+  --lifecycle-point: 0.7rem;
+  --lifecycle-dx: 1.2px; /* horizontal width of the border on a diagonal edge: 1px across the edge, as on the top and bottom lines */
+  --lifecycle-edge: var(--color-border); /* the card border */
+  --lifecycle-tint: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
+}
+.lifecycle-track { display: flex; align-items: center; width: 100%; min-width: 0; }
+.lifecycle-track__full { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.lifecycle-track__full--hidden { position: absolute; visibility: hidden; height: 0; width: max-content; pointer-events: none; }
+.lifecycle-track__steps { display: flex; flex-wrap: nowrap; margin: 0; padding: 0; list-style: none; width: 100%; }
+.lifecycle-track__compact { max-width: 100%; min-width: 0; }
+.lifecycle-track__popover { min-width: 0; max-width: 100%; overflow-x: auto; }
+
+.lifecycle-step {
+  --lifecycle-fill: color-mix(in srgb, var(--color-surface) 45%, var(--color-bg));
+  --lifecycle-text: var(--color-text-muted);
+  position: relative;
+  flex: 1 0 auto;
+  height: var(--lifecycle-height);
+  margin-left: calc(var(--lifecycle-point) * -1 + 4px);
+  background: var(--lifecycle-edge);
+  clip-path: polygon(0 0, calc(100% - var(--lifecycle-point)) 0, 100% 50%, calc(100% - var(--lifecycle-point)) 100%, 0 100%, var(--lifecycle-point) 50%);
+}
+.lifecycle-step--first { margin-left: 0; clip-path: polygon(0 0, calc(100% - var(--lifecycle-point)) 0, 100% 50%, calc(100% - var(--lifecycle-point)) 100%, 0 100%); }
+.lifecycle-step--last { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, var(--lifecycle-point) 50%); }
+.lifecycle-step--first.lifecycle-step--last { clip-path: none; }
+/* The flat ends take the cards' corner radius; the fill's radius is one border width smaller so the edge stays 1px. */
+.lifecycle-step--first { border-radius: var(--radius-lg) 0 0 var(--radius-lg); }
+.lifecycle-step--last { border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
+.lifecycle-step--first.lifecycle-step--last { border-radius: var(--radius-lg); }
+.lifecycle-step--done { --lifecycle-fill: var(--lifecycle-tint); --lifecycle-text: var(--color-text); }
+.lifecycle-step--current { --lifecycle-fill: var(--color-primary); --lifecycle-text: var(--color-primary-contrast); background: var(--color-primary); font-weight: 600; }
+.lifecycle-step--current.lifecycle-step--branch { --lifecycle-fill: var(--color-danger); background: var(--color-danger); }
+.lifecycle-step__tip { display: flex; height: 100%; width: 100%; }
+.lifecycle-step__control {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 calc(var(--lifecycle-point) + var(--space-3));
+  border: 0;
+  background: none;
+  color: var(--lifecycle-text);
+  font: inherit;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+.lifecycle-step--first .lifecycle-step__control { padding-left: var(--space-4); }
+.lifecycle-step--last .lifecycle-step__control { padding-right: var(--space-4); }
+/* The fill is the step's shape pulled in by the border width on every edge, diagonals included, so the dark edge runs
+   unbroken round the chevron. The four x positions are the inner corners of the notch (left) and the point (right). */
+.lifecycle-step__fill {
+  --fill-left-top: calc(var(--lifecycle-dx) - 0.4px);
+  --fill-left-tip: calc(var(--lifecycle-point) + var(--lifecycle-dx) - 1px);
+  --fill-right-top: calc(100% - var(--lifecycle-point) - var(--lifecycle-dx) + 1.6px);
+  --fill-right-tip: calc(100% + 1px - var(--lifecycle-dx));
+  position: absolute;
+  inset: 1px;
+  background: var(--lifecycle-fill);
+  clip-path: polygon(var(--fill-left-top) 0, var(--fill-right-top) 0, var(--fill-right-tip) 50%, var(--fill-right-top) 100%, var(--fill-left-top) 100%, var(--fill-left-tip) 50%);
+}
+.lifecycle-step--first .lifecycle-step__fill { --fill-left-top: 0px; --fill-left-tip: 0px; }
+.lifecycle-step--last .lifecycle-step__fill { --fill-right-top: 100%; --fill-right-tip: 100%; }
+.lifecycle-step--first .lifecycle-step__fill { border-radius: calc(var(--radius-lg) - 1px) 0 0 calc(var(--radius-lg) - 1px); }
+.lifecycle-step--last .lifecycle-step__fill { border-radius: 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0; }
+.lifecycle-step--first.lifecycle-step--last .lifecycle-step__fill { border-radius: calc(var(--radius-lg) - 1px); }
+.lifecycle-step__content { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.lifecycle-step__label { display: inline-flex; min-width: 0; max-width: 14rem; }
+.lifecycle-step__lock { display: inline-flex; color: inherit; }
+
+/* The next step, when the person may promote: bold primary text (the one step that can be pressed), tinted on hover or
+   focus; its edges keep the border colour of every other step. */
+.lifecycle-step--next .lifecycle-step__control { --lifecycle-text: var(--color-primary); font-weight: 600; cursor: pointer; }
+.lifecycle-step--next .lifecycle-step__control:hover,
+.lifecycle-step--next .lifecycle-step__control:focus-visible { --lifecycle-fill: var(--lifecycle-tint); --lifecycle-text: var(--color-text); }
+.lifecycle-step--next .lifecycle-step__control:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -3px; }

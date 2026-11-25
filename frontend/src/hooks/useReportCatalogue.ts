@@ -1,16 +1,11 @@
 /**
  * Module: hooks/useReportCatalogue
  *
- * Loads the reports a caller can run for one project or organisation from the
- * core report framework's catalogue endpoint. The
- * catalogue is the single source of which reports exist: it already reflects
- * module and sub-component enablement and, for an organisation, the caller's
- * report role, so callers show or hide their Reports surface from `entries`
- * alone and keep no frontend list of reports.
+ * Loads the reports a caller can run for one project or organisation from the core report framework's catalogue
+ * endpoint. The catalogue is the single source of which reports exist (it reflects module and sub-component
+ * enablement and, for an organisation, the caller's report role), so callers keep no frontend list of reports.
  *
- * A failed load is reported as `error` with no entries, so a page that merely
- * *offers* reports (the project Reports page, the Org Overview group) degrades
- * to "no reports" instead of breaking.
+ * A failed load is reported as `error` with no entries, so a page that only offers reports degrades to "no reports".
  */
 import { useEffect, useState } from "react";
 

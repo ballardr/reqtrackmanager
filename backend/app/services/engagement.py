@@ -169,8 +169,8 @@ def _own_subscription(user_id: UUID, entity_type: str, entity_id: UUID):
 
 
 def is_subscribed(db: Session, user_id: UUID, entity_type: str, entity_id: UUID) -> bool:
-    """True when the user subscribed themselves (a group they watch through is listed separately,
-    `list_group_watchers`)."""
+    """True when the user subscribed themselves (a group they watch through is listed with the other watchers,
+    `list_watchers`)."""
     return db.scalar(select(Subscription.id).where(*_own_subscription(user_id, entity_type, entity_id))) is not None
 
 
@@ -199,42 +199,35 @@ def unsubscribe(db: Session, user_id: UUID, entity_type: str, entity_id: UUID) -
         db.commit()
 
 
-def list_group_watchers(db: Session, entity_type: str, entity_id: UUID) -> list[Subscription]:
-    """The group subscriptions on an entity (organisation and project groups), oldest first."""
+def list_watchers(db: Session, entity_type: str, entity_id: UUID) -> list[Subscription]:
+    """Every subscription on an entity (users, organisation groups and project groups), oldest first."""
     return list(db.scalars(
         select(Subscription).where(
             Subscription.entity_type == entity_type, Subscription.entity_id == entity_id,
-            Subscription.subscriber_type != PrincipalType.USER.value,
         ).order_by(Subscription.created_at)
     ).all())
 
 
-def add_group_watcher(db: Session, group: PrincipalRef, entity_type: str, entity_id: UUID) -> Subscription:
-    """Subscribes a group to an entity (idempotent). The caller has validated the group and the actor's right.
-
-    Raises:
-        ValueError: If `group` is a user (users subscribe themselves).
-    """
-    if group.type is PrincipalType.USER:
-        raise ValueError("A user subscribes themselves; only a group can be added as a watcher.")
+def add_watcher_row(db: Session, watcher: PrincipalRef, entity_type: str, entity_id: UUID) -> Subscription:
+    """Subscribes a principal to an entity (idempotent). The caller has validated the principal and the actor's right."""
     existing = db.scalar(select(Subscription).where(
-        Subscription.subscriber_type == group.type.value, Subscription.subscriber_id == group.id,
+        Subscription.subscriber_type == watcher.type.value, Subscription.subscriber_id == watcher.id,
         Subscription.entity_type == entity_type, Subscription.entity_id == entity_id,
     ))
     if existing is not None:
         return existing
     subscription = Subscription(
-        subscriber_type=group.type.value, subscriber_id=group.id, entity_type=entity_type, entity_id=entity_id,
+        subscriber_type=watcher.type.value, subscriber_id=watcher.id, entity_type=entity_type, entity_id=entity_id,
     )
     db.add(subscription)
     db.flush()
     return subscription
 
 
-def remove_group_watcher(db: Session, group: PrincipalRef, entity_type: str, entity_id: UUID) -> bool:
-    """Removes a group's subscription; True when there was one."""
+def remove_watcher_row(db: Session, watcher: PrincipalRef, entity_type: str, entity_id: UUID) -> bool:
+    """Removes a principal's subscription; True when there was one."""
     existing = db.scalar(select(Subscription).where(
-        Subscription.subscriber_type == group.type.value, Subscription.subscriber_id == group.id,
+        Subscription.subscriber_type == watcher.type.value, Subscription.subscriber_id == watcher.id,
         Subscription.entity_type == entity_type, Subscription.entity_id == entity_id,
     ))
     if existing is None:
@@ -243,44 +236,51 @@ def remove_group_watcher(db: Session, group: PrincipalRef, entity_type: str, ent
     return True
 
 
-def watching_groups_out(db: Session, entity_type: str, entity_id: UUID) -> list[PrincipalOut]:
-    """The groups watching an entity, resolved for display (with their current member counts)."""
-    subscriptions = list_group_watchers(db, entity_type, entity_id)
+def watching_out(db: Session, entity_type: str, entity_id: UUID) -> list[PrincipalOut]:
+    """The users and groups watching an entity, resolved for display (a group with its current member count)."""
+    subscriptions = list_watchers(db, entity_type, entity_id)
     labels = principal_labels(db, [(s.subscriber_type, s.subscriber_id) for s in subscriptions])
     return [labels[(s.subscriber_type, s.subscriber_id)] for s in subscriptions]
 
 
-def add_watching_group(
-    db: Session, project: Project, entity_type: str, entity_id: UUID, group: PrincipalRef, actor: User
+def add_watching(
+    db: Session, project: Project, entity_type: str, entity_id: UUID, watcher: PrincipalRef, actor: User
 ) -> list[PrincipalOut]:
-    """Adds a group as a watcher of a requirement or change request in `project`, audit-logs and commits.
+    """Adds a user or group as a watcher of a requirement or change request in `project`, audit-logs and commits.
+
+    A user must be able to view the project: a direct subscription is deleted when its user loses access
+    (`remove_subscriptions_and_favorites_for_projects`), so one added for a person with none would carry
+    the record's comments to someone who cannot read the record.
 
     Raises:
-        HTTPException: 400 for a user, a group of another organisation, or a project group of another project.
+        HTTPException: 400 for a user outside the organisation or the project, a group of another organisation,
+            or a project group of another project.
     """
-    if group.type is PrincipalType.USER:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only a group can be added as a watcher; users follow for themselves.")
-    validate_principal(db, group, organization_id=project.organization_id, project_id=project.id, field="group")
-    add_group_watcher(db, group, entity_type, entity_id)
-    log_event(
-        db, entity_type=entity_type, entity_id=entity_id, action="watcher_added", actor_id=actor.id,
-        project_id=project.id, detail={"group": {"type": group.type.value, "id": str(group.id)}},
-    )
-    db.commit()
-    return watching_groups_out(db, entity_type, entity_id)
-
-
-def remove_watching_group(
-    db: Session, project: Project, entity_type: str, entity_id: UUID, group: PrincipalRef, actor: User
-) -> list[PrincipalOut]:
-    """Removes a group from an entity's watchers (a no-op when it was not watching), audit-logs and commits."""
-    if remove_group_watcher(db, group, entity_type, entity_id):
+    validate_principal(db, watcher, organization_id=project.organization_id, project_id=project.id, field="watcher")
+    if watcher.type is PrincipalType.USER and watcher.id not in get_project_member_user_ids(db, project.id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "watcher must be able to view this project.")
+    already_watching = any(w.id == watcher.id and w.type == watcher.type for w in watching_out(db, entity_type, entity_id))
+    add_watcher_row(db, watcher, entity_type, entity_id)
+    if not already_watching:
         log_event(
-            db, entity_type=entity_type, entity_id=entity_id, action="watcher_removed", actor_id=actor.id,
-            project_id=project.id, detail={"group": {"type": group.type.value, "id": str(group.id)}},
+            db, entity_type=entity_type, entity_id=entity_id, action="watcher_added", actor_id=actor.id,
+            project_id=project.id, detail={"watcher": {"type": watcher.type.value, "id": str(watcher.id)}},
         )
     db.commit()
-    return watching_groups_out(db, entity_type, entity_id)
+    return watching_out(db, entity_type, entity_id)
+
+
+def remove_watching(
+    db: Session, project: Project, entity_type: str, entity_id: UUID, watcher: PrincipalRef, actor: User
+) -> list[PrincipalOut]:
+    """Removes a user or group from an entity's watchers (a no-op when it was not watching), audit-logs and commits."""
+    if remove_watcher_row(db, watcher, entity_type, entity_id):
+        log_event(
+            db, entity_type=entity_type, entity_id=entity_id, action="watcher_removed", actor_id=actor.id,
+            project_id=project.id, detail={"watcher": {"type": watcher.type.value, "id": str(watcher.id)}},
+        )
+    db.commit()
+    return watching_out(db, entity_type, entity_id)
 
 
 def remove_subscriptions_and_favorites_for_projects(db: Session, user_id: UUID, project_ids: list[UUID]) -> None:

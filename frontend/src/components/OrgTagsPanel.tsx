@@ -1,7 +1,7 @@
 /**
  * Module: components/OrgTagsPanel
  *
- * The Tags section of Org Admin: `TagAdminPanel` bound to the organisation's own vocabulary, which
+ * The Tags section of Org Resources: `TagAdminPanel` bound to the organisation's own vocabulary, which
  * the organisation's own records (personas, stakeholders, strategies and so on) draw their tags from.
  */
 import { useMemo } from "react";

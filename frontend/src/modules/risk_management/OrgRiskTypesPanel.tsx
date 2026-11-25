@@ -1,9 +1,8 @@
 /**
  * Module: modules/risk_management/OrgRiskTypesPanel
  *
- * The organisation tier of the Risk type vocabulary — a
- * thin wrapper over the shared `OrgTypeVocabularyPanel`. Registered on
- * `orgAdminSections` (Org Management). Gated server-side on `risk_type_admin`.
+ * The organisation tier of the Risk type vocabulary: a thin wrapper over the shared `OrgTypeVocabularyPanel`,
+ * registered on `orgAdminSections` (Org Management). Gated server-side on `risk_type_admin`.
  */
 import { OrgTypeVocabularyPanel } from "../../components/TypeVocabularyPanels";
 import { orgRiskTypeApi } from "./api";

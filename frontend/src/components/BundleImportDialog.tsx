@@ -1,20 +1,14 @@
 /**
  * Module: components/BundleImportDialog
  *
- * The dialog that imports an exported bundle (.zip) as a new project or organisation. It is the second door
- * beside a create dialog (`SplitButtonTrigger`), so a bundle import never hides fields of the create form.
+ * The dialog that imports an exported bundle (.zip) as a new project or organisation: the second door beside a
+ * create dialog (`SplitButtonTrigger`), so the create form's fields stay visible. It holds the chosen file, calls
+ * the caller's import, shows its error in the header and disables Import while it runs or no file is chosen. The
+ * caller supplies the fields beside the file as children and performs the request.
  *
- * Responsibilities: hold the chosen file, call the caller's import, show its error in the dialog header and
- * disable Import while it runs or no file is chosen. The caller supplies the fields that go with the file (the
- * name, the organisation) as children and performs the request, so each import keeps its own endpoint and
- * result handling.
- *
- * With `people`, the dialog also reads the people the bundle names once a file is chosen and shows the People step
- * (`ImportPeopleStep`); the importer's choices are passed to `onImport`.
- *
- * When the bundle carries files and file uploads are disabled the server refuses the import before writing
- * anything; the dialog then shows `UploadsDisabledPrompt` (cancel, or import without the files) and repeats the
- * import with `skipFiles`.
+ * With `people`, it reads the people the bundle names once a file is chosen and shows `ImportPeopleStep`; the
+ * choices are passed to `onImport`. When the bundle carries files and uploads are disabled the server refuses
+ * before writing; the dialog shows `UploadsDisabledPrompt` and repeats the import with `skipFiles`.
  */
 import { useRef, useState, type ReactNode } from "react";
 

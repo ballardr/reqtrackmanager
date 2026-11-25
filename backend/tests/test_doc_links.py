@@ -1,10 +1,10 @@
 """
 Pins scripts/check_doc_links.py: every documentation reference in the repository
-must resolve, so moving or renaming a doc (for example archiving a closed plan
-under docs/plans/completed/) cannot leave dangling references.
+must resolve, so moving or renaming a doc (for example archiving a closed plan)
+cannot leave dangling references.
 
 Skipped when the repository root is not visible (the backend container mounts
-only backend/); CI's `docs` job and the pre-commit hook run the script directly.
+only backend/).
 """
 
 import importlib.util
@@ -61,7 +61,7 @@ def test_source_files_may_not_name_plan_documents(tmp_path, monkeypatch):
 
 
 def test_source_files_may_not_cite_plan_phases(tmp_path, monkeypatch):
-    """A "Phase 7" tag in a comment is reported, including one wrapped across a comment line break."""
+    """A plan-phase tag in a comment is reported, including one wrapped across a comment line break."""
     (tmp_path / "docs" / "plans").mkdir(parents=True)
     (tmp_path / "a.py").write_text("# Added in Phase 7.\n")
     (tmp_path / "b.py").write_text("# Added in Phase\n# 3b of the work.\n")
@@ -87,3 +87,37 @@ def test_soc2_documents_may_not_name_plans_or_cite_phases(tmp_path, monkeypatch)
     assert any("names a plan document" in p for p in problems)
     assert any("cites a plan phase" in p for p in problems)
     assert not any("plan" in p for p in checker.check_file("docs/" + "guide.md"))
+
+
+# A literal plan path in a source file would trip the checker itself, so it is assembled.
+PLANS = "do" + "cs/plans/"
+
+
+def test_staged_scope_scans_only_what_a_commit_can_break():
+    """A modified or added file is scanned alone; a removal, rename, added plan or a change to the checker scans all."""
+    assert checker.staged_scope([("M", "notes/a.md"), ("A", "backend/app/x.py")]) == ["notes/a.md", "backend/app/x.py"]
+    assert checker.staged_scope([("A", PLANS + "new-plan.md")]) is None
+    assert checker.staged_scope([("A", PLANS + "completed/new-plan.md")]) is None
+    assert checker.staged_scope([("D", "notes/a.md")]) is None
+    assert checker.staged_scope([("R", "notes/a.md"), ("R", "notes/b.md")]) is None
+    assert checker.staged_scope([("M", "scripts/check_doc_links.py")]) is None
+    assert checker.staged_scope([]) == []
+
+
+def test_scanning_some_files_gives_the_same_verdict_as_the_full_scan_for_them():
+    """The fast form is the full check restricted to the named files, so it cannot disagree with it."""
+    sample = [f for f in checker.tracked_files() if f.endswith((".md", ".py"))][::97]
+    full = checker.find_problems()
+    expected = [p for p in full if p.split(":", 1)[0] in set(sample)]
+    assert checker.find_problems(sample) == expected
+
+
+def test_a_broken_reference_in_a_scanned_file_is_found_by_the_fast_form(monkeypatch, tmp_path):
+    """A dangling link in one named file is reported, and a clean file is not."""
+    monkeypatch.setattr(checker, "ROOT", tmp_path)
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "a.md").write_text("[gone](missing.md)\n")
+    (tmp_path / "notes" / "b.md").write_text("[here](a.md)\n")
+    monkeypatch.setattr(checker, "tracked_files", lambda: ["notes/a.md", "notes/b.md"])
+    assert checker.find_problems(["notes/a.md"]) == ["notes/a.md:1: link target missing: missing.md"]
+    assert checker.find_problems(["notes/b.md"]) == []

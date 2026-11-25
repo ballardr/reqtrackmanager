@@ -1,22 +1,12 @@
 """
 Module: modules.stakeholders._engagement_shared
 
-Handler bodies behind the project-scoped Engagement router
-(`engagement_project_router.py`), mirroring `_need_shared.py`: the manage gate,
-the API shapes, create/update/erase, the participant / persona / audience / outcome
-links, and the comment and file kit.
-
-RBAC: viewing needs the module to be enabled for the project (the engagement log
-is always on); create, edit, erase, link and upload need the project
-`engagement_owner` role or a Fine-Grained Access Control `(engagement, manage)`
-grant. Commenting needs view only, like the other records. An Engagement has no
-organisation scope, so there is no org-level role.
-
-Tenancy and personal data: an engagement only links to Stakeholders, Personas and
-groups its own project can see (own, or the organisation's and not hidden), and
-to Pain Points / Needs / Open Questions of the same project; anything else 404s.
-Titles and notes can name people, so audit events carry ids only, never a title
-or filename, and `erase_engagement` removes everything.
+Handler bodies behind the project-scoped Engagement router: the manage gate,
+API shapes, create/update/erase, links, comments and files. Changes need
+`engagement_owner` or `(engagement, manage)`; commenting needs view only. An
+engagement links only to records its project can see (else 404). Titles and
+notes can name people, so audit events carry ids only and `erase_engagement`
+removes everything.
 """
 
 from __future__ import annotations

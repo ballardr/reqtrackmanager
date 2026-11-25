@@ -4,11 +4,8 @@ import { useUiPreference } from "../hooks/useUiPreference";
 
 export type ViewMode = "tiles" | "list" | "tree" | "grid";
 
-/** Reads/writes a per-page tile-vs-list-vs-tree view preference, keyed
- * `view_mode:<pageKey>` in the user's `ui_preferences` bag — synced
- * server-side (see `useUiPreference`), not localStorage, so it follows
- * them across devices/browsers the same way their theme/landing-page
- * choices already do. */
+/** Reads and writes a per-page tile, list or tree view preference, keyed `view_mode:<pageKey>` in the user's
+ * `ui_preferences` bag, synced server-side (see `useUiPreference`) so it follows the person across devices. */
 export function useViewMode(pageKey: string, defaultMode: ViewMode = "tiles"): [ViewMode, (mode: ViewMode) => void] {
   const [stored, setStored] = useUiPreference<string>(`view_mode:${pageKey}`, defaultMode);
   const mode: ViewMode = stored === "tiles" || stored === "list" || stored === "tree" || stored === "grid" ? stored : defaultMode;
@@ -16,25 +13,16 @@ export function useViewMode(pageKey: string, defaultMode: ViewMode = "tiles"): [
 }
 
 /**
- * `showTreeOption` (hierarchical projects, docs/decisions.md): the tree
- * button only renders when the page's current project set actually
- * contains a parent/child relationship — a tree mode with nothing to show
- * a hierarchy for doesn't mean anything, and forcing it into every page's
- * toggle regardless would be a poor fit for pages like Favourites (a flat,
- * intentionally-curated pinboard). If the caller was on tree mode and it
- * becomes unavailable, they've already been switched back to list by the
- * page (see `ProjectListPage`/`FavouritesPage`'s own `useEffect`), so this
- * component doesn't need to handle that fallback itself.
+ * `showTreeOption` (hierarchical projects, docs/decisions.md): the tree button renders only when the page's current
+ * project set contains a parent/child relationship, since a tree mode with nothing to show a hierarchy for means nothing
+ * (and a curated flat pinboard such as Favourites has none). A page on tree mode when it becomes unavailable switches
+ * back to list itself (see `ProjectListPage`/`FavouritesPage`).
  *
- * `showTilesOption`: the mirror-image
- * case — a caller whose two real view modes are "tree" and "list" only
- * (`RequirementTree.tsx`'s authoring-tree vs. scanning-list toggle), where
- * a "tiles" mode means nothing at all, not just "nothing to show a
- * hierarchy for." Defaults `true` (every existing caller keeps its tiles
- * button) so this is additive, not a behaviour change for tile/list pages.
+ * `showTilesOption`: false for a caller whose two real view modes are "tree" and "list" only
+ * (`RequirementTree.tsx`'s authoring tree versus scanning list), where tiles mean nothing. Defaults `true`.
  *
- * `showGridOption`: a record list whose type has editable columns offers the bulk edit grid
- * (`RecordGrid`, "Pattern: bulk edit grid") as one more view of the same rows. Off by default.
+ * `showGridOption`: a record list whose type has editable columns offers the bulk edit grid (`RecordGrid`, "Pattern: bulk
+ * edit grid") as one more view of the same rows. Off by default.
  */
 export function ViewToggle({
   mode,

@@ -15,11 +15,7 @@ const TYPES: EffectivePainPointType[] = [
   { id: "type-operator", name: "Operator", display_order: 2, is_enabled: true, source: "org", definition: null },
 ];
 
-/**
- * `PainPointFormModal` renders via `Modal`, which portals to `document.body`
- * — every assertion here queries `within(document.body)`, mirroring
- * `StrategyFormModal.stories.tsx`'s own identical convention.
- */
+/** `Modal` portals to `document.body`, so every assertion queries `within(document.body)`, as in `StrategyFormModal.stories.tsx`. */
 const meta: Meta<typeof PainPointFormModal> = {
   title: "Modules/ContextStrategy/PainPointFormModal",
   component: PainPointFormModal,
@@ -112,7 +108,9 @@ export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
   args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
   play: async () => {
     const body = within(document.body);
-    await userEvent.type(body.getByLabelText("Pain Point title"), "W".repeat(200));
+    // One paste, not 200 keystrokes: every keystroke re-renders the whole form, which timed out under load.
+    await userEvent.click(body.getByLabelText("Pain Point title"));
+    await userEvent.paste("W".repeat(200));
     await expect(body.getByText(/Could not save:/)).toBeVisible();
     await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
     const dialog = body.getByRole("dialog");

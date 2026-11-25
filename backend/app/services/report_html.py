@@ -1,32 +1,22 @@
 """
 Module: services.report_html
 
-Renders a neutral `ReportDocument` (`services.report_model`) to one standalone HTML page: the document
-family's HTML download and the designer's live preview.
+Renders a neutral `ReportDocument` (`services.report_model`) to one standalone HTML page: the HTML download and the
+designer's live preview.
 
 Design decisions:
-- **Nothing in the page can run or fetch.** Every string is escaped with `html.escape`; the page carries no
-  script and a `Content-Security-Policy` meta tag (`default-src 'none'; img-src data:; style-src
-  'unsafe-inline'`), so even a defect in escaping could not load anything. Raster images are inlined as
-  `data:` URIs of a sniffed type (never the type a record claims), and an SVG figure is inlined only after
-  `report_svg.sanitize_svg`.
-- Equations are the server-made SVG from `report_math` (the same drawing the PDF embeds), sized in `em` so they
-  follow the text size; one that cannot be drawn is shown as its source in a `<code>` element. The TeX is the
-  accessible name (`aria-label`).
-- A tone is looked up in `TONE_FILL`, never taken from the model as a colour, as in the PDF and Word renderers.
-- Branding applies as in the other renderers: the accent colour (validated as six hex digits), the logo and
-  the footer text; the cover page is a PDF and Word device, so the HTML shows a plain title.
-- One stylesheet, inline and small, with a print rule so printing the page from a browser paginates at
-  `PageBreak`.
-- A header or footer shows as a band at the start and end of each page style's stretch, with `n` and `N` standing for the page
-  numbers; printing hides the bands and uses CSS margin boxes (`@top-left` …), which the browser fills with the real page
-  numbers where it supports them (the logo is not printed this way).
-- Page styles: HTML has no pages, so a `PageStyleChange` opens a `<section>` that is as wide as that page would be and
-  carries a small label naming its paper and margins (hidden when printed). Printing uses CSS named pages
-  (`@page psN { size; margin }`, with `:left` / `:right` for mirrored margins) that the section selects with `page:`,
-  so a browser's print dialog gives each section its own paper. The CSS is built from numbers only, never from text.
+- Nothing in the page can run or fetch: every string goes through `html.escape`, there is no script, and a
+  `Content-Security-Policy` meta (`default-src 'none'; img-src data:; style-src 'unsafe-inline'`) backs it up. Rasters
+  are inlined as `data:` URIs of a sniffed type; an SVG only after `report_svg.sanitize_svg`.
+- Equations are the `report_math` SVG sized in `em`, falling back to the source in `<code>`; the TeX is the `aria-label`.
+- A tone comes from `TONE_FILL`, never a model colour. Branding is the validated accent, logo and footer text; the
+  cover is a PDF and Word device, so HTML shows a plain title.
+- One small inline stylesheet with a print rule that paginates at `PageBreak`.
+- Headers and footers show as bands (`n`/`N` for page numbers); printing hides them for CSS margin boxes.
+- A `PageStyleChange` opens a `<section>` sized to that page with a label (hidden when printed); printing uses CSS
+  named pages (`@page psN`, `:left`/`:right`), built from numbers only.
 
-Dependencies: `services.report_model`, `services.report_svg`, `services.report_math`, `services.report_document` (branding type).
+Dependencies: `report_model`, `report_svg`, `report_math`, `report_document`.
 """
 
 from __future__ import annotations
@@ -50,6 +40,7 @@ from app.services.report_model import (
     SLOT_NAMES,
     TONE_FILL,
     BulletList,
+    CodeBlock,
     Contents,
     DocumentStyles,
     Equation,
@@ -65,12 +56,14 @@ from app.services.report_model import (
     PageStyle,
     PageStyleChange,
     Paragraph,
+    Quote,
     ReportDocument,
     RunningBand,
     Styled,
     Table,
     VerticalSpace,
     finalize_links,
+    list_entries,
     text_on,
     text_runs,
 )
@@ -109,6 +102,9 @@ table td .cell-images { display: flex; gap: .15cm; align-items: flex-start; } ta
 table td .cell-images.side { flex-wrap: wrap; } table td .cell-images img, table td .cell-images svg { display: block; }
 figure.equation { text-align: center; overflow-x: auto; } span.math svg { display: inline-block; }
 code.math-source { font-size: .9em; }
+pre.code { background: #f3f3f3; padding: .5rem .7rem; overflow-x: auto; margin: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: .85rem/1.35 ui-monospace, "Liberation Mono", monospace; }
+blockquote { margin: .5rem 0; padding: .1rem .9rem; border-left: 3px solid #bbb; color: #444; white-space: pre-line; }
 .logo { max-height: 4rem; margin-bottom: .5rem; }
 footer { margin-top: 3rem; color: #666; font-size: .8rem; border-top: 1px solid #ddd; padding-top: .5rem; }
 hr.page-break { border: 0; border-top: 1px dashed #bbb; margin: 2rem 0; }
@@ -441,6 +437,31 @@ def _layer_left(block: Image, style: PageStyle) -> str:
     return f"{100 * from_page_edge / style.dimensions_cm[0]:.2f}%"
 
 
+def _list(block: BulletList | NumberedList) -> str:
+    """A list (nested to the depth the block holds) as `<ul>` and `<ol>`; a list inside an item sits in that item."""
+    entries = list_entries(block)
+    own = _own_style(block.font, block.size)
+
+    def build(position: int, level: int) -> tuple[str, int]:
+        """The list of the entries from `position` at `level`, and the position after it."""
+        tag = "ol" if entries[position].ordered else "ul"
+        items: list[str] = []
+        while position < len(entries) and entries[position].level >= level:
+            entry = entries[position]
+            if entry.level > level:  # a list the previous item holds
+                nested, position = build(position, entry.level)
+                if items:
+                    items[-1] += nested
+                else:
+                    items.append(nested)
+                continue
+            items.append(_rich(entry.text))
+            position += 1
+        return f"<{tag}{own if level == 0 else ''}>" + "".join(f"<li>{item}</li>" for item in items) + f"</{tag}>", position
+
+    return build(0, 0)[0]
+
+
 def _figure(block: Image, page: PageStyle) -> str | None:
     """An image block as a `<figure>`: the picture at its placed width, alignment and alternative text, with its caption.
 
@@ -541,10 +562,13 @@ def render_html_document(document: ReportDocument) -> bytes:
             parts.append(_equation(block))
         elif isinstance(block, Note):
             parts.append(f'<p class="note">{_esc(block.text)}</p>')
-        elif isinstance(block, BulletList):
-            parts.append(f"<ul{_own_style(block.font, block.size)}>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ul>")
-        elif isinstance(block, NumberedList):
-            parts.append(f"<ol{_own_style(block.font, block.size)}>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ol>")
+        elif isinstance(block, BulletList | NumberedList):
+            parts.append(_list(block))
+        elif isinstance(block, CodeBlock):
+            label = f'<p class="note">{_esc(block.label)}</p>' if block.label else ""
+            parts.append(f'{label}<pre class="code"><code>{_esc(block.text)}</code></pre>')
+        elif isinstance(block, Quote):
+            parts.append(f"<blockquote>{_rich(block.text)}</blockquote>")
         elif isinstance(block, Image):
             figure = _figure(block, current)
             if figure:

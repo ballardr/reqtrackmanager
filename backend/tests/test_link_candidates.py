@@ -182,7 +182,7 @@ def test_untyped_structural_links_are_flagged_dedicated_and_cannot_be_deleted_ge
 
 def test_a_code_typed_as_displayed_finds_the_record_in_every_type(world):
     """Elsewhere a record's code is shown qualified (`ACME-REQ-001`); the finder matches the stored
-    label (`REQ-001 Title`), so a qualified code used to find nothing."""
+    label (`REQ-001 Title`), so a qualified code must still match."""
     project = world.project()
     page = world.requirement(project, "Page")
     other = world.requirement(project, "Voltage limit")

@@ -1,62 +1,30 @@
 """
 Module: modules.compliance.export
 
-This module's contribution to the core org/project bundle export/import
-system (`app.services.org_export`/`app.services.project_export`), registered
-via `app.modules.registry.ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`
-on this module's own `MODULE_DEFINITION` (`modules.compliance.module`)
-rather than those core files importing this module directly — the same
-module-self-containment goal `resolve_file_owner_project_id` already serves
-one concern earlier (file-attachment authorization). Moved out of
-`org_export.py`/`project_export.py` directly, where this content previously
-lived as `_collect_compliance_export_data`/`_import_compliance_vocab`/
-`_import_compliance_standards`/`_import_compliance_requirement_mappings`/
-`_collect_project_compliance_data`/`_apply_project_compliance_data`; see
-`docs/decisions.md`'s "Compliance module self-containment" entry for why.
+This module's contribution to the core organisation and project bundles (`app.services.org_export`,
+`app.services.project_export`), registered through `ModuleOrgBundleHooks` / `ModuleProjectBundleHooks` on
+`MODULE_DEFINITION` so core files never import this module (see `docs/decisions.md`, "Compliance module
+self-containment").
 
-Two bundle levels, matching this module's established split
-(see `modules.compliance.reports`'s identical org/project distinction):
+Two bundle levels:
+- Organisation (`export_org_data`, `import_org_data`, `compute_org_merge_conflicts`, `summarize_org_merge`): standards
+  with every version's requirement and required-action tree, the action-type and mapping-relationship-type
+  vocabularies, and cross-standard requirement mappings (organisation-level resources: "A Compliance Standard is not a
+  Project").
+- Project (`export_project_data`, `import_project_data`): a project's own assessment: assigned standards, per-requirement
+  applicability, status and approval state, evidence (files, revalidation history, requirement and required-action
+  linkage) and project-level review history. The assigned standard is never re-embedded: the bundle records a portable
+  `(standard reference, version label)` key resolved against the target organisation (skipped with a warning when it has
+  no match).
 
-- Organisation level (`export_org_data`/`import_org_data`/`compute_org_
-  merge_conflicts`/`summarize_org_merge`, registered as `ModuleOrgBundleHooks`
-  on `MODULE_DEFINITION`): standards, their versions' full requirement/
-  required-action trees, the organisation's action-type/mapping-
-  relationship-type vocabularies, and cross-standard requirement mappings —
-  org-level reusable resources per §31 ("A Compliance Standard is not a
-  Project"), consumed by `org_export.build_org_bundle`/`import_org_bundle`/
-  `merge_org_bundle`.
-- Project level (`export_project_data`/`import_project_data`, registered as
-  `ModuleProjectBundleHooks`): a project's own compliance *assessment* —
-  which standards it's assigned to, its per-requirement applicability/
-  status/approval state, evidence (with files, revalidation history, and
-  requirement/required-action linkage), and its own project-level review
-  history — consumed by `project_export.collect_project_data`/
-  `apply_project_data`. The assigned *standard* itself is never re-embedded
-  here; a project bundle instead records a portable `(standard reference,
-  version label)` key and resolves it against whatever the *target*
-  organisation already has at import time (skipped with a warning if no
-  match exists there).
+A third level, `export_standard_data` / `import_standard_data`, writes a single standard as its own JSON document
+(`STANDARD_EXPORT_FORMAT`).
 
-Every cross-reference uses a portable key (a requirement's synthetic
-export-scoped `ref`, an evidence row's `ref`, `_requirement_key`/`_required_
-action_key`'s `(reference, name)`/`name` matching keys), never a raw
-database id — mirroring every other cross-reference in this bundle format
-(`org_export`/`project_export`'s own established convention).
+Every cross-reference is a portable key (a requirement's export-scoped `ref`, an evidence `ref`, `_requirement_key` and
+`_required_action_key` matching keys), never a database id.
 
-A third, narrower level (§29):
-`export_standard_data`/`import_standard_data` — a single `ComplianceStandard`
-as its own portable JSON document (`GET .../standards/{id}/export`/
-`POST .../standards/import` on `router.py`), distinct from the whole-org
-bundle above. See those two functions' own docstrings for the full design
-(the `STANDARD_EXPORT_FORMAT` document shape, `" (imported)"` reference-
-collision handling, and how a cross-standard requirement mapping's
-"external" side is recorded/resolved).
-
-External dependencies: `app.services.bundle_common` (`UserResolver`/
-`BundleImportWarnings`/`import_bundled_file`) directly, the same way
-`project_router.py` already calls `app.services.files.upload_file` directly
-from module code rather than through a core wrapper — see that router's own
-module docstring for why that precedent applies here too.
+External dependencies: `app.services.bundle_common` (`UserResolver`, `BundleImportWarnings`, `import_bundled_file`),
+called directly as `project_router` calls `app.services.files.upload_file`.
 """
 
 from __future__ import annotations
@@ -111,6 +79,7 @@ from app.modules.compliance.models import (
 from app.modules.compliance.service import materialize_assessment_rows
 from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
@@ -123,10 +92,8 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.project import Project
 
-# Valid `resolutions` values `org_export.merge_org_bundle` accepts for a
-# `"compliance_standard"` conflict — merged into that function's own
-# `_resolution_choices_by_kind` via `ModuleOrgBundleHooks.merge_resolution_
-# choices`.
+# Valid `resolutions` values for a `"compliance_standard"` conflict, merged into `org_export.merge_org_bundle`'s
+# resolution choices through `ModuleOrgBundleHooks.merge_resolution_choices`.
 ORG_MERGE_RESOLUTION_CHOICES: Mapping[str, frozenset[str]] = {
     "compliance_standard": frozenset({"skip", "import_as_copy"}),
 }
@@ -173,30 +140,14 @@ def _required_action_key(action: ComplianceRequiredAction) -> str:
 
 
 def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
-    """`ModuleOrgBundleHooks.export` — collects this organisation's
-    Compliance Module content (§29) as a plain dict — every standard, with
-    every version's full requirement/required-action tree, plus the
-    organisation's action-type and mapping-relationship-type vocabularies
-    and its cross-standard requirement mappings.
+    """`ModuleOrgBundleHooks.export`: collects the organisation's Compliance content (§29) as a plain dict: every
+    standard with each version's requirement and required-action tree, the action-type and mapping-relationship-type
+    vocabularies and the cross-standard requirement mappings.
 
-    Every requirement is assigned a synthetic, export-scoped `ref`
-    (`"<standard reference>::v<version number>::<n>"`) so `parent_
-    requirement_id`, `cloned_from_requirement_id` (which may point at a
-    requirement in an *earlier* version of the same standard — see
-    `models.py`'s notes), and requirement-mapping endpoints
-    never carry a raw database id, mirroring every other cross-reference in
-    this bundle format. `standard.versions` is walked in its own natural
-    `version_number` order (see `ComplianceStandard.versions`'s own
-    `order_by`), so an older version's requirements always get their `ref`
-    assigned before a later version that clones from them is processed —
-    `cloned_from_requirement_id` can therefore always be resolved to an
-    already-known ref, never a forward reference.
-
-    Includes archived standards/versions/mappings — this module's own
-    established "export everything, let the reader filter" convention
-    (`members` aren't filtered by any lifecycle flag
-    either), since a bundle is a backup/migration artefact, not a live
-    listing.
+    Every requirement gets an export-scoped `ref` (`"<standard reference>::v<version number>::<n>"`) so
+    `parent_requirement_id`, `cloned_from_requirement_id` and mapping endpoints carry no database id. Versions are walked
+    in `version_number` order, so a clone's source always has its `ref` already (never a forward reference). Archived
+    standards, versions and mappings are included: a bundle is a backup, not a live listing.
     """
     standards = list(db.scalars(select(ComplianceStandard).where(ComplianceStandard.organization_id == org.id)))
     action_types = list(
@@ -322,13 +273,8 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     def email(user_id: UUID | None) -> str | None:
         return email_by_id.get(user_id) if user_id else None
 
-    # Second pass: resolve every `_owner`/`_creator`/`_created_by`/
-    # `_archived_by`/`_published_by`/`_retired_by` placeholder above into
-    # its email, now that `email_by_id` exists — done as a rewrite rather
-    # than threading `email_by_id` through the nested loops above, since
-    # this bundle format's own established convention (`project_export`) is
-    # to build the raw structure first and resolve emails via one shared
-    # closure at the point of final assembly.
+    # Second pass: replace the `_owner`/`_creator`/`_created_by`/`_archived_by`/`_published_by`/`_retired_by`
+    # placeholders with emails once `email_by_id` exists, rather than threading it through the nested loops above.
     for standard_json in standards_json:
         standard_json["creator_email"] = email(standard_json.pop("_creator"))
         standard_json["archived_by_email"] = email(standard_json.pop("_archived_by"))
@@ -395,20 +341,11 @@ def summarize_org_merge(
 
 
 def _import_compliance_vocab(db: Session, org: Organization, data: dict[str, Any]) -> None:
-    """Creates this organisation's compliance action-type and mapping-
-    relationship-type vocabularies from a bundle. Always purely additive by
-    name, for both `import_org_bundle` (a fresh org never already has one,
-    so every entry is created) and `merge_org_bundle` (a bundle entry whose
-    name matches one the target org already has is left completely alone,
-    never overwritten) — mirroring `org_export._import_org_groups`'s own
-    "reuse by name" precedent: these are just organisation-chosen vocabulary
-    labels with no history or sub-content, and overwriting `implies_
-    equivalence` on an existing type as a side effect of an unrelated import
-    would silently change a Compliance Manager's own prior decision about it
-    (see `models.py` on why that flag defaults `False`
-    and is deliberately never inferred). Must run before `_import_
-    compliance_standards`, whose required actions resolve `action_type_name`
-    against the rows this creates."""
+    """Creates the organisation's action-type and mapping-relationship-type vocabularies from a bundle, purely additive
+    by name for both import and merge: an entry whose name the organisation already has is left alone, because
+    overwriting `implies_equivalence` would silently change a Compliance Manager's own decision (the flag defaults
+    `False` and is never inferred). Must run before `_import_compliance_standards`, whose required actions resolve
+    `action_type_name` against these rows."""
     existing_action_type_names = {
         t.name.strip().lower()
         for t in db.scalars(select(ComplianceActionTypeDefinition).where(ComplianceActionTypeDefinition.organization_id == org.id))
@@ -440,35 +377,23 @@ def _import_compliance_standards(
     db: Session, org: Organization, data: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
     *, resolutions: dict[str, str] | None,
 ) -> dict[str, UUID]:
-    """Creates compliance standards — with every version's full requirement/
-    required-action tree — from a bundle. `resolutions=None` (`import_org_
-    bundle`): every standard is new, since a brand-new organisation can't
-    already have one with the same `reference`. Otherwise (`merge_org_
-    bundle`): a bundle standard whose `reference` collides with one the
-    target org already has is skipped (`"skip"`) or imported as a distinct
-    copy under a renamed reference (`"import_as_copy"`) per
-    `resolutions[f"compliance_standard:{reference}"]` — never overwritten in
-    place, mirroring `org_export._import_projects`'s identical reasoning: a
-    standard's versions/requirements/required actions are real content an
-    in-place replace would destroy, unlike a report template's pure
-    presentation config.
+    """Creates compliance standards, with every version's requirement and required-action tree, from a bundle.
+    `resolutions=None` (`import_org_bundle`): every standard is new. Otherwise (`merge_org_bundle`): a bundle standard
+    whose `reference` collides with an existing one is skipped (`"skip"`) or imported as a copy under a renamed reference
+    (`"import_as_copy"`) per `resolutions[f"compliance_standard:{reference}"]`, never overwritten in place, because a
+    standard's versions and requirements are content an in-place replace would destroy.
 
-    Must run after `_import_compliance_vocab` (required-action type names
-    are resolved against its output; an unresolvable name — should not
-    happen for a bundle this application produced itself — is skipped with
-    a warning rather than failing the whole import).
+    Must run after `_import_compliance_vocab`; a required-action type name that does not resolve is skipped with a
+    warning.
 
     Args:
         db, org, data: As elsewhere in this module.
         users: The shared `UserResolver` for this import.
-        warnings: Accumulates human-readable import warnings.
+        warnings: Accumulates import warnings.
         resolutions: See above.
 
     Returns:
-        Every imported requirement's bundle `ref` -> its new database id,
-        for `_import_compliance_requirement_mappings` (which runs after
-        every standard has been imported) to resolve `from_ref`/`to_ref`
-        against.
+        Every imported requirement's bundle `ref` -> new id, for `_import_compliance_requirement_mappings`.
     """
     existing_by_reference: dict[str, ComplianceStandard] = {}
     if resolutions is not None:
@@ -565,13 +490,9 @@ def _import_compliance_standards(
                         ),
                     ))
 
-    # Second pass: `parent_requirement_id`/`cloned_from_requirement_id` can
-    # only be wired up once every requirement in the bundle has been created
-    # (a clone may point at a requirement in an earlier version processed
-    # earlier in the loop above, but a parent link within the same version
-    # is created in list order, which does not guarantee parents precede
-    # children) — mirrors `project_export.apply_project_data`'s own
-    # identical two-pass shape for `RequirementVersion.change_request_id`.
+    # Second pass: parent and clone links are wired once every requirement exists, because a clone may point at an
+    # earlier version and a parent within a version is created in list order, which does not guarantee parents
+    # precede children.
     for requirement_id, parent_ref in pending_parent_links:
         parent_id = requirement_id_by_ref.get(parent_ref)
         if parent_id is not None:
@@ -648,16 +569,9 @@ def import_org_data(
     db: Session, org: Organization, data: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
     resolutions: dict[str, str] | None,
 ) -> None:
-    """`ModuleOrgBundleHooks.import_` — creates this organisation's
-    compliance vocabularies, standards (with every version's full
-    requirement/required-action tree), and cross-standard requirement
-    mappings from a bundle, in that order (each stage's own docstring below
-    explains why). Bundles the three formerly-separate `org_export.py` call
-    sites (`_import_compliance_vocab`/`_import_compliance_standards`/
-    `_import_compliance_requirement_mappings`) into the single hook `Module
-    OrgBundleHooks.import_` declares, since `_import_compliance_standards`'s
-    returned `requirement_id_by_ref` has no other consumer once `_import_
-    compliance_requirement_mappings` has run."""
+    """`ModuleOrgBundleHooks.import_`: creates the organisation's compliance vocabularies, standards and cross-standard
+    requirement mappings from a bundle, in that order. The standards stage's `requirement_id_by_ref` is consumed only by
+    the mappings stage."""
     _import_compliance_vocab(db, org, data)
     _import_default_manager_group(db, org, data, warnings)
     requirement_id_by_ref = _import_compliance_standards(db, org, data, users, warnings, resolutions=resolutions)
@@ -666,12 +580,9 @@ def import_org_data(
 
 # --- standard-level import/export -----------------------------------
 #
-# A narrower sibling to `export_org_data`/`import_org_data` above: a single
-# `ComplianceStandard` (with every version's full requirement/required-
-# action tree) as its own portable, self-contained JSON document — for
-# backing up or transferring just one standard, rather than an entire
-# organisation. See spec for the
-# full design; the short version is in each function's own docstring below.
+# A single `ComplianceStandard` (every version's requirement and required-action tree) as its own portable JSON
+# document, for backing up or transferring one standard rather than a whole organisation; each function's docstring
+# has the design.
 
 STANDARD_EXPORT_FORMAT = "reqtrackmanager.compliance_standard.v1"
 
@@ -701,28 +612,15 @@ def _mapping_side_json(
 
 
 def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str, Any]:
-    """Exports a single `ComplianceStandard` (§29) as a portable,
-    self-contained JSON document distinct from `export_org_data`'s whole-
-    organisation bundle — every version's full requirement/required-action
-    tree, plus only the subset of the organisation's action-type/mapping-
-    relationship-type vocabularies actually referenced by this standard's
-    own required actions/requirement mappings (not the whole
-    organisation's vocabulary).
+    """Exports a single `ComplianceStandard` (§29) as a portable JSON document: every version's requirement and
+    required-action tree plus only the action types and mapping-relationship types this standard's own required actions
+    and mappings use.
 
-    Reuses `export_org_data`'s exact synthetic per-requirement `ref`
-    convention (`"<standard reference>::v<version number>::<n>"`,
-    `parent_ref`/`cloned_from_ref` resolved the same way) and its
-    `compliance_action_types`/`compliance_mapping_relationship_types`
-    top-level key names, so `import_standard_data` can hand this
-    document's own `data` straight to `_import_compliance_vocab` unchanged
-    — "reuse `export.py`'s existing portable-key convention wholesale".
-
-    A requirement mapping (§19) touching this standard is always included,
-    even when its *other* side belongs to a different standard — that side
-    is recorded via `_mapping_side_json`'s `external` triple rather than a
-    local `ref` (which only covers requirements this document itself
-    carries); see `import_standard_data`'s own docstring for how that's
-    resolved (or dropped with a warning) on the way back in.
+    Reuses `export_org_data`'s `ref` convention and `compliance_action_types` /
+    `compliance_mapping_relationship_types` keys, so `import_standard_data` hands the document's `data` straight to
+    `_import_compliance_vocab`. A requirement mapping touching this standard is always included; when its other side
+    belongs to a different standard it is recorded as `_mapping_side_json`'s `external` triple, resolved (or dropped
+    with a warning) by `import_standard_data`.
     """
     requirement_ref_by_id: dict[UUID, str] = {}
     per_version: list[
@@ -755,10 +653,7 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
                 required_actions_by_requirement.setdefault(a.requirement_id, []).append(a)
         per_version.append((version, requirements, required_actions_by_requirement))
 
-    # Only the action types this standard's own required actions actually
-    # use, resolved by name after the loop above (mirrors `export_org_
-    # data`'s own `action_type_name_by_id`, scoped down) — "not the whole
-    # org's vocabulary".
+    # Only the action types this standard's own required actions use, resolved by name after the loop above.
     action_type_ids = {a.action_type_id for a in all_required_actions}
     action_types_used = (
         list(db.scalars(select(ComplianceActionTypeDefinition).where(ComplianceActionTypeDefinition.id.in_(action_type_ids))))
@@ -915,36 +810,18 @@ def import_standard_data(
     db: Session, org: Organization, data: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
     *, resolution: str | None,
 ) -> tuple[ComplianceStandard | None, bool]:
-    """Creates a single `ComplianceStandard` — with every version's full
-    requirement/required-action tree, always re-created as `DRAFT`
-    regardless of the exported version's own status — from an
-    `export_standard_data` document (§29), in `org`. §4/§31: an
-    imported standard must be reviewed and re-published locally before it
-    governs any project, never silently live — this is the one deliberate
-    departure from the export's own recorded `status`/`published_*`/
-    `retired_*` fields; every other field is carried over as exported.
+    """Creates a single `ComplianceStandard` from an `export_standard_data` document (§29) in `org`, always as `DRAFT`
+    whatever the exported status: an imported standard must be reviewed and re-published locally before it governs any
+    project. Every other field is carried over.
 
-    Reference-collision handling mirrors the whole-org merge precedent
-    (`ORG_MERGE_RESOLUTION_CHOICES`, `_import_compliance_standards`): if
-    `org` already has a standard whose `reference` matches (case-
-    insensitively), `resolution` must be `"skip"` (nothing is created;
-    returns `(None, True)`) or `"import_as_copy"` (the reference gets the
-    same `" (imported)"` suffix `_import_compliance_standards` already uses
-    for the identical collision one level up). A `None` resolution with a
-    real collision raises 409 so the caller can ask the user which to
-    choose — this module's own narrower alternative to the full org-bundle
-    preview/merge two-step, appropriate here since there is only ever one
-    possible collision (this standard's own reference), unlike an org
-    bundle's many.
+    Reference collisions follow the whole-organisation merge (`ORG_MERGE_RESOLUTION_CHOICES`): if `org` has a standard
+    with the same `reference` (case-insensitive), `resolution` must be `"skip"` (nothing created; returns
+    `(None, True)`) or `"import_as_copy"` (the reference gets the `" (imported)"` suffix). A `None` resolution with a
+    collision raises 409 so the caller can ask.
 
-    A `requirement_mappings` entry (§19) whose `from`/`to` side is
-    `external` (pointing at a requirement outside this document, i.e. in a
-    *different* standard) is resolved against `org`'s own existing
-    standards by `(standard_reference, version_label, requirement_key)` —
-    dropped with a warning if no match exists there, since the target
-    organisation/deployment may not have that other standard at all
-    (mirrors how `import_project_data` already drops an unresolvable
-    standard reference with a warning).
+    A `requirement_mappings` side marked `external` (a requirement of a different standard) is resolved against `org`'s
+    standards by `(standard_reference, version_label, requirement_key)` and dropped with a warning when there is no
+    match.
     """
     if data.get("format") != STANDARD_EXPORT_FORMAT:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This file is not a valid compliance standard export.")
@@ -1085,27 +962,14 @@ def import_standard_data(
 
 
 def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], dict[UUID, FileAsset]]:
-    """`ModuleProjectBundleHooks.export` — assembles a project's Compliance
-    Module content (§29) — every (including archived) `ProjectCompliance`
-    assignment with its full per-requirement/per-required-action assessment
-    state, every piece of evidence (with its files and revalidation
-    history), and every project-level review — as the `compliance_*` keys
-    merged into `project_export.collect_project_data`'s own returned dict.
-    See this module's own docstring for why the assigned *standard* itself
-    is referenced by portable `(standard reference, version label)` key
-    rather than re-embedded, and why a requirement is matched by
-    `_requirement_key` rather than a raw id.
-
-    Standard-level `ComplianceReview` rows (`standard_id` set, not
-    `project_compliance_id`) are deliberately excluded — those belong to
-    the *standard*, an organisation-level resource, and travel with
-    `export_org_data`'s own compliance content instead.
+    """`ModuleProjectBundleHooks.export`: assembles a project's Compliance content (§29): every (including archived)
+    `ProjectCompliance` assignment with its per-requirement and per-required-action assessment state, every piece of
+    evidence (files, revalidation history) and every project-level review, as the `compliance_*` keys merged into
+    `project_export.collect_project_data`. The assigned standard is referenced by portable key, not embedded (see the
+    module docstring). Standard-level `ComplianceReview` rows belong to the standard and travel with `export_org_data`.
 
     Returns:
-        A `(compliance_json, file_assets_by_id)` pair, in the same shape
-        `project_export.collect_project_data` itself returns — merged into
-        that function's own two return values, not returned as a separate
-        top-level bundle section.
+        A `(compliance_json, file_assets_by_id)` pair, merged into `collect_project_data`'s own return values.
     """
     file_assets_by_id: dict[UUID, FileAsset] = {}
     assignments = list(db.scalars(select(ProjectCompliance).where(ProjectCompliance.project_id == project.id)).all())
@@ -1147,11 +1011,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             assessments_by_pcr_id.setdefault(assessment.project_compliance_requirement_id, []).append(assessment)
         action_by_id = {a.id: a for actions in actions_by_requirement_id.values() for a in actions}
 
-        # Evidence links now live in the generic `ArtefactLink` table
-        #, evidence as source;
-        # filtering to `source_type == COMPLIANCE_EVIDENCE` keeps this
-        # correct by construction (mirrors `routers.requirements.
-        # list_links`'s established precedent for the same filter shape).
+        # Evidence links live in `ArtefactLink` with evidence as source; filtering on
+        # `source_type == COMPLIANCE_EVIDENCE` keeps this correct by construction.
         req_evidence_links = [
             link for link in relationships.get_links_to_many(db, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, pcr_ids)
             if link.source_type == ARTEFACT_TYPE_EVIDENCE
@@ -1228,6 +1089,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     evidence_ids = [e.id for e in evidence_rows]
     prime_record_tag_names(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
     prime_record_placements(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
+    prime_record_references(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
     revalidations_by_evidence: dict[UUID, list[ComplianceEvidenceRevalidation]] = {}
     files_by_evidence: dict[UUID, list[tuple]] = {}
     if evidence_ids:
@@ -1259,6 +1121,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "_archived_by": e.archived_by, "attachments": attachments,
             "tags": record_tag_names(db, ARTEFACT_TYPE_EVIDENCE, e.id),
             "placements": record_placements(db, ARTEFACT_TYPE_EVIDENCE, e.id),
+            "external_references": record_references(db, ARTEFACT_TYPE_EVIDENCE, e.id),
             "revalidations": [
                 {
                     "_revalidated_by": r.revalidated_by, "revalidated_at": _j(r.revalidated_at),
@@ -1269,12 +1132,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             ],
         })
 
-    # One batched, deployment-wide user lookup for every placeholder
-    # `_<field>` key collected above, mirroring `project_export.collect_
-    # project_data`'s own established "single lookup, not N+1" convention;
-    # resolved in a second pass over the already-built structures below
-    # rather than threaded through the nested loops above, matching
-    # `export_org_data`'s identical two-pass shape for the same reason.
+    # One batched user lookup for every `_<field>` placeholder collected above, resolved in a second pass over the
+    # built structures rather than threaded through the nested loops.
     user_ids: set[UUID | None] = {pc_json["_assigned_by"] for pc_json in project_compliances_json} | {
         pc_json["_archived_by"] for pc_json in project_compliances_json
     }
@@ -1471,36 +1330,19 @@ def import_project_data(
     db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes],
     current_user: User, users: UserResolver, warnings: BundleImportWarnings,
 ) -> None:
-    """`ModuleProjectBundleHooks.import_` — reconstructs a project's
-    Compliance Module content (§29) from a bundle's `compliance_evidence`/
-    `compliance_project_compliances` keys, called from `project_export.
-    apply_project_data` after every core requirement/change-request/
-    baseline section above it has already run.
+    """`ModuleProjectBundleHooks.import_`: reconstructs a project's Compliance content (§29) from a bundle's
+    `compliance_evidence` / `compliance_project_compliances` keys, after every core requirement, change-request and
+    baseline section has run.
 
-    Evidence is created first (independent of any assignment), so its
-    export-scoped `ref`s can be resolved while building each assignment's
-    requirement/required-action evidence links below. For each assignment,
-    the assigned standard/version is looked up in the *target* organisation
-    by `(standard_reference, version_label)` — an assignment whose standard
-    isn't present there at all is skipped entirely, with a warning (this
-    module's own docstring explains why the standard itself is never
-    re-embedded/re-created here). Once resolved, a fresh `ProjectCompliance`
-    row is created and `service.materialize_assessment_rows` is called to
-    build the same default `ProjectComplianceRequirement`/
-    `ComplianceRequiredActionAssessment` rows the normal "assign a standard
-    to a project" endpoint creates — this function then overlays the
-    bundle's recorded assessment state on top of that default scaffold
-    (matched per requirement via `_requirement_key`, per required action via
-    `_required_action_key`) rather than constructing those rows from scratch
-    itself, reusing this module's own established "don't duplicate existing
-    infrastructure" precedent one level down.
+    Evidence is created first so its `ref`s resolve while building each assignment's evidence links. Each assignment's
+    standard and version is looked up in the target organisation by `(standard_reference, version_label)`; one not
+    present is skipped with a warning. A fresh `ProjectCompliance` is then created, `service.materialize_assessment_rows`
+    builds the default assessment rows the assign endpoint creates, and the bundle's recorded state is overlaid on them
+    (matched by `_requirement_key` and `_required_action_key`).
 
-    A requirement or required action named in the bundle that doesn't match
-    anything in the target version (e.g. the standard was independently
-    edited between export and import, or a `(reference, name)` collision —
-    see `_requirement_key`'s own docstring) is skipped with a warning; its
-    default (`NOT_STARTED`/unassessed) state is left as `materialize_
-    assessment_rows` created it, never silently fabricated from the bundle.
+    A requirement or required action named in the bundle that matches nothing in the target version (the standard was
+    edited between export and import, or a key collision) is skipped with a warning and keeps its default
+    (`NOT_STARTED`) state; nothing is fabricated from the bundle.
     """
     organization_id = project.organization_id
     _import_default_exclusions(db, project, data, current_user, users, warnings)
@@ -1528,6 +1370,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=current_user.id,
             artefact_type=ARTEFACT_TYPE_EVIDENCE, artefact_id=evidence.id, entries=e.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=ARTEFACT_TYPE_EVIDENCE, artefact_id=evidence.id, entries=e.get("external_references"),
         )
 
         for att in e.get("attachments", []):

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { apiHeaders, installCleanupHook, loginAs, onCleanup, openProject, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { apiHeaders, installCleanupHook, loginAs, onCleanup, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin finds the organisation's report look on Branding and Configuration, not in a list of
@@ -33,7 +33,7 @@ test.describe("org report look and project report setup", () => {
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
     await test.step("Reports has no Report templates section", async () => {
-      await selectOrgAdminGroup(page, "Reports");
+      await page.goto(page.url().replace(/\/admin$/, "/resources/reports"));
       await expect(page.getByRole("button", { name: "Report layouts section" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Report templates section" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "New template" })).toHaveCount(0);
@@ -66,11 +66,8 @@ test.describe("org report look and project report setup", () => {
       await openProject(page, PROJECT_NAMES.gamma2);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await page.getByLabel("Usable as a project template").check();
-      // Same PUT-vs-reload race the "select it as Gamma-1's default report
-      // template" step above already guards against: a bare click() races
-      // saveSettings()'s PATCH against the immediate reload below, which
-      // can reload before the request reaches the server and read the
-      // pre-save (unchecked) state back.
+      // Same PUT-vs-reload race as the "select it as Gamma-1's default report template" step above: a bare click() races
+      // saveSettings()'s PATCH against the immediate reload, which can read the pre-save (unchecked) state back.
       await Promise.all([
         page.waitForResponse((r) => r.url().includes(`/api/v1/projects/`) && r.request().method() === "PATCH"),
         page.getByRole("button", { name: "Save settings" }).click(),

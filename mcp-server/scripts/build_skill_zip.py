@@ -1,24 +1,15 @@
 """
 Module: build_skill_zip
 
-Builds the downloadable agent-skill artefacts for the documentation site from
-`mcp-server/skill/reqtrack-mcp/` plus the backend's generated module-tool
-reference:
+Builds the downloadable agent-skill artefacts for the documentation site from `mcp-server/skill/reqtrack-mcp/` plus
+the backend's generated module-tool reference: `reqtrack-mcp-skill.zip` (a Claude Code skill folder) and
+`reqtrack-mcp-instructions.md` (the same guidance as one Markdown file for clients that do not load skills).
 
-- `reqtrack-mcp-skill.zip`: a Claude Code skill folder (`reqtrack-mcp/SKILL.md`
-  and `references/{core,module}-tools.md`).
-- `reqtrack-mcp-instructions.md`: the same guidance as one plain Markdown file
-  for clients that do not load skills (Copilot instructions, generic clients).
+Responsibilities: standard library only, so CI and developers run it without the MCP server's dependencies
+(`python mcp-server/scripts/build_skill_zip.py [OUT_DIR]`); deterministic output (fixed zip timestamps, sorted entries).
 
-Responsibilities:
-- Stdlib only, so CI and developers can run it without the MCP server's
-  dependencies (`python mcp-server/scripts/build_skill_zip.py [OUT_DIR]`).
-- Deterministic output (fixed zip timestamps, sorted entries).
-
-Design decisions:
-- The outputs are built, never committed (`docs/website/static/downloads/` is
-  gitignored), so a download cannot drift from the sources the drift tests
-  guard. The docs CI job runs this before `npm run build`.
+Design decisions: the outputs are built and never committed (`docs/website/static/downloads/` is gitignored), so a
+download cannot drift from the sources the drift tests guard. The docs CI job runs this before `npm run build`.
 """
 
 from __future__ import annotations

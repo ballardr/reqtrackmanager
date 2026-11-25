@@ -3,7 +3,8 @@
  *
  * Administration of policies for one scope: the server's, or one organisation's (the same panel with the owner
  * passed in). Lists the built-in policies first (the server's, unset until written) and any others, with their
- * status, version and effective date. An administrator can write or edit the working copy, publish it as a new
+ * status, and by default version and effective date (the audience, on an organisation's list; the last update on
+ * request through the column chooser). An administrator can write or edit the working copy, publish it as a new
  * version with a change note, unpublish it, read the version history, and delete a policy that is not built in.
  *
  * A policy that requires acceptance shows a badge and an **Acceptance** action: who has accepted its current version,
@@ -27,6 +28,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { formatPlainDate } from "../utils/localDate";
 import { sortRows } from "../utils/sortRows";
 import { Badge } from "./Badge";
@@ -64,7 +66,7 @@ function PublishDialog({ title, error, organisation, onCancel, onPublish }: {
     <Modal title={text.publishTitle(title)} onClose={onCancel}>
       <div className="stack">
         <p>{organisation ? text.publishBodyOrganisation : text.publishBody}</p>
-        <TextAreaField label={text.changeNote} help={strings.help.policyChangeNote} value={note} onChange={setNote} rows={3} inputProps={{ maxLength: 1000 }} />
+        <TextAreaField plainText="A version's one-line change note, listed in version histories" label={text.changeNote} help={strings.help.policyChangeNote} value={note} onChange={setNote} rows={3} inputProps={{ maxLength: 1000 }} />
         {organisation && <CheckboxField label={text.notifyMembers} help={strings.help.policyNotifyMembers} checked={notifyMembers} onChange={setNotifyMembers} />}
         <FormActions error={error} onCancel={onCancel} saveLabel={text.publish} onSave={() => onPublish(note.trim(), notifyMembers)} />
       </div>
@@ -204,8 +206,6 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
     if (await run(() => api.delete(`${path}/${item.id}`), "delete", text.noun)) await reload();
   }
 
-  if (loadError) return <InlineMessage>{loadError}</InlineMessage>;
-  if (!items) return <Spinner />;
   const columns: DirectoryColumn<PolicySummary | OrgPolicySummary>[] = [
     { key: "title", label: text.title, sortable: true, render: (item) => <strong>{item.title}</strong> },
     {
@@ -221,10 +221,10 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
           </div>
         ),
     },
-    { key: "version", label: text.version, sortable: true, render: (item) => (item.current_version > 0 ? item.current_version : "") },
+    { key: "version", label: text.version, sortable: true, optional: true, render: (item) => (item.current_version > 0 ? item.current_version : "") },
     ...(organisation
       ? [{
-          key: "audience", label: text.audience,
+          key: "audience", label: text.audience, sortable: true, optional: true,
           render: (item: PolicySummary | OrgPolicySummary) =>
             "audience" in item && item.audience.length > 0 ? (
               <div className="row" style={{ gap: "var(--space-1)", flexWrap: "wrap" }}>
@@ -235,8 +235,8 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
             ),
         }]
       : []),
-    { key: "effective_from", label: text.effectiveFromLabel, sortable: true, render: (item) => (item.effective_from ? formatPlainDate(item.effective_from) : "") },
-    { key: "updated_at", label: text.updated, sortable: true, render: (item) => (item.updated_at ? new Date(item.updated_at).toLocaleString() : "") },
+    { key: "effective_from", label: text.effectiveFromLabel, sortable: true, optional: true, render: (item) => (item.effective_from ? formatPlainDate(item.effective_from) : "") },
+    { key: "updated_at", label: text.updated, sortable: true, optional: true, defaultHidden: true, render: (item) => (item.updated_at ? new Date(item.updated_at).toLocaleString() : "") },
     {
       key: "actions", label: "",
       render: (item) => (
@@ -268,20 +268,27 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
     },
   ];
 
+  const chosen = useOptionalColumns("policies", columns);
+
+  if (loadError) return <InlineMessage>{loadError}</InlineMessage>;
+  if (!items) return <Spinner />;
+
   return (
     <div className="stack">
       {settings && (
         <ToggleField label={text.allowLinks} help={strings.help.policyLinks} checked={settings.allow_links} onChange={(next) => void setAllowLinks(next)} />
       )}
       <div className="row" style={{ justifyContent: "flex-end" }}>
+        {chosen.chooser}
         <button className="btn btn-primary" onClick={() => { setSaveError(null); setEditing({ kind: "new" }); }}>{text.newPolicy}</button>
       </div>
       <DirectoryTable
         ariaLabel={text.heading}
-        columns={columns}
+        columns={chosen.columns}
         rows={sortRows(items, sort, {
           title: (item) => item.title,
-          state: (item) => (item.id === null ? "" : POLICY_STATE_LABEL[item.state]),
+          state: (item) => (item.id === null ? text.notWritten : POLICY_STATE_LABEL[item.state]),
+          audience: (item) => ("audience" in item && item.audience.length > 0 ? item.audience.map((p) => p.label).join(", ") : text.audienceEveryone),
           version: (item) => (item.current_version > 0 ? item.current_version : null),
           effective_from: (item) => item.effective_from ?? null,
           updated_at: (item) => item.updated_at ?? null,

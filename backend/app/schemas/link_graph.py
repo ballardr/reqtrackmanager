@@ -79,6 +79,7 @@ class LinkGraphEdge(BaseModel):
     cross_project: bool = False
     nesting_permitted: bool = True
     dedicated: bool = False
+    note: str | None = None  # why the link exists when it was not authored directly (a carried-over link)
 
 
 class LinkGraphOut(BaseModel):

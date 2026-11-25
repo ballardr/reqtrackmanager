@@ -1,14 +1,11 @@
 /**
  * Module: modules/stakeholders/StakeholderGroupsField
  *
- * A Stakeholder's groups on its detail page: the group names as
- * badges (with their full path on hover) and a `TreeSelect` to change them,
- * applied with an explicit Save so a multi-group change lands in one request
- * (and an `exclusive_children` conflict rejects the whole set, not half of it).
- * Only the groups of the viewing tier are editable — organisation groups from an
- * organisation page, a project's own from a project page — the other tier's
- * nodes are shown disabled. Group membership is classification, not part of the
- * stakeholder's version history.
+ * A Stakeholder's groups on its detail page: the group names as badges (full path on hover) and a `TreeSelect` to
+ * change them, applied with an explicit Save so a multi-group change lands in one request (an `exclusive_children`
+ * conflict rejects the whole set, not half of it). Only the groups of the viewing tier are editable (organisation
+ * groups from an organisation page, a project's own from a project page); the other tier's nodes are shown disabled.
+ * Group membership is classification, not part of the stakeholder's version history.
  */
 import { useState } from "react";
 
@@ -19,6 +16,7 @@ import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { buildGroupTree, groupPath, groupSelectNodes } from "./groupTree";
 import type { StakeholderGroup, StakeholderGroupRef } from "./types";
 import { Badge } from "../../components/Badge";
+import { PeopleKindIcon } from "./PeopleKindIcon";
 
 export function StakeholderGroupsField({
   current,
@@ -57,7 +55,7 @@ export function StakeholderGroupsField({
       ) : (
         <span className="row" style={{ gap: "var(--space-2)" }}>
           {current.map((g) => (
-            <Badge key={g.id} title={groupPath(groups, g.id)}>
+            <Badge key={g.id} title={groupPath(groups, g.id)} icon={<PeopleKindIcon kind="group" />}>
               {g.name}{" "}
               <span className="text-muted">
                 <ScopedRecordCode record={g} />

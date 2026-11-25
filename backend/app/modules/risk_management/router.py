@@ -1,15 +1,11 @@
 """
 Module: modules.risk_management.router
 
-Organisation-scoped API for the Risk Management module, mounted at
-`/api/v1/orgs/{organization_id}/modules/risk_management`: the org Risk type
-vocabulary (list, create, reorder, rename/deactivate, delete). Risks themselves
-are project-scoped (`project_router.py`).
-
-RBAC: sub-component enablement to view the list; every change needs
-`_shared.require_risk_type_admin` (the `risk_type_admin` module role, composing
-with org admin). Scoring levels, bands and cell ratings for the `risk` scheme are
-configured through core's generic scoring endpoints, gated by the same role.
+Organisation-scoped API at `/api/v1/orgs/{organization_id}/modules/risk_management`:
+the org Risk type vocabulary (list, create, reorder, rename/deactivate, delete).
+Reads need the sub-component enabled; changes need `_shared.require_risk_type_admin`
+(`risk_type_admin`, composing with org admin), which also gates the `risk`
+scheme's configuration through core's scoring endpoints.
 """
 
 from __future__ import annotations

@@ -4,15 +4,13 @@ Module: tests.test_report_starter_bands
 The header and footer cells of every document starter, as each file format draws them.
 
 Responsibilities:
-- Pin the starters' band: none of them writes a header or footer, so each prints the default footer (the page number,
-  centred), and the content-sized cell rule must leave that number centred, top aligned, on every paper size.
-- Run each document starter in the preview, Word, OpenDocument and PDF formats and check the footer is drawn where
-  that rule puts it.
+- Pin the starters' band: none writes a header or footer, so each prints the default footer (the page number,
+  centred), and the content-sized cell rule leaves that number centred, top aligned, on every paper size.
+- Run each document starter in the preview, Word, OpenDocument and PDF formats and check the footer is drawn there.
 
-Design decisions:
-- The starters set no width or alignment of their own: the default footer has one filled cell, so the content-sized
-  rule already gives the room to the centre and the empty sides the same floor. A starter that later needs a fixed
-  logo cell sets it in its tree, and the first test fails until it is read as rendered.
+Design: the starters set no width or alignment of their own; the default footer has one filled cell, so the
+content-sized rule gives the centre and the empty sides the same floor. A starter with a fixed logo cell sets it in
+its tree, and the first test fails until it is read as rendered.
 """
 
 from __future__ import annotations

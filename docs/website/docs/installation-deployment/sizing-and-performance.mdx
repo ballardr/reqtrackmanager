@@ -103,7 +103,7 @@ A backend worker starts at 0.42 GiB and **keeps the memory of the heaviest reque
 | Database (3 GiB) | 0.35-0.39 | 0.73-0.93 | 0.86-0.88 | 2.1-2.7 |
 | Object storage (2 GiB) | 0.85 | 0.74-0.77 | 0.53-0.69 | 0.26-0.39 |
 
-The limits in `docker-compose.yml` are set from these peaks and are settable from `.env` (`BACKEND_MEM_LIMIT`, `DB_MEM_LIMIT`, `STORAGE_MEM_LIMIT`; see [Scaling](./scaling-and-modules.md#memory-limits-and-sizing)). A service over its limit is killed and restarted, so raise a limit before the load that needs it.
+The limits in `deployments/full/docker-compose.yml` are set from these peaks and are settable from `.env` (`BACKEND_MEM_LIMIT`, `DB_MEM_LIMIT`, `STORAGE_MEM_LIMIT`; see [Scaling](./scaling-and-modules.md#memory-limits-and-sizing)). A service over its limit is killed and restarted, so raise a limit before the load that needs it.
 
 <PerformanceFigure
   name="backend-memory-soak"

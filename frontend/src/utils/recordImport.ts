@@ -1,10 +1,10 @@
 /**
  * Module: utils/recordImport
  *
- * The pure steps of the record import wizard: guessing which of the person's CSV headers is which column, and
- * rebuilding the file in the server's own header names (with any "same value for every row" columns), so the
- * server only ever receives the one canonical format an export writes. Kept free of React so the rules are
- * unit-testable.
+ * The pure steps of the record import wizard: guessing which CSV header is which
+ * column, and rebuilding the file in the server's header names (with any "same
+ * value for every row" columns), so the server receives only the one canonical
+ * export format. Free of React so the rules are unit-testable.
  */
 import Papa from "papaparse";
 

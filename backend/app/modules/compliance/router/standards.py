@@ -186,20 +186,10 @@ def get_standard_project_summary(
     organization_id: UUID, standard_id: UUID, include_archived: bool = Query(False),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """This standard's own slice of §20's per-assignment status (the
-    Overview "projects this standard applies to" / "compliant" stat tiles)
-    — the exact same per-project computation `list_all_project_compliance`
-    already runs across every standard in the org (`build_status_out`),
-    narrowed to just the assignments whose version belongs to this one
-    standard. No new counting logic: this is a narrower query plus the same
-    `build_status_out` call, not a reimplementation of §20's percentage/
-    state calculation.
-
-    View-gated like every other read on this standard (`get_standard`,
-    `list_standards`) rather than manage-gated like `list_all_project_
-    compliance` itself — this is this standard's own Overview stats,
-    visible to anyone who can already view the standard, not the
-    Compliance Manager's cross-standard reporting §26 restricts."""
+    """This standard's slice of §20's per-assignment status (the Overview "projects this standard applies to" and
+    "compliant" tiles): `list_all_project_compliance`'s `build_status_out` computation narrowed to the assignments whose
+    version belongs to this standard. View-gated like `get_standard`, not manage-gated, because these are the standard's
+    own Overview stats, not the cross-standard reporting §26 restricts."""
     _get_standard_or_404(db, organization_id, standard_id)
     query = (
         select(ProjectCompliance)
@@ -364,23 +354,14 @@ def update_standard_applicability_default(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardApplicabilityDefaultUpdate,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
-    """Switches a standard's default project-assignment mode (§3) — Compliance-Manager-only (or org admin/server admin, via
-    `require_module_role`'s existing composition), never a Project
-    Manager, who may only act on their own project's own assignment row.
+    """Switches a standard's default project-assignment mode (§3): Compliance Manager only (or organisation or server
+    admin through `require_module_role`), never a Project Manager.
 
-    Switching to `APPLIES_TO_ALL_PROJECTS` immediately reconciles a real
-    `ProjectCompliance` row into existence for every current, non-archived,
-    non-excluded project in this organisation (`service.py::reconcile_
-    standard_applicability`) — never a virtual/computed default, since a
-    real row is what carries the per-requirement assessment/audit trail
-    every other part of this module depends on (§8, §16). Switching back to
-    `OPT_IN` reconciles nothing and never retroactively archives rows a
-    prior reconciliation created (see `models.py`'s applicability defaults
-    design decisions) — idempotent either way (setting the same mode
-    twice is a harmless no-op, though re-setting `APPLIES_TO_ALL_PROJECTS`
-    still re-runs reconciliation, picking up e.g. a project that was
-    created between the two calls without going through the `on_project_
-    created` hook for some other reason)."""
+    Switching to `APPLIES_TO_ALL_PROJECTS` reconciles a real `ProjectCompliance` for every current, non-archived,
+    non-excluded project of the organisation (`service.reconcile_standard_applicability`), because a real row carries
+    the assessment and audit trail (§8, §16). Switching to `OPT_IN` reconciles nothing and never archives rows an
+    earlier reconciliation created. Setting the same mode again is harmless; re-setting `APPLIES_TO_ALL_PROJECTS` re-runs
+    reconciliation."""
     standard = _get_standard_or_404(db, organization_id, standard_id)
     previous = standard.applicability_default
     standard.applicability_default = payload.applicability_default

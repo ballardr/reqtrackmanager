@@ -76,6 +76,12 @@ A rejected request follows FastAPI's default shapes:
   {"detail": "Project not found."}
   ```
 
+- **A rejected token** — a `401` with `WWW-Authenticate: Bearer` and a stable `code`, `invalid_token`, beside the usual `detail`. It means the token itself is no longer accepted (expired, revoked, or replaced by a password change) and is the same for every cause, so a caller cannot tell which; the caller should obtain a new token rather than retry. A `401` for a wrong password or a wrong two-factor code has no `code`:
+
+  ```json
+  {"detail": "Could not validate credentials.", "code": "invalid_token"}
+  ```
+
 - **A 422 validation error** — `{"detail": [...]}`, an array of Pydantic error objects, each with `type`/`loc`/`msg`/`input`:
 
   ```json

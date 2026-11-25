@@ -1,12 +1,9 @@
 /**
  * Module: components/ScoringModelSwitcher
  *
- * The "chosen when viewing" control of the generic scoring-matrix core:
- * picks which scoring model ranks a
- * view and, optionally, how per-persona scores roll up. Both are plain
- * `LabeledSelect`s without a blank option — a view is always under exactly
- * one model. The caller passes the effective default model as the initial
- * value and owns any persistence (none, for a per-view choice).
+ * The "chosen when viewing" control of the scoring core: picks which scoring model ranks a view and, optionally, how
+ * per-persona scores roll up. Both are plain `LabeledSelect`s without a blank option, since a view is always under
+ * exactly one model. The caller passes the effective default model and owns any persistence (none for a per-view choice).
  */
 import { LabeledSelect } from "./LabeledSelect";
 import { useStrings } from "../context/TerminologyContext";

@@ -6,16 +6,12 @@ import { deleteOrgOnCleanup, installCleanupHook } from "./helpers";
 installCleanupHook();
 
 /**
- * End-to-end proof of public self-signup (`ServerSettings.signup_mode`,
- * `routers/auth.py::signup`): the `/signup` form is unreachable when
- * disabled, works with no organisation joined under `always_on`, and
- * auto-joins a matching organisation under `org_specified` — only when
- * that organisation has actually opted in (`allow_self_signup`), not from
- * a configured domain alone. See docs/decisions.md's "Self-signup,
- * invites, and SSO" entry.
+ * End-to-end proof of public self-signup (`ServerSettings.signup_mode`, `routers/auth.py::signup`): the `/signup`
+ * form is unreachable when disabled, works with no organisation joined under `always_on`, and auto-joins a matching
+ * organisation under `org_specified` only when that organisation has opted in (`allow_self_signup`), not from a
+ * configured domain alone. See docs/decisions.md's "Self-signup, invites, and SSO" entry.
  *
- * Configures the server-wide mode and org settings via API first (setup),
- * then drives the actual signup form through the browser.
+ * Configures the server-wide mode and org settings via API first (setup), then drives the signup form in the browser.
  */
 
 const ADMIN_EMAIL = "admin@example.com";

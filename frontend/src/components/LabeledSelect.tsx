@@ -1,15 +1,10 @@
 /**
  * Module: components/LabeledSelect
  *
- * The `<label className="stack"><span>{label}</span><select className="input"
- * ...>` block that `RequirementMappingsModal.tsx`, the old inline "Add
- * compliance link" popover, and the new requirement-link picker's cascading
- * selects all needed byte-for-byte — extracted once a third and fourth
- * occurrence made it a genuine repeated pattern (`CLAUDE.md`'s reuse rule). Purely presentational: one labelled
- * `<select>` with a leading placeholder option and an optional disabled
- * state (plus `help`/`helpNotNeeded` for the field's `(?)` help, `ariaLabel` when the accessible name must differ from the visible label, `hint` and `inputProps`
- * for the odd `select` attribute, and `autoWidth` for a select with a few short options that need not fill the row). Callers own any cascading-reset behaviour (e.g. clearing a child
- * selection when its parent changes) — this component only renders.
+ * The labelled `<select className="input">` block shared by forms: one `<select>` with a leading placeholder
+ * option and an optional disabled state, plus `help`/`helpNotNeeded` for the `(?)` help, `ariaLabel` when the
+ * accessible name differs from the label, `hint`, `inputProps` for a stray `select` attribute and `autoWidth` for
+ * a few short options. Purely presentational: callers own any cascading reset.
  */
 import { useId } from "react";
 import type { ReactNode, SelectHTMLAttributes } from "react";

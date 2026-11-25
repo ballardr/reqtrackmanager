@@ -11,7 +11,7 @@
  * - Suggestions are computed by the server and become links only when accepted here (`projectAllocationApi.accept`);
  *   the panel never writes a link itself.
  * - The card draws nothing while the record has no allocation, no suggestion and no dismissal, so a requirement of a project
- *   that does not use the architecture is unchanged. Allocating by hand stays in the Links panel.
+ *   that does not use the architecture is unchanged. Manual allocation stays in the Links panel.
  * - A person who cannot change links reads the lists and sees no buttons (`can_manage` from the server).
  * - What "suggested" means is explained in the `(?)` tooltip, never in permanent text.
  */

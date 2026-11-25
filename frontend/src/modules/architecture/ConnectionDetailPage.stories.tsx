@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
+import { recordActionNames } from "../../testing/recordActions";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildConnection, buildRecordDiagram, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ConnectionDetailPage } from "./ConnectionDetailPage";
@@ -30,6 +32,17 @@ export const ShowsBothEndsWithPortsAndLinksToThem: Story = {
   },
 };
 
+/** A draft connection promotes to Proposed; Activate directly and Reject are rows of the actions menu. */
+export const TheLifecycleTrackPromotesAndTheMenuOffersTheOtherMoves: Story = {
+  beforeEach: () => { mockArchitectureReads({ connection: buildConnection({ status: "draft" }) }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("button", { name: "Next step: Proposed" })).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Draft");
+    await expect((await recordActionNames(canvas, "Connection")).slice(0, 3)).toEqual(["Promote to Proposed", "Activate directly", "Reject"]);
+  },
+};
+
 /** The Diagrams card is directly under the details, before the Realisation card, and says how each diagram draws the line. */
 export const DiagramsCardFollowsTheDetailsCard: Story = {
   beforeEach: () => {
@@ -46,7 +59,7 @@ export const DiagramsCardFollowsTheDetailsCard: Story = {
   },
 };
 
-/** An end the viewer can no longer read shows only its code, with no link. */
+/** An end the viewer cannot read shows only its code, with no link. */
 export const LockedEndShowsOnlyItsCode: Story = {
   beforeEach: () => {
     mockArchitectureReads({ connection: buildConnection({ target_locked: true, target_element_name: "" }) });

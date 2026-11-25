@@ -270,13 +270,14 @@ export const NoPainPointColumnOrFilterWhenPainPointsAreOff: Story = {
   },
 };
 
-/** The Code header orders the requests by code, ascending then descending. */
+/** The list opens by code ascending, so the Code header's first click is descending and its second returns to the default. */
 export const CodeHeaderSortsTheRequests: Story = {
   beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
     const table = await within(canvasElement).findByRole("table", { name: "Enhancement requests" });
     const codes = within(table).getAllByRole("link", { name: /^ENH-/ }).map((link) => link.textContent ?? "");
     const ascending = [...codes].sort();
-    await expectHeaderSorts(table, "Code", ascending);
+    await expect(codes).toEqual(ascending);
+    await expectHeaderSorts(table, "Code", [...ascending].reverse(), ascending);
   },
 };

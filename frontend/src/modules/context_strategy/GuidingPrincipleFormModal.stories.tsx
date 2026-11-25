@@ -4,11 +4,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import type { GuidingPrinciple } from "./types";
 
-/**
- * `GuidingPrincipleFormModal` renders via `Modal`, which portals to
- * `document.body` — every assertion here queries `within(document.body)`,
- * mirroring `StrategyFormModal.stories.tsx`'s own identical convention.
- */
+/** `Modal` portals to `document.body`, so every assertion queries `within(document.body)`, as in `StrategyFormModal.stories.tsx`. */
 const meta: Meta<typeof GuidingPrincipleFormModal> = {
   title: "Modules/ContextStrategy/GuidingPrincipleFormModal",
   component: GuidingPrincipleFormModal,
@@ -77,7 +73,9 @@ export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
   args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
   play: async () => {
     const body = within(document.body);
-    await userEvent.type(body.getByLabelText("Guiding Principle name"), "W".repeat(200));
+    // One paste, not 200 keystrokes: every keystroke re-renders the whole form, which timed out under load.
+    await userEvent.click(body.getByLabelText("Guiding Principle name"));
+    await userEvent.paste("W".repeat(200));
     await expect(body.getByText(/Could not save:/)).toBeVisible();
     await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
     const dialog = body.getByRole("dialog");

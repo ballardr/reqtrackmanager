@@ -4,7 +4,7 @@ This guide covers running ReqTrackManager locally to try it out or hack on it, p
 
 ## Quick start — local development / evaluation
 
-Use the dedicated dev/test stack, **not** the root `docker-compose.yml` (that one is production-oriented and requires real secrets — see [deployment.md](deployment.md)):
+Use the dedicated dev/test stack, **not** the `deployments/full/docker-compose.yml` (that one is production-oriented and requires real secrets — see [deployment.md](deployment.md)):
 
 ```bash
 cd tests/container
@@ -22,12 +22,12 @@ Once healthy:
 - **Prometheus metrics**: http://localhost:8000/metrics
 - **MCP server** (AI-assistant access to requirements — see [mcp-server.md](mcp-server.md)): http://localhost:8100/mcp
 - **MailHog UI** (view sent notification emails): http://localhost:8025
-- **Picture converter** (EPS and PDF logos to SVG; internal network only, no published port): `docker compose exec converter python -m unittest discover -s tests` runs its tests against the real Ghostscript and poppler. The backend's real-conversion tests (`tests/test_report_converter.py`) skip when it is not reachable, so run them in the container: `docker compose exec backend python -m pytest tests/test_report_converter.py`.
+- **Converter** (EPS and PDF logos to SVG, and Mermaid diagrams to SVG; internal network only, no published port): `docker compose exec converter python -m unittest discover -s tests` runs its tests against the real Ghostscript, poppler and diagram renderer (about two minutes: every diagram type is drawn in a process of its own). The backend's real-conversion tests (`tests/test_report_converter.py`, `tests/test_report_diagram.py`) skip when it is not reachable, so run them in the container: `docker compose exec backend python -m pytest tests/test_report_converter.py tests/test_report_diagram.py`. The diagram corpus and the reference of what each type draws are `converter/tests/diagram_corpus.json` and `diagram_reference.json` (with copies in `frontend/src/utils/`, held equal by a test); after changing the corpus or the Mermaid version run `node scripts/generate-diagram-reference.mjs` in `frontend/` and commit the three files.
 - **Docs site preview** (see [Documentation website](#documentation-website) below): http://localhost:3001/reqtrackmanager/ — the app's header **Help** link opens this local copy in this stack (`HELP_URL` in `tests/container/docker-compose.yml`; set `HELP_URL` in your shell to override). A real deployment keeps the public-site default.
 
 Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
 
-**Never point this stack at the internet, and never confuse it with the production stack** (`docker-compose.yml`, repo root) — see [deployment.md](deployment.md#two-separate-compose-stacks) for why they're kept deliberately separate.
+**Never point this stack at the internet, and never confuse it with the production stack** (`deployments/full/docker-compose.yml`) — see [deployment.md](deployment.md#two-separate-compose-stacks) for why they're kept deliberately separate.
 
 ### Demo data
 
@@ -47,7 +47,7 @@ Idempotent (skips if already seeded) and API-driven, same as the E2E persona dat
 
 ### Demonstration setup and daily reset
 
-`scripts/demo.sh` sets the stack up as a demonstration (seed, sign-in details on the login page), `--reset` starts again, and a daily reset is available either as an opt-in service or as a host timer that first pulls the latest published images (`--pull`). The demonstration is served over HTTPS by a Caddy proxy at `https://localhost` (a public host name gets a real certificate); developer and test runs of the stack keep their direct ports. Commands, options, variables, guards, HTTPS, usage metrics (collected in Prometheus and bundled with `--export-metrics`) and Microsoft Clarity are in [demo.md](demo.md).
+`scripts/demo.sh` sets the stack up as a demonstration (seed, sign-in details on the login page), `--reset` starts again, and a daily reset is available either as an opt-in service or as a host timer that first pulls the latest published images (the default; `--no-pull` builds the working tree, `--sso` adds Keycloak). The demonstration is served over HTTPS by a Caddy proxy at `https://localhost` (a public host name gets a real certificate); developer and test runs of the stack keep their direct ports. Commands, options, variables, guards, HTTPS, usage metrics (collected in Prometheus and bundled with `--export-metrics`) and Microsoft Clarity are in [demo.md](demo.md).
 
 ## Backend
 
@@ -74,7 +74,9 @@ cd ../../backend && source .venv/bin/activate
 DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test pytest -n 4 -q   # actually runs against reqtrack_pytest_test_gw0..gw3
 ```
 
-Run the full suite with `-n 4`, as CI does (`pytest-xdist`, in `requirements.txt`): each worker gets its own database (`reqtrack_pytest_test_gw0`, `_gw1`, ...), so they never interfere. The full suite takes about 15 to 25 minutes that way and about 95 minutes without `-n`. Use plain `pytest -q` for a single file or test, and never start a second pytest run while one is going: two runs share the same databases.
+Run the full suite with `-n 4`, as CI does (`pytest-xdist`, in `requirements.txt`): each worker gets its own database (`reqtrack_pytest_test_gw0`, `_gw1`, ...), so they never interfere. The full suite takes about 31 minutes that way on a 12-core host (CI: about 26 on its four-core runner with coverage) and about 95 minutes without `-n`. For a quicker loop leave out the slowest tests with `-m "not slow"` (114 tests, about a tenth of the work: the files and tests that take ten seconds or more are marked `slow`); CI and the pull-request check always run all of them. Use plain `pytest -q` for a single file or test, and never start a second pytest run while one is going: two runs share the same databases.
+
+Memory, not cores, limits the worker count: a pytest worker holds about 0.5 GB and the stack's own API runs four processes of about 0.4 GB each, so on an 8 GB Docker VM `-n 4` is the ceiling. A worker killed by the out-of-memory killer fails whichever test it was running (`worker 'gwN' crashed`). Start the stack with `BACKEND_WORKERS=1 docker compose up -d backend` when only pytest will use it (CI does) to free about 1.5 GB. After copying files into the container with `docker compose cp`, run `docker compose exec -u root backend chown -R app:app /app/tests`, otherwise pytest cannot cache its rewritten test modules and each worker spends about a minute recompiling them.
 
 Or run them inside the dev/test stack's own backend container:
 
@@ -108,7 +110,7 @@ Coverage today only reflects the files actually exercised by a story (`*.stories
 
 CI (`ci.yml`) and `frontend/Dockerfile` both install with Node 26; `frontend/.nvmrc` pins the same major version for local use (`nvm use` from `frontend/`, or let `nvm`'s shell integration auto-switch on `cd`). Keep all three in lockstep if Node is bumped again in future — a locally-installed Node on a different major version bundles a different npm major version, which can resolve transitive optional dependencies differently and write a `package-lock.json` that *looks* complete but that a different npm version's `npm ci` rejects with "Missing: `<pkg>` from lock file" — the lockfile is valid, just for a different npm version. See [decisions.md](decisions.md) for a real instance of this.
 
-Playwright is the exception to "caret ranges are fine": `playwright` (`frontend/`) and `@playwright/test` (`tests/playwright/`) are pinned to exact versions, and the matching `mcr.microsoft.com/playwright:vX.Y.Z-noble` image tags in `ci.yml` must be bumped in the same change (the npm package and browser build must be the same release, or the browser fails to launch and the run executes zero tests). `scripts/check-playwright-image-sync.py` enforces this: it runs as the first step of the `frontend` and `e2e-tests` CI jobs and in the pre-commit hook when `ci.yml` or either lockfile is staged.
+Playwright is the exception to "caret ranges are fine": `playwright` (`frontend/`) and `@playwright/test` (`tests/playwright/`) are pinned to exact versions, and the matching `mcr.microsoft.com/playwright:vX.Y.Z-noble` image tags in `ci.yml` must be bumped in the same change (the npm package and browser build must be the same release, or the browser fails to launch and the run executes zero tests). `scripts/check-playwright-image-sync.py` enforces this: it runs as the first step of the `frontend-shard` and `e2e-tests` CI jobs and in the pre-commit hook when `ci.yml` or either lockfile is staged.
 
 After adding, removing, or bumping any dependency in `frontend/package.json`, regenerate the lock file with:
 
@@ -120,6 +122,10 @@ frontend/scripts/sync-lockfile.sh some-package@1.2.3  # add/bump a package — a
 It refuses to run if the active Node's major version doesn't match `frontend/.nvmrc`, then reinstalls from scratch and re-verifies the result with `npm ci`.
 
 A pre-commit hook also backstops this automatically: `npm install` in `frontend/` wires up `core.hooksPath` to the repo's tracked `.githooks/` directory (via the `postinstall` script), and `.githooks/pre-commit` runs `npm ci --dry-run` (fast, writes nothing to disk) whenever `frontend/package.json` or `package-lock.json` is staged, blocking the commit if they're out of sync — the same hook also covers `docs/website/package.json`/`package-lock.json` (see [Documentation website](#documentation-website) below).
+
+**What the pre-commit hook runs, and how long it takes.** `.githooks/pre-commit` reads the staged file list once and runs only the checks whose guarded files are staged (a test, `backend/tests/test_pre_commit_hook.py`, runs the real hook against stub checks to pin which check fires for which file). On a typical commit it takes about one second; a commit that stages a dependency file adds `check_licences.py` (about 0.5 s) and `npm ci --dry-run` (2 to 3 s per project). The documentation-link check runs as `check_doc_links.py --staged`, which scans only the staged files, because a change to one file can only break the references that file makes; it scans the whole repository when the commit deletes or renames a file, adds a plan or edits the checker itself (anything that can break another file's references), and CI's `docs` job always scans everything. `check_health_probes.py` and `check_licences.py` read the file list from git instead of walking `node_modules`.
+
+**Comment style.** `scripts/check_comment_style.py` (pre-commit as `--staged`, which reads only the staged files and never the rest of the repository; CI `docs` job, `backend/tests/test_comment_style.py`) fails a source comment or docstring that refers to a conversation or review, carries a date, narrates history (`previously`, `no longer accepts`) or cites a plan phase, so comments state what the code does now; history belongs in `docs/decisions.md` and git. A comment that must keep such a word in its domain meaning carries `comment-style-ok: <reason>`. `--candidates` also lists comment blocks over three lines and module docstrings over ten lines, which are judged in review and never fail the check.
 
 ## Documentation website
 
@@ -182,20 +188,36 @@ spec creates, so:
   locally, since CI runners are slower. Split long journeys, and do setup
   that isn't under test through the API.
 
+## Quick loop for a change in progress
+
+The full suites are what CI and the pull-request check run; while working, run only what the change can affect.
+
+| Area | Command | Notes |
+|------|---------|-------|
+| Backend, the files you changed | `docker compose exec -T backend python -m pytest -n 2 tests/test_x.py -q` | Add `-m "not slow"` to a wider run to leave out the 114 slowest tests. |
+| Backend, any order | `pytest -n 4 --shuffle-seed 1` | Runs the tests in a random order fixed by the seed (the same on every worker); a failure that appears only shuffled is a test that depends on another. |
+| Playwright, the specs you changed | `cd tests/playwright && npx playwright test --project=default --no-deps --workers=2 e2e-workflows/x.spec.ts` | Two workers are what CI runs per shard and what a 12-core host with the stack on it runs reliably; four make the longest specs exceed their 30-second limit under load. The `global-state-mutators` project is the serial one: run it with `--project=global-state-mutators`. |
+| Storybook, the stories you changed | `cd frontend && npx vitest run --project=storybook src/path/X.stories.tsx` | The full run is about 14 minutes on a 12-core host; CI splits it over three jobs. |
+| Git hooks | automatic | About one second on a typical commit (see above). |
+
+After copying files into a running container with `docker compose cp`, correct their owner (`docker compose exec -u root backend chown -R app:app /app/tests`); see the backend section above for why.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push/PR to `main` (and on demand via `workflow_dispatch`):
 
-- **`frontend`** — lint, type-check + build, then the Storybook/Vitest suite above with coverage (`npm run test-storybook -- --coverage`), reported as a check via a JUnit report plus a job-summary percentage and a downloadable HTML report.
+- **`frontend-shard`** (three jobs) and **`frontend`** — the Storybook/Vitest suite above is split into three shards (`vitest run --project=storybook --coverage --shard=i/3 --reporter=blob`); shard 1 also runs the lint, the type-check and build and the lazy-loading check. The `frontend` job (named `Frontend lint, build & test`, the check the repository requires) downloads the shards' blob reports, merges them into the one coverage report and JUnit file (`vitest --merge-reports`), fails if a shard did not report, if a story failed or if no story ran, and reports the result as a check via the JUnit report plus a job-summary percentage and a downloadable HTML report.
 - **`backend-tests`** — the full backend pytest suite with coverage (check + job-summary percentage + downloadable HTML report) against the real dev/test Docker Compose stack (`tests/container/`), the same one you run locally, then `ruff` lint and the `mypy` ratchet. Fails if line coverage drops below the `--cov-fail-under` figure in `ci.yml` (the published figure minus two points; raise it when coverage rises, never lower it to pass a run).
-- **`e2e-tests`** — the full dev/test stack, the mcp-server's own pytest suite and `ruff` lint, then the full Playwright E2E suite.
+- **`e2e-tests`** — three shards, each with the full dev/test stack of its own (so a spec that changes deployment-wide settings cannot reach another shard). Shard 1 also runs the mcp-server's own pytest suite and `ruff` lint, checks that every Playwright test is in exactly one shard (`scripts/check_playwright_shards.py`) and runs the serial `global-state-mutators` project once; every shard then runs its third of the parallel project (`--project=default --no-deps --shard=i/3`). The **`e2e-suite`** job (named `E2E (Playwright) suite`, the check the repository requires) passes only when every shard passed.
 - **`dependency-scan`** — `pip-audit` on `backend/requirements.txt` and `mcp-server/requirements.txt` (resolves transitive packages too) and `npm audit --omit=dev --audit-level=high` on the frontend and Playwright lockfiles. The documentation site's audit is reported but not gating while Docusaurus's `braces` dependency has no patched release. A finding is fixed by upgrading the package; there is no ignore list. To reproduce locally: `pip install pip-audit && pip-audit -r backend/requirements.txt`, and `npm audit --omit=dev` in the folder.
+- **`licences`** — `scripts/check_licences.py --live`: the licence guard (see [Licence guard](#licence-guard)). Gates `docker-build`.
+- **`cla`** — pull requests only: `scripts/check_cla.py` requires every commit author to be a maintainer, an automation account or a signatory of the current [CLA.md](../CLA.md) (see [CONTRIBUTING.md](../CONTRIBUTING.md)). Maintainers and automation are read from the base branch's copy of `.github/cla-signatories.json`, so a pull request cannot exempt itself. The ruleset's required checks include it.
 - **`static-analysis`** and **`secret-scan`** — security-specific scans that gate `docker-build` (see [Security scanning](#security-scanning)).
 - **`publish-badges`** — runs after both jobs above (`needs:`), regardless of whether they passed (best-effort; never fails the pipeline). Turns each side's coverage/JUnit output into the four `shields.io` endpoint badges at the top of the README (backend tests + coverage, Storybook tests, frontend coverage), and pushes them to a dedicated `badges` branch. A dedicated job rather than a step inside `frontend`/`backend-tests` specifically because those two run in parallel — either publishing its own badges independently would force-push over the other's files nondeterministically depending on which finished last.
 - **`image-scan`** — no `needs`, so it runs alongside the test jobs and fails within minutes rather than after the ~40 minute suites. Builds the production backend/frontend/mcp-server/converter/docs-site images (the docs image with a `/docs/` base path, smoke tested) and scans every image with [Trivy](https://trivy.dev): a HIGH or CRITICAL finding that has a fix fails the job. To reproduce, `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/aquasecurity/trivy:0.75.0 image --severity HIGH,CRITICAL --ignore-unfixed <image>`. A base-image finding is fixed by moving the base image or running `apk upgrade` in the Dockerfile, never an ignore file.
 - **`version`** — computes the [GitVersion](https://gitversion.net/) SemVer (`GitVersion.yml`, `mode: ContinuousDeployment` — see that file's own comment for why not `Mainline`, which GitVersion 6 removed) and the build date once, so every image leg tags and labels identically.
-- **`docker-build`** — gated on `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `image-scan`, `restore-test`, `static-analysis`, `secret-scan` and `version` passing. A matrix of the six production images (`backend`, `backup`, `frontend`, `mcp-server`, `converter`, `docs`) × `amd64` and `arm64`, each leg on a native runner of its architecture (`ubuntu-latest`, `ubuntu-24.04-arm`) rather than under QEMU. Every leg builds on every run, pull requests included, so an architecture-specific build break fails the PR. The `arm64` legs also load the image and run [`scripts/smoke_test_image.sh`](../scripts/smoke_test_image.sh) (the backend starts against a throwaway PostgreSQL, runs migrations, logs in and lists projects; the others start and answer on their health/static endpoints) and the same Trivy gate as `image-scan`; only a leg that passes pushes its digest (untagged), and never on a pull request. Run the smoke test yourself on any Docker host with `scripts/smoke_test_image.sh backend <image> [expected-arch]`. Unit, backend and Playwright tests stay `amd64`-only; the smoke test is the `arm64` gate.
-- **`docker-publish`** — runs on `main` only, after every `docker-build` leg passed. Assembles each image's two digests into one multi-arch manifest list tagged with the SemVer, the commit SHA and `latest`, pushes to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}`, and fails if either platform is missing from a result. See [deployment.md](deployment.md#obtaining-container-images) for how to point `docker-compose.yml` at a published image instead of building locally.
+- **`docker-build`** — gated on `frontend`, `backend-tests`, `e2e-suite`, `dependency-scan`, `licences`, `image-scan`, `restore-test`, `static-analysis`, `secret-scan` and `version` passing. A matrix of the six production images (`backend`, `backup`, `frontend`, `mcp-server`, `converter`, `docs`) × `amd64` and `arm64`, each leg on a native runner of its architecture (`ubuntu-latest`, `ubuntu-24.04-arm`) rather than under QEMU. Every leg builds on every run, pull requests included, so an architecture-specific build break fails the PR. The `arm64` legs also load the image and run [`scripts/smoke_test_image.sh`](../scripts/smoke_test_image.sh) (the backend starts against a throwaway PostgreSQL, runs migrations, logs in and lists projects; the others start and answer on their health/static endpoints) and the same Trivy gate as `image-scan`; only a leg that passes pushes its digest (untagged), and never on a pull request. An image that names no release (`mcp-server`, `converter`, `docs`: the `reuse` flag in the matrix) first checks whether `ghcr.io/<owner>/<repo>-<image>:src-<tree>` exists, where `<tree>` is the git tree of its build directory; if it does, the leg still builds, smoke tests and scans, but pushes nothing. Run the smoke test yourself on any Docker host with `scripts/smoke_test_image.sh backend <image> [expected-arch]`. Unit, backend and Playwright tests stay `amd64`-only; the smoke test is the `arm64` gate.
+- **`docker-publish`** — runs on `main` only, after every `docker-build` leg passed. Assembles each image's two digests into one multi-arch manifest list tagged with the SemVer, the commit SHA and `latest` (and, for a `reuse` image, `src-<tree>`; an unchanged `reuse` image has no digests and gets the same three tags on the image that already carries `src-<tree>`, so its digest does not change and a host pulls nothing new), pushes to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}`, and fails if either platform is missing from a result. See [deployment.md](deployment.md#obtaining-container-images) for how to point `deployments/full/docker-compose.yml` at a published image instead of building locally.
 
 ### Security scanning
 
@@ -204,7 +226,7 @@ Run these locally with Docker (the same commands CI uses); each fails on a high 
 ```bash
 # Python: high severity
 pip install bandit==1.8.6
-python3 -m bandit -r backend/app mcp-server/server.py converter/converter.py scripts --severity-level high -x '*/tests/*' -q
+python3 -m bandit -r backend/app mcp-server/server.py converter/converter.py converter/diagram_worker.py scripts --severity-level high -x '*/tests/*' -q
 # Python, TypeScript and React: error severity
 docker run --rm -v "$PWD:/src" semgrep/semgrep:1.108.0 semgrep scan \
   --config p/python --config p/flask --config p/jwt --config p/javascript --config p/typescript --config p/react \
@@ -218,6 +240,35 @@ docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.3 dir /repo --co
 Fix a finding in the code. The only exceptions are a documented false positive (a `# nosemgrep: <rule>` comment with the reason on the line above, as in `backend/app/services/dr_restore.py`) and the seven earlier commits `.gitleaks.toml` names, which hold fake test credentials that history cannot change. `.github/workflows/dynamic-scan.yml` runs the OWASP ZAP baseline weekly (or on demand) against the Compose test stack only, never a shared or public environment, and fails on a high-risk alert. Third-party GitHub Actions are pinned to a commit SHA with the tag in a comment; Dependabot (`.github/dependabot.yml`) opens no pull requests (`open-pull-requests-limit: 0`); updates are made in a reviewed change instead. To publish images the repository needs a `release` environment limited to the `main` branch (Settings → Environments), so a branch that edits the workflow cannot reach the registry.
 
 See the [README's Code Quality Rules](../README.md#code-quality-rules) for the conventions all of the above is expected to follow.
+
+### Licence guard
+
+The shipped application must never link a GPL, AGPL or source-available (SSPL, BUSL, Elastic) dependency, because that would close off offering the product under other terms. `scripts/check_licences.py` enforces this against the policy in `scripts/licence_policy.json`:
+
+```mermaid
+flowchart LR
+    L["Lockfiles: frontend, docs site"] --> I["scripts/licence_inventory.py"]
+    R["requirements.txt: backend, mcp-server"] -->|"installed in a throwaway environment"| I
+    D["Dockerfiles: apt and apk packages, base images"] --> I
+    P["licence_policy.json"] --> I
+    I --> C["check_licences.py (CI, pre-commit)"]
+    I --> G["generate_third_party_notices.py"]
+    G --> N["frontend/public/licences/: notices and texts"]
+```
+
+| Class | Licences | Result |
+| --- | --- | --- |
+| Permissive | MIT, ISC, BSD, Apache-2.0, Zlib, PSF, OFL and the like | Pass |
+| File-level copyleft | MPL, EPL | Pass, flagged for its notice and source terms |
+| Library copyleft | LGPL | Pass only for a package named in the policy with its reason (`svglib`, `psycopg2-binary`: used unmodified and replaceable) |
+| Strong copyleft, source-available, unknown | GPL, AGPL, SSPL, BUSL, Elastic, no licence found | Fail |
+| Operating-system package | Any, including GPL and AGPL | Only as a separate program or build tool (Ghostscript and poppler run in the converter container), with the reason in the policy |
+
+- `python3 scripts/check_licences.py` (offline) judges the committed inventory, checks it against the lockfiles and the pinned requirements, and checks that every operating-system package and base image a Dockerfile uses is named in the policy. `--live` also installs each requirements file afresh and judges everything that resolves now, so a transitive dependency that changed licence fails before an image is built.
+- After a change to a lockfile, a requirements file or a Dockerfile package, regenerate with `python scripts/generate_third_party_notices.py` (needs network and `npm ci` in `frontend/` and `docs/website/`) and commit `frontend/public/licences/`. The generator's `--check` mode (also run by `check_licences.py`) reports a stale inventory.
+- A failure is fixed by replacing the dependency. A reviewed exception goes into the policy with its evidence (`overrides` for metadata that does not state the licence, `library_copyleft_named` for LGPL), never into the script.
+- Python transitive versions float between image builds, so the inventory records the versions resolved when it was generated; the guard gates licences, never versions.
+- Optional observability services (Grafana, Loki, Tempo, Alloy, cAdvisor, Prometheus) are pulled from their publishers and are not redistributed here.
 
 ### Testing the pipeline locally with `act`
 

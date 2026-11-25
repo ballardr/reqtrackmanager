@@ -1,20 +1,18 @@
 /**
  * Module: components/ReportFolderChooser
  *
- * The one control for the Reports picker folder a layout, a pack or a placement is filed under: a tree of the folders the
- * scope can use, with New folder, Rename and Delete beside it. It replaces typing a path, so a folder cannot be misspelt
- * and a person sees where other reports live.
+ * The one control for the Reports picker folder a layout, a pack or a placement is filed under: a tree of the
+ * folders the scope can use, with New folder, Rename and Delete beside it. Choosing from a tree replaces typing a
+ * path, so a folder cannot be misspelt.
  *
- * Responsibilities:
- * - Show the folders (`useReportFolders`, plus any `extraPaths` such as a module report's default folder) as a tree with
- *   a "no folder" row first; choosing a row calls `onChange` with its path.
- * - Add a folder under the chosen one, rename the chosen folder's last level, or delete it behind a confirm (what is filed
- *   in it moves up one level; no report is deleted). The value follows the change, and every change ends in a Toast.
- * - Offer Rename and Delete only for a folder the scope owns, with the reason when it is not.
- *
- * Design decisions: folders are labels, so deleting moves contents rather than deleting reports (see the decisions log's
- * folder chooser entry); the server stays authoritative on depth, length and duplicates and its refusal is shown in the
- * control. The control sits inside a form, so Enter in its name box applies the name instead of submitting the form.
+ * - Shows the folders (`useReportFolders`, plus any `extraPaths` such as a module report's default folder) as a
+ *   tree with a "no folder" row first; choosing a row calls `onChange` with its path.
+ * - Adds a folder under the chosen one, renames the chosen folder's last level, or deletes it behind a confirm
+ *   (what is filed in it moves up one level; no report is deleted, as folders are labels). The value follows the
+ *   change and every change ends in a Toast. Rename and Delete are offered only for a folder the scope owns, with
+ *   the reason when it is not.
+ * - The server stays authoritative on depth, length and duplicates and its refusal is shown in the control. The
+ *   control sits inside a form, so Enter in its name box applies the name instead of submitting the form.
  *
  * Dependencies: `TreeView`, `ConfirmDialog`, `FieldShell`, `api/reportFolders`.
  */
@@ -155,8 +153,8 @@ export function ReportFolderChooser({
     <>
       <FieldShell label={label ?? text.folderLabel} controlId={controlId} help={strings.help[helpKey]}>
         <div
-          id={controlId} role="radiogroup" aria-label={label ?? text.folderLabel}
-          style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-2)", maxHeight: "14rem", overflowY: "auto" }}
+          id={controlId} role="radiogroup" aria-label={label ?? text.folderLabel} className="scroll-region"
+          style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-2)", maxHeight: "14rem" }}
         >
           <ChoiceRow label={noneLabel ?? text.none} selected={chosen === ""} onSelect={() => pick("")} />
           <TreeView

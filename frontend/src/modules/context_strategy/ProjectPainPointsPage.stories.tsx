@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildGrid, buildRecordColumns } from "../../testing/recordTablesFixtures";
@@ -136,6 +136,27 @@ export const ShowsScoresAndBlockerAndSorts: Story = {
     await waitFor(() => expect(titles()).toEqual(["Low scoring problem", "High scoring problem", "Unscored problem"]));
     await userEvent.click(scoreHeader); // descending: unscored still last
     await waitFor(() => expect(titles()).toEqual(["High scoring problem", "Low scoring problem", "Unscored problem"]));
+  },
+};
+
+/** Title, Code, Type, Priority and Status sort like Score, and Sort by offers the same columns with Created and Modified. */
+export const EveryColumnSortsAndSortByOffersThem: Story = {
+  beforeEach: () =>
+    mockPageApis([
+      painPoint({ id: "pp-b", title: "Beta problem" }),
+      painPoint({ id: "pp-a", title: "Alpha problem" }),
+    ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Beta problem")).toBeInTheDocument());
+    const sortBy = canvas.getByRole("combobox", { name: "Sort by" });
+    await expect(within(sortBy).getAllByRole("option").map((o) => o.textContent)).toEqual(
+      ["Title", "Code", "Type", "Priority", "Status", "Score", "Created", "Modified"],
+    );
+    await userEvent.click(canvas.getByRole("button", { name: "Title" }));
+    await expect(sortBy).toHaveValue("title");
+    const titles = () => canvas.getAllByRole("button", { name: /problem/ }).map((b) => b.textContent);
+    await waitFor(() => expect(titles()).toEqual(["Alpha problem", "Beta problem"]));
   },
 };
 
@@ -324,7 +345,7 @@ export const ExportCarriesThePageFilters: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/pain_point/export?status=triaged&search=pric&hide_intentional=true"));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/pain_point/export?status=triaged&search=pric&hide_intentional=true&sort=code&order=asc"));
   },
 };
 
@@ -363,5 +384,23 @@ export const NoGridViewWithoutTheScoringGrant: Story = {
     const canvas = within(canvasElement);
     await canvas.findByRole("table", { name: "Pain Points" });
     await expect(canvas.queryByRole("button", { name: "Grid view" })).not.toBeInTheDocument();
+  },
+};
+
+/** Type is on by default; the column chooser hides it and the reset shows it again. */
+export const TypeColumnIsOptionalAndOnByDefault: Story = {
+  beforeEach: () => mockPageApis([painPoint()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Pain Points" });
+    for (const name of ["Title", "Code", "Type", "Priority", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Type" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Type" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Type" })).toBeInTheDocument();
   },
 };

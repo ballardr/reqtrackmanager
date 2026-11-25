@@ -1,18 +1,11 @@
-"""Tests for Context & Strategy's Strategy backend API
-(organisation & project scope) — the real HTTP endpoints (`router.py`/
-`project_router.py`), through the `client` fixture, mirroring
-`modules.decisions.tests.test_decisions_api`'s own "go through the real
-API" convention.
+"""
+Tests for the Strategy API (organisation and project scope) through the real
+HTTP endpoints (`router.py`/`project_router.py`).
 
-Covers, for both the org-scoped and project-scoped routers: Strategy
-CRUD, the content lock once past `UNDER_REVIEW` (409), the full lifecycle
-(propose/submit-for-review/send-back/approve/activate/supersede/retire,
-including the mandatory-comment-on-send-back rule and an illegal-
-transition 409), version history, the RBAC composition (`..._owner`/
-`..._approver`/creator-or-role for propose, disabled-module-is-404-not-403
-vs. wrong-role-is-403, and a Fine-Grained Access Control custom-role
-permission grant satisfying the approve gate), comments/comment-files,
-direct file attachments, and cross-tenant 404s.
+Covers CRUD, the content lock past `UNDER_REVIEW` (409), the full lifecycle
+(including mandatory send-back comment and illegal-transition 409), version
+history, RBAC (owner/approver roles, permission grants, disabled module 404 vs
+wrong role 403), comments, file attachments and cross-tenant 404s.
 """
 
 from __future__ import annotations

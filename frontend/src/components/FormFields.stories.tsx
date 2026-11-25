@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { chooseMarkdownView, markdownField, markdownViewState } from "../testing/markdownViews";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { CheckboxField, ColorField, DateField, FileField, InlineTextInput, TextAreaField, TextField, ToggleField } from "./FormFields";
 
@@ -274,5 +275,118 @@ export const RequiredFieldsAreStarredAndConstrained: Story = {
     await expect(canvas.getByLabelText("Notes")).not.toBeRequired();
     // The star is decoration for sighted users: the accessible name stays the bare caption.
     await expect(canvasElement.querySelector(".field-required")).toHaveAttribute("aria-hidden", "true");
+  },
+};
+
+/** A Markdown text area keeps the field's label and accessible name, and its preview formats what was typed. */
+function MarkdownFieldHarness() {
+  const [value, setValue] = useState("**Decided**");
+  return <TextAreaField label="Rationale" help="Why." value={value} onChange={setValue} markdown rows={3} />;
+}
+
+export const MarkdownTextAreaHasVisualWriteAndPreview: Story = {
+  beforeEach: () => {
+    localStorage.setItem("reqtrack.markdownEditorView", "write");
+    return () => localStorage.removeItem("reqtrack.markdownEditorView");
+  },
+  render: () => <MarkdownFieldHarness />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect((await markdownViewState(canvasElement)).offered).toEqual(["Visual", "Write", "Preview"]);
+    await expect(canvas.getByRole("textbox", { name: "Rationale" })).toHaveValue("**Decided**");
+    await chooseMarkdownView(canvasElement, "Preview");
+    await expect(canvasElement.querySelector("strong")).toHaveTextContent("Decided");
+  },
+};
+
+/** The view switch is part of the caption line, shown while the field is in use; the caption line and the fields below never move. */
+export const MarkdownViewSwitchSitsOnTheCaptionLineAndNothingMoves: Story = {
+  beforeEach: () => {
+    localStorage.setItem("reqtrack.markdownEditorView", "write");
+    return () => localStorage.removeItem("reqtrack.markdownEditorView");
+  },
+  render: () => (
+    <div className="stack">
+      <MarkdownFieldHarness />
+      <TextField label="Owner" helpNotNeeded value="" onChange={() => {}} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const caption = canvasElement.querySelector<HTMLElement>(".field-caption")!;
+    const owner = canvas.getByRole("textbox", { name: "Owner" });
+    const captionBefore = caption.getBoundingClientRect().height;
+    const ownerBefore = owner.getBoundingClientRect().top;
+    await expect(canvas.queryByRole("group", { name: "Editor view" })).toBeNull();
+    await userEvent.click(canvas.getByRole("textbox", { name: "Rationale" }));
+    const group = await canvas.findByRole("group", { name: "Editor view" });
+    await expect(caption.contains(group)).toBe(true);
+    // The group is at the far end of the caption line, after the label and its help.
+    await expect(group.getBoundingClientRect().right).toBeGreaterThan(caption.getBoundingClientRect().right - 8);
+    await expect(caption.getBoundingClientRect().height).toBe(captionBefore);
+    // Only the Write toolbar row (absent while resting) moves the field below.
+    const toolbar = await canvas.findByRole("toolbar", { name: "Formatting" });
+    const shift = owner.getBoundingClientRect().top - ownerBefore;
+    await expect(shift).toBeGreaterThan(0);
+    await expect(Math.abs(shift - toolbar.getBoundingClientRect().height)).toBeLessThan(12);
+    // Switching to Preview removes the toolbar row; the switch stays, and the caption line is unchanged.
+    await userEvent.click(canvas.getByRole("button", { name: "Preview" }));
+    await expect(await canvas.findByRole("group", { name: "Editor view" })).toBeInTheDocument();
+    await expect(caption.getBoundingClientRect().height).toBe(captionBefore);
+    await waitFor(() => expect(owner.getBoundingClientRect().top).toBe(ownerBefore));
+  },
+};
+
+/** An empty Markdown field is one height in Visual, Write and Preview, for the plain, simple and equation variants alike. */
+export const EmptyMarkdownFieldsAreOneHeightInEveryView: Story = {
+  beforeEach: () => {
+    localStorage.setItem("reqtrack.markdownEditorView", "write");
+    return () => localStorage.removeItem("reqtrack.markdownEditorView");
+  },
+  render: () => (
+    <div className="stack">
+      <TextAreaField label="Plain" helpNotNeeded value="" onChange={() => {}} markdown />
+      <TextAreaField label="Simple" helpNotNeeded value="" onChange={() => {}} markdown="simple" />
+      <TextAreaField label="Maths" helpNotNeeded value="" onChange={() => {}} markdown="math" />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const height = (index: number) => Math.round(markdownField(canvasElement, index).querySelector<HTMLElement>(".md-box")!.getBoundingClientRect().height);
+    for (let index = 0; index < 3; index += 1) {
+      const views = index === 1 ? (["Write", "Preview"] as const) : (["Visual", "Write", "Preview"] as const);
+      const seen: number[] = [];
+      for (const view of views) {
+        await chooseMarkdownView(canvasElement, view, index);
+        if (view === "Visual") await waitFor(() => expect(markdownField(canvasElement, index).querySelector(".visual-markdown-content")).not.toBeNull());
+        seen.push(height(index));
+      }
+      await expect(new Set(seen).size).toBe(1);
+    }
+    // All three variants share the one minimum.
+    await expect(new Set([height(0), height(1), height(2)]).size).toBe(1);
+  },
+};
+
+/** A comment or short note is edited in Write and Preview only; an equation field has every view and draws its equations. */
+export const SimpleTextAreasHaveNoVisualTabAndMathOnesDo: Story = {
+  beforeEach: () => {
+    localStorage.setItem("reqtrack.markdownEditorView", "visual");
+    return () => localStorage.removeItem("reqtrack.markdownEditorView");
+  },
+  render: () => (
+    <div className="stack">
+      <TextAreaField label="Justification" helpNotNeeded value="" onChange={() => {}} markdown="simple" />
+      <TextAreaField label="Description" helpNotNeeded value={"Gain \\( g_1 \\)"} onChange={() => {}} markdown="math" />
+      <TextAreaField label="Address" plainText="Printed as plain text in a footer" helpNotNeeded value="" onChange={() => {}} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Only the equation field offers Visual, and it opens there with the equation drawn.
+    await expect((await markdownViewState(canvasElement, 0)).offered).toEqual(["Write", "Preview"]);
+    await expect(await markdownViewState(canvasElement, 1)).toEqual({ offered: ["Visual", "Write", "Preview"], shown: "Visual" });
+    await waitFor(() => expect(canvasElement.querySelector(".visual-math .math-text")).not.toBeNull());
+    // A plain-text field is a plain text area with no editor tabs.
+    await expect(canvas.getByRole("textbox", { name: "Address" })).toBeInTheDocument();
   },
 };

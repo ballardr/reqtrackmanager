@@ -1,10 +1,9 @@
 /**
  * Module: components/TagChip
  *
- * One tag as shown on a record, in a list filter or in the tag admin: a chip whose left edge
- * carries the tag's own colour (user data, passed as `--tag-colour`), so the label stays in the
- * theme's text colour and is readable in light and dark. With `onRemove` it holds a remove
- * control, like any `RemovableChip`; without it it is read-only.
+ * One tag as shown on a record, in a list filter or in the tag admin: a chip whose left edge carries the tag's own colour
+ * (user data, passed as `--tag-colour`), so the label keeps the theme's text colour and is readable in light and dark.
+ * With `onRemove` it holds a remove control, like any `RemovableChip`; without it it is read-only.
  */
 import { X } from "lucide-react";
 import type { CSSProperties } from "react";

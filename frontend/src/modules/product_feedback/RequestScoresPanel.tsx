@@ -1,11 +1,11 @@
 /**
  * Module: modules/product_feedback/RequestScoresPanel
  *
- * A request's scoring on the request page, laid out like the form that edits it, in two titled blocks so the inputs
- * and the results are never mistaken for each other: **Criteria** (the level chosen on each criterion of the scheme,
- * name above level; the criteria are shared by the models, none belongs to one) and **Scores** (the
- * score under each model, `RequestScoreTable`; a model missing a criterion reads "Not scored", never zero). The derived criterion (Demand) shows its level with a calculator icon whose tooltip gives the demand it was worked
- * out from (or says a person chose it instead); weighted demand is never folded into a score.
+ * A request's scoring on the request page, laid out like the form that edits it, in two titled blocks so inputs and
+ * results are not confused: **Criteria** (the level chosen on each criterion, name above level; the criteria are shared
+ * by the models) and **Scores** (the score under each model, `RequestScoreTable`; a model missing a criterion reads
+ * "Not scored", never zero). The derived criterion (Demand) shows its level with a calculator icon whose tooltip gives
+ * the demand it was calculated from (or says a person chose it); weighted demand is never folded into a score.
  */
 import { Calculator } from "lucide-react";
 import { useId } from "react";

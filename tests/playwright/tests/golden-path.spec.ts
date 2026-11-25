@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { addStructureCategory, addStructureComponent, structureRow, selectProjectAdminGroup, expectRecordLocked, promoteTo, expectCurrentStep } from "./e2e-workflows/helpers";
 import { chooseListAction, chooseExport } from "./listActions";
 
 /**
@@ -21,28 +21,19 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByLabel("Email").fill(ADMIN_EMAIL);
     await page.getByLabel("Password").fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
-    // Post-login landing depends on the admin's landing_preference (U-U-03:
-    // "auto" goes straight to the sole accessible project instead of the
-    // overview list once there's exactly one) — navigate explicitly rather
-    // than asserting a specific destination, since that's not what this
-    // spec is testing.
+    // The post-login landing depends on the admin's landing_preference (U-U-03: "auto" goes straight to the
+    // sole accessible project), so the spec navigates explicitly rather than asserting a destination.
     await page.waitForURL(/\/projects(\/|$)/);
     await page.goto("/projects");
   });
 
   await test.step("create project", async () => {
-    // "New project" opens a Modal (style guide "Pattern: modal dialog for
-    // entity create/rename") — scoped to it rather than a bare ".card", and
-    // its Name/Summary fields are real <label>s now, not placeholder-only
-    //.
+    // "New project" opens a Modal (style guide "Pattern: modal dialog for entity create/rename"); the fields
+    // are scoped to it and found by their `<label>`s.
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
-    // The org picker only renders at all when the caller belongs to more
-    // than one organisation (see ProjectListPage.tsx) — the bootstrap admin
-    // used here belongs to exactly one ("Default Organization"), so it's
-    // implicit rather than offered as a choice. Select explicitly only if
-    // a picker is actually present, so this still works if the admin ever
-    // gains a second org membership in some other stack/seed configuration.
+    // The org picker renders only when the caller belongs to more than one organisation; the bootstrap admin
+    // belongs to one, so it is selected only when a picker is present.
     const orgPicker = newProjectDialog.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
@@ -56,54 +47,12 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("add component and category", async () => {
     await page.getByText("Project Admin").click();
-    // Categories now lives inside the merged "Structure" tab (2026-08 UX
-    // audit roadmap: Project Admin's 8 tabs -> 5), alongside a "Project
-    // stages" section that also has its own "Name"-placeholder "add stage"
-    // field — scope to "Components & categories" specifically rather than
-    // relying on page-wide Name/Prefix queries.
+    // Categories sits in the merged "Structure" tab beside a "Project stages" section with its own
+    // "Name"-placeholder field, so the query is scoped to "Components & categories".
     await selectProjectAdminGroup(page, "Structure");
-    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
-    // Component/category tree (C-G-07): with no components yet, the only
-    // Name/Prefix inputs in this section are the "add component" form's own.
-    await componentsSection.getByPlaceholder("Name").fill("Software");
-    await componentsSection.getByPlaceholder("Prefix").fill("SW");
-    await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-    // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
-    // concurrently, then two more awaited *sequentially* afterwards
-    // (org users, report templates) — unrelated to the categories tab,
-    // but still part of the same component's state, so each one still
-    // triggers a re-render. That second wave lands ~150-300ms after the
-    // component itself first becomes visible (confirmed via a
-    // MutationObserver against the real running app) and is enough to
-    // reset whatever's mid-typed into the newly-created component's own
-    // "add category" form. Waiting for the network to go idle rides past
-    // that whole settling window before touching the form at all.
-    await page.waitForLoadState("networkidle");
-
-    // The component/category rename UI (each name/prefix rendered as an
-    // always-editable input, not static text) means a page-wide
-    // getByPlaceholder("Name").first() is also ambiguous on its own: the
-    // "Software" component's own nested "add category" form and the
-    // standalone "add component" form at the bottom both have
-    // Name/Prefix-placeholder inputs. Scope explicitly to the "Software"
-    // component's own container (input -> row -> row -> the component's
-    // own stack div, three levels up) so this can't cross-hit a sibling
-    // form.
-    // `:not([placeholder])`: the "add component" row's own Name field
-    // shares this same value transiently (not yet cleared) right after
-    // creating "Software", which — since Structure now shares one tab
-    // panel with Stages — would
-    // otherwise let the xpath ancestor climb below escape all the way up
-    // to that shared panel and pick up Stages' own "Name" field too, a
-    // real (if narrow-window) strict-mode violation. Only a genuine
-    // rename input for an existing row is ever placeholder-less (matches
-    // project-admin-structural.spec.ts's own established convention).
-    const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
-    await softwareRow.getByPlaceholder("Name").fill("Performance");
-    await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-    await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
-    await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
+    await addStructureComponent(page, "Software", "SW");
+    await addStructureCategory(page, "Software", "Performance", "PERF");
+    await expect(structureRow(page, "Performance")).toBeVisible();
   });
 
   await test.step("add requirement", async () => {
@@ -111,7 +60,8 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Boot in under 5 seconds");
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByText("SW-PERF-001")).toBeVisible();
+    // The confirmation and the list row both carry the code, so the row is found by its title.
+    await expect(page.getByRole("link", { name: "Boot in under 5 seconds" })).toBeVisible();
   });
 
   await test.step("approve stage locks the requirement", async () => {
@@ -126,29 +76,23 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await expect(phase.locator("option:checked")).toHaveText("Approved");
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    await expect(page.getByText("Locked (approved)")).toBeVisible();
+    await expect(page.getByText("Approved", { exact: true }).first()).toBeVisible();
   });
 
   let requirementCode = "";
   await test.step("raise and approve a change request", async () => {
     await page.getByText("Change Requests").click();
     await page.getByRole("button", { name: "New change request" }).click();
-    // The create form is a `Modal` portalled to the end of `document.body`
-    // — scope to it rather than an unscoped `getByRole("combobox").first()`,
-    // which would otherwise resolve to the filter sidebar's own Status
-    // select (it precedes the dialog in DOM order once the form is a
-    // portal instead of an inline block).
+    // The create form is a `Modal` portalled to the end of `document.body`, so it is scoped by dialog rather
+    // than `getByRole("combobox").first()`, which would resolve to the filter sidebar's Status select.
     const dialog = page.getByRole("dialog", { name: "New change request" });
     // The requirement select defaults asynchronously once project data
     // loads — wait so Create doesn't submit with an empty requirement_id
     // (same race already worked around in mockup-engagement.spec.ts).
     await expect(dialog.getByRole("combobox").first()).toContainText("Boot in under 5 seconds");
-    // Modify-requirement CRs are field-toggle driven: a field's proposed
-    // value is only editable (and only becomes part of `changed_fields`)
-    // once its "Fields to change" checkbox is ticked. Each checkbox and its
-    // (once checked) inline editor live in the same field-row container
-    // (checkbox -> label -> field-row div), so scope the fill to that row
-    // rather than a page-wide input query.
+    // Modify-requirement change requests are field-toggle driven: a field's proposed value is editable (and
+    // part of `changed_fields`) only once its "Fields to change" checkbox is ticked. The checkbox and its
+    // inline editor share a field-row container, so the fill is scoped to that row.
     const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
     await nameCheckbox.check();
     await nameCheckbox.locator("xpath=../..").locator("input.input").fill("Boot in under 3 seconds");
@@ -159,22 +103,17 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await page.getByText("Boot in under 3 seconds").click();
-    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    await promoteTo(page, "Submitted");
     // Exact match: a project manager also sees the advisory "Vote to
     // approve" button, which a loose "Approve" query would ambiguously
     // match alongside the real decision button.
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await promoteTo(page, "Approved");
+    await expectCurrentStep(page, "Approved");
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    // Role-scoped, not a page-wide getByText: React Router 7 wraps
-    // navigation state updates in React's startTransition by default (a
-    // behavior change from 6, where this app previously pinned an older
-    // 6.x), which can keep the change request detail view's own "Name:
-    // Boot in under 3 seconds" changed-field summary painted for one frame
-    // alongside the requirements list underneath as it settles in — a
-    // transient strict-mode double-match a bare getByText can catch mid
-    // transition. The requirement card's link has no such ambiguity.
+    // Role-scoped, not a page-wide getByText: React Router 7 wraps navigation updates in `startTransition`,
+    // so the change request detail's "Name: Boot in under 3 seconds" summary can stay painted for one frame
+    // beside the requirements list, a transient strict-mode double-match. The requirement card's link is unambiguous.
     await expect(page.getByRole("link", { name: "Boot in under 3 seconds" })).toBeVisible();
     requirementCode = "SW-PERF-001";
   });

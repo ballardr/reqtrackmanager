@@ -1,24 +1,15 @@
 /**
  * Module: components/LinkTraceTree
  *
- * The trace tree of one record's links, split into Upstream (where it comes
- * from), Downstream (what depends on it) and Related (no direction), each
- * branch expandable as deep as the user wants.
+ * The trace tree of one record's links, split into Upstream (where it comes from), Downstream (what depends on it)
+ * and Related (no direction), each branch expandable as deep as the user wants.
  *
- * Responsibilities:
- * - Read the depth-1 link graph of the record, then of each branch the user opens
- *   (lazy: nothing beyond what is open is fetched).
- * - Keep a branch's direction: an upstream branch continues only through upstream
- *   edges, so it never doubles back through where it came from.
- * - Skip a record already on the path to it, so a cycle ends instead of repeating.
- *
- * Design decisions:
- * - There is no depth limit in the UI. The server caps one read at a few hops, so each
- *   expansion is its own one-hop read rooted at the opened record; that re-rooting is
- *   what makes the depth unbounded. Records the user cannot see are counted by the
- *   server and never traced through.
- * - Keyboard access is native: each branch is a real button (`aria-expanded`) and each
- *   record a real link, reachable with Tab, so no custom arrow-key widget is needed.
+ * - Reads the depth-1 link graph of the record, then of each branch opened (lazy: nothing beyond what is open is
+ *   fetched). A branch keeps its direction (an upstream branch continues only through upstream edges) and skips a
+ *   record already on its path, so a cycle ends.
+ * - No depth limit in the UI: the server caps one read at a few hops, so each expansion is its own one-hop read
+ *   rooted at the opened record. Records the user cannot see are counted by the server and never traced through.
+ * - Keyboard access is native: each branch is a real button (`aria-expanded`) and each record a real link.
  * - API calls are injectable (`api`) so stories need no network.
  */
 import { ChevronDown, ChevronRight } from "lucide-react";

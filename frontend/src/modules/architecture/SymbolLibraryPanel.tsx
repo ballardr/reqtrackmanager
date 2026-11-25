@@ -1,127 +1,241 @@
 /**
  * Module: modules/architecture/SymbolLibraryPanel
  *
- * The symbol library of a project or an organisation, on the shared `DefinitionList`: a preview and a rename beside each
- * symbol, reorder, upload and delete. A built-in symbol is drawn in code, so it cannot be renamed. In a project, a symbol that is an organisation default is read-only and deleting it hides it
- * here (restore with "Add organisation defaults"). An upload goes through the server's sanitiser, which refuses scripts,
- * external references and oversized files; the refusal is shown in the panel.
+ * The symbol library of an organisation (Org Resources) or a project (its settings): the one list page both homes render.
+ * A `ListPageLayout` page with one primary button (Upload symbols), one actions menu (folder actions and, in a project, Add
+ * organisation defaults), a filter panel and the symbols as a sortable table or tiles; filters, sort and folder are in the
+ * address and the server filters, sorts and pages (`useSymbolLibrary`).
+ * A project also lists the organisation's symbols read-only in an Organisation folder branch, hidden with Delete and restored
+ * with Add organisation defaults; a symbol inherited from a parent project is not filed. A built-in symbol is drawn in code
+ * and cannot be renamed or filed. Uploads pass the server's sanitiser (no scripts, external references or oversized files).
+ * Controls render only for a person who may change the library (`useCanUploadSymbols`); the server enforces the same roles.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
-import { DefinitionList } from "../../components/DefinitionList";
-import { RestoreOrgDefaultsButton, type HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
+import type { ActionMenuItem } from "../../components/ActionMenu";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
+import { ListPageLayout } from "../../components/ListPageLayout";
+import { LoadMoreButton } from "../../components/LoadMoreButton";
+import { RestoreOrgDefaultsDialog, type HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import { Spinner } from "../../components/Spinner";
+import { cycleSort } from "../../components/sortState";
+import { useViewMode, ViewToggle } from "../../components/ViewToggle";
+import { useOrgLabelCapitalized } from "../../context/BrandingContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
 import { blockedError } from "../../utils/blockedError";
 import { orgSymbolUrl, projectSymbolUrl, symbolApi } from "./api";
-import { SymbolImage } from "./SymbolImage";
-import { SymbolUploadField } from "./SymbolUploadField";
 import type { TypesScope } from "./ArchitectureTypesPanel";
-import type { ArchitectureSymbol } from "./types";
-import { useSymbolUpload } from "./useSymbolUpload";
+import { ARCHITECTURE_HELP } from "./help";
+import { SymbolLibraryTable } from "./SymbolLibraryTable";
+import { SymbolLibraryTiles } from "./SymbolLibraryTiles";
+import type { SymbolRowActionContext } from "./symbolLibraryActions";
+import { SymbolRenameModal } from "./SymbolRenameModal";
+import { SymbolUploadDialog } from "./SymbolUploadDialog";
+import { SymbolUsageModal } from "./SymbolUsageModal";
+import {
+  SYMBOL_FILE_TYPE_LABEL, SYMBOL_FILE_TYPES, SYMBOL_SORT_KEYS, SYMBOL_SOURCE_LABEL, SYMBOL_USED_LABEL, type SymbolLibraryFolder,
+  type SymbolLibraryRow,
+} from "./types";
+import { useFolderListControls } from "./useFolderListControls";
+import { useCanUploadSymbols } from "./useSymbolUpload";
+import { useSymbolLibrary } from "./useSymbolLibrary";
+
+const SOURCES = ["builtin", "uploaded"] as const;
+const USED = ["used", "unused"] as const;
+const NO_FOLDERS: SymbolLibraryFolder[] = [];
 
 /** @param scope The project or organisation whose library is managed. */
 export function SymbolLibraryPanel({ scope }: { scope: TypesScope }) {
   const { showToast } = useToast();
-  const [symbols, setSymbols] = useState<ArchitectureSymbol[] | null>(null);
-  const [hidden, setHidden] = useState<HiddenDefinition[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const organizationLabel = useOrgLabelCapitalized();
+  const inProject = scope.kind === "project";
+  const scopeId = scope.kind === "project" ? scope.projectId : scope.organizationId;
+  const canManage = useCanUploadSymbols(scope);
+  const urlFor = useCallback(
+    (id: string) => (scope.kind === "project" ? projectSymbolUrl(scopeId, id) : orgSymbolUrl(scopeId, id)),
+    [scope.kind, scopeId],
+  );
+
+  const [search, setSearch] = useUrlText("q");
+  const [source, setSource] = useUrlChoice("source", SOURCES);
+  const [used, setUsed] = useUrlChoice("used", USED);
+  const [fileType, setFileType] = useUrlChoice("filetype", SYMBOL_FILE_TYPES);
+  const [sort, setSort] = useUrlSort<string>(SYMBOL_SORT_KEYS);
+  const [viewMode, setViewMode] = useViewMode("architecture-symbols", "list");
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
-  const uploading = useSymbolUpload(scope, reload);
-  const scopeId = scope.kind === "project" ? scope.projectId : scope.organizationId;
-  const urlFor = (id: string) => (scope.kind === "project" ? projectSymbolUrl(scopeId, id) : orgSymbolUrl(scopeId, id));
+  const [branchFolders, setBranchFolders] = useState<SymbolLibraryFolder[]>(NO_FOLDERS);
+  const [hidden, setHidden] = useState<HiddenDefinition[]>([]);
 
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      const list = await (scope.kind === "project" ? symbolApi.projectList(scopeId) : symbolApi.orgList(scopeId));
-      const hiddenRows = scope.kind === "project" ? await symbolApi.projectHidden(scopeId).catch(() => []) : [];
-      if (!live) return;
-      setSymbols(list);
-      setHidden(hiddenRows);
-      setLoadError(null);
-    })().catch((err) => { if (live) setLoadError(toErrorMessage(err, "Could not load the symbol library.")); });
-    return () => { live = false; };
-  }, [scope.kind, scopeId, refresh]);
+  const branch = useMemo(
+    () => (inProject ? { label: organizationLabel, folders: branchFolders.map((f) => ({ path: f.path, count: f.symbol_count })) } : undefined),
+    [inProject, organizationLabel, branchFolders],
+  );
+  const folders = useFolderListControls(
+    scope.kind === "project" ? { projectId: scope.projectId } : { organizationId: scope.organizationId }, "symbol", "symbols", reload, true, branch,
+  );
+  const library = useSymbolLibrary(scope, {
+    search: search.trim() || undefined, source: source || undefined, used: used || undefined, file_type: fileType || undefined,
+    folder: folders.folderPath || undefined, folder_scope: folders.folderPath ? (folders.inBranch ? "organization" : "own") : undefined,
+    subfolders: folders.folderPath ? !folders.exactFolder : undefined, sort: sort?.key, order: sort?.direction,
+  }, refresh, (page) => setBranchFolders(page.organization_folders));
 
-  if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
-  if (symbols === null) return <Spinner />;
+  // The organisation symbols this project has hidden (what "Add organisation defaults" can show again); only an administrator reads them.
+  useLoadOnChange(async () => {
+    setHidden(scope.kind === "project" && canManage ? await symbolApi.projectHidden(scope.projectId).catch(() => [] as HiddenDefinition[]) : []);
+  }, [scope.kind, scopeId, canManage, refresh]);
 
-  /** Not renamed here: a built-in drawing, or (in a project) an organisation's symbol. */
-  const isReadOnly = (symbol: ArchitectureSymbol) => symbol.is_builtin || (scope.kind === "project" && symbol.project_id === null);
+  const [uploading, setUploading] = useState(false);
+  const [renaming, setRenaming] = useState<SymbolLibraryRow | null>(null);
+  const [deleting, setDeleting] = useState<SymbolLibraryRow | null>(null);
+  const [usageOf, setUsageOf] = useState<SymbolLibraryRow | null>(null);
+  const [restoring, setRestoring] = useState(false);
+
+  const filtered = Boolean(search.trim() || source || used || fileType || folders.folderPath);
+  const reorderable = canManage && sort === null && !filtered;
+
+  async function move(row: SymbolLibraryRow, direction: "up" | "down") {
+    try {
+      await (scope.kind === "project" ? symbolApi.projectMove(scopeId, row.id, direction) : symbolApi.orgMove(scopeId, row.id, direction));
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not reorder the symbols."), "error");
+    }
+  }
+
+  async function remove(row: SymbolLibraryRow) {
+    setDeleting(null);
+    try {
+      await (scope.kind === "project" ? symbolApi.projectDelete(scopeId, row.id) : symbolApi.orgDelete(scopeId, row.id));
+      showToast(inProject && row.tier === "organization" ? "Symbol hidden in this project." : "Symbol deleted.");
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(blockedError(err, "This symbol is still used by a type or an element. Choose another symbol for them first."), "Could not delete the symbol."), "error");
+    }
+  }
+
+  const actions: SymbolRowActionContext | null = canManage
+    ? { inProject, reorderable, onRename: setRenaming, onMove: (row, direction) => void move(row, direction), onDelete: setDeleting }
+    : null;
+
+  const menuItems = useMemo<ActionMenuItem[]>(() => {
+    if (!canManage) return [];
+    const items = [...folders.menuItems];
+    if (hidden.length > 0) items.push({ key: "restore", label: `Add organisation defaults (${hidden.length})`, onSelect: () => setRestoring(true) });
+    return items;
+  }, [canManage, folders.menuItems, hidden.length]);
+
+  if (library.error) return <div role="alert" style={{ color: "var(--color-danger)" }}>{library.error}</div>;
+  const rows = library.rows;
+
+  const emptyState = (
+    <p className="text-muted">
+      {library.libraryTotal === 0 ? "The symbol library is empty." : "No symbols match these filters."}
+    </p>
+  );
 
   return (
-    <div className="stack">
-      <SymbolUploadField id="architecture-symbol-upload" state={uploading} />
-      <DefinitionList<ArchitectureSymbol>
-        layout="grid"
-        items={symbols}
-        fields={[{
-          key: "name", getValue: (item) => item.name, label: "Name", placeholder: "Symbol name", ariaLabel: "Symbol name",
-          track: "minmax(10rem, 1fr)",
-        }]}
-        getReassignLabel={(item) => item.name}
-        isReadOnly={isReadOnly}
-        minItems={0}
-        onMove={async (id, direction) => {
-          const row = symbols.find((s) => s.id === id);
-          if (row && scope.kind === "project" && row.project_id === null) {
-            showToast("Organisation symbols keep the organisation's order. Reorder the project's own symbols instead.", "error");
-            return;
-          }
-          try {
-            await (scope.kind === "project" ? symbolApi.projectMove(scopeId, id, direction) : symbolApi.orgMove(scopeId, id, direction));
-            reload();
-          } catch (err) {
-            showToast(toErrorMessage(err, "Could not reorder the symbols."), "error");
-          }
-        }}
-        onRename={async (id, values) => {
-          await (scope.kind === "project" ? symbolApi.projectRename(scopeId, id, values.name) : symbolApi.orgRename(scopeId, id, values.name));
-          reload();
-        }}
-        onAdd={async () => { /* A symbol is uploaded, never typed in. */ }}
-        onDelete={async (id) => {
-          const row = symbols.find((s) => s.id === id);
-          try {
-            await (scope.kind === "project" ? symbolApi.projectDelete(scopeId, id) : symbolApi.orgDelete(scopeId, id));
-          } catch (err) {
-            throw blockedError(err, "This symbol is still used by a type or an element. Choose another symbol for them first.");
-          }
-          showToast(row && scope.kind === "project" && row.project_id === null ? "Symbol hidden in this project." : "Symbol deleted.");
-          reload();
-        }}
-        deleteLabel="Delete symbol"
-        getDeleteLabel={(item) => (scope.kind === "project" && item.project_id === null ? "Hide symbol in this project" : "Delete symbol")}
-        confirmDelete={(item) => scope.kind === "project" && item.project_id === null && !item.is_builtin
-          ? {
-              title: `Hide "${item.name}" in this project?`,
-              message: "It is an organisation symbol. It will no longer be offered in this project, and types and elements that already use it keep it. You can add it back with \"Add organisation defaults\".",
-              confirmLabel: "Hide",
-            }
-          : null}
-        addLabel="Upload a symbol"
-        renderExtra={(item) => (
-          <span key="symbol-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-            <SymbolImage src={urlFor(item.id)} alt={`Drawing of ${item.name}`} />
-            {item.is_builtin && <span className="text-muted" style={{ fontSize: "0.75rem" }}>Built-in</span>}
-          </span>
+    <>
+      <ListPageLayout
+        title="Symbols"
+        ready={rows !== null} loadedRows={rows?.length}
+        actions={canManage ? <button className="btn btn-primary" onClick={() => setUploading(true)}>Upload symbols</button> : undefined}
+        menuItems={menuItems}
+        filter={(
+          <FilterPanel
+            sectionKey={`architecture.symbols.${scope.kind}`} total={library.total}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search symbols…" searchAriaLabel="Search symbols"
+          >
+            <FilterSelect
+              label="Source" help={ARCHITECTURE_HELP.symbolSource} value={source} onChange={setSource} allLabel="All sources"
+              options={SOURCES.map((value) => ({ value, label: SYMBOL_SOURCE_LABEL[value] }))}
+            />
+            <FilterSelect
+              label="Used" help={ARCHITECTURE_HELP.symbolUsed} value={used} onChange={setUsed} allLabel="Used or not"
+              options={USED.map((value) => ({ value, label: SYMBOL_USED_LABEL[value] }))}
+            />
+            {(library.converterAvailable || fileType) && (
+              <FilterSelect
+                label="File type" help={ARCHITECTURE_HELP.symbolFileType} value={fileType} onChange={setFileType} allLabel="All file types"
+                options={SYMBOL_FILE_TYPES.filter((t) => library.converterAvailable || t === "svg" || t === fileType).map((value) => ({ value, label: SYMBOL_FILE_TYPE_LABEL[value] }))}
+              />
+            )}
+            {folders.panel}
+          </FilterPanel>
         )}
-      />
-      {scope.kind === "project" && (
-        <div className="row">
-          <RestoreOrgDefaultsButton
-            hidden={hidden}
-            noun="symbols"
-            onRestore={async (ids) => {
-              await symbolApi.projectRestore(scopeId, ids);
-              showToast(ids.length === 1 ? "Organisation symbol added back." : `${ids.length} organisation symbols added back.`);
-              reload();
-            }}
-          />
-        </div>
+      >
+        {rows === null ? <Spinner /> : (
+          <>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>{canManage && folders.bar}</div>
+              <ViewToggle mode={viewMode === "tiles" ? "tiles" : "list"} onChange={setViewMode} />
+            </div>
+            {viewMode === "tiles" ? (
+              rows.length === 0 ? emptyState : (
+                <>
+                  <SymbolLibraryTiles
+                    rows={rows} urlFor={urlFor} organizationLabel={organizationLabel} actions={actions}
+                    selected={folders.selected} onSelectedChange={folders.setSelected} onShowUsage={setUsageOf}
+                  />
+                  <LoadMoreButton loaded={rows.length} total={library.total} onClick={library.loadMore} />
+                </>
+              )
+            ) : (
+              <SymbolLibraryTable
+                rows={rows} urlFor={urlFor} organizationLabel={organizationLabel} actions={actions}
+                sort={sort} onSort={(key) => setSort(cycleSort(sort, key))} onShowUsage={setUsageOf} emptyState={emptyState}
+                total={library.total} onLoadMore={library.loadMore}
+                selection={canManage ? {
+                  selected: folders.selected, onChange: folders.setSelected, label: (r) => `Select ${r.name}`,
+                  allLabel: "Select all symbols", selectable: (r) => r.can_file,
+                } : undefined}
+              />
+            )}
+          </>
+        )}
+      </ListPageLayout>
+      {folders.dialog}
+      {uploading && (
+        <SymbolUploadDialog
+          scope={scope} folders={folders.folders} defaultFolderId={folders.chosenFolderId} converterAvailable={library.converterAvailable}
+          onClose={(count) => { setUploading(false); if (count > 0) reload(); }}
+        />
       )}
-    </div>
+      {renaming && (
+        <SymbolRenameModal
+          name={renaming.name} onClose={() => setRenaming(null)}
+          onSave={async (name) => {
+            await (scope.kind === "project" ? symbolApi.projectRename(scopeId, renaming.id, name) : symbolApi.orgRename(scopeId, renaming.id, name));
+            showToast("Symbol renamed.");
+            reload();
+          }}
+        />
+      )}
+      {deleting && (
+        <ConfirmDialog
+          title={inProject && deleting.tier === "organization" ? `Hide "${deleting.name}" in this project?` : `Delete symbol "${deleting.name}"?`}
+          message={inProject && deleting.tier === "organization"
+            ? "It is an organisation symbol. It will no longer be offered in this project, and types and elements that already use it keep it. You can add it back with \"Add organisation defaults\"."
+            : "The symbol and its file are removed. A symbol that an element type or an element uses cannot be deleted."}
+          confirmLabel={inProject && deleting.tier === "organization" ? "Hide" : "Delete"}
+          onCancel={() => setDeleting(null)} onConfirm={() => void remove(deleting)}
+        />
+      )}
+      {usageOf && <SymbolUsageModal scope={scope} symbol={usageOf} onClose={() => setUsageOf(null)} />}
+      {restoring && (
+        <RestoreOrgDefaultsDialog
+          hidden={hidden} noun="symbols" onClose={() => setRestoring(false)}
+          onRestore={async (ids) => {
+            await symbolApi.projectRestore(scopeId, ids);
+            showToast(ids.length === 1 ? "Organisation symbol added back." : `${ids.length} organisation symbols added back.`);
+            reload();
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -65,7 +65,8 @@ export const DeletingACollectionAsksFirst: Story = {
   },
   play: async ({ canvasElement }) => {
     const card = within(await within(canvasElement).findByRole("region", { name: "Shared infrastructure" }));
-    await userEvent.click(card.getByRole("button", { name: "Delete" }));
+    await userEvent.click(card.getByRole("button", { name: "Actions for Shared infrastructure" }));
+    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Delete" }));
     const dialog = within(within(document.body).getByRole("dialog"));
     await expect(dialog.getByText(/lose that access/)).toBeInTheDocument();
     await userEvent.click(dialog.getByRole("button", { name: "Delete" }));

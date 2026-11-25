@@ -26,8 +26,8 @@ test.describe("System Architecture: soft guidance for connection types", () => {
     await test.step("add a hardware element type that suggests UART", async () => {
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Element Types", "System Architecture");
-      await page.getByRole("button", { name: "New element type with details" }).click();
-      const dialog = page.getByRole("dialog", { name: "New element type" });
+      await page.getByRole("button", { name: "Add element type", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Add element type" });
       await dialog.getByLabel("Name", { exact: true }).fill(radio);
       await dialog.getByRole("button", { name: "Domains", exact: true }).click();
       await page.getByRole("checkbox", { name: "Hardware", exact: true }).check();
@@ -75,7 +75,7 @@ test.describe("System Architecture: soft guidance for connection types", () => {
       await expect(dialog.getByRole("status")).toContainText("REST API is in Software");
       await expect(dialog.getByRole("status")).toContainText("The connection can still be saved.");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
       await expect(page.locator("tr", { hasText: names[1] }).getByText("REST API", { exact: true })).toBeVisible();
     });
   });

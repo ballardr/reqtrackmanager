@@ -1,23 +1,18 @@
 """
 Module: services.report_module_run
 
-Runs a module's report (`ReportDefinition`) from service code, as the caller, with the gates the report's own
-routes apply (`report_framework.build_report_routers`). A report pack uses it for its module report entries.
+Runs a module's report (`ReportDefinition`) from service code, as the caller, with the gates the report's own routes
+apply; a report pack uses it for module report entries.
 
 Responsibilities:
-- `find_report`: the registered report a pack entry names.
-- `run_module_report`: collect the report for a project or for the organisation and return its `ReportResult`.
-- `render_module_report`: produce the file of a result in any format a module report offers, with the organisation template's
-  branding.
+- `find_report` (the report a pack entry names), `run_module_report` (collect for a project or the organisation into a
+  `ReportResult`), `render_module_report` (the file in any offered format with the organisation's branding).
 
 Design decisions:
-- **Same gates as the route, never fewer.** A project run needs the module (and the report's sub-component) enabled
-  for the project; an organisation-wide run needs the report to have an organisation variant, the module enabled for
-  the organisation and the caller to hold the report's module role. A refusal is `ModuleReportUnavailableError`
-  with a reason safe to show, so a pack can list the entry as not available instead of failing.
-- **Scope is never widened.** Projects come from `report_framework.scope_projects`, so a record the caller cannot
-  read is not in the result, exactly as for the route.
-- The collector is the module's own; nothing is added to the module or to a core file per report.
+- Same gates as the route: a project run needs the module (and sub-component) enabled; an organisation run needs an
+  organisation variant, the module enabled and the module role. A refusal is `ModuleReportUnavailableError` with a
+  reason safe to show, so a pack can list the entry as unavailable.
+- Scope is never widened: projects come from `report_framework.scope_projects`.
 
 Dependencies: `services.report_framework`, `modules.registry`, `services.rbac`.
 """
@@ -119,7 +114,7 @@ def run_module_report(
     ctx = ReportContext(
         module_key=module_key, organization=organization, root_project=project, params=typed_params(definition, params),
         all_org_projects=project is None and definition.org_scope == "all_org_projects", projects=projects,
-        viewer_id=user.id,
+        viewer_id=user.id, record_order=definition.record_order,
     )
     return apply_cell_tones(definition.collector(db, ctx), definition.cell_tones)
 

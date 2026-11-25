@@ -76,6 +76,25 @@ def test_the_json_report_is_the_list_as_one_table_with_the_codes_first(world):
     assert _audit(project) == [], "an on-screen run is a view, not an export"
 
 
+def test_a_markdown_cell_shows_its_words_on_screen_and_its_source_in_the_csv(world):
+    project = world.project()
+    created = world.client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={
+            "name": "Formatted", "component_id": project["component_id"], "category_id": project["category_id"],
+            "description": "The **brake** shall stop in:\n\n- 5 seconds\n- 6 metres",
+        },
+        headers=auth_headers(world.token),
+    )
+    assert created.status_code == 201, created.text
+    section = _report(world, project).json()["sections"][0]
+    cell = section["rows"][0][section["columns"].index("Description")]
+    assert "**" not in cell and "- " not in cell
+    assert "brake" in cell and "5 seconds" in cell and "6 metres" in cell
+    csv_text = _report(world, project, format="csv").text
+    assert "The **brake** shall stop in:" in csv_text, "the CSV is the import file and keeps the Markdown source"
+
+
 def test_without_a_record_type_requirements_is_used_as_the_catalogue_offers_it(world):
     project = world.project()
     entry = next(e for e in _catalogue(world, project) if e["slug"] == "record-list")

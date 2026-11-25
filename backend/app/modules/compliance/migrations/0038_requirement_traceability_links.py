@@ -4,20 +4,13 @@ Revision ID: 0038
 Revises: 0037
 Create Date: 2026-09-13
 
-Adds `compliance_requirement_traceability_links` (`ComplianceRequirement
-TraceabilityLink`, `models.py`) —
-"I can't add a traceability link between a core Requirement and a
-compliance standard requirement" gap. `requirement_id` reaches into core's
-own `requirements` table (a module depending on core is fine; core must
-never depend back on a module's own tables, per CLAUDE.md's "Modular
-Feature System Boundary"),
-`compliance_requirement_id` into this module's own `compliance_requirements`,
-and `link_type_id` reuses core's existing, org-scoped
-`requirement_link_type_definitions` vocabulary rather than a second,
-compliance-only type table.
+Adds `compliance_requirement_traceability_links` (`ComplianceRequirementTraceabilityLink`, see `models.py`) so a core
+Requirement can be traced to a compliance standard requirement. `requirement_id` references core's `requirements` table
+(a module may depend on core; core never depends on a module's tables), `compliance_requirement_id` this module's
+`compliance_requirements`, and `link_type_id` reuses core's organisation-scoped `requirement_link_type_definitions`
+rather than a second type table.
 
-This migration adds no data of its own — no existing row's behaviour
-changes as a result of this migration alone.
+No data changes.
 """
 
 from collections.abc import Sequence

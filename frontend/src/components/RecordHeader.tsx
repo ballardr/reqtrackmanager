@@ -1,33 +1,41 @@
 /**
  * Module: components/RecordHeader
  *
- * The header of every record detail page: back link, title (with the record's
- * code as a muted suffix), status pills, the Edit icon button and the object-action
- * menu, with the record's visible workflow buttons beneath. Tags go on their own line, or with `tagsInline` on the
- * badge line beside the version. A `stateMenu` (a record's "Change status" control) sits beside Edit. A `returnTo` control
- * sits beside the back link when the person arrived from another record's page (docs/ux-style-guide.md, "Pattern: return to where you came from").
+ * The header of every record detail page: back link, title (with the record's code as a muted suffix), status
+ * pills, the Edit icon button and the object-action menu, with the record's lifecycle track beneath. Tags,
+ * components and references share the line under the title with the badges and the version. A `returnTo` control sits
+ * beside the back link when the person arrived from another record's page (docs/ux-style-guide.md, "Pattern: return to
+ * where you came from").
  *
  * Design decisions (style guide "Pattern: record header and object actions"):
- * - Edit and the menu sit at the right edge of the title row, in an `ItemRow`, so they
- *   never move or wrap under a long title at any viewport width.
- * - *Object actions* (Archive/Restore, Delete permanently, Export, Subscribe) live in
- *   the menu, which renders even for a single action; *transitions* (Submit, Approve,
- *   Retire, Withdraw) stay visible beside the status because they depend on it.
- * - The page passes only what the current user may do: an action they cannot perform
- *   is omitted, never disabled, and with no actions at all the menu is not drawn.
- * - The page owns each action's confirmation dialog (`useConfirmedAction`).
+ * - Edit and the menu sit at the right edge of the title row in an `ItemRow`, so they never move or wrap under a
+ *   long title.
+ * - The title, its code and `titleAddon` are one inline run: the code follows the title's last word and wraps with
+ *   it, so its place never depends on the title's length.
+ * - *Object actions* (Archive/Restore, Delete permanently, Export, Subscribe, and every state move other than the
+ *   next forward one) live in the menu, which renders even for a single action. The next forward move is Promote: the
+ *   next step of the `LifecycleTrack` and the menu's first row (docs/ux-style-guide.md, "Pattern: lifecycle track and
+ *   Promote").
+ * - The page passes only what the current user may do: an action they cannot perform is omitted, never disabled,
+ *   and with no actions the menu is not drawn. The page owns each action's confirmation dialog
+ *   (`useConfirmedAction`).
  *
- * External dependencies: `ActionMenu`, `ItemRow`, react-router `Link`.
+ * External dependencies: `ActionMenu`, `ItemRow`, `LifecycleTrack`, `SelfApprovedBadge`, react-router `Link`.
  */
 import { RecordCode } from "./RecordCode";
 import { Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import type { ApprovalStatus } from "../api/approvalSeparation";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { useNavLabelOverride } from "../context/NavLabelValue";
 import { listBackTarget } from "../hooks/useListPosition";
 import { ItemRow } from "./ItemRow";
+import { LifecycleTrack, type LifecycleTrackProps } from "./LifecycleTrack";
+import { SelfApprovedBadge } from "./SelfApprovedBadge";
+import { useStrings } from "../context/TerminologyContext";
+import { withDetailRank } from "./detailCardOrder";
 
 /** Leading arrow of the back link; drawn here so every page reads the same. */
 const BACK_ARROW = "← ";
@@ -40,15 +48,14 @@ const BACK_ARROW = "← ";
  * @param codeOwner The owning organisation's code for a record the organisation owns (`PER-001` becomes `ACME-PER-001`).
  * @param subtitle Secondary line under the title (type, owner, priority).
  * @param badges Status and scope pills, shown on the line under the title.
+ * @param approval The record's approval status (`useApprovalStatus`); a record whose latest approval was given by its creator shows a Self-approved marker beside the badges.
  * @param version The record's version number, for a versioned record; shown as "Version n" after the badges, never as its own line.
- * @param tags The record's tags (`RecordTags`), shown under the badges.
- * @param tagsInline Draw `tags` on the badge line after the version instead of on a line of its own. The page passes `<RecordTags inline />`, which draws nothing for a record with no tags or components, so the header carries no empty line.
+ * @param tags The record's tags, components and references (`RecordTags`), after the badges and the version on the line under the title (wrapping onto further lines of the same row). `RecordTags` draws nothing for a record with none that the viewer cannot add to, and an empty line is hidden, so the header carries no gap.
  * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself. The label is the destination's plural name ("Pain Points"); a name the project or organisation gave the destination's navigation entry replaces it. The header draws the leading arrow, so pages never type it.
  * @param returnTo A control beside the back link that leads to where the person came from (`ReturnLink`, or a menu of the places the record is used). Its page decides what it shows and whether it is trustworthy; the header only places it.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
- * @param stateMenu A "Change status" control drawn before Edit in the title row, for a record whose state moves along several paths; omit when the user cannot change it.
  * @param onEdit Opens the edit form; omit when the user cannot edit.
- * @param transitions Visible workflow buttons (Submit, Approve, Retire...).
+ * @param lifecycle The record's states and its next forward move (`LifecycleTrack`), drawn under the title; omit for a record with no states. The move is also the first row of the actions menu.
  * @param actions Object actions for the menu; falsy entries are dropped.
  */
 export function RecordHeader({
@@ -59,15 +66,14 @@ export function RecordHeader({
   codeOwner,
   subtitle,
   badges,
+  approval,
   version,
   tags,
-  tagsInline = false,
   back,
   returnTo,
   headingLevel = "h1",
-  stateMenu,
   onEdit,
-  transitions,
+  lifecycle,
   actions = [],
 }: {
   recordLabel: string;
@@ -77,21 +83,25 @@ export function RecordHeader({
   codeOwner?: string | null;
   subtitle?: ReactNode;
   badges?: ReactNode;
+  approval?: ApprovalStatus | null;
   version?: number;
   tags?: ReactNode;
-  tagsInline?: boolean;
   back?: { to: string; label: string } | { onClick: () => void; label: string };
   returnTo?: ReactNode;
   headingLevel?: "h1" | "h2";
-  stateMenu?: ReactNode;
   onEdit?: () => void;
-  transitions?: ReactNode;
+  lifecycle?: LifecycleTrackProps;
   actions?: Array<ActionMenuItem | null | false | undefined>;
 }) {
+  const strings = useStrings();
   const backName = useNavLabelOverride(back && "to" in back ? back.to : undefined);
-  const items = actions.filter((a): a is ActionMenuItem => !!a);
+  const promoteTarget = lifecycle?.promote && [...lifecycle.steps, ...(lifecycle.offPath ? [lifecycle.offPath] : [])].find((st) => st.key === lifecycle.promote?.to);
+  const promoteRow: ActionMenuItem | null = lifecycle?.promote?.onPromote && promoteTarget
+    ? { label: strings.lifecycle.promoteTo(promoteTarget.label), onSelect: lifecycle.promote.onPromote }
+    : null;
+  const items = [promoteRow, ...actions].filter((a): a is ActionMenuItem => !!a);
   const Heading = headingLevel;
-  const hasControls = stateMenu || onEdit || items.length > 0;
+  const hasControls = onEdit || items.length > 0;
   return (
     <header className="stack record-header" style={{ gap: "var(--space-3)" }}>
       {(back || returnTo) && (
@@ -108,7 +118,6 @@ export function RecordHeader({
         actions={
           hasControls ? (
             <>
-              {stateMenu}
               {onEdit && (
                 <button type="button" className="btn btn-icon" title="Edit" aria-label="Edit" onClick={onEdit}>
                   <Pencil />
@@ -119,28 +128,30 @@ export function RecordHeader({
           ) : undefined
         }
       >
-        <span className="row" style={{ gap: "0.6rem", alignItems: "baseline", flexWrap: "nowrap", minWidth: 0 }}>
-          <Heading style={{ margin: 0, minWidth: 0 }}>{title}</Heading>
+        <div className="record-header__title">
+          <Heading className="record-header__heading">{title}</Heading>
           {code && (
-            <span className="text-muted" style={{ fontSize: "0.9rem", flex: "none" }}><RecordCode code={code} ownerProjectCode={codeOwner} /></span>
+            <>{" "}<span className="record-header__code text-muted"><RecordCode code={code} ownerProjectCode={codeOwner} /></span></>
           )}
-          {titleAddon}
-        </span>
+          {titleAddon && <>{" "}<span className="record-header__addon">{titleAddon}</span></>}
+        </div>
       </ItemRow>
-      {(badges || version !== undefined || (tagsInline && tags)) && (
-        <div className="row">
+      {(badges || approval?.self_approved || version !== undefined || tags) && (
+        <div className="row record-header__line">
           {badges}
+          <SelfApprovedBadge status={approval ?? null} />
           {version !== undefined && (
             <span className="text-muted" style={{ fontSize: "0.85rem" }} title={`Version ${version} of this record`}>
               Version {version}
             </span>
           )}
-          {tagsInline && tags}
+          {tags}
         </div>
       )}
-      {tags && !tagsInline && <div>{tags}</div>}
       {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
-      {transitions && <div className="row">{transitions}</div>}
+      {lifecycle && <LifecycleTrack {...lifecycle} />}
     </header>
   );
 }
+
+withDetailRank(RecordHeader, "header");

@@ -1,15 +1,12 @@
 /**
  * Module: components/ProjectScoringSettings
  *
- * Project-level scoring settings for one scheme (generic scoring-matrix
- * core): override the default model, the models shown side by side, rating
- * bands and per-cell ratings, or inherit them (nearest ancestor project →
- * organisation → module default, Decided by: User). The project can also
- * define its own axes and models and hide inherited ones (`ScoringCriteria`);
- * levels of an axis it defined are edited here, every other axis's levels are
- * set by the organisation and shown read-only. A module embeds this in its own project-admin
- * section with its scheme key; every inherited value says where it comes
- * from (`OverridePill`), and every mutation toasts its outcome.
+ * Project-level scoring settings for one scheme (generic scoring-matrix core): override the default model, the
+ * models shown side by side, rating bands and per-cell ratings, or inherit them (nearest ancestor project, then
+ * organisation, then module default). The project can also define its own axes and models and hide inherited ones
+ * (`ScoringCriteria`); levels of an axis it defined are edited here, every other axis's levels are set by the
+ * organisation and shown read-only. A module embeds this in its own project-admin section with its scheme key;
+ * every inherited value says where it comes from (`OverridePill`), and every mutation toasts its outcome.
  */
 import { useEffect, useState } from "react";
 

@@ -1,16 +1,13 @@
 /**
  * Module: components/FileDetailsPanel
  *
- * The one way a picture's own details (pixel size, and for a photograph when it was taken, the camera, its description
- * and where) are shown, wherever a file is listed.
+ * The one way a picture's details (pixel size and, for a photograph, when it was taken, the camera, description
+ * and position) are shown wherever a file is listed: `FileDetailsFacts` (the facts, or a plain line when none) and
+ * `FileDetailsToggle` (an info button opening them in a `Popover`, pictures only).
  *
- * Responsibilities:
- * - `FileDetailsFacts`: the facts as a list, or a plain line when the file records none.
- * - `FileDetailsToggle`: an info button for a file row that opens the facts in a `Popover`, shown only for pictures.
- *
- * Design decisions: the details come from `GET /files/{id}/details`, which is open to exactly the people who may download
- * the file, so showing them adds no access. EXIF is the file's own text and is rendered as text only. "Taken" is the
- * camera's clock as written (EXIF has no time zone). The position is shown as numbers, with no link to a map service.
+ * Details come from `GET /files/{id}/details`, open to exactly those who may download the file, so showing them
+ * adds no access. EXIF is the file's own text, rendered as text only; "Taken" is the camera's clock as written
+ * (EXIF has no time zone); the position is numbers, with no map link.
  */
 import { Info } from "lucide-react";
 import { useRef, useState } from "react";

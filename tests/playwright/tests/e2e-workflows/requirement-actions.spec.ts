@@ -3,56 +3,27 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: a requirement action (e.g. review, test) can be created
- * and linked to a requirement in one step, has its own outcome/comment/
- * attachment lifecycle independent of that requirement, can be shared by
- * being linked to a second requirement, and unlinking from one requirement
- * never affects the other or deletes the action itself (C-A-06 — actions
- * are archived, never hard-deleted, and unlinking is even lighter than
- * archiving).
+ * Job to be done: a requirement action (e.g. review, test) can be created and linked to a requirement in one step,
+ * has its own outcome/comment/attachment lifecycle independent of that requirement, can be shared by being linked to
+ * a second requirement, and unlinking from one requirement never affects the other or deletes the action itself
+ * (C-A-06: actions are archived, never hard-deleted, and unlinking is lighter than archiving).
  *
- * Uses two throwaway requirements created fresh by this run, not Alpha-1's
- * seeded HW-FN-005/SW-PERF-006 as this spec originally did — actions
- * (gated behind a change request once a requirement is locked)
- * turned "untouched by any other spec" into a false assumption:
- * `workflow-bypass-attempts.spec.ts` approves Alpha-1's whole "Scoping"
- * stage baseline as part of its own scenario, which locks *every*
- * requirement in that stage as a side effect — including these two, even
- * though neither is touched by name. That's a one-way lock (no
- * "unapprove stage" action exists), so once that spec has run once against
- * a given database, HW-FN-005/SW-PERF-006 stay locked for good and this
- * spec's own direct create-and-link/link-existing calls would be — correctly,
- * post-514 — rejected with a 409. A throwaway, freshly-created requirement
- * starts `draft` and was never a target of any other spec's stage-baseline
- * approval, so it isn't exposed to this at all. Per this repo's own test-
- * independence rule, a spec must pass whether it runs alone, first, last,
- * or after `workflow-bypass-attempts.spec.ts` specifically — not just
- * once against a freshly seeded database before that spec has ever run.
+ * Uses two throwaway requirements created fresh by each run, not Alpha-1's seeded HW-FN-005/SW-PERF-006:
+ * `workflow-bypass-attempts.spec.ts` approves Alpha-1's whole "Scoping" stage baseline, which locks every
+ * requirement in that stage permanently (no "unapprove stage" action exists), after which direct
+ * create-and-link/link-existing calls on them are rejected with a 409. A fresh requirement starts `draft` and is
+ * never a target of a stage-baseline approval, so the spec passes alone, first, last, or after that spec.
  *
- * The action's title also appears as plain `<option>` text in every
- * "link existing action" picker on the project (including its own card,
- * once unlinked) — every presence/absence check below is scoped to the
- * `link` role (its actual rendered `<a>`) rather than a bare `getByText`,
- * so it can never resolve to a dropdown option instead.
+ * The action's title also appears as plain `<option>` text in every "link existing action" picker on the project
+ * (including its own card, once unlinked), so every presence/absence check is scoped to the `link` role (the
+ * rendered `<a>`) rather than a bare `getByText`.
  *
- * "Link existing action" now opens a
- * `Popover` and "Create and link a new action" now opens a `Modal`
- * (previously a permanently-visible inline select+button row and an
- * inline-reveal block, respectively — the latter briefly a `SidePanel`
- * before the Principle 3 revision moved every entity-create flow onto
- * `Modal`), and unlinking now goes through a `ConfirmDialog` (Tier 1)
- * instead of firing immediately.
+ * "Link existing action" opens a `Popover`, "Create and link a new action" opens a `Modal` (Principle 3: every
+ * entity-create flow is a `Modal`), and unlinking goes through a `ConfirmDialog` (Tier 1).
  *
- * The action title is timestamped (`E2E Action Flow Test <ts>`), not a
- * fixed string — this spec creates one via `createAndLinkAction` and
- * asserts on it by name throughout, so a fixed title would collect
- * duplicate actions across repeated runs against the same database and
- * break the strict-mode-unique locators below (found exactly this way:
- * two stale same-titled actions from earlier runs made
- * `getByRole("link", { name: /E2E Action Flow Test/ })` resolve to two
- * elements). Per this repo's own test-independence rule, a spec must pass
- * standalone or repeated back-to-back against the same database, not just
- * once against a freshly seeded one.
+ * The action title is timestamped (`E2E Action Flow Test <ts>`), not fixed: a fixed title would collect duplicate
+ * actions across repeated runs against the same database and break the strict-mode-unique locators (e.g.
+ * `getByRole("link", { name: /E2E Action Flow Test/ })` resolving to two elements).
  */
 test.describe("requirement actions", () => {
   test("create-and-link, transition outcome, comment/attach, link to a second requirement, unlink from one only", async ({ page }) => {
@@ -66,11 +37,8 @@ test.describe("requirement actions", () => {
     const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
     const reqUrl: Record<string, string> = {};
 
-    // Created via the API and opened by URL (2026-10-04): creating them
-    // through the UI and then finding them by text in Alpha-1's list — which
-    // grows by two every run — pushed this test to ~25s of its 30s budget,
-    // and it timed out under load. Requirement creation itself is covered
-    // by other specs; this one is about actions.
+    // Created through the API and opened by URL: creating them through the UI and finding them by text in Alpha-1's list
+    // (which grows by two every run) would approach the 30s test budget. Requirement creation is covered by other specs.
     await test.step("create two throwaway target requirements", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const headers = { Authorization: `Bearer ${token}` };
@@ -115,10 +83,8 @@ test.describe("requirement actions", () => {
     });
 
     await test.step("attach a file directly to the action", async () => {
-      // The Attachments card's own upload input renders before the
-      // Discussion card's hidden "attach to a new comment" file input, in
-      // that DOM order — `.first()` targets the direct action attachment,
-      // not a comment attachment.
+      // The Attachments card's upload input renders before the Discussion card's hidden "attach to a new comment" file
+      // input in DOM order, so `.first()` targets the direct action attachment, not a comment attachment.
       const fileInput = page.locator('input[type="file"]').first();
       await fileInput.setInputFiles({ name: "failure-log.txt", mimeType: "text/plain", buffer: Buffer.from("E2E failure log") });
       await expect(page.getByText("failure-log.txt")).toBeVisible();
@@ -132,11 +98,9 @@ test.describe("requirement actions", () => {
 
     await test.step("link the same action to the second requirement via 'link existing action'", async () => {
       await page.goto(reqUrl[req2Name]);
-      // The trigger button, the popover's own dialog aria-label, its
-      // `<select>`, and its confirm button all carry the same accessible
-      // text ("Link existing action") — the trigger click is unambiguous
-      // since the popover doesn't exist yet, and every lookup after that
-      // is scoped to the opened `dialog` so it can't match the trigger.
+      // The trigger button, the popover's dialog aria-label, its `<select>` and its confirm button all carry the same
+      // accessible text ("Link existing action"): the trigger click is unambiguous since the popover does not exist yet,
+      // and every later lookup is scoped to the opened `dialog`.
       await page.getByRole("button", { name: "Link existing action", exact: true }).click();
       const popover = page.getByRole("dialog", { name: "Link existing action" });
       const existingSelect = popover.getByRole("combobox", { name: "Link existing action" });

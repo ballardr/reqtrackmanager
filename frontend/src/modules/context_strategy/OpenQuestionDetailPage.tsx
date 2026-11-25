@@ -1,59 +1,27 @@
 /**
  * Module: modules/context_strategy/OpenQuestionDetailPage
  *
- * A single Open Question's full detail — mirrors `PainPointDetailPage.tsx`'s overall
- * shape (full field display, branching lifecycle actions, attachments,
- * comments, relationships, owner assignment via a dedicated `PrincipalPicker`)
- * closely, since both artefacts share the same "project-scoped only,
- * branching lifecycle, no version table" backend shape. Two differences
- * driven directly by Open Question's own backend design:
+ * A single Open Question's full detail: fields, branching lifecycle actions, attachments, comments, relationships and
+ * owner assignment through a dedicated `RecordPrincipalField`. It mirrors `PainPointDetailPage.tsx`, since both are
+ * project-scoped only, with a branching lifecycle and no version table, with two differences:
  *
- * 1. **Two branch points, not one.** `Open -> Investigating -> {Withdrawn |
- *    Ready for Decision -> {Resolved | Withdrawn}}` (`enums.OpenQuestionStatus`'s
- *    own docstring) — `WITHDRAWN` is reachable from *both* `INVESTIGATING`
- *    and `READY_FOR_DECISION`, not only from one middle state the way Pain
- *    Point's `TRIAGED` is the sole branch point. Confirmation tiers follow
- *    `docs/ux-style-guide.md`'s confirmation-tier principle the same way
- *    every other artefact in this module applies it: `investigate` is a
- *    plain click (low-risk, single early-lifecycle step, mirrors Pain
- *    Point's `triage`/Strategy's `propose`); `mark-ready-for-decision`/
- *    `resolve` (positive/neutral progression) get a `ConfirmDialog` with an
- *    *optional* comment; `withdraw` (the one negative/terminal-branch
- *    action) gets a `ConfirmDialog` with a **mandatory** comment, matching
- *    backend enforcement exactly (`project_router.withdraw_project_open_
- *    question` 400s without one — the mandatory-comment-on-a-negative-
- *    outcome convention `reject_pain_point`/`mark_pain_point_duplicate`
- *    already established, applied here to the module's second branching
- *    lifecycle).
- * 2. **Two roles, not one, gate the lifecycle actions** (§9.4's
- * three-tier permission split — see `enums.py`'s own docstring):
- *    `open_question_owner` gates `investigate`/`mark-ready-for-decision`/
- *    `withdraw`/edit/archive; a *separate* `open_question_resolver` gates
- *    `resolve` alone. This page renders every action button unconditionally
- *    regardless of the caller's actual role — the same established
- *    convention `StrategyDetailPage.tsx`'s own docstring documents (every
- *    mutating control always renders, gated only by content-lock state, with
- *    a 403 surfacing as a toast) — so this two-role split needs no different
- *    frontend wiring than Pain Point's single-role gate did; only the
- *    backend distinguishes who can actually click "Resolve" successfully.
+ * 1. Two branch points: `Open -> Investigating -> {Withdrawn | Ready for Decision -> {Resolved | Withdrawn}}`
+ *    (`enums.OpenQuestionStatus`); `WITHDRAWN` is reachable from both `INVESTIGATING` and `READY_FOR_DECISION`.
+ *    Confirmation tiers follow `docs/ux-style-guide.md`: `investigate` is a plain click; `mark-ready-for-decision` and
+ *    `resolve` use a `ConfirmDialog` with an optional comment; `withdraw` uses one with a mandatory comment, matching
+ *    the backend (`project_router.withdraw_project_open_question` returns 400 without one).
+ * 2. Two roles gate the lifecycle: `open_question_owner` gates `investigate`, `mark-ready-for-decision`, `withdraw`,
+ *    edit and archive, and a separate `open_question_resolver` gates `resolve` alone. Every action button renders
+ *    whatever the caller's role (see `StrategyDetailPage.tsx`) and a 403 surfaces as a toast.
  *
- * **Evidence upload is open to any project member; only removal is
- * owner-gated (Decided by: Agent) — the same "no special frontend wiring
- * needed" finding `PainPointDetailPage.tsx`'s own docstring point 3 already
- * made.** Checked `upload_project_open_question_file`'s own RBAC first: it
- * depends only on `_require_open_question_view` (module-enabled + project
- * membership), not `require_open_question_manage_role`, matching §9.4's
- * "Add evidence" broad-creation capability; `is_locked` already excludes
- * only the two true terminal states (`RESOLVED`/`WITHDRAWN`), so
- * `FileAttachmentList`'s existing `disabled={openQuestion.is_locked}` wiring
- * is already exactly as open as the backend allows.
+ * Evidence upload is open to any project member and only removal is owner-gated:
+ * `upload_project_open_question_file` requires `_require_open_question_view` (module enabled plus project membership),
+ * not the manage role, and `is_locked` covers only the terminal states (`RESOLVED`, `WITHDRAWN`), so
+ * `FileAttachmentList`'s `disabled={openQuestion.is_locked}` is as open as the backend allows.
  *
- * **Owner assignment via a dedicated `RecordPrincipalField`, not an
- * `OpenQuestionFormModal` field** — see `types.ts`'s own docstring on
- * `OpenQuestionFieldValues` for why. The owner is a user, an organisation
- * group or a project group. This page loads this project's
- * organisation's user list once and calls `projectOpenQuestionApi.update`
- * directly with the current content fields plus the newly chosen `owner`.
+ * `owner` (a user, an organisation group or a project group) is assigned through `RecordPrincipalField`, not an
+ * `OpenQuestionFormModal` field (see `types.ts` `OpenQuestionFieldValues`). The page loads the project's organisation
+ * user list once and calls `projectOpenQuestionApi.update` with the current content fields plus the chosen `owner`.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -64,7 +32,7 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
-import { RecordPrincipalField } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -74,13 +42,21 @@ import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
-import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
+import {
+  OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_DESCRIPTION, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE, TERMINAL_LOCKED_REASON,
+} from "./types";
 import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 /** The two optional-comment, positive/neutral-progression actions — mirrors
  * `PainPointDetailPage.tsx`'s `OptionalCommentAction`/`OPTIONAL_COMMENT_COPY`
@@ -100,6 +76,8 @@ const OPTIONAL_COMMENT_COPY: Record<OptionalCommentAction, { title: string; body
   },
 };
 
+const MAIN_PATH = ["open", "investigating", "ready_for_decision", "resolved"] as const;
+
 export function OpenQuestionDetailPage() {
   const { projectId, openQuestionId } = useParams<{ projectId: string; openQuestionId: string }>();
   const { user } = useAuth();
@@ -108,6 +86,7 @@ export function OpenQuestionDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [openQuestion, setOpenQuestion] = useState<OpenQuestion | null>(null);
+  const lifecycle = useProjectLifecycle(projectId, "open_question");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [comments, setComments] = useState<OpenQuestionComment[] | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
@@ -199,12 +178,58 @@ export function OpenQuestionDetailPage() {
     },
   });
 
+  const skipSteps = useSkipSteps<OpenQuestion>({
+    lifecycle, current: openQuestion?.status ?? "", labels: OPEN_QUESTION_STATUS_LABEL, noun: "Open Question",
+    move: (target, reason) => {
+      if (!projectId || !openQuestion) return Promise.reject(new Error("This move is not available."));
+      if (target === "ready_for_decision") return withLifecycleSkip(reason, () => projectOpenQuestionApi.markReadyForDecision(projectId, openQuestion.id));
+      if (target === "resolved") return withLifecycleSkip(reason, () => projectOpenQuestionApi.resolve(projectId, openQuestion.id));
+      return Promise.reject(new Error("This move is not available."));
+    },
+    onMoved: setOpenQuestion,
+  });
+
   if (!projectId || !openQuestionId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestion === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await projectOpenQuestionApi.uploadFile(projectId, openQuestion.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
+  // The next forward move: a plain call for the start of investigation, otherwise the move's comment dialog.
+  // It goes to the next step the project uses (a project may turn Investigating off).
+  const next = lifecycle.nextOnPath(MAIN_PATH, openQuestion.status);
+  let promote: LifecyclePromote | undefined;
+  if (next === "investigating") {
+    promote = {
+      to: "investigating",
+      onPromote: () => runTransition(() => projectOpenQuestionApi.investigate(projectId, openQuestion.id), "Open Question moved to Investigating."),
+    };
+  } else if (next === "ready_for_decision") {
+    promote = { to: "ready_for_decision", onPromote: () => setOptionalAction("mark_ready_for_decision") };
+  } else if (next === "resolved") {
+    promote = { to: "resolved", onPromote: () => setOptionalAction("resolve") };
+  }
+
+  // A withdrawn question was withdrawn from Investigating or Ready for Decision, so it had reached at least Investigating.
+  const offPath = openQuestion.status === "withdrawn"
+    ? {
+        key: "withdrawn",
+        label: OPEN_QUESTION_STATUS_LABEL.withdrawn,
+        description: OPEN_QUESTION_STATUS_DESCRIPTION.withdrawn,
+        locked: true,
+        lockedReason: TERMINAL_LOCKED_REASON,
+        after: lifecycle.lastOnPath(MAIN_PATH, "investigating"),
+      }
+    : undefined;
+
   return (
     <DetailLayout
+      pictures={{ files, upload: openQuestion.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} refreshToken={recordActivityKey(openQuestion)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -216,7 +241,7 @@ export function OpenQuestionDetailPage() {
     >
       <RecordHeader
         recordLabel="Open Question"
-        title={openQuestion.question}
+        title={markdownPlainText(openQuestion.question, { math: true })}
         code={openQuestion.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "Open Questions" }}
@@ -234,39 +259,33 @@ export function OpenQuestionDetailPage() {
           </>
         }
         onEdit={openQuestion.is_locked ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <>
-          {openQuestion.status === "open" && (
-            <button
-              className="btn btn-primary"
-              onClick={() => runTransition(() => projectOpenQuestionApi.investigate(projectId, openQuestion.id), "Open Question moved to Investigating.")}
-            >
-              Investigate
-            </button>
-          )}
-          {openQuestion.status === "investigating" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setOptionalAction("mark_ready_for_decision")}>Mark ready for decision</button>
-              <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
-            </>
-              )}
-              {openQuestion.status === "ready_for_decision" && (
-                <>
-                  <button className="btn btn-primary" onClick={() => setOptionalAction("resolve")}>Resolve</button>
-                  <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
-                </>
-              )}
-          </>
-        }
+        actions={[
+          skipSteps.menuRow,
+          lifecycle.canMove(openQuestion.status, "withdrawn", openQuestion.status === "investigating" || openQuestion.status === "ready_for_decision") && {
+            label: "Withdraw", danger: true, onSelect: () => setWithdrawConfirm(true),
+          },
+          archive.item,
+        ]}
+        lifecycle={{
+          steps: lifecycle.visibleSteps(
+            lifecycleSteps(MAIN_PATH, OPEN_QUESTION_STATUS_LABEL, {
+              descriptions: OPEN_QUESTION_STATUS_DESCRIPTION,
+              locked: { resolved: TERMINAL_LOCKED_REASON },
+            }),
+            openQuestion.status,
+          ),
+          current: openQuestion.status,
+          offPath,
+          promote,
+          skip: skipSteps.track,
+        }}
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
-          {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
-          {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
+          {openQuestion.context && <RecordField markdown math label="Context" value={openQuestion.context} />}
+          {openQuestion.evidence && <RecordField markdown math label="Evidence" value={openQuestion.evidence} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
@@ -275,15 +294,12 @@ export function OpenQuestionDetailPage() {
         </DetailCard>
 
 
-        <DetailCard heading="Evidence">
+        <DetailCard heading="Evidence" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={openQuestion.is_locked}
             emptyHint={openQuestion.is_locked ? "This Open Question has reached a terminal outcome; new evidence can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await projectOpenQuestionApi.uploadFile(projectId, openQuestion.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await projectOpenQuestionApi.unlinkFile(projectId, openQuestion.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
@@ -312,7 +328,6 @@ export function OpenQuestionDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <OpenQuestionFormModal
@@ -364,14 +379,5 @@ export function OpenQuestionDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

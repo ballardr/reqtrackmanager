@@ -14,7 +14,7 @@ export function localToday(now: Date = new Date()): string {
 }
 
 /**
- * A calendar date a person chose, shown as that same day in a long local format ("1 December 2026"). The date has
+ * A calendar date a person chose, shown as that same day in a long local format (day, month name, year). The date has
  * no time or timezone, so it is built from its parts rather than parsed as a UTC instant, which would shift it a day
  * west of Greenwich.
  *

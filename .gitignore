@@ -177,6 +177,7 @@ frontend/dist/
 frontend/.env
 frontend/coverage/
 frontend/vitest-report.xml
+frontend/.vitest/
 frontend/tsconfig.tsbuildinfo
 
 # Playwright / e2e

@@ -99,3 +99,21 @@ export async function openTagPicker(scope: ReturnType<typeof within>): Promise<H
   await userEvent.click(await scope.findByRole("button", { name: "Add tag" }));
   return within(document.body).findByRole("combobox", { name: "Tags" });
 }
+
+/** The name of the record header's (+): "Add " and the nouns of the rows its menu holds, or the one row's own name. */
+export const RECORD_ADD_NAME = /^Add .*(tag|component|external reference)/;
+
+/**
+ * Opens the record header's (+) menu inside `scope` and chooses one of its rows ("Add tag", "Add component or category",
+ * "Add external reference"); the menu is portalled to `document.body`.
+ */
+export async function chooseAddition(scope: ReturnType<typeof within>, row: string): Promise<void> {
+  await userEvent.click(await scope.findByRole("button", { name: RECORD_ADD_NAME }));
+  await userEvent.click(await within(document.body).findByRole("menuitem", { name: row }));
+}
+
+/** Opens the tag box from the (+) menu and returns its text box (the popover is portalled to `document.body`). */
+export async function openRecordTagBox(scope: ReturnType<typeof within>): Promise<HTMLElement> {
+  await chooseAddition(scope, "Add tag");
+  return within(document.body).findByRole("combobox", { name: "Tags" });
+}

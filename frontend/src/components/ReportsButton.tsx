@@ -1,15 +1,12 @@
 /**
  * Module: components/ReportsButton
  *
- * The "Reports" button at the top of the project and organisation overviews: one click opens the Reports dialog
+ * The "Reports" button at the top of the project and organisation overviews: opens the Reports dialog
  * (`ReportsDialog`) on the report chooser.
  *
- * Design decisions: whether the dialog is open is the `reports` search parameter, so a link (a report figure that
- * points at another report, a bookmark) can open it on a given `report` and `section`, and Back closes it. Any value
- * opens the chooser, so an old `?reports=runs` link lands there. Closing removes `reports`, `report` and `section`
- * and leaves every other parameter of the page (the overview's project-scope filter) as it was. Background reports
- * have no view of their own: a notification opens the report (`ReportRunDialog`) and the top bar shows what is
- * still being prepared (`ReportRunsIndicator`).
+ * Design decisions: the dialog is open while the `reports` search parameter is present (any value opens the chooser), so a
+ * link can open it on a given `report` and `section` and Back closes it. Closing removes `reports`, `report` and
+ * `section` and leaves every other parameter. Background reports are opened from a notification (`ReportRunDialog`).
  *
  * Dependencies: `ReportsDialog`.
  */

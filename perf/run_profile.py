@@ -8,26 +8,23 @@ Run it through `perf/run_profile.sh <host-label> [--quick|--full] ...`.
 Responsibilities:
 - Check the host (Docker and Compose, free disk, load, memory, headroom), choose resource caps, and refuse to start
   if anything outside the perf project shares its name (`reqtrack-perf`).
-- Bring up an isolated stack (database, object storage, backend), restore the requested dataset tier from a
-  snapshot or generate it (and snapshot it), set this run's throwaway passwords, and run each scenario at each
-  tier the requested number of times with the load generator while sampling container memory and CPU.
-- Write the bundle under `perf/results/<host-label>/<date>-<commit>/`, check it for anything identifying, and
-  write the bundle (and an archive with `--archive`); always tear the stack down (success, failure, Ctrl-C, watchdog abort).
-- After every scenario, read the backend's per-route database statement counts and per-process memory
-  (`queries.csv`, `processes.csv`); with `--profiling cpu`, sample the backend with py-spy during the highest-load
-  run of each scenario (`profiles/*.svg`); with `--profiling heap`, run one worker under memray and report what it
-  still held at the end (`heap.csv`).
-- Profile the database: the perf stack's PostgreSQL loads `pg_stat_statements`; for each scenario the runner resets
-  it, polls client connection counts while the load runs, and afterwards keeps the costliest statements
-  (`pgstat.csv`), what the database did (`pgdb.csv`: connection peak, cache hit rate, temp files, deadlocks) and
-  the planner's scans for the worst few (`plans.csv`), with the server's memory settings and the pool ceiling in
-  `run.json`.
+- Bring up an isolated stack (database, object storage, backend), restore the requested dataset tier from a snapshot
+  or generate it, set this run's throwaway passwords, and run each scenario at each tier the requested number of
+  times while sampling container memory and CPU.
+- Write the bundle under `perf/results/<host-label>/<date>-<commit>/` (and an archive with `--archive`) after the
+  identification check; always tear the stack down (success, failure, Ctrl-C, watchdog abort).
+- After every scenario, read per-route statement counts and per-process memory (`queries.csv`, `processes.csv`);
+  `--profiling cpu` samples the backend with py-spy (`profiles/*.svg`), `--profiling heap` runs one worker under
+  memray (`heap.csv`).
+- Profile the database (`pg_stat_statements`): reset per scenario, poll connection counts under load, then keep the
+  costliest statements (`pgstat.csv`), database behaviour (`pgdb.csv`) and the planner's scans for the worst few
+  (`plans.csv`), with the memory settings and pool ceiling in `run.json`.
 
 Design decisions:
 - It has no option that names a database, API URL, project or compose file: it can only create and destroy its own
   `reqtrack-perf` project, through `lib.compose.PerfDocker`, which validates every command. Credentials are
   generated per run and never read from the environment or a `.env`.
-- `--plan` prints exactly what a run would create and will not touch, and starts nothing.
+- `--plan` prints what a run would create and will not touch, and starts nothing.
 - Images: pulled when a published image for this exact commit has the host's architecture and the tree is clean,
   otherwise built from the working tree (recorded in `run.json`, because a local build changes a Pi's profile).
 - A bundle from a shared host (the default; `--dedicated` says otherwise) is flagged: latency is not comparable
@@ -64,7 +61,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from perf.lib import bundle, catalog, compose, hostinfo, pgprofile, resources, sampler  # noqa: E402
 
-COMPOSE_FILES = (REPO_ROOT / "docker-compose.yml", REPO_ROOT / "perf" / "docker-compose.perf.yml")
+COMPOSE_FILES = (REPO_ROOT / "deployments" / "full" / "docker-compose.yml", REPO_ROOT / "perf" / "docker-compose.perf.yml")
 PROFILE_COMPOSE_FILE = REPO_ROOT / "docker-compose.profile.yml"
 PROFILE_IMAGE = "reqtrack-perf-backend:profile"
 PROFILING_MODES = ("none", "cpu", "heap")
@@ -511,7 +508,7 @@ class ProfileRun:
         worker_text = f"{caps.workers}, chosen from the budget" if caps.workers_auto else str(caps.workers)
         lines = [
             f"Plan for host label '{self.options.label}' ({self.options.mode} mode)",
-            f"  Compose project   : {compose.PROJECT} (files: docker-compose.yml + perf/docker-compose.perf.yml" + (" + docker-compose.profile.yml" if self.options.profiling != "none" else "") + "; no published ports)",
+            f"  Compose project   : {compose.PROJECT} (files: deployments/full/docker-compose.yml + perf/docker-compose.perf.yml" + (" + docker-compose.profile.yml" if self.options.profiling != "none" else "") + "; no published ports)",
             f"  Services          : db, storage, backend (workers={worker_text}), plus a load generator container per scenario",
             f"  Images            : {image_source}",
             f"  Database pool     : {self.options.db_pool_size if self.options.db_pool_size is not None else APP_DEFAULT_POOL_SIZE} + "
@@ -1220,7 +1217,7 @@ def dataset_entry(tier: str, manifest: dict, database_bytes: int, generation_sec
     """The `dataset.json` entry for one tier: the generated dataset's spec, row counts, link statistics and size.
 
     Every key must be in `lib.scrub.DATASET_ENTRY_KEYS`, or the bundle fails its anonymisation check; a test builds
-    this from a real generated manifest and writes it, so a key added here without the allowlist is caught in CI.
+    this from a real generated manifest and writes it, so a key missing from the allowlist fails that test.
     """
     return {
         "tier": tier, "spec": manifest["spec"], "rows": manifest["rows"],

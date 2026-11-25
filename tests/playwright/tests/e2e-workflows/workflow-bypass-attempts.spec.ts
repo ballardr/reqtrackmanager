@@ -1,47 +1,20 @@
 import { expect, test } from "@playwright/test";
 
-import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, recordActionNames } from "./helpers";
+import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, recordActionNames, expectRecordLocked } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: the requirement lifecycle's guarantees (edit-after-lock
- * requires a change request; only a PM can approve; archiving isn't a way
- * to quietly redefine an identifier) must hold even against a user
- * deliberately trying to route around them — not just against a well-
- * behaved UI. Each step below is an attempted bypass, followed by
- * confirmation it was actually blocked (both in the UI and, where it
- * matters, at the API directly).
+ * Job to be done: the requirement lifecycle's guarantees (edit-after-lock requires a change request; only a PM
+ * can approve; archiving does not redefine an identifier) hold against a user deliberately routing around
+ * them. Each step is an attempted bypass, confirmed blocked in the UI and, where it matters, at the API.
  *
- * Uses a brand-new, disposable project inside the existing Alpha org
- * (created via the API, mirroring project-admin-structural.spec.ts), not
- * Alpha-1 — approving a stage locks *every* requirement in the project it
- * belongs to, which is fine to do once against a disposable project but
- * not safe against Alpha-1 itself: 27 other spec files reference Alpha-1,
- * and the lock is irreversible (no "unapprove" endpoint). Found during
- * (turning on Playwright
- * parallelism) — previously safe only because this suite ran single-
- * worker/serial. Also grants stakeholderAlpha/memberAlphaBeta project
- * roles on this disposable project rather than relying on their existing
- * Alpha-1 roles, revoking both again at the end per this repo's
- * idempotent-test convention (mirrors stage-review-and-completion.spec.ts's
- * own stakeholder-grant cleanup) — and archives the disposable project
- * itself (`POST .../archive`, which excludes it from the default project
- * list) rather than leaving it behind forever, so this spec doesn't add to
- * the same unbounded-list-growth failure mode found in role-display-
- * collapsing.spec.ts (see docs/decisions.md): a table/list that quietly
- * paginates past its default page can hide a just-created row from a
- * locator indefinitely, which reproduces deterministically once enough
- * leftover rows have accumulated — it isn't timing/contention flakiness
- * and isn't fixed by a bigger timeout.
- *
- * Trimmed 2026-10-04 (it took ~18s of its 30s budget alone and timed out
- * under full-suite load): setup, the stage approval and the archive-and-
- * recreate step go through the API (the UI for those is covered by
- * stage-review-and-completion, requirement-archive-confirm and the create
- * specs), the steps are ordered to need two UI logins instead of five, and
- * a change-request step that never ran (this project has none) is gone —
- * change-request-approval-separation covers that rule.
+ * Uses a disposable project inside Alpha (created via the API, as project-admin-structural.spec.ts does), not
+ * Alpha-1: approving a stage irreversibly locks every requirement in its project. Grants and then revokes
+ * stakeholderAlpha/memberAlphaBeta project roles, and archives the project at the end so no unbounded list
+ * growth hides a just-created row from a locator (see docs/decisions.md). Setup, stage approval and
+ * archive-and-recreate use the API; the steps need two UI logins. change-request-approval-separation covers
+ * the change-request rule.
  */
 test.describe("attempts to bypass requirement/change-request workflow guarantees", () => {
   installCleanupHook();
@@ -90,7 +63,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.goto(`/projects/${projectId}/requirements/${target.id}`);
       await expect(page.locator(".record-header h1")).toBeVisible();
-      await expect(page.getByText("Locked (approved)")).toBeVisible();
+      await expectRecordLocked(page);
       await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     });
 

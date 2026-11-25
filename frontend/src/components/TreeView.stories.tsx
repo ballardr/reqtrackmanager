@@ -42,6 +42,21 @@ export const Default: Story = {
   },
 };
 
+/** The chevron is the shared plain toggle (not a bordered button), and leaves keep its width so labels line up. */
+export const ChevronIsPlain: Story = {
+  args: { nodes: NODES },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const chevron = canvas.getByRole("button", { name: "Collapse Acme" });
+    await expect(chevron).toHaveClass("tree-toggle");
+    await expect(chevron).not.toHaveClass("btn");
+    await expect(getComputedStyle(chevron).borderTopStyle).toBe("none");
+    await expect(chevron.getBoundingClientRect().width).toBeGreaterThanOrEqual(24);
+    // A leaf's label starts where a branch's label starts at the same depth.
+    await expect(canvas.getByText("Beta Ltd").getBoundingClientRect().left).toBe(canvas.getByText("Acme").getBoundingClientRect().left);
+  },
+};
+
 export const StartsCollapsed: Story = {
   args: { nodes: NODES, defaultExpanded: false },
   play: async ({ canvasElement }) => {
@@ -55,6 +70,26 @@ export const Empty: Story = {
   args: { nodes: [], emptyText: "No groups yet." },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("No groups yet.")).toBeInTheDocument();
+  },
+};
+
+/** Every level steps in by the one `--tree-indent` token, whatever the depth. */
+export const IndentIsOneTokenStepPerLevel: Story = {
+  args: { nodes: NODES },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const step = (() => {
+      const probe = document.createElement("div");
+      probe.style.width = "var(--tree-indent)";
+      canvasElement.appendChild(probe);
+      const width = probe.getBoundingClientRect().width;
+      probe.remove();
+      return width;
+    })();
+    await expect(step).toBeGreaterThan(0);
+    const lefts = ["Client", "Acme", "Acme — Finance"].map((name) => canvas.getByText(name, { exact: true }).getBoundingClientRect().left);
+    await expect(Math.abs(lefts[1] - lefts[0] - step)).toBeLessThan(1);
+    await expect(Math.abs(lefts[2] - lefts[1] - step)).toBeLessThan(1);
   },
 };
 

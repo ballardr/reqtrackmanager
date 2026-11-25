@@ -1,23 +1,12 @@
 """
 Module: modules.stakeholders.demand
 
-This module's `ModuleDefinition.demand_party_providers`: how another module (Product Feedback) counts who
-stands behind a record without importing the people it counts.
-
-Responsibilities:
-- `stakeholder_parties` / `persona_parties`: a Stakeholder or Persona visible to the project is its own party,
-  weighted by the Stakeholder's Influence level or the Persona's effective weight (`None` when neither is set).
-- `engagement_parties`: an Engagement of the project stands for the Stakeholders who took part and the
-  Personas it covered, each expanded exactly as above.
-
-Design decisions:
-- A record the project cannot see (another project's, an organisation record hidden from the project, a
-  disabled sub-component) is absent from the result, so a count never discloses it.
-- An archived record still counts: someone who asked and has since left is still a person who asked.
-- Anonymous research participants have no record and no weight, so they are not parties.
-- Each provider reads in a fixed number of statements however many ids it is given.
-
-Dependencies: `modules.registry` (`DemandParty`), this module's models and service, `models.scoring`.
+This module's `ModuleDefinition.demand_party_providers`: how Product Feedback
+counts who stands behind a record without importing the people.
+`stakeholder_parties`/`persona_parties` return a visible record as its own
+weighted party; `engagement_parties` expands an Engagement to its participants
+and covered Personas. Records the project cannot see are absent; archived ones
+count; anonymous participants are not parties.
 """
 
 from __future__ import annotations

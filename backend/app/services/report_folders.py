@@ -1,19 +1,17 @@
 """
 Module: services.report_folders
 
-The one rule for the folder a report is filed under in the Reports picker. A folder is a path of up to three
-levels written `Handover/Quarterly`.
+The one rule for the folder a report is filed under in the Reports picker: a path of up to three levels written
+`Handover/Quarterly`.
 
 Responsibilities:
-- Normalise a path the author typed: each level trimmed with inner whitespace collapsed, empty levels dropped, levels
-  joined by `/`. Reject a path that is too deep or too long, or holds control characters. An empty path means "not
-  filed": the picker then uses the report's default folder.
+- Normalise a typed path (trim levels, collapse whitespace, drop empty levels, join with `/`); reject one that is too
+  deep, too long or holds control characters. An empty path means "not filed" (the report's default folder).
 
 Design decisions:
-- A folder is a plain label on the row (a layout, a pack) or on a placement override, not a table: renaming a folder
-  is editing the label, and nothing else (permissions, bundles, hiding) has to know folders exist.
-- The label is shown as text only; it is never used in a file path, a query or markup, so the checks are about size
-  and tidiness rather than injection.
+- A folder is a plain label on the row or a placement override, not a table, so renaming is editing the label and
+  nothing else needs to know folders exist.
+- The label is shown as text only, never in a file path, query or markup, so checks cover size and tidiness only.
 """
 
 from __future__ import annotations

@@ -4,15 +4,12 @@ Revision ID: 0057
 Revises: 0056
 Create Date: 2026-10-04
 
-Adds `scoring_levels`, `scoring_model_defaults` and `scoring_bands`
-(`app.models.scoring`) — core, module-agnostic storage for the scoring
-schemes modules register via `ModuleDefinition.scoring_schemes`.
+Adds `scoring_levels`, `scoring_model_defaults` and `scoring_bands` (`app.models.scoring`): core,
+module-agnostic storage for the schemes modules register in `ModuleDefinition.scoring_schemes`.
 
-No backfill here: levels come from the live registry, which a migration
-can't read stably, so `app.services.scoring.sync_scoring_levels` seeds
-every organisation's missing axes at each process start (and on org
-creation). Model defaults and bands are override-only — no rows means
-"inherit".
+No backfill: levels come from the live registry, which a migration cannot read stably, so
+`app.services.scoring.sync_scoring_levels` seeds each organisation's missing axes at process start and on
+organisation creation. Model defaults and bands are override-only (no rows means inherit).
 """
 
 from collections.abc import Sequence

@@ -1,41 +1,27 @@
 """
 Module: modules.stakeholders.record_tables
 
-The `RecordTableProvider`s of the Stakeholders & Personas module's six record types (Persona, Stakeholder,
-Stakeholder Group, Stakeholder Need, Engagement, Research Finding): each list as a table that exports to CSV,
-PDF and Word and imports from the same CSV (a row with a code updates that record, a blank code creates one).
-
-Responsibilities:
-- Declare, per type, the columns (key, label, cell text, parser, editable flag, personal-data sensitivity) and
-  how a row is created or updated.
-- Share the list query with the list endpoint and the create / edit logic with the edit endpoint
-  (`stage_*` in the `_*_shared` modules, which the endpoints commit and the import wraps in a savepoint), so a
-  filter, validation or audit event added there reaches the file too.
+The `RecordTableProvider`s of the six record types (Persona, Stakeholder, Stakeholder Group,
+Stakeholder Need, Engagement, Research Finding): each list exports to CSV, PDF and Word and imports
+from the same CSV (a row with a code updates that record, a blank code creates one).
 
 Design decisions:
-- A create or update is built as the endpoint's own request payload (`PersonaCreate`, `StakeholderUpdate`, ...),
-  so its length limits, principal tenancy checks and type rules apply unchanged; a payload the model refuses is
-  that row's error.
-- Personal data is tagged where it is declared, so the organisation's policy decides what leaves the
-  application: a stakeholder's name, role and group are `personal`, its contact details and availability are
-  `contact`, and the free text about a named person (description, interests, notes of an engagement) is
-  `free_text_people`. A persona is a fictional archetype and is untagged. An excluded column is absent from the
-  file; a create without a required column that the policy removed fails with the payload's own message.
-- `status` is export-only: a Persona, Stakeholder and Need move through draft / active / retired by their
-  lifecycle actions and a file never does. A created record starts as the form starts it (draft).
-- The project's list also shows the organisation's personas, stakeholders and groups. They are exported with the
-  organisation-qualified code and never matched by an import here (an import into a project only updates the
-  project's own records); `organization_owned` marks them. The organisation's own lists have their own
-  `OrganizationRecordTable` (same columns, the organisation endpoints' create / update path, the organisation's
-  type vocabulary).
-- Participants, covered personas, audience groups and group members are links, managed on the record; they are
-  not columns. A group's parent is exported as a path and set in the group tree.
-- A research finding belongs to an engagement: the `engagement` column (its code) is required to create and
-  cannot be changed by an update.
-- `Tags` is export-only (tag authority and vocabulary are not a column's business).
+- Columns are declared per type; the list query is shared with the list endpoint and create/edit logic
+  with the edit endpoint (`stage_*` in the `_*_shared` modules, wrapped in a savepoint by the import), so
+  a validation or audit event added there reaches the file too.
+- A create or update is built as the endpoint's own request payload, so length limits, principal tenancy
+  checks and type rules apply; a payload the model refuses is that row's error.
+- Personal data is tagged where declared so the organisation's policy decides what leaves: a
+  stakeholder's name, role and group are `personal`, contact details and availability `contact`, free text
+  about a named person `free_text_people`; a persona is a fictional archetype and untagged. An excluded
+  column is absent from the file; a create missing a required excluded column fails with the payload's message.
+- `status` and `Tags` are export-only; a created record starts as the form starts it (draft).
+- Organisation-owned rows shown in a project list export with the organisation-qualified code and are never
+  matched by a project import; the organisation's own lists have their own `OrganizationRecordTable`.
+- Participants, covered personas, audience groups and members are links, not columns; a group's parent is
+  exported as a path. A finding's `engagement` column (its code) is required to create and immutable.
 
-Dependencies: this module's models, enums, labels, schemas and `_*_shared` write paths;
-`services.record_tables` / `record_tables_core` (cell helpers), `services.tags`.
+Dependencies: this module's models, schemas and `_*_shared` write paths; `services.record_tables`, `services.tags`.
 """
 
 from __future__ import annotations
@@ -208,10 +194,21 @@ def _tags_column() -> RecordColumn:
     return RecordColumn("tags", "Tags", lambda t, r: list_cell(t.tags.get(r.id, [])), kind="list")
 
 
+#: The `_text` columns whose cells are Markdown source (the rest are names, titles, roles and groups).
+_MARKDOWN_KEYS = frozenset({
+    "description", "goals", "needs", "behaviours", "context_environment", "skills_proficiency", "frequency_of_use",
+    "constraints", "interests", "responsibilities", "goals_needs", "priorities", "workflows_scenarios", "contact_info",
+    "availability_constraints", "rationale", "purpose", "summary", "notes",
+})
+
+
 def _text(
     key: str, label: str, getter: Callable[[Any, Any], str], *, required: bool = False, sensitivity: str = "none", editable: bool = True,
 ) -> RecordColumn:
-    return RecordColumn(key, label, getter, text_parser, editable=editable, required=required, sensitivity=sensitivity)
+    return RecordColumn(
+        key, label, getter, text_parser, editable=editable, required=required, sensitivity=sensitivity,
+        markdown=key in _MARKDOWN_KEYS,
+    )
 
 
 def _principal(key: str, label: str, type_attr: str, id_attr: str, source: Callable[[Any, Any], Any]) -> RecordColumn:
@@ -419,6 +416,7 @@ def _may_manage_org_personas(db: Session, user: User, organization_id: uuid.UUID
 
 
 PERSONA_TABLE = RecordTableProvider(
+    title_column="name",
     label="Personas",
     columns=_persona_columns,
     list_records=_list_personas,
@@ -618,6 +616,7 @@ def _may_manage_org_stakeholders(db: Session, user: User, organization_id: uuid.
 
 
 STAKEHOLDER_TABLE = RecordTableProvider(
+    title_column="name",
     label="Stakeholders",
     columns=_stakeholder_columns,
     list_records=_list_stakeholders,
@@ -753,6 +752,7 @@ def _may_manage_org_groups(db: Session, user: User, organization_id: uuid.UUID) 
 
 
 GROUP_TABLE = RecordTableProvider(
+    title_column="name",
     label="Stakeholder groups",
     columns=_group_columns,
     list_records=_list_groups,
@@ -832,6 +832,7 @@ def _may_manage_needs(db: Session, user: User, project_id: uuid.UUID) -> bool:
 
 
 NEED_TABLE = RecordTableProvider(
+    title_column="name",
     label="Stakeholder needs",
     columns=_need_columns,
     list_records=_list_needs,

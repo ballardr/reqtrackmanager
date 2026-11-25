@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES, expectRecordLocked } from "./helpers";
 
 /**
  * Job to be done: comments can be edited and have files attached/removed,
@@ -20,7 +20,7 @@ test.describe("comment editing and attachments", () => {
       await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
-      await expect(page.getByText("Locked (approved)")).toBeVisible();
+      await expectRecordLocked(page);
       // Direct attachment is blocked on a locked requirement — the
       // Attachments section shows a locked notice instead of an upload
       // control (a file input still exists elsewhere on the page, for

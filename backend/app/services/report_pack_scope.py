@@ -4,21 +4,15 @@ Module: services.report_pack_scope
 Which report packs a project can see, and hiding or restoring the inherited ones.
 
 Responsibilities:
-- `resolve_project_packs`: the packs a project can reach, each with where it comes from.
-- `hide_pack` / `restore_packs`: a project hides an inherited pack and brings it back.
-- `list_org_packs`: an organisation's own packs.
+- `resolve_project_packs`, `hide_pack` / `restore_packs`, `list_org_packs`.
 
 Design decisions:
-- **Visibility is additive.** A project sees its own packs, its ancestors' (nearest first) and the
-  organisation's, de-duplicated by name (case-insensitively) with the nearest owner winning. The Action
-  Types rule ("own rows, else the nearest ancestor's") would hide every inherited pack the moment a
-  project made one of its own, so it is not used here. A name that a nearer pack shadows is not
-  listed and cannot be hidden separately.
-- **Hiding is a tombstone** (`ProjectDefinitionSuppression`, kind `report_pack`), per project and not
-  inherited downwards, exactly as the other organisation defaults. Only an inherited pack can be
-  hidden; a project removes its own by deleting it. A hidden pack keeps its name, so it does not let a
-  farther pack of the same name show through.
-- Unlike layouts, packs have no platform starter tier.
+- Visibility is additive: a project sees its own packs, its ancestors' (nearest first) and the organisation's,
+  de-duplicated by case-insensitive name with the nearest owner winning. The action-type rule (own rows, else the
+  nearest ancestor's) would hide every inherited pack once a project made one.
+- Hiding is a per-project tombstone (`ProjectDefinitionSuppression`, kind `report_pack`), not inherited downwards;
+  only an inherited pack can be hidden, and a hidden pack keeps its name so a farther one does not show through.
+- Packs have no platform starter tier.
 
 Dependencies: `models.report_pack`, `services.project_hierarchy`, `services.definition_suppression`.
 """

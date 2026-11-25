@@ -1,20 +1,21 @@
 /**
  * Module: pages/PoliciesPage
  *
- * The Policies page: the published policies, one at a time, chosen from a side menu. Reachable without signing in
- * (the people a privacy policy concerns most have not signed in yet), so a signed-out visitor reads only the public
- * endpoints. A signed-in person also sees, under the organisation's name, the policies of each organisation they
- * belong to that they may read. Every body is rendered through `PolicyBodyView`.
+ * The Policies page: the published policies, one at a time, chosen from a side menu. It is reachable without signing in (a
+ * signed-out visitor reads only the public endpoints); a signed-in person also sees, under each organisation's name, the policies
+ * of the organisations they may read. Every body is rendered through `PolicyBodyView`.
  *
- * Responsibilities: list the readable policies (the server's first, then one group per organisation), show the
- * selected one (the first by default) with its effective date and version. With none readable the page does not
- * exist: it redirects to the front page. The address `/policies/:policyId` selects one.
+ * Responsibilities: list the readable policies (the server's first, then one group per organisation) and last the built-in
+ * Licences group (product licence, third-party components, fonts), which is not a policy; show the selected policy (the first,
+ * or Licences when none is readable) with its effective date and version. `/policies/:policyId` and
+ * `/policies/licences/:section` are read from the location so the signed-out page, outside a route, resolves them too.
  */
 import { useEffect, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { MemberPolicy, MemberPolicySummary, PendingPolicy, PublicPolicy } from "../api/types";
+import { LicencesSection } from "../components/LicencesPanel";
 import { PolicyBodyView } from "../components/PolicyBodyView";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
@@ -22,14 +23,12 @@ import { useStrings } from "../context/TerminologyContext";
 import { useAcceptPolicy, usePolicyAcceptance } from "../hooks/usePolicyAcceptance";
 import { useMemberPolicies, usePublishedPolicies } from "../hooks/usePublishedPolicies";
 import { formatPlainDate } from "../utils/localDate";
+import { LICENCE_SECTIONS, parsePoliciesPath, type LicenceSection } from "../utils/policiesPath";
 
 /** Which read a policy comes from: the public server policies, or the signed-in person's organisations. */
 type PolicySource = "server" | "organisation";
 
-/**
- * The panel above a policy the person must accept: why, and the Accept action. Shown only for the version being read,
- * so a text that changed meanwhile is not accepted unseen.
- */
+/** The panel above a policy the person must accept: why, and the Accept action, shown only for the version being read so a changed text is not accepted unseen. */
 function AcceptPanel({ policy }: { policy: PendingPolicy }) {
   const text = useStrings().policies;
   const accept = useAcceptPolicy();
@@ -77,12 +76,13 @@ function SelectedPolicy({ policyId, source }: { policyId: string; source: Policy
   );
 }
 
-/**
- * The menu: server policies as plain links, then one expandable group per organisation (an organisation with a
- * single policy is one link naming both).
- */
+/** The menu key of a licence section (a policy's key is its id, which never has this shape). */
+const licenceKey = (section: LicenceSection) => `licences-${section}`;
+
+/** The menu: server policies as plain links, then one expandable group per organisation (one link when it has a single policy), then Licences. */
 function menuGroups(
   server: { id: string; title: string }[], member: MemberPolicySummary[], line: (organisation: string, title: string) => string,
+  licences: { group: string; sections: Record<LicenceSection, string> },
 ): ResourceMenuGroupDef<string>[] {
   const groups: ResourceMenuGroupDef<string>[] = server.map((p) => ({ key: p.id, label: p.title, href: `/policies/${p.id}` }));
   const byOrganisation = new Map<string, MemberPolicySummary[]>();
@@ -95,29 +95,39 @@ function menuGroups(
         : { key: `organisation:${organizationId}`, label: rows[0].organization_name, href: children[0].href, children },
     );
   }
+  groups.push({
+    key: "licences", label: licences.group, href: `/policies/licences/${LICENCE_SECTIONS[0]}`,
+    children: LICENCE_SECTIONS.map((section) => ({ key: licenceKey(section), label: licences.sections[section], href: `/policies/licences/${section}` })),
+  });
   return groups;
 }
 
 export function PoliciesPage() {
   const text = useStrings().policies;
-  const { policyId } = useParams<{ policyId?: string }>();
+  const licences = useStrings().licences;
+  const selection = parsePoliciesPath(useLocation().pathname);
   const server = usePublishedPolicies();
   const member = useMemberPolicies();
   if (!server.loaded || !member.loaded) return <Spinner />;
-  // With nothing to read there is no page: the address goes to the front page, which is the sign-in page for
-  // someone signed out and the project list for someone signed in.
-  if (server.policies.length === 0 && member.policies.length === 0) return <Navigate to="/" replace />;
   const all: { id: string; source: PolicySource }[] = [
     ...server.policies.map((p) => ({ id: p.id, source: "server" as const })),
     ...member.policies.map((p) => ({ id: p.id, source: "organisation" as const })),
   ];
-  const active = all.find((p) => p.id === policyId) ?? all[0];
+  // An address naming a policy that is not readable shows the first one, so the page never dead-ends; with no policy
+  // readable, the Licences group is what there is to show.
+  const policy = selection.kind === "policy" ? (all.find((p) => p.id === selection.id) ?? all[0]) : undefined;
+  const section: LicenceSection = selection.kind === "licences" ? selection.section : LICENCE_SECTIONS[0];
+  const active = policy ? policy.id : licenceKey(section);
   return (
     <ResourceMenu
-      title={text.heading} ariaLabel={text.navLabel} groups={menuGroups(server.policies, member.policies, text.orgPolicyLine)}
-      active={active.id}
+      title={text.heading} ariaLabel={text.navLabel}
+      groups={menuGroups(server.policies, member.policies, text.orgPolicyLine, {
+        group: licences.group,
+        sections: { product: licences.productSection, components: licences.componentsSection, fonts: licences.fontsSection },
+      })}
+      active={active}
     >
-      <SelectedPolicy policyId={active.id} source={active.source} />
+      {policy ? <SelectedPolicy policyId={policy.id} source={policy.source} /> : <LicencesSection section={section} />}
     </ResourceMenu>
   );
 }

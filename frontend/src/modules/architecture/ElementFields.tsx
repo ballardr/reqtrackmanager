@@ -72,7 +72,7 @@ export function ElementFields({
       <PrincipalFormField
         help={ARCHITECTURE_HELP.elementOwner} label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
         value={values.owner} display={savedPrincipalDisplay(values.owner, saved?.owner)}
-        onChange={(next) => onChange("owner", next)} ariaLabel="Owner" placeholder="Search users and groups…" clearLabel="Clear"
+        onChange={(next) => onChange("owner", next)} ariaLabel="Owner"
       />
       <SymbolPicker
         help={ARCHITECTURE_HELP.elementSymbol} label="Symbol" symbols={symbols} value={values.symbol_id}
@@ -80,13 +80,13 @@ export function ElementFields({
         scope={projectId ? { kind: "project", projectId } : { kind: "org", organizationId }} onSymbolsChanged={onSymbolsChanged}
       />
       <FormGridFull>
-        <TextAreaField
+        <TextAreaField markdown
           help={ARCHITECTURE_HELP.elementDescription} label="Description" value={values.description}
           onChange={(value) => onChange("description", value)}
         />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField
+        <TextAreaField plainText="A short note drawn on the element's symbol, limited to 500 characters"
           help={ARCHITECTURE_HELP.elementDisplayNote} label="Display note" value={values.display_note}
           onChange={(value) => onChange("display_note", value)} hint="Up to 500 characters" inputProps={{ maxLength: 500 }}
         />

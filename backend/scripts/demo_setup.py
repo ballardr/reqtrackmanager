@@ -4,33 +4,24 @@ Module: scripts.demo_setup
 Sets a stack up as a demonstration, resets it, and optionally resets it every day.
 
 Responsibilities:
-- Seed every demonstration project through the real HTTP API (`seed_demo_data`, which also seeds the repository
-  project and the example templates), so validation, versioning and audit apply as for a person.
+- Seed every demonstration project through the real HTTP API (`seed_demo_data`), so validation, versioning and audit apply.
 - Remove the demonstration organisation on `--reset` and `--teardown` through the organisation deletion route.
-- Disable file uploads for the deployment once the demonstration is seeded (the public can sign in, so the demo must
-  not host files they upload); uploads are switched on only while the seed itself stores its pictures.
-- Post the server-wide sign-in details message (and a warning for the hour before a scheduled reset) through the
-  server administration messages API, replacing its own earlier messages.
-- Run the daily reset (`schedule`), applying the same guards on every run.
+- Disable file uploads once seeded (the public can sign in); post the server-wide sign-in details message and a warning
+  before a scheduled reset through the server messages API; run the daily reset (`schedule`) with the same guards.
 
 Design decisions:
-- Guards live in `services.demo_setup` and run first on every invocation: `--demo` is required, mail must go to
-  a mail catcher, and a database that holds an organisation this command did not create is refused unless the
-  database name is confirmed. A reset only ever removes the demonstration organisation.
-- The default password is fixed (`DemoDemo123!`); `--rotate-passwords` (or `DEMO_ROTATE_PASSWORDS=1`) gives every
-  demonstration account a new random password on each run. The current one is kept in `DEMO_STATE_DIR` (mode
-  0600) so the next run can sign in and change it, because accounts outlive the organisation's removal.
-- The password appears only in the sign-in details message and the state file: never in a log line, an audit
-  event or a notification (the message is never sent as a notification).
-- Uploads are disabled through the real server setting (`PUT /system/file-uploads`), after the seed and also on a
-  failed seed, so an interrupted run never leaves them on. `--allow-uploads` keeps them on; `--teardown` restores the
-  default (on), because the stack is no longer a demonstration.
-- A failed seed removes the partly seeded organisation (accounts and names are unique, so the previous data
-  cannot be kept alongside it), says so, writes the failure metric and exits non-zero.
-- The reset is not an in-application job: a wipe inside the backend of a deployment that had the flag set by
-  mistake is the worst case; the scheduler is a separate opt-in service.
+- Guards in `services.demo_setup` run first: `--demo` is required, mail must go to a mail catcher, and a database holding an
+  organisation this command did not create is refused unless its name is confirmed. A reset only removes the demonstration
+  organisation.
+- The default password is fixed (`DemoDemo123!`); `--rotate-passwords` (or `DEMO_ROTATE_PASSWORDS=1`) gives every account a
+  new random one per run, kept in `DEMO_STATE_DIR` (mode 0600) because accounts outlive the organisation. A password appears
+  only in the sign-in message and the state file, never in a log, audit event or notification.
+- Uploads are disabled through `PUT /system/file-uploads` after the seed and on a failed seed; `--allow-uploads` keeps them
+  on and `--teardown` restores the default (on).
+- A failed seed removes the partly seeded organisation, writes the failure metric and exits non-zero.
+- The reset is a separate opt-in service, not an in-application job, so a wrongly flagged deployment cannot wipe itself.
 
-External dependencies: `httpx`, `seed_demo_data`, `services.demo_setup`, `services.dr_schedule`.
+Dependencies: `httpx`, `seed_demo_data`, `services.demo_setup`, `services.dr_schedule`.
 
 Run from `tests/container` (`scripts/demo.sh` wraps this):
     docker compose exec backend python scripts/demo_setup.py --demo

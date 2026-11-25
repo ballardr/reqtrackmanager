@@ -1,10 +1,9 @@
 /**
  * Module: components/GroupInUseDialog
  *
- * The delete dialog for an organisation or project group that still owns records (an owner, assignee
- * or reviewer field names it). It is `DeleteInUseDialog` configured for groups: it lists what names
- * the group, then lets the admin hand everything to a user or another group (a searchable
- * `PrincipalPicker`, since a replacement can be any person) or, when no required field names the
+ * The delete dialog for an organisation or project group that still owns records (an owner, assignee or reviewer
+ * field names it): `DeleteInUseDialog` configured for groups. It lists what names the group, then lets the admin
+ * hand everything to a user or another group (a searchable `PrincipalPicker`) or, when no required field names the
  * group, clear the optional fields. The server enforces the same rules (`DELETE .../groups/{id}`).
  */
 import type { OrgUser, PrincipalRef, PrincipalType, PrincipalUsage } from "../api/types";

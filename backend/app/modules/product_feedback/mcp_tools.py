@@ -1,22 +1,12 @@
 """
 Module: modules.product_feedback.mcp_tools
 
-The Product Feedback module's MCP tool declarations (`docs/modules.md` section 6). Each tool proxies an existing
-router endpoint, so the endpoint's own authorisation, guards and audit logging apply unchanged; declaring a tool
-grants nothing.
-
-Responsibilities:
-- `build_mcp_tools`: read tools (requests, versions, comments, demand, merges, close-the-loop, settings) and write tools
-  (create, update, lifecycle move, comment, merge, unmerge, record requesters as told, scoring scheme) for a project,
-  plus list, create, scoring scheme and move-into-a-project for the organisation's inbox.
-
-Design decisions:
-- Write-enabled (**Decided by: User**, as for every module's MCP tools). Writes still need `MCP_WRITES_ENABLED`
-  and the caller's own role.
-- No tool decides on a person's behalf beyond what the endpoint allows; there is no delete tool and no tool for
-  changing the project's submission policy (a project administrator's setting).
-
-Dependencies: `modules.registry` (`McpToolDefinition`).
+MCP tool declarations (`docs/modules.md` section 6). Each tool proxies an
+existing endpoint, so its authorisation, guards and audit apply unchanged.
+`build_mcp_tools` declares project read and write tools (requests, versions,
+comments, demand, merges, close-the-loop, scoring scheme) and the organisation
+inbox tools. Writes need `MCP_WRITES_ENABLED` and the caller's role; there is no
+delete tool and none for the submission policy.
 """
 
 from __future__ import annotations
@@ -157,14 +147,6 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             method="GET", path_template=f"{_PREFIX}/close-the-loop", params=[_PROJECT_ID],
         ),
         McpToolDefinition(
-            name="list_external_systems",
-            description=(
-                "Lists the project's effective external systems (Jira, ServiceNow, ...): the ids a request's "
-                "references take as system_id."
-            ),
-            method="GET", path_template=f"{_PREFIX}/external-systems", params=[_PROJECT_ID],
-        ),
-        McpToolDefinition(
             name="list_request_channels",
             description=(
                 "Lists the project's effective request channels (Support ticket, Call, Email, ...): the ids "
@@ -254,13 +236,13 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             ),
             method="POST", path_template=f"{_REQUEST}/references",
             params=[_PROJECT_ID, _REQUEST_ID,
-                    _body("system_id", "uuid", "The system (list_external_systems).", required=True), *_REFERENCE_FIELDS],
+                    _body("system_id", "uuid", "The system (the core list_external_systems tool).", required=True), *_REFERENCE_FIELDS],
         ),
         McpToolDefinition(
             name="update_request_reference",
             description="Changes a reference; only the fields supplied change. Needs the Feedback Triager role.",
             method="PATCH", path_template=f"{_REQUEST}/references/{{reference_id}}",
-            params=[_PROJECT_ID, _REQUEST_ID, _REFERENCE_ID, _body("system_id", "uuid", "The system (list_external_systems)."),
+            params=[_PROJECT_ID, _REQUEST_ID, _REFERENCE_ID, _body("system_id", "uuid", "The system (the core list_external_systems tool)."),
                     *_REFERENCE_FIELDS],
         ),
         McpToolDefinition(
@@ -313,10 +295,5 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             method="POST", path_template=f"{_ORG_PREFIX}/requests",
             params=[_ORG_ID, _body("title", "string", "Short name of the request.", required=True), *_REQUEST_FIELDS,
                     _CREATE_REFERENCES],
-        ),
-        McpToolDefinition(
-            name="list_inbox_external_systems",
-            description="Lists the organisation's external systems (Jira, ServiceNow, ...) an inbox request's references can use.",
-            method="GET", path_template=f"{_ORG_PREFIX}/external-systems", params=[_ORG_ID],
         ),
     ) + report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PREFIX)

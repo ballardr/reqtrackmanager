@@ -1,14 +1,14 @@
 /**
  * Module: modules/product_feedback/RequestLoopPanel
  *
- * Closing the loop on a delivered or declined request: each requester, the channel they asked through (so you know
- * how to reach them), a "Told" checkbox, the date it was
- * recorded and an optional note, plus "Mark all told" for the ones still open. Nothing is sent to anyone: this records
- * that someone told them (the note says how), so the open-loop badge and list can show who is still waiting.
+ * Closing the loop on a delivered or declined request: each requester, the channel they asked through (to show how to
+ * reach them), a "Told" checkbox, the date it was recorded and an optional note, plus "Mark all told" for the open
+ * ones. Nothing is sent: this records that someone told them (the note says how), so the open-loop badge and list show
+ * who is still waiting.
  *
- * Requesters come from the request's demand, merged duplicates' included, so a person who asked twice is told once.
- * A requester the viewer may not see still gets a row (they are owed an answer) without a name. Telling is
- * recorded only for a delivered or declined request; before then the panel says so.
+ * Requesters come from the request's demand, merged duplicates included, so a person who asked twice is told once. A
+ * requester the viewer may not see still gets a row (they are owed an answer) without a name. Telling is recorded
+ * only for a delivered or declined request; before then the panel says so.
  */
 import { useState } from "react";
 
@@ -16,6 +16,7 @@ import { DetailCard } from "../../components/DetailCard";
 import { CheckboxField, TextField } from "../../components/FormFields";
 import { PRODUCT_FEEDBACK_HELP } from "./help";
 import type { CloseTheLoop, LoopRequester } from "./types";
+import { MarkdownView } from "../../components/MarkdownView";
 
 const key = (r: LoopRequester) => `${r.artefact_type}:${r.id}`;
 
@@ -34,7 +35,7 @@ export function RequestLoopPanel({
   return (
     <DetailCard heading="Closing the loop">
       {loop.status === "declined" && loop.decline_reason && (
-        <p style={{ margin: 0 }}><span className="text-muted">Reason given: </span>{loop.decline_reason}</p>
+        <div><span className="text-muted">Reason given: </span><MarkdownView text={loop.decline_reason} /></div>
       )}
       {loop.requesters.length === 0 ? (
         <p className="text-muted">No one is recorded as having asked for this, so there is no one to tell.</p>
@@ -73,7 +74,7 @@ export function RequestLoopPanel({
                       />
                     </td>
                     <td>{r.informed_at ? new Date(r.informed_at).toLocaleDateString() : "–"}</td>
-                    <td className="text-muted">{r.note || "–"}</td>
+                    <td className="text-muted">{r.note ? <MarkdownView text={r.note} /> : "–"}</td>
                   </tr>
                 );
               })}

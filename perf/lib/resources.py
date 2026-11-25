@@ -10,12 +10,11 @@ Responsibilities:
   threshold is crossed (`Watchdog`), so the runner can stop and tear the stack down.
 
 Design decisions:
-- Isolating the data does not isolate the hardware: the perf stack shares CPU, memory, I/O and network with
-  whatever else runs on the host. Caps bound the damage, the preflight refuses to start without headroom, and the
-  watchdog stops the run; none of these makes a shared host risk-free (documented in `perf/README.md`).
-- Defaults are conservative: at most half the host's cores and a quarter of its memory. `--dedicated` raises them
-  for a machine that runs nothing else.
-- The watchdog stops the run rather than pausing it first: the safer behaviour for a production neighbour.
+- The perf stack shares CPU, memory, I/O and network with whatever else runs on the host. Caps bound the damage, the
+  preflight refuses to start without headroom and the watchdog stops the run; none makes a shared host risk-free
+  (`perf/README.md`).
+- Defaults are conservative (at most half the cores and a quarter of the memory); `--dedicated` raises them.
+- The watchdog stops the run rather than pausing it, the safer behaviour for a production neighbour.
 - The `--watch-url` probe only issues GET, carries no credentials and follows no redirects.
 
 Dependencies: standard library only (Python 3.9+).

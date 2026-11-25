@@ -4,12 +4,8 @@ Revision ID: 0098
 Revises: 0097
 Create Date: 2026-10-18
 
-Adds `unique_code` to `personas`, `stakeholders` and `stakeholder_groups`, which exist at two scopes. A project-scoped row is numbered within
-its project (counter in `project_sequence_counters`), an organisation-scoped row within its
-organisation (`organization_sequence_counters`, created by 0097); each is unique per owner.
-Existing rows are numbered in the order they were created and the counter is set past the highest
-number, so a code is never reused. Guarded throughout: a database built from the current models
-already has the columns.
+Adds `unique_code` numbered per project or organisation (existing rows in
+creation order, counter past the highest). Guarded and repeatable.
 """
 
 from collections.abc import Sequence

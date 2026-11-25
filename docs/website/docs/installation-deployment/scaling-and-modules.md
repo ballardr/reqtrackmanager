@@ -83,7 +83,7 @@ Each worker serves at most `MAX_CONCURRENT_REQUESTS` requests at once (by defaul
 
 ### Memory limits and sizing
 
-Every always-on service has a memory limit in `docker-compose.yml`, set from measured peaks and overridable from `.env` (`0` removes a limit). A service over its limit is killed and restarted, so raise a limit before the load that needs it.
+Every always-on service has a memory limit in `deployments/full/docker-compose.yml`, set from measured peaks and overridable from `.env` (`0` removes a limit). A service over its limit is killed and restarted, so raise a limit before the load that needs it.
 
 | Service | Variable | Default | Measured |
 |---------|----------|---------|----------|

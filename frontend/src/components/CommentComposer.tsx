@@ -1,13 +1,13 @@
 /**
  * Module: components/CommentComposer
  *
- * The box for writing a new comment on a canvas (the body of the new-comment marker's pop-over): a growing text area with
- * Comment and Cancel, and the last failure's message. It stores nothing; the caller's `onPost` does.
+ * The box for writing a new comment on a canvas (the new-comment marker's pop-over body): a growing text area with
+ * Comment and Cancel and the last failure's message. It stores nothing; the caller's `onPost` does.
  */
 import { useState } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { MarkdownEditor } from "./MarkdownEditor";
 
 /**
  * @param onPost Stores the comment; resolves to true when it was stored.
@@ -29,7 +29,10 @@ export function CommentComposer({ onPost, onCancel, error }: { onPost: (body: st
   }
   return (
     <div className="stack" style={{ gap: "var(--space-2)" }}>
-      <AutoGrowTextarea rows={3} value={body} onChange={setBody} placeholder={text.commentPlaceholder} aria-label={text.composerTitle} autoFocus />
+      <MarkdownEditor
+        simple rows={3} value={body} onChange={setBody} ariaLabel={text.composerTitle}
+        textareaProps={{ placeholder: text.commentPlaceholder, autoFocus: true }}
+      />
       {error && <p role="alert" style={{ color: "var(--color-danger)", margin: 0 }}>{error}</p>}
       <div className="row">
         <button type="button" className="btn btn-primary" disabled={busy || !body.trim()} onClick={() => void post()}>{text.post}</button>

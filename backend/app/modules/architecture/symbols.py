@@ -1,32 +1,23 @@
 """
 Module: modules.architecture.symbols
 
-What a symbol is made of and who may read it: the built-in drawings, the checks an uploaded file passes, the safe SVG
-a stored symbol yields, and which symbols a viewer may read.
-
-Responsibilities:
-- `BUILTIN_SVG`: the built-in set, drawn here (no file, no licence question), keyed as `service.DEFAULT_SYMBOLS`.
-- `prepare_symbol_upload`: turn an upload into the sanitised SVG that is stored.
-- `symbol_svg`: the sanitised SVG of any symbol row, for the endpoint that serves it and the renderers.
-- `visible_symbol_ids`: the symbols among some ids a viewer may read.
+What a symbol is made of and who may read it. `BUILTIN_SVG` is the built-in set drawn here (no file, keyed as
+`service.DEFAULT_SYMBOLS`); `prepare_symbol_upload` turns an upload into the stored sanitised SVG; `symbol_svg` yields the
+sanitised SVG of any symbol row; `visible_symbol_ids` returns the symbols among some ids a viewer may read.
 
 Design decisions:
-- **One importer.** An upload goes through the report-image machinery (`services.report_images.prepare_upload` for an
-  EPS or PDF when the converter is configured, `sniff_image`, `services.report_svg.sanitize_svg`), so a script, an
-  external reference, an entity or an oversized file is refused in one place. Only a vector drawing is accepted (a
-  raster image does not scale on a diagram), and the stored copy is the sanitised one, never the upload. The sanitiser
-  runs again whenever a symbol is read, as each renderer's does.
-- **A smaller size limit than a report picture.** A symbol is an icon drawn at a few dozen pixels; `MAX_SYMBOL_BYTES`
-  keeps a diagram of many symbols light and a megabyte photograph-in-an-SVG out.
-- **Built-ins are code.** They are rows with a key and no file, so they cost no storage, cannot be altered through
-  the library and travel in a bundle by key.
-- **Reading follows the record that uses a symbol.** An organisation symbol is readable by the organisation's
-  members. A project's symbol is readable by whoever can open that project, from that project or an inheriting
-  child, and by anyone who can read an element (or the type of an element) drawn with it, so an element shared from
-  another project still shows its symbol. A symbol that none of these reaches is indistinguishable from a missing one.
+- One importer: an upload goes through the report-image machinery (`services.report_images.prepare_upload` for EPS or
+  PDF when the converter is configured, `sniff_image`, `services.report_svg.sanitize_svg`), so a script, external
+  reference, entity or oversized file is refused in one place. Only vector drawings are accepted; the stored copy is the
+  sanitised one, sanitised again on every read as each renderer does.
+- `MAX_SYMBOL_BYTES` is smaller than a report picture limit: a symbol is an icon, and a small limit keeps a diagram of
+  many symbols light.
+- Built-ins are rows with a key and no file, so they cost no storage, cannot be altered and travel in a bundle by key.
+- Reading follows the record using the symbol: an organisation symbol is readable by its members; a project's by whoever
+  can open that project (or an inheriting child) and by anyone who can read an element (or its type) drawn with it. A
+  symbol none of these reaches is indistinguishable from a missing one.
 
-Dependencies: `service` (the library and the module's keys), `visibility`, and core services (`report_images`,
-`report_svg`, `files`, `link_nesting`, `project_hierarchy`).
+Dependencies: `service`, `visibility`, core `report_images`, `report_svg`, `files`, `link_nesting`, `project_hierarchy`.
 """
 
 from __future__ import annotations

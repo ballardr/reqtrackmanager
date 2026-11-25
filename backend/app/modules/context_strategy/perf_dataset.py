@@ -1,21 +1,10 @@
 """
 Module: modules.context_strategy.perf_dataset
 
-The dataset generators for the five Context & Strategy artefact types: strategies, future states and guiding
-principles (versioned), pain points (with per-persona scores) and open questions.
-
-Responsibilities:
-- Write each type's identity rows, version rows where the type has them, pain point scores, comments, tags,
-  cross-type links and audit events, and the project's sequence counter for the type.
-
-Design decisions:
-- Project-scoped records only: an organisation-scoped strategy, future state or principle belongs to no project, so
-  it is not part of a per-project dataset. That is a stated gap of the generator, not of the application.
-- Pain point scores are per persona (the persona ids of the same project), using the organisation's real scoring
-  levels, so the scoring roll-up reads rows shaped like production ones.
-- Each type links outward to types generated before it (`PerfDatasetGenerator.order`).
-
-Dependencies: `perf_dataset.records`, this module's models and enums, `services.scoring`.
+Dataset generators for the five Context & Strategy types: identity and version
+rows, pain point scores, comments, tags, links, audit events and the sequence
+counter. Project-scoped records only; each type links to types generated
+earlier (`PerfDatasetGenerator.order`).
 """
 
 from __future__ import annotations

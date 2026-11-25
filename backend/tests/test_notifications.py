@@ -98,10 +98,9 @@ def test_change_request_submit_and_decide_notify_others_but_not_the_actor(client
     ).json()
     client.post(f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/submit", headers=auth_headers(admin_token))
 
-    # admin_token created and submitted this CR themselves, and is also a
-    # project manager and (trivially) not a stakeholder — the submitted
-    # notification must reach the *other* PM and the stakeholder, never the
-    # submitter, who already knows they just submitted it.
+    # admin_token submitted this CR and is also a project manager: the
+    # submitted notification reaches the other PM and the stakeholder, never
+    # the submitter.
     assert any(n["type"] == "change_request_submitted" for n in _notifications_for(client, other_pm_token))
     assert any(n["type"] == "stakeholder_input_requested" for n in _notifications_for(client, stakeholder_token))
     assert not any(n["type"] == "change_request_submitted" for n in _notifications_for(client, admin_token))
@@ -110,10 +109,9 @@ def test_change_request_submit_and_decide_notify_others_but_not_the_actor(client
         f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/decide",
         json={"approve": True, "note": "ok"}, headers=auth_headers(admin_token),
     )
-    # admin_token is both this CR's creator and the one deciding it — the
-    # "your change request was approved" notification (aimed at the
-    # creator) and the "requirements updated" broadcast must both skip them,
-    # while the uninvolved other PM still gets the broadcast.
+    # admin_token is both creator and decider: the "approved" notification
+    # (aimed at the creator) and the "requirements updated" broadcast both skip
+    # them, while the uninvolved other PM still receives the broadcast.
     admin_notifs = _notifications_for(client, admin_token)
     assert not any(n["type"] == "change_request_approved" for n in admin_notifs)
     assert not any(n["type"] == "requirements_updated" for n in admin_notifs)

@@ -4,33 +4,19 @@ Revision ID: 0025
 Revises: 0024
 Create Date: 2026-09-05
 
-Adds the two tables module-contributed RBAC needs,
-sitting on top of
-`server_roles` and `organization_module_entitlements`/
-`organization_modules`:
+Adds the two tables module-contributed RBAC needs:
 
-- `module_role_definitions` (`app.models.module_role.
-  ModuleRoleDefinitionRow`) — a database mirror of every module-contributed
-  role declared by the in-process registry (`app.modules.registry.
-  ModuleRoleDefinition`), kept in sync at every process startup by
-  `app.modules.registry.sync_module_role_definitions`. Deliberately
-  append-only (no delete path exists for it) so a `user_module_roles`
-  grant's display name/description stays resolvable even if the declaring
-  module is later removed from `INSTALLED_MODULES` — see that model's own
-  docstring.
-- `user_module_roles` (`app.models.module_role.UserModuleRole`) — the
-  grant table itself: which user holds which module-contributed role, at
-  which scope. Direct grants only, no group/hierarchy inheritance (a
-  deliberate V1 scope boundary — see that model's own docstring).
-  `organization_id` is always set (even for a project-scoped grant, via
-  the project's own organisation); `project_id` is set only for a
-  project-scoped grant.
+- `module_role_definitions` (`app.models.module_role.ModuleRoleDefinitionRow`): a database mirror of
+  every role declared in the in-process registry (`app.modules.registry.ModuleRoleDefinition`),
+  synchronised at each process startup by `sync_module_role_definitions`. It is append-only (no delete
+  path) so a grant's display name and description stay resolvable after the declaring module leaves
+  `INSTALLED_MODULES`.
+- `user_module_roles` (`app.models.module_role.UserModuleRole`): which user holds which role at which
+  scope. Direct grants only, no group or hierarchy inheritance (see the model's docstring).
+  `organization_id` is always set (a project-scoped grant uses the project's organisation);
+  `project_id` is set only for a project-scoped grant.
 
-No backfill of either table — `module_role_definitions` starts empty and
-is populated by the next process startup's `sync_module_role_definitions`
-call, and `user_module_roles` starts empty since no module with roles is
-registered yet (Compliance doesn't land until later) — matching 0023/
-0024's own "additive tables/columns only" precedent.
+No backfill: both tables start empty and the first startup populates `module_role_definitions`.
 """
 
 from collections.abc import Sequence

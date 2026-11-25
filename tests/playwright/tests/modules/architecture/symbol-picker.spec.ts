@@ -53,7 +53,7 @@ test.describe("System Architecture: the symbol picker uploads and shows a Galler
     await test.step("the file is in the Symbols settings, in the shared library", async () => {
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Symbols", "System Architecture");
-      await expect(page.locator(`input[value="${symbolName}"]`)).toBeVisible();
+      await expect(page.getByRole("table", { name: "Symbols" }).getByText(symbolName, { exact: true })).toBeVisible();
     });
 
     await test.step("the drawing shows on a diagram box", async () => {

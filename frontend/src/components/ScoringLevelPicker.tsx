@@ -1,15 +1,10 @@
 /**
  * Module: components/ScoringLevelPicker
  *
- * Picks one level of a scoring axis (generic scoring-matrix core)
- * — e.g. a Pain Point's Severity for one persona. A labelled
- * select (shared `LabeledSelect`) with an explicit "Not scored" option,
- * because an unset input means "not scored under models that use this
- * axis", never zero. The field's `(?)` help tooltip lists every level with its
- * guidance, so scorers apply the scale consistently and can compare levels
- * before choosing, without a note taking a row once they know the scale. The
- * help text does not depend on the selection, so choosing a level never swaps
- * the field's markup and drops the select's focus.
+ * Picks one level of a scoring axis (e.g. a Pain Point's Severity for one persona) with the shared `LabeledSelect` and an
+ * explicit "Not scored" option, because an unset input means "not scored under models that use this axis", never zero.
+ * The field's `(?)` help lists every level with its guidance so scorers can compare levels before choosing. The help
+ * does not depend on the selection, so choosing a level never swaps the field's markup and drops the select's focus.
  */
 import type { ScoringAxis } from "../api/scoring";
 import { LabeledSelect } from "./LabeledSelect";

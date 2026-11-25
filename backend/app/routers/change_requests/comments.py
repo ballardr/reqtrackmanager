@@ -1,20 +1,10 @@
 """
 Module: routers.change_requests.comments
 
-Discussion-thread comments on a change request (C-R-01): adding, listing,
-editing, attaching/removing a file, and reacting/unreacting — notifying
-subscribers on a new comment.
-
-Split out of the former flat `routers/change_requests.py` as a pure
-code-organization refactor — see `routers/change_requests/__init__.py`'s
-module docstring for the package layout. `_get_cr_in_project` is imported
-from `_shared.py` (used by four sibling buckets); `CAN_SUBMIT_ROLES` is
-imported from `core.py` (used by exactly one sibling bucket besides core
-itself). Subscription (`PUT`/`DELETE /{cr_id}/subscription`) is a
-different sub-resource and lives in its own `subscriptions.py` bucket
-instead — matching how the `requirements/` package's own split gave
-subscriptions their own dedicated bucket rather than folding them into
-`comments.py`/`files.py`.
+Discussion-thread comments on a change request (C-R-01): adding, listing, editing, attaching/removing a
+file and reacting/unreacting, notifying subscribers of a new comment. Subscription (`PUT`/`DELETE
+/{cr_id}/subscription`) lives in `subscriptions.py`. `_get_cr_in_project` comes from `_shared.py` and
+`CAN_SUBMIT_ROLES` from `core.py`.
 """
 
 from __future__ import annotations

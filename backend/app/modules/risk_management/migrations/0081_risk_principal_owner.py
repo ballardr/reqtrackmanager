@@ -1,16 +1,12 @@
-"""Risk owners become principals (users and groups on parity, Risk 5b)
+"""Risk owners become principals (users and groups on parity)
 
 Revision ID: 0081
 Revises: 0080
 Create Date: 2026-10-12
 
-`risk_versions.owner_id` may now name a user, an organisation group or a
-project group. It gets an
-`owner_type` column (existing rows backfill to `user`), the foreign key to
-`users` is dropped (the id now points at one of three tables; the service
-validates it), and a check constraint keeps the pair consistent. Every version
-row is backfilled, not only the current one, so history keeps who owned each
-version.
+`risk_versions.owner_id` may name a user, an organisation group or a project
+group: adds `owner_type` (every version row backfills to `user`), drops the
+foreign key to `users` (the service validates the id) and adds a pair check.
 """
 
 from collections.abc import Sequence

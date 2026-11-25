@@ -54,7 +54,7 @@ def test_a_reference_key_finds_the_request_only_when_that_field_is_searched(clie
     systems = {
         e["name"]: e["id"]
         for e in client.get(
-            f"/api/v1/projects/{project['id']}/modules/product_feedback/external-systems", headers=auth_headers(token),
+            f"/api/v1/projects/{project['id']}/external-systems", headers=auth_headers(token),
         ).json()
     }
     request = create_request(client, token, project["id"], references=[{"system_id": systems["Jira"], "key": "ZZQ-4242"}])

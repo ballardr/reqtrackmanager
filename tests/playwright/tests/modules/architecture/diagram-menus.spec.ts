@@ -28,7 +28,7 @@ async function openAddMenu(page: Page) {
 /**
  * Job to be done: a menu opened over a diagram goes away when the person clicks elsewhere, and a menu with groups is a
  * tree that opens in place. The editors' canvas (React Flow) stops the mouse press before it reaches the page, so a
- * menu that listened for it stayed open over the diagram.
+ * menu that listens for it on the page stays open over the diagram.
  *
  * Disposable org, admin and project via `setUpOrg` with System Architecture on; records are created through the API as
  * setup, the behaviour under test through the UI.

@@ -1,17 +1,10 @@
-"""Tests for the Compliance Module's data model
-(§2,
-§5, §6, §25, §31): module registration (this is the first real first-party
-module in `INSTALLED_MODULES`, not a fixture like every module-system test
-before it), the `ComplianceStandard` -> `ComplianceStandardVersion` ->
-`ComplianceRequirement` (self-referential hierarchy) -> `ComplianceRequired
-Action` shape, the organisation-scoped `ComplianceActionTypeDefinition`
-vocabulary, and the 0026 migration's up/down behaviour.
+"""Tests for the Compliance Module's data model (§2, §5, §6, §25, §31): module registration, the
+`ComplianceStandard` -> `ComplianceStandardVersion` -> `ComplianceRequirement` (self-referential hierarchy) ->
+`ComplianceRequiredAction` shape, the organisation-scoped `ComplianceActionTypeDefinition` vocabulary, and the 0026
+migration's up and down behaviour.
 
-These tests are data-model only, so
-every test here talks to the ORM directly via `SessionLocal`. Only
-`org_id`/`admin_token`/`create_org_user` (existing API-backed fixtures) are
-used to get real `organizations`/`users` rows to hang foreign keys off —
-nothing compliance-specific goes through the API.
+Every test talks to the ORM through `SessionLocal`; `org_id`, `admin_token` and `create_org_user` only supply real
+`organizations` and `users` rows for the foreign keys.
 """
 
 import uuid
@@ -34,27 +27,11 @@ from tests.db_helpers import must_get
 
 
 def test_compliance_module_is_registered_with_org_and_project_roles():
-    """Unlike every module-system test before it, this doesn't need a
-    fixture module — Compliance is a real, permanent entry in
-    `INSTALLED_MODULES`. The module has both an org-scoped
-    and a project-scoped router, a `resolve_file_owner_project_id` hook,
-and four scheduled jobs — see
-    `test_compliance_standards_api.py`/`test_project_compliance_api.py`/
-    `test_compliance_evidence_api.py`/`test_compliance_approval_workflow.py`/
-    `test_compliance_reviews_and_notifications.py`/`test_compliance_
-    mapping_and_version_impact.py` for the actual API surfaces these facts
-    stand in for here.
-
-    Its MCP surface was originally ten read-only tools;
-    2026-09-22 reversed that to write-enabled (68 more tools) except
-    approvals (gated, not excluded) and RBAC/file-upload endpoints (still
-    undeclared) — see `module.py`'s own docstring and `docs/decisions.md`'s
-    "Compliance MCP write tools + generalized AI approval gate" entry. A
-    2026-09-23 hardening pass then removed two of those 68 (`complete_
-    project_review`/`complete_standard_review`, found declared with no
-    gate at all despite recording a review outcome being categorically
-    MCP-excluded in every configuration — see that entry in docs/
-    decisions.md), landing at 76."""
+    """Compliance is a permanent entry in `INSTALLED_MODULES` with an organisation router, a project router, a
+    `resolve_file_owner_project_id` hook, four scheduled jobs and its declared MCP tools (the API surfaces are tested in
+    the sibling `test_compliance_*` and `test_project_compliance_api.py` files). The MCP surface is write-enabled except
+    the review-outcome tools (`complete_project_review`, `complete_standard_review`), which are MCP-excluded, and
+    approvals (gated), RBAC and file-upload endpoints (undeclared); see `module.py` and `docs/decisions.md`."""
     registry = get_module_registry()
     assert "compliance" in registry
     definition = registry["compliance"]
@@ -65,23 +42,21 @@ and four scheduled jobs — see
     assert definition.get_project_router is not None, "the project-scoped assessment router is registered"
     assert definition.get_project_router() is not None
     assert len(definition.mcp_tools) == 74, (
-        "Ten read-only tools plus 68 write tools declared in the "
-        "2026-09-22 reversal (docs/decisions.md's 'Compliance MCP write tools + generalized AI approval "
-        "gate' entry), minus 2 removed in the 2026-09-23 hardening pass (complete_project_review/"
-        "complete_standard_review) and 2 more removed when the requirement "
-        "traceability-link create/delete tools were replaced by the generic artefact-link tools — see "
-        "module.py's own updated docstring"
+        "Ten read-only tools plus the write tools declared by docs/decisions.md's 'Compliance MCP write tools + "
+        "generalized AI approval gate' entry, excluding the review-outcome tools (complete_project_review/"
+        "complete_standard_review) and the requirement traceability-link tools (the generic artefact-link "
+        "tools cover links) — see module.py's docstring"
     )
     assert {tool.name for tool in definition.mcp_tools} >= {
         "submit_requirement_for_approval", "approve_requirement", "reject_requirement",
     }, (
-        "As of the 2026-09-22 reversal, submit-for-approval/approve/reject ARE declared — submit needs no "
-        "gate (it only queues a decision), approve/reject resolve to routes gated by "
-        "require_ai_approvals_enabled when reached through MCP (see project_router.py's own docstrings)"
+        "submit-for-approval/approve/reject are declared: submit needs no gate (it only queues a decision), "
+        "approve/reject resolve to routes gated by require_ai_approvals_enabled when reached through MCP "
+        "(see project_router.py's docstrings)"
     )
     assert any("migrate" in tool.name for tool in definition.mcp_tools), (
-        "The 2026-09-22 reversal also declares the project version-migration action "
-        "(compliance_migrate_project_compliance_version) — see module.py's own docstring"
+        "The project version-migration action (compliance_migrate_project_compliance_version) is declared "
+        "— see module.py's docstring"
     )
     assert not any(
         tool.name
@@ -92,15 +67,15 @@ and four scheduled jobs — see
         }
         for tool in definition.mcp_tools
     ), (
-        "RBAC role-grant endpoints and the two file-upload endpoints stay undeclared even after the "
-        "2026-09-22 reversal — see module.py's own docstring's 'reversal' section, points 2 and 3"
+        "RBAC role-grant endpoints and the two file-upload endpoints stay undeclared — see module.py's "
+        "docstring, points 2 and 3"
     )
     assert not any(
         tool.name in {"complete_project_review", "complete_standard_review"} for tool in definition.mcp_tools
     ), (
-        "2026-09-23 hardening pass: recording a review outcome is categorically MCP-excluded in every "
-        "configuration (mirrors core's record_review_outcome), not just gated — both routes are now marked "
-        "APPROVAL_ACTION_ROUTE_EXTRA and their tool declarations were removed"
+        "recording a review outcome is categorically MCP-excluded in every configuration (mirrors core's "
+        "record_review_outcome), not just gated: both routes are marked APPROVAL_ACTION_ROUTE_EXTRA and "
+        "declare no tool"
     )
     assert definition.resolve_file_owner_project_id is not None, "the evidence file-ownership hook is registered"
     assert len(definition.scheduled_jobs) == 4, "four date-driven notification sweeps are registered"
@@ -111,10 +86,8 @@ and four scheduled jobs — see
     }
     assert roles_by_key["compliance_manager"].scope == "org"
     assert roles_by_key["compliance_officer"].scope == "project"
-    # Standard-scoped roles use the generalised, module-owned
-    # entity scope (`app.modules.registry.ModuleRoleDefinition`'s new
-    # `scope`/`overridden_by`/`resolve_entity_organization_id` mechanism)
-    # rather than a second hardcoded "org"/"project" literal.
+    # Standard-scoped roles use the module-owned entity scope (`ModuleRoleDefinition`'s `scope`, `overridden_by` and
+    # `resolve_entity_organization_id`), not a hardcoded "org" or "project" literal.
     assert roles_by_key["standards_manager"].scope == "standard"
     assert roles_by_key["standards_contributor"].scope == "standard"
     assert roles_by_key["standards_manager"].overridden_by == (("org", "compliance_manager"),)
@@ -195,10 +168,7 @@ def test_standard_version_requirement_hierarchy_and_required_action_roundtrip(cl
     finally:
         db.close()
 
-    # Reload from a fresh session to prove everything actually persisted
-    # (not just held live on the objects still attached to the session
-    # above), the same "reload and re-assert" discipline this suite's other
-    # model-relationship tests already use.
+    # Reload from a fresh session to prove everything persisted, not only what is held on the attached objects.
     db = SessionLocal()
     try:
         reloaded_standard = must_get(db, ComplianceStandard, standard_id)

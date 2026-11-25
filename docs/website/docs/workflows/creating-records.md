@@ -15,7 +15,11 @@ flowchart TD
     S --> R["The record exists; its tags and links are applied"]
 ```
 
-Reading the diagram: you fill in fields top to bottom, optionally tag and link the new record in the same visit, then save. The tags and links are applied just after the record is created, so the record and its relationships arrive together.
+Reading the diagram: you fill in fields top to bottom, optionally tag and link the new record in the same visit, then save. The tags and links are applied just after the record is created, so the record and its relationships arrive together. When it is saved, the confirmation names the record by its code (for example *Risk RSK-007 created*) with an **Open** button that names the code (*Open RSK-007*), so you can reach it even when the list's [sort or a filter](../core-features/search-filtering-and-view-mode.md#sorting-a-list) keeps it off the rows in view.
+
+## Opening a form from a list
+
+A list or administration page shows no empty fields. Its one primary button (**+ New …**, or the **+** beside a section) opens the create form in a dialog. Every other action of the page (export, import, folders, settings links and the like) is a row of the single **⋮** actions menu beside it, and a row that needs a selection is absent until you choose something. The only inline entry fields are single-line quick-add rows for rapid repeated entry, such as a comment or a checklist item.
 
 ## Required fields
 
@@ -38,7 +42,7 @@ Some records start as a draft: Personas, Stakeholders and Stakeholder Needs. Whe
 
 Every form in a dialog or side panel keeps its **title, Save and Close (✕)** (and **Save and activate** where offered) in a header row that stays in view; only the fields below it scroll. However long the form is, you can save from where you are, and create and edit forms behave the same way. A dialog has no Cancel: close it with ✕ or Escape. If you have unsaved changes it asks whether to **Discard changes** or **Keep editing**, and a click outside the dialog does nothing, so a stray click cannot lose your work. Press **Enter** in a single-line field to save, as before.
 
-A field meant for longer writing (a description, rationale, notes, evidence) grows as you type, up to a limit, after which it scrolls inside the field. Short fields such as a name stay one line.
+A field meant for longer writing (a description, rationale, notes, evidence) grows as you type, up to a limit, after which it scrolls inside the field. Short fields such as a name stay one line. Long text is written in [Markdown](../core-features/writing-with-markdown.md), with a formatting toolbar that appears while you work in the field.
 
 ## Where this fits
 

@@ -1,27 +1,20 @@
 /**
  * Module: components/MultiSelectDropdown
  *
- * A compact, closed-by-default control for picking any subset of a small,
- * fixed option list — visually a single dropdown (matches every other
- * `<select className="input">` in the app when closed, showing the
- * currently-checked options' own labels as its summary text) but opens into
- * a checkbox list rather than forcing single-choice, for a field whose
- * underlying data genuinely allows holding more than one value at once. See
- * `docs/ux-style-guide.md`'s "Pattern: multi-select dropdown" — first call
- * site is `OrgAdminPage.tsx`'s Users table Roles column, replacing an
- * always-visible checkbox stack that read as a broken single-select and
- * crowded the row.
+ * A compact, closed-by-default control for picking any subset of a small, fixed option list. Closed it looks like a
+ * single dropdown (as every `<select className="input">`, with the checked options' labels as its summary) and it
+ * opens into a checkbox list, for a field that can hold more than one value. See `docs/ux-style-guide.md`,
+ * "Pattern: multi-select dropdown".
  *
- * Reuses `Popover` for the revealed checkbox list, the same way `ActionMenu`
- * and `SplitButtonTrigger` already do — positioning, focus trap, and
- * outside-click/Escape close all come from there rather than a second
- * implementation. Opened from the dropdown trigger the list lines up with it and is as wide as it, like a
- * native select list; the icon-only trigger opens the fixed-width panel to its right.
+ * Reuses `Popover` for the checkbox list (as `ActionMenu` and `SplitButtonTrigger`), so positioning, focus trap and
+ * outside-click/Escape close come from there. From the dropdown trigger the list lines up with it and is as wide as
+ * it, like a native select list; the icon-only trigger opens the fixed-width panel to its right.
  */
 import { ChevronDown } from "lucide-react";
 import { Fragment, useRef, useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import { useIsClipped } from "../hooks/useIsClipped";
 
 import { Popover } from "./Popover";
 import { Tooltip } from "./Tooltip";
@@ -53,6 +46,8 @@ export function MultiSelectDropdown({
   emptyLabel = "None",
   filterable = false,
   summaryLimit,
+  summaryMaxLength,
+  summaryCount,
   id,
   icon,
   addFromFilter,
@@ -67,6 +62,10 @@ export function MultiSelectDropdown({
   filterable?: boolean;
   /** Shows "N selected" on the trigger instead of every label once more than this many are checked. */
   summaryLimit?: number;
+  /** Shows a count instead of the labels once the joined labels would be longer than this many characters, so a trigger in a table cell never grows with its content. */
+  summaryMaxLength?: number;
+  /** Wording of that count (`3 roles`); defaults to "N selected". */
+  summaryCount?: (count: number) => string;
   /** `id` of the trigger, so a field caption can point at it (`FieldShell`'s `controlId`). */
   id?: string;
   /** Renders the trigger as an icon-only button (named and given a tooltip by `triggerLabel`) instead of a dropdown showing the summary. */
@@ -85,12 +84,14 @@ export function MultiSelectDropdown({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [summaryRef, summaryClipped] = useIsClipped<HTMLSpanElement>();
   const filterRef = useRef<HTMLInputElement>(null);
   const checked = options.filter((o) => o.checked);
-  const summary =
-    summaryLimit !== undefined && checked.length > summaryLimit
-      ? strings.common.nSelected(checked.length)
-      : checked.map((o) => o.label).join(", ") || emptyLabel;
+  const labels = checked.map((o) => o.label).join(", ") || emptyLabel;
+  const collapse =
+    (summaryLimit !== undefined && checked.length > summaryLimit) ||
+    (summaryMaxLength !== undefined && labels.length > summaryMaxLength);
+  const summary = collapse ? (summaryCount ?? strings.common.nSelected)(checked.length) : labels;
   const needle = filter.trim().toLowerCase();
   const typed = filter.trim();
   const canAdd = !!addFromFilter && filterable && needle !== "" && !options.some((o) => o.label.trim().toLowerCase() === needle);
@@ -113,13 +114,13 @@ export function MultiSelectDropdown({
       </button>
     </Tooltip>
   ) : (
+    <Tooltip label={labels} wrap disabled={!(summaryClipped || collapse) || open} style={{ display: "flex", width: "100%" }}>
       <button
         id={id}
         ref={triggerRef}
         type="button"
         className="input row"
         style={{ justifyContent: "space-between", flexWrap: "nowrap", cursor: "pointer" }}
-        title={summary}
         aria-label={triggerLabel}
         aria-haspopup="true"
         aria-expanded={open}
@@ -128,20 +129,16 @@ export function MultiSelectDropdown({
           setOpen((o) => !o);
         }}
       >
-        {/* `.row`'s own `flex-wrap: wrap` (theme.css) let a long summary
-            (more roles checked) wrap onto a second line with just the
-            chevron on it, where `justify-content: space-between` left it
-            flush left instead of on the right — the chevron visibly
-            "moved" depending on how many roles were checked. Forcing
-            `nowrap` here and truncating the summary instead keeps the
-            chevron pinned to the same spot on every row regardless of
-            content length; the untruncated text is still available via
-            the `title` above and the opened list itself. */}
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+        {/* `.row` wraps (theme.css), so a long summary would drop the chevron alone onto a second line where
+            `justify-content: space-between` leaves it flush left. `nowrap` with a truncated summary pins the
+            chevron to the same spot on every row; the full text stays in the tooltip (shown while the text is
+            clipped or collapsed) and in the opened list. */}
+        <span ref={summaryRef} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 /* grid-text-ok: the label of a select control, not a cell of a grid */ }}>
           {summary}
         </span>
         <ChevronDown size={14} style={{ flexShrink: 0 }} />
       </button>
+    </Tooltip>
   );
   return (
     <>
@@ -169,14 +166,15 @@ export function MultiSelectDropdown({
             <div
               role="group"
               aria-label={triggerLabel}
-              className="stack"
-              style={{ gap: "var(--space-2)", ...(filterable ? { maxHeight: "18rem", overflowY: "auto" } : {}) }}
+              className={filterable ? "stack scroll-region" : "stack"}
+              style={{ gap: "var(--space-2)", ...(filterable ? { maxHeight: "18rem" } : {}) }}
             >
               {visible.map((opt) => (
                 <Fragment key={opt.value}>
                 {opt.section && (
                   <span className="text-muted" style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>{opt.section}</span>
                 )}
+                <Tooltip label={opt.title ?? ""} wrap disabled={!opt.disabled || !opt.title} style={{ display: "flex" }}>
                 <label
                   className="row"
                   style={{ gap: "var(--space-2)", fontSize: "0.85rem", flexWrap: "nowrap", ...(opt.indent ? { paddingLeft: "var(--space-4)" } : {}), ...(opt.heading ? { fontWeight: 600 } : {}) }}
@@ -186,7 +184,6 @@ export function MultiSelectDropdown({
                     checked={opt.checked}
                     disabled={opt.disabled}
                     aria-label={opt.optionLabel}
-                    title={opt.disabled ? opt.title : undefined}
                     onChange={opt.onToggle}
                   />
                   <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
@@ -199,6 +196,7 @@ export function MultiSelectDropdown({
                     )}
                   </span>
                 </label>
+                </Tooltip>
                 </Fragment>
               ))}
               {canAdd && addFromFilter && (

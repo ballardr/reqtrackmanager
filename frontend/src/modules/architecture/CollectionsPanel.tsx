@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../api/client";
 import type { PrincipalRef, ProjectListItem } from "../../api/types";
+import { ActionMenu } from "../../components/ActionMenu";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FormActions } from "../../components/FormActions";
 import { CheckboxField, TextAreaField, TextField } from "../../components/FormFields";
@@ -27,6 +28,7 @@ import { ARCHITECTURE_HELP } from "./help";
 import type { TypesScope } from "./ArchitectureTypesPanel";
 import type { ArchitectureCollection, ArchitectureElement, CollectionMember } from "./types";
 import type { OrgUser } from "../../api/types";
+import { MarkdownView } from "../../components/MarkdownView";
 
 type GrantTarget = "project" | "group";
 
@@ -45,7 +47,7 @@ function CollectionFormModal({
     <Modal title={initial ? `Edit ${initial.name}` : "New collection"} onClose={onCancel}>
       <div className="stack">
         <TextField helpNotNeeded required label="Name" value={name} onChange={setName} />
-        <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
+        <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} />
         <FormActions error={error} onCancel={onCancel} onSave={() => onSave({ name: name.trim(), description })} saveDisabled={name.trim() === ""} />
       </div>
     </Modal>
@@ -103,12 +105,12 @@ function CollectionCard({
     <section className="card stack" aria-label={collection.name}>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h2 className="detail-card__title">{collection.name}</h2>
-        <span className="row">
-          <button className="btn" onClick={onEdit}>Edit</button>
-          <button className="btn btn-danger" onClick={onDelete}>Delete</button>
-        </span>
+        <ActionMenu
+          triggerLabel={`Actions for ${collection.name}`}
+          items={[{ key: "edit", label: "Edit", onSelect: onEdit }, { key: "delete", label: "Delete", danger: true, onSelect: onDelete }]}
+        />
       </div>
-      {collection.description && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{collection.description}</p>}
+      {collection.description && <MarkdownView text={collection.description} />}
 
       <div className="stack" style={{ gap: "var(--space-1)" }}>
         <FieldCaption label="Elements shared" help={ARCHITECTURE_HELP.collectionMembers} />
@@ -171,7 +173,7 @@ function CollectionCard({
             <PrincipalPicker
               orgUsers={orgUsers} organizationId={organizationId} projectId={scope.kind === "project" ? scope.projectId : undefined}
               value={grantGroup} onChange={setGrantGroup} kinds={["org_group", "project_group"]}
-              ariaLabel={`Group to share ${collection.name} with`} placeholder="Search groups…" clearLabel="Clear"
+              ariaLabel={`Group to share ${collection.name} with`}
             />
           )}
           <button

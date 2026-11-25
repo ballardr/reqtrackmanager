@@ -1,11 +1,11 @@
 /**
  * Module: components/FilterSelect
  *
- * The labelled single-choice select of a filter panel: a `FilterField` caption (with optional `(?)` help) around a
- * `select.input` whose first entry clears the filter ("All statuses"). Every filter panel uses this one component, so
- * the caption, the "All" entry, the accessible name and the chevron are the same on every list (docs/ux-style-guide.md,
- * "Pattern: filter panel"). Presentational only: the caller owns the value, and an empty string means "no filter".
- * A select in a form is a `LabeledSelect`; one in a row of controls with no caption is an `InlineSelect`.
+ * The labelled single-choice select of a filter panel: a `FilterField` caption (optional `(?)` help) around a
+ * `select.input` whose first entry clears the filter ("All statuses"), so every list has the same caption, "All"
+ * entry, accessible name and chevron (docs/ux-style-guide.md, "Pattern: filter panel"). Presentational: the
+ * caller owns the value, `""` meaning no filter. A form select is a `LabeledSelect`; a captionless one in a row
+ * of controls is an `InlineSelect`.
  */
 import type { SelectHTMLAttributes } from "react";
 

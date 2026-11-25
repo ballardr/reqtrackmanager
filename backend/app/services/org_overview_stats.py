@@ -102,27 +102,13 @@ def org_overview_stats(db: Session, current_user: User, organization_id: UUID) -
             else 0
         ) or 0
 
-        # Distinct files this member can account for: this org's own shared
-        # resources (`is_org_resource`, visible to any member regardless of
-        # per-project access — same as `GET /{organization_id}/resources`)
-        # plus files attached to a requirement/action within their
-        # accessible-project set. A file could match both a requirement
-        # attachment and (if it's also an org resource) the first clause —
-        # `union()` de-duplicates by file id so it's never double-counted.
+        # Distinct files this member can account for: the org's shared resources (`is_org_resource`, visible
+        # to every member, as in `GET /{organization_id}/resources`) plus files attached to a requirement or
+        # action in their accessible projects; `union()` de-duplicates by file id.
         #
-        # Known, deliberate gap: `CommentFile` (a file attached to a
-        # `ReviewComment`, C-M-02's discussion-thread attachment path) is
-        # NOT included here. `ReviewComment.target_id` is polymorphic
-        # (`ReviewTargetType.REQUIREMENT`/`ACTION`/`CHANGE_REQUEST`, no FK),
-        # so resolving it back to a project id for scoping would need a
-        # three-way branch per target type — a disproportionate amount of
-        # complexity for what these comment-thread attachments actually
-        # weigh, versus the admin branch above (a plain per-org sum, which
-        # *does* include every `CommentFile`'s underlying `FileAsset`
-        # regardless of type). This makes a scoped member's own total a
-        # strict undercount, never an over-exposure — the safe direction
-        # for a visibility boundary — but it is a real, known accuracy gap:
-        # revisit if comment attachments turn out to matter for this figure.
+        # Limitation: `CommentFile` (comment attachments) is not counted. `ReviewComment.target_id` is
+        # polymorphic with no FK, so scoping it needs a per-target-type branch; the admin sum above does
+        # include them. A scoped member's total is therefore an undercount, never an over-exposure.
         org_resource_file_ids = select(FileAsset.id.label("file_id")).where(
             FileAsset.organization_id == organization_id, FileAsset.is_org_resource.is_(True)
         )

@@ -8,22 +8,15 @@ installCleanupHook();
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: docs/decisions.md's "AI approval via MCP" entry. An AI
- * assistant acting through the MCP server may only approve/decide/complete
- * something once an org admin AND that project's own manager/administrator
- * have each explicitly enabled it — and enabling either one requires an
- * explicit acknowledgment that an AI-made approval isn't necessarily a
- * deliberate, in-the-moment human decision. This spec covers the UI half
- * of that (the two toggles + the acknowledgment dialog blocking Confirm
- * until checked, and persistence); the actual MCP-channel gate/audit-marker
- * behaviour is covered by backend/tests/test_ai_approvals_via_mcp.py and
- * mcp-server/tests/test_server.py, which can call the real MCP tools —
- * outside what a browser-driven Playwright test can exercise.
+ * Job to be done (docs/decisions.md, "AI approval via MCP"): an AI assistant acting through the MCP server may
+ * approve, decide or complete something only once an org admin AND the project's manager or administrator have each
+ * enabled it, and enabling either requires acknowledging that an AI-made approval is not necessarily a deliberate,
+ * in-the-moment human decision. This spec covers the UI half (the two toggles, the acknowledgment dialog blocking
+ * Confirm until checked, and persistence); the MCP-channel gate and audit marker are covered by
+ * backend/tests/test_ai_approvals_via_mcp.py and mcp-server/tests/test_server.py.
  *
- * Uses a brand-new, disposable organisation + admin + project created via
- * the API (mirroring org-security-controls.spec.ts) rather than shared
- * seed data, since this org-wide toggle could otherwise collide with
- * another spec's concurrent use of a shared org.
+ * Uses a disposable organisation, admin and project created through the API (as org-security-controls.spec.ts does),
+ * because the org-wide toggle would collide with concurrent use of a shared org.
  */
 test.describe("AI approval via MCP: org + project opt-in toggles and acknowledgment", () => {
   test("enabling either toggle requires acknowledging the trade-off first, and both persist", async ({ page }) => {

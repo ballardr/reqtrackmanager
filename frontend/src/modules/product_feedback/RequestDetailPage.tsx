@@ -1,22 +1,21 @@
 /**
  * Module: modules/product_feedback/RequestDetailPage
  *
- * One enhancement request: its fields and scoring, who asked for it (project requests), the lifecycle, merge, the
- * triage move into a project (inbox requests), closing the loop, evidence files, comments and version history.
- * One scope-aware component serves both routes, like the Strategy page: exactly one of `projectId` /
- * `organizationId` is in the URL (`/projects/:projectId/modules/product_feedback/requests/:requestId`,
+ * One enhancement request: fields and scoring, who asked for it (project requests), the lifecycle, merge, the triage
+ * move into a project (inbox requests), closing the loop, evidence files, comments and version history. One
+ * scope-aware component serves both routes, like the Strategy page: exactly one of `projectId` / `organizationId` is in
+ * the URL (`/projects/:projectId/modules/product_feedback/requests/:requestId`,
  * `/orgs/:organizationId/modules/product_feedback/requests/:requestId`, the latter an always-mounted global route).
  *
- * - **Lifecycle** buttons come from the server's `allowed_next_statuses`; declining needs a reason (a required
- *   comment). Delivered is set manually: when every Requirement realising an accepted request is complete the page
+ * - **Lifecycle**: the next forward step is the track's Promote and every other move the server's
+ *   `allowed_next_statuses` allows is a row of the actions menu; declining needs a reason (a required comment). Delivered is set manually: when every Requirement realising an accepted request is complete the page
  *   prompts "Ready to deliver?" and never moves the status itself.
- * - **Controls follow `GET .../access`**: someone who may not triage sees no edit, transition, merge or archive
- *   controls (the server refuses them regardless).
- * - **External references** (Jira, ServiceNow, ...) and each requester's **channel** are edited here by a triager;
- *   neither is a version of the request.
- * - **Problem and requesters** are linked with the generic Links panel ("Addresses" a Pain Point, "Realised by" a
- *   Requirement, "Requested by" a Stakeholder, Persona or Engagement). A solution with no Pain Point carries a warning
- *   badge, never a block. An inbox request has no links (links are a project's), so triage it into a project first.
+ * - **Controls follow `GET .../access`**: someone who may not triage sees no edit, merge or archive
+ *   controls and cannot promote (the server refuses them regardless).
+ * - **External references** and each requester's **channel** are edited here by a triager; neither is a version.
+ * - **Problem and requesters** use the generic Links panel ("Addresses" a Pain Point, "Realised by" a Requirement,
+ *   "Requested by" a Stakeholder, Persona or Engagement). A solution with no Pain Point carries a warning badge, never
+ *   a block. An inbox request has no links (links belong to a project), so triage it into a project first.
  */
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -36,13 +35,19 @@ import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Modal } from "../../components/Modal";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
-import { RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import type { LifecyclePromote } from "../../components/LifecycleTrack";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
 import { RecordHeader } from "../../components/RecordHeader";
 import { RecordTags } from "../../components/RecordTags";
 import { SectionOrderEditor } from "../../components/SectionOrderEditor";
 import { Spinner } from "../../components/Spinner";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { useAuth } from "../../context/AuthContext";
+import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
@@ -62,7 +67,7 @@ import { RequestLoopPanel } from "./RequestLoopPanel";
 import { RequestReferencesCard } from "./RequestReferencesCard";
 import { REQUEST_PAGE_SECTIONS, REQUEST_SECTION_KEYS, REQUEST_SECTIONS_PREFERENCE } from "./requestSections";
 import { RequestScoresPanel } from "./RequestScoresPanel";
-import { REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE } from "./types";
+import { REQUEST_MAIN_PATH, REQUEST_STATUS_DESCRIPTION, REQUEST_STATUS_LABEL } from "./types";
 import type {
   CloseTheLoop, Demand, EnhancementRequest, ExternalRef, FeedbackAccess, RequestComment, RequestMerge, RequestStatus,
   Requester, RequestVersion,
@@ -70,6 +75,8 @@ import type {
 import { useExternalReferencesEnabled } from "./useExternalReferences";
 import { usePainPointsAvailable } from "./usePainPointsAvailable";
 import { useExternalSystemChoicesState, useRequestChannelChoices } from "./useFeedbackLists";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_REQUEST_INBOX_SECTION_KEY } from "./orgResourceKeys";
 
 const SCHEME_KEY = "enhancement_request";
 
@@ -85,22 +92,14 @@ function transitionLabel(from: RequestStatus, to: RequestStatus): string {
   return from === "declined" ? "Reopen" : "Back to new";
 }
 
-const FORWARD: readonly RequestStatus[] = ["under_review", "accepted", "delivered"];
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
-  );
-}
 
 export function RequestDetailPage() {
   const { projectId, organizationId, requestId } = useParams<{
     projectId?: string; organizationId?: string; requestId: string;
   }>();
   const navigate = useNavigate();
+  const strings = useStrings();
+  const lifecycle = useProjectLifecycle(projectId, "enhancement_request");
   const { user } = useAuth();
   const { showToast } = useToast();
   const scopedApi = projectId ? projectRequestApi : orgRequestApi;
@@ -341,14 +340,35 @@ export function RequestDetailPage() {
   });
 
   const codeOwner = useRecordOwnerCode(request ?? {});
+  const skipSteps = useSkipSteps<EnhancementRequest>({
+    lifecycle, current: request?.status ?? "", labels: REQUEST_STATUS_LABEL, noun: "Request",
+    move: (target, reason) => {
+      if (!scopeId || !request) return Promise.reject(new Error("This move is not available."));
+      return withLifecycleSkip(reason, () => scopedApi.transition(scopeId, request.id, target as RequestStatus));
+    },
+    onMoved: (updated) => { setRequest(updated); void refresh(); },
+    hidden: (request?.is_archived ?? false) || access?.can_triage !== true,
+  });
+
   if (!scopeId || !requestId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (request === null) return <Spinner />;
 
   const canTriage = access?.can_triage === true;
   const isDuplicate = request.status === "duplicate";
-  const listPath = projectId ? `/projects/${projectId}/modules/product_feedback/requests` : "/org-overview";
+  const listPath = projectId
+    ? `/projects/${projectId}/modules/product_feedback/requests`
+    : organizationId ? orgResourcesPath(organizationId, ORG_REQUEST_INBOX_SECTION_KEY) : "/org-resources";
   const moves = request.allowed_next_statuses.filter((to) => !request.is_archived && canTriage && to !== "duplicate");
+  // The next forward step; a person who may not triage sees it padlocked. Every other move is a row of the actions menu.
+  const position = REQUEST_MAIN_PATH.indexOf(request.status);
+  const nextStep = position === -1 ? undefined : lifecycle.nextOnPath(REQUEST_MAIN_PATH, request.status) as RequestStatus | undefined;
+  const promote: LifecyclePromote | undefined = !nextStep || request.is_archived || !request.allowed_next_statuses.includes(nextStep) ? undefined
+    : canTriage ? { to: nextStep, onPromote: () => setPending({ to: nextStep }) }
+    : { to: nextStep, blockedReason: strings.lifecycle.notPermitted(REQUEST_STATUS_LABEL[nextStep]) };
+  const offPathStep = request.status === "declined" || request.status === "duplicate" ? {
+    key: request.status, label: REQUEST_STATUS_LABEL[request.status], description: REQUEST_STATUS_DESCRIPTION[request.status], after: "new",
+  } : undefined;
   const delivering = pending?.to === "delivered";
   const showLoop = Boolean(projectId) && loop !== null && (request.status === "delivered" || request.status === "declined");
   const readyToDeliver = Boolean(loop?.suggest_delivered) && request.status === "accepted" && canTriage;
@@ -360,8 +380,8 @@ export function RequestDetailPage() {
     details: (
       <>
           <DetailCard>
-            {request.description ? <Field label="Description" value={request.description} /> : <p className="text-muted">No description.</p>}
-            {request.status === "declined" && request.decline_reason && <Field label="Decline reason" value={request.decline_reason} />}
+            {request.description ? <RecordField markdown math label="Description" value={request.description} /> : <p className="text-muted">No description.</p>}
+            {request.status === "declined" && request.decline_reason && <RecordField markdown label="Decline reason" value={request.decline_reason} />}
             <RecordPrincipalField
               label="Owner" ariaLabel="Request owner" principal={request.owner} orgUsers={orgUsers}
               organizationId={organization} projectId={projectId} readOnly={!canTriage} onChange={(o) => void setOwner(o)}
@@ -434,10 +454,7 @@ export function RequestDetailPage() {
               files={files}
               disabled={!canTriage || request.is_archived}
               emptyHint={canTriage ? undefined : "Only a triager can attach evidence to a request."}
-              onUpload={async (file) => {
-                const asset = await scopedApi.uploadFile(scopeId, request.id, file);
-                setFiles((prev) => [...prev, asset]);
-              }}
+              onUpload={async (file) => { await uploadAttachment(file); }}
               onRemove={async (fileId) => {
                 await scopedApi.unlinkFile(scopeId, request.id, fileId);
                 setFiles((prev) => prev.filter((f) => f.id !== fileId));
@@ -475,8 +492,18 @@ export function RequestDetailPage() {
   const availableSections = REQUEST_SECTION_KEYS.filter((key) => (key !== "references" || referencesShown) && (key !== "demand" || Boolean(projectId)) && (key !== "loop" || showLoop));
   const sectionOrder = resolveSectionOrder(availableSections, personalOrder, projectOrder);
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await scopedApi.uploadFile(scopeId, request.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: !canTriage || request.is_archived ? undefined : uploadAttachment }}
+      // The sections are arranged by the person or the project (`requestSections`), so the page keeps that order instead of the default card order.
+      orderCards={false}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="enhancement_request" artefactId={request.id} refreshToken={recordActivityKey(request)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -490,12 +517,11 @@ export function RequestDetailPage() {
         title={request.title}
         code={request.unique_code}
         codeOwner={codeOwner}
-        tags={projectId ? <RecordTags projectId={projectId} artefactType="enhancement_request" artefactId={request.id} /> : undefined}
-        back={{ to: listPath, label: projectId ? "Enhancement requests" : "Organisation overview" }}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="enhancement_request" artefactId={request.id} references={false} /> : undefined}
+        back={{ to: listPath, label: projectId ? "Enhancement requests" : "Request inbox" }}
         version={request.version_number}
         badges={
           <>
-            <Badge tone={REQUEST_STATUS_TONE[request.status]}>{REQUEST_STATUS_LABEL[request.status]}</Badge>
             {request.is_archived && <Badge tone="muted">Archived</Badge>}
             {painPointsAvailable && request.pain_point_count === 0 && !isDuplicate && request.status !== "declined" && (
               <Badge tone="warning" title="This is a solution with no stated problem. Link the Pain Point it addresses with “Addresses” in the Links panel.">
@@ -511,24 +537,23 @@ export function RequestDetailPage() {
         ) : undefined}
         onEdit={canTriage ? () => setEditing(true) : undefined}
         actions={[
+          skipSteps.menuRow,
           { label: "Arrange sections…", onSelect: () => setArranging(true) },
+          ...moves.filter((to) => to !== promote?.to).map((to) => ({
+            label: transitionLabel(request.status, to), danger: to === "declined", onSelect: () => setPending({ to }),
+          })),
+          isDuplicate && canTriage && { label: "Undo merge", onSelect: () => setUnmerging(true) },
           canTriage && !isDuplicate && !request.is_archived && { label: "Merge into another request…", onSelect: () => void openMerge() },
           canTriage && !projectId && !request.is_archived && !isDuplicate && { label: "Move to a project…", onSelect: () => void openMove() },
           archive.item,
         ]}
-        transitions={
-          <>
-            {isDuplicate && canTriage && <button className="btn btn-primary" onClick={() => setUnmerging(true)}>Undo merge</button>}
-            {moves.map((to) => (
-              <button
-                key={to} className={`btn${FORWARD.includes(to) ? " btn-primary" : to === "declined" ? " btn-danger" : ""}`}
-                onClick={() => setPending({ to })}
-              >
-                {transitionLabel(request.status, to)}
-              </button>
-            ))}
-          </>
-        }
+        lifecycle={{
+          steps: lifecycle.visibleSteps(lifecycleSteps(REQUEST_MAIN_PATH, REQUEST_STATUS_LABEL, { descriptions: REQUEST_STATUS_DESCRIPTION }), request.status),
+          current: request.status,
+          offPath: offPathStep,
+          promote,
+          skip: skipSteps.track,
+        }}
       />
       {archive.dialog}
 
@@ -607,6 +632,8 @@ export function RequestDetailPage() {
           }}
         />
       )}
+
+      {skipSteps.dialog}
 
       {pending && (
         <CommentConfirmDialog

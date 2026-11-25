@@ -1,17 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { addStructureCategory, addStructureComponent, structureRow, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 /**
- * UX review: files could previously only be attached to a requirement
- * after closing the create form and opening the detail page (links are
- * chosen in the create form's "Link to" field).
- * The create modal's "Create" button behaves exactly as before (closes
- * immediately); a separate "Create & attach files" action
- * advances the same modal to a second step against the just-created
- * requirement's real id before closing — opt-in, since most creates don't
- * need it and every other workflow (the golden path included) depends on
- * a plain "Create" staying a single, modal-closing action.
+ * The create modal's "Create" button closes the modal at once; a separate "Create & attach files" action
+ * advances the same modal to a second step against the just-created requirement's id before closing. Links are
+ * chosen in the create form's "Link to" field. The action is opt-in because most creates do not need it and
+ * every other workflow (the golden path included) depends on a plain "Create" staying a single, modal-closing
+ * action.
  */
 test("Create & attach files advances to an attach-files step, then finishes", async ({ page }) => {
   const ADMIN_EMAIL = "admin@example.com";
@@ -36,26 +32,9 @@ test("Create & attach files advances to an attach-files step, then finishes", as
   // neither yet.
   await page.getByText("Project Admin").click();
   await selectProjectAdminGroup(page, "Structure");
-  const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
-  await componentsSection.getByPlaceholder("Name").fill("Software");
-  await componentsSection.getByPlaceholder("Prefix").fill("SW");
-  await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-  await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-  await page.waitForLoadState("networkidle");
-  const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
-  await softwareRow.getByPlaceholder("Name").fill("Performance");
-  await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-  await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
-  // Note: this locator also matches the still-open "New category" name
-  // input itself (it too has value="Performance" the instant it's filled,
-  // well before the create request resolves) — visible from the moment
-  // it's typed, so on its own this assertion proves nothing about the
-  // create having finished. The networkidle wait below is what actually
-  // closes that gap; without it, Requirements can navigate/reload before
-  // the category exists server-side and permanently render its
-  // no-components-or-categories fallback instead of the real create form.
-  await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
-  await page.waitForLoadState("networkidle");
+  await addStructureComponent(page, "Software", "SW");
+  await addStructureCategory(page, "Software", "Performance", "PERF");
+  await expect(structureRow(page, "Performance")).toBeVisible();
 
   await page.getByRole("link", { name: "Requirements", exact: true }).click();
   await page.getByRole("button", { name: "New requirement" }).click();
@@ -92,22 +71,9 @@ test("plain Create closes the modal immediately, unchanged", async ({ page }) =>
 
   await page.getByText("Project Admin").click();
   await selectProjectAdminGroup(page, "Structure");
-  const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
-  await componentsSection.getByPlaceholder("Name").fill("Software");
-  await componentsSection.getByPlaceholder("Prefix").fill("SW");
-  await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-  await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-  await page.waitForLoadState("networkidle");
-  const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
-  await softwareRow.getByPlaceholder("Name").fill("Performance");
-  await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-  await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
-  // See the sibling test above: this locator also matches the still-open
-  // "New category" name input (visible with this value the instant it's
-  // typed, before the create request resolves), so the networkidle wait
-  // is what actually guarantees the category exists before navigating away.
-  await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
-  await page.waitForLoadState("networkidle");
+  await addStructureComponent(page, "Software", "SW");
+  await addStructureCategory(page, "Software", "Performance", "PERF");
+  await expect(structureRow(page, "Performance")).toBeVisible();
 
   await page.getByRole("link", { name: "Requirements", exact: true }).click();
   await page.getByRole("button", { name: "New requirement" }).click();

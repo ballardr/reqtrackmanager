@@ -44,8 +44,8 @@ function Host(props: Partial<GraphCanvasProps>) {
 }
 
 /**
- * The shared node-and-connection canvas: React Flow loaded on first use behind plain props, with a list view as the
- * text alternative and the fallback when the canvas cannot load.
+ * The shared node-and-connection canvas: React Flow loaded on first use behind plain props, with a list view as
+ * the text alternative and the fallback when the canvas cannot load.
  */
 const meta: Meta<typeof GraphCanvas> = {
   title: "Components/GraphCanvas",
@@ -432,8 +432,8 @@ function DeleteScopeHost({ scope, onDelete }: { scope?: "canvas" | "page"; onDel
 }
 
 /**
- * With the page scope the delete key is heard wherever the focus is: after the selection was made from elsewhere the focus is
- * on a toolbar button or nowhere, and the key still reaches the selection. A text field, a dialog and a modified key keep it.
+ * With the page scope the delete key is heard wherever focus is (a toolbar button or nowhere) and still reaches the
+ * selection; a text field, a dialog and a modified key keep it.
  */
 export const DeleteKeyHeardAnywhereOnThePage: Story = {
   args: { onDelete: fn() },
@@ -768,8 +768,8 @@ export const LeadersPointAtANodeALineAndAPosition: Story = {
 };
 
 /**
- * The distance between where a leader's path ends and the centre of its end node (the line's middle or the free position it
- * stands for), in canvas units at the canvas's zoom.
+ * The distance between where a leader's path ends and the centre of its end node (the line's middle or the free
+ * position it stands for), in canvas units at the canvas's zoom.
  */
 function leaderEndGap(root: HTMLElement, id: string): number {
   const path = root.querySelector(`[data-id="leader:${id}"] .react-flow__edge-path`) as SVGPathElement | null;
@@ -1049,9 +1049,9 @@ export const ADraggedPinReportsItsDropPlace: Story = {
 const SNAP = { snapGrid: 20, snapInvertKey: "Shift" } as const;
 
 /**
- * Drags the node by about `dx`, `dy` canvas units with the pointer, whatever the zoom, and returns the last position reported.
- * The drag lands a few units short of the request (React Flow starts it after a small threshold), so the callers choose
- * distances that stay clear of a grid boundary and assert on the grid, not on an exact free position.
+ * Drags the node by about `dx`, `dy` canvas units with the pointer at any zoom and returns the last position
+ * reported. The drag lands slightly short (React Flow's start threshold), so callers pick distances clear of a grid
+ * boundary and assert on the grid, not an exact free position.
  */
 async function dragBy(canvasElement: HTMLElement, name: string, dx: number, dy: number, onMove: ReturnType<typeof fn>, user: { pointer: (actions: Parameters<typeof userEvent.pointer>[0]) => Promise<unknown> } = userEvent) {
   const canvas = within(canvasElement);
@@ -1149,8 +1149,8 @@ export const TheInvertKeySuspendsSnappingForOneDrag: Story = {
 };
 
 /**
- * A key-up the page never received (an operating system screenshot shortcut swallows it) must not leave the invert key
- * counted as held: the next drag, made with no key down, follows the setting. Snapping off stays off.
+ * A key-up the page never received (an operating system screenshot shortcut swallows it) must not leave the invert
+ * key counted as held: the next drag with no key down follows the setting. Snapping off stays off.
  */
 export const ALostKeyUpDoesNotLeaveTheInvertKeyHeld: Story = {
   args: { onNodesMove: fn() },

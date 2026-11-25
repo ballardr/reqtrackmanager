@@ -8,6 +8,8 @@ Delivery stays in your own tracker. A request points to the work with **external
 
 ## External references
 
+External references are a core feature shared by every record type; see [External references](../../core-features/external-references.md) for the list of systems, link templates, filters and export. This page covers how Product Feedback uses them.
+
 A request can carry any number of references, each with:
 
 | Field | Meaning |
@@ -19,7 +21,7 @@ A request can carry any number of references, each with:
 
 The **External references** card on the request page adds, edits and removes them, and the create form has the same list. A reference is not a version of the request: it is changed on its own and audited, without creating a new version. A reference's system is stored by identity, so renaming a system renames it on every request.
 
-External references are a [sub-component](./overview.md#enabling-the-module). With it off, the card, the form section and the **External Systems** settings are hidden, and stored references are kept for when it is switched back on. With it on but no enabled external system in the project (every one hidden or switched off), there is nothing to add a reference to, so the card and the form section are not shown either; a request that already has references still shows its card.
+External references are a [sub-component](./overview.md#enabling-the-module). With it off, the card and the form section are hidden, and stored references are kept for when it is switched back on. With it on but no enabled external system in the project (every one hidden or switched off), there is nothing to add a reference to, so the card and the form section are not shown either; a request that already has references still shows its card.
 
 ## Request channels
 
@@ -29,8 +31,8 @@ The channel records the route each requester used, set per requester from the [D
 
 Both lists work the same way as the other type lists:
 
-- The **organisation** owns the shared list, at **Organisation admin → Product Feedback → External Systems** and **Request Channels** (Organisation admin or the Feedback List Admin role).
-- A **project** adds entries of its own and can **hide** an organisation entry it does not use (and restore it) at **Project admin → Product Feedback → External Systems** and **Request Channels**.
+- The **organisation** owns the shared lists. **External systems** are shared by every record type and are changed by an organisation administrator at **Organisation admin → Projects → External systems**, where each system can also have a link template (an address with `{key}` in it, so a reference that has only a key opens its item). **Request Channels** are at **Organisation admin → Product Feedback → Request Channels** (Organisation admin or the Feedback List Admin role).
+- A **project** adds entries of its own and can **hide** an organisation entry it does not use (and restore it) at **Project admin → Fields & actions → External systems** (project settings authority) and **Project admin → Product Feedback → Request Channels**.
 - A project with none of its own entries shows its nearest ancestor project's list, then the organisation's; its first change copies that list into it.
 - Deleting an entry that requests use asks you to reassign them first.
 

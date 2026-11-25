@@ -3,22 +3,19 @@ Module: services.rate_limit
 
 A small per-key token-bucket rate limiter for endpoints a single person can drive hard.
 
-Responsibilities:
-- Decide whether a caller (any hashable key, normally a user id) may make another request now
-  (`RateLimiter.acquire`), and if not, how long until they may.
-- Keep memory bounded: a bucket idle long enough to have refilled completely is dropped.
+Responsibilities: decide whether a caller (a hashable key, normally a user id) may make another request now,
+and if not how long until they may (`RateLimiter.acquire`); keep memory bounded by dropping a bucket idle long
+enough to have refilled.
 
 Design decisions:
-- A token bucket, not a fixed window: a burst up to `capacity` is allowed (typing in a live search box
-  is bursty), and the sustained rate is `refill_per_second`; there is no window edge to game.
-- Two kinds of state behind the same two calls. By default the buckets are in this process, so a limit holds per
-  worker (the ceiling for one person is the limit times the number of workers). A limiter given a `shared` name
-  keeps its buckets in PostgreSQL (`rate_limit_buckets`), so one limit holds across every worker and replica;
-  that costs one short transaction per call, so it is used for the unauthenticated and the expensive routes, not
-  for every request. If the database cannot be reached the call falls back to the in-process bucket rather than
-  refusing everyone.
-- The clock is injectable so tests do not sleep.
-- A limit of zero or less disables the limiter (`enabled` is false and `acquire` always allows).
+- A token bucket, not a fixed window: a burst up to `capacity` is allowed (a live search box is bursty), the
+  sustained rate is `refill_per_second`, and there is no window edge to game.
+- State is in this process by default, so a limit holds per worker (the ceiling for one person is the limit
+  times the workers). A limiter given a `shared` name keeps buckets in PostgreSQL (`rate_limit_buckets`), so one
+  limit holds across every worker and replica at the cost of one short transaction per call; it is used for
+  unauthenticated and expensive routes. If the database is unreachable the call falls back to the in-process
+  bucket rather than refusing everyone.
+- The clock is injectable so tests do not sleep. A limit of zero or less disables the limiter.
 
 Dependencies: standard library only.
 """

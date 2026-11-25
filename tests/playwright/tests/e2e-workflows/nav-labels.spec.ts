@@ -48,7 +48,7 @@ test.describe("navigation names", () => {
       await page.getByRole("button", { name: "Restore the default name of Requirements", exact: true }).click();
       await page.getByRole("button", { name: "Save names" }).click();
       await expect(page.getByText("Navigation names saved.")).toBeVisible();
-      await expect(rail.getByRole("link", { name: "Requirements" })).toBeVisible();
+      await expect(rail.getByRole("link", { name: "Requirements", exact: true })).toBeVisible();
       await expect(rail.getByRole("link", { name: "Needs list" })).toHaveCount(0);
     });
   });

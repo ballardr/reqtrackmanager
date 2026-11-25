@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../api/client";
 import type { ProjectFile, ProjectFileUploader } from "../api/types";
 import { localDayWindow } from "../utils/localDate";
+import { withPictureFiles } from "../testing/pictureFiles";
 import { buildProjectFile, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ProjectFilesPage } from "./ProjectFilesPage";
 
@@ -41,6 +42,24 @@ function mockServer(rows: ProjectFile[] | ((path: string, body: Record<string, u
     throw new Error(`unmocked path: ${path}`);
   }) as never);
 }
+
+/** A refused search shows what failed with Retry, not a spinner that never ends; Retry searches again. */
+export const FailedLoadOffersRetry: Story = {
+  beforeEach: () => {
+    let searches = 0;
+    mockServer(() => {
+      searches += 1;
+      if (searches === 1) throw new Error("The server is down.");
+      return { items: [buildProjectFile({ file: asset("file-1", "spec.pdf", "application/pdf") })], total: 1 };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("The file list could not be loaded.");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await expect(await canvas.findByText("spec.pdf")).toBeInTheDocument();
+  },
+};
 
 /** The list shows every source in one list, each with an "Origin" link back to where the file came from, and a preview beside each name. */
 export const MixedSources: Story = {
@@ -85,12 +104,12 @@ export const MixedSources: Story = {
     await expect(within(canvas.getByRole("table")).getByText("Report image library")).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Report setup" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/admin/reportSetup`);
 
-    // Pictures show a preview with the file name as its alt text; other files show an icon, not a picture.
-    const logo = canvas.getByRole("img", { name: "company-logo.svg" });
+    // Pictures show a preview button over the thumbnail; other files show an icon, not a button.
+    const logo = canvas.getByRole("button", { name: "Preview company-logo.svg" }).querySelector("img") as HTMLImageElement;
     await expect(logo.getAttribute("src")).toContain("/api/v1/files/file-4");
     await expect(logo.getAttribute("loading")).toBe("lazy");
-    await expect(canvas.getByRole("img", { name: "screenshot.png" })).toBeInTheDocument();
-    await expect(canvas.queryByRole("img", { name: "spec.pdf" })).toBeNull();
+    await expect(canvas.getByRole("button", { name: "Preview screenshot.png" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Preview spec.pdf" })).toBeNull();
 
     // Uploader and human-readable size are shown per row.
     await expect(canvas.getByText("Jamie Lee", { selector: "td" })).toBeInTheDocument();
@@ -131,6 +150,22 @@ export const APictureShowsItsExifDetails: Story = {
   },
 };
 
+/** A picture's thumbnail opens a larger preview of that file, with a Download link, and Escape closes it. */
+export const APictureThumbnailOpensALargerPreview: Story = {
+  decorators: [withPictureFiles],
+  beforeEach: () => {
+    mockServer([buildProjectFile({ file: asset("pic-png", "gate.jpg", "image/jpeg"), source: "report_image", requirement_id: null })]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Preview gate.jpg" }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "gate.jpg" });
+    await expect(within(dialog).getByRole("link", { name: "Download" })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).toBeNull());
+  },
+};
+
 /** A picture the browser cannot draw falls back to the file icon instead of a broken image. */
 export const AnUnreadablePictureFallsBackToAnIcon: Story = {
   beforeEach: () => {
@@ -138,9 +173,9 @@ export const AnUnreadablePictureFallsBackToAnIcon: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const picture = await canvas.findByRole("img", { name: "broken.png" });
-    picture.dispatchEvent(new Event("error"));
-    await waitFor(() => expect(canvas.queryByRole("img", { name: "broken.png" })).toBeNull());
+    const button = await canvas.findByRole("button", { name: "Preview broken.png" });
+    button.querySelector("img")?.dispatchEvent(new Event("error"));
+    await waitFor(() => expect(canvas.queryByRole("button", { name: "Preview broken.png" })).toBeNull());
     await expect(canvas.getByRole("link", { name: "broken.png" })).toBeInTheDocument();
   },
 };

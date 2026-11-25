@@ -5,6 +5,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import type { OrgGroup, OrgUser, ProjectGroup } from "../../api/types";
 import { DecisionFormModal } from "./DecisionFormModal";
+import { chooseMarkdownView } from "../../testing/markdownViews";
 import { requiredCaptions } from "../../testing/requiredMarkers";
 import type { Decision, DecisionTemplate, DecisionTypeDefinition } from "./types";
 
@@ -49,12 +50,7 @@ function mockDirectory() {
   });
 }
 
-/**
- * `DecisionFormModal` renders via `Modal`, which portals to `document.body`
- * (`createPortal`) — every assertion here queries `within(document.body)`,
- * not `canvasElement`, mirroring `modules/compliance/StandardFormModal
- * .stories.tsx`'s own identical convention for the same reason.
- */
+/** `Modal` portals to `document.body`, so every assertion queries `within(document.body)`, as in `modules/compliance/StandardFormModal.stories.tsx`. */
 const meta: Meta<typeof DecisionFormModal> = {
   title: "Modules/Decisions/DecisionFormModal",
   component: DecisionFormModal,
@@ -62,7 +58,12 @@ const meta: Meta<typeof DecisionFormModal> = {
     decisionTypes: DECISION_TYPES, orgUsers: ORG_USERS, organizationId: "org-1", projectId: "project-1",
     currentUserId: "user-1", onCancel: fn(), onSave: fn(),
   },
-  beforeEach: mockDirectory,
+  beforeEach: () => {
+    // These stories drive the Markdown source, so the fields open in Write (they open in Visual by default).
+    localStorage.setItem("reqtrack.markdownEditorView", "write");
+    mockDirectory();
+    return () => localStorage.removeItem("reqtrack.markdownEditorView");
+  },
 };
 export default meta;
 
@@ -101,6 +102,24 @@ export const SubmitsNewDecision: Story = {
   },
 };
 
+/** The text fields and the Document are written in Markdown (Write and Preview), and the Document is saved with the form. */
+export const WritesMarkdownAndADocument: Story = {
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("Decision title"), "Adopt a queue");
+    await userEvent.type(body.getByLabelText("Decision statement"), "We **adopt** a queue.");
+    await userEvent.type(body.getByLabelText("Document"), "## Plan");
+    // Every Markdown field offers Write and Preview.
+    await expect(document.body.querySelectorAll(".markdown-editor").length).toBeGreaterThan(8);
+    await chooseMarkdownView(document.body, "Preview", 0);
+    await expect(body.getByText("adopt").tagName).toBe("STRONG");
+    await userEvent.click(body.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ decision_statement: "We **adopt** a queue.", document: "## Plan" }), [], []
+    ));
+  },
+};
+
 /** An organisation group can be the owner; the form sends it as a typed principal. */
 export const ChoosesAGroupOwner: Story = {
   play: async ({ args }) => {
@@ -130,7 +149,7 @@ export const ChoosesAProjectGroupDecisionMaker: Story = {
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
       expect.objectContaining({ decision_maker: { type: "project_group", id: "pgroup-1" } }), [], []
     ));
-    await userEvent.click(body.getByRole("button", { name: "Unassign: Decision maker" }));
+    await userEvent.click(body.getByRole("button", { name: "Clear: Decision maker" }));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ decision_maker: null }), [], []));
   },
@@ -157,7 +176,7 @@ export const EditExisting: Story = {
       owner: { type: "org_group", id: "group-1", label: "Platform Architecture", member_count: 2, exists: true },
       context: "Legacy MySQL is EOL.",
       options_considered: null, chosen_option: null, rationale: null, consequences: null, assumptions: null,
-      constraints: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
+      constraints: null, document: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
       is_locked: false, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     } satisfies Decision,
   },
@@ -165,16 +184,15 @@ export const EditExisting: Story = {
     const body = within(document.body);
     await expect(body.getByRole("heading", { name: "Edit DEC-001" })).toBeInTheDocument();
     await expect(body.getByDisplayValue("Legacy MySQL is EOL.")).toBeInTheDocument();
+    await expect(body.getByLabelText("Document")).toHaveValue("");
     await expect(body.queryByLabelText("Start from a template")).not.toBeInTheDocument();
     // The existing group owner shows its name, kind and member count.
     await expect(body.getByText("Platform Architecture")).toBeInTheDocument();
-    await expect(body.getByText("Organisation group · 2 members")).toBeInTheDocument();
+    await expect(body.getByText("Organisation group, 2 members")).toBeInTheDocument();
   },
 };
 
-/** The page loads decision types in parallel, so the form can open before
- * they arrive; it must adopt the first type once they do, or Save stays
- * disabled for good (regression, 2026-10-04). */
+/** The page loads decision types in parallel, so the form can open before they arrive; it must adopt the first type then, or Save stays disabled. */
 export const TypesArriveAfterOpening: Story = {
   render: (args) => {
     function Harness() {
@@ -204,7 +222,9 @@ export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
   args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
   play: async () => {
     const body = within(document.body);
-    await userEvent.type(body.getByLabelText("Decision title"), "W".repeat(200));
+    // One paste, not 200 keystrokes: every keystroke re-renders the whole form, which timed out under load.
+    await userEvent.click(body.getByLabelText("Decision title"));
+    await userEvent.paste("W".repeat(200));
     await expect(body.getByText(/Could not save:/)).toBeVisible();
     await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
     const dialog = body.getByRole("dialog");

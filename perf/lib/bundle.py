@@ -4,16 +4,15 @@ Module: perf.lib.bundle
 Writes a results bundle and its archive.
 
 Responsibilities:
-- Write `host.json`, `run.json`, `dataset.json`, `samples.csv`, `latency.csv`, `queries.csv`, `processes.csv`,
-  `pgstat.csv`, `pgdb.csv`, `plans.csv` (and `heap.csv` and `profiles/*.svg` for a profiling run) into
-  `perf/results/<host-label>/<date>-<commit>/` from in-memory results.
-- Run the anonymisation check on the finished directory and refuse to produce an archive if it finds anything.
-- Create the `.tar.gz` with numeric owners zeroed, normalised modification times and sorted entries, so no
-  username, uid or timestamp rides along and the same bundle archives to the same bytes.
+- Write the result files (`host.json`, `run.json`, `dataset.json` and the CSV files, plus `heap.csv` and
+  `profiles/*.svg` for a profiling run) into `perf/results/<host-label>/<date>-<commit>/` from in-memory results.
+- Run the anonymisation check on the finished directory and refuse to archive if it finds anything.
+- Create the `.tar.gz` with owners zeroed, normalised modification times and sorted entries, so no username, uid or
+  timestamp rides along and the same bundle archives to the same bytes.
 
 Design decisions:
-- Only the files named in `lib.scrub.ALLOWED_FILES` are written, with exactly the columns it allows; the scrub
-  check then verifies the result, so the writer and the checker cannot drift apart unnoticed.
+- Only the files and columns named in `lib.scrub.ALLOWED_FILES` are written, and the scrub check then verifies the
+  result, so the writer and the checker cannot drift apart.
 - Dates only (`YYYY-MM-DD`); sample times are seconds since a scenario's start.
 
 Dependencies: `perf.lib.scrub`; standard library only (Python 3.9+).

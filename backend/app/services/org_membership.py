@@ -3,27 +3,21 @@ Module: services.org_membership
 
 The one rule for pulling an existing platform account into an organisation it does not belong to yet.
 
-Responsibilities:
-- Decide whether an organisation may take an existing account as a member (`external_account_refusal`,
-  `assert_may_add_account`), for every path that does it on an administrator's say-so rather than the
-  person's own: a role grant by user id, SCIM provisioning, and an organisation bundle merge.
-- Remove an account from one organisation without touching its standing anywhere else
-  (`remove_member_from_organization`), which is what "deactivate" means for an account the organisation does not
-  wholly own.
-- Tell the callers whether an account is held by an organisation other than this one (`belongs_elsewhere`),
-  which also bounds how far an organisation administrator may act on an account (`deactivate`, SCIM).
+Responsibilities: decide whether an organisation may take an existing account (`external_account_refusal`,
+`assert_may_add_account`) for every path that acts on an administrator's say-so (role grant by user id, SCIM
+provisioning, organisation bundle merge); remove an account from one organisation without touching its standing
+elsewhere (`remove_member_from_organization`, what "deactivate" means for an account the organisation does not
+wholly own); report whether another organisation holds an account (`belongs_elsewhere`), which also bounds an
+organisation administrator's actions on it (`deactivate`, SCIM).
 
 Design decisions:
-- A `User` is global: one account may belong to many organisations and organisation membership is what
-  scopes an administrator's authority over it. Adding an account to an organisation therefore hands that
-  organisation's administrators authority over it, so an organisation that has not opted in to external
-  users (`Organization.external_user_policy` is `DISABLED`, the default) may not do it to an account that
-  another organisation already holds (a platform administrator's account is one, like any other). An account
-  that belongs to no organisation yet is unclaimed and may be taken (self-signup accounts wait for an
-  administrator to assign them).
-- A banned account is never added; that is the same rule `assign_org_role` and the project by-email route
-  already enforce, kept here so every path shares it.
-- Callers authorise the acting administrator; this module only judges the target account.
+- A `User` is global and organisation membership scopes an administrator's authority over it, so adding an
+  account hands that organisation's administrators authority over it. An organisation that has not opted in to
+  external users (`Organization.external_user_policy` is `DISABLED`, the default) may not take an account
+  another organisation holds (a platform administrator's account included). An account in no organisation is
+  unclaimed and may be taken (self-signup accounts await assignment).
+- A banned account is never added (the rule of `assign_org_role` and the project by-email route, shared here).
+- Callers authorise the acting administrator; this module judges only the target account.
 
 Dependencies: `models.organization`, `models.user`, `models.enums`.
 """
@@ -90,10 +84,12 @@ def external_account_refusal(db: Session, org: Organization, target: User) -> st
 
     Returns:
         A message for the caller to report, or `None` when the account is already a member, is unclaimed, or
-        the organisation allows external users.
+        the organisation allows external users. A service user is never taken by another organisation.
     """
     if holds_org_role(db, target.id, org.id):
         return None
+    if target.is_service_account:
+        return "A service user belongs to one organisation and cannot be added to another."
     if target.is_banned:
         return "This user has been banned by a server admin and cannot be granted a role."
     if belongs_elsewhere(db, target.id, org.id) and org.external_user_policy == ExternalUserPolicy.DISABLED:

@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { OrgTypeRow } from "../../components/TypeVocabularyPanels";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { OrgRiskTypesPanel } from "./OrgRiskTypesPanel";
 
 const ORG_ID = "org-1";
@@ -42,8 +42,9 @@ export const AddTypeUsesTheRiskEndpoint: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByPlaceholderText("Risk type name"), "Cost");
-    await userEvent.click(canvas.getByRole("button", { name: "Add Risk type" }));
+    const dialog = await openAddDialog(canvas, "Add Risk type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Cost");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(URL, { name: "Cost" }));
   },
 };

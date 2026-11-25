@@ -5,18 +5,12 @@ import type { UiPreferenceValue, User } from "../api/types";
 import { applyUiPreferencePatch } from "./uiPreferencePatch";
 import { AuthContext, type AuthContextValue, type LoginResult } from "./AuthContextValue";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { clearReturnTo, rememberReturnTo } from "../utils/returnTo";
 
-// Every other call through this client waits indefinitely (no timeout at
-// all) — login/2FA-verify are the deliberate exception. Both hit
-// `verify_password` (bcrypt, cost factor 12, ~200ms of CPU-bound work per
-// call), which under concurrent login load (many users signing in around
-// the same time, e.g. shift start) legitimately queues behind other logins
-// competing for the same CPU cores rather than failing outright. Without an
-// explicit ceiling that queuing shows up as a submit button that spins
-// forever with no feedback; 45s is generous relative to the ~200ms
-// single-call cost so it only ever fires under genuinely abnormal
-// contention or a real backend outage, not routine load. See
-// docs/decisions.md, "bcrypt login cost under concurrent load".
+// Login and 2FA verification take their own ceiling: an ordinary read uses the client default (`READ_TIMEOUT_MS`) and a
+// write waits indefinitely. Both run `verify_password` (bcrypt cost 12, ~200 ms of CPU), which queues behind concurrent
+// logins instead of failing, so without a ceiling the submit button spins with no feedback. 45 s only fires under abnormal
+// contention or an outage. See docs/decisions.md, "bcrypt login cost under concurrent load".
 const LOGIN_TIMEOUT_MS = 45_000;
 
 /** Provides the authenticated user and login/logout actions to the app. */
@@ -82,19 +76,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result.user;
   }, []);
 
+  // A deliberate sign-out forgets any remembered page: the next person to sign in on this tab is not taken to it.
   const logout = useCallback(() => {
+    clearReturnTo();
     setAuthToken(null);
     setUser(null);
   }, []);
 
-  // A 401 with `WWW-Authenticate` (client.ts's `AUTH_UNAUTHORIZED_EVENT`)
-  // means the session token itself is dead — expired, or invalidated by a
-  // password change/2FA change in another tab. Clearing `user` immediately
-  // (rather than only on the next mount) is what makes `ProtectedRoutes`
-  // (App.tsx) redirect to /login right away instead of leaving the page
-  // rendered on stale data until a hard refresh forces a re-check.
+  // `AUTH_UNAUTHORIZED_EVENT` (client.ts) means the session token is dead (expired, or invalidated by a password or 2FA
+  // change in another tab). Clearing `user` at once makes `ProtectedRoutes` (App.tsx) redirect to /login instead of
+  // leaving the page on stale data until a hard refresh.
   useEffect(() => {
     const onUnauthorized = () => {
+      // The page the person was on is where signing in again returns them.
+      rememberReturnTo(window.location.pathname + window.location.search + window.location.hash);
       setAuthToken(null);
       setUser(null);
     };
@@ -102,13 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
 
-  // Applied optimistically (an instant toggle shouldn't wait on a round
-  // trip) and persisted server-side (U-U-01/U-U-03's existing preference
-  // fields all sync this way) so it follows the user across devices/
-  // sessions rather than living only in this browser's localStorage. A
-  // refused write re-syncs the local copy from the server (dropping the
-  // optimistic value) and rejects, so a caller that tells the user "saved"
-  // can await it and report the failure instead.
+  // Applied optimistically (an instant toggle should not wait on a round trip) and persisted server-side, so it follows
+  // the user across devices. A refused write re-syncs the local copy from the server and rejects, so a caller that
+  // reports "saved" can await it and report the failure.
   const setUiPreferences = useCallback(
     async (patch: Record<string, UiPreferenceValue | null>) => {
       setUser((current) => (current ? { ...current, ui_preferences: applyUiPreferencePatch(current.ui_preferences, patch) } : current));

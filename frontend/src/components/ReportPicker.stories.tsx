@@ -45,6 +45,18 @@ export const ShowsTheCurrentReportAndItsFolder: Story = {
   },
 };
 
+/** The picker's folders are real folders, so they keep the folder icon (closed, then open). */
+export const FoldersKeepTheFolderIcon: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Report: Requirements report" }));
+    const d = await dialog();
+    const icon = (name: string) => d.getByRole("button", { name }).querySelector(".folder-tree-folder-icon svg");
+    await expect(icon("Expand Risk Management")).toHaveClass("lucide-folder");
+    await userEvent.click(d.getByRole("button", { name: "Expand Risk Management" }));
+    await expect(icon("Collapse Risk Management")).toHaveClass("lucide-folder-open");
+  },
+};
+
 /** The first time a picker opens, every folder is collapsed, the selection's included. */
 export const OpensFullyCollapsedTheFirstTime: Story = {
   play: async ({ canvasElement }) => {

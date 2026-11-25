@@ -3,19 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: ProjectActionsPage's table headers are clickable and cycle
- * unsorted → ascending → descending → unsorted. Unlike RequirementsPage/
- * ChangeRequestsPage, this list has no backend pagination at all
- * (`routers/actions.py::list_actions` always returns every match), so
- * sorting is a purely client-side reorder of the already-loaded rows —
- * no network request is expected on a header click.
+ * Job to be done: ProjectActionsPage's table headers sort ascending, then toggle to descending and back on repeated clicks.
+ * Unlike RequirementsPage/ChangeRequestsPage, this list has no backend pagination (`routers/actions.py::list_actions`
+ * returns every match), so sorting reorders the loaded rows client-side and a header click makes no network request.
  *
- * Two actions are created here with timestamped, bounding titles ("AAA"/
- * "ZZZ" prefixes) rather than relying on the shared project's existing
- * actions, so the ordering assertion doesn't depend on how many other
- * actions this project happens to have when the suite runs (per this
- * repo's own test-independence rule — a spec must pass standalone or
- * repeated back-to-back against the same database).
+ * Two actions are created with timestamped, bounding titles ("AAA"/"ZZZ" prefixes) rather than relying on the shared
+ * project's existing actions, so the ordering assertion does not depend on how many other actions the project has.
  */
 test.describe("project actions list sorting", () => {
   test("sort by title ascending and descending via the column header", async ({ page }) => {
@@ -55,7 +48,8 @@ test.describe("project actions list sorting", () => {
     await expect(titleHeaderCell).toHaveAttribute("aria-sort", "descending");
     expect(await rowIndexOf(secondTitle)).toBeLessThan(await rowIndexOf(firstTitle));
 
+    // There is no unsorted state: the same header toggles its direction, and the default order (Code) is a choice in Sort by.
     await titleHeader.click();
-    await expect(titleHeaderCell).toHaveAttribute("aria-sort", "none");
+    await expect(titleHeaderCell).toHaveAttribute("aria-sort", "ascending");
   });
 });

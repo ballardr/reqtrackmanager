@@ -1,36 +1,17 @@
 """
 Module: tests.conftest
 
-Test fixtures for the backend test suite. Runs against a real PostgreSQL
-database (a dedicated `reqtrack_pytest_test` database on the same server
-used by docker-compose) rather than SQLite, since the schema uses
-PostgreSQL-specific types (UUID, JSONB). The schema is created once per test
-session by running the real Alembic migrations (not `Base.metadata.
-create_all()` directly) so the test suite exercises the same migration path
-production deployments use — and so it doesn't fight with the app's own
-startup-time `alembic upgrade head` (see app/migrations.py), which would
-otherwise try to re-apply non-idempotent `op.add_column` migrations against a
-schema a raw `create_all()` had already brought to the same end state. Every
-table is truncated between tests so each test starts from a clean slate,
-including a freshly bootstrapped server admin user.
+Test fixtures for the backend suite, run against a real PostgreSQL database (UUID and JSONB need it).
 
-`reqtrack_pytest_test` is a database pytest owns exclusively — never
-`reqtrack_test`, which `tests/container/docker-compose.yml`'s `backend`
-service (the dev/demo stack Playwright also targets) uses. This distinction
-matters because this suite's schema-per-session fixture below does a hard
-`DROP SCHEMA public CASCADE` at the start of every session, and every single
-test truncates every table afterward — see `_schema`'s and `_clean_tables`'s
-own docstrings for exactly why. Forcing pytest onto a separate, dedicated
-database name (below) is what makes that safe to run at any time, repeatedly,
-without disturbing whatever manually-seeded demo/dev data the same
-docker-compose stack's backend is also serving requests against.
-
-Under `pytest-xdist` (`-n <workers>`), the same DROP-and-truncate-everything
-behaviour is only safe per-process, not shared across worker processes — so
-each worker additionally gets its own database, `reqtrack_pytest_test_gw0`,
-`reqtrack_pytest_test_gw1`, etc. (see `tests/_pytest_database.py`'s
-`_worker_db_suffix()`). Each worker's own `_ensure_test_database()` call
-below creates its database on first use.
+Design decisions:
+- The schema is created once per session by running the real Alembic migrations (not `Base.metadata.create_all()`), so the
+  suite uses the production migration path and does not conflict with the app's startup `alembic upgrade head`
+  (`app/migrations.py`). Every table is truncated between tests, including a freshly bootstrapped server admin.
+- pytest owns the dedicated database `reqtrack_pytest_test`, never `reqtrack_test` (used by the dev/demo Compose stack that
+  Playwright also targets), because the session fixture runs `DROP SCHEMA public CASCADE` and every test truncates all
+  tables (see `_schema` and `_clean_tables`).
+- Under `pytest-xdist` each worker gets its own database (`reqtrack_pytest_test_gw0`, ...; see
+  `tests/_pytest_database.py` `_worker_db_suffix()`), created on first use by `_ensure_test_database()`.
 """
 
 import asyncio
@@ -40,21 +21,12 @@ import shutil
 import sys
 import tempfile
 
-# `dedicated_pytest_database_url`/`PYTEST_DB_NAME` live in the tiny sibling
-# module `tests/_pytest_database.py`, not here, purely so this can be a
-# plain import: this rewrite has to run before any `app.*` import below
-# (importing `app.database` creates a SQLAlchemy engine from DATABASE_URL at
-# module-import time), but a module-level `def` here — ahead of those other
-# imports — would itself trip ruff's E402 (module-level import not at top of
-# file) on every import that follows it. See that module's own docstring
-# for the full mechanical reason, and its `dedicated_pytest_database_url`
-# docstring for *why* this rewrite exists at all.
+# The DATABASE_URL rewrite must run before any `app.*` import (`app.database` creates its engine at import time), and a
+# `def` here would trip ruff's E402 on every later import, so the helper lives in `tests/_pytest_database.py`.
 from tests._pytest_database import PYTEST_DB_NAME, dedicated_pytest_database_url
 
-# NOTE: `setdefault` here is a convenience for local/CI runners that haven't
-# set DATABASE_URL at all — it seeds a sensible default before the
-# `dedicated_pytest_database_url()` rewrite below runs. It is NOT what makes
-# this suite safe on its own: see that function's docstring for why.
+# `setdefault` only seeds a default for runners that set no DATABASE_URL; the `dedicated_pytest_database_url()` rewrite
+# below is what keeps the suite on its own database.
 os.environ.setdefault("DATABASE_URL", "postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test")
 os.environ["DATABASE_URL"] = dedicated_pytest_database_url(os.environ["DATABASE_URL"])
 os.environ.setdefault("SERVER_ADMIN_EMAIL", "admin@example.com")
@@ -146,33 +118,22 @@ def _ensure_test_database() -> None:
 _ensure_test_database()
 
 
+def pytest_configure(config):
+    """Registers the `slow` marker: the files and tests that take 10 s or more, so `-m "not slow"` is the quick run."""
+    config.addinivalue_line("markers", "slow: one of the slowest tests; leave out of a quick local run with -m 'not slow'")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _schema():
-    # Drop and recreate the whole schema (rather than Base.metadata.drop_all)
-    # so a stale schema left by a previous conftest revision, a previous
-    # model version, or a partially-applied migration can never make this
-    # fixture inconsistent with a truly fresh `alembic upgrade head` run.
+    # Drop and recreate the whole schema (not `Base.metadata.drop_all`), so a stale or partially migrated schema cannot
+    # differ from a fresh `alembic upgrade head`.
     with app_engine.begin() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
     run_migrations()
     yield
-    # No teardown drop here on purpose: the *next* session's setup above
-    # already guarantees a clean slate regardless of what's left behind, so
-    # a teardown drop only ever served to tidy up between runs — at the cost
-    # of leaving a completely tableless database for anything else pointed
-    # at it. This module now forces pytest onto its own dedicated
-    # `reqtrack_pytest_test` database (see the DATABASE_URL rewrite near the
-    # top of this file), so nothing else is ever pointed at it in the first
-    # place — but this rule predates that fix and is kept unchanged
-    # regardless: `tests/container/docker-compose.yml`'s `backend` app
-    # container used to share this exact database with the test suite
-    # (before the dedicated-database fix), and a teardown drop there meant
-    # every `docker compose exec backend pytest` left the live app unable to
-    # serve any request (`relation "..." does not exist`) until it was
-    # restarted. Leaving the migrated-but-truncated schema in place after
-    # the session is harmless now and was the actual fix for that failure
-    # mode then, so there's no reason to reintroduce a teardown drop.
+    # No teardown drop: the next session's setup already guarantees a clean slate, and a drop would leave a tableless
+    # database for anything else pointed at it.
 
 
 @pytest.fixture(autouse=True)
@@ -279,18 +240,10 @@ def _clean_tables():
 
 @pytest.fixture(scope="session")
 def _app_client():
-    # Session-scoped so `alembic upgrade head`, the server-admin bootstrap,
-    # and the scheduler/background-task startup in app.main.lifespan each
-    # run once for the whole suite rather than once per test. Previously
-    # `client` itself was function-scoped, so every test re-entered
-    # `TestClient(app)`'s context manager and re-ran the full app lifespan
-    # (a no-op `alembic upgrade head` alone costs ~0.5s), which dominated
-    # the suite's runtime across ~370 tests. Nothing in this suite depends
-    # on a fresh lifespan per test: the scheduler/disk-monitor tests call
-    # their check functions directly rather than relying on the
-    # lifespan-managed background loop's timing, and no test mutates
-    # persistent TestClient state (headers/cookies) that would leak across
-    # tests. Per-test isolation still comes from `_clean_tables` below.
+    # Session-scoped so `alembic upgrade head`, the server-admin bootstrap and the lifespan startup in app.main run once
+    # per suite, not once per test (a no-op `alembic upgrade head` alone costs ~0.5s). No test depends on a fresh
+    # lifespan: scheduler and disk-monitor tests call their check functions directly, and none mutates persistent
+    # TestClient state (headers, cookies). Per-test isolation comes from `_clean_tables`.
     import app.main as app_main
     from app.main import app
 
@@ -313,18 +266,73 @@ def _app_client():
         patch.undo()
 
 
+_BASELINE_SCHEMA = "pytest_baseline"
+# A copy is named differently from its table: schema tests read `information_schema` by table name alone.
+_BASELINE_PREFIX = "copy_of_"
+_BASELINE_TABLES: dict[str, list[str]] | None = None
+
+
+def _capture_baseline(conn) -> dict[str, list[str]]:
+    """Copies the tables `run_bootstrap` filled into the `pytest_baseline` schema, so later tests restore them.
+
+    Args:
+        conn: An open connection to the test database, which holds exactly the bootstrap's rows.
+
+    Returns:
+        The copied tables and their column names (a migration test can change a table's column order, so the
+        restore names its columns instead of relying on position).
+    """
+    tables = _non_empty_tables(conn)
+    conn.execute(text(f"DROP SCHEMA IF EXISTS {_BASELINE_SCHEMA} CASCADE"))
+    conn.execute(text(f"CREATE SCHEMA {_BASELINE_SCHEMA}"))
+    copied: dict[str, list[str]] = {}
+    for name in tables:
+        conn.execute(text(f'CREATE TABLE {_BASELINE_SCHEMA}."{_BASELINE_PREFIX}{name}" AS TABLE public."{name}"'))
+        copied[name] = [
+            row[0]
+            for row in conn.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_schema = :s AND table_name = :t"),
+                {"s": _BASELINE_SCHEMA, "t": _BASELINE_PREFIX + name},
+            )
+        ]
+    return copied
+
+
+def _restore_baseline(conn, tables: dict[str, list[str]]) -> None:
+    """Writes the bootstrap's rows back into the (empty) model tables, as `run_bootstrap` would have created them."""
+    conn.execute(text("SET LOCAL session_replication_role = replica"))
+    for name, columns in tables.items():
+        listed = ", ".join(f'"{c}"' for c in columns)
+        conn.execute(text(f'INSERT INTO public."{name}" ({listed}) SELECT {listed} FROM {_BASELINE_SCHEMA}."{_BASELINE_PREFIX}{name}"'))
+
+
 @pytest.fixture
 def client(_app_client):
-    # `_clean_tables` truncates every table (including `users`) after each
-    # test, so the server admin the session-scoped lifespan bootstrapped
-    # once at startup won't exist for the next test. Re-run just the
-    # bootstrap (a cheap idempotency check, only paying bcrypt's cost when
-    # it actually needs to recreate the admin) rather than the whole
-    # lifespan, since only tests that request `client` need an admin to be
-    # present.
+    # `_clean_tables` truncates every table (including `users`) after each test, so the server admin and default
+    # organisation the session-scoped lifespan bootstrapped once at startup won't exist for the next test, and only
+    # tests that request `client` need them. Running `run_bootstrap` again costs about 0.14 s per test (an
+    # organisation, its vocabularies and the starter report layouts), so the first run's rows are copied aside once
+    # per worker and written back instead: the same rows an empty database gets from the bootstrap. When a fixture
+    # has already written rows ahead of this one the database is not the empty one the copy was taken from, and when
+    # a test has changed the schema (a migration test) the copy no longer fits; in both cases the real bootstrap runs
+    # (it is idempotent and adds only what is missing) and, once the database is empty again, a fresh copy is taken.
+    global _BASELINE_TABLES
     db = SessionLocal()
     try:
+        with app_engine.begin() as conn:
+            was_empty = not _non_empty_tables(conn)
+            can_copy = _can_skip_fk_triggers(conn)
+        if was_empty and can_copy and _BASELINE_TABLES is not None:
+            try:
+                with app_engine.begin() as conn:
+                    _restore_baseline(conn, _BASELINE_TABLES)
+                return _app_client
+            except Exception:
+                _BASELINE_TABLES = None
         run_bootstrap(db)
+        if was_empty and can_copy and _BASELINE_TABLES is None:
+            with app_engine.begin() as conn:
+                _BASELINE_TABLES = _capture_baseline(conn)
     finally:
         db.close()
     return _app_client
@@ -417,17 +425,10 @@ def create_project(
 
 
 def direct_project_roles(project_id: str) -> dict[str, set[str]]:
-    """Reads `UserProjectRole` rows for `project_id` straight from the
-    database — `user_id -> {role, ...}` (a user can hold more than one
-    direct role simultaneously; the unique constraint is `(user_id,
-    project_id, role)`, not one row per user).
+    """Reads `UserProjectRole` rows for `project_id` straight from the database: `user_id -> {role, ...}`.
 
-    `GET /projects/{id}/direct-members`, the endpoint several older tests
-    used for this exact assertion, was removed 2026-08-31 (2026-08-31, docs/decisions.md) once the new unified Members
-    table made it a dead surface with no remaining frontend caller — this
-    helper replaces those call sites with a direct read of the same
-    underlying data, since a "does this user hold this direct grant" check
-    doesn't need a dedicated directory endpoint to express in a test.
+    A user can hold several direct roles at once (the unique constraint is `(user_id, project_id, role)`). The
+    database is read directly because there is no directory endpoint for direct grants.
     """
     from app.models.project import UserProjectRole
 

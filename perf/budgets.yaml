@@ -1,10 +1,10 @@
 # Provisional performance budgets (perf/analyse.py checks a bundle against them).
 #
-# Starting targets, Decided by: User (2026-10-23): interactive single-record and paged-list requests p95 <= 300 ms;
+# Starting targets, Decided by: User: interactive single-record and paged-list requests p95 <= 300 ms;
 # unpaged or filtered lists p95 <= 1 s up to T2 (T3 and T4 are measured and reported against a relaxed target agreed
-# after the first full run); reports, exports and imports p95 <= 30 s. The numbers are a starting point
-# (Decided by: Agent for the exact classification below): a first full run may adjust one, but only with the reason and
-# the measured value written next to it here, so a slow result is never silently relabelled as acceptable.
+# after the first full run); reports, exports and imports p95 <= 30 s. The classification below is Decided by: Agent.
+# A budget changes only with its reason and the measured value written next to it, so a slow result is never silently
+# relabelled as acceptable.
 version: 1
 
 classes:

@@ -4,24 +4,18 @@ Module: services.report_band_cells
 How wide each cell of a header or footer is and where its content sits vertically, decided once for every renderer.
 
 Responsibilities:
-- `resolve_band_cells`: the width in cm and the vertical alignment of the left, centre and right cells of a band on a
-  page whose text is `usable_cm` wide. The PDF, Word, OpenDocument and HTML renderers all read this and nothing else.
-- `fixed_widths_problem`: why the fixed cell widths of a band (as written in the layout) do not fit a page, for the
-  layout check.
+- `resolve_band_cells`: the width (cm) and vertical alignment of a band's left, centre and right cells on a page
+  `usable_cm` wide; the PDF, Word, OpenDocument and HTML renderers read only this.
+- `fixed_widths_problem`: why fixed cell widths do not fit a page, for the layout check.
 
 Design decisions:
-- A cell with no width fits its content (its widest line at the band's size, plus a logo placed in it), an empty cell
-  only its floor (`MIN_COLUMN_CM`). The room the cells do not need goes to the centre cell when it has content, so a
-  short left and right text leave the title its width; otherwise to the other cells with content, in proportion to what
-  they need.
-- When the cells need more than the band has, the widest cell gives way first (water-filling): a long centre text wraps
-  in the centre and the short sides keep their width.
-- A fixed width is a percentage of the band or a length, as a table column's is; the same parser reads both.
-- The default vertical alignment is the band kind's (`DEFAULT_BAND_VALIGN`): a header's cells start on the same line at the
-  top, a footer's sit against the bottom edge of the page. A cell's own alignment, then the band's, win over it.
+- A cell with no width fits its content, an empty cell only its floor (`MIN_COLUMN_CM`); spare room goes to the
+  centre cell when it has content, else to the other cells with content in proportion to need.
+- When cells need more than the band has, the widest gives way first (water-filling), so short sides keep their width.
+- Fixed widths are percentages or lengths, parsed as a table column's are. Default vertical alignment is the band
+  kind's (`DEFAULT_BAND_VALIGN`); a cell's own, then the band's, win.
 
-Dependencies: `services.report_column_width`, `services.report_fonts`, `services.report_image_layout`,
-`services.report_model`, `services.report_running`.
+Dependencies: `services.report_column_width`, `report_fonts`, `report_image_layout`, `report_model`, `report_running`.
 """
 
 from __future__ import annotations

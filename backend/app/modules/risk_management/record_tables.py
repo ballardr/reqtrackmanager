@@ -1,29 +1,12 @@
 """
 Module: modules.risk_management.record_tables
 
-The `RecordTableProvider` of Risk Management's one record type, the Risk: the register as a table, so it exports
-to CSV, PDF and Word and imports from the same CSV (a row with a code updates, a blank code creates).
-
-Responsibilities:
-- Declare the Risk columns (text, type, treatment strategy, the six scoring levels by name, owner, review date,
-  tags) and the derived ratings and status as export-only cells.
-- Share the create and edit logic with the endpoints (`_shared.stage_risk` / `stage_risk_update`), so the
-  scoring-level and type validation, the accepted-risk content lock, the version history and the audit event
-  are the ones the screen applies.
-
-Design decisions:
-- `status` is export-only: a Risk moves through its lifecycle only by the transition endpoint, whose guards
-  (an inherent rating before Assessed, the separate Risk Acceptor sign-off for Accepted) a file must not bypass.
-  A created Risk starts `Identified`, as the create endpoint starts it. The type is marked approval-gated.
-- The inherent and residual ratings are derived on every read and so are export-only; the levels they come from
-  are the columns, written by the level's name on its axis (`Likely`, `Major`) for the organisation's own scheme.
-- Updating needs the Risk Manager role (the edit endpoint's gate); any project member may create (the create
-  endpoint's gate), including naming an owner.
-- A change to an accepted Risk's signed-off assessment is refused per row with the endpoint's message.
-- Rating tones and the type pick list are read from the project when the table is built, so a project's own
-  rating bands and its enabled types are what the cells and the pick lists show.
-
-Dependencies: `_shared` (stage functions, gates), `ratings`, `service`, `treatment`, `services.record_tables_core`.
+The `RecordTableProvider` of the Risk: the register as a table exported to CSV,
+PDF and Word and imported from the same CSV.
+- Create/edit use `_shared.stage_risk`/`stage_risk_update`; `status` and the
+  derived ratings are export-only; levels are written by name on their axis.
+- Updating needs the Risk Manager role; any member may create; a change to an
+  accepted Risk's signed-off assessment is refused per row.
 """
 
 from __future__ import annotations
@@ -214,9 +197,14 @@ def _level_parser(column: str) -> Any:
     return parse
 
 
+#: The `_text` columns whose cells are Markdown source (the title is a plain name).
+_MARKDOWN_KEYS = frozenset({"statement", "cause", "risk_event", "consequence", "acceptance_criteria"})
+
+
 def _text(key: str, label: str, *, required: bool = False) -> RecordColumn:
     return RecordColumn(
         key, label, lambda t, r: getattr(t.versions[r.id], key) or "", text_parser, editable=True, required=required,
+        markdown=key in _MARKDOWN_KEYS,
     )
 
 

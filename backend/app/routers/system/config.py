@@ -1,15 +1,9 @@
 """
 Module: routers.system.config
 
-Deployment-wide configuration and build metadata: the running backend's
-build identity, the server-wide public self-signup mode, and the
-deployment-wide SMTP test-email action. `GET /signup-config` is
-deliberately unauthenticated (the signup form's first call happens before
-any session exists), same reasoning as `branding.get_branding`.
-
-Split out of the former flat `routers/system.py` as a pure code-organization
-refactor — see `routers/system/__init__.py`'s module docstring for the
-package layout.
+Deployment-wide configuration and build metadata: the running backend's build identity, the server-wide
+public self-signup mode and the deployment-wide SMTP test-email action. `GET /signup-config` is
+unauthenticated (the signup form's first call precedes any session), as `branding.get_branding`.
 """
 
 from __future__ import annotations
@@ -121,17 +115,13 @@ def send_system_test_email(
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
-    """Sends a test email through the deployment-wide SMTP configuration
-    (`Settings.smtp_*`, `config.py`) — lets a server admin confirm outgoing
-    mail (C-N-03) actually works without waiting for a real notification to
-    trigger one. The organisation-scoped equivalent for an org with its own
-    SMTP override is `routers/orgs.py::send_org_test_email`.
+    """Sends a test email through the deployment-wide SMTP configuration (`Settings.smtp_*`, `config.py`) so a
+    server admin can confirm outgoing mail (C-N-03) works without waiting for a real notification. The
+    organisation-scoped equivalent is `routers/orgs.py::send_org_test_email`.
 
     Raises:
-        HTTPException: 502 if the send itself fails (bad credentials,
-            unreachable host, ...) — surfaced with the underlying error so
-            the admin knows what to fix, since confirming deliverability is
-            the entire point of this action.
+        HTTPException: 502 if the send fails (surfaced with the underlying error, since confirming
+            deliverability is the purpose of this action).
     """
     to_email = payload.to_email or current_user.email
     branding = resolve_email_branding(db, organization_id=None)

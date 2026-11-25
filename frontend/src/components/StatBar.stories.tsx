@@ -31,10 +31,8 @@ export const Default: Story = {
   },
 };
 
-/** A module's own contributed headline stat (e.g.
- * a module's own tiles) render `StatBarEntry`
- * directly as `children`, splicing into the same row as `items` with
- * identical spacing/dividers rather than a second implementation. */
+/** A module's own headline stat renders `StatBarEntry` directly as `children`, splicing into the same row as `items`
+ * with identical spacing and dividers. */
 export const WithContributedEntry: Story = {
   args: {
     items: [

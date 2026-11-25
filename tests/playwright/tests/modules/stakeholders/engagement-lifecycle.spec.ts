@@ -8,19 +8,14 @@ import { openAddLinkDialog } from "../linksPanel";
 installCleanupHook();
 
 /**
- * Job to be done:
- * Playwright e2e coverage for the Engagement UI
- * (`frontend/src/modules/stakeholders/`) against a real backend: log, edit and
- * permanently delete an engagement; add participants and covered Personas;
- * aim it at a Stakeholder group (a snapshot of members); log a contact from a
- * Stakeholder's page and see the timeline and "Last engaged"; record what an
- * engagement raised; and the research extras (prompts, anonymous participants,
- * findings) appearing only once the sub-component is on; and the compact
- * page layout: every "add" is a (+) button opening its form on demand, and the
- * facilitator is assigned from a popover rather than an always-open search box.
+ * Job to be done: e2e coverage of the Engagement UI (`frontend/src/modules/stakeholders/`) against a real
+ * backend: log, edit and permanently delete an engagement; add participants and covered Personas; aim it at a
+ * Stakeholder group (a snapshot of members); log a contact from a Stakeholder's page and see the timeline and
+ * "Last engaged"; record what an engagement raised; the research extras (prompts, anonymous participants,
+ * findings) appearing only once the sub-component is on; and the compact layout (every "add" is a (+) button
+ * opening its form on demand; the facilitator is assigned from a popover).
  *
- * Each test builds its own disposable org (see `./helpers.ts`), so none depends
- * on seeded state or on another test having run.
+ * Each test builds its own disposable org (see `./helpers.ts`), so none depends on seeded state.
  */
 
 type Headers = Record<string, string>;
@@ -57,7 +52,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await dialog.getByLabel("Notes").fill("Pat asked for the traceability export.");
     await dialog.getByLabel("Consent recorded").check();
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await expect(page.getByText(/Engagement( \S+-\d+)? logged\./)).toBeVisible();
     const row = page.locator("tr", { hasText: title });
     await expect(row.getByText("Workshop", { exact: true })).toBeVisible();
     await expect(row.getByText(today())).toBeVisible();
@@ -105,7 +100,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(first.getByText(/No Stakeholders exist in this project yet\./)).toBeVisible();
     await first.getByLabel("Engagement title").fill(emptyTitle);
     await first.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await expect(page.getByText(/Engagement( \S+-\d+)? logged\./)).toBeVisible();
     await page.getByRole("button", { name: emptyTitle }).click();
     await expect(page.getByText(/No Stakeholders exist in this project yet\./)).toBeVisible();
     await expect(page.getByRole("button", { name: "Add to Participants" })).toBeDisabled();
@@ -128,7 +123,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(dialog.getByRole("button", { name: `Remove ${patName}` })).toBeVisible();
     await expect(dialog.getByRole("button", { name: `Remove ${samName}` })).toBeVisible();
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await expect(page.getByText(/Engagement( \S+-\d+)? logged\./)).toBeVisible();
     await page.getByRole("button", { name: title }).click();
     // The participants list and the Links panel both name each person, so take the first.
     await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
@@ -168,7 +163,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(focus.getByLabel("Persona represented by Participant 1")).toBeVisible();
     await focus.getByLabel("Persona represented by Participant 1").selectOption({ index: 0 });
     await focus.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await expect(page.getByText(/Engagement( \S+-\d+)? logged\./)).toBeVisible();
     await page.getByRole("button", { name: groupTitle }).click();
     await expect(page.getByText("Participant 1")).toBeVisible();
     await expect(page.getByLabel("Persona represented by Participant 1")).toHaveCount(0);
@@ -197,6 +192,9 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await page.keyboard.press("Escape");
     // The participants list and the Links panel both name Pat, so take the first.
     await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
+    // Every chip that names a person record carries the icon of its kind.
+    const chip = (name: string) => page.getByRole("listitem").filter({ has: page.getByRole("link", { name }) });
+    await expect(chip(patName).getByRole("img", { name: "Stakeholder" })).toBeVisible();
     // Pat takes part, so is no longer offered.
     await page.getByRole("button", { name: "Add to Participants" }).click();
     await expect(page.getByRole("checkbox", { name: `Participant ${samName}` })).toBeVisible();
@@ -208,6 +206,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await addPersona.getByLabel("Persona covered").selectOption({ label: personaName });
     await addPersona.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByRole("link", { name: personaName }).first()).toBeVisible();
+    await expect(chip(personaName).getByRole("img", { name: "Persona" })).toBeVisible();
 
     // --- The list filters by participant (applied by the API).
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
@@ -252,6 +251,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: samName }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: `Remove audience ${groupName}` })).toBeVisible();
+    await expect(page.getByRole("listitem").filter({ hasText: groupName }).getByRole("img", { name: "Stakeholder Group" })).toBeVisible();
 
     // --- A no-show is removed individually; removing the audience keeps everyone else.
     await page.getByRole("button", { name: `Remove ${samName}` }).click();
@@ -408,6 +408,8 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByText("Engagement updated.")).toBeVisible();
     await expect(page.getByText("Participant 2").first()).toBeVisible();
     await expect(page.getByText("via an anonymous participant")).toBeVisible();
+    // An anonymous participant has its own icon, apart from the Facilitators' user icon.
+    await expect(page.getByRole("listitem").filter({ hasText: "Participant 2" }).getByRole("img", { name: "Anonymous participant" })).toBeVisible();
     await page.reload();
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(page.getByRole("dialog", { name: /^Edit / }).getByLabel("Persona represented by Participant 1").locator("option:checked")).toHaveText(personaName);

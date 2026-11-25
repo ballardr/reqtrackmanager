@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useUrlSort, useUrlText } from "../hooks/useUrlFilter";
 import { sortRows } from "../utils/sortRows";
 import { cycleSort } from "../components/sortState";
@@ -11,6 +12,7 @@ import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
+import { LoadFailed } from "../components/LoadFailed";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
@@ -18,49 +20,32 @@ import { t } from "../i18n/strings";
 const strings = t();
 
 /**
- * Lists organisations the user belongs to (C-U-15: users may belong to
- * more than one). A user who belongs to exactly one skips the list
- * entirely and lands straight on that organisation's own `target` page —
- * the list only earns its keep when there's an actual choice to make.
+ * Lists the organisations the user belongs to (C-U-15). A user in exactly one skips the list and lands on
+ * that organisation's `target` page. `target` selects the destination ("admin" by default; `/org-overview`,
+ * `/org-files` and `/org-resources` reuse this component with `overview`, `files` and `resources`), so the
+ * navigation rail never needs an organisation id.
  *
- * `target` generalises this single-
- * org/multi-org auto-redirect convention beyond its original "admin" use:
- * `/org-overview` reuses the exact same component (`target="overview"`)
- * for the new "Organisation Overview" page's entry point, rather than
- * duplicating this fetch-then-redirect-or-list logic a second time.
- * `/org-files` (`target="files"`) does the same for the organisation Files
- * page, so the navigation rail never needs an organisation id.
- *
- * Rebuilt onto the shared `DirectoryTable` + `FilterPanel` (search) shell
- * every other directory in the app uses — this used to be a bare
- * `orgs.map` list of links with no table semantics and no way to narrow a
- * long list by name. Search is client-side, a deliberate judgment call:
- * `GET /orgs` (`backend/app/routers/orgs.py::list_organizations`) has no
- * `search`/`limit`/`offset` query params today, unlike the sibling list
- * pages (`ServerOrganisationsPage.tsx`, `ProjectListPage.tsx`) whose own
- * endpoints already support server-side filtering — and this page's own
- * `mine=true` fetch is, by that endpoint's own doc comment, a *personal*
- * membership list (not the server-wide directory), realistically small
- * enough to filter in the browser rather than justify adding new backend
- * query params purely for this page. Revisit server-side if a deployment's
- * "orgs one person belongs to" count ever grows large enough to matter.
+ * The list is a shared `DirectoryTable` with a `FilterPanel` search. Search is client-side: `GET /orgs`
+ * takes no `search`/`limit`/`offset`, and the `mine=true` personal membership list is small.
  */
-export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview" | "files" }) {
+export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview" | "resources" | "files" }) {
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
+  const [failed, setFailed] = useState(false);
   // The search lives in the URL so the list comes back as it was left after a visit to a record.
   const [search, setSearch] = useUrlText("q");
   const [sort, setSort] = useUrlSort<string>(["name"]);
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
 
-  useEffect(() => {
-    // `mine=true`: this is the personal "orgs I belong to" list (nav rail's
-    // "My organisations"), not the server-admin platform directory — a
-    // server admin with no real membership anywhere must see it empty like
-    // anyone else, per `orgs.py::list_organizations`'s doc comment.
-    api.get<Organization[]>("/api/v1/orgs?mine=true").then(setOrgs);
+  const load = useCallback(() => {
+    // `mine=true`: the personal membership list, not the platform directory; a server administrator
+    // with no membership sees it empty (`orgs.py::list_organizations`).
+    setFailed(false);
+    api.get<Organization[]>("/api/v1/orgs?mine=true").then(setOrgs, () => setFailed(true));
   }, []);
+  useLoadOnChange(load, []);
 
+  if (failed) return <LoadFailed message={strings.requestFailure.loadFailed(strings.requestFailure.organisations)} onRetry={load} />;
   if (!orgs) return <Spinner />;
 
   if (orgs.length === 1) {
@@ -68,7 +53,13 @@ export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview
   }
 
   const heading =
-    target === "overview" ? `${orgLabelCap} overview` : target === "files" ? strings.files.orgTitle(orgLabelCap) : "Org Management";
+    target === "overview"
+      ? `${orgLabelCap} overview`
+      : target === "resources"
+        ? strings.nav.orgResources(orgLabelCap)
+        : target === "files"
+          ? strings.files.orgTitle(orgLabelCap)
+          : "Org Management";
 
   const needle = search.trim().toLowerCase();
   const filteredOrgs = needle ? orgs.filter((o) => o.name.toLowerCase().includes(needle)) : orgs;

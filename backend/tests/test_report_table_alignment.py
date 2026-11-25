@@ -9,11 +9,9 @@ Responsibilities:
 - Pin the rule's edges: grouping, the author winning, the page-width split, idempotence, the organisation-wide run, and
   the PDF's gap between consecutive tables.
 
-Design decisions:
-- The same pair is what a single project, a merged project tree and an organisation run produce: the merge only adds a
-  `Project` column or repeats the pair under another project's heading, and every table reaches the renderers as the
-  same compact, width-less `Table`.
-- The unaligned pair (`raw_pair`) is kept as the baseline, so a change in how a format sizes a lone table is visible.
+Design: a single project, a merged tree and an organisation run produce the same pair (a merge adds a `Project`
+column or repeats the pair under another heading), reaching the renderers as the same width-less `Table`. The
+unaligned pair (`raw_pair`) is the baseline, so a change in how a format sizes a lone table is visible.
 """
 
 from __future__ import annotations
@@ -125,7 +123,7 @@ def tables(document: ReportDocument) -> list[Table]:
 
 
 def test_word_and_opendocument_columns_follow_the_content():
-    """Word and OpenDocument no longer give every column the same width."""
+    """Word and OpenDocument give columns widths that follow the content, not one shared width."""
     assert len(set(docx_widths(pair())[0])) > 1
     assert len(set(odt_widths(pair())[0])) > 1
 

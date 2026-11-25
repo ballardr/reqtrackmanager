@@ -1,13 +1,12 @@
 /**
  * Module: components/StageWorkflowsPanel
  *
- * Administration of stage workflows for one tier, shared by Organisation Admin (the workflows every
- * project of the organisation may use) and Project Admin (the project's own, with the organisation's
- * shown beside them). Lists each workflow as a collapsible row (name, step count and source while closed) that opens to
- * an ordered list of steps, one per phase, with its kind and the starting phase marked; an own-tier workflow can be edited
- * and deleted, and in a project an organisation workflow can be hidden and restored, as every other
- * organisation default can. The server enforces the rules (a phase or workflow in use cannot be removed);
- * its message is shown in the dialog.
+ * Administration of stage workflows for one tier, shared by Organisation Admin (the workflows every project of the
+ * organisation may use) and Project Admin (the project's own, with the organisation's shown beside them). Each workflow
+ * is a collapsible row (name, step count and source while closed) opening to its ordered steps with the kind and the
+ * starting phase marked; an own-tier workflow can be edited and deleted, and in a project an organisation workflow can
+ * be hidden and restored. The server enforces the rules (a phase or workflow in use cannot be removed) and its message
+ * is shown in the dialog.
  */
 import { Pencil, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";

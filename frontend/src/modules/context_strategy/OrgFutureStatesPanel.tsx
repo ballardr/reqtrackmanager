@@ -3,18 +3,9 @@ const NONE: FutureState[] = [];
 /**
  * Module: modules/context_strategy/OrgFutureStatesPanel
  *
- * The org-scoped equivalent of `ProjectFutureStatesPage.tsx` — an
- * organisation's own org-scoped Future State records (the
- * org/project scope discriminator), rendered as an `OrgOverviewPage.tsx`
- * `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
- *
- * **Placement, Decided by: Agent — follows `OrgStrategiesPanel.tsx`'s own
- * placement directly, for consistency.** No reason for Future State to differ
- * was found: an org-scoped Future State is the same kind of org-level
- * content a Future State Owner/Approver works with day to day that
- * `OrgStrategiesPanel.tsx`'s own docstring already reasons through for
- * Strategy, so it lands on `orgOverviewSections` (Org Dashboard) too, not
- * `orgAdminSections` (Org Management).
+ * The organisation-scoped equivalent of `ProjectFutureStatesPage.tsx`: an organisation's own Future State records,
+ * rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s `orgResourceSections`). Placement follows
+ * `OrgStrategiesPanel.tsx`.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -26,15 +17,18 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { FUTURE_STATE_SORT_VALUES } from "./contextStrategySort";
+import { FUTURE_STATE_SORT_KEYS, FUTURE_STATE_SORT_VALUES } from "./contextStrategySort";
 import { orgFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useTableSort } from "../../hooks/useTableSort";
-import { filterString } from "../../utils/listFilterParams";
+import { useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows } from "../../utils/sortRows";
+import { filterStringWithSort } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
 
@@ -63,15 +57,8 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reloadFutureStates, [orgId, includeArchived]);
 
-  const table = useTableSort(futureStates ?? NONE, FUTURE_STATE_SORT_VALUES);
-  if (loadError) return <p className="text-muted">{loadError}</p>;
-  if (futureStates === null) return <Spinner />;
-
-  const filtered = table.rows.filter((fs) => {
-    if (statusFilter && fs.status !== statusFilter) return false;
-    if (search && !`${fs.unique_code} ${fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  const listSort = useListSort("org_future_states", FUTURE_STATE_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(futureStates ?? NONE, listSort.sort, FUTURE_STATE_SORT_VALUES);
 
   const columns: DirectoryColumn<FutureState>[] = [
     { key: "title", label: "Title", sortable: true, render: (fs) => fs.title },
@@ -80,9 +67,20 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
       key: "status", label: "Status", sortable: true,
       render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
     },
-    { key: "target_date", label: "Target date", sortable: true, render: (fs) => fs.target_date ?? "—" },
-    { key: "version", label: "Version", sortable: true, render: (fs) => `v${fs.version_number}` },
+    { key: "target_date", label: "Target date", sortable: true, optional: true, render: (fs) => fs.target_date ?? "—" },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (fs) => `v${fs.version_number}` },
   ];
+
+  const shown = useOptionalColumns("org_future_states", columns);
+
+  if (loadError) return <p className="text-muted">{loadError}</p>;
+  if (futureStates === null) return <Spinner />;
+
+  const filtered = sortedRows.filter((fs) => {
+    if (statusFilter && fs.status !== statusFilter) return false;
+    if (search && !`${fs.unique_code} ${fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   return (
     <div className="stack">
@@ -91,16 +89,17 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
           New Future State
         </button>
         <ListActions
-          organizationId={orgId} recordType="future_state" filters={filterString({ status: statusFilter, search, include_archived: includeArchived })} onImported={reloadFutureStates}
+          organizationId={orgId} recordType="future_state" filters={filterStringWithSort({ status: statusFilter, search, include_archived: includeArchived }, listSort.sort)} onImported={reloadFutureStates}
         />
+        {shown.chooser}
       </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Organisation Future State"
-          columns={columns}
+          columns={shown.columns}
           rows={filtered}
-          sort={table.sort}
-          onSort={table.onSort}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(fs) => fs.id}
           onRowClick={(fs) => navigate(`/orgs/${orgId}/modules/context_strategy/future-states/${fs.id}`)}
           emptyState={<p className="text-muted">No organisation-scoped Future State recorded yet.</p>}
@@ -116,6 +115,7 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
             allLabel="All statuses"
             options={labelOptions(FUTURE_STATE_STATUS_LABEL)}
           />
+          <SortField list={listSort} columns={columns} titleKey="title" />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

@@ -7,13 +7,8 @@ import { useToast } from "../context/ToastContext";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
-/** The app's `ThemeProvider` (`context/ThemeContext.tsx`) always stamps the
- * *resolved* light/dark theme onto `<html data-theme>` — reading it
- * directly here is equivalent to `resolveEffectiveTheme(useTheme().theme)`
- * without needing a `ThemeContext.Provider` in scope (this is the only
- * shared component below the app shell that needs the current theme at
- * all; everything else resolves purely through CSS custom properties
- * cascading off that same attribute). */
+/** `ThemeProvider` stamps the resolved light/dark theme onto `<html data-theme>`, so reading it directly equals
+ * `resolveEffectiveTheme(useTheme().theme)` without a `ThemeContext.Provider` in scope. */
 function currentResolvedTheme(): "light" | "dark" {
   const explicit = document.documentElement.getAttribute("data-theme");
   if (explicit === "dark" || explicit === "light") return explicit;
@@ -47,10 +42,8 @@ interface ModuleFrameProps {
   /** The module this iframe belongs to — used to mint a token scoped to
    * exactly this module (backend `create_module_frame_token`). */
   moduleKey: string;
-  /** The full origin+path the sandboxed iframe loads — must already have
-   * passed the backend's `MODULE_FRAME_ALLOWED_ORIGINS` allowlist check
-   * (`get_frontend_manifest`) for this component to have been rendered at
-   * all; not re-validated client-side. */
+  /** The full origin and path the sandboxed iframe loads; it must already have passed the backend's
+   * `MODULE_FRAME_ALLOWED_ORIGINS` allowlist (`get_frontend_manifest`) and is not re-validated client-side. */
   frameUrl: string;
   /** Display label, used as the iframe's accessible title. */
   navLabel: string;
@@ -62,29 +55,20 @@ interface ModuleFrameProps {
 }
 
 /**
- * Tier B host component: renders a
- * remote, not-installed module in a sandboxed `<iframe>`, relaying shared
- * host chrome (toasts, confirm dialogs) over `postMessage` — the "Host UI
- * Bridge" — so a remote module's UI still feels native for what matters
- * most, without the host ever handing it real DOM access or the current
- * user's actual session token.
+ * Tier B host component: renders a remote, not-installed module in a sandboxed `<iframe>`, relaying shared host
+ * chrome (toasts, confirm dialogs) over `postMessage` (the "Host UI Bridge") without handing the module real DOM
+ * access or the user's session token.
  *
- * Message contract (host origin-checked against `frameUrl`'s own origin
- * both ways):
- * - Host → iframe, once on load: `{type: "init", context: {organizationId,
- *   projectId, user, theme, cssTokens, apiBaseUrl, token}}`.
- * - Iframe → host: `{type: "toast", message, variant}` (mapped onto the
- *   host's real `useToast()`), or `{type: "confirm", id, title, message,
- *   requireTypedText?}` (rendered via the host's real `ConfirmDialog`,
- *   `requireTypedText` present selecting its Tier 2 typed-confirmation
- *   variant), replied to with `{type: "confirm_result", id, confirmed}`.
+ * Message contract (origin-checked against `frameUrl`'s origin both ways):
+ * - Host to iframe, once on load: `{type: "init", context: {organizationId, projectId, user, theme, cssTokens,
+ *   apiBaseUrl, token}}`.
+ * - Iframe to host: `{type: "toast", message, variant}` (mapped onto `useToast()`), or `{type: "confirm", id,
+ *   title, message, requireTypedText?}` (rendered via `ConfirmDialog`; `requireTypedText` selects the Tier 2
+ *   typed confirmation), replied to with `{type: "confirm_result", id, confirmed}`.
  *
- * `sandbox="allow-scripts allow-same-origin allow-forms"`: the module's own
- * origin (never the host's) may run script, use its own storage/cookies,
- * and submit forms — everything else `sandbox` restricts by default
- * (top-level navigation, popups, pointer lock, etc.) stays off. `allow-
- * same-origin` here scopes to the iframe's *own* distinct origin, not the
- * host's — it does not grant the module access to this page's DOM/storage.
+ * `sandbox="allow-scripts allow-same-origin allow-forms"`: the module's own origin (never the host's) may run
+ * script, use its own storage and cookies and submit forms; top-level navigation, popups and pointer lock stay
+ * off. `allow-same-origin` scopes to the iframe's distinct origin and grants no access to this page's DOM.
  */
 export function ModuleFrame({ moduleKey, frameUrl, navLabel, organizationId, projectId }: ModuleFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);

@@ -1,33 +1,21 @@
 """
 Module: scripts.seed_demo_data
 
-Seeds a realistic, presentable demo dataset — a fictional engineering
-company ("Solstice Robotics") with three working projects (one a sub-project of
-another, demonstrating hierarchical projects), two template projects and one
-project created from a template, requirements at varied
-lifecycle stages, an in-review and an approved change request, discussion
-comments, custom fields, and a report look. Intended for
-screenshots, demos, and (eventually) a public demo instance.
+Seeds a presentable demo dataset: a fictional engineering company ("Solstice Robotics") with three working projects (one a
+sub-project, showing hierarchy), two template projects and one project created from a template, requirements at varied
+lifecycle stages, an in-review and an approved change request, comments, custom fields and a report look. For screenshots
+and demos.
 
-Design notes:
-- Every object is created through the real HTTP API (not direct DB writes),
-  same convention as scripts/seed_e2e_dataset.py, so this exercises the same
-  code paths a real user would.
-- Deliberately separate from seed_e2e_dataset.py: that dataset's org/persona
-  names and content exist to give the Playwright suite fixed, predictable
-  anchors (docs/e2e-workflows.md), not to look good in a screenshot. This
-  one exists purely to look like a real, in-use product.
-- Idempotent by skipping, same as the E2E seed: if "Solstice Robotics" already exists, exits without changes
-  rather than creating a duplicate. It does not reset anything itself; `demo_setup.py` (run through
-  `scripts/demo.sh`) removes the demonstration organisation through the organisation deletion route and seeds
-  again, with the guards and the daily schedule described in docs/development.md.
+Design decisions:
+- Every object is created through the real HTTP API, as in `seed_e2e_dataset.py`, so the real code paths run.
+- Separate from `seed_e2e_dataset.py`, whose names exist to give the Playwright suite fixed anchors (docs/e2e-workflows.md).
+- Idempotent by skipping: if "Solstice Robotics" exists it exits unchanged. `demo_setup.py` (through `scripts/demo.sh`)
+  removes the organisation and seeds again (docs/development.md).
 
 Run via (from tests/container):
     docker compose exec backend python scripts/seed_demo_data.py
 
-Login afterward as demo.admin@example.com / DemoDemo123! (org admin, project
-manager on both projects) — see the printed summary at the end for every
-persona and their role.
+Log in as demo.admin@example.com / DemoDemo123! (org admin, project manager); the printed summary lists every persona and role.
 """
 
 from __future__ import annotations
@@ -129,11 +117,9 @@ def add_member_source(
     headers: dict, project_id: str, source_project_id: str,
     mirror_mode: str | None = None, mirror_filter_role: str | None = None,
 ) -> None:
-    """See seed_e2e_dataset.py's identical helper — adds `source_project_id`
-    to `project_id`'s member-source list. Generalized (docs/decisions.md):
-    `source_project_id` no longer needs to be a direct child, just any
-    project in the same organisation; `mirror_mode`/`mirror_filter_role`
-    default to the original member_only/None behavior when omitted."""
+    """See seed_e2e_dataset.py's identical helper: adds `source_project_id` to `project_id`'s member-source list.
+    The source may be any project in the same organisation; `mirror_mode`/`mirror_filter_role` default to
+    member_only/None when omitted."""
     payload: dict = {"source_project_id": source_project_id}
     if mirror_mode is not None:
         payload["mirror_mode"] = mirror_mode
@@ -144,19 +130,11 @@ def add_member_source(
 
 
 def create_project_group(headers: dict, project_id: str, name: str, role: str) -> dict:
-    """Creates a project group explicitly, then grants it `role`. Projects
-    no longer auto-create any groups on creation (2026-08-31 removed the four "standard" default groups — see
-    docs/decisions.md), so any group this script wants to demonstrate (e.g.
-    a cross-project source reference below) has to be created as its own
-    explicit step now, rather than reached by name via a pre-existing
-    default.
+    """Creates a project group, then grants it `role`.
 
-    A group is created bare, with zero roles, and a role is a separate
-    grant since the members/groups directory rework (docs/
-    decisions.md) — mirroring how `create_org_group` already creates an org
-    group bare. This helper still takes a single `role` (every group this
-    demo dataset seeds only ever needs one) and grants it via the new
-    per-group-role endpoint right after creation."""
+    A project has no default groups, so every group the script demonstrates is created explicitly. A group is
+    created bare and each role is a separate grant (as `create_org_group` does); this helper takes one `role`,
+    which every seeded group needs, and grants it through the per-group-role endpoint."""
     r = httpx.post(f"{BASE}/projects/{project_id}/groups", json={"name": name}, headers=headers, timeout=30)
     r.raise_for_status()
     group = r.json()
@@ -187,25 +165,39 @@ def assign_project_role(headers: dict, project_id: str, user_id: str, role: str)
     r.raise_for_status()
 
 
-def create_component(headers: dict, project_id: str, name: str, prefix: str) -> dict:
-    r = httpx.post(f"{BASE}/projects/{project_id}/components", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
-
-def create_category(headers: dict, project_id: str, component_id: str, name: str, prefix: str) -> dict:
-    r = httpx.post(
-        f"{BASE}/projects/{project_id}/categories",
-        json={"name": name, "prefix": prefix, "component_id": component_id}, headers=headers, timeout=30,
+def place_requirement_in_component(headers: dict, project_id: str, requirement: dict, component_id: str) -> dict:
+    """Also places `requirement` in the first category of `component_id` (a further place with an alias code of its
+    own) and returns the requirement as the server now holds it."""
+    categories = httpx.get(f"{BASE}/projects/{project_id}/categories", headers=headers, timeout=30).json()
+    target = next(c for c in categories if c["component_id"] == component_id and c["id"] != requirement["category_id"])
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/requirements/{requirement['id']}/aliases",
+        json={"places": [{"component_id": component_id, "category_id": target["id"]}]}, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
 
 
-# Shared category name/prefix vocabulary — reused across components within
-# a project (component/category tree, C-G-07: prefix uniqueness is now
-# per-component, so e.g. "Performance"/"PERF" can exist under more than one
-# component in the same project).
+def create_component(headers: dict, project_id: str, name: str, prefix: str | None = None) -> dict:
+    """Creates a component; a prefix left out is suggested from the name by the server."""
+    body = {"name": name} if prefix is None else {"name": name, "prefix": prefix}
+    r = httpx.post(f"{BASE}/projects/{project_id}/components", json=body, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_category(headers: dict, project_id: str, component_id: str, name: str, prefix: str | None = None) -> dict:
+    """Creates a category; a prefix left out is suggested from the name by the server."""
+    body = {"name": name, "component_id": component_id}
+    if prefix is not None:
+        body["prefix"] = prefix
+    r = httpx.post(f"{BASE}/projects/{project_id}/categories", json=body, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+# Shared category name/prefix vocabulary, reused across a project's components (C-G-07: prefix uniqueness is per
+# component, so "Performance"/"PERF" can exist under more than one component).
 CATEGORY_DEFS: dict[str, tuple[str, str]] = {
     "FN": ("Functional", "FN"),
     "PERF": ("Performance", "PERF"),
@@ -398,6 +390,19 @@ def tag_record(headers: dict, project_id: str, artefact_type: str, artefact_id: 
     return r.json()
 
 
+def reference_record(
+    headers: dict, project_id: str, artefact_type: str, artefact_id: str, system_id: str, key: str, *,
+    role: str | None = None,
+) -> dict:
+    """Adds an external reference (a key in an outside system; any registered artefact type) to a record."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/external-references",
+        json={"system_id": system_id, "key": key, "role": role}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def place_record(
     headers: dict, project_id: str, artefact_type: str, artefact_id: str, places: list[tuple[dict, dict | None]],
 ) -> dict:
@@ -511,11 +516,8 @@ def create_change_request(
     if proposed_links:
         body["proposed_links"] = proposed_links
     if kind == "modify_requirement":
-        # changed_fields is the explicit record of what a MODIFY_REQUIREMENT
-        # change request actually proposes to change (see
-        # docs/decisions.md's "Change request field-level tracking" entry) —
-        # ignored entirely for NEW_REQUIREMENT, which has no existing
-        # version to diff against.
+        # changed_fields records what a MODIFY_REQUIREMENT change request proposes to change (docs/decisions.md, change
+        # request field-level tracking); a NEW_REQUIREMENT has no existing version to diff against, so it ignores it.
         body["changed_fields"] = ["name", "reasoning"]
     if component_id:
         body["proposed_component_id"] = component_id
@@ -846,6 +848,29 @@ DESIGN_FORMULAE_LAYOUT = {
     ],
 }
 """A custom report layout with an equation block and equations written inside text, as the designer's Equation shortcut and text view produce."""
+
+
+DECISION_DOCUMENTS_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {
+            "type": "if", "when": {"module": "decisions"}, "children": [
+                {
+                    "type": "each", "source": {"record_type": "decision", "sort": [{"field": "code"}]}, "as": "decision",
+                    "children": [
+                        {"type": "heading", "level": 2, "text": "{{decision.code}} {{decision.title}}"},
+                        {"type": "text", "text": "{{decision.decision_statement}}"},
+                        {"type": "text", "text": "{{decision.rationale}}"},
+                        {"type": "text", "text": "{{decision.document}}"},
+                    ],
+                },
+            ],
+        },
+    ],
+}
+"""A custom report layout that prints each Decision's statement, rationale and long-form document formatted, with its tables and diagrams
+(the converter service draws the diagrams)."""
 
 
 PAIN_POINTS_WITH_PICTURES_LAYOUT = {
@@ -1661,10 +1686,8 @@ def seed_project(
                 reviewer_id = demo_admin_id
             target_status = "completed" if status_value == "complete" else status_value
             if target_status == "completed":
-                # C-G-11: completion is an overlay on top of "approved", not
-                # its own status — `req["status"]` correctly stays
-                # "approved" after this; `req["is_completed"]` is what now
-                # reflects the demo intent.
+                # C-G-11: completion is an overlay on "approved", not its own status, so `req["status"]` stays
+                # "approved" and `req["is_completed"]` carries the intent.
                 req = set_requirement_status(headers, project["id"], req, "approved")
                 req = complete_requirement(headers, project["id"], req["id"])
             else:
@@ -1676,17 +1699,43 @@ def seed_project(
     return by_name
 
 
+# The dual flight controller Decision's long-form document: Markdown with a table and a Mermaid diagram.
+FLIGHT_CONTROLLER_DECISION_DOCUMENT = """## Summary
+
+Falcon-3 flies with **two flight controllers** in an active/standby arrangement. The standby board takes over
+automatically when the active board stops sending a heartbeat.
+
+## Failover sequence
+
+```mermaid
+flowchart LR
+    A[Active controller] -->|heartbeat| W[Watchdog]
+    W -->|heartbeat missed twice| S[Standby controller]
+    S --> T[Takes over the actuator bus]
+    T --> L[Logs the event for the post-flight review]
+```
+
+## Options compared
+
+| Option | Mass added | Unit cost | In-flight recovery |
+|---|---|---|---|
+| Single controller, cold spare | 0 g | Lowest | None |
+| Dual, automatic failover | 45 g | Moderate | Yes |
+| Triple modular redundancy | 110 g | Highest | Yes, with voting |
+
+## Open questions
+
+- Handover time must stay below the **200 ms** the autopilot tolerates.
+- The standby board needs its own power rail.
+"""
+
+
 # --- Decision Management module helpers --------------------------------------------
 #
-# `Decision.decision_type_id` is a required FK, but every *root* project
-# already has 5 default `DecisionTypeDefinition` rows seeded by
-# `on_project_created` (Architecture/Design/Engineering/Strategy/
-# Operational), not gated on this module's own `enabled` state — so
-# `list_decision_types` always has something to pick from without this
-# script creating any itself, as long as the project used here (Falcon-3
-# Inspection Drone, a root project) isn't a child (a
-# child starts with none of its own and inherits its nearest ancestor's
-# instead — see `service.resolve_effective_decision_types`).
+# `Decision.decision_type_id` is a required FK. Every root project has 5 default `DecisionTypeDefinition` rows seeded by
+# `on_project_created` (Architecture/Design/Engineering/Strategy/Operational), regardless of the module's `enabled`
+# state, so the script creates none; the project used (Falcon-3 Inspection Drone) must be a root, because a child
+# inherits its nearest ancestor's (`service.resolve_effective_decision_types`).
 
 
 def enable_module(headers: dict, org_id: str, module_key: str) -> None:
@@ -1707,7 +1756,7 @@ def create_decision(
     headers: dict, project_id: str, *, title: str, decision_statement: str, decision_type_id: str,
     owner_id: str | None = None, decision_maker_id: str | None = None, owner_group_id: str | None = None,
     context: str = "", options_considered: str = "", chosen_option: str = "", rationale: str = "",
-    consequences: str = "", decision_date: str | None = None,
+    consequences: str = "", decision_date: str | None = None, document: str = "",
 ) -> dict:
     """Creates a Decision. The owner is a user (`owner_id`) or an organisation group (`owner_group_id`);
     the decision maker is a user."""
@@ -1721,7 +1770,7 @@ def create_decision(
             "decision_date": decision_date,
             "context": context,
             "options_considered": options_considered, "chosen_option": chosen_option, "rationale": rationale,
-            "consequences": consequences,
+            "consequences": consequences, "document": document or None,
         },
         headers=headers, timeout=30,
     )
@@ -1910,6 +1959,56 @@ def set_pain_point_type_definitions(headers: dict, org_id: str, types_by_name: d
             json={"definition": definition}, headers=headers, timeout=30,
         )
         r.raise_for_status()
+
+
+def set_record_code_prefix(headers: dict, project_id: str, artefact_type: str, prefix: str) -> None:
+    """Gives one project its own record code prefix for a type (`PAIN-001` where the built-in is `PP-001`);
+    it applies to records created afterwards, so call it before creating them."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/code-prefixes/{artefact_type}", json={"prefix": prefix}, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+
+
+def require_lifecycle_states(headers: dict, org_id: str, artefact_type: str, states: list[str]) -> None:
+    """Makes the organisation require these optional states of a record type in every project."""
+    r = httpx.put(
+        f"{BASE}/orgs/{org_id}/lifecycles/{artefact_type}", json={"required_states": states}, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+
+
+def exempt_project_from_lifecycle(headers: dict, org_id: str, artefact_type: str, project_id: str) -> None:
+    """Exempts one project from the organisation's required states of a record type."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/lifecycles/{artefact_type}/exemptions",
+        json={"project_id": project_id, "include_children": False}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def require_separate_approver(headers: dict, project_id: str, artefact_type: str) -> None:
+    """Makes the project require a separate approver (not the creator) for a record type."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/approval-separation/{artefact_type}", json={"separate_approver": True},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def turn_off_lifecycle_states(headers: dict, project_id: str, artefact_type: str, states: list[str]) -> None:
+    """Turns optional states of a record type off for one project (a record then moves past them)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/lifecycles/{artefact_type}", json={"disabled_states": states}, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+
+
+def allow_skipping_steps(headers: dict, project_id: str) -> None:
+    """Lets a person move one record of the project past steps of its lifecycle, with a reason."""
+    r = httpx.put(f"{BASE}/projects/{project_id}/lifecycles/skip", json={"allowed": True}, headers=headers, timeout=30)
+    r.raise_for_status()
 
 
 def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
@@ -2539,6 +2638,35 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     )
     uploaded.raise_for_status()
 
+    # The symbol library is organised in folders: the organisation's own drawings (Org Resources, Architecture Symbols) under
+    # Network and its Switches, and the drone's own upload in a folder of the project's library, so the filters and the tree show.
+    def drawing(inner: str) -> bytes:
+        return (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" '
+            f'stroke-linecap="round" stroke-linejoin="round">{inner}</svg>'
+        ).encode()
+
+    network = make_folder(org_arch, "symbol", "Network")
+    switches = make_folder(org_arch, "symbol", "Switches", network)
+    for symbol_name, symbol_folder, inner in (
+        ("Core router", network, '<circle cx="32" cy="32" r="22"/><path d="M32 12v40M12 32h40M20 20l24 24M44 20L20 44"/>'),
+        ("Edge switch", switches, '<rect x="6" y="20" width="52" height="24" rx="3"/><path d="M14 32h.01M24 32h.01M34 32h.01M44 32h.01"/>'),
+        (
+            "Load balancer", switches,
+            '<rect x="24" y="6" width="16" height="12" rx="2"/><path d="M32 18v10M32 28L12 44M32 28l20 16"/>'
+            '<rect x="4" y="44" width="16" height="12" rx="2"/><rect x="44" y="44" width="16" height="12" rx="2"/>',
+        ),
+    ):
+        httpx.post(
+            f"{org_arch}/symbols", headers=headers, timeout=30, data={"name": symbol_name, "folder_id": symbol_folder},
+            files={"file": (f"{symbol_name.lower().replace(' ', '-')}.svg", drawing(inner), "image/svg+xml")},
+        ).raise_for_status()
+    airframe_symbols = make_folder(base, "symbol", "Airframe")
+    httpx.post(
+        f"{base}/symbol-folders/move-records", headers=headers, timeout=30,
+        json={"record_ids": [uploaded.json()["id"]], "folder_id": airframe_symbols},
+    ).raise_for_status()
+
     def element(
         name: str, type_name: str, description: str, *, parent: str | None = None, ports: tuple = (), symbol: str | None = None,
         folder: str | None = None, note: str = "",
@@ -2908,10 +3036,8 @@ def main() -> None:
     ).raise_for_status()
 
     print("Adding a custom requirement link type...")
-    # Beyond the 12 seeded defaults (C-G-09) — demonstrates that an
-    # organisation can extend the link-type vocabulary with its own.
-    # `flow` makes the artefact link graph read it as upstream (the superseded one is older), unlike a
-    # custom type left at the default "none", which the graph shows as merely related.
+    # Extends the 12 seeded link types (C-G-09) with an organisation-specific one. `flow` makes the artefact link graph
+    # read it as upstream (the superseded one is older); a custom type left at "none" shows as merely related.
     supersedes_link_type = create_link_type(
         h_pm, org["id"], forward_name="Supersedes", reverse_name="Is superseded by", flow="forward_is_upstream"
     )
@@ -2936,13 +3062,9 @@ def main() -> None:
         report_name="Falcon-3",
     )
     set_project_status(h_pm, drone["id"], project_statuses["Active"]["id"])
-    # Demonstrates C-C-03's terminology overrides with aerospace-engineering
-    # vocabulary that reads naturally for a hardware programme — "stage"
-    # becomes "Phase", "requirement" becomes "Spec", and "change_request"
-    # becomes "ECR" (Engineering Change Request), while "project"/
-    # "component"/"category" are left at their English defaults on purpose,
-    # so the demo also shows a *partial* override (not every one of the six
-    # keys has to be set).
+    # C-C-03 terminology overrides in hardware-programme vocabulary: "stage" is "Phase", "requirement" is "Spec" and
+    # "change_request" is "ECR" (Engineering Change Request); "project", "component" and "category" keep their
+    # defaults, showing a partial override.
     set_project_terminology(h_pm, drone["id"], {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"})
     # A renamed navigation entry (its name shows in the navigation and as the page title).
     set_project_nav_labels(h_pm, drone["id"], {"reviews-due": "Scheduled reviews"})
@@ -2979,6 +3101,13 @@ def main() -> None:
         h_pm, drone["id"], drone_components,
         {"AV": ["PERF", "FN", "SAF"], "FW": ["SAF", "REG", "FN"], "PR": ["PERF"], "AF": ["FN"]},
     )
+    # Further components whose prefixes the server suggests: "Avionics Test Rig" takes ATR and "Antenna Tuning Relay"
+    # the numbered ATR2; "Spare Parts" stays empty, so the Structure page shows a component with no categories.
+    rig = create_component(h_pm, drone["id"], "Avionics Test Rig")
+    create_component(h_pm, drone["id"], "Antenna Tuning Relay")
+    create_component(h_pm, drone["id"], "Spare Parts")
+    create_category(h_pm, drone["id"], rig["id"], "Bench Calibration")
+    create_category(h_pm, drone["id"], rig["id"], "Bench Calibration Reports")
     create_custom_field(h_pm, drone["id"], "requirement", "Risk Level", "list", ["Low", "Medium", "High"])
     drone_design = create_stage(h_pm, drone["id"], "Detailed Design")
     drone_validation = create_stage(h_pm, drone["id"], "Verification & Validation", outsourced_workflow["id"])
@@ -3005,6 +3134,12 @@ def main() -> None:
     print("Archiving a descoped Falcon-3 requirement (demonstrates the 'Include archived' filter and Restore button)...")
     archive_requirement(h_pm, drone["id"], drone_reqs["Support geofencing with a configurable no-fly boundary"]["id"])
 
+    print("Placing the Falcon-3 return-to-launch requirement in the avionics component too (a requirement alias with a code of its own)...")
+    place_requirement_in_component(
+        h_pm, drone["id"], drone_reqs["Autonomously return to launch point when battery charge falls below 15%"],
+        drone_components["AV"]["id"],
+    )
+
     print("Linking related Falcon-3 requirements (C-G-09)...")
     gps_req = drone_reqs["Acquire GPS position lock within 5 seconds of power-on in open-sky conditions"]
     return_to_home_req = drone_reqs["Autonomously return to launch point when battery charge falls below 15%"]
@@ -3023,11 +3158,9 @@ def main() -> None:
 
     print("Creating and linking requirement actions on Falcon-3 (review/test tasks)...")
     drone_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()}
-    # `remote_id_req` is seeded directly into "complete" (DRONE_REQUIREMENTS,
-    # above) — approved and marked completed (C-G-11), so already locked
-    # (status stays APPROVED throughout), so adding an action to it goes
-    # through an ADD_ACTION change request rather than the direct create-and-link call every other action
-    # below still uses on its still-draft target requirement.
+    # `remote_id_req` is seeded as "complete" (DRONE_REQUIREMENTS: approved and completed, C-G-11), so it is locked and
+    # an action is added through an ADD_ACTION change request; the other actions below use the direct create-and-link
+    # call on their draft target requirements.
     firmware_review_title = "Review remote-ID firmware module against FAA rule text"
     firmware_review_cr = create_add_action_change_request(
         h_pm, drone["id"], remote_id_req["id"],
@@ -3056,15 +3189,9 @@ def main() -> None:
     archive_action(h_pm, drone["id"], firmware_review["id"])
 
     print("Attaching files across Falcon-3 (direct requirement attachment + action attachment)...")
-    # `preflight_req`, not `remote_id_req` — `remote_id_req` is seeded
-    # directly into "complete" (DRONE_REQUIREMENTS, above) and is
-    # therefore locked from the moment it's created, so a *direct*
-    # requirement-file upload against it always 409s ("must be added via a
-    # change request", `routers/requirements.py`) — the same lock the
-    # action-creation block immediately above this one already correctly
-    # routes around via an ADD_ACTION change request. `preflight_req`
-    # ("Complete pre-flight diagnostic checks...") is still `draft` at this
-    # point in the script, so it accepts a direct attachment.
+    # `preflight_req` is still `draft` here, so it accepts a direct attachment; `remote_id_req` is locked from
+    # creation (DRONE_REQUIREMENTS), so a direct upload to it returns 409 ("must be added via a change request",
+    # `routers/requirements.py`).
     upload_requirement_attachment(
         h_pm, drone["id"], preflight_req["id"], "preflight-diagnostic-checklist.txt",
         b"Standard pre-flight diagnostic checklist referenced by the 20-second timing requirement.",
@@ -3177,13 +3304,9 @@ def main() -> None:
                                    assignee={"type": "user", "id": demo_engineer["user_id"]}, due_date=(date.today() + timedelta(days=7)).isoformat())
 
     print("Creating 'Falcon-3 Avionics Subsystem' as a sub-project of Falcon-3 (hierarchical projects)...")
-    # Demonstrates both RBAC-cascade directions from the same small fixture
-    # (see docs/decisions.md's "Hierarchical projects" entry): forward
-    # (MIRROR_ALL — everyone with a role on Falcon-3 gets that same role
-    # here too) and reverse (Falcon-3 consumes members from this sub-project,
-    # so demo_engineer's *direct* PROJECT_MANAGER grant here also gives them
-    # baseline read access on the parent, on top of their existing direct
-    # stakeholder role there).
+    # Both RBAC-cascade directions from one small fixture (docs/decisions.md, hierarchical projects): forward
+    # (MIRROR_ALL: everyone with a role on Falcon-3 gets that role here) and reverse (Falcon-3 consumes members from this
+    # sub-project, so demo_engineer's direct PROJECT_MANAGER grant here also gives baseline read access on the parent).
     avionics = create_project(
         h_pm, org["id"], "Falcon-3 Avionics Subsystem",
         "Sensor fusion, navigation, and onboard diagnostics for the Falcon-3 flight controller.",
@@ -3223,6 +3346,11 @@ def main() -> None:
         h_pm, f"/orgs/{org['id']}", "Requirements by component and category",
         "A heading above each category's table that names its component and category.",
         REQUIREMENTS_BY_COMPONENT_AND_CATEGORY_LAYOUT, folder="Handover/Requirements",
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Decision documents",
+        "Each Decision's statement, rationale and long-form document, printed as written with its tables and diagrams.",
+        DECISION_DOCUMENTS_LAYOUT, folder="Handover",
     )
     design_formulae = create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,
@@ -3280,11 +3408,8 @@ def main() -> None:
     )
     assign_project_role(h_pm, cloud["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, cloud["id"], demo_stakeholder["user_id"], "stakeholder")
-    # Demonstrates the opt-in
-    # "require a change request to add/remove links on approved
-    # requirements" project setting (Project Admin settings), off a
-    # project with no direct-link seeding of its own so there's no
-    # ordering hazard with an earlier link created before this point.
+    # The opt-in "require a change request to add/remove links on approved requirements" project setting, applied to a
+    # project with no direct-link seeding of its own so no earlier link is affected.
     r = httpx.patch(
         f"{BASE}/projects/{cloud['id']}", json={"require_change_request_for_approved_links": True},
         headers=h_pm, timeout=30,
@@ -3293,16 +3418,11 @@ def main() -> None:
 
     print("Demonstrating the generalized cross-project RBAC mechanisms (docs/decisions.md) — Falcon-3 and Solstice"
           " Cloud Platform are unrelated projects (no parent/child relationship), unlike Falcon-3/Avionics above...")
-    # Generalized member-source: Falcon-3 additionally consumes stakeholders
-    # (only — mirror_role, not every role) from the unrelated Solstice Cloud
-    # Platform project, so demo_stakeholder's real stakeholder role on Cloud
-    # also reaches Falcon-3 without a second, duplicate direct grant there.
+    # Member source: Falcon-3 also consumes stakeholders (`mirror_role`, not every role) from the unrelated Solstice Cloud
+    # Platform project, so demo_stakeholder's Cloud role reaches Falcon-3 without a duplicate direct grant.
     add_member_source(h_pm, drone["id"], cloud["id"], mirror_mode="mirror_role", mirror_filter_role="stakeholder")
-    # Project-referencing group: Solstice Cloud Platform gets its own
-    # explicit "Stakeholders" group (no default group exists to reach by
-    # name any more), defined as
-    # "Falcon-3's own direct members" — the second cross-project mechanism,
-    # reached from the group side rather than the project side.
+    # Project-referencing group: Solstice Cloud Platform's explicit "Stakeholders" group is defined as "Falcon-3's own
+    # direct members", the second cross-project mechanism, reached from the group side.
     cloud_stakeholders_group = create_project_group(h_pm, cloud["id"], "Stakeholders", "stakeholder")
     add_project_group_source_reference(h_pm, cloud["id"], cloud_stakeholders_group["id"], drone["id"])
 
@@ -3324,11 +3444,8 @@ def main() -> None:
     cloud_reqs = seed_project(h_pm, cloud, cloud_components, cloud_categories, CLOUD_REQUIREMENTS, demo_admin["user_id"])
 
     print("Opening and approving a change request on Solstice Cloud Platform...")
-    # A modify change request can only target an already-locked requirement
-    # — already true here, since
-    # this requirement's CLOUD_REQUIREMENTS spec sets its status to
-    # "approved" directly (via `seed_project`/`set_requirement_status`), not
-    # left as "draft".
+    # A modify change request can only target a locked requirement; CLOUD_REQUIREMENTS sets this one "approved"
+    # (`seed_project`/`set_requirement_status`).
     latency_req = cloud_reqs["Respond to authenticated read requests within 200ms at the 95th percentile under nominal load"]
     cloud_cr = create_change_request(
         h_pm, cloud["id"], kind="modify_requirement", requirement_id=latency_req["id"],
@@ -3343,12 +3460,8 @@ def main() -> None:
                            note="Approved — infra team confirmed headroom for the tighter target in the latest load test.")
 
     print("Proposing an action on the now-locked latency requirement (add-action change request)...")
-    # Once a requirement is locked
-    # (true for `latency_req` since the CR just above), adding an action to
-    # it goes through an ADD_ACTION change request instead of the direct
-    # create-and-link endpoint — `latency_req` is reused deliberately here
-    # (not a fresh requirement) specifically to demonstrate the gate on an
-    # already-locked one.
+    # A locked requirement (`latency_req`) takes an action through an ADD_ACTION change request instead of the direct
+    # create-and-link endpoint; it is reused here to demonstrate that gate.
     cloud_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{cloud['id']}/action-types", headers=h_pm, timeout=30).json()}
     latency_action_cr = create_add_action_change_request(
         h_pm, cloud["id"], latency_req["id"],
@@ -3376,16 +3489,10 @@ def main() -> None:
     submit_change_request(h_pm, cloud["id"], audit_cr["id"])
 
     print("Seeding Compliance Module data on Falcon-3 Inspection Drone...")
-    # A standard built around the same Part 107/flight-logging regulatory
-    # themes DRONE_REQUIREMENTS already narrates (remote_id_req, flight_log_req
-    # above) — a compliance standard is a distinct, organisation-level
-    # resource (§31: "A Compliance Standard is not a Project"), not another
-    # requirement, but reusing the same narrative keeps the demo coherent.
-    # "Document Review"/"Test" now ship as every organisation's default
-    # compliance action types rather than needing to be created
-    # here by hand — look them up instead of `create_compliance_action_type`,
-    # mirroring how `drone_action_types`/`cloud_action_types` above already
-    # look up the generic per-project defaults rather than recreating them.
+    # A standard on the same Part 107 and flight-logging themes as DRONE_REQUIREMENTS (remote_id_req, flight_log_req): a
+    # compliance standard is an organisation-level resource (§31: "A Compliance Standard is not a Project"), not a
+    # requirement. "Document Review" and "Test" are every organisation's default compliance action types, so they are
+    # looked up, as `drone_action_types` and `cloud_action_types` are.
     compliance_action_types = {
         t["name"]: t
         for t in httpx.get(f"{BASE}/orgs/{org['id']}/modules/compliance/action-types", headers=h_pm, timeout=30).json()
@@ -3435,16 +3542,12 @@ def main() -> None:
         logging_compliance_req["id"], test_action_type["id"],
         name="Verify flight log retrieval from non-volatile storage on the updated firmware",
     )
-    # Demo_engineer also holds this standard's own `standards_
-    # contributor` role — its own working-group grant, distinct from her
-    # project-scoped `compliance_officer` grant below (demonstrated before
-    # publishing, since a contributor may only edit a still-draft version).
+    # demo_engineer also holds this standard's `standards_contributor` role (a working-group grant, distinct from her
+    # project-scoped `compliance_officer` grant below), granted before publishing since a contributor edits only a draft.
     grant_standard_role(h_pm, org["id"], airworthiness_standard["id"], demo_engineer["user_id"], "standards_contributor")
     publish_compliance_version(h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"])
-    # Demonstrate the always-editable version summary and a
-    # post-publish clarification — both `standards_manager`-or-override
-    # only (demo_admin, via her org admin override) once a version is no
-    # longer a draft.
+    # The always-editable version summary and a post-publish clarification, both `standards_manager`-or-override only
+    # (demo_admin, through her org admin override) once a version is not a draft.
     update_compliance_version_summary(
         h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
         "Current release; supersedes no earlier version. Remote-ID broadcast wording clarified post-publish.",
@@ -3516,12 +3619,8 @@ def main() -> None:
     )
 
     print("Seeding default reference standards — EN 60529 and ISO/IEC 27001...")
-    # Realistic *labels* for demo purposes only, built around each real
-    # standard's own public section structure (IEC 60529's IP-Code digits,
-    # ISO 27001's Annex A control domains) — not a reproduction of either
-    # standard's actual copyrighted requirement text, mirroring how ASA-1
-    # above is already clearly an invented internal standard, not a real
-    # regulation.
+    # Demo labels built on each real standard's public section structure (IEC 60529's IP-Code digits, ISO 27001's Annex
+    # A control domains), not a reproduction of their copyrighted requirement text; ASA-1 above is an invented standard.
     ip_rating_standard = create_compliance_standard(
         h_pm, org["id"], reference="EN 60529", name="EN 60529 — Degrees of Protection Provided by Enclosures (IP Code)",
         description="Solstice's internal reference standard for enclosure ingress-protection ratings on "
@@ -3663,10 +3762,12 @@ def main() -> None:
         f"{BASE}/projects/{drone['id']}/change-requests/{drone_cr['id']}/tasks/{drone_cr_task['id']}",
         json={"assignee": {"type": "org_group", "id": architecture_board.json()["id"]}}, headers=h_pm, timeout=30,
     ).raise_for_status()
-    httpx.post(
-        f"{BASE}/projects/{drone['id']}/requirements/{preflight_req['id']}/watchers",
-        json={"group": {"type": "org_group", "id": architecture_board.json()["id"]}}, headers=h_pm, timeout=30,
-    ).raise_for_status()
+    # The Watching tab shows a group and a user side by side.
+    for watcher in ({"type": "org_group", "id": architecture_board.json()["id"]}, {"type": "user", "id": demo_engineer["user_id"]}):
+        httpx.post(
+            f"{BASE}/projects/{drone['id']}/requirements/{preflight_req['id']}/watchers",
+            json={"principal": watcher}, headers=h_pm, timeout=30,
+        ).raise_for_status()
     single_fc_decision = create_decision(
         h_pm, drone["id"], title="Use a single flight controller with hot-swap failover",
         decision_statement="Falcon-3 will ship with one primary flight controller board and a cold-spare"
@@ -3700,8 +3801,9 @@ def main() -> None:
         chosen_option="Option 2 — dual-redundant with automatic failover.",
         rationale="Matches the reliability bar for flight over populated areas without the cost/weight"
         " penalty of full triple modular redundancy, which the airframe's payload budget can't absorb.",
-        consequences="Adds airframe weight and BOM cost per unit; avionics firmware needs an active/standby"
-        " handover path that didn't exist before (tracked as its own firmware requirement).",
+        consequences="Adds airframe weight (\\(\\Delta m = 45\\) g) and BOM cost per unit; avionics firmware needs an"
+        " active/standby handover path that didn't exist before (tracked as its own firmware requirement).",
+        document=FLIGHT_CONTROLLER_DECISION_DOCUMENT,
     )
     propose_and_approve_decision(
         h_pm, drone["id"], dual_fc_decision["id"],
@@ -3710,7 +3812,7 @@ def main() -> None:
     )
     create_decision_supersession(h_pm, drone["id"], dual_fc_decision["id"], single_fc_decision["id"])
     print("  Leaving a third Decision in Draft (undecided) — demonstrates the list's mixed-status filtering...")
-    create_decision(
+    ota_decision = create_decision(
         h_pm, drone["id"], title="Migrate firmware OTA update channel to signed images",
         decision_statement="Not yet decided — evaluating whether to require cryptographically signed"
         " firmware images for over-the-air updates before the next fleet-wide rollout.",
@@ -3718,6 +3820,17 @@ def main() -> None:
         context="Current OTA channel accepts unsigned images verified only by a checksum, adequate for an"
         " internal test fleet but not for a customer-operated one.",
     )
+    # A picture inside a Decision's text is one of the Decision's own attachments, drawn on its page and in reports.
+    diagram = attach_picture(h_pm, drone["id"], f"modules/decisions/{ota_decision['id']}", ARCHITECTURE_DIAGRAM)
+    httpx.put(
+        f"{BASE}/projects/{drone['id']}/modules/decisions/{ota_decision['id']}",
+        json={
+            **ota_decision,
+            "options_considered": "(1) Keep checksum-only images. (2) Sign every image and verify on the flight controller.\n\n"
+            f"![Flight controller architecture](attachment:{diagram['id']} \"Figure 1: where an image is verified\")",
+        },
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
     print("  Two Decisions waiting for a verdict (one with no decision maker) — feeds the Approval ageing report...")
     modem_decision = create_decision(
         h_pm, drone["id"], title="Select the cellular modem vendor for Falcon-3 telemetry",
@@ -3740,7 +3853,7 @@ def main() -> None:
     org_strategy = create_org_strategy(
         h_pm, org["id"], title="Lead the market in autonomous aerial inspection",
         objective="Become the preferred aerial-inspection platform for critical infrastructure operators.",
-        current_state="A capable but early-stage entrant with two live product lines and a small install base.",
+        current_state="A capable but early-stage entrant with:\n\n- two live product lines\n- a small install base",
         desired_future_state="The default choice for utility/infrastructure operators evaluating autonomous"
         " inspection within three years.",
         rationale="Infrastructure operators are moving from manual to autonomous inspection faster than"
@@ -3832,9 +3945,9 @@ def main() -> None:
 
     print("Seeding Pain Points — one per branch outcome (Accepted->Addressed, Rejected,"
           " Duplicate) on the Falcon-3 project, using the org's default Market/User/Operator types...")
-    # `default_enabled` sub-components mean no
-    # separate enable-subcomponent call is needed beyond the whole-module
-    # `enable_module` call already made above for Strategy/Future State.
+    # `default_enabled` sub-components need no enable-subcomponent call beyond the `enable_module` call above.
+    # This project names its Pain Points its own way (PAIN-001), to show a project's record code prefix.
+    set_record_code_prefix(h_pm, drone["id"], "pain_point", "PAIN")
     drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])
     set_pain_point_type_definitions(h_pm, org["id"], drone_pain_point_types, PAIN_POINT_TYPE_DEFINITIONS)
     drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])
@@ -4284,8 +4397,8 @@ def main() -> None:
         title="Flight controller fails in flight",
         statement="If the flight controller fails during a flight over people, the drone falls uncontrolled.",
         cause="Single flight controller board with no in-flight redundancy.", risk_event="Loss of flight control.",
-        consequence="Injury to bystanders and loss of the airframe.", treatment_strategy="mitigate",
-        acceptance_criteria="Dual-redundant architecture certified; no single fault leads to loss of control.",
+        consequence="**Injury** to bystanders and loss of the airframe.", treatment_strategy="mitigate",
+        acceptance_criteria="Accepted when both hold:\n\n- A dual-redundant architecture is certified.\n- No single fault leads to loss of control.",
         inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
     )
     for picture in (BENCH_RIG_PICTURE, ARCHITECTURE_DIAGRAM):
@@ -4391,8 +4504,16 @@ def main() -> None:
             {"axis_key": "c_safety_relevance", "role": "sum", "importance": 40}],
     }, headers=h_pm, timeout=30).raise_for_status()
     request_levels = get_request_levels(h_pm, drone["id"])
+    # The shared external systems: Jira gets a link template, so a reference with only a key still opens its ticket.
+    org_systems = {
+        e["name"]: e["id"] for e in httpx.get(f"{BASE}/orgs/{org['id']}/external-systems", headers=h_pm, timeout=30).json()
+    }
+    httpx.patch(
+        f"{BASE}/orgs/{org['id']}/external-systems/{org_systems['Jira']}",
+        json={"url_template": "https://tracker.example.com/browse/{key}"}, headers=h_pm, timeout=30,
+    ).raise_for_status()
     external_systems = {
-        e["name"]: e["id"] for e in httpx.get(f"{feedback_url}/external-systems", headers=h_pm, timeout=30).json()
+        e["name"]: e["id"] for e in httpx.get(f"{BASE}/projects/{drone['id']}/external-systems", headers=h_pm, timeout=30).json()
     }
     request_channels = {
         e["name"]: e["id"] for e in httpx.get(f"{feedback_url}/request-channels", headers=h_pm, timeout=30).json()
@@ -4403,7 +4524,7 @@ def main() -> None:
         description="Inspectors want to pull a day's inspection log into a spreadsheet for the weekly review.",
         owner={"type": "user", "id": demo_engineer["user_id"]},
         references=[
-            {"system_id": external_systems["Jira"], "key": "FAL-214", "url": "https://tracker.example.com/browse/FAL-214"},
+            {"system_id": external_systems["Jira"], "key": "FAL-214"},
             {"system_id": external_systems["ServiceNow"], "key": "INC0012345", "role": "origin"},
         ],
     )
@@ -4630,6 +4751,15 @@ def main() -> None:
         "The tablet app pilots use at the launch site, created from the Product Design template.",
         template_project_id=product_design["id"],
     )
+    # The organisation requires Triage for every project; this small team is exempt and goes from Submitted to Accepted.
+    require_lifecycle_states(h_pm, org["id"], "pain_point", ["triaged"])
+    exempt_project_from_lifecycle(h_pm, org["id"], "pain_point", operator_app["id"])
+    turn_off_lifecycle_states(h_pm, operator_app["id"], "pain_point", ["triaged"])
+    allow_skipping_steps(h_pm, operator_app["id"])
+    # The pilot app's requirements, change requests and decisions need an approver other than their creator; the other
+    # projects keep the default, so the Self-approved marker shows on records that their creator approved.
+    for gated_type in ("requirement", "change_request", "decision"):
+        require_separate_approver(h_pm, operator_app["id"], gated_type)
     app_pain_point_types = list_effective_pain_point_types(h_pm, operator_app["id"])
     app_levels = get_pain_point_levels(h_pm, operator_app["id"])
     for title, description, point_type, scores in (
@@ -4644,7 +4774,6 @@ def main() -> None:
             h_pm, operator_app["id"], pain_point_type_id=app_pain_point_types[point_type]["id"], title=title,
             description=description, source="Pilot debrief — launch-site trial", priority="medium",
         )
-        triage_pain_point(h_pm, operator_app["id"], pain_point["id"])
         accept_pain_point(h_pm, operator_app["id"], pain_point["id"])
         set_pain_point_scores(h_pm, operator_app["id"], pain_point["id"], [score_entry(app_levels, None, **scores)])
 
@@ -4661,6 +4790,12 @@ def main() -> None:
         tag_record(h_pm, drone["id"], "requirement", requirement["id"], names)
     tag_record(h_pm, drone["id"], "pain_point", pp_accepted["id"], ["Safety-critical", "Needs review"])
     tag_record(h_pm, drone["id"], "risk", risk_single_controller["id"], ["Safety-critical"])
+    # External references on records of several types, so the record panel, the list column and filter, the export
+    # and the look-up by key all have something to show (Jira has a link template; ServiceNow has none).
+    for index, requirement in enumerate(drone_req_list[:3]):
+        reference_record(h_pm, drone["id"], "requirement", requirement["id"], external_systems["Jira"], f"FAL-{310 + index}")
+    reference_record(h_pm, drone["id"], "pain_point", pp_accepted["id"], external_systems["ServiceNow"], "INC0020001", role="origin")
+    reference_record(h_pm, drone["id"], "risk", risk_single_controller["id"], external_systems["Jira"], "FAL-350")
     tag_record(h_pm, drone["id"], "persona", drone_operator_persona["id"], ["Regulatory"])
     create_tag_org = httpx.post(
         f"{BASE}/orgs/{org['id']}/tags", json={"name": "Strategic", "colour": "#6b46c1"}, headers=h_pm, timeout=30,
@@ -4707,11 +4842,24 @@ def main() -> None:
 
     seed_template_projects.seed_template_projects(h_pm, org, owner_id=demo_admin["user_id"])
 
+    # One notification of every target kind for the engineer (not the admin, so the headline persona's bell stays tidy).
+    from seed_notification_samples import seed_notification_samples
+
+    skipped_kinds = seed_notification_samples("demo.engineer@example.com", org["id"], drone["id"])
+    if skipped_kinds:
+        print(f"No record to point a sample notification at for: {', '.join(skipped_kinds)} (not seeded).")
+
+    # Two service users: one with no token yet, one whose token was issued and revoked.
+    from seed_service_users import seed_service_users
+
+    seed_service_users(BASE, h_pm, org["id"], demo_engineer["user_id"])
+
     print()
     print("Done. Demo personas (all share one password: DemoDemo123! unless demo_setup.py rotated it):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
     print("  demo.engineer@example.com    - stakeholder on Falcon-3/Solstice Cloud; direct project manager"
-          " on Falcon-3 Avionics Subsystem (also reaches Falcon-3 via its member-source consumption)")
+          " on Falcon-3 Avionics Subsystem (also reaches Falcon-3 via its member-source consumption); holds one"
+          " notification of every target kind")
     print("  demo.stakeholder@example.com - stakeholder on Falcon-3/Solstice Cloud")
     print()
     print(f"Organisation: {ORG_NAME}")

@@ -11,6 +11,30 @@ Reach an organisation's admin page via **Organisation settings** in the nav, or 
 | The overview's usage table, with the groups of settings beside it |
 | ![Organisation admin overview showing the usage table: users, active and archived projects, file storage, storage limit and file uploads](../../static/img/screenshots/org-admin.png) |
 
+## Settings, resources and the overview
+
+An organisation's pages are split by what they hold, so a person looking for a setting and a person looking for shared content each open one place.
+
+
+| Page | Holds | Who opens it |
+| --- | --- | --- |
+| **Organisation settings** (this page) | Configuration: people, groups and access, security, single sign-on, email, branding, modules, lifecycles, and the vocabularies and defaults that govern how projects behave (link types, stage workflows, navigation names, project statuses, code policy, scoring) | Organisation administrators |
+| **Organisation resources** | What the organisation owns and shares with its projects: the record lists of the enabled modules (Strategies, Future States, Guiding Principles, Personas, Stakeholders, Stakeholder Groups, the Request inbox, Architecture Elements and Collections, the symbol library, Decision Templates), **Reports** (layouts, packs, snippets and report configuration) and **Tags** | Every member, each section within the access its records have |
+| **Organisation overview** | Dashboards of figures | Every member |
+
+```mermaid
+flowchart LR
+    S["Organisation settings<br/>how the organisation is configured"] --> P["Projects"]
+    R["Organisation resources<br/>what the organisation shares"] --> P
+    O["Organisation overview<br/>figures computed from the projects"] -.-> P
+```
+
+| Organisation resources: the organisation's Personas, with the other record lists, Reports and Tags in the section list |
+| --- |
+| ![Organisation resources page listing sections for architecture, strategy, personas, reports and tags, with the Personas list open](../../static/img/screenshots/org-resources.png) |
+
+**Organisation resources** is in the navigation beside **Organisation overview**. A module's sections appear only while the organisation has that module enabled, so a section disappears when its module is switched off. Moving a section from Settings to Resources changed no access: a person with only the report layout permission sees layouts, packs and snippets, and the report configuration appears only to organisation administrators. The Compliance status views (**By standard** and **Outstanding**) are tabs of the **Standards** page, not Resources sections.
+
 ## Usage
 
 The **Overview** group of the settings opens with a table of **Usage**: the number of users, the number of active and archived projects, and the file storage the organisation uses, with its **Storage limit** and whether **File uploads** are enabled. The limit and the switch are set by the platform operator (see [Organisation storage](./server-administration.md#organisation-storage)) and are read-only here; at 90% of the limit a warning appears and you are notified once. It shows the organisation's real totals and is shown to organisation administrators only; the same figures are available as widgets on the [organisation overview](./organisations-and-projects.md#organisation-overview).
@@ -22,6 +46,10 @@ A member who is locked out can be sent a password reset link from their **⋮** 
 **Add user ▾** (the same menu as Server Management) offers **Invite user** (emails a sign-up link so the person chooses their own password) and **New user** (an account you create now, with a password you set).
 
 The **Users** section lists every member, with access-review filters useful for periodic review: stale logins (180+ days), accounts without 2FA, and accounts with no project access at all. Once an accepted email domain is set (see below), it also lists existing accounts elsewhere in the system matching that domain but not yet members.
+
+### Service users
+
+Service users are accounts with no password and no sign-in that integrations use instead of a named person. They are rows of the same **Users** list as the people, marked **Service**, with their access-review flags beside the label. Choose **Add user**, then **New service user**, to create one; click its name to open its dialog, where you name who is responsible for it, issue and revoke its tokens, and deactivate, reactivate or archive it. See [Personal access tokens: Service users](../core-features/personal-access-tokens.md#service-users). The access-review filters can show only service users, and **Include archived** lists archived accounts as well, which are hidden by default.
 
 ## Managing groups
 
@@ -46,17 +74,17 @@ The **Organisation details** group (beside **Overview**) holds the organisation'
 
 ## Branding and the report look
 
-An organisation has **one report look**. On **Branding & defaults**, set the login page background, the header title, the accent colour, the **Logo band colour** and **Logo band text colour** (the band behind the organisation's logo and name on its sign-in page, in the header of its outgoing email and on its reports; empty follows the platform colour, then the colour of the application's top bar; reports draw the band only once a colour is chosen), the **Footer position** of its sign-in page (**After the content** or **Bottom of the page**; empty follows the platform setting), an optional **report accent colour** (reports follow the organisation's accent colour until you give them their own) and whether reports carry the logo (the logo itself is on **Organisation details**). **Report colours** are named colours (such as `primary` or `warning`) that report layouts without colours of their own use by name; change one and every layout that uses the name changes with it (see [Colours](../core-features/custom-reports/designing-a-layout.md#colours)). Under **Reports → Configuration**, set the default **footer text**, whether built-in reports have a **cover page** and whether the requirements report starts a **chapter for each component**. The built-in reports use all of it; a [report layout](../core-features/custom-reports/designing-a-layout.md) uses only what it asks for, so a client with its own look gets its own layout. Introductions, chapters and appendices are written in report layouts. See [Core Features → Reports and export](../core-features/reports-and-export.md).
+An organisation has **one report look**. On **Branding & defaults**, set the login page background, the header title, the accent colour, the **Logo band colour** and **Logo band text colour** (the band behind the organisation's logo and name on its sign-in page, in the header of its outgoing email and on its reports; empty follows the platform colour, then the colour of the application's top bar; reports draw the band only once a colour is chosen), the **Footer position** of its sign-in page (**After the content** or **Bottom of the page**; empty follows the platform setting), an optional **report accent colour** (reports follow the organisation's accent colour until you give them their own) and whether reports carry the logo (the logo itself is on **Organisation details**). **Report colours** are named colours (such as `primary` or `warning`) that report layouts without colours of their own use by name; change one and every layout that uses the name changes with it (see [Colours](../core-features/custom-reports/designing-a-layout.md#colours)). Under **Organisation resources → Reports → Configuration**, set the default **footer text**, whether built-in reports have a **cover page** and whether the requirements report starts a **chapter for each component**. The built-in reports use all of it; a [report layout](../core-features/custom-reports/designing-a-layout.md) uses only what it asks for, so a client with its own look gets its own layout. Introductions, chapters and appendices are written in report layouts. See [Core Features → Reports and export](../core-features/reports-and-export.md).
 
 ### Company settings and the platform values
 
 The header title and the company details on **Organisation details** use the platform's values until the organisation sets its own. An empty field shows the platform value as its placeholder, so emptying a field and saving returns to it. The logo and the login page background are files: **Remove** appears while the organisation has its own, and the platform picture is shown dimmed when it has none.
 
-Each **Save** button under **Email**, **Security** (including **Save token lifetime**) and **Reports → Configuration** saves only the settings on its own page; an unsaved change on another page is neither saved nor lost.
+Each **Save** button under **Email**, **Security** (including **Save token lifetime**) and **Organisation resources → Reports → Configuration** saves only the settings on its own page; an unsaved change on another page is neither saved nor lost.
 
 ## Tags
 
-**Org admin → Tags** holds the tags used by records the organisation itself owns (organisation personas, stakeholders, strategies and so on) and the setting for who may add a new one. A project's own records use that project's tags. See [Tags](../core-features/tags.md#child-projects-and-the-organisation).
+**Organisation resources → Tags** holds the tags used by records the organisation itself owns (organisation personas, stakeholders, strategies and so on) and the setting for who may add a new one. A project's own records use that project's tags. See [Tags](../core-features/tags.md#child-projects-and-the-organisation).
 
 ## Link types
 
@@ -100,6 +128,16 @@ Records the organisation itself owns and every project shares (Personas, Stakeho
 Under **Projects → Organisation code**, change the organisation's code (letters and digits only, no hyphen, and different from every project code). You are asked to confirm: a qualified code already written down under the old code (in a document or a ticket) stops finding its record, though the records keep their own codes. The change is recorded in the audit log.
 
 A qualified code can be looked up from the API (`GET /api/v1/orgs/{id}/records/by-code/{code}`) and by AI assistants through the `get_record_by_code` MCP tool; both return only records the caller may see.
+
+### Record code prefixes
+
+Under **Projects → Record codes**, choose the letters new records of each type are numbered with: `ADR-006` instead of `DEC-006`, for example. A prefix is two to five letters, different for every record type in its scope, and never equal to the organisation's code or a project's code. A project follows this setting unless it sets its own (see [Administering a project → Record codes](./administering-a-project.md#record-codes)); a child project follows its parent project first. The list shows only the types of modules the organisation can use.
+
+| Record codes: the prefix of each record type, grouped under Core and each module |
+| --- |
+| ![Record codes panel on the organisation's Projects page with Core and Decision Management groups open and an editable prefix beside each record type](../../static/img/screenshots/org-record-codes.png) |
+
+A prefix applies to records created afterwards. A record keeps the code it was issued, and the numbering continues without reusing a number, so `DEC-001` to `DEC-005` is followed by `ADR-006`. A requirement is outside this setting: its code is built from its component and category prefixes. A change is recorded in the audit log with the type and the prefixes only.
 
 ## Single sign-on
 
@@ -207,7 +245,7 @@ An org admin can list every project belonging to the organisation — including 
 
 ## Organisation overview isn't here
 
-The read-only **Organisation overview** stats page (project/requirement/member counts, storage used) is visible to any member, not just admins, so it's covered under [Organisations and projects → Organisation overview](./organisations-and-projects.md#organisation-overview) instead of here.
+The **Organisation overview** dashboards (project/requirement/member counts, storage used) are visible to any member, not just admins, so it's covered under [Organisations and projects → Organisation overview](./organisations-and-projects.md#organisation-overview) instead of here.
 
 ## Where this fits
 

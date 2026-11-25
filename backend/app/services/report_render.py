@@ -1,33 +1,23 @@
 """
 Module: services.report_render
 
-The pluggable renderer interface for custom reports: a format is a `Renderer` registered for one or more
-layout families, and a run's output is produced through `render` with no format named anywhere else.
+The pluggable renderer interface for custom reports: a format is a `Renderer` registered for layout families, and
+output is produced through `render` with no format named elsewhere.
 
 Responsibilities:
-- `Renderer`, `RenderInput`, `RenderedFile` and `register_renderer`.
-- `formats_for(family)`: the formats a family can be produced in, in registration order (the catalogue and
-  the route's format check read this).
-- `render(fmt, family, input)`.
-- The shipped renderers, registered at the foot of the module: `pdf`, `docx`, `html`, `odt` (document family) and
-  `csv`, `xlsx`, `ods` (table family).
+- `Renderer`, `RenderInput`, `RenderedFile`, `register_renderer`; `formats_for(family)` (registration order, read by the
+  catalogue and the route); `render(fmt, family, input)`.
+- The shipped renderers: `pdf`, `docx`, `html`, `odt` (document) and `csv`, `xlsx`, `ods` (table).
 
 Design decisions:
-- **A renderer sees only the neutral model.** A document renderer gets a `ReportDocument` (title, blocks,
-  branding, orientation), a table renderer gets `Sheet`s; neither sees a layout, a record or a user, so
-  formats cannot drift apart in content and a new format is one registration (ODT and ODS were).
-- **Cells are text.** Every spreadsheet cell is written as a string, after the same formula guard the CSV
-  export uses (`csv_safe`): a value from a record that starts with `=`, `+`, `-`, `@`, tab or CR gets a
-  leading apostrophe, and the cell type is forced to text so a spreadsheet never evaluates it.
-- **CSV of several sheets is a zip** of one CSV per sheet (unique, filename-safe names); one sheet is a
-  plain CSV. XLSX holds every sheet as a tab (names cleaned of `[]:*?/\\`, at most 31 characters, unique
-  case-insensitively, and never starting or ending with an apostrophe); a cell is cut at Excel's 32,767-character
-  limit. ODS holds the same sheets, names and cells (`report_ods`).
-- Existing reports keep their own path (`report_framework.render_pdf`/`render_docx`); this registry serves
-  custom reports only.
+- A renderer sees only the neutral model (a `ReportDocument` or `Sheet`s), so formats cannot drift in content and a new
+  format is one registration.
+- Every spreadsheet cell is a string after the `csv_safe` formula guard, with the type forced to text.
+- A CSV of several sheets is a zip of one CSV per sheet; XLSX holds each sheet as a tab (names cleaned of `[]:*?/\\`,
+  at most 31 characters, unique case-insensitively, no leading or trailing apostrophe; cells cut at 32,767 characters);
+  ODS holds the same (`report_ods`). Built-in reports keep `report_framework.render_pdf`/`render_docx`.
 
-Dependencies: `openpyxl` (XLSX), `services.report_pdf`, `services.report_docx`, `services.report_html`,
-`services.report_odt`, `services.report_ods`, `services.csv_safety`, `services.report_model`.
+Dependencies: `openpyxl`, `report_pdf`, `report_docx`, `report_html`, `report_odt`, `report_ods`, `csv_safety`, `report_model`.
 """
 
 from __future__ import annotations

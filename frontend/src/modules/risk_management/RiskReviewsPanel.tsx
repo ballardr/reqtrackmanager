@@ -1,18 +1,14 @@
 /**
  * Module: modules/risk_management/RiskReviewsPanel
  *
- * The review section of a risk's detail page: the next scheduled
- * review (flagged when overdue), a "Record review" dialog, and the history of
- * past reviews, each with the ratings and treatment count it was made against.
- * A review is immutable; a mistake is corrected by recording a newer one. The
- * dialog takes an outcome (Confirmed: the assessment and treatment still stand;
- * Reassessed: the reviewer changed them), required notes, and the next review
- * date — empty means no further review is scheduled.
+ * The review section of a risk's detail page: the next scheduled review (flagged when overdue), a "Record review"
+ * dialog, and the history of past reviews, each with the ratings and treatment count it was made against. A review is
+ * immutable; a mistake is corrected by recording a newer one. The dialog takes an outcome (Confirmed: the assessment
+ * and treatment still stand; Reassessed: the reviewer changed them), required notes, and the next review date (empty
+ * means no further review is scheduled).
  *
- * The button always renders: the backend allows the risk's owner or a Risk
- * Manager, and refuses an archived or closed risk, a past next date, and
- * Confirmed while a treatment still needs reassessment; those messages show in
- * the dialog.
+ * The button always renders: the backend allows the risk's owner or a Risk Manager, and refuses an archived or closed
+ * risk, a past next date, and Confirmed while a treatment still needs reassessment; those messages show in the dialog.
  */
 import { useEffect, useState } from "react";
 
@@ -33,6 +29,7 @@ import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { DetailCard } from "../../components/DetailCard";
+import { MarkdownView } from "../../components/MarkdownView";
 
 /**
  * @param risk The risk being reviewed.
@@ -118,7 +115,7 @@ export function RiskReviewsPanel({
                 <td>
                   <Badge tone={RISK_REVIEW_OUTCOME_TONE[r.outcome]}>{RISK_REVIEW_OUTCOME_LABEL[r.outcome]}</Badge>
                 </td>
-                <td style={{ whiteSpace: "pre-wrap" }}>{r.notes}</td>
+                <td><MarkdownView text={r.notes} /></td>
                 <td>{RISK_STATUS_LABEL[r.risk_status]}</td>
                 <td><RiskRatingBadge label={r.inherent_rating_label} tone={bandTone(scheme, r.inherent_rating_label)} /></td>
                 <td><RiskRatingBadge label={r.residual_rating_label} tone={bandTone(scheme, r.residual_rating_label)} /></td>
@@ -147,7 +144,7 @@ export function RiskReviewsPanel({
                 </p>
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField helpNotNeeded required label="Review notes" value={notes} onChange={setNotes} rows={3} />
+                <TextAreaField markdown="simple" helpNotNeeded required label="Review notes" value={notes} onChange={setNotes} rows={3} />
               </FormGridFull>
               <DateField helpNotNeeded label="Next review date" value={nextDate} onChange={setNextDate} />
               <FormGridFull>

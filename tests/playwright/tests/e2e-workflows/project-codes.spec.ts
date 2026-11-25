@@ -6,16 +6,15 @@ import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdm
 installCleanupHook();
 
 /**
- * Job to be done: every project has a short code that, put in front of a record code, names the
- * record unambiguously (`ACME-REQ-001`). An org admin chooses whether codes are assigned
- * automatically or chosen by the creator, and whether the project code always shows; each person
- * can turn it off inside a project unless the organisation insists.
+ * Job to be done: every project has a short code that, put in front of a record code, names the record
+ * unambiguously (`ACME-REQ-001`). An org admin chooses whether codes are assigned automatically or chosen by the
+ * creator, and whether the project code always shows; each person can turn it off inside a project unless the
+ * organisation insists.
  *
- * Covers: automatic assignment (no field on the New project form, a read-only code in project
- * settings); manual assignment saved from Org Admin (the field appears, a lower-case entry is
- * stored upper-case, a duplicate is refused with the reason); the display rule on a requirement
- * (qualified by default, bare once the person turns it off, qualified again when the organisation
- * enforces it); and finding a record by its qualified code.
+ * Covers: automatic assignment (no field on the New project form, a read-only code in project settings); manual
+ * assignment from Org Admin (the field appears, a lower-case entry is stored upper-case, a duplicate is refused with
+ * the reason); the display rule on a requirement (qualified by default, bare once the person turns it off, qualified
+ * again when the organisation enforces it); and finding a record by its qualified code.
  *
  * Each test builds its own organisation, so none depends on state left by another test.
  */

@@ -6,21 +6,15 @@ import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWO
 installCleanupHook();
 
 /**
- * Job to be done: an org admin decides, per link type, whether a record may be
- * linked to one in a parent or child project, and which end may sit higher; a
- * pain point at product level can be traced to the requirements below it but
- * not the other way round, and narrowing a type never deletes a link already made.
+ * Job to be done: an org admin decides, per link type, whether a record may link to one in a parent or child
+ * project and which end may sit higher; narrowing a type never deletes a link already made.
  *
- * Covers: access (a child-only member is told "not found" for the parent; detaching a project hides its cross-level links and
- * reattaching restores them); the "Across nested projects" select on a link type (label map, default
- * "Either end may be in a parent project"); the directional option is disabled,
- * with the reason, for a type with no direction; choosing it saves with a Toast and
- * the API then allows the upstream end in the parent and refuses it in the child;
- * narrowing a type that existing cross-project links rely on first says how many
- * will be flagged (Tier-1 confirmation), keeps them, and stops new ones.
+ * Covers: access across nested projects (a child-only member is told "not found" for the parent; detaching a project
+ * hides its cross-level links and reattaching restores them); the "Across nested projects" select on a link type
+ * and its directional option; narrowing a type that existing cross-project links rely on first states how many are
+ * flagged (Tier-1 confirmation), keeps them, and stops new ones.
  *
- * Each test builds its own organisation, so none depends on state left by
- * another test or an earlier run.
+ * Each test builds its own organisation, so none depends on state left by another test or an earlier run.
  */
 
 const apiBaseUrl = "http://localhost:8000";

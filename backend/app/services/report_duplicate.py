@@ -1,37 +1,26 @@
 """
 Module: services.report_duplicate
 
-Duplicates one report layout or pack as an editable basis for a new one: a layout or pack the caller can reach (their
-own, an ancestor's or the organisation's) or one of the built-in starter layouts, copied to the caller's own tier or up
-to the organisation.
+Duplicates one report layout or pack, or a built-in starter layout, as an editable basis for a new one, into the
+caller's own tier or up to the organisation.
 
 Responsibilities:
-- `duplicate`: plans (`dry_run`) or performs one duplicate and writes one audit event; the plan names the final
-  name, whether it shadows an inherited report, what does not carry cleanly and any project picture that blocks a copy up.
-- `starter_sources`: the built-in starter definitions, listed for the "New from a starter" choice.
+- `duplicate`: plans (`dry_run`) or performs one duplicate with one audit event; the plan names the final name,
+  whether it shadows an inherited report, what does not carry and any project picture that blocks a copy up.
+- `starter_sources`: the built-in starter definitions for "New from a starter".
 
 Design decisions:
-- **One serialiser, not a second copier.** A layout or pack becomes its project-bundle entry and is created by the
-  bundle's own importer (as the cross-project copy does), so validation, the create path and any field added later are
-  shared. Only the latest version is copied, as version 1 of an independent report; history, favourites, hide and
-  placement state, pack membership and saved sets stay with the source.
-- **Built-in starters are a source of their own.** The organisation's seeded starter is an ordinary layout that may have
-  been edited or deleted; the definitions in `report_starters` still give "start from the BRD".
-- **Pictures.** An organisation picture stays a reference. A project picture is reused when the copy lands in the same
-  project, copied into the destination project's library when it lands in another, and *refuses* a copy up to the
-  organisation: publishing a project's picture to every member is the person's decision, not a side effect.
-- **Folders.** The copy is filed beside the source when the destination can use that folder, else at the top level.
-- **Names.** A free name is suggested ("<name> (copy)", "(copy 2)" ...) among the destination's own reports and what the
-  project inherits; a name the destination already owns is refused, one that matches an inherited report is allowed and
-  warned about (it shadows it, as any project report does).
-- **Packs** copy their definition (entries still name the same layouts, resolved by name where the copy lands) and no
-  saved sets, which belong to the pack they were saved against.
-- Gates are the route's: read and manage the source, manage the destination tier (project permission or the
-  organisation's, groups included).
+- One serialiser: the bundle entry and the bundle's own importer, as the cross-project copy does. Only the latest
+  version is copied (as version 1); history, favourites, placements, pack membership and saved sets stay behind.
+- Starters are a source of their own (`report_starters`), since the seeded one may have been edited or deleted.
+- An organisation picture stays a reference; a project picture is reused in the same project, copied to another, and
+  refused for a copy up to the organisation (publishing it to every member is the person's decision).
+- The copy is filed beside the source when the destination can use that folder. A free name is suggested; a name the
+  destination owns is refused, one matching an inherited report is allowed with a shadow warning.
+- A pack copies its definition (entries resolved by name where it lands), no saved sets. Gates are the route's.
 
-Dependencies: `services.report_layout_bundle`, `services.report_pack_bundle`, `services.report_layout_scope`,
-`services.report_pack_scope`, `services.report_starters`, `services.report_folder_store`, `services.report_placements`,
-`services.report_copy`.
+Dependencies: `report_layout_bundle`, `report_pack_bundle`, `report_layout_scope`, `report_pack_scope`,
+`report_starters`, `report_folder_store`, `report_placements`, `report_copy`.
 """
 
 from __future__ import annotations

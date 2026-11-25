@@ -1,6 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { installCleanupHook, selectOrgOverviewGroup, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
+import { installCleanupHook, selectOrgResourcesGroup, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -36,9 +36,15 @@ const createGroup = (page: Page, orgId: string, headers: Headers, name: string, 
 const addMember = (page: Page, orgId: string, headers: Headers, groupId: string, stakeholderId: string) =>
   post(page, `${orgBase(orgId)}/stakeholder-groups/${groupId}/members`, headers, { stakeholder_id: stakeholderId });
 
+/** Opens a group row's actions menu and picks an item (the row's own controls live in the menu). */
+async function rowAction(page: Page, group: string, item: string) {
+  await page.getByRole("button", { name: `Actions for ${group}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: item, exact: true }).click();
+}
+
 async function openOrgGroups(page: Page) {
-  await page.goto("/org-overview");
-  await selectOrgOverviewGroup(page, "Stakeholder Groups");
+  await page.goto("/org-resources");
+  await selectOrgResourcesGroup(page, "Stakeholder Groups");
 }
 
 test.describe("Stakeholders & Personas: Stakeholder groups", () => {
@@ -60,7 +66,7 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await expect(page.getByText("Group created.")).toBeVisible();
     await expect(page.getByText("One branch", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: `Add a group under ${client}` }).click();
+    await rowAction(page, client, `Add group under ${client}`);
     dialog = page.getByRole("dialog", { name: "New Stakeholder group" });
     await expect(dialog.getByLabel("Parent group")).toHaveValue(/.+/);
     await dialog.getByLabel("Group name").fill(acme);
@@ -68,7 +74,7 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await expect(page.getByRole("button", { name: acme, exact: true })).toBeVisible();
 
     // --- A sibling name clash is rejected in the dialog, which stays open.
-    await page.getByRole("button", { name: `Add a group under ${client}` }).click();
+    await rowAction(page, client, `Add group under ${client}`);
     dialog = page.getByRole("dialog", { name: "New Stakeholder group" });
     await dialog.getByLabel("Group name").fill(acme.toUpperCase());
     await dialog.getByRole("button", { name: "Save" }).click();
@@ -76,7 +82,7 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await closeDialogWithoutSaving(dialog, { unsaved: true });
 
     // --- Rename it, and add a stakeholder to it from the members section.
-    await page.getByRole("button", { name: `Edit ${acme}` }).click();
+    await rowAction(page, acme, "Edit");
     dialog = page.getByRole("dialog", { name: `Edit ${acme}` });
     await dialog.getByLabel("Group name").fill(`${acme} Ltd`);
     await dialog.getByRole("button", { name: "Save" }).click();
@@ -90,12 +96,12 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await expect(members.getByText(`Alex ${suffix}`)).toBeVisible();
 
     // --- Deleting the parent states what goes, keeps the child (moved up) and the stakeholder.
-    await page.getByRole("button", { name: `Delete ${client}` }).click();
+    await rowAction(page, client, "Delete");
     const confirm = page.getByRole("dialog", { name: `Delete ${client}?` });
     await expect(confirm.getByText(/moves its 1 child group up one level\. No stakeholder is deleted/)).toBeVisible();
     await confirm.getByRole("button", { name: "Delete group" }).click();
     await expect(page.getByText("Group deleted.")).toBeVisible();
-    await expect(page.getByRole("button", { name: client, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("treegrid", { name: "Stakeholder groups" }).getByText(client, { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: `${acme} Ltd`, exact: true })).toBeVisible();
 
     const listed = await (await page.request.get(`${orgBase(org.id)}/stakeholders`, { headers: adminHeaders })).json();
@@ -198,8 +204,8 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await expect(page.getByRole("heading", { name: "Stakeholder groups" })).toBeVisible();
     // The organisation's group is listed, marked as the organisation's, with no edit controls.
     await expect(page.getByRole("button", { name: `Client ${suffix}`, exact: true })).toBeVisible();
-    await expect(page.getByRole("tree", { name: "Stakeholder groups" }).getByText("Organisation", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: `Edit Client ${suffix}` })).toHaveCount(0);
+    await expect(page.getByRole("treegrid", { name: "Stakeholder groups" }).getByText("Organisation", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: `Actions for Client ${suffix}` })).toHaveCount(0);
 
     // --- A project group can be created under it.
     await page.getByRole("button", { name: "New group" }).click();
@@ -208,7 +214,7 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await dialog.getByLabel("Parent group").selectOption({ label: `Client ${suffix}` });
     await dialog.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Group created.")).toBeVisible();
-    await expect(page.getByRole("button", { name: `Edit Pilot ${suffix}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Actions for Pilot ${suffix}` })).toBeVisible();
 
     // --- The org stakeholder can be put in the project group from the project's own detail page.
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${shared.id}`);
@@ -241,11 +247,60 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await dialog.getByRole("button", { name: "Create groups" }).click();
     await expect(page.getByText("Created 1 group, 2 added.")).toBeVisible();
 
-    await expect(page.getByRole("button", { name: "Organisation / group", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Collapse Organisation / group", exact: true })).toBeVisible();
     await page.getByRole("button", { name: `Acme ${suffix}`, exact: true }).click();
     const members = page.getByRole("region", { name: `Members of Acme ${suffix}` });
     await expect(members.getByText(`Ann ${suffix}`)).toBeVisible();
     await expect(members.getByText(`Al ${suffix}`)).toBeVisible();
     await expect(page.getByRole("button", { name: `Beta ${suffix}`, exact: true })).toHaveCount(0);
+  });
+
+  test("the group grid lines its columns up, and a collapsed parent stays collapsed after a reload", async ({ page }) => {
+    const { suffix, org, adminHeaders } = await setUpOrg(page, "GroupGrid");
+    const root = await createGroup(page, org.id, adminHeaders, `Client ${suffix}`, undefined, true);
+    const acme = await createGroup(page, org.id, adminHeaders, `Acme ${suffix}`, root.id);
+    await createGroup(page, org.id, adminHeaders, `Acme Finance ${suffix}`, acme.id);
+    await createGroup(page, org.id, adminHeaders, `Beta ${suffix}`, root.id);
+    await createGroup(page, org.id, adminHeaders, `Operations ${suffix}`);
+
+    await openOrgGroups(page);
+    const grid = page.getByRole("treegrid", { name: "Stakeholder groups" });
+    await expect(grid.getByRole("button", { name: `Acme Finance ${suffix}`, exact: true })).toBeVisible();
+
+    // --- Every row's Code, Members and actions cell starts at the same x as its column heading, whatever the name's length.
+    const left = async (locator: Locator) => (await locator.boundingBox())!.x;
+    for (const heading of ["Code", "Members"]) {
+      const headingLeft = await left(grid.getByRole("columnheader", { name: heading, exact: true }));
+      const index = heading === "Code" ? 1 : 2;
+      const cells = grid.locator(`[role="row"] > [role="gridcell"]:nth-child(${index + 1})`);
+      expect(await cells.count()).toBeGreaterThanOrEqual(5);
+      for (let i = 0; i < (await cells.count()); i++) expect(Math.abs((await left(cells.nth(i))) - headingLeft)).toBeLessThan(2);
+    }
+    const menus = grid.getByRole("button", { name: /^Actions for / });
+    const menuLeft = await left(menus.first());
+    for (let i = 1; i < (await menus.count()); i++) expect(Math.abs((await left(menus.nth(i))) - menuLeft)).toBeLessThan(2);
+
+    // --- The title row, the grid and its first row share a left edge.
+    const titleLeft = await left(page.getByRole("button", { name: "New group", exact: true }));
+    expect(Math.abs((await left(grid)) - titleLeft)).toBeLessThan(2);
+
+    // --- Names are indented by depth; a parent can be selected from its Members count and shows its members.
+    expect(await left(grid.getByRole("button", { name: `Acme Finance ${suffix}`, exact: true }))).toBeGreaterThan(
+      await left(grid.getByRole("button", { name: `Collapse Acme ${suffix}`, exact: true })),
+    );
+    await grid.getByRole("button", { name: `Show members of Client ${suffix}`, exact: true }).click();
+    await expect(page.getByRole("region", { name: `Members of Client ${suffix}` })).toBeVisible();
+    await expect(grid.getByRole("row", { selected: true })).toHaveCount(1);
+
+    // --- A group is not a folder: a parent and a leaf group both draw the group icon, and no folder icon appears.
+    await expect(grid.getByRole("button", { name: `Collapse Acme ${suffix}`, exact: true }).locator("svg.lucide-users")).toHaveCount(1);
+    await expect(grid.locator("svg.lucide-folder, svg.lucide-folder-open")).toHaveCount(0);
+
+    // --- A folder closed on this page stays closed after a reload.
+    await grid.getByRole("button", { name: `Collapse Acme ${suffix}`, exact: true }).click();
+    await expect(grid.getByRole("button", { name: `Acme Finance ${suffix}`, exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(grid.getByRole("button", { name: `Expand Acme ${suffix}`, exact: true })).toBeVisible();
+    await expect(grid.getByRole("button", { name: `Acme Finance ${suffix}`, exact: true })).toHaveCount(0);
   });
 });

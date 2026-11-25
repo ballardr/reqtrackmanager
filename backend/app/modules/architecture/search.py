@@ -54,10 +54,9 @@ def _comments(artefact_type: str) -> SearchComments:
     )
 
 
-#: A state machine diagram (and so its states) is found by the global search only when it describes an element of its own
-#: project: the search has no person, so it cannot apply the sharing rules that decide whether another owner's element is
-#: readable, and a diagram of an element the person cannot read must not be disclosed. One of a shared element is reached
-#: through the project's lists and the link finder, which do apply them.
+#: A state machine diagram (and so its states) is searchable only when it describes an element of its own project: the
+#: search has no person to apply the sharing rules, so another owner's element must not be disclosed. A diagram of a
+#: shared element is reached through the project's lists and the link finder, which apply them.
 _OWN_ELEMENT = exists().where(
     ArchitectureElement.id == ArchitectureStateMachineDiagram.element_id,
     ArchitectureElement.project_id == ArchitectureStateMachineDiagram.project_id,
@@ -73,7 +72,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             organization_id=ArchitectureElement.organization_id, version=ArchitectureElement.version,
         ),
         fields=(
-            SearchField("description", "Description", ArchitectureElement.description),
+            SearchField("description", "Description", ArchitectureElement.description, markdown=True),
             SearchField("display_note", "Display note", ArchitectureElement.display_note),
             SearchField("ports", "Port names", select(func.string_agg(ArchitecturePort.name, " ")).where(
                 ArchitecturePort.element_id == ArchitectureElement.id,
@@ -93,7 +92,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             updated_at=ArchitectureConnection.updated_at, version=ArchitectureConnection.version,
         ),
         fields=(
-            SearchField("description", "Description", ArchitectureConnection.description),
+            SearchField("description", "Description", ArchitectureConnection.description, markdown=True),
             SearchField("protocol", "Protocol", ArchitectureConnection.protocol),
         ),
         status_labels=RECORD_STATUS_LABEL,
@@ -106,7 +105,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             title=ArchitectureDiagram.name, status=ArchitectureDiagram.status, is_archived=ArchitectureDiagram.is_archived,
             updated_at=ArchitectureDiagram.updated_at, version=ArchitectureDiagram.version,
         ),
-        fields=(SearchField("description", "Description", ArchitectureDiagram.purpose),),
+        fields=(SearchField("description", "Description", ArchitectureDiagram.purpose, markdown=True),),
         status_labels=RECORD_STATUS_LABEL,
         comments=_comments(DIAGRAM_ARTEFACT_TYPE),
     ),
@@ -118,7 +117,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             status=ArchitectureStateMachineDiagram.status, is_archived=ArchitectureStateMachineDiagram.is_archived,
             updated_at=ArchitectureStateMachineDiagram.updated_at, version=ArchitectureStateMachineDiagram.version,
         ),
-        fields=(SearchField("description", "Description", ArchitectureStateMachineDiagram.description),),
+        fields=(SearchField("description", "Description", ArchitectureStateMachineDiagram.description, markdown=True),),
         where=(_OWN_ELEMENT,),
         status_labels=RECORD_STATUS_LABEL,
         comments=_comments(STATE_MACHINE_ARTEFACT_TYPE),
@@ -137,7 +136,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             owner_id=ArchitectureState.state_machine_diagram_id,
         ),
         fields=(
-            SearchField("description", "Description", ArchitectureState.description),
+            SearchField("description", "Description", ArchitectureState.description, markdown=True),
             SearchField("entry_action", "Entry action", ArchitectureState.entry_action),
             SearchField("exit_action", "Exit action", ArchitectureState.exit_action),
             SearchField("activity", "Activity", ArchitectureState.activity),

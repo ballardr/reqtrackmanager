@@ -1,12 +1,11 @@
 /**
  * Module: components/ScoringModelFormModal
  *
- * The create/edit dialog for a scoring model an organisation or project defines (generic scoring-matrix core): a
- * name, how the axes combine, and how the model uses each axis it can see. A product multiplies or divides by each
- * axis (with an exponent for how strongly it counts); a weighted sum adds each axis by an importance percentage that
- * totals 100, optionally counting a lower level as better, and may divide the sum by an axis (as Weighted Shortest
- * Job First divides by job size). The checks mirror the server's, so the person sees why
- * Save is unavailable; the server still re-checks. Saving is the caller's, which reports a failure through `error`.
+ * The create/edit dialog for a scoring model an organisation or project defines: a name, how the axes combine, and how
+ * the model uses each axis it can see. A product multiplies or divides by each axis (with an exponent for its
+ * strength); a weighted sum adds each axis by an importance percentage totalling 100, optionally counting a lower
+ * level as better, and may divide the sum by an axis (as Weighted Shortest Job First divides by job size). The checks
+ * mirror the server's so the person sees why Save is unavailable; the server re-checks. Saving is the caller's.
  */
 import { useState } from "react";
 

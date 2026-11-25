@@ -1,19 +1,14 @@
 /**
  * Module: components/FileNameField
  *
- * A "File name" field for a downloaded report: a layout's, a pack's, a pack entry's or the organisation's default.
- * It is a text template with `{{placeholders}}`, an Insert list of the placeholders valid in that place and a live
- * example of the name the template gives.
+ * A "File name" field for a downloaded report (a layout's, a pack's, a pack entry's or the organisation's
+ * default): a text template with `{{placeholders}}`, an Insert list of the placeholders valid in that place
+ * (appended to the end of the text) and a live example of the resulting name. An emptied field is `""`; the caller
+ * removes the key.
  *
- * Responsibilities:
- * - Edit the template (an emptied field is `""`; the caller removes the key).
- * - Ask the server what the template would name a file (`api/reportFileNames`) shortly after typing stops, and show
- *   the example, or the server's problems, beneath the field.
- * - Offer the placeholders the server says are valid here, appended to the end of the text.
- *
- * Design decisions: the example comes from the server so it can never disagree with a real download (same fill, same
- * cleaning); the call is injected (`fetchExample`) so stories stay off the network; a failed call shows a quiet
- * "could not be shown" line and never blocks editing, since the save-time check is the judge.
+ * The example, or the server's problems, comes from the server (`api/reportFileNames`) shortly after typing stops,
+ * so it cannot disagree with a real download. The call is injected (`fetchExample`) for stories; a failed call
+ * shows a quiet "could not be shown" line and never blocks editing, since the save-time check decides.
  */
 import { useEffect, useState } from "react";
 

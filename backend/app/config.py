@@ -32,15 +32,11 @@ class Settings(BaseSettings):
         audit_runtime_role: The name of the database role the application connects as, when it is not the table owner.
             At start-up the audit tables are made append-only for that role (`services.audit_protection`). Empty: no
             protection (the application owns its tables, so a revoke would change nothing).
-        app_secret_encryption_key: Symmetric key used to encrypt genuine
-            secrets at rest at the application layer — `Organization.
-            oidc_client_secret`, `Organization.smtp_password`, and `User.
-            totp_secret` (see `app.models.encrypted_type.EncryptedString`).
-            Distinct from `jwt_secret` (signs tokens; not used for
-            encryption) so the two can be rotated independently. Like
-            `jwt_secret`, this must be a strong random value distinct per
-            deployment — the production Compose stack fails fast if it's
-            left unset.
+        app_secret_encryption_key: Symmetric key encrypting secrets at rest at the application layer
+            (`Organization.oidc_client_secret`, `Organization.smtp_password`, `User.totp_secret`; see
+            `app.models.encrypted_type.EncryptedString`). Distinct from `jwt_secret` so the two rotate
+            independently. Like `jwt_secret`, a strong random value distinct per deployment; the production
+            Compose stack fails fast if it is unset.
         app_secret_encryption_key_previous: Comma-separated earlier values of `app_secret_encryption_key`, kept only
             so values written under them still decrypt while the key is being rotated (new values always use the
             current key; `scripts/rotate_secret_key.py` re-encrypts the stored ones, after which this is emptied).
@@ -77,10 +73,8 @@ class Settings(BaseSettings):
             (minimum 60). Raising it is the cheaper alternative to disabling.
         storage_health_failures_before_alert: Consecutive failed probes before
             server admins are alerted, so one dropped write is not an outage.
-        websocket_enabled: Whether the optional live-update WebSocket
-            interface (I-A-04) is mounted at all. Deployments that can't or
-            don't want persistent socket connections (e.g. behind certain
-            proxies/load balancers) can disable it entirely.
+        websocket_enabled: Whether the optional live-update WebSocket interface (I-A-04) is mounted;
+            disable it where persistent socket connections are unavailable (for example behind certain proxies).
         modules_default_available: Whether a fresh install is seeded with every
             registered module available to every organisation and on for new
             projects (`services.module_defaults.seed_fresh_install_defaults`).
@@ -100,48 +94,29 @@ class Settings(BaseSettings):
             valid redirect URI on the IdP client.
         frontend_base_url: The frontend's base URL, used to redirect back to
             the UI once an OIDC login completes (E-U-01).
-        mcp_server_public_url: The MCP server's own browser-reachable base
-            URL, used to redirect back there instead of the frontend when an
-            OIDC login was initiated from its `/login` page rather than the
-            main app (see `routers/auth_oidc.py`'s `client` parameter) — lets
-            an SSO user land on `mcp_server`'s token page directly rather
-            than the app UI.
-        pat_default_max_lifetime_days: Fallback maximum lifetime, in days,
-            for a Personal Access Token scoped to an organisation that
-            hasn't set its own `Organization.pat_max_lifetime_days` —
-            guarantees no PAT is ever unboundedly long-lived even if no org
-            admin ever touches that per-org setting.
+        mcp_server_public_url: The MCP server's browser-reachable base URL, where an OIDC login started from
+            its `/login` page redirects back to instead of the frontend (`routers/auth_oidc.py`'s `client`
+            parameter), so an SSO user lands on the token page.
+        pat_default_max_lifetime_days: Maximum lifetime, in days, of a Personal Access Token scoped to an
+            organisation with no `Organization.pat_max_lifetime_days` of its own, so no PAT is unbounded.
         report_output_default_retention_days: How long the stored output of a background custom report is kept
             when the organisation has not set `Organization.report_output_retention_days`.
         report_output_max_retention_days: Platform ceiling on that retention; an organisation's own value is capped
             by it (`services.report_run_jobs.effective_retention_days`).
         report_run_record_retention_days: How long the provenance row of a custom report run is kept
             (`services.report_run_jobs.expire`); the row holds identifiers and counts, never report content.
-        oidc_internal_base_url_override: Dev/test-only escape hatch for a
-            common containerized-IdP problem: an org's `oidc_issuer_url`
-            must be the identity provider's browser-reachable public URL
-            (it appears in issued tokens' `iss` claim and is where the
-            browser gets redirected), but in a local Docker Compose stack
-            that public URL (e.g. `http://localhost:8080`) is NOT reachable
-            from inside the backend's own container — only the IdP's
-            internal service hostname (e.g. `http://keycloak:8080`) is.
-            When set, every backend-to-IdP HTTP call (discovery, token
-            exchange, JWKS fetch) rewrites the issuer's scheme+host to this
-            override while preserving the path, without changing what's
-            validated or what the browser is redirected to. Left unset in
-            production, where the IdP's public URL is reachable from
-            everywhere, including the backend.
-        two_factor_max_failed_attempts: Number of consecutive failed
-            `/2fa/verify` codes (since the last success or lockout) before
-            further attempts are locked out (hardening review: an
-            unthrottled, reusable 2FA challenge against a bounded 6-digit
-            TOTP keyspace, re-mintable via a fresh `/login` each time the
-            challenge token expires, otherwise converges toward a
-            near-certain bypass given enough repeated windows).
-        two_factor_lockout_minutes: How long `/2fa/verify` is locked out
-            for a given account once `two_factor_max_failed_attempts` is
-            reached. The lockout is per-*account*, not per-challenge-token,
-            so re-authenticating for a fresh token does not reset it.
+        oidc_internal_base_url_override: Development and test only. An organisation's `oidc_issuer_url` is
+            the IdP's browser-reachable public URL (it appears in the token `iss` claim and is the browser
+            redirect target), which a Compose backend container often cannot reach (for example
+            `http://localhost:8080`, where only `http://keycloak:8080` works). When set, every
+            backend-to-IdP call (discovery, token exchange, JWKS) rewrites the issuer's scheme and host to
+            this value, keeping the path; what is validated and what the browser is redirected to are
+            unchanged. Unset in production.
+        two_factor_max_failed_attempts: Consecutive failed `/2fa/verify` codes (since the last success or
+            lockout) before further attempts are locked out. The 2FA challenge is reusable and a fresh
+            `/login` mints another, so without a limit the bounded 6-digit TOTP keyspace is brute-forceable.
+        two_factor_lockout_minutes: How long `/2fa/verify` stays locked for an account once the limit is
+            reached. The lockout is per account, not per challenge token, so a fresh token does not reset it.
         require_email_confirmation: Whether an account created by public self-sign-up (no invitation) must open a link emailed
             to its address before it can sign in (`services.email_confirmation`). On by default.
         force_password_change_on_admin_set: Whether an account whose password an administrator typed must change it at
@@ -156,40 +131,25 @@ class Settings(BaseSettings):
         login_lock_wait_seconds: How long a sign-in waits for another attempt on the same account to finish (attempts
             on one account are serialised so a burst cannot all pass the failure count). Past it the attempt is
             answered 429 with a one-second wait; 0 refuses at once.
-        oidc_allow_private_network_targets: Deployment-level opt-in that
-            disables the SSRF guard's public-IP check for org-configured
-            OIDC endpoints (`services.oidc_client._assert_safe_external_url`),
-            letting `oidc_issuer_url` resolve to a private/internal address.
-            Off by default because `oidc_issuer_url` is set by an org's own
-            admin — not a deployment-trusted value in the general case — so
-            blocking private-network targets is the safe default. Deployments
-            that run their own internal IdP (Keycloak/Authentik/etc. on a
-            corporate LAN or VPC with no public IP at all) need this set to
-            reach it; unlike `oidc_internal_base_url_override` (which rewrites
-            to one specific internal address, for a single dev/test IdP),
-            this is a blanket allow for every organisation's configured
-            issuer, so it should only be enabled when every org sharing this
-            deployment is trusted not to point their issuer at the
-            deployment's own internal infrastructure (cloud metadata
-            endpoints, internal admin APIs, etc.) — appropriate for a
-            single-tenant or otherwise fully-trusted-tenant deployment, not a
-            deployment serving mutually-untrusted organisations.
+        oidc_allow_private_network_targets: Deployment-level opt-in that disables the SSRF guard's
+            public-IP check for organisation-configured OIDC endpoints
+            (`services.oidc_client._assert_safe_external_url`), so `oidc_issuer_url` may resolve to a
+            private address. Off by default because an organisation's own administrator sets the issuer.
+            Deployments with an internal IdP (Keycloak, Authentik) on a corporate LAN or VPC need it. Unlike
+            `oidc_internal_base_url_override` (one internal address), it applies to every organisation's
+            issuer, so enable it only for a single-tenant or fully trusted-tenant deployment: an untrusted
+            organisation could aim its issuer at internal infrastructure (cloud metadata, admin APIs).
         org_smtp_allow_private_network_targets: Deployment-level opt-in that lets an organisation's own SMTP
             relay (`Organization.smtp_host`, used by the organisation's "send test email" action) resolve to a
             private or loopback address. Off by default for the same reason as `oidc_allow_private_network_
             targets`: the relay is chosen by an organisation administrator, a tenant, and the check is what
             stops it from being aimed at the deployment's own network (a mail relay, a database port, the
             cloud metadata service). Turn it on for a deployment whose organisations all use an internal relay.
-        access_review_show_org_names: Whether the server-admin access review
-            (C-A-13) names the specific organisations each user belongs to,
-            rather than only a count. `SystemUserOut`'s org-membership field
-            is deliberately kept as a plain yes/no elsewhere (I-M-05: a
-            server admin is content-blind by design) — naming actual orgs
-            here is an explicit, opt-out-able exception to that, not an
-            oversight. Defaults to showing names on the reasoning that a
-            server admin already has direct database access regardless;
-            deployments that want the stricter, count-only view for this
-            specific screen can set this to `false`.
+        access_review_show_org_names: Whether the server-admin access review (C-A-13) names each user's
+            organisations instead of only a count. `SystemUserOut`'s org-membership field is otherwise a
+            plain yes/no (I-M-05: a server admin is content-blind by design); naming them is an explicit
+            exception, on by default because a server admin has database access regardless. Set `false`
+            for the count-only view.
         help_enabled: Whether the app header shows a Help link at all. Turn it
             off for an air-gapped deployment with no internal docs mirror.
         help_url: Where the header Help link opens (a new tab). Defaults to
@@ -242,63 +202,32 @@ class Settings(BaseSettings):
         max_request_body_bytes: Largest request body of any other endpoint (`body_limit`); above
             `max_upload_bytes` by the multipart framing. A reverse proxy's `client_max_body_size` should be
             set to the same order of magnitude.
-        allow_external_modules: Deployment-level opt-in for the modular
-            feature system's third-party discovery sources
-            (`app.modules.registry`'s Python entry-point scan and
-            `extra_modules_path` directory scan
-            Off by default, mirroring `MCP_WRITES_ENABLED`'s
-            existing off-by-default precedent in this codebase: a plugin-
-            loading mechanism that auto-imports and runs third-party code
-            pip-installed (or dropped on disk) into the deployment's own
-            process is a genuinely new code-loading trust boundary, and
-            `docs/soc2/trust-services-criteria-mapping.md`'s CC6.8 row
-            already documents an open gap ("no automated dependency/
-            container vulnerability scanning exists") — a plugin system
-            that runs arbitrary discovered code makes that pre-existing gap
-            materially riskier, so it must not ship silently on-by-default.
-            When `False`, the registry contains only the static, in-repo,
-            normally-code-reviewed `INSTALLED_MODULES` list; the entry-point
-            and path scans are not even performed (not merely filtered
-            afterward — see `app.modules.registry.build_registry`). A
-            deployment operator who explicitly wants third-party modules
-            turns this on knowingly, per the due-diligence expectation
-            recorded in `docs/soc2/policies/
-            vendor-and-subprocessor-management-policy.md`.
+        allow_external_modules: Deployment-level opt-in for the modular feature system's third-party
+            discovery sources (`app.modules.registry`'s entry-point scan and `extra_modules_path`
+            directory scan). Off by default, like `MCP_WRITES_ENABLED`: auto-importing and running
+            third-party code in the deployment's process is a new code-loading trust boundary, and
+            `docs/soc2/trust-services-criteria-mapping.md`'s CC6.8 row documents an open gap (no
+            automated dependency or container vulnerability scanning) that it would make riskier. When
+            `False` the registry holds only the reviewed in-repo `INSTALLED_MODULES`, and the scans are not
+            performed at all (see `app.modules.registry.build_registry`). An operator who enables it
+            follows the due-diligence expectation in
+            `docs/soc2/policies/vendor-and-subprocessor-management-policy.md`.
 
-            Also gates `app.modules.registry.apply_external_module_
-            migrations` (module system follow-up, 2026-09-05): when `True`,
-            a discovered external module's own declared `migrations_
-            import_path` is imported and its `run_migrations(connection)`
-            applied automatically, once at startup — the same opt-in that
-            already permits loading and running that module's code at all
-            now also covers applying its own database schema changes,
-            rather than requiring the operator to additionally hand-run a
-            migration out of band. Never applies to an `INSTALLED_MODULES`
-            (first-party) module regardless of this setting — first-party
-            schema changes always go through a reviewed PR into `backend/
-            alembic/versions/`.
-        extra_modules_path: Optional local directory scanned for third-party
-            modules (each an immediate subdirectory containing a
-            `module.py` with a module-level `MODULE_DEFINITION`) when
-            `allow_external_modules` is `True` — for a self-hosted operator
-            adding a custom module without publishing a package. Has no
-            effect at all while `allow_external_modules` is `False` (its
-            default), same rationale as that flag's docstring.
-        module_frame_allowed_origins: Comma-separated list of origins the
-            frontend is allowed to embed a Tier B remote module in a
-            sandboxed `<ModuleFrame>` iframe (`Content-Security-Policy:
-            frame-src`). Empty by
-            default — `frame-src 'none'` is sent until a deployment operator
-            explicitly lists a trusted module origin, mirroring `cors_
-            origins`' own comma-separated-list shape but for the opposite
-            direction (what this app is allowed to frame, not who is
-            allowed to frame this app — see `main.py`'s security-headers
-            middleware). A registered module's own declared `frame_url`
-            (`app.modules.registry.ModuleFrontendManifest`) must resolve to
-            an origin in this list or `get_frontend_manifest` rejects it
-            (logs and returns `None`) — mechanically enforced, not trusted
-            from the module's own declaration, mirroring the
-            path-prefix enforcement for MCP tools.
+            Also gates `app.modules.registry.apply_external_module_migrations`: when `True`, a discovered
+            external module's declared `migrations_import_path` is imported and its
+            `run_migrations(connection)` applied at startup. First-party (`INSTALLED_MODULES`) modules never
+            use this; their schema changes are reviewed migrations in `backend/alembic/versions/`.
+        extra_modules_path: Optional local directory scanned for third-party modules (each an immediate
+            subdirectory with a `module.py` defining `MODULE_DEFINITION`) when `allow_external_modules` is
+            `True`, for adding a custom module without publishing a package. No effect while that flag is
+            `False`.
+        module_frame_allowed_origins: Comma-separated origins the frontend may embed as a Tier B remote
+            module in a sandboxed `<ModuleFrame>` iframe (`Content-Security-Policy: frame-src`). Empty by
+            default, which sends `frame-src 'none'`. It lists what this app may frame, the opposite
+            direction of `cors_origins` (see `main.py`'s security-headers middleware). A module's
+            `frame_url` (`app.modules.registry.ModuleFrontendManifest`) must resolve to an origin in this
+            list or `get_frontend_manifest` rejects it (logs and returns `None`), enforced mechanically
+            as the path-prefix rule is for MCP tools.
         db_pool_size: Connections each worker process keeps in its database pool (SQLAlchemy `pool_size`).
         db_max_overflow: Extra connections a worker may open above `db_pool_size` under load, closed again when
             returned. A worker holds at most `db_pool_size + db_max_overflow` pooled connections, plus two dedicated

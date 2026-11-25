@@ -1,21 +1,17 @@
 /**
  * Module: utils/reportLayoutSettingGroups
  *
- * The one arrangement of a layout's own settings, shared by the Blocks view's layout panel and the text view's
- * page setup dialog.
- *
- * Responsibilities:
- * - `LAYOUT_SETTING_GROUPS`: the groups, their order and whether each starts open; `groupOfField` places a layout
- *   field (by key) in one, with an "other" group for a field this table does not know yet so a field added on the
- *   server is never lost.
- * - `treeSettingChanges` / `pageSetupChanges`: how many settings in each group differ from their defaults, read from
- *   the tree or from the page setup of the text, so a closed group can say it is not plain.
- * - `layoutGroupSummary`: the pill text for a closed group ("2 changed"; "3 page styles" for a list).
- * - `pageGroupSummary` / `marginsGroupSummary`: the effective value of the Page and Margins groups ("A4 portrait";
- *   "1.5 cm"), which always have one, so their bars say it in place of a count.
- *
- * Design decisions: arrangement only. Nothing here changes what is stored or the text view's syntax. The server's
- * field catalogue stays the source of which settings exist; this table only says where each one sits.
+ * The one arrangement of a layout's own settings, shared by the Blocks view's
+ * layout panel and the text view's page setup dialog.
+ * - `LAYOUT_SETTING_GROUPS`: groups, order and whether each starts open;
+ *   `groupOfField` places a field (by key) in one, with an "other" group for a
+ *   field the table does not know, so a server-added field is never lost.
+ * - `treeSettingChanges` / `pageSetupChanges`: how many settings per group
+ *   differ from defaults, so a closed group can say it is not plain.
+ * - `layoutGroupSummary`, `pageGroupSummary`, `marginsGroupSummary`: the pill
+ *   text of a closed group ("2 changed") and the effective Page and Margins value.
+ * Design: arrangement only; the server's field catalogue stays the source of
+ * which settings exist, this table says where each one sits.
  */
 import type { BlockField } from "../api/reportLayouts";
 import { effectiveMargins, type PageMargins, type PageOrientation, type PageSetup, type PageSize } from "./reportPageSetup";

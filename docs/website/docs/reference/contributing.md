@@ -6,6 +6,10 @@ sidebar_position: 3
 
 ReqTrackManager is open source. This page is a short pointer, not a full contributor guide — the real, up-to-date instructions live in the repository itself and are kept in sync with the actual codebase, rather than duplicated here where they'd drift.
 
+## Before the first pull request
+
+Contributions are accepted under a contributor licence agreement, which lets the product be offered under both its open-source and its commercial licence (see [Licensing](licensing.md)). In the first pull request, add an entry to `.github/cla-signatories.json`; the `CLA` check on a pull request fails until every commit author has signed. The steps are in [CONTRIBUTING.md](https://github.com/ballardr/reqtrackmanager/blob/main/CONTRIBUTING.md).
+
 ## Local setup
 
 ```bash

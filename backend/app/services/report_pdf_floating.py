@@ -1,23 +1,20 @@
 """
 Module: services.report_pdf_floating
 
-Pictures that sit over the page rather than in the flow of a ReportLab PDF: a picture placed behind or in front of the text.
+Pictures that sit over the page rather than in the flow of a ReportLab PDF: behind or in front of the text.
 
 Responsibilities:
-- `FloatingPicture`: a zero-size flowable that notes where in the flow it was met (the paragraph anchor) and hands the
-  picture to the page's canvas.
-- `draw_floaters`: draws a page's pictures at their anchors, once the page's text is laid out, so a picture behind the text
-  can be put under it and one in front over it.
+- `FloatingPicture`: a zero-size flowable that notes its place in the flow (the paragraph anchor) and hands the
+  picture to the page's canvas. `draw_floaters`: draws a page's pictures at their anchors once its text is laid out.
 
 Design decisions:
-- The picture is drawn when the document is saved (`report_pdf_running.RunningCanvas`, which keeps each page open), not
-  when the flowable is met, because "behind" has to reach text that was drawn before the picture's own position in the
-  flow. Behind-pictures are written at the start of the page's content stream, in-front pictures at its end.
-- An anchor is a corner: the flow position (`paragraph`), the corner of the text area (`margin`, which follows a mirrored
-  page's own inner margin) or of the sheet (`page`). The offsets run right and down from it, as in Word and ODT.
-- A picture that cannot be drawn is left out: a bad picture never breaks a report.
+- Pictures are drawn when the document is saved (`report_pdf_running.RunningCanvas`, which keeps each page open),
+  because "behind" must reach text drawn earlier: behind-pictures go at the start of the content stream, in-front at the end.
+- An anchor is a corner: the flow position (`paragraph`), the text area (`margin`, following a mirrored page's inner
+  margin) or the sheet (`page`); offsets run right and down, as in Word and ODT.
+- A picture that cannot be drawn is left out, never breaking a report.
 
-Dependencies: ReportLab, `services.report_image_layout`, `services.report_svg`.
+Dependencies: ReportLab, `report_image_layout`, `report_svg`.
 """
 
 from __future__ import annotations

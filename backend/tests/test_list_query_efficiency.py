@@ -1,11 +1,10 @@
-"""Tests for the 2026-10-04 list-endpoint efficiency fixes (found while
-root-causing e2e timeouts: the backend saturated a CPU on N+1 queries in the
-project and requirements lists).
+"""Tests for list-endpoint efficiency: batched queries instead of N+1 in the
+project and requirements lists.
 
 Covers:
 - `GET /projects/{id}/requirements` batching (`prefetch_for_list`): the
   batched per-row fields match the single-requirement endpoint exactly, and
-  the query count no longer grows with the number of requirements.
+  the query count does not grow with the number of requirements.
 - `GET /projects/{id}/my-roles`: the caller's roles on one project, including
   an archived project, an org admin without a project role, and a refused
   outsider.
@@ -13,7 +12,7 @@ Covers:
   it (e.g. a mutation followed by a re-check) always reads fresh data.
 - `GET /projects` role batching (`rbac.prefetch_project_roles`): each row's
   `my_roles` matches unbatched per-project resolution across every role
-  source, and the query count no longer grows with the number of projects.
+  source, and the query count does not grow with the number of projects.
 """
 
 from __future__ import annotations
@@ -628,8 +627,7 @@ def test_project_list_query_count_is_flat(client, admin_token):
 
 def test_user_access_query_count_is_flat(client, admin_token):
     """`GET /orgs/{id}/users/{user_id}/access` batches role resolution and
-    project-group lookups too (2026-10-05: it timed out the UI for an org
-    with ~70 projects), and still lists exactly the projects with a role."""
+    project-group lookups, and lists exactly the projects with a role."""
     org, token = create_org_admin_in(client, admin_token, "Access Batch Co")
     user_id = uuid.UUID(create_org_user(client, token, org["id"], "access_batch@example.com"))
     url = f"/api/v1/orgs/{org['id']}/users/{user_id}/access"

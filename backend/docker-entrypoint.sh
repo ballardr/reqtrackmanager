@@ -1,15 +1,11 @@
 #!/bin/sh
 # Backend container entrypoint.
 #
-# Runs uvicorn with BACKEND_WORKERS worker processes (default 4) so the API
-# can use more than one CPU core; process-wide work is coordinated between
-# workers by app/services/process_coordination.py (startup lock + leader
-# election) and app/services/pubsub.py (Postgres LISTEN/NOTIFY).
+# Runs uvicorn with BACKEND_WORKERS worker processes (default 4); workers coordinate through
+# app/services/process_coordination.py (startup lock, leader election) and app/services/pubsub.py (LISTEN/NOTIFY).
 #
-# Prometheus multi-process mode: each worker writes its metrics to
-# PROMETHEUS_MULTIPROC_DIR and /metrics aggregates them. The directory must
-# be emptied on every container start, before any worker imports
-# prometheus_client, or stale counts from a previous run would be summed in.
+# Prometheus multi-process mode: each worker writes metrics to PROMETHEUS_MULTIPROC_DIR and /metrics aggregates them.
+# The directory is emptied on every start, before any worker imports prometheus_client, so stale counts are not summed.
 set -e
 export PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-/tmp/prometheus-multiproc}"
 rm -rf "$PROMETHEUS_MULTIPROC_DIR"

@@ -1,50 +1,18 @@
 /**
  * Module: modules/compliance/ProjectCompliancePage
  *
- * The Compliance Module's project-scoped, Project-Manager/Compliance-
- * Officer-facing view
- * (requirements doc §21, plus UI portions of §7-§10, §12, §13) — the route
- * component the Tier A mechanism mounts at
- * `/projects/:projectId/modules/compliance` (see `modules/registry.ts`).
- *
- * Top-level shape: three `Tabs` — "Standards" (every standard assigned to
- * this project, §7, drilling into `ProjectComplianceDetail` for one
- * assignment's own applicability/assessment tree and reviews), "Evidence"
- * (`EvidencePanel`, project-wide per §13's own multi-assignment linkage),
- * and "Outstanding" (`OutstandingPanel` — the cross-assignment Non-
- * Compliant/Pending-Approval/Reviews-Due listings §20/§21 call for as their
- * own drillable lists, gathered in one place so "what remains outstanding"
- * doesn't require opening every assignment in turn, per §21's own "make it
- * easy... to determine what remains outstanding"). `?tab=evidence|outstanding`
- * opens that tab on arrival (read once; the evidence detail page's Back link uses it).
- *
- * Standard-to-project *assignment itself* is a Compliance Manager action on
- * the *org* router (`router.py::create_project_compliance`'s
- * design — see that endpoint's docstring), even though this whole page is
- * project-scoped; this page fetches the owning project's `organization_id`
- * once and passes it down wherever an org-router call is needed. Mirrors
- * `RequirementsPage.tsx`'s own "fetch the project, read `organization_id`
- * off it" convention (no `ProjectContext` provider exists in this codebase
- * — see that page's own link-types fetch for precedent) rather than
- * introducing one for this single page.
- *
- * Every mutating control always renders; the backend enforces
- * `require_module_role("compliance", "compliance_officer")`/
- * `_require_manage` and a 403 surfaces as a toast — the same "no client-side
- * can-i-manage precomputation" posture `ComplianceAdminPanel.tsx`
- * established, since no "my effective roles including module roles" endpoint
- * exists to check against without adding one (flagged there, still true
- * here).
- *
- * The Standards tab's "Export" trigger (§29) hits
- * `GET .../modules/compliance/reports?format={pdf,csv}` directly via
- * `api.getForBlob` + `downloadBlob` — the exact same fetch-a-blob-and-save-
- * it idiom `pages/ReportsPage.tsx`'s own PDF/CSV buttons already use for
- * core requirement reports (that page's `generate` function), reused
- * rather than reinvented for this module's own report generator
- * (`app.modules.compliance.reports`). It uses the shared `ReportExportButton`
- * (a single "Export" trigger opening a PDF/CSV `Popover`) rather than two
- * permanently-visible adjacent buttons; see that component's own docstring.
+ * The Compliance module's project-scoped view for a Project Manager or Compliance Officer (requirements doc §21 and the UI
+ * parts of §7-§10, §12, §13), the route component mounted at `/projects/:projectId/modules/compliance` (`modules/registry.ts`).
+ * Three `Tabs`: "Standards" (every standard assigned to the project, §7, drilling into `ProjectComplianceDetail`), "Evidence"
+ * (`EvidencePanel`, project-wide per §13) and "Outstanding" (`OutstandingPanel`, §20/§21). `?tab=evidence|outstanding` opens
+ * that tab on arrival (read once; the evidence detail page's Back link uses it).
+ * - Assigning a standard to the project is a Compliance Manager action on the *org* router (`router.py::create_project_compliance`),
+ *   so the page fetches the project's `organization_id` once and passes it to org-router calls (as `RequirementsPage.tsx` does;
+ *   no `ProjectContext` provider exists for it).
+ * - Every mutating control always renders; the backend enforces `require_module_role("compliance", "compliance_officer")` and
+ *   `_require_manage` and a 403 surfaces as a toast, because no endpoint gives the person's effective roles including module roles.
+ * - The Standards tab's Export (§29) calls `GET .../modules/compliance/reports?format=...` through `api.getForBlob` and
+ *   `downloadBlob`, as `pages/ReportsPage.tsx` does, using the shared `ReportExportButton` (one trigger opening a PDF/CSV `Popover`).
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -73,15 +41,14 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useInitialSearchParams, oneOf } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { COMPLIANCE_HELP } from "./help";
 
 const COMPLIANCE_TABS = ["standards", "evidence", "outstanding"] as const;
 type ComplianceTabKey = (typeof COMPLIANCE_TABS)[number];
 
-/** One row of the Standards tab's directory — a `ProjectCompliance`
- * assignment, decorated with its computed §20 status when active (archived
- * assignments have no status row — `GET .../status` only returns active
- * ones, see that endpoint's own docstring). */
+/** One row of the Standards tab's directory: a `ProjectCompliance` assignment decorated with its computed §20 status when
+ * active (`GET .../status` returns active assignments only). */
 interface AssignmentRow {
   assignment: ProjectCompliance;
   status: ProjectComplianceStatus | null;
@@ -148,6 +115,30 @@ export function ProjectCompliancePage() {
   }, [projectId]);
 
   const sorting = useSortState();
+  const columns: DirectoryColumn<AssignmentRow>[] = [
+    {
+      key: "standard", label: "Standard", sortable: true,
+      render: (row) => (row.status ? `${row.status.standard_reference} — ${row.status.standard_name}` : "—"),
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, render: (row) => row.status?.version_label ?? "—" },
+    {
+      key: "compliance", label: "Compliance", sortable: true,
+      render: (row) =>
+        row.assignment.is_archived
+          ? "Archived"
+          : row.status
+            ? `${row.status.compliance_percentage.toFixed(1)}% (${row.status.applicable_count} applicable)`
+            : "—",
+    },
+    {
+      key: "outstanding", label: "Non-compliant", sortable: true, optional: true,
+      render: (row) => (row.status ? complianceRiskLabel(row.status) : "—"),
+    },
+    { key: "target_date", label: "Target date", sortable: true, optional: true, render: (row) => row.assignment.target_compliance_date ?? "—" },
+  ];
+
+  const shown = useOptionalColumns("compliance_standards_by_project", columns);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (assignments === null || project === null) return <Spinner />;
@@ -177,28 +168,6 @@ export function ProjectCompliancePage() {
     status: statuses.find((s) => s.project_compliance_id === assignment.id) ?? null,
   }));
 
-  const columns: DirectoryColumn<AssignmentRow>[] = [
-    {
-      key: "standard", label: "Standard", sortable: true,
-      render: (row) => (row.status ? `${row.status.standard_reference} — ${row.status.standard_name}` : "—"),
-    },
-    { key: "version", label: "Version", sortable: true, render: (row) => row.status?.version_label ?? "—" },
-    {
-      key: "compliance", label: "Compliance", sortable: true,
-      render: (row) =>
-        row.assignment.is_archived
-          ? "Archived"
-          : row.status
-            ? `${row.status.compliance_percentage.toFixed(1)}% (${row.status.applicable_count} applicable)`
-            : "—",
-    },
-    {
-      key: "outstanding", label: "Non-compliant", sortable: true,
-      render: (row) => (row.status ? complianceRiskLabel(row.status) : "—"),
-    },
-    { key: "target_date", label: "Target date", sortable: true, render: (row) => row.assignment.target_compliance_date ?? "—" },
-  ];
-
   return (
     <div className="container stack">
       <h1 style={{ margin: 0 }}>{navName ?? "Compliance"}</h1>
@@ -219,10 +188,11 @@ export function ProjectCompliancePage() {
               Assign standard
             </button>
             <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
+            {shown.chooser}
           </div>
           <DirectoryTable
             ariaLabel="Compliance standards assigned to this project"
-            columns={columns}
+            columns={shown.columns}
             rows={sortRows(rows, sorting.sort, ASSIGNMENT_SORT_VALUES)}
             sort={sorting.sort}
             onSort={sorting.onSort}

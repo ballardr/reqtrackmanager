@@ -4,20 +4,14 @@
  * The "New change request" dialog, shared by the Change requests page and the Links panel's "Create new"
  * (`CreateChangeRequestDialog`), so a field added to the form reaches both.
  *
- * Responsibilities:
- * - Load what the form needs (requirements, components, categories, target versions, custom fields, the organisation's
- *   members and shared resources).
- * - A request to modify a requirement is field-toggle driven: a field's proposed value is editable, and submitted as
- *   part of `changed_fields`, only once its checkbox is ticked, and it is pre-filled from the selected requirement's
- *   current version. A request for a new requirement has no requirement to compare with, so its form is a normal
- *   create form.
- * - Create the request, then apply its tags.
- *
- * Design decisions:
- * - Links are proposed with the request (`ProposedLinksEditor`) and created only if the approver merges them, so the
- *   form has no quick-link field: linking a draft request directly would bypass that approval.
- * - `defaultRequirementId` pre-selects the requirement to change (the deep link from a requirement's page, or the
- *   requirement whose Links panel opened the dialog); it is used only when that requirement can be changed (is locked).
+ * - Loads what the form needs (requirements, components, categories, target versions, custom fields, the
+ *   organisation's members and shared resources), creates the request, then applies its tags.
+ * - A request to modify a requirement is field-toggle driven: a field's proposed value is editable and submitted
+ *   in `changed_fields` only once its checkbox is ticked, pre-filled from the requirement's current version. A
+ *   request for a new requirement is a normal create form.
+ * - Links are proposed with the request (`ProposedLinksEditor`) and created only if the approver merges them, so
+ *   there is no quick-link field: linking a draft request directly would bypass that approval.
+ * - `defaultRequirementId` pre-selects the requirement to change, only when it can be changed (is locked).
  */
 import { useEffect, useState } from "react";
 
@@ -32,17 +26,19 @@ import {
 } from "../api/types";
 import { useOrgLabel, useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
-import { toErrorMessage, useToast } from "../context/ToastContext";
+import { toErrorMessage } from "../context/ToastContext";
 import { useCommitTags } from "../hooks/useCommitTags";
+import { useCreatedToast } from "../hooks/useCreatedToast";
 import { useRecordCode } from "../hooks/useRecordCode";
 import { useResetOnChange } from "../hooks/useResetOnChange";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { CustomFieldsForm } from "./CustomFieldsForm";
 import { FormActions } from "./FormActions";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
 import { FormGrid, FormGridFull } from "./FormGrid";
 import { InlineSelect, LabeledSelect } from "./LabeledSelect";
+import { MarkdownEditor } from "./MarkdownEditor";
 import { Modal } from "./Modal";
+import { PrimaryPlaceField } from "./PrimaryPlaceField";
 import { PrincipalPicker } from "./PrincipalPicker";
 import { ProposedLinksEditor } from "./ProposedLinksEditor";
 import { TagField } from "./TagField";
@@ -81,8 +77,8 @@ export function ChangeRequestCreateModal({
 }) {
   const strings = useStrings();
   const recordCode = useRecordCode();
-  const { showToast } = useToast();
   const commitTags = useCommitTags(projectId, "change_request");
+  const announceCreated = useCreatedToast(projectId, "change_request");
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
 
@@ -149,8 +145,10 @@ export function ChangeRequestCreateModal({
       const lockable = reqs.filter((r) => r.is_locked);
       const requested = lockable.find((r) => r.id === defaultRequirementId);
       setRequirementId(requested?.id ?? lockable[0]?.id ?? "");
-      setComponentId(comps[0]?.id ?? "");
-      setCategoryId(cats.find((c) => c.component_id === comps[0]?.id)?.id ?? "");
+      // The first place that can be chosen: the first category of the first component that has one.
+      const firstCategory = cats.find((c) => c.component_id === comps.find((k) => cats.some((x) => x.component_id === k.id))?.id);
+      setComponentId(firstCategory?.component_id ?? comps[0]?.id ?? "");
+      setCategoryId(firstCategory?.id ?? "");
       setLoaded(true);
     })().catch((err) => { if (live) setError(toErrorMessage(err, strings.common.error)); });
     return () => { live = false; };
@@ -161,10 +159,9 @@ export function ChangeRequestCreateModal({
   // would only produce a refusal on submit.
   const lockableRequirements = requirements.filter((r) => r.is_locked);
 
-  // Re-prime the proposed-value form from the newly-selected requirement's current version whenever the selection
-  // changes, so a toggled field is always pre-filled with real content, and drop any previously toggled fields and
-  // attachments, since they described a different requirement's content. Keyed on the resolved requirement's id too: the
-  // requirement can be set before the list has loaded, and the form must be primed once it arrives.
+  // Re-prime the proposed-value form from the selected requirement's current version on every selection change and
+  // drop toggled fields and attachments, which described another requirement. Keyed on the resolved id too: the
+  // requirement can be set before the list has loaded.
   useResetOnChange([requirementId, kind, selectedRequirement?.id], () => {
     if (kind !== "modify_requirement" || !selectedRequirement) return;
     setProposed({
@@ -246,7 +243,7 @@ export function ChangeRequestCreateModal({
           proposed_links: proposedLinksPayload(),
         });
       }
-      showToast(strings.changeRequests.created);
+      announceCreated(strings.changeRequests.recordLabel, created);
       await commitTags(created.id, tags);
       onCreated(created.id);
       onClose();
@@ -267,25 +264,22 @@ export function ChangeRequestCreateModal({
         );
       case "reasoning":
         return (
-          <AutoGrowTextarea
-            rows={2}
-            value={proposed.reasoning}
+          <MarkdownEditor
+            math value={proposed.reasoning} ariaLabel={strings.requirements.reasoning}
             onChange={(value) => setProposed((p) => ({ ...p, reasoning: value }))}
           />
         );
       case "clarification":
         return (
-          <AutoGrowTextarea
-            rows={2}
-            value={proposed.clarification}
+          <MarkdownEditor
+            math value={proposed.clarification} ariaLabel={strings.requirements.clarification}
             onChange={(value) => setProposed((p) => ({ ...p, clarification: value }))}
           />
         );
       case "description":
         return (
-          <AutoGrowTextarea
-            rows={2}
-            value={proposed.description}
+          <MarkdownEditor
+            math value={proposed.description} ariaLabel={strings.requirements.description}
             onChange={(value) => setProposed((p) => ({ ...p, description: value }))}
           />
         );
@@ -334,7 +328,7 @@ export function ChangeRequestCreateModal({
             orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
             value={proposed.reviewer} display={savedPrincipalDisplay(proposed.reviewer, selectedRequirement?.reviewer)}
             onChange={(reviewer) => setProposed((p) => ({ ...p, reviewer }))}
-            ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
+            ariaLabel={strings.requirements.reviewer}
           />
         );
       case "custom_fields":
@@ -415,22 +409,12 @@ export function ChangeRequestCreateModal({
         </>
       ) : (
         <FormGrid minColumn="18rem">
-          <LabeledSelect help={strings.help.proposedRequirementComponent} required
-            label={strings.requirements.component}
-            value={componentId}
-            onChange={(nextComponentId) => {
-              setComponentId(nextComponentId);
-              setCategoryId(categories.find((c) => c.component_id === nextComponentId)?.id ?? "");
+          <PrimaryPlaceField
+            tree={{ components, categories }} categoryId={categoryId} help={strings.help.proposedRequirementPlace}
+            onChange={(place) => {
+              setComponentId(place.component_id);
+              setCategoryId(place.category_id ?? "");
             }}
-            options={components.map((c) => ({ value: c.id, label: c.name }))}
-            placeholder={null}
-          />
-          <LabeledSelect help={strings.help.proposedRequirementCategory} required
-            label={strings.requirements.category}
-            value={categoryId}
-            onChange={setCategoryId}
-            options={categories.filter((c) => c.component_id === componentId).map((c) => ({ value: c.id, label: c.name }))}
-            placeholder={null}
           />
           <FormGridFull>
             <TextField help={strings.help.proposedRequirementName} required
@@ -440,21 +424,21 @@ export function ChangeRequestCreateModal({
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField help={strings.help.proposedRequirementReasoning}
+            <TextAreaField markdown="math" help={strings.help.proposedRequirementReasoning}
               label={strings.changeRequests.proposedReasoning}
               value={proposed.reasoning}
               onChange={(next) => setProposed((p) => ({ ...p, reasoning: next }))}
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField help={strings.help.requirementClarification}
+            <TextAreaField markdown="math" help={strings.help.requirementClarification}
               label={strings.requirements.clarification}
               value={proposed.clarification}
               onChange={(next) => setProposed((p) => ({ ...p, clarification: next }))}
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded
+            <TextAreaField markdown="math" helpNotNeeded
               label={strings.requirements.description}
               value={proposed.description}
               onChange={(next) => setProposed((p) => ({ ...p, description: next }))}
@@ -497,7 +481,7 @@ export function ChangeRequestCreateModal({
         />
       )}
 
-      <TextAreaField helpNotNeeded required label={strings.changeRequests.reason} value={reason} onChange={setReason} />
+      <TextAreaField markdown="math" helpNotNeeded required label={strings.changeRequests.reason} value={reason} onChange={setReason} />
       <FormActions
         error={error} onCancel={onClose} onSave={createCr} saveLabel={strings.common.create}
         saveDisabled={

@@ -1,13 +1,9 @@
 /**
  * Module: modules/decisions/DecisionTemplateFormModal
  *
- * Create/edit dialog for an org-scoped `DecisionTemplate` — nine fields (name, description, and seven per-content-
- * field prompt texts), too busy for `DefinitionList`'s inline-row-edit
- * shape, so this follows `modules/compliance/StandardFormModal.tsx`'s own
- * precedent: a dedicated `size="lg"` `Modal` form shared by create and edit,
- * distinguished by whether `initial` is passed (mirrors
- * `compliance/EvidenceFormModals.tsx`'s `EvidenceFormModal` for the smaller-scale version of
- * the same create/edit split).
+ * Create/edit dialog for an organisation-scoped `DecisionTemplate`. Its nine fields (name, description and seven
+ * prompt texts) are too many for `DefinitionList`'s inline row edit, so it follows `modules/compliance/StandardFormModal.tsx`:
+ * a `size="lg"` `Modal` shared by create and edit, distinguished by whether `initial` is passed.
  */
 import { useState } from "react";
 
@@ -62,11 +58,11 @@ export function DecisionTemplateFormModal({
             <TextField helpNotNeeded required label="Template name" value={name} onChange={setName} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
+            <TextAreaField plainText="Configuration text shown in pickers and tooltips" helpNotNeeded label="Description" value={description} onChange={setDescription} />
           </FormGridFull>
           {PROMPT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown helpNotNeeded
                 label={f.label} value={prompts[f.key]}
                 onChange={(value) => setPrompts((p) => ({ ...p, [f.key]: value }))}
               />

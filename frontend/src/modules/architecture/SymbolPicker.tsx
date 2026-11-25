@@ -1,17 +1,12 @@
 /**
  * Module: modules/architecture/SymbolPicker
  *
- * A form field that chooses a symbol from a library (the type form and the element form share it). The field is one button
- * that shows the chosen symbol's drawing and name; an empty choice means "use the default": for a type, its shape; for an
- * element, its type's symbol. The caller supplies the symbols and the path each is read from, so the picker works for a
- * project's library and an organisation's alike.
- *
- * The button opens one panel (`SymbolPickerPanel`): a name filter above, the symbols in the middle and a row of view buttons
- * below, as an emoji picker has. The views are List (names), Gallery (a scrolling grid that shows the drawings) and, for a
- * person who may change the library (the capabilities read; the server still enforces the role), Upload. List or Gallery is
- * remembered per person in browser storage; Upload is never remembered. An uploaded file joins the shared library and is
- * chosen in the form's draft, saved with the form; it is remembered locally so it can be chosen before the caller has
- * reloaded its list.
+ * A form field that chooses a symbol from a library (shared by the type form and the element form). One button shows the
+ * chosen symbol's drawing and name; an empty choice means "use the default" (a type's shape, an element's type symbol).
+ * The caller supplies the symbols and each one's path, so it serves a project's and an organisation's library alike.
+ * The button opens `SymbolPickerPanel`: List (names), Gallery (drawings) and, for a person who may change the library
+ * (the server still enforces the role), Upload. List or Gallery is remembered per person in browser storage; Upload never.
+ * An uploaded file is chosen in the form's draft and remembered locally so it can be chosen before the caller reloads its list.
  */
 import { ChevronDown } from "lucide-react";
 import { useId, useRef, useState } from "react";

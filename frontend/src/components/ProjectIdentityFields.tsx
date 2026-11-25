@@ -72,7 +72,7 @@ export function ProjectIdentityFields({
       />
       {children}
       <FormGridFull>
-        <TextAreaField helpNotNeeded label={strings.projects.summary} value={summary} onChange={onSummaryChange} rows={2} />
+        <TextAreaField plainText="Shown in project cards and pickers, which are one-line plain-text surfaces" helpNotNeeded label={strings.projects.summary} value={summary} onChange={onSummaryChange} rows={2} />
       </FormGridFull>
     </>
   );

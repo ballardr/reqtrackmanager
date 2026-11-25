@@ -2,19 +2,19 @@
  * Module: modules/product_feedback/RequestDemandPanel
  *
  * Who asked for a request: the distinct requesters (Stakeholders and Personas, including those reached through linked
- * Engagements and through requests merged into it) with the weight each carries and where it comes from (an Influence
- * level, a Persona's own weight, or this or a parent project's override of it), the Engagements it was raised in,
- * the requests merged into it and the merge history. Requesters are authored with the generic "Requested by" link in
- * the Links panel or with this panel's own Add requester button (the same field the request forms use).
+ * Engagements and merged requests) with the weight each carries and its source (an Influence level, a Persona's own
+ * weight, or this or a parent project's override), the Engagements it was raised in, the requests merged into it and
+ * the merge history. Requesters are authored with the generic "Requested by" link in the Links panel or this panel's
+ * Add requester button (the same field the request forms use).
  *
- * Requesters arrive a page at a time (heaviest first): a request can be asked for by hundreds, so the table shows
- * "Showing N of M" with a Show more button, and the headline count and weight always cover every requester.
+ * Requesters arrive a page at a time (heaviest first), because a request can have hundreds: the table shows
+ * "Showing N of M" with a Show more button, and the headline count and weight cover every requester.
  *
  * Each requester's channel (how they asked) is shown beside them: a triager can set it from the pencil, and a
  * requester reached only through an Engagement reads as an Engagement with nothing to set.
  *
- * Demand is shown beside the score and never mixed into it. A requester the viewer may not see is counted but not
- * named. The kind of a requester is read from its artefact type, so this panel names no other module.
+ * Demand is shown beside the score, never mixed into it. A requester the viewer may not see is counted but not named.
+ * The kind of a requester is read from its artefact type, so this panel names no other module.
  */
 import { X } from "lucide-react";
 import { Spinner } from "../../components/Spinner";
@@ -28,6 +28,7 @@ import { RequesterChannelEdit } from "./RequesterChannelEdit";
 import { REQUEST_STATUS_LABEL, REQUESTER_WEIGHT_SOURCE_LABEL } from "./types";
 import type { Demand, Requester, RequestMerge } from "./types";
 import type { ListChoice } from "./useFeedbackLists";
+import { MarkdownView } from "../../components/MarkdownView";
 
 /** `stakeholder_group` becomes "Stakeholder group". */
 function kindLabel(artefactType: string): string {
@@ -210,7 +211,7 @@ export function RequestDemandPanel({
                   <td>{m.duplicate.unique_code}</td>
                   <td>{m.canonical.unique_code}</td>
                   <td>{new Date(m.merged_at).toLocaleString()}</td>
-                  <td style={{ whiteSpace: "pre-wrap" }}>{m.note || <span className="text-muted">—</span>}</td>
+                  <td>{m.note ? <MarkdownView text={m.note} /> : <span className="text-muted">—</span>}</td>
                   <td>
                     {m.active ? "Merged" : `Undone ${m.unmerged_at ? new Date(m.unmerged_at).toLocaleDateString() : ""} (back to ${REQUEST_STATUS_LABEL[m.prior_status]})`}
                   </td>

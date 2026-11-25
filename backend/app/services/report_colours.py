@@ -1,26 +1,21 @@
 """
 Module: services.report_colours
 
-Colour words for custom reports: one vocabulary every colour setting reads, and the one resolver that turns a word into a
-`#rrggbb` colour for the renderers.
+Colour words for custom reports: one vocabulary every colour setting reads and the one resolver that turns a word
+into `#rrggbb` for the renderers.
 
 Responsibilities:
-- Name the reserved words (`accent`, `accent_light`, `accent_dark`, `white`, `black`, `none`) and the four standard scheme
-  names (`primary`, `secondary`, `tint`, `neutral`) that always resolve, with no scheme of the layout's or the organisation's.
-- Check a scheme (`palette_problems`) and a colour word (`colour_word_problem`).
-- `effective_scheme`: the names a layout can use, resolved in the order layout, organisation, built-in standard set.
-- `resolve_colour`: a word to a hex colour, or `None` for `none`.
-- `colour_names_used`: the scheme names a tree refers to (so a name still in use cannot be removed, and a run records them).
+- Name the reserved words (`accent`, `accent_light`, `accent_dark`, `white`, `black`, `none`) and the standard scheme
+  names (`primary`, `secondary`, `tint`, `neutral`) that always resolve.
+- Check a scheme (`palette_problems`) and a word (`colour_word_problem`); `effective_scheme` (layout, organisation,
+  built-in order); `resolve_colour` (word to hex, `None` for `none`); `colour_names_used`.
 
 Design decisions:
-- **A colour is stored by name.** A block keeps `"fill": "primary"`, so changing the scheme re-colours everything that uses
-  it; a hex typed into a block stays a hex. A layout with no scheme of its own follows the organisation's, live.
-- **The resolver is the only door to markup.** A renderer writes a colour only from the `#rrggbb` this returns, never from
-  the words an author typed.
-- **A scheme entry is a hex colour or a derived/reserved word, never another name**, so resolution is one step and cannot
-  loop.
+- A colour is stored by name, so changing the scheme re-colours its users; a typed hex stays a hex.
+- The resolver is the only door to markup: renderers write only its `#rrggbb`, never an author's words.
+- A scheme entry is a hex or a reserved word, never another name, so resolution is one step and cannot loop.
 
-Dependencies: none (pure functions; `services.report_layout_tree` and the evaluator call them).
+Dependencies: none (pure functions).
 """
 
 from __future__ import annotations

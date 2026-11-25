@@ -11,15 +11,10 @@ import { withToast } from "./testing/storybook-helpers";
 const FIXTURE_MODULE_KEY = "fake_tier_a_fixture_module";
 
 /**
- * A minimal Tier A module page —
- * exists only to prove the mechanism, the same way `backend/tests/
- * test_module_registry.py`'s `fake_module` proves the backend registry
- * without a real module existing yet. Deliberately calls the real `useToast()`
- * — the whole point of Tier A is that an installed module's route
- * components are compiled directly into this bundle and can use every real
- * shared component/context exactly like a first-party page, not a
- * lookalike rendered behind an iframe boundary (that's Tier B,
- * `<ModuleFrame>`, covered separately in `ModuleFrame.stories.tsx`).
+ * A minimal Tier A module page that proves the mechanism, as `backend/tests/test_module_registry.py`'s
+ * `fake_module` does for the backend registry. It calls the real `useToast()`: an installed module's route
+ * components are compiled into this bundle and use every shared component and context as a first-party page does
+ * (Tier B, `<ModuleFrame>`, is covered in `ModuleFrame.stories.tsx`).
  */
 function FixtureTierAModulePage() {
   const { showToast } = useToast();
@@ -33,16 +28,9 @@ function FixtureTierAModulePage() {
   );
 }
 
-// Registered once, at module scope — mirrors this codebase's existing
-// Storybook fixture convention (e.g. OrgAdminPage.stories.tsx's module-
-// scope `entitledEnabledModule` constant) rather than a per-story
-// beforeEach/cleanup pair: nothing else in this codebase reads
-// `installedModules` except `App.tsx`'s own route-building and
-// `Layout.tsx`'s nav rendering, neither of which any *other* story file
-// exercises, so a permanently-registered fixture here causes no
-// cross-file interference — unlike the backend's `INSTALLED_MODULES`
-// (server-wide RBAC/registry state many backend tests read), there is
-// nothing here for a leaked entry to corrupt.
+// Registered once at module scope, as OrgAdminPage.stories.tsx's `entitledEnabledModule` is, not per story:
+// only `App.tsx`'s route building and `Layout.tsx`'s nav rendering read `installedModules`, and no other story
+// file exercises them, so a permanent fixture entry interferes with nothing.
 installedModules.push({
   key: FIXTURE_MODULE_KEY,
   routes: [{ path: "/projects/:projectId/modules/fixture", element: <FixtureTierAModulePage /> }],
@@ -58,10 +46,8 @@ const enabledModules: ModuleNavEntry[] = [
   },
 ];
 
-/** Harness reproducing exactly what `ProtectedRoutes` does with
- * `buildModuleRoutes`'s output — a `MemoryRouter` matching the fixture
- * module's own registered path, spliced in the same way real enabled
- * modules are. */
+/** Harness reproducing what `ProtectedRoutes` does with `buildModuleRoutes`'s output: a `MemoryRouter` matching
+ * the fixture module's path, spliced in as real enabled modules are. */
 function TierARoutingHarness() {
   return (
     <MemoryRouter initialEntries={["/projects/proj-1/modules/fixture"]}>
@@ -82,11 +68,9 @@ export default meta;
 
 type Story = StoryObj<typeof TierARoutingHarness>;
 
-/** A Tier A module registered in `frontend/src/modules/registry.ts` and
- * listed as enabled by the backend renders its own route component —
- * genuinely part of this bundle, not fetched/loaded dynamically — and that
- * component's use of a real shared context (`useToast()`) works exactly
- * like it would on any first-party page. */
+/** A Tier A module registered in `frontend/src/modules/registry.ts` and listed as enabled by the backend renders
+ * its own route component (part of this bundle, not loaded dynamically), and its use of a shared context
+ * (`useToast()`) works as on a first-party page. */
 export const RendersInstalledModuleRouteWithRealSharedComponents: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -98,10 +82,8 @@ export const RendersInstalledModuleRouteWithRealSharedComponents: Story = {
   },
 };
 
-/** A module with no matching `getInstalledModule` entry (e.g. a Tier B
- * manifest, or a stale `enabledModules` entry naming a module never
- * registered on the frontend) contributes no route at all — never a
- * crash. */
+/** A module with no matching `getInstalledModule` entry (a Tier B manifest, or an `enabledModules` entry naming a
+ * module not registered on the frontend) contributes no route and never crashes. */
 export const ContributesNoRouteWhenNotRegisteredOnTheFrontend: Story = {
   render: () => (
     <MemoryRouter initialEntries={["/projects/proj-1/modules/fixture"]}>

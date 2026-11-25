@@ -1,10 +1,9 @@
 """
 Module: routers.projects.groups
 
-Project groups (C-U-10/C-U-11, the members/groups directory rework — docs/decisions.md): bare-group creation, listing, per-group role
-grant/revoke, deletion, and membership (user/org-group/source-project)
-add/remove. A `ProjectGroup` can hold zero, one, or several
-`ProjectRole`s at once, each independently revocable.
+Project groups (C-U-10/C-U-11): bare-group creation, listing, per-group role grant/revoke, deletion and
+membership (user/org-group/source-project) add/remove. A `ProjectGroup` can hold zero, one or several
+`ProjectRole`s at once, each independently revocable (docs/decisions.md).
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -27,6 +26,7 @@ from app.schemas.principal import PrincipalRef, PrincipalUsageOut
 from app.schemas.project import ProjectGroupCreate, ProjectGroupMemberAdd, ProjectGroupOut, ProjectGroupRoleAssign
 from app.services import engagement
 from app.services.audit import log_event
+from app.services.list_sort import natural_key, order_records
 from app.services.lookups import affected_rows, present
 from app.services.membership_notifications import (
     actor_bypasses_project_managers,
@@ -46,6 +46,12 @@ from app.services.rbac import (
 )
 
 router = APIRouter(tags=["projects-groups"])
+
+#: The Role column's display name of each project role, in the order its dropdown lists them.
+_ROLE_LABELS: dict[ProjectRole, str] = {
+    ProjectRole.PROJECT_MANAGER: "Project manager", ProjectRole.PROJECT_ADMINISTRATOR: "Project administrator",
+    ProjectRole.STAKEHOLDER: "Stakeholder", ProjectRole.MEMBER: "Member",
+}
 
 
 @router.post("/{project_id}/groups", response_model=ProjectGroupOut, status_code=status.HTTP_201_CREATED)
@@ -76,31 +82,47 @@ def list_project_groups(
     project_id: UUID,
     response: Response,
     search: str | None = None,
+    sort: str = Query("name", pattern="^(name|roles|members)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view_or_manage),
     db: Session = Depends(get_db),
 ):
-    """Lists a project's groups, each with its resolved member/nested-org-
-    group id lists.
+    """Lists a project's groups, each with its resolved member and nested-org-group id lists.
 
-    `search` (name substring, case-insensitive) and `limit`/`offset`
- are optional, same
-    contract as `list_org_groups`: omitting `limit` returns every group
-    unpaginated, and the pre-slice total is returned via `X-Total-Count`
-    when given.
-
-    `order` (2026-08-31 — same reasoning as
-    `list_org_groups`'s own `order` param) flips the existing name
-    ascending order to descending; `DirectoryTable`'s Name column is this
-    list's only sortable column, so there's no separate `sort` field param.
+    `search` (case-insensitive name substring) and `limit`/`offset` are optional, as `list_org_groups`:
+    omitting `limit` returns every group unpaginated; when given, the pre-slice total is returned via
+    `X-Total-Count`. `sort` is `name` (default), `roles` (the joined role names the Role column shows; a group
+    with no role sorts last ascending and first descending) or `members` (the number of user members); `order`
+    sets the direction. Equal values are ordered by name, then id.
     """
     query = select(ProjectGroup).where(ProjectGroup.project_id == project_id)
     if search:
         query = query.where(ProjectGroup.name.ilike(f"%{search}%"))
-    name_order = ProjectGroup.name.desc() if order == "desc" else ProjectGroup.name
-    groups = db.scalars(query.order_by(name_order)).all()
+    descending = order == "desc"
+    if sort == "members":
+        member_count = (
+            select(func.count()).select_from(ProjectGroupMember)
+            .where(ProjectGroupMember.project_group_id == ProjectGroup.id, ProjectGroupMember.user_id.is_not(None))
+            .correlate(ProjectGroup).scalar_subquery()
+        )
+        ordering = [member_count.desc() if descending else member_count.asc(), ProjectGroup.name.asc(), ProjectGroup.id.asc()]
+    else:
+        ordering = [ProjectGroup.name.desc() if descending and sort == "name" else ProjectGroup.name.asc(), ProjectGroup.id.asc()]
+    groups = list(db.scalars(query.order_by(*ordering)).all())
+    if sort == "roles" and groups:
+        held: dict[UUID, set[ProjectRole]] = {}
+        for group_id, role in db.execute(
+            select(ProjectGroupRole.project_group_id, ProjectGroupRole.role).where(
+                ProjectGroupRole.project_group_id.in_([g.id for g in groups])
+            )
+        ).all():
+            held.setdefault(group_id, set()).add(role)
+        groups = order_records(
+            groups, lambda g: ", ".join(_ROLE_LABELS[r] for r in _ROLE_LABELS if r in held.get(g.id, ())) or None,
+            descending=descending, tie_of=lambda g: natural_key(g.name),
+        )
 
     response.headers["X-Total-Count"] = str(len(groups))
     if limit is not None:
@@ -156,22 +178,14 @@ def assign_project_group_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Grants a project group one more role (docs/decisions.md) —
-    replaces the old `PATCH /{project_id}/groups/{group_id}` "change the
-    group's one role" endpoint now that a group can hold zero, one, or
-    several roles at once: each is its own independently-revocable
-    `ProjectGroupRole` row rather than a single mutable field. Mirrors
-    `assign_group_project_role` (the org-group-role grant, in
-    `routers.projects.roles`) as closely as sensible, adapted for a
-    project-group target instead of an org-group one — same 204-no-body
-    shape, and no cross-tenant check is needed here (unlike that endpoint's
-    `org_group_id` re-validation), since a `ProjectGroup` already belongs
-    to exactly one project by construction; `_get_group_in_project` already
-    404s if `group_id` doesn't belong to `project_id` at all.
+    """Grants a project group one more role (docs/decisions.md). A group can hold zero, one or several roles,
+    each its own independently revocable `ProjectGroupRole` row. Mirrors `assign_group_project_role`
+    (`routers.projects.roles`) for a project-group target: the same 204-no-body shape, and no cross-tenant
+    check is needed because a `ProjectGroup` belongs to exactly one project (`_get_group_in_project` 404s if
+    `group_id` is not in `project_id`).
 
-    Idempotent like `assign_group_project_role`/`assign_project_role`:
-    granting an already-held role is a silent no-op, not a 409 — no audit
-    event or commit happens on the no-op path.
+    Idempotent like `assign_group_project_role`/`assign_project_role`: granting an already-held role is a
+    silent no-op with no audit event or commit.
     """
     group = _get_group_in_project(db, project.id, group_id)
     bypass = actor_bypasses_project_managers(db, current_user, project)
@@ -204,19 +218,13 @@ def revoke_project_group_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Revokes one role from a project group — the group-scoped
-    C-U-08 guard site this PR adds, shaped like `delete_project_group`'s
-    (lock the project row, perform the delete, flush, then re-check
-    `get_effective_project_managers` before commit) rather than a single-
-    user pre-check, since revoking a group's role can remove effective
-    access from every member of that group at once. Same defense-in-depth
-    reasoning as `revoke_group_project_role`'s own C-U-08 guard (in
-    `routers.projects.roles`): a `ProjectGroup`'s *direct user* members DO
-    count towards the C-U-08 floor via `_direct_project_managers` (unlike a
-    nested/direct org group), so this guard is the one that actually
-    matters in practice for this mechanism, not just a defensive fallback —
-    see docs/decisions.md's identify/verify/remediate entry for this
-    endpoint.
+    """Revokes one role from a project group: the group-scoped C-U-08 guard site, shaped like
+    `delete_project_group` (lock the project row, delete, flush, then re-check
+    `get_effective_project_managers` before commit) rather than a single-user pre-check, since revoking a
+    group's role can remove effective access from every member at once. As `revoke_group_project_role`'s
+    guard (`routers.projects.roles`), but a `ProjectGroup`'s direct user members count towards the C-U-08
+    floor via `_direct_project_managers` (unlike a nested or direct org group), so this guard matters in
+    practice (see docs/decisions.md's identify/verify/remediate entry for this endpoint).
     """
     group = _get_group_in_project(db, project.id, group_id)
     bypass = actor_bypasses_project_managers(db, current_user, project)
@@ -240,11 +248,9 @@ def revoke_project_group_role(
                 db, project=project, actor=current_user, verb="Removed", target=f"project group {group.name}",
                 role=role,
             )
-        # Same per-member engagement cleanup `revoke_group_project_role`
-        # applies for its own (potentially many-user) revocation: a group's
-        # role can be one of several sources a member holds it through, so
-        # only clean up subscriptions/favourites for someone this actually
-        # left with no remaining access at all.
+        # Same per-member engagement cleanup as `revoke_group_project_role`: a group's role can be one of
+        # several sources a member holds it through, so subscriptions/favourites are cleaned up only for
+        # someone left with no remaining access.
         affected_user_ids = {
             m.user_id
             for m in db.scalars(
@@ -286,32 +292,20 @@ def delete_project_group(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Deletes a project group entirely; its `ProjectGroupMember` rows go
-    with it via `ondelete="CASCADE"`. No group is specially protected from
-    deletion any more (2026-08-31 removed the
-    four auto-created "standard" groups and their `is_default` flag
-    entirely — see docs/decisions.md) — the only thing standing between a
-    delete and an unmanaged project is the C-U-08 guard immediately below,
-    which applies identically to every group regardless of how it was
-    created.
+    """Deletes a project group entirely; its `ProjectGroupMember` rows go with it via `ondelete="CASCADE"`.
+    No group is specially protected from deletion; the C-U-08 guard below applies identically to every group.
 
-    Same C-U-08 guard as `assign_project_group_role`/`revoke_project_group_
-    role`, shaped for a whole-group removal rather than a single-role
-    change: if this group currently holds a `PROJECT_MANAGER` grant (checked against `ProjectGroupRole`, not the old scalar `ProjectGroup.
-    role`), the project row is locked first, then the group (and every
-    membership/role under it) is deleted and flushed, then `get_effective_
-    project_managers` is re-checked before commit. The check has to run
-    *after* the delete is flushed, not before, unlike `remove_project_group_
-    member`'s single-membership check — a whole-group delete removes every
-    membership at once, so a pre-check would have to reproduce "what would
-    managers look like without this group" rather than just asking the
-    normal live-state question afterward.
+    Same C-U-08 guard as `assign_project_group_role`/`revoke_project_group_role`, shaped for a whole-group
+    removal: if this group holds a `PROJECT_MANAGER` grant (checked against `ProjectGroupRole`), the project
+    row is locked first, then the group (and every membership/role under it) is deleted and flushed, then
+    `get_effective_project_managers` is re-checked before commit. The check runs after the delete is flushed
+    because a whole-group delete removes every membership at once, so a pre-check would have to reproduce
+    "what would managers look like without this group".
 
-    Records that name the group as an owner/assignee (`services.principals`)
-    block the delete (409) unless `replacement_type`/`replacement_id` names a
-    user, org group or project group of this project to take over every one of
-    them, or `clear_optional` empties the optional fields (a mandatory field
-    always needs a replacement).
+    Records that name the group as an owner/assignee (`services.principals`) block the delete (409) unless
+    `replacement_type`/`replacement_id` names a user, org group or project group of this project to take over
+    every one of them, or `clear_optional` empties the optional fields (a mandatory field always needs a
+    replacement).
     """
     group = _get_group_in_project(db, project.id, group_id)
     if (replacement_type is None) != (replacement_id is None):
@@ -368,11 +362,9 @@ def add_project_group_member(
         if org_group is None or org_group.organization_id != project.organization_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "org_group_id must belong to the project's organisation.")
     if payload.source_project_id is not None:
-        # Same cross-tenant boundary as org_group_id above, plus a
-        # self-reference guard (a project referencing its own roster is
-        # meaningless and would recurse straight into itself if the
-        # non-recursive one-hop guarantee ever changed) — see
-        # `models.project.ProjectGroupMember.source_project_id`'s docstring.
+        # Same cross-tenant boundary as org_group_id above, plus a self-reference guard (a project
+        # referencing its own roster is meaningless and would recurse if the non-recursive one-hop guarantee
+        # changed); see `models.project.ProjectGroupMember.source_project_id`.
         if payload.source_project_id == project.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "source_project_id must not be this project itself.")
         source_project = db.get(Project, payload.source_project_id)
@@ -424,19 +416,12 @@ def remove_project_group_member(
 ):
     """Removes a member (user or nested org group) from a project group.
 
-    Blocks the removal if `group` currently holds a `PROJECT_MANAGER` grant
- (checked against `ProjectGroupRole`, not the old scalar
-    `ProjectGroup.role` — a group can now hold that grant alongside others)
-    and `member_id` is currently the project's only manager (C-U-08),
-    mirroring the same guard `revoke_project_role` (in `routers.projects.
-    roles`) applies to direct role revocation — a project must always
-    retain at least one manager. Same `is_inherited_manager` exception as
-    that guard: removing this membership is safe if `member_id` would
-    remain a manager via forward inheritance alone (member_id may be a
-    user id, an org-group id, or a source-project id here —
-    `is_inherited_manager` only applies to a real user, so a group/
-    project-reference removal always falls through to the block, unchanged
-    from before).
+    Blocks the removal if `group` holds a `PROJECT_MANAGER` grant (checked against `ProjectGroupRole`) and
+    `member_id` is the project's only manager (C-U-08), as the guard `revoke_project_role`
+    (`routers.projects.roles`) applies to direct role revocation. Same `is_inherited_manager` exception:
+    removal is safe if `member_id` would remain a manager via forward inheritance alone. `member_id` may be a
+    user id, an org-group id or a source-project id; `is_inherited_manager` applies only to a real user, so
+    a group or project-reference removal always falls through to the block.
     """
     group = _get_group_in_project(db, project.id, group_id)
     bypass = actor_bypasses_project_managers(db, current_user, project)
@@ -479,20 +464,11 @@ def remove_project_group_member(
             ),
             detail=f"from project group {group.name}",
         )
-    # Resolve the real user(s) this removal can actually affect. `member_id`
-    # may be a real user id, an org-group id, or a source-project id (see
-    # this function's own docstring) — only the first can be checked
-    # directly against get_effective_project_roles. Pre-existing gap fixed
-    # here (found while building revoke_group_project_role's own equivalent
-    # cleanup — see docs/decisions.md): for the other two kinds this used to
-    # call get_effective_project_roles(db, member_id, ...) with a group/
-    # project id standing in for a user id — since no real user has that id,
-    # the check always vacuously "passed" and remove_subscriptions_and_
-    # favorites_for_projects was called with that same non-user id, so a
-    # nested-group or project-reference removal never actually cleaned up
-    # the real former members' subscriptions/favourites. Resolves each
-    # kind's real member set first instead, same pattern
-    # revoke_group_project_role uses for its own group-level cleanup.
+    # Resolve the real user(s) this removal can affect. `member_id` may be a user id, an org-group id or a
+    # source-project id (see the docstring), and only a user id can be checked directly against
+    # `get_effective_project_roles`; for the other kinds each kind's real member set is resolved first, as
+    # `revoke_group_project_role` does for its group-level cleanup, so the former members' subscriptions and
+    # favourites are cleaned up.
     if removed_member is None:
         affected_user_ids: set[UUID] = set()
     elif removed_member.user_id is not None:
@@ -513,10 +489,8 @@ def remove_project_group_member(
             _direct_project_member_ids_base(db, removed_member.source_project_id)
             if removed_member.source_project_id is not None else set()
         )
-    # A group can grant a role alongside other direct/group roles a user
-    # holds on the same project, so only clean up subscriptions/favourites
-    # for someone this removal actually left with no remaining access — not
-    # on every membership change.
+    # A group can grant a role alongside other direct/group roles a user holds on the project, so
+    # subscriptions/favourites are cleaned up only for someone this removal left with no remaining access.
     for affected_user_id in affected_user_ids:
         if not get_effective_project_roles(db, affected_user_id, project.id):
             engagement.remove_subscriptions_and_favorites_for_projects(db, affected_user_id, [project.id])

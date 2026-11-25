@@ -1,15 +1,9 @@
 /**
  * Module: components/AnnouncementSeverityMark
  *
- * The severity of an announcement as a coloured icon with its name: Information, Warning or Critical.
- *
- * Responsibilities: carry severity by more than colour (WCAG 1.4.1), with a distinct icon per level and the
- * level's name as text. The name is visually hidden where the surrounding layout already shows the message
- * (the banner and login pages), and visible in the administration table, so assistive technology and a
- * colour-blind reader always get the level.
- *
- * Design decisions: it replaces the severity badge; there is one component for the notices and the
- * administration table so the two cannot drift.
+ * The severity of an announcement (Information, Warning, Critical) as a coloured icon with its name, so severity
+ * is carried by more than colour (WCAG 1.4.1). The name is visually hidden where the layout already shows the
+ * message (banner, login pages) and visible in the administration table. One component serves both.
  */
 import { Info, OctagonAlert, TriangleAlert, type LucideIcon } from "lucide-react";
 

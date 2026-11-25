@@ -10,13 +10,14 @@ A requirement's **keywords** are its tags: the same labels, the same list.
 
 ## Tagging a record
 
-Open a record. Under its title are its tags, followed by a small **+** button, if you may tag that kind of record (the same people who may edit it; a decision or a risk needs the **Manage** permission on it, see [Role Management](role-management.md)).
+Open a record. Under its title, after its status and version, is one row holding the record's tags, components and external references, followed by a single small **+** button, if you may tag that kind of record (the same people who may edit it; a decision or a risk needs the **Manage** permission on it, see [Role Management](role-management.md)). The menu lists only what you can add: a requirement has no component row, because its components are set in its own **Component** field and on its **Components** card.
 
-- Select the **+** ("Add tag") to open a small box. Type to see the project's tags and pick one, or press **Enter** (or type a comma) to add what you typed. The box stays open after each tag, so you can add several in one go; select **Done**, press **Escape** or click elsewhere to close it. Remove a tag with the **×** on its chip.
-- The same **+** is on the **Tags** line of a create form.
+- Select the **+** (its name lists what the menu offers, for example "Add tag or external reference") and choose **Add tag** to open a small box. Type to see the project's tags and pick one, or press **Enter** (or type a comma) to add what you typed. The box stays open after each tag, so you can add several in one go; select **Done**, press **Escape** or click elsewhere to close it. Remove a tag with the **×** on its chip.
+- Choose **Add external reference** to point the record at an item in another tool; see [External references](./external-references.md).
+- A create form has its own **+** on the **Tags** line.
 - A change is saved at once, and appears in the record's **Activity** tab ("Alex added the tag Safety").
 - Tags are not part of a record's content, so you can tag an approved requirement without a change request.
-- A person who may only read a record sees its tags but no **+**.
+- A person who may only read a record sees its labels but no **+**.
 
 ```mermaid
 flowchart TD
@@ -46,11 +47,11 @@ Project managers open **Project admin → Tags** to look after the project's tag
 | Task | How |
 | --- | --- |
 | Who may add a new tag | **Anyone who can tag a record** (a free list) or **Only tags listed here** (a restricted list: people pick from the list and an administrator adds to it) |
-| Add, rename, colour | The **New tag** box; the **⋮** menu on a tag renames it; **Change colour** on the same menu opens a picker: choose a swatch, pick any colour on the colour wheel, or type a hex code such as `#2b6cb0` or `#0a8`. **No colour** clears it. The colour marks the chip's edge. Renaming changes every record that carries it |
+| Add, rename, colour | The **New tag** button, which opens a dialog for the name and an optional colour; the **⋮** menu on a tag renames it; **Change colour** on the same menu opens a picker: choose a swatch, pick any colour on the colour wheel, or type a hex code such as `#2b6cb0` or `#0a8`. **No colour** clears it. The colour marks the chip's edge. Renaming changes every record that carries it |
 | Merge two tags | **⋮ → Merge … into another tag**. Records get the other tag, and the first is deleted |
 | Change many records | **⋮ → Reclassify records tagged …**: add or remove other tags, optionally for one kind of record only. **Preview** shows the count; **Apply** makes the change |
 | Delete a tag | **⋮ → Delete …**. You type the tag's name to confirm, and the dialog says how many records lose it |
-| See how tags are used | One table per kind of record: each tag, how many records of that kind carry it, and when it was last used. Tick a tag to hide it from the tables while you review the others; the box above a table filters it |
+| See where a tag is used | Press the record count in the **Used on** column. A dialog lists each kind of record that carries the tag, how many records of that kind do, and when the tag was last used, with **Reclassify** for one kind of record. A tag no record carries shows a plain count |
 
 Every change is recorded in the audit trail, and a bulk change also appears in each affected record's Activity tab.
 
@@ -60,11 +61,15 @@ Every change is recorded in the audit trail, and a bulk change also appears in e
 flowchart LR
     P["Parent project<br/>has tags"] --> C["Child project with no tags of its own<br/>uses the parent's list and setting"]
     C --> D["First tag the child adds<br/>starts a list of its own"]
-    O["Organisation<br/>Org admin → Tags"] --> R["Records the organisation owns<br/>(personas, strategies …)"]
+    O["Organisation<br/>Organisation resources → Tags"] --> R["Records the organisation owns<br/>(personas, strategies …)"]
 ```
 
 - A child project that has no tags of its own uses its nearest parent project's tags and setting. The parent manages that list; the child sees it read-only. The first tag the child itself adds starts a list of its own; records keep the parent's tags they already carry. A project's own setting (or **Follow the parent project**) overrides the parent's.
-- Records the **organisation** owns (an organisation persona, stakeholder, strategy and so on) use the organisation's tags, kept under **Org admin → Tags**, not a project's. Organisation admins have the same tools there, and a setting for who may add a new tag. You tag such a record from any project that shows it.
+- Records the **organisation** owns (an organisation persona, stakeholder, strategy and so on) use the organisation's tags, kept under **Organisation resources → Tags**, not a project's. Organisation admins have the same tools there, and a setting for who may add a new tag. You tag such a record from any project that shows it.
+
+| The organisation's own tags, under Organisation resources → Tags |
+| --- |
+| ![Tags section of Organisation resources with the section list on the left and the organisation's tag settings](../../static/img/screenshots/org-resources-tags.png) |
 
 ## Moving tags between projects
 

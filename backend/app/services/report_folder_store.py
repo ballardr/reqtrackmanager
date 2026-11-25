@@ -1,30 +1,23 @@
 """
 Module: services.report_folder_store
 
-The folders of the Reports picker that a scope can choose from, and adding, renaming and deleting the ones it owns.
+The folders of the Reports picker a scope can choose from, and adding, renaming and deleting the ones it owns.
 
 Responsibilities:
-- `list_folders`: every folder a scope can file a report under: the folders it (and, for a project, its ancestors and
-  the organisation) added, plus every folder some layout, pack or placement it can see already uses, with the levels
-  above each. Each is flagged `own` when this scope can change what is in it.
-- `add_folder`: record a folder so it exists before anything is filed in it.
-- `rename_folder` / `delete_folder`: change a folder and everything this scope owns at or below it in one step.
+- `list_folders`: every folder a scope can file under (its own, its ancestors' and the organisation's, plus any folder
+  a visible layout, pack or placement uses, with the levels above), each flagged `own` when this scope can change it.
+- `add_folder`, `rename_folder`, `delete_folder`; each change is one audit event of paths and counts.
 
 Design decisions:
-- **A folder is still a label** (`services.report_folders`); `ReportFolder` rows only keep a folder that nothing is filed
-  in yet. The listing is the union of both, so a folder in use can never be missing.
-- **Nesting is additive** (**Decided by: Agent**): a project sees its own folders, its ancestors' and the
-  organisation's together, as it does layouts and packs. The action-type rule ("own rows, else the nearest ancestor's")
-  would make a child's first folder hide every inherited one, which is wrong for a vocabulary of labels.
-- **A scope changes only what it owns**: its own folder rows, layouts, packs and placements. A folder an ancestor or the
-  organisation owns can be filed into but not renamed or deleted here (404 for an unchanged folder).
-- **Delete never deletes a report** (**Decided by: User**): what was filed in the folder, and in its sub-folders, moves
-  up one level (to the top level from a first-level folder) and the counts are returned. Rename keeps the parent and
-  changes the last level, and refuses a name another folder already has.
-- A change is one audit event with paths and counts, never record content.
+- A folder is still a label (`services.report_folders`); `ReportFolder` rows only keep an empty folder, and the listing
+  is the union of both.
+- Nesting is additive (**Decided by: Agent**): the action-type rule (own rows, else the nearest ancestor's) would let
+  a child's first folder hide every inherited one, which is wrong for labels.
+- A scope changes only what it owns; an inherited folder can be filed into, not renamed or deleted (404).
+- Delete never deletes a report (**Decided by: User**): its contents move up one level and the counts are returned.
+  Rename changes the last level and refuses an existing name.
 
-Dependencies: `models.report_folder`, `services.report_folders`, `services.report_layout_scope`,
-`services.report_pack_scope`, `services.report_placements`.
+Dependencies: `models.report_folder`, `report_folders`, `report_layout_scope`, `report_pack_scope`, `report_placements`.
 """
 
 from __future__ import annotations

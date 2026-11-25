@@ -4,11 +4,9 @@ import { expect, fn, userEvent, within } from "storybook/test";
 
 import { Popover } from "./Popover";
 
-/** `Popover` takes a live `anchorRef` to position against and has no
- * header chrome of its own — every story drives it through this harness
- * (a trigger button + the "New group" popover body from the style guide's
- * own mockup) rather than static `args`, since there's no meaningful way
- * to render it without a mounted anchor element. */
+/** `Popover` takes a live `anchorRef` to position against and has no header chrome, so every story drives it
+ * through this harness (a trigger button and the "New group" popover body from the style guide) rather than
+ * static `args`; it cannot render without a mounted anchor element. */
 function PopoverHarness({ onClose, initialOpen = true }: { onClose: () => void; initialOpen?: boolean }) {
   const [open, setOpen] = useState(initialOpen);
   const anchorRef = useRef<HTMLButtonElement>(null);
@@ -115,12 +113,9 @@ export const TabTrapCycles: Story = {
   },
 };
 
-/** Closing the popover (Escape, here) returns focus to the trigger button
- * that opened it. Starts closed and opens via a real click — every other
- * story starts pre-opened for a simpler `play`, but restoration is only a
- * meaningful assertion when the "previously focused element" captured on
- * open is genuinely the trigger, which requires actually clicking it
- * rather than mounting already-open. */
+/** Closing the popover (Escape, here) returns focus to the trigger button that opened it. It starts closed and
+ * opens through a real click, because restoration is only meaningful when the element focused on open is the
+ * trigger. */
 export const RestoresFocusOnClose: Story = {
   args: { initialOpen: false },
   play: async ({ canvasElement }) => {

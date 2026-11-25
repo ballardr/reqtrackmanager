@@ -7,10 +7,9 @@
  * - Read the document's size, draw it on an off-screen canvas over a white background and encode the canvas as PNG.
  *
  * Design decisions:
- * - The SVG is loaded as an image from a Blob URL, never inserted into the page, so nothing in it can run script or reach
- *   the page's DOM; a browser draws an SVG image without running its script.
+ * - The SVG is loaded as an image from a Blob URL, never inserted into the page, so its script cannot run.
  * - The pixel size is capped so a very large diagram cannot exhaust memory; the scale drops to fit instead of failing.
- * - The background is opaque white because a transparent PNG of dark-on-light artwork is unreadable on a dark viewer.
+ * - The background is opaque white because transparent dark-on-light artwork is unreadable on a dark viewer.
  */
 
 /** The longest side of the PNG, in pixels. */

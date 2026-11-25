@@ -1,10 +1,9 @@
 /**
  * Module: components/useLinkGraph
  *
- * Loads a record's link graph for a trace view: `depth` hops, once per
- * (project, record, depth), with a failure flag instead of a thrown error.
- * A view of a different record mounts anew (the modal closes on navigation), so the
- * state is not reset between records.
+ * Loads a record's link graph for a trace view: `depth` hops, once per (project, record, depth), with a failure flag
+ * instead of a thrown error. A view of a different record mounts anew (the modal closes on navigation), so the state is
+ * not reset between records.
  */
 import { useEffect, useState } from "react";
 

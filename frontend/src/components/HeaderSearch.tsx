@@ -1,22 +1,15 @@
 /**
  * Module: components/HeaderSearch
  *
- * The global search box in the top bar, left of the notification bell, with a live dropdown of the
- * top results. It has no scope control: it searches the narrowest scope that matches the page the
- * viewer is on (`modules/searchScopes.ts`), and the Scope filter on the search page changes it. The
- * dropdown's footer names the place being searched in the scope's own label.
+ * The global search box in the top bar with a live dropdown of the top results. It has no scope control: it
+ * searches the narrowest scope matching the viewer's page (`modules/searchScopes.ts`); the search page's Scope
+ * filter changes it, the dropdown footer names the place searched, and on the search page the box never overrides a
+ * scope the viewer chose there (docs/ux-style-guide.md, "Pattern: global search").
  *
- * Behaviour (docs/ux-style-guide.md, "Pattern: global search"):
- * - Submit by Enter or the visible Search button (`<form role="search">`); the page carries the query,
- *   scope and project in its URL (`/search?q=…`).
- * - `/` focuses the box (not while typing in a field); Esc closes the dropdown, then clears and blurs.
- * - The dropdown is an ARIA combobox: arrows move through results, Enter opens the highlighted one, Enter
- *   with nothing highlighted opens the page. Results are announced once per settled query, by count.
- * - Narrow viewports collapse the box to an icon button that opens it full-width.
- * - While on the search page the box shows that page's query and scope; it never overrides a scope the
- *   viewer changed on the page.
- *
- * The request behaviour (debounce, abort, keep-previous-results, cache) is `useLiveSearch`.
+ * Enter or the Search button submits (`<form role="search">`; the URL carries `/search?q=...`). `/` focuses the box;
+ * Esc closes the dropdown, then clears and blurs. The dropdown is an ARIA combobox (arrows, Enter opens the
+ * highlighted result, else the page); results are announced once per settled query. Narrow viewports collapse the
+ * box to an icon. Request behaviour (debounce, abort, cache) is `useLiveSearch`.
  */
 import { Loader2, Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";

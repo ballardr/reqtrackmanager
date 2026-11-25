@@ -1,28 +1,21 @@
 """
 Module: services.report_odf
 
-The shared ODF (OpenDocument) package layer behind the ODT and ODS report renderers (`report_odt`, `report_ods`):
-the zip container, the manifest, document metadata, XML text and attribute escaping, and raster image sniffing.
+The shared ODF package layer behind the ODT and ODS renderers (`report_odt`, `report_ods`).
 
 Responsibilities:
-- `OdfPackage`: a zip with the `mimetype` entry first and stored (what ODF readers sniff), `meta.xml`, any
-  pictures, and a manifest listing every part.
-- `xml_text`: model text as ODF paragraph content (tabs, line breaks and runs of spaces kept; characters that
-  are invalid in XML 1.0 dropped; everything escaped).
-- `xml_attr`, `length_cm`, `colour`: the only ways a value reaches an attribute.
-- `raster_info`: the sniffed media type and pixel size of an image's bytes.
+- `OdfPackage`: a zip with the stored `mimetype` entry first, `meta.xml`, pictures and a manifest.
+- `xml_text` (model text as paragraph content; XML-invalid characters dropped, everything escaped), `xml_attr`,
+  `length_cm`, `colour` (the only ways a value reaches an attribute), `raster_info` (sniffed type and pixel size).
 
 Design decisions:
-- **Written directly, not through `odfpy`.** A library such as `odfpy` builds the whole document
-  as an object tree: 100,000 rows of six cells took 1.1 GB and 45 seconds, and a background run allows five times
-  that. The XML an ODT or ODS needs here is small and well defined, so each renderer streams it as text through
-  one escaping choke point (`xml_text` for content, `xml_attr` for attributes), which also leaves no dependency.
-- **Nothing reaches the XML unescaped.** Every string goes through `xml_text` or `xml_attr`; a colour is checked
-  as six hex digits; a length is formatted from a number; an image's media type is sniffed from its bytes, never
-  taken from the model. The package holds no macro, script, link, external object or field code.
-- **Metadata is fixed**: the title, a fixed generator and creator and the creation time (UTC); never a person.
+- Written directly as streamed XML text, not through `odfpy`, whose object tree took 1.1 GB and 45 seconds for 100,000
+  rows of six cells (a background run allows five times that).
+- Nothing reaches the XML unescaped: colours are six hex digits, lengths come from numbers, an image's type is sniffed
+  from its bytes. The package holds no macro, script, link, external object or field code.
+- Metadata is fixed: title, a fixed generator and creator and the UTC creation time, never a person.
 
-Dependencies: Pillow (image sniffing), `services.report_docx.clean_text` (the one XML-invalid-character filter).
+Dependencies: Pillow, `services.report_docx.clean_text` (the XML-invalid-character filter).
 """
 
 from __future__ import annotations

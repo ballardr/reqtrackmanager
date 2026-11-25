@@ -1,20 +1,19 @@
 /**
  * Module: components/ReportLayoutWidgetEditor
  *
- * The three controls of a `widget` block: which report component it embeds, that component's settings and how
- * its table is sorted.
+ * The three controls of a `widget` block: which report component it embeds, that component's settings and how its
+ * table is sorted.
  *
- * Responsibilities:
- * - Component: a choice of the components the scope offers, labelled with the module and report they come from;
- *   a stored key the scope no longer offers stays visible and selected, marked as not available.
- * - Settings: the report's own parameters through the shared parameter form; a setting bound to a layout
- *   variable (`{var: name}`) is listed and kept, not drawn as a plain control.
- * - Sort: up to three column headings, each ascending or descending.
- *
- * Design decisions: the component's settings come from the widget list the server publishes, so a module's
- * component needs no code here. A sort heading is typed, because a table's columns are only known when the
- * report runs (the server reports a heading that matches none at run time).
+ * - Component: a choice of the components the scope offers, labelled with the module and report they come from; a
+ *   stored key the scope does not offer stays visible and selected, marked as not available.
+ * - Settings: the report's own parameters through the shared parameter form; a setting bound to a layout variable
+ *   (`{var: name}`) is listed and kept, not drawn as a plain control. They come from the widget list the server
+ *   publishes, so a module's component needs no code here.
+ * - Sort: up to three column headings, each ascending or descending. A heading is typed, because a table's columns
+ *   are only known when the report runs (the server reports a heading that matches none at run time).
  */
+import { X } from "lucide-react";
+
 import type { ReportWidget } from "../api/reportLayouts";
 import type { ReportRunValues } from "../api/reports";
 import { useStrings } from "../context/TerminologyContext";
@@ -109,7 +108,9 @@ export function WidgetSortField({
             label={text.descending} ariaLabel={`${text.widgetColumn(i + 1)}: ${text.descending}`} checked={key.descending === true} disabled={disabled}
             onChange={(on) => set(value.map((k, j) => (j === i ? { column: k.column, ...(on ? { descending: true } : {}) } : k)))}
           />
-          {!disabled && <button type="button" className="btn btn-sm" onClick={() => set(value.filter((_, j) => j !== i))}>{text.removeSort(i + 1)}</button>}
+          {!disabled && <button type="button" className="btn btn-sm btn-icon" aria-label={text.removeSort(i + 1)} title={text.removeSort(i + 1)} onClick={() => set(value.filter((_, j) => j !== i))}>
+              <X size={14} aria-hidden="true" />
+            </button>}
         </span>
       ))}
       {!disabled && value.length < MAX_SORT_KEYS && (

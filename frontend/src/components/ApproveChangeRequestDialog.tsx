@@ -1,20 +1,14 @@
 /**
  * Module: components/ApproveChangeRequestDialog
  *
- * The approver's dialog for a change request that proposes links: every proposed link is shown
- * with a tick, all ticked by default, and the approver unticks any or all before approving.
- * Fed by the server's merge preview, which re-checks each link now (never trusting what was
- * valid when it was proposed): a link that cannot be merged (its type is hidden, the record is
- * gone or already linked, the approver cannot see it, the proposer lost the right to link, ...)
- * is shown disabled with the reason and stays on the request.
+ * The approver's dialog for a change request that proposes links: each link is ticked by default and the approver
+ * unticks any or all before approving. The server's merge preview re-checks every link at that moment: one that
+ * cannot be merged (hidden type, record gone or already linked, not visible to the approver, proposer lost the
+ * right to link) is shown disabled with the reason and stays on the request.
  *
- * If a ticked link becomes invalid between the preview and the click, the server refuses with a
- * fresh preview; the dialog swaps it in, drops the ticks that no longer apply and asks the
- * approver to confirm again, so a link is never silently left out.
- *
- * Approving with nothing ticked is allowed (the request's other changes still apply); for an
- * add-link request that means applying nothing at all, which the dialog says, pointing to
- * Reject.
+ * If a ticked link becomes invalid between preview and click, the server refuses with a fresh preview; the dialog
+ * swaps it in, drops stale ticks and asks to confirm again. Approving with nothing ticked is allowed (the other
+ * changes still apply); for an add-link request the dialog says nothing will be applied and points to Reject.
  */
 import { useEffect, useState } from "react";
 

@@ -1,23 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { loginAs, recordActionNames, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Job to be done: C-C-03's per-project terminology overrides actually reach
- * every surface that renders one of the six overridable nouns, not just the
- * nav label + list-page heading were the only
- * two "working" surfaces before this fix (see
- * docs/decisions.md).
+ * Job to be done: C-C-03's per-project terminology overrides reach every surface that renders one of the six
+ * overridable nouns, not only the nav label and list-page heading (see docs/decisions.md).
  *
- * Uses PROJECT_NAMES.delta1, a project dedicated to this spec and seeded
- * with a fixed, permanent terminology override
- * (`stage`->"Phase"/`requirement`->"Spec"/`change_request`->"ECR" — see
- * TERMINOLOGY_OVERRIDE in seed_e2e_dataset.py and helpers.ts). No set/
- * revert dance is needed here (unlike project-admin-groups-and-fields.
- * spec.ts's own, narrower proof that the *save flow* itself works, which
- * toggles a term on Beta-2 and reverts it) since Delta-1's override is
- * meant to stay in place for the life of the seeded database — no other
- * spec depends on Delta-1 being at, or away from, this override.
+ * Uses PROJECT_NAMES.delta1, a project dedicated to this spec and seeded with a fixed, permanent terminology override
+ * (`stage`->"Phase"/`requirement`->"Spec"/`change_request`->"ECR"; see TERMINOLOGY_OVERRIDE in seed_e2e_dataset.py and
+ * helpers.ts). No set/revert is needed (unlike project-admin-groups-and-fields.spec.ts's narrower proof of the save
+ * flow on Beta-2): the override stays in place for the life of the seeded database and no other spec depends on
+ * Delta-1 being at, or away from, it.
  */
 test.describe("terminology overrides reach their own surfaces", () => {
   test("nav, requirement detail, custom-fields entity-kind dropdown, and the review-due list all reflect the override", async ({
@@ -31,34 +24,35 @@ test.describe("terminology overrides reach their own surfaces", () => {
       await expect(page.getByRole("link", { name: "ECRs", exact: true })).toBeVisible();
     });
 
-    await test.step("requirement detail page: 'Make a change request' link uses the override, not the audit's named leak", async () => {
+    await test.step("requirement detail page: 'Make a change request' menu item uses the override, not the audit's named leak", async () => {
       await page.getByRole("link", { name: "Specs", exact: true }).click();
       await expect(page.url()).toContain("/requirements");
-      // A bare `getByText` here is ambiguous: the seeded requirement's own
-      // "Reasoning" field restates its name in lowercase prose ("Reasoning:
-      // must respond to input within 50ms."), and `getByText`'s default
-      // substring match is case-insensitive, so it resolves to both that
-      // paragraph and the actual requirement link. Scoped to the link role
-      // disambiguates that, but React Router 7's default startTransition-
-      // wrapped navigation (a behavior change from 6 — the URL updates
-      // immediately, but the previous page's own content can stay mounted
-      // for a beat longer) can still transiently double-render *this same
-      // link* while the "Specs" list settles in — `.first()` is safe here
-      // since both matches share the same href/text, unlike the badge-vs-
-      // filter-option ambiguity fixed elsewhere in this branch.
+      // A bare `getByText` is ambiguous: the seeded requirement's "Reasoning" field restates its name in lowercase prose
+      // ("Reasoning: must respond to input within 50ms."), and `getByText`'s default substring match is case-insensitive,
+      // so it resolves to that paragraph and the requirement link. Scoping to the link role disambiguates, but React Router
+      // 7's startTransition-wrapped navigation (the previous page's content can stay mounted for a beat) can transiently
+      // double-render this link while the "Specs" list settles; `.first()` is safe since both matches share the same
+      // href/text.
       await page.getByRole("link", { name: "Must respond to input within 50ms" }).first().click();
       await expect(page.url()).toContain("/requirements/");
-      await expect(page.getByRole("link", { name: "Make ECR" })).toBeVisible();
+      // The menu is drawn once the record has loaded; `recordActionNames` does not wait for it.
+      await expect(page.getByRole("button", { name: "Spec actions" })).toBeVisible();
+      expect(await recordActionNames(page, "Spec")).toContain("Make ECR");
     });
 
     await test.step("Project Admin's custom-fields entity-kind dropdown — the audit's single most visible example", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Fields & actions");
-      const entityKindSelect = page.getByRole("main").getByRole("combobox").first();
-      // Default selection is "requirement" -> now renders as the override.
+      // The section draws no empty fields: the "Applies to" select is in the "New field" dialog.
+      await page.getByRole("button", { name: "New field", exact: true }).click();
+      const fieldDialog = page.getByRole("dialog", { name: "New field" });
+      const entityKindSelect = fieldDialog.getByLabel("Applies to", { exact: true });
+      // The default selection is "requirement", rendered as the override.
       await expect(entityKindSelect).toContainText("Spec");
       await entityKindSelect.selectOption("change_request");
       await expect(entityKindSelect).toContainText("ECR");
+      await page.keyboard.press("Escape");
+      await expect(fieldDialog).toHaveCount(0);
     });
 
     await test.step("the project's review-due list heading — the audit's named 'review-due lists' leak", async () => {

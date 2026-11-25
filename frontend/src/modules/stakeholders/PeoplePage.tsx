@@ -2,18 +2,18 @@
  * Module: modules/stakeholders/PeoplePage
  *
  * The project's one page for Personas, Stakeholders and Stakeholder groups, mounted at
- * `/projects/:projectId/modules/stakeholders/people` (`module.ts`, the "People" nav entry). The old
- * per-type list routes redirect here with the matching `?kind=`. Stakeholder Needs are not people: they
- * have their own tab beside this one (`NeedsPage`, `PeopleTabs`), and `?kind=need` redirects there.
+ * `/projects/:projectId/modules/stakeholders/people` (`module.ts`, the "People" nav entry). The per-type list routes
+ * redirect here with the matching `?kind=`. Stakeholder Needs are not people: they have their own tab beside this one
+ * (`NeedsPage`, `PeopleTabs`), and `?kind=need` redirects there.
  *
- * - **Kinds:** chips (each with the kind's icon) choose which kinds are listed (default: every kind the
- *   project has switched on, so a kind whose sub-component is off is simply absent). Several kinds share
- *   the combined `PeopleListView`; exactly one shows that kind's own list with its own columns and filters
- *   (`PersonaListView`, `StakeholderListView`, or the group manager). The choice lives in the URL.
- * - **New:** one menu creates any kind. The create forms are the page's, so each list is shown without
- *   its own New button; "Save and activate" sits beside Save in them (activation has the same gate as
- *   creation, so it never bypasses an approval).
- * - Detail pages are unchanged: a row opens its own record, an org-owned one inside this project.
+ * - **Kinds:** chips (each with the kind's icon) choose which kinds are listed (default: every kind the project has
+ *   switched on; a kind whose sub-component is off is absent). Several kinds share the combined `PeopleListView`;
+ *   exactly one shows that kind's own list with its own columns and filters (`PersonaListView`,
+ *   `StakeholderListView`, or the group manager). The choice lives in the URL.
+ * - **New:** one menu creates any kind. The create forms are the page's, so each list is shown without its own New
+ *   button; "Save and activate" sits beside Save in them (activation has the same gate as creation, so it never
+ *   bypasses an approval).
+ * - Detail pages are unchanged: a row opens its own record, an organisation-owned one inside this project.
  */
 import { useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";

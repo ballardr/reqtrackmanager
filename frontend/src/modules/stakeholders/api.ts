@@ -1,17 +1,13 @@
 /**
  * Module: modules/stakeholders/api
  *
- * Thin wrappers over `api` (frontend/src/api/client.ts) for every endpoint
- * `backend/app/modules/stakeholders/` exposes. The three lifecycle artefacts (Persona,
- * Stakeholder, Need) share a shape — CRUD, versions, archive, lifecycle,
- * comments, files — so `buildRecordApi` builds it once from a base URL and a
- * path segment; `buildTypeApi`/`buildProjectTypeCalls` do the same for the
- * two-tier type vocabulary. Each artefact then adds only what is its own
- * (Persona's weight override; Stakeholder's cadence hint, create-from-user,
- * erasure and "represents" links). Engagements are a different shape (no
- * lifecycle or versions; hard delete) and, with their research extras, have
- * their own `projectEngagementApi` / `projectResearchApi`. `id` parameters are a `project_id` or
- * `organization_id` to match the scope.
+ * Thin wrappers over `api` (frontend/src/api/client.ts) for every endpoint of `backend/app/modules/stakeholders/`. The
+ * three lifecycle artefacts (Persona, Stakeholder, Need) share a shape (CRUD, versions, archive, lifecycle, comments,
+ * files), so `buildRecordApi` builds it once from a base URL and a path segment; `buildTypeApi` / `buildProjectTypeCalls`
+ * do the same for the two-tier type vocabulary. Each artefact then adds only its own calls (Persona's weight override;
+ * Stakeholder's cadence hint, create-from-user, erasure and "represents" links). Engagements have a different shape (no
+ * lifecycle or versions; hard delete) and, with their research extras, their own `projectEngagementApi` /
+ * `projectResearchApi`. `id` parameters are a `project_id` or `organization_id` to match the scope.
  */
 import { api } from "../../api/client";
 import { appendTagParams, type TagListFilters } from "../../api/tags";
@@ -101,7 +97,7 @@ export type NeedCreateValues = Omit<NeedFieldValues, "change_note"> & { owner?: 
 export type NeedUpdateValues = Partial<NeedFieldValues> & { owner?: PrincipalRef | null };
 
 /** The calls every record kind in this module has; what the shared detail
- * components (`RecordDiscussion`, `RecordLifecycleControls`) are written
+ * components (`RecordDiscussion`, `useLifecycleTransition`) are written
  * against. */
 export interface RecordApi<Rec, Version, Comment, Create, Update> {
   list(id: string, filters?: RecordListFilters): Promise<Rec[]>;
@@ -241,10 +237,7 @@ function buildStakeholderApi(base: (id: string) => string) {
 /** Org-scoped Persona endpoints — `id` is an `organization_id`. */
 export const orgPersonaApi = buildPersonaApi(orgBase);
 
-/** Project-scoped Persona endpoints (reads include the organisation's
- * personas, minus those hidden from the project) plus the weight and visibility
- * overrides and the project type tier — `id` is a
- * `project_id`. */
+/** Project-scoped Persona endpoints (reads include the organisation's personas, minus those hidden from the project) plus the weight and visibility overrides and the project type tier; `id` is a `project_id`. */
 export const projectPersonaApi = {
   ...buildPersonaApi(projectBase),
   setWeightOverride(projectId: string, personaId: string, weight: number) {
@@ -395,7 +388,7 @@ export const projectEngagementApi = {
   list: (projectId: string, filters: EngagementListFilters = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
-      if (key === "tags" || key === "tag_mode" || key === "component_ids" || key === "category_ids" || key === "project_scope") continue;
+      if (key === "tags" || key === "tag_mode" || key === "component_ids" || key === "category_ids" || key === "external_systems" || key === "external_key" || key === "project_scope") continue;
       if (value !== undefined && value !== "") params.set(key, String(value));
     }
     appendTagParams(params, filters);

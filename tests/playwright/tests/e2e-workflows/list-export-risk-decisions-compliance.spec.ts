@@ -75,7 +75,7 @@ test("a Decisions list exports, an edited rationale re-imports as an update and 
   ).json();
 
   await page.goto(`/projects/${project.id}/modules/decisions`);
-  await expect(page.getByRole("button", { name: created.unique_code })).toBeVisible();
+  await expect(page.getByRole("link", { name: created.unique_code })).toBeVisible();
   await expectListAction(page, "Import from CSV");
 
   const csv = await exportCsv(page);

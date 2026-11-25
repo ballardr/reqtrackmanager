@@ -4,25 +4,18 @@ Module: services.stage_workflows
 Stage workflows: the phases a project stage moves through, and what each phase kind does.
 
 Responsibilities:
-- Resolve a project's effective workflow set (own, else nearest ancestor's, plus the
-  organisation's minus the ones the project hid) and seed the organisation's "Standard" one.
-- Validate and write a workflow with its ordered phases.
-- Move a stage, or one component's track within a stage (`services.component_stages`), between
-  phases through one function, applying the behaviour of the phase kind: baseline and approval
-  on entering a locked phase, completion on entering a closed one.
-- Answer the questions other code asks of a phase kind: may requirements be reordered.
-- Hand every move to `services.stage_phase_plans.record_move`, which keeps the phase's actual dates.
+- Resolve a project's effective workflow set (own, else nearest ancestor's, plus the organisation's minus the hidden) and
+  seed the organisation's "Standard"; validate and write a workflow with ordered phases.
+- Move a stage, or a component's track (`services.component_stages`), between phases through one function applying the phase
+  kind (baseline and approval on entering a locked phase, completion on entering a closed one); hand each move to
+  `stage_phase_plans.record_move`; answer whether requirements may be reordered.
 
 Design decisions:
-- Behaviour is read from `StagePhaseKind`, never from a phase name (Decided by: User).
-- Moves are free in either direction; entering or leaving a locked phase needs the project
-  manager role, because leaving one silently unlocks requirements outside the change-request
-  process (Decided by: Agent; the entering rule is the user's, the leaving rule closes the
-  bypass it would otherwise leave).
-- Nested projects: own workflows, else the nearest ancestor's, always plus the additive
-  organisation tier (Decided by: Agent, the `resolve_effective_action_types` shape).
-- A workflow in use cannot be deleted, and a phase in use can be renamed but not removed or
-  given another kind, so a stage can never be silently unlocked by an edit to its workflow.
+- Behaviour is read from `StagePhaseKind`, never a phase name (**Decided by: User**).
+- Moves are free in either direction; entering or leaving a locked phase needs the project manager role, since leaving
+  would unlock requirements outside the change-request process (**Decided by: Agent**; the entering rule is the user's).
+- Nested projects use the `resolve_effective_action_types` shape plus the additive organisation tier (**Decided by: Agent**).
+- A workflow in use cannot be deleted; a phase in use can be renamed but not removed or given another kind.
 """
 
 from __future__ import annotations

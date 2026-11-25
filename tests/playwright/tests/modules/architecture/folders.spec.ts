@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { clickMenuRow } from "../../menuTree";
 import { setUpOrg } from "../stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -21,19 +22,25 @@ test.describe("System Architecture: folders", () => {
 
     await test.step("open the Elements tab, which starts with no folders", async () => {
       await page.goto(`/projects/${project.id}/modules/architecture?tab=elements`);
-      await expect(page.getByRole("button", { name: "New folder" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "New folder" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /^Folder / })).toHaveCount(0);
+      await page.getByRole("button", { name: "List actions" }).click();
+      await expect(page.getByRole("menuitem", { name: "New folder" })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "Edit folder" })).toHaveCount(0);
+      await page.keyboard.press("Escape");
     });
 
     await test.step("make a folder and a folder inside the chosen one", async () => {
-      await page.getByRole("button", { name: "New folder" }).click();
+      await page.getByRole("button", { name: "List actions" }).click();
+      await clickMenuRow(page, "New folder");
       const dialog = page.getByRole("dialog", { name: "New folder" });
       await dialog.getByLabel("Name", { exact: true }).fill("Software");
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Folder created.")).toBeVisible();
       await page.getByRole("button", { name: "Folder Software" }).click();
 
-      await page.getByRole("button", { name: "New folder" }).click();
+      await page.getByRole("button", { name: "List actions" }).click();
+      await clickMenuRow(page, "New folder");
       const inner = page.getByRole("dialog", { name: "New folder" });
       await expect(inner.getByRole("button", { name: "Parent folder", exact: true })).toContainText("Software");
       await inner.getByLabel("Name", { exact: true }).fill("Modules");
@@ -48,7 +55,7 @@ test.describe("System Architecture: folders", () => {
       await dialog.getByRole("button", { name: "Folder", exact: true }).click();
       await page.getByRole("radio", { name: "Modules" }).click();
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Element created.")).toBeVisible();
+      await expect(page.getByText(/Element( \S+-\d+)? created\./)).toBeVisible();
     });
 
     await test.step("add an element with no folder, then narrow the list by folder", async () => {
@@ -87,7 +94,8 @@ test.describe("System Architecture: folders", () => {
 
     await test.step("deleting the inner folder moves its element up and survives a reload", async () => {
       await page.getByRole("button", { name: "Folder Modules" }).click();
-      await page.getByRole("button", { name: "Delete folder" }).click();
+      await page.getByRole("button", { name: "List actions" }).click();
+      await clickMenuRow(page, "Delete folder");
       const confirm = page.getByRole("dialog", { name: "Delete folder Modules?" });
       await expect(confirm.getByText(/Nothing else is deleted/)).toBeVisible();
       await confirm.getByRole("button", { name: "Delete", exact: true }).click();

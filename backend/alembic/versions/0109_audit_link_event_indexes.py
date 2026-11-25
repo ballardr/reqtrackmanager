@@ -5,9 +5,9 @@ Revises: 0108
 Create Date: 2026-10-27
 
 A record's activity timeline lists the generic link events (`entity_type = 'artefact_link'`) that name it as source or
-target, matching on the ids kept in `detail`. With no index on those the timeline read every link event of the project
-and compared two JSON fields per row, so its cost grew with the project's total number of links (92,000 link events in
-one project at 5,000 requirements). Two partial expression indexes make it a lookup. Guarded: a database built from the
+target, matching on the ids kept in `detail`. Without an index on those, the timeline reads every link event of the project
+and compares two JSON fields per row (92,000 link events in one project at 5,000 requirements). Two partial
+expression indexes make it a lookup. Guarded: a database built from the
 current models already has them.
 """
 

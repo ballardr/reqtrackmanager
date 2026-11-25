@@ -2,18 +2,13 @@
  * Module: modules/compliance/OrgComplianceWidgets
  *
  * The organisation's compliance posture as two widgets for the organisation overview dashboards
- * (`ModuleDefinition.org_overview_widgets`, registered on `TierAModuleDefinition.orgOverviewWidgets`), which replace the
- * former separate Compliance dashboard page: a summary of the headline tiles, and an attention card of the standards
- * with the most issues, the upcoming reviews and the recently changed assessments.
- *
- * Responsibilities:
- * - Read the module's own organisation endpoints (one shared, briefly cached request set, so two widgets on one
- *   dashboard do not fetch everything twice) and compute the headline figures with `computeOrgComplianceHeadline`.
- * - Link each tile to the pre-filtered Compliance by standard or Outstanding section it summarises.
- *
- * Design decisions: figures are counted per distinct project, as the Compliance sections count them; each list is
- * bounded to five rows so a widget keeps its height; the Export of the organisation report stays on the Compliance
- * sections, where it applies to what the person is looking at.
+ * (`ModuleDefinition.org_overview_widgets`, registered on `TierAModuleDefinition.orgOverviewWidgets`): a summary of the headline
+ * tiles, and an attention card of the standards with the most issues, upcoming reviews and recently changed assessments.
+ * - Reads the module's organisation endpoints (one shared, briefly cached request set, so two widgets on a dashboard do not
+ *   fetch twice) and computes the headline figures with `computeOrgComplianceHeadline`.
+ * - Links each tile to the pre-filtered By standard or Outstanding tab it summarises.
+ * Figures count distinct projects, as the Compliance sections do; each list is bounded to five rows to keep a widget's height;
+ * the organisation report's Export stays on the Standards page's status sections, where it applies to what is on screen.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -25,6 +20,7 @@ import { Spinner } from "../../components/Spinner";
 import { StatCard } from "../../components/StatCard";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
+import { standardsViewPath } from "./paths";
 import { computeOrgComplianceHeadline, distinctProjects } from "./orgComplianceSummary";
 import {
   COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
@@ -109,7 +105,7 @@ export function OrgComplianceSummaryWidget({ orgId }: { orgId: string }) {
         <MetricTile
           label="Projects subject to compliance"
           value={projectsSubjectToCompliance.length}
-          to={`/orgs/${orgId}/overview/compliance-by-standard?groupBy=project`}
+          to={standardsViewPath("by-standard", { org: orgId, groupBy: "project" })}
         />
         <StatCard label="Overall compliance" value={Math.round(overallCompliancePercentage)}>
           <span className="text-muted">%, weighted by applicable requirements</span>
@@ -117,32 +113,32 @@ export function OrgComplianceSummaryWidget({ orgId }: { orgId: string }) {
         <MetricTile
           label="Non-compliant projects"
           value={nonCompliantProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-by-standard?groupBy=project&state=non_compliant`}
+          to={standardsViewPath("by-standard", { org: orgId, groupBy: "project", state: "non_compliant" })}
         />
         <MetricTile
           label="Projects with outstanding actions"
           value={outstandingActionProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=actions`}
+          to={standardsViewPath("outstanding", { org: orgId, category: "actions" })}
         />
         <MetricTile
           label="Projects with expired evidence"
           value={expiredEvidenceProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=evidence&validity=expired`}
+          to={standardsViewPath("outstanding", { org: orgId, category: "evidence", validity: "expired" })}
         />
         <MetricTile
           label="Projects with evidence approaching expiry"
           value={expiringSoonEvidenceProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=evidence&validity=expiring_soon`}
+          to={standardsViewPath("outstanding", { org: orgId, category: "evidence", validity: "expiring_soon" })}
         />
         <MetricTile
           label="Projects with overdue compliance reviews"
           value={overdueReviewProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=reviews`}
+          to={standardsViewPath("outstanding", { org: orgId, category: "reviews" })}
         />
         <MetricTile
           label="Assessments awaiting approval"
           value={pending.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=pending`}
+          to={standardsViewPath("outstanding", { org: orgId, category: "pending" })}
         />
     </div>
 

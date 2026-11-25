@@ -1,9 +1,7 @@
-"""Tests for Decision Types' hierarchical-project fallback (2026-09-22,
-**Decided by: User** — supersedes the earlier **Decided by:
-Agent** call that Decision Types would have no such fallback, unlike
-`ActionTypeDefinition`). Mirrors `tests/test_action_types.py`'s own
-hierarchy test suite exactly, through the real HTTP API
-(`test_decisions_api.py`'s own convention), scoped to Decisions instead.
+"""
+Tests for Decision Types' hierarchical-project fallback (a child project with
+no types of its own uses its nearest ancestor's), mirroring
+`tests/test_action_types.py`, through the real HTTP API.
 """
 
 from __future__ import annotations

@@ -1,28 +1,16 @@
 """
 Module: services.invites
 
-Provisioning for the "add a project user by email who isn't already an
-organisation member" flow (`routers/projects.py`), gated by
-`Organization.external_user_policy`. Two distinct provisioning paths, chosen
-by the target organisation's `sso_only` flag:
+Provisioning for adding a project user by email who is not yet an organisation member
+(`routers/projects.py`), gated by `Organization.external_user_policy`. Two paths, chosen by the target
+organisation's `sso_only` flag (docs/decisions.md, "Self-signup, invites, and SSO"):
 
-- Non-`sso_only` orgs: `create_pending_invite` creates a `PendingInvite` row
-  and emails a tokenised signup link; `consume_pending_invites` redeems it
-  once the invitee actually creates an account, from either of the two
-  places that can do that — native signup (`routers/auth.py::signup`) and
-  OIDC first-login (`routers/auth_oidc.py`), since the invitee may reach
-  either one first. `resend_pending_invite` rotates an existing row's
-  token/`expires_at` and re-sends the same email, for when the original
-  didn't arrive or already expired (`routers/projects.py`'s
-  `GET/POST .../pending-invites[/{id}/resend]` — standard flow
-  only, not the `sso_only` path below).
-- `sso_only` orgs: `provision_sso_invite` grants access immediately by
-  pre-creating the `User` row and its org/project roles up front, with no
-  token or `PendingInvite` at all — see its docstring for why this is safe
-  and how it's later adopted by a real SSO login.
-
-See docs/decisions.md's "Self-signup, invites, and SSO" entry for the full
-reasoning behind this split.
+- Non-`sso_only`: `create_pending_invite` creates a `PendingInvite` and emails a tokenised signup link;
+  `consume_pending_invites` redeems it when the invitee creates an account, from native signup
+  (`routers/auth.py::signup`) or OIDC first login (`routers/auth_oidc.py`), whichever comes first;
+  `resend_pending_invite` rotates the token and `expires_at` and re-sends the email.
+- `sso_only`: `provision_sso_invite` grants access at once by pre-creating the `User` and its organisation and
+  project roles, with no token or `PendingInvite`; a real SSO login later adopts it (see its docstring).
 """
 
 from __future__ import annotations
@@ -241,12 +229,8 @@ def _grant_invite(db: Session, invite: PendingInvite, user: User) -> None:
     )
     if OrgRole.MEMBER not in existing_org_roles:
         db.add(UserOrgRole(user_id=user.id, organization_id=invite.organization_id, role=OrgRole.MEMBER))
-        # This session is autoflush=False (app/database.py) — without an
-        # explicit flush here, a second PendingInvite for the same org
-        # processed later in this same consume_pending_invites loop
-        # wouldn't see this just-added row in its own "already a member?"
-        # query, and would try to insert a duplicate UserOrgRole, violating
-        # its (user_id, organization_id, role) unique constraint.
+        # The session is autoflush=False: flushing lets a second invite for the same organisation in this
+        # loop see this row, instead of inserting a duplicate UserOrgRole.
         db.flush()
         log_event(
             db, entity_type="user", entity_id=user.id, action="invite_accepted",
@@ -256,6 +240,7 @@ def _grant_invite(db: Session, invite: PendingInvite, user: User) -> None:
             db, user, notification_type=NotificationType.PERMISSION_GRANTED,
             title="You've joined a new organisation",
             body="Your invite was accepted and you now have access.",
+            entity_type="organization", entity_id=str(invite.organization_id),
         )
     if invite.project_id is not None and invite.project_role is not None:
         already_has_role = db.scalar(

@@ -1,0 +1,5 @@
+{
+  "maintainers": ["ballardr"],
+  "automation": ["dependabot[bot]"],
+  "signatories": []
+}

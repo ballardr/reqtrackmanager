@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { Organization } from "../../api/types";
+import { expectHeaderSorts } from "../../testing/sortHelpers";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { StandardListPage } from "./StandardListPage";
 import type { ComplianceStandard } from "./types";
@@ -30,12 +31,14 @@ function standard(overrides: Partial<ComplianceStandard> = {}): ComplianceStanda
 }
 
 /**
- * `StandardListPage` — the cross-org `/standards` tab, modelled on `ProjectListPage.tsx`. No cross-org
- * backend listing endpoint exists, so the page fans out `listStandards`
- * per org (`GET /orgs?mine=true`) — mocked here per org id below.
+ * `StandardListPage` is the cross-organisation `/standards` tab, modelled on `ProjectListPage.tsx`. No cross-organisation listing
+ * endpoint exists, so the page fans out `listStandards` per organisation (`GET /orgs?mine=true`), mocked per organisation id.
  */
-function mockStandardListApis(orgs: Organization[], standardsByOrg: Record<string, ComplianceStandard[]>) {
+function mockStandardListApis(
+  orgs: Organization[], standardsByOrg: Record<string, ComplianceStandard[]>, statusOrganizationIds: string[] = [],
+) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === "/api/v1/compliance/nav-visibility") return { visible: true, status_organization_ids: statusOrganizationIds };
     if (path === "/api/v1/orgs?mine=true") return orgs;
     const match = /\/api\/v1\/orgs\/([^/]+)\/modules\/compliance\/standards/.exec(path);
     if (match) return standardsByOrg[match[1]] ?? [];
@@ -78,14 +81,17 @@ export const SingleOrgList: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
-    // Only one org — no "Organisation" column, but a "Compliance settings"
-    // link for it is still offered.
-    await expect(canvas.queryByText("Organisation")).not.toBeInTheDocument();
-    await expect(canvas.getByRole("link", { name: "Acme Corp" })).toHaveAttribute("href", "/standards/settings/org-1");
+    // Only one organisation: no organisation on the card and no Organisation filter, but a "Compliance settings" row
+    // of the actions menu for it is still offered.
+    await expect(canvas.queryByText("Acme Corp")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Organisation")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "List actions" }));
+    await expect(within(document.body).getByRole("menuitem", { name: "Compliance settings" })).toBeInTheDocument();
   },
 };
 
-export const MultiOrgShowsOrgColumnAndDropsDisabledOrg: Story = {
+/** Every organisation shows until the Organisation filter narrows them; each standard states its organisation. */
+export const MultiOrgShowsEveryOrganisationAndFiltersByOne: Story = {
   beforeEach: () =>
     mockStandardListApis(
       [org(), org({ id: "org-2", name: "Beta Industries" }), org({ id: "org-3", name: "No Compliance Org" })],
@@ -100,11 +106,25 @@ export const MultiOrgShowsOrgColumnAndDropsDisabledOrg: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
     await expect(canvas.getByText("SOC 2 Type II")).toBeInTheDocument();
-    // "Acme Corp"/"Beta Industries" each appear twice — once in the
-    // "Compliance settings" link row, once in the table's own Organisation
-    // column — so `getAllByText`, not `getByText`, for both.
-    await expect(canvas.getAllByText("Acme Corp").length).toBeGreaterThan(0);
-    await expect(canvas.getAllByText("Beta Industries").length).toBeGreaterThan(0);
+    const cards = Array.from(canvasElement.querySelectorAll<HTMLElement>(".tile-card"));
+    await expect(cards.find((c) => c.textContent?.includes("ISO 27001"))).toHaveTextContent("Acme Corp");
+    await expect(cards.find((c) => c.textContent?.includes("SOC 2 Type II"))).toHaveTextContent("Beta Industries");
+
+    const filter = canvas.getByLabelText("Organisation");
+    await expect(filter).toHaveValue("");
+    await expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All organisations", "Acme Corp", "Beta Industries", "No Compliance Org",
+    ]);
+    await userEvent.selectOptions(filter, "org-2");
+    await waitFor(() => expect(canvas.queryByText("ISO 27001")).not.toBeInTheDocument());
+    await expect(canvas.getByText("SOC 2 Type II")).toBeInTheDocument();
+
+    // Compliance settings: one row per organisation, grouped.
+    await userEvent.click(canvas.getByRole("button", { name: "List actions" }));
+    // The first group of a menu starts open.
+    await expect(within(document.body).getByRole("menuitem", { name: "Compliance settings" })).toHaveAttribute("aria-expanded", "true");
+    await expect(within(document.body).getByRole("menuitem", { name: "Beta Industries" })).toBeInTheDocument();
+    await expect(within(document.body).getByRole("menuitem", { name: "Acme Corp" })).toBeInTheDocument();
   },
 };
 
@@ -115,7 +135,8 @@ export const CreateStandardWithOrgPicker: Story = {
     await waitFor(() => expect(canvas.getByText("No compliance standards yet.")).toBeInTheDocument());
 
     await userEvent.click(canvas.getByRole("button", { name: "New standard" }));
-    const body = within(document.body);
+    // The dialog's own picker, not the page's Organisation filter.
+    const body = within(document.body.querySelector<HTMLElement>('[role="dialog"]') ?? document.body);
     await userEvent.selectOptions(body.getByLabelText("Organisation"), "org-2");
     await userEvent.type(body.getByLabelText("Standard reference"), "NIST-CSF");
     await userEvent.type(body.getByLabelText("Standard name"), "NIST Cybersecurity Framework");
@@ -129,10 +150,8 @@ export const CreateStandardWithOrgPicker: Story = {
   },
 };
 
-/** `ViewToggle` brings this page into line with
- * `docs/ux-style-guide.md`'s "Pattern: view toggle" — the same tile/list
- * split `ProjectListPage.tsx` already offers. Defaults to tiles; switching
- * to list shows the pre-existing `DirectoryTable`. */
+/** `ViewToggle` ("Pattern: view toggle" in `docs/ux-style-guide.md`) splits tiles and list as `ProjectListPage.tsx` does. It
+ * defaults to tiles; switching to list shows the `DirectoryTable`. */
 export const TogglesBetweenTilesAndListView: Story = {
   beforeEach: () =>
     mockStandardListApis(
@@ -146,7 +165,7 @@ export const TogglesBetweenTilesAndListView: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
 
-    // Defaults to tiles: no table role, but the standard's card is a link.
+    // Defaults to tiles: no table role, and the card's title is the link to the standard.
     await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: /ISO 27001/ })).toHaveAttribute("href", "/standards/std-1");
 
@@ -156,6 +175,54 @@ export const TogglesBetweenTilesAndListView: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "Tile view" }));
     await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
+  },
+};
+
+/** The list view shows Organisation and Issuing organisation by default; the column chooser hides Issuing organisation and the reset shows it again. */
+export const ColumnChooserHidesAnOptionalColumn: Story = {
+  beforeEach: () => mockStandardListApis(
+      [org(), org({ id: "org-2", name: "Beta Industries" })],
+      { "org-1": [standard()], "org-2": [standard({ id: "std-2", organization_id: "org-2", reference: "SOC2", name: "SOC 2 Type II" })] },
+    ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText("ISO 27001");
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    const table = await canvas.findByRole("table", { name: "Compliance standards" });
+    for (const name of ["Reference", "Name", "Organisation", "Issuing organisation", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Issuing organisation" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Issuing organisation" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Issuing organisation" })).toBeInTheDocument();
+  },
+};
+
+/** Every column header orders the list: Reference (the default), Name, Organisation, Issuing organisation (none last) and Status. */
+export const EveryColumnHeaderSortsTheList: Story = {
+  beforeEach: () =>
+    mockStandardListApis(
+      [org(), org({ id: "org-2", name: "Beta Industries" }), org({ id: "org-3", name: "Cyan Labs" })],
+      {
+        "org-1": [standard({ id: "std-1", organization_id: "org-1", reference: "B-2", name: "Zebra", issuing_organisation: "ISO" })],
+        "org-2": [standard({ id: "std-2", organization_id: "org-2", reference: "C-3", name: "Alpha", issuing_organisation: "IEC", is_archived: true })],
+        "org-3": [standard({ id: "std-3", organization_id: "org-3", reference: "A-1", name: "Mango", issuing_organisation: null })],
+      },
+    ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText("Zebra");
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    const table = await canvas.findByRole("table", { name: "Compliance standards" });
+    await expect(within(table).getByRole("columnheader", { name: "Reference" })).toHaveAttribute("aria-sort", "ascending");
+    await expectHeaderSorts(table, "Name", ["Alpha", "Mango", "Zebra"]);
+    await expectHeaderSorts(table, "Organisation", ["Acme Corp", "Beta Industries", "Cyan Labs"]);
+    await expectHeaderSorts(table, "Issuing organisation", ["IEC", "ISO", "—"]);
+    await expectHeaderSorts(table, "Status", ["Active", "Active", "Archived"]);
+    await expectHeaderSorts(table, "Reference", ["A-1", "B-2", "C-3"]);
   },
 };
 
@@ -183,5 +250,30 @@ export const ImportStandardViaSplitButtonMenu: Story = {
     await waitFor(() => expect(api.postFile).toHaveBeenCalledWith(
       "/api/v1/orgs/org-1/modules/compliance/standards/import", file, undefined
     ));
+  },
+};
+
+// The nav-visibility answer is cached per user id, so each of these stories signs in its own user.
+
+/** A person who may read compliance status gets By standard and Outstanding beside the list. */
+export const StatusTabsOfferedToACompliancePersonWhoReadsStatus: Story = {
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false }))],
+  beforeEach: () => mockStandardListApis([org()], { "org-1": [standard()] }, ["org-1"]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("tab", { name: "By standard" })).toBeInTheDocument());
+    await expect(canvas.getByRole("tab", { name: "Standards" })).toHaveAttribute("aria-selected", "true");
+    await expect(canvas.getByRole("tab", { name: "Outstanding" })).toBeInTheDocument();
+  },
+};
+
+/** A person who can only read standards sees the list alone, with no tab strip. */
+export const NoTabsForAPersonWhoOnlyReadsStandards: Story = {
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false }))],
+  beforeEach: () => mockStandardListApis([org()], { "org-1": [standard()] }, []),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
+    await expect(canvas.queryByRole("tab")).not.toBeInTheDocument();
   },
 };

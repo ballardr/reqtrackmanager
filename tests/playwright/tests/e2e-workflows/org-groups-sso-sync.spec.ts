@@ -6,27 +6,16 @@ import { deleteOrgOnCleanup, installCleanupHook, openOrgGroupPanel, selectOrgAdm
 installCleanupHook();
 
 /**
- * Job to be done: an org group's SSO-sync sub-section (docs/decisions.md) is gated on SSO actually being
- * configured for the org, and the explicit enable/disable toggle within it
- * works both directions.
+ * Job to be done: an org group's SSO-sync sub-section (docs/decisions.md) is gated on SSO being configured for the
+ * organisation, and the explicit enable/disable toggle within it works in both directions. The first scenario pins
+ * that the entire sub-section (toggle, name input, role select, save action) is absent without SSO configured,
+ * not only the role select.
  *
- * This is a real regression fix, not just new coverage — before the fix,
- * the sync-name `<input>` and "Save sync settings" button rendered
- * unconditionally regardless of whether SSO was configured at all; only the
- * granted-role `<select>` was actually gated. The first scenario below pins
- * that the *entire* sub-section (toggle, name input, role select, save
- * action) is absent without SSO configured, not just the role select.
- *
- * Runs against a dedicated, freshly created org/admin (not one of the
- * shared `PERSONAS`/seeded orgs `helpers.ts` documents) since this spec
- * mutates the org's SSO configuration via `PUT /orgs/{id}/sso-config` —
- * doing that against a persona shared with other specs in this suite's
- * single-worker run (e.g. `org-group-nesting.spec.ts`'s Gamma) would leak
- * SSO state into specs that don't expect it. `sso.spec.ts` covers the real
- * Keycloak authorization-code flow end to end; this spec only exercises the
- * Org Admin UI's own gating/toggle logic, so a fake (never-dialled) issuer
- * URL is enough — `oidc_issuer_url`/`oidc_client_id` just need to be
- * truthy for the frontend's own gate.
+ * Runs against a dedicated, freshly created organisation and admin, because it mutates the SSO configuration via
+ * `PUT /orgs/{id}/sso-config`, which would leak SSO state into specs sharing a persona (e.g. the Gamma org in
+ * `org-group-nesting.spec.ts`). `sso.spec.ts` covers the real Keycloak flow; this spec exercises only the Org
+ * Admin UI's gating and toggle logic, so a fake (never-dialled) issuer URL suffices: `oidc_issuer_url` and
+ * `oidc_client_id` only need to be truthy for the frontend gate.
  */
 const ADMIN_EMAIL = "admin@example.com";
 const ADMIN_PASSWORD = "ChangeMe123!";
@@ -116,13 +105,10 @@ test.describe("org groups: SSO-sync sub-section gating and toggle", () => {
       await panel.getByPlaceholder("e.g. eng-team").fill("eng-team-sync");
       await panel.getByLabel("Grants role on sync").selectOption("member");
       await panel.getByRole("button", { name: "Save sync settings" }).click();
-      // Principle 7 — every mutation ends with feedback (this save used to
-      // have none besides the inline error state).
+      // Principle 7: every mutation ends with feedback.
       await expect(page.getByText("Sync settings updated")).toBeVisible();
-      // Close before the next step reopens it — `SidePanel`'s own backdrop
-      // (`role="presentation"`) sits over the underlying `DirectoryTable`
-      // row while open, which would otherwise intercept the next step's
-      // click on that same row.
+      // Close before the next step reopens it: `SidePanel`'s backdrop (`role="presentation"`) covers the underlying
+      // `DirectoryTable` row while open and would intercept the next click on that row.
       await panel.getByRole("button", { name: "Close" }).click();
     });
 

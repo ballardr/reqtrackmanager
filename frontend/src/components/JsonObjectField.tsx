@@ -2,11 +2,9 @@
  * Module: components/JsonObjectField
  *
  * A labelled text area for a small JSON object (a report pack entry's fixed variable values or a module report's
- * options). It keeps the text as typed, hands the parent the parsed object only while the text is valid (empty means
- * "none"), and shows what is wrong inline, so a half-typed value never reaches the pack being edited.
- *
- * Responsibilities: parse on change, report validity (`onValidity`) so the host can hold Save back, and re-sync the
- * text when the host replaces the value from outside (a different entry in the same slot).
+ * options). It keeps the text as typed, hands the parent the parsed object only while the text is valid (empty
+ * means "none"), shows what is wrong inline and reports validity (`onValidity`) so the host can hold Save back. It
+ * re-syncs the text when the host replaces the value from outside.
  */
 import { useState } from "react";
 
@@ -62,7 +60,7 @@ export function JsonObjectField({
 
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
-      <TextAreaField
+      <TextAreaField plainText="JSON, not prose"
         label={label} value={draft} onChange={change} hint={hint} help={help}
         inputProps={{ spellCheck: false, style: { fontFamily: "var(--font-mono, monospace)" } }}
       />

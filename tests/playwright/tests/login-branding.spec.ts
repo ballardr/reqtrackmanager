@@ -5,10 +5,8 @@ import { ORG_NAMES, PERSONAS, loginAs } from "./e2e-workflows/helpers";
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * UX review: the platform login page (no org slug) showed no branding
- * logo/title above the login form, unlike OrgLoginPage which already had
- * one. Both now render `LoginBrandHeader` — assert the title is visible
- * above the "Sign in" heading on the plain /login page.
+ * The platform login page (no org slug) renders `LoginBrandHeader`, as `OrgLoginPage` does: the title is
+ * visible above the "Sign in" heading on the plain /login page.
  */
 test("login page shows branding title above the sign-in form", async ({ page }) => {
   await page.goto("/login");
@@ -18,13 +16,9 @@ test("login page shows branding title above the sign-in form", async ({ page }) 
 });
 
 /**
- * Regression for the bug fixed alongside the above: `LoginBrandHeader`
- * previously rendered no `<img>` at all when `logoFileId` was null (the
- * default/unset-branding case — i.e. every deployment that hasn't uploaded
- * a platform logo), so the platform-default login page showed no logo.
- * It now falls back to the bundled `builtInLogo` asset, matching
- * `Layout.tsx`'s authenticated-app-header fallback. Assert the `<img>`
- * exists and resolves to a bundled asset path, not a broken/empty `src`.
+ * `LoginBrandHeader` falls back to the bundled `builtInLogo` asset when `logoFileId` is null (no platform
+ * logo uploaded), as `Layout.tsx`'s authenticated header does: the `<img>` exists and resolves to a bundled
+ * asset path, not a broken or empty `src`.
  */
 test("platform-default login page renders a logo image even with no custom branding configured", async ({ page }) => {
   await page.goto("/login");
@@ -39,17 +33,11 @@ test("platform-default login page renders a logo image even with no custom brand
 });
 
 /**
- * Regression check for the org-specific branding path, which already
- * worked before this change and must keep working: an org that has
- * uploaded its own logo shows that logo on its branded `/login/:slug`
- * page, not the built-in fallback. Mutates the shared Alpha org's slug and
- * logo — the slug write is a one-way ratchet (see
- * `update_sso_config` in backend/app/routers/orgs.py: `payload.slug` can
- * only be set, never cleared, and re-setting the same slug on the same org
- * is a no-op) so it's left in place afterward, same precedent as
- * `org-login-2fa-handoff.spec.ts`; the logo upload is cleaned up in
- * `afterEach` so it doesn't leak into other specs asserting Alpha's
- * branding defaults (see `org-branding-override-reset.spec.ts`).
+ * An org that has uploaded its own logo shows it on its branded `/login/:slug` page, not the built-in
+ * fallback. Mutates the shared Alpha org's slug and logo. The slug write is a one-way ratchet
+ * (`update_sso_config` in backend/app/routers/orgs.py only sets a slug, never clears it), so it is left in
+ * place, as `org-login-2fa-handoff.spec.ts` does; the logo upload is removed in `afterEach` so it does not
+ * leak into `org-branding-override-reset.spec.ts`'s assertions on Alpha's branding defaults.
  */
 test.describe("org-branded login page: custom logo regression", () => {
   const ORG_SLUG = "e2e-login-brand-org";
@@ -77,11 +65,8 @@ test.describe("org-branded login page: custom logo regression", () => {
     });
     expect(slugResp.ok()).toBe(true);
 
-    // A real (if tiny) PNG, not arbitrary bytes — this test asserts the
-    // `<img>` actually renders visibly with the org's logo, unlike
-    // `org-branding-override-reset.spec.ts`'s upload coverage, which only
-    // checks the "Logo uploaded." confirmation text and never needs the
-    // browser to successfully decode the file.
+    // A real (if tiny) PNG, not arbitrary bytes: the test asserts the `<img>` renders visibly with the org's
+    // logo, so the browser must decode the file.
     const onePixelPng = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64",
@@ -107,9 +92,7 @@ test.describe("org-branded login page: custom logo regression", () => {
 });
 
 /**
- * Gap found alongside the login-logo bug: no favicon existed anywhere in
- * the repo (no `<link rel="icon">` in index.html, no file under
- * frontend/public/). Assert the static default SVG favicon is actually
+ * The static default SVG favicon (`<link rel="icon">` in index.html, file under frontend/public/) is
  * served, not just referenced.
  */
 test("favicon.svg is served", async ({ page }) => {

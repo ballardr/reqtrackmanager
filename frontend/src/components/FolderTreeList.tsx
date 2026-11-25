@@ -2,44 +2,34 @@
  * Module: components/FolderTreeList
  *
  * The one folder-and-items list, drawn like a file manager's list view: a header row with a sortable Name column
- * (and any further columns to its right), one row per folder or item, a disclosure chevron and folder icon on each
- * folder, a type icon on each item, children indented under their folder and banded rows.
+ * (and further columns), a chevron and folder icon on each folder, a type icon on each item, indented children and
+ * banded rows. Generic over the item type; shows the tree `utils/reportFolders` builds.
  *
- * Responsibilities:
- * - Show the tree `utils/reportFolders` builds, generic over the item type, so the report chooser and the
- *   report setup list share one implementation of the shape.
- * - Sort each level by the Name column or a column that declares a `sortValue`: folders always come first, then
- *   items; a node marked `pinned` (Favourites) stays on top.
- * - Keyboard (an ARIA tree grid): Up/Down/Home/End move between visible rows, Right opens a folder (or moves to its
- *   first child), Left closes it (or moves to its parent), Enter opens an item or toggles a folder.
- * - Name an empty open folder with a muted "Empty folder" row, so an open folder never looks broken.
- *
- * Design decisions: expansion is controlled by the caller (`expanded` / `onToggle`), as `TreeView`'s controlled mode
- * is, because the chooser opens every folder while a search is active and persists the person's own layout; the
- * folder's chevron, icon and name are one button named "Expand X" / "Collapse X" so the whole label is the click
- * target and a folder has one control, and an item's type icon sits outside the item's button so the button's name
- * stays the item's title; a folder's row can carry trailing controls (`renderFolderActions`) as an item's does. Pure presentation: the data, the selection and every action stay with the caller. A column
- * with `hideBelow` is dropped under 640px.
- *
- * Layout: the list is one CSS grid and each row a subgrid of it, so the columns line up whatever the cells hold. Name
- * has a minimum width and wraps; when the columns still do not fit (a phone) the list scrolls sideways inside its own
- * region with the Name column held at the left edge, and the page never scrolls or clips.
- *
- * Dependencies: `utils/reportFolders` (`FolderNode`), `lucide-react`, the `.folder-tree-*` rules in `theme.css`.
+ * - Each level sorts by Name or a column's `sortValue`: folders first, `pinned` nodes on top; `order="given"` keeps
+ *   the caller's order. Keyboard (ARIA tree grid): arrows, Home/End, Right/Left open and close, Enter opens an item
+ *   or toggles a folder.
+ * - The consuming list supplies `folderIcon` (required; no kind-to-icon map here). Expansion is controlled by the
+ *   caller (`expanded`/`onToggle`). A folder's chevron, icon and name are one button; an item's type icon sits
+ *   outside its button so the name stays the title. A column with `hideBelow` is dropped under 640px.
+ * - One CSS grid with a subgrid per row keeps columns aligned; when they do not fit the list scrolls sideways in
+ *   its own region with Name held at the left edge.
  */
-import { ChevronDown, ChevronRight, ChevronUp, Folder, FolderOpen } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import type { FolderNode } from "../utils/reportFolders";
 import { Badge } from "./Badge";
+import { TreeChevron } from "./TreeToggle";
 
 /** A column to the right of Name. */
 export interface FolderTreeColumn<T> {
   id: string;
   header: string;
-  /** The cell for an item (a folder's cell is empty). */
+  /** The cell for an item. */
   render: (item: T) => ReactNode;
+  /** The cell for a folder; empty when omitted. */
+  renderFolder?: (node: FolderNode<T>) => ReactNode;
   /** Makes the header sortable by this value (numbers sort numerically, text without regard to case). */
   sortValue?: (item: T) => string | number;
   /** A CSS width for the column (default `minmax(6rem, 10rem)`). */
@@ -47,6 +37,14 @@ export interface FolderTreeColumn<T> {
   /** Drop the column under 640px, where the row has no room for it. */
   hideBelow?: boolean;
 }
+
+/**
+ * The icon of a folder row, chosen by the list that owns the rows.
+ *
+ * @param open Whether the folder is expanded, for an icon that changes with it.
+ * @returns The icon element (decorative: the row's toggle button carries the name).
+ */
+export type FolderTreeFolderIcon = (open: boolean) => ReactNode;
 
 /** What an item's row shows besides its name. */
 export interface FolderTreeItemView {
@@ -105,10 +103,10 @@ function sortLevel<T>(nodes: FolderNode<T>[], sort: SortState, columns: FolderTr
 }
 
 function flatten<T>(
-  nodes: FolderNode<T>[], expanded: ReadonlySet<string>, sort: SortState, columns: FolderTreeColumn<T>[],
+  nodes: FolderNode<T>[], expanded: ReadonlySet<string>, sort: SortState | null, columns: FolderTreeColumn<T>[],
   depth = 0, parentId: string | null = null,
 ): Row<T>[] {
-  const sorted = sortLevel(nodes, sort, columns);
+  const sorted = sort ? sortLevel(nodes, sort, columns) : nodes;
   return sorted.flatMap((node, index) => {
     const row: Row<T> = { node, depth, parentId, position: index + 1, setSize: sorted.length };
     if (node.kind !== "folder" || !expanded.has(node.id)) return [row];
@@ -122,23 +120,29 @@ function flatten<T>(
  * @param label Names the grid for assistive technology.
  * @param expanded The ids of the open folders.
  * @param onToggle Called with a folder's id and whether it should now be open.
+ * @param folderIcon The icon of a folder row: `realFolderIcon` (`folderTreeIcons`) where the rows are folders, otherwise the icon of what they are.
  * @param itemView The icon, icon name and description of an item's row.
  * @param onOpenItem Called when an item's name is activated.
- * @param isSelected Whether an item is the chosen one (highlighted, `aria-current`).
+ * @param isSelected Whether an item is the chosen one (highlighted, `aria-current`); also asked of a folder that carries an `item`.
  * @param columns Further columns to the right of Name.
  * @param renderItemActions The trailing controls of an item's row (a favourite star), after the last column.
  * @param renderFolderActions The trailing controls of a folder's row (the setup list's New folder, Rename and Delete).
  * @param folderBadge The small count shown beside a folder's name.
  * @param checks Tick boxes before each row's icon, to choose rows (the setup list's copy mode); none when omitted.
  * @param emptyText Shown instead of the grid when there is nothing to list.
+ * @param order `"sorted"` (default) sorts each level by the Name column or a sortable column; `"given"` keeps the order of
+ *   `nodes`, and no header sorts.
+ * @param emptyFolderText The row shown in an open folder with nothing in it (default "Empty folder").
  */
 export function FolderTreeList<T>({
-  nodes, label, expanded, onToggle, itemView, onOpenItem, isSelected, columns = [], renderItemActions, renderFolderActions, folderBadge, checks, emptyText,
+  nodes, label, expanded, onToggle, folderIcon, itemView, onOpenItem, isSelected, columns = [], renderItemActions, renderFolderActions, folderBadge, checks, emptyText,
+  order = "sorted", emptyFolderText,
 }: {
   nodes: FolderNode<T>[];
   label: string;
   expanded: ReadonlySet<string>;
   onToggle: (id: string, open: boolean) => void;
+  folderIcon: FolderTreeFolderIcon;
   itemView: (item: T) => FolderTreeItemView;
   onOpenItem: (item: T) => void;
   isSelected?: (item: T) => boolean;
@@ -148,12 +152,15 @@ export function FolderTreeList<T>({
   folderBadge?: (node: FolderNode<T>) => string;
   checks?: FolderTreeChecks<T>;
   emptyText?: string;
+  order?: "sorted" | "given";
+  emptyFolderText?: string;
 }) {
   const text = useStrings().folderTreeList;
   const [sort, setSort] = useState<SortState>({ column: "name", descending: false });
   const [activeId, setActiveId] = useState<string | null>(null);
   const grid = useRef<HTMLDivElement>(null);
-  const rows = useMemo(() => flatten(nodes, expanded, sort, columns), [nodes, expanded, sort, columns]);
+  const given = order === "given";
+  const rows = useMemo(() => flatten(nodes, expanded, given ? null : sort, columns), [nodes, expanded, given, sort, columns]);
   const focusable = rows.filter((r) => !r.emptyOpen);
   const tabStop = focusable.find((r) => r.node.id === activeId)?.node.id ?? focusable[0]?.node.id;
   const hasActions = Boolean(renderItemActions || renderFolderActions);
@@ -226,12 +233,14 @@ export function FolderTreeList<T>({
   return (
     <div ref={grid} className="folder-tree-list" role="treegrid" aria-label={label} style={listStyle} onKeyDown={onKeyDown}>
       <div role="row" className="folder-tree-header">
-        <div role="columnheader" className="folder-tree-name-cell" aria-sort={ariaSort("name")}>
-          <SortButton label={text.nameHeader} active={sort.column === "name"} descending={sort.descending} onClick={() => sortBy("name")} />
+        <div role="columnheader" className="folder-tree-name-cell" aria-sort={given ? undefined : ariaSort("name")}>
+          {given ? text.nameHeader : (
+            <SortButton label={text.nameHeader} active={sort.column === "name"} descending={sort.descending} onClick={() => sortBy("name")} />
+          )}
         </div>
         {columns.map((c) => (
-          <div key={c.id} role="columnheader" aria-sort={c.sortValue ? ariaSort(c.id) : undefined} className={c.hideBelow ? "folder-tree-wide" : undefined}>
-            {c.sortValue ? <SortButton label={c.header} active={sort.column === c.id} descending={sort.descending} onClick={() => sortBy(c.id)} /> : c.header}
+          <div key={c.id} role="columnheader" aria-sort={c.sortValue && !given ? ariaSort(c.id) : undefined} className={c.hideBelow ? "folder-tree-wide" : undefined}>
+            {c.sortValue && !given ? <SortButton label={c.header} active={sort.column === c.id} descending={sort.descending} onClick={() => sortBy(c.id)} /> : c.header}
           </div>
         ))}
         {hasActions && <div role="columnheader"><span className="sr-only">{text.actionsHeader}</span></div>}
@@ -239,11 +248,11 @@ export function FolderTreeList<T>({
       {rows.map((row, visibleIndex) => {
         const { node, depth } = row;
         const band = visibleIndex % 2 === 1 ? " folder-tree-band" : "";
-        const indent = { paddingInlineStart: `calc(var(--space-3) + ${depth} * 1.25rem)` };
+        const indent = { paddingInlineStart: `calc(var(--space-3) + ${depth} * var(--tree-indent))` };
         if (row.emptyOpen) {
           return (
             <div key={node.id} role="row" aria-level={depth + 1} className={`folder-tree-row${band}`}>
-              <div role="gridcell" className="text-muted folder-tree-empty" style={indent}>{text.emptyFolder}</div>
+              <div role="gridcell" className="text-muted folder-tree-empty" style={indent}>{emptyFolderText ?? text.emptyFolder}</div>
             </div>
           );
         }
@@ -258,23 +267,29 @@ export function FolderTreeList<T>({
         };
         if (node.kind === "folder") {
           const open = expanded.has(node.id);
-          const Icon = open ? FolderOpen : Folder;
+          // A folder that carries an `item` (a record that has children of its own) can be the chosen row too.
+          const folderSelected = node.item !== undefined && (isSelected?.(node.item as T) ?? false);
           return (
-            <div key={node.id} {...common} aria-expanded={open} className={`folder-tree-row folder-tree-folder${band}`}>
+            <div
+              key={node.id} {...common} aria-expanded={open} aria-selected={node.item !== undefined && isSelected ? folderSelected : undefined}
+              className={`folder-tree-row folder-tree-folder${band}${folderSelected ? " folder-tree-selected" : ""}`}
+            >
               <div role="gridcell" className="folder-tree-name folder-tree-name-cell" style={indent}>
                 {checks && <RowCheck node={node} checks={checks} />}
                 <button
                   type="button" className="folder-tree-toggle" tabIndex={-1} aria-expanded={open}
-                  aria-label={text.toggle(node.name, open)} title={text.toggle(node.name, open)}
+                  aria-label={text.toggle(node.name, open)}
                   onClick={() => onToggle(node.id, !open)}
                 >
-                  {open ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
-                  <Icon aria-hidden="true" className="folder-tree-folder-icon" />
+                  <TreeChevron expanded={open} />
+                  <span aria-hidden="true" className="folder-tree-folder-icon">{folderIcon(open)}</span>
                   <strong>{node.name}</strong>
                 </button>
                 {folderBadge && <Badge>{folderBadge(node)}</Badge>}
               </div>
-              {columns.map((c) => <div key={c.id} role="gridcell" className={c.hideBelow ? "folder-tree-wide" : undefined} />)}
+              {columns.map((c) => (
+                <div key={c.id} role="gridcell" className={c.hideBelow ? "folder-tree-wide" : undefined}>{c.renderFolder?.(node)}</div>
+              ))}
               {hasActions && <div role="gridcell">{renderFolderActions?.(node)}</div>}
             </div>
           );

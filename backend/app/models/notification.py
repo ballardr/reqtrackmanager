@@ -4,7 +4,7 @@ Module: models.notification
 In-app and email notification models (Pelion v2, C-N-01..05). `Notification`
 rows back the in-UI notification centre (C-N-02); `NotificationPreference`
 lets a user opt in/out of each notification type per channel (C-N-04);
-`User.email_digest_mode` (added in models.user) controls whether email
+`User.email_digest_mode` (in models.user) controls whether email
 notifications go out instantly, as a daily digest, or not at all (C-N-05).
 
 `type` is stored as a plain string: the core `NotificationType` values plus any

@@ -127,10 +127,8 @@ def test_state_machine_ordering_is_enforced(client, admin_token, org_id):
         json={"decision_note": "x"}, headers=auth_headers(admin_token),
     ).status_code == 409
 
-    # A never-assessed requirement cannot be submitted for approval either
-    # (a second project assigned the *same* standard/version — see
-    # `_setup_assessed_pcr`'s own docstring for why a second, independent
-    # `_setup_published_standard_with_tree` call would collide instead).
+    # A never-assessed requirement cannot be submitted either (a second project assigned the same standard and version;
+    # see `_setup_assessed_pcr` on why a second `_setup_published_standard_with_tree` call would collide).
     standard, version, _p, _c, _pa, _ca = tree
     other_project = create_project(client, admin_token, org_id, name="Never Assessed Project")
     other_assignment = _assign_standard_to_project(

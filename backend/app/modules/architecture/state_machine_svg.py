@@ -1,33 +1,25 @@
 """
 Module: modules.architecture.state_machine_svg
 
-Renders a state machine diagram (`schemas.StateMachineModel`) as one SVG document, for the server's SVG endpoint (the PNG
-download is this document drawn in the browser), in UML state machine notation.
+Renders a state machine diagram (`schemas.StateMachineModel`) as one SVG document in UML state machine notation, for the
+server's SVG endpoint (the PNG download is this document drawn in the browser).
 
-Responsibilities:
-- Draw each ordinary state as a rounded rectangle with its name, code and `entry /`, `exit /` and `do /` lines, a composite
-  state (one that holds others) as a frame with its name in a header strip, and the initial, final and choice states as the
-  standard markers of `state_shapes`, a marker's label inside the symbol or outside it on one side (`LabelPosition`), and the
-  extent of the drawing includes the text outside a symbol.
-- Draw each transition as an arrow between two attach points (the ones a person chose, else the nearest; markers offer only
-  the middle of a side, without the side its label is on), a transition from a state to itself as the loop of `state_shapes`,
-  and its `event [guard] / action` label.
-- Draw the diagram's notes and their leaders with the block diagram's drawing (`diagram_svg`): a leader ends at a state's attach
-  point, a transition's middle or a free point.
-- With the diagram's `line_hops` on, draw a small arc where one transition or leader crosses another (`diagram_line_hops`).
+Responsibilities: draw ordinary states as rounded rectangles (name, code, `entry /`, `exit /`, `do /` lines), composite
+states as frames with a header strip, and initial, final and choice states as the `state_shapes` markers (label inside
+or beside, included in the drawing's extent); transitions as arrows between attach points (a person's choice, else the
+nearest; a self transition as the `state_shapes` loop) with an `event [guard] / action` label; notes and leaders with the
+block diagram's drawing (`diagram_svg`); small arcs where lines cross when `line_hops` is on (`diagram_line_hops`).
 
 Design decisions:
-- **Everything user-supplied is text.** Names, codes, actions and labels are XML-escaped and stripped of control characters
-  (the helpers of `diagram_svg`); the only markup embedded is the fixed marker table of `state_shapes`.
-- **Same geometry as the screen.** The boxes are the stored layout (absolute coordinates at any nesting), the attach points use
-  the shared rule (`diagram_points`), the loop and the marker shapes the shared table, and the label rule the shared
-  `transition_label`, so the file shows what the editor shows.
-- **Light-theme colours on a transparent background**, as the block diagram's file; the issue tints are an editing aid and
-  are not drawn.
-- A composite state shows its name and code only: its inside is where its child states are drawn.
-- **Deterministic.** Boxes and lines are drawn in the order of the model, parents first, so equal models give equal bytes.
+- Everything user-supplied is text: XML-escaped and stripped of control characters (`diagram_svg` helpers); the only
+  markup embedded is the fixed marker table of `state_shapes`.
+- Same geometry as the screen: stored absolute box coordinates, the shared attach rule (`diagram_points`), loop and
+  marker shapes, and `transition_label`, so the file shows what the editor shows.
+- Light-theme colours on a transparent background, as the block diagram's file; the editor's issue tints are not drawn.
+- A composite state shows its name and code only; its inside holds its child states.
+- Deterministic: boxes and lines are drawn in model order, parents first, so equal models give equal bytes.
 
-Dependencies: `schemas` (the model), `state_shapes`, `diagram_points`, `diagram_svg` (text safety and wrapping), `labels`.
+Dependencies: `schemas`, `state_shapes`, `diagram_points`, `diagram_svg` (text safety and wrapping), `labels`.
 """
 
 from __future__ import annotations

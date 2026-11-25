@@ -1,18 +1,11 @@
 """
 Module: modules.stakeholders._shared
 
-Helpers shared by the org-scoped (`router.py`) and project-scoped
-(`project_router.py`) routers, which expose the same Persona surface and
-differ only in which of `organization_id`/`project_id` scopes the call and
-which module role gates a mutation. Each router still declares its own
-routes; the bodies that would otherwise be duplicated (comments, file
-attachment, type updates) live here.
-
-RBAC: viewing is gated by sub-component enablement
-alone; create/edit/archive/retire need the scope's owner role
-(`persona_owner`/`org_persona_owner`) or a Fine-Grained Access Control
-`(persona, manage)` grant. There is no approve action. Persona-type admin is
-the separate org-scoped `persona_type_admin` role.
+Helpers shared by the org-scoped and project-scoped Persona routers (comments,
+file attachment, type updates); each router declares its own routes. Viewing
+needs the sub-component; create/edit/archive/retire need the scope's owner role
+(`persona_owner`/`org_persona_owner`) or `(persona, manage)`. There is no approve
+action; type administration is the org-scoped `persona_type_admin` role.
 """
 
 from __future__ import annotations

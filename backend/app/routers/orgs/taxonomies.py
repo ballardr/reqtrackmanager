@@ -1,14 +1,9 @@
 """
 Module: routers.orgs.taxonomies
 
-Organisation-definable taxonomies: project statuses and requirement link
-types (bidirectional, C-G-09) — create/list/move/rename/delete, sharing
-the rename/reorder/delete-with-reassignment rules described in
-`services.definitions`' module docstring.
-
-Split out of the former flat `routers/orgs.py` as a pure code-organization
-refactor — see `routers/orgs/__init__.py`'s module docstring for the
-package layout.
+Organisation-definable taxonomies: project statuses and requirement link types (bidirectional, C-G-09):
+create/list/move/rename/delete, sharing the rename/reorder/delete-with-reassignment rules of
+`services.definitions`.
 """
 
 from __future__ import annotations
@@ -371,16 +366,13 @@ def delete_link_type(
 ):
     """Deletes an organisation-wide link type (`services.link_type_usage.delete_link_type`).
 
-    Refuses to leave the organisation with zero link types (409). An unused type
-    is deleted outright. A type in use needs `reassign_to_id` (convert the links
-    to another type, merging duplicates) or `mode=remove_links` (delete them too,
-    refused while pending change requests propose the type or when it would
-    empty an artefact-type rule); without either, 409 naming the count. Passing
-    `mode` or `keep_in_projects` explicitly returns 200 with what happened
-    (`moved`/`merged`/`removed`/`copies_created`/`copies_renamed`); the legacy forms
-    return 204. With `keep_in_projects`, each project that uses the type keeps it as
-    a local copy (the top-most using project of each branch; descendants inherit it)
-    and its links are repointed, so nothing they see changes.
+    Refuses to leave the organisation with zero link types (409). An unused type is deleted outright. A type in
+    use needs `reassign_to_id` (convert the links to another type, merging duplicates) or `mode=remove_links`
+    (delete them too, refused while pending change requests propose the type or when it would empty an
+    artefact-type rule); without either, 409 naming the count. Passing `mode` or `keep_in_projects` returns 200
+    with what happened (`moved`/`merged`/`removed`/`copies_created`/`copies_renamed`); otherwise 204. With
+    `keep_in_projects`, each project that uses the type keeps it as a local copy (the top-most using project
+    of each branch; descendants inherit it) and its links are repointed, so nothing they see changes.
     """
     outcome = delete_link_type_in_use(
         db, organization_id=organization_id, link_type_id=link_type_id, mode=mode,

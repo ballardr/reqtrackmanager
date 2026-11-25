@@ -1,10 +1,9 @@
 """
 Module: routers.requirements.files
 
-Direct file attachments (C-M-02) and organisation shared-resource links
-(C-M-04) on a requirement. Both the upload and link-existing-resource paths
-are creation-or-change-request-only once the requirement is approved
-(C-G-12) — see `upload_requirement_attachment`'s docstring.
+Direct file attachments (C-M-02) and organisation shared-resource links (C-M-04) on a requirement. Both the
+upload and link-existing-resource paths are creation-or-change-request-only once the requirement is approved
+(C-G-12); see `upload_requirement_attachment`.
 """
 
 from __future__ import annotations
@@ -37,14 +36,10 @@ async def upload_requirement_attachment(
 ):
     """Uploads and attaches a new file to a requirement (C-M-02).
 
-    Governed by the same creation-or-change-request-only rule as every
-    other requirement content field once it's locked (C-G-12) — a direct
-    attachment is only allowed while the requirement is still unlocked
-    (i.e. at/around creation time); once approved, new attachments must go
-    through a change request instead (see `decide_change_request`'s
-    "attachments" handling). Hardening-review finding: this endpoint
-    previously had no lock check at all, unlike every other field, letting
-    attachments bypass the change-request-only rule entirely.
+    Governed by the same creation-or-change-request-only rule as other requirement content once it is locked
+    (C-G-12): a direct attachment is allowed only while the requirement is unlocked (at or around creation);
+    once approved, new attachments go through a change request (see `decide_change_request`'s "attachments"
+    handling).
     """
     _require_edit_role(db, current_user, project_id)
     requirement = _get_requirement_in_project(db, project_id, requirement_id)

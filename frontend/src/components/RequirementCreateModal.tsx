@@ -5,40 +5,40 @@
  * (`CreateRequirementDialog`), so a field added to a requirement reaches both.
  *
  * Responsibilities:
- * - Load what the form needs (the project, its organisation's members, components, categories, target versions and the
- *   requirement custom fields) and show `RequirementFields`, the component and category pickers, custom fields, the
- *   quick-link field and the tag field.
- * - Create the requirement, then apply its quick links and tags.
- * - A project with no component or category yet: let a project manager create the first ones inline, else point to the
- *   project's settings.
- * - Optionally (`offerAttach`) a second step to attach files to the new requirement, which the create endpoints need an
- *   id for; the plain Create closes the dialog.
+ * - Load the project, its organisation's members, components, categories, target versions and requirement custom fields,
+ *   and show `RequirementFields`, the component and category pickers, custom fields, quick-link field and tag field.
+ * - Create the requirement (with any further components, `RequirementAliasField`), then apply its quick links and tags.
+ * - A project with no component or category: a project manager creates the first ones inline, else the dialog points to
+ *   the project's settings.
+ * - With `offerAttach`, a second step attaches files (the endpoints need the new id); plain Create closes the dialog.
  *
- * Design decisions:
- * - Cancel and Create sit in the dialog header (`FormActions`); "Create and attach files" is the extra header control.
+ * Design decision: Cancel and Create sit in the dialog header (`FormActions`); "Create and attach files" is the extra control.
  */
-import { Plus } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { CollectedLink } from "../api/artefactLinks";
 import { api } from "../api/client";
+import type { PlacementPair } from "../api/placements";
 import type { Category, Component, CustomFieldDefinition, FileAsset, ProjectStage, Requirement } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
-import { toErrorMessage, useToast } from "../context/ToastContext";
+import { toErrorMessage } from "../context/ToastContext";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../hooks/useCommitTags";
+import { useCreatedToast } from "../hooks/useCreatedToast";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
 import { useProjectPeople } from "../hooks/useProjectPeople";
 import { CustomFieldsForm } from "./CustomFieldsForm";
 import { FileAttachmentList } from "./FileAttachmentList";
 import { FormActions } from "./FormActions";
-import { TextField } from "./FormFields";
 import { FormGrid, FormGridFull } from "./FormGrid";
+import { InlineStructureForm } from "./InlineStructureForm";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
+import { PrimaryPlaceField } from "./PrimaryPlaceField";
 import { QuickLinkField } from "./QuickLinkField";
+import { RequirementAliasField } from "./RequirementAliasField";
 import { RequirementFields } from "./RequirementFields";
 import { EMPTY_REQUIREMENT_FIELDS, requirementPeopleAndReviewPayload, type RequirementFieldValues } from "./requirementFieldValues";
 import { TagField } from "./TagField";
@@ -62,9 +62,9 @@ export function RequirementCreateModal({
 }) {
   const strings = useStrings();
   const run = useMutation();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId, "requirement");
   const commitTags = useCommitTags(projectId, "requirement");
+  const announceCreated = useCreatedToast(projectId, "requirement");
   const { project, orgUsers } = useProjectPeople(projectId);
 
   const [components, setComponents] = useState<Component[]>([]);
@@ -80,10 +80,7 @@ export function RequirementCreateModal({
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
-  const [inlineComponentName, setInlineComponentName] = useState("");
-  const [inlineComponentPrefix, setInlineComponentPrefix] = useState("");
-  const [inlineCategoryName, setInlineCategoryName] = useState("");
-  const [inlineCategoryPrefix, setInlineCategoryPrefix] = useState("");
+  const [additionalPlaces, setAdditionalPlaces] = useState<PlacementPair[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Step 2 (offerAttach): the requirement just created and the files attached to it.
   const [created, setCreated] = useState<Requirement | null>(null);
@@ -103,10 +100,10 @@ export function RequirementCreateModal({
     // The target version is mandatory (it can never be left unset): the select always has a real one pre-filled, the
     // same default the create endpoint applies.
     setFields((f) => (f.targetStageId || !stgs[0] ? f : { ...f, targetStageId: stgs[0].id }));
-    const firstComponent = comps[0];
-    setComponentId((current) => current || firstComponent?.id || "");
-    // The category must belong to the selected component (the tree); a project-wide first category could mismatch it.
-    setCategoryId((current) => current || (firstComponent ? cats.find((c) => c.component_id === firstComponent.id)?.id ?? "" : ""));
+    // The first place that can be chosen: the first category of the first component that has one.
+    const firstCategory = cats.find((c) => c.component_id === comps.find((k) => cats.some((x) => x.component_id === k.id))?.id);
+    setComponentId((current) => current || firstCategory?.component_id || comps[0]?.id || "");
+    setCategoryId((current) => current || firstCategory?.id || "");
     setMetaLoaded(true);
   }, [projectId]);
 
@@ -117,32 +114,6 @@ export function RequirementCreateModal({
       setError(toErrorMessage(err, strings.common.error));
     }
   }, [projectId]);
-
-  async function createInlineComponent() {
-    if (!inlineComponentName || !inlineComponentPrefix) return;
-    try {
-      await api.post(`/api/v1/projects/${projectId}/components`, { name: inlineComponentName, prefix: inlineComponentPrefix });
-      setInlineComponentName("");
-      setInlineComponentPrefix("");
-      await loadMeta();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  async function createInlineCategory() {
-    if (!inlineCategoryName || !inlineCategoryPrefix || !componentId) return;
-    try {
-      await api.post(`/api/v1/projects/${projectId}/categories`, {
-        name: inlineCategoryName, prefix: inlineCategoryPrefix, component_id: componentId,
-      });
-      setInlineCategoryName("");
-      setInlineCategoryPrefix("");
-      await loadMeta();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
 
   /** Creates the requirement; `andAttach` advances to the file step against its id instead of closing. */
   async function createRequirement(andAttach: boolean) {
@@ -159,9 +130,12 @@ export function RequirementCreateModal({
         level: fields.level,
         ...requirementPeopleAndReviewPayload(fields),
         keywords: [],
+        additional_places: additionalPlaces
+          .filter((place) => place.category_id && place.category_id !== categoryId)
+          .map((place) => ({ component_id: place.component_id, category_id: place.category_id })),
         custom_fields: customFieldValues,
       });
-      showToast(strings.requirements.created);
+      announceCreated(strings.requirements.recordLabel, requirement);
       await commitQuickLinks(requirement.id, quickLinks);
       await commitTags(requirement.id, tags);
       onCreated(requirement);
@@ -213,35 +187,17 @@ export function RequirementCreateModal({
           <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
           {canManageProject ? (
             <div className="stack">
-              {components.length === 0 && (
-                <div className="row" style={{ alignItems: "flex-end" }}>
-                  <TextField helpNotNeeded label={strings.admin.name} value={inlineComponentName} onChange={setInlineComponentName} />
-                  <TextField help={strings.help.requirementPrefix}
-                    label={strings.admin.prefix} value={inlineComponentPrefix}
-                    onChange={(next) => setInlineComponentPrefix(next.toUpperCase())} inputProps={{ style: { maxWidth: 100 } }}
-                  />
-                  <button className="btn btn-primary" onClick={createInlineComponent} disabled={!inlineComponentName || !inlineComponentPrefix}>
-                    <Plus /> {strings.admin.newComponent}
-                  </button>
-                </div>
-              )}
+              {components.length === 0 && <InlineStructureForm projectId={projectId} kind="component" onCreated={loadMeta} />}
               {categories.length === 0 && components.length > 0 && (
-                <div className="row" style={{ alignItems: "flex-end" }}>
+                <>
                   {components.length > 1 && (
-                    <LabeledSelect help={strings.help.requirementComponent}
+                    <LabeledSelect help={strings.help.structureParentComponent}
                       label={strings.requirements.component} value={componentId} onChange={setComponentId}
                       options={components.map((c) => ({ value: c.id, label: c.name }))} placeholder={null}
                     />
                   )}
-                  <TextField helpNotNeeded label={strings.admin.name} value={inlineCategoryName} onChange={setInlineCategoryName} />
-                  <TextField help={strings.help.requirementPrefix}
-                    label={strings.admin.prefix} value={inlineCategoryPrefix}
-                    onChange={(next) => setInlineCategoryPrefix(next.toUpperCase())} inputProps={{ style: { maxWidth: 100 } }}
-                  />
-                  <button className="btn btn-primary" onClick={createInlineCategory} disabled={!inlineCategoryName || !inlineCategoryPrefix}>
-                    <Plus /> {strings.admin.newCategory}
-                  </button>
-                </div>
+                  <InlineStructureForm projectId={projectId} kind="category" componentId={componentId} onCreated={loadMeta} />
+                </>
               )}
             </div>
           ) : (
@@ -268,26 +224,16 @@ export function RequirementCreateModal({
             ownerPlaceholder={strings.requirements.ownerDefaultsToYou}
             afterDescription={
               <>
-                <LabeledSelect help={strings.help.requirementComponent} required
-                  label={strings.requirements.component}
-                  value={componentId}
-                  onChange={(next) => {
-                    setComponentId(next);
-                    // A category belongs to one component; one of the previous component is never valid.
-                    setCategoryId(categories.find((c) => c.component_id === next)?.id ?? "");
+                <PrimaryPlaceField
+                  tree={{ components, categories }} categoryId={categoryId} help={strings.help.requirementPlace}
+                  onChange={(place) => {
+                    setComponentId(place.component_id);
+                    setCategoryId(place.category_id ?? "");
                   }}
-                  options={components.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
-                  placeholder={null}
                 />
-                <LabeledSelect help={strings.help.requirementCategory} required
-                  label={strings.requirements.category}
-                  value={categoryId}
-                  onChange={setCategoryId}
-                  options={categories
-                    .filter((c) => c.component_id === componentId)
-                    .map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
-                  placeholder={categories.some((c) => c.component_id === componentId) ? null : strings.requirements.noCategoriesForComponent}
-                />
+                <FormGridFull>
+                  <RequirementAliasField projectId={projectId} ownCategoryId={categoryId} value={additionalPlaces} onChange={setAdditionalPlaces} />
+                </FormGridFull>
               </>
             }
           />

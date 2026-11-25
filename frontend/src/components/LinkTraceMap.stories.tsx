@@ -9,8 +9,8 @@ import { LinkTraceMap } from "./LinkTraceMap";
 import { wrapLabel } from "./linkTrace";
 
 /**
- * The trace map: a layered, read-only SVG
- * (upstream left, downstream right, related below) that scrolls and grows as records are opened.
+ * The trace map: a layered, read-only SVG (upstream left, downstream right, related below) that scrolls and grows
+ * as records are opened.
  */
 const meta: Meta<typeof LinkTraceMap> = {
   title: "Components/LinkTraceMap",

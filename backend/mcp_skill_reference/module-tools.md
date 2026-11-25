@@ -492,17 +492,20 @@ Read and approve architectural/product decision records (ADR-style) for a projec
 Model: a project holds **decisions** with a type (`decisions_list_decision_types`), a status (`draft`, `proposed`, `under_review`, `approved`, `rejected`, `superseded`), comments, files and relationships to other artefacts. An organisation holds reusable **templates** (`decisions_list_decision_templates`, e.g. Nygard / MADR / Y-Statement).
 
 Read workflow:
-1. `decisions_list_decisions` (project) to find records; `decisions_get_decision` for context, options considered, chosen option and rationale.
+1. `decisions_list_decisions` (project) to find records; `decisions_get_decision` for context, options considered, chosen option, rationale and the long-form `document`.
 2. `decisions_list_decision_relationships` for what the decision supersedes or links to; `decisions_list_decision_comments` and `decisions_list_decision_files` for discussion and attachments.
 3. `decisions_list_decision_types` to see the project's valid types (a child project may inherit its parent's).
 
 Reports (`decisions_get_*_report`) answer cross-cutting questions, project-level only: the decision register (filter by status, type, date range), approval ageing (what has waited longest for a verdict), the decision log (decisions made in a period, with rationale) and rationale coverage (decisions with no linked artefact, requirements with no linked decision). Prefer a report over listing and fetching every decision.
 
 Rules and gotchas:
+- Decision text (statement, context, options, rationale, consequences, assumptions, constraints and `document`) is Markdown source: tables, code and lists are plain syntax, and a fenced block that starts with ```mermaid is a diagram, so read its text as the diagram's definition. Quote or summarise it; do not rewrite the marks.
 - There are no create, edit or submit tools: decisions are authored in the UI. Do not offer to create one.
 - `decisions_approve_decision` and `decisions_reject_decision` are approvals, gated by AI approval (see the main skill) and by the caller holding the decision approve permission. Only call them when the user explicitly asks about that specific decision, and pass the reason the user gave.
 - Check the decision's status before acting: only a decision awaiting a verdict can be approved or rejected.
 - A superseded decision is history; follow its relationships to the decision that replaced it before quoting it as current.
+- A project may turn off Proposed and Under review; a Decision then goes from `draft` to `approved` through the same approval, with the same permission and comment. A refused move names the allowed next states.
+- A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
 
 ### Tool list
 
@@ -599,6 +602,8 @@ Five artefact types, each with its own lifecycle (read the current `status` befo
 - **Pain point**: `submitted` -> `triaged` -> `accepted` -> `addressed` -> `closed`; also `rejected` or `duplicate`.
 - **Open question**: `open` -> `investigating` -> `ready_for_decision` -> `resolved`, or `withdrawn`.
 
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
+
 Read workflow: `list_<type>` then `get_<type>`; `list_<type>_relationships` shows how it connects to other artefacts. Reports (`..._report`) answer cross-cutting questions: prioritisation, strategy cascade and alignment gaps, coverage, roadmap, open question register, change history, summary, upgrade drivers.
 
 Write workflow:
@@ -613,6 +618,7 @@ Rules and gotchas:
 - `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a pain point, guiding principle or open question; responses return the same shape plus `label`. `null` clears it. On update, send the owner you want to keep, since an omitted owner is cleared.
 - Reports take `include_children` to roll up child projects.
 - Comments and file uploads are not available through MCP.
+- A project may turn off an optional state (a Pain Point's Triaged, a Strategy's Proposed and Under review, a Guiding Principle's Proposed, an Open Question's Investigating); the move then goes straight past it. A refused move names the states that are allowed, so use that list rather than guessing.
 
 ### Tool list
 
@@ -1586,6 +1592,8 @@ Record, assess, treat and review project risks.
 
 Model: a **risk** has a lifecycle (`identified` -> `assessed` -> `treatment_planned` -> `treatment_in_progress` -> `mitigated`, or an outcome such as `accepted`, `transferred`, `avoided`, `realised`, `rejected`, then `closed`). Its **inherent** and **residual** ratings are derived from Likelihood, Consequence and (optionally) Detectability levels; ratings are never set directly. A requirement, design or action that **mitigates or treats** the risk carries a verdict: `proposed` (just linked), `effective`, `ineffective` or `needs_reassessment`. Only `effective` counts as treatment. The owner or a Risk Manager also records periodic **reviews**.
 
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
+
 Read workflow:
 1. `risk_management_list_risks` (filter `effectively_treated=false` for untreated risks, `review_overdue=true` for overdue reviews), then `risk_management_get_risk` for detail and `allowed_next_statuses`.
 2. `risk_management_list_risk_treatments` for what treats it and why a verdict needs reassessment; `risk_management_list_risk_reviews` and `risk_management_list_risk_versions` for history.
@@ -1603,6 +1611,7 @@ Rules and gotchas:
 - `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none).
 - A risk's `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. `null` clears it. Members of an owner group may assess treatments and record reviews, as the owner can.
 - There is no delete tool. Do not invent level or type ids; read them.
+- A project may turn off Treatment planned and Treatment in progress; `allowed_next_statuses` already reflects that, and the checks of a state passed over (owner and treatment strategy) still apply.
 
 ### Tool list
 
@@ -1730,6 +1739,8 @@ Capture, triage and track enhancement requests: proposed solutions asked for by 
 
 Model: a **request** is a *solution* someone wants; a Pain Point is the *problem* it addresses. A request has a lifecycle (`new` -> `under_review` -> `accepted` -> `delivered`, or `declined`; `duplicate` is set only by merging). It lives in a project or, where the organisation allows it, in the organisation's **inbox**. It carries an owner (a user or a group) and any number of **external references** to the same work in outside tools (a Jira epic, a ServiceNow ticket). Delivery tracking itself stays in those tools.
 
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
+
 Read workflow: `product_feedback_list_requests` (filter `status`, `open_only`, `search`), then `product_feedback_get_request` for detail and `allowed_next_statuses`; `product_feedback_list_request_versions` for history and `product_feedback_list_request_comments` for the discussion. `product_feedback_get_feedback_settings` says who may submit in the project.
 
 Write workflow: `create_request` (only a title is needed) -> `update_request` (owner, description) -> `transition_request`. Link it to the Pain Point it addresses and the Requirement that realises it with the core link tools (see Problem and delivery).
@@ -1738,7 +1749,7 @@ Demand: record who asked by linking the request to a Stakeholder, a Persona or a
 
 Problem and delivery: link a request to the Pain Point it answers (link type `Addresses`) and to the Requirement that delivers it (`Realised by`) with the core link tools; `get_request` carries `pain_point_count` and `requirement_count`, and a request with `pain_point_count` 0 is flagged as a solution with no stated problem (a warning, never a block). An Engagement that evidenced the request is a `Requested by` link to that Engagement. Closing the loop: when a request is `delivered` or `declined`, `product_feedback_get_request_close_the_loop` lists its requesters and whether each was told; `product_feedback_list_open_loops` lists every closed request with someone still to tell. Nothing is sent to anyone: tell the person by your usual means, then `mark_requesters_informed` (409 until the request is delivered or declined; `informed=false` withdraws). `suggest_delivered` is only a prompt that an accepted request's Requirements are all complete; moving it to `delivered` stays a person's decision.
 
-External references and channels: a reference names a **system** (`list_external_systems`; the organisation's list, which a project extends and hides entries of), a `key` and/or an http(s) `url`, and a `role`: `origin` (the request came from that ticket) or `delivery` (it is built there). Add them at creation (`references` on `create_request`) or later with `add_request_reference`, `update_request_reference` and `remove_request_reference`; they are not versions of the request. `get_request` carries them as `external_refs`. The old `external_ref_url`/`external_ref_key` pair is still accepted and is filed as a delivery reference on the "Other" system. Each requester also has a **channel** (how they asked: `list_request_channels`): `set_requester_channel` records or clears it for requesters returned by `get_request_demand`, which shows each one's `channel`; a requester reached through an Engagement shows as an Engagement and needs none. Inbox requests use the organisation's list (`list_inbox_external_systems`). External references are a sub-component an organisation or project can switch off; while it is off their tools answer not found.
+External references and channels: a reference names a **system** (`list_external_systems`, a core tool; the organisation's list shared by every record type, which a project extends and hides entries of; the system's link template turns a bare key into a `link`), a `key` and/or an http(s) `url`, and a `role`: `origin` (the request came from that ticket) or `delivery` (it is built there). Add them at creation (`references` on `create_request`) or later with `add_request_reference`, `update_request_reference` and `remove_request_reference`; they are not versions of the request. `get_request` carries them as `external_refs`. The old `external_ref_url`/`external_ref_key` pair is still accepted and is filed as a delivery reference on the "Other" system. Each requester also has a **channel** (how they asked: `list_request_channels`): `set_requester_channel` records or clears it for requesters returned by `get_request_demand`, which shows each one's `channel`; a requester reached through an Engagement shows as an Engagement and needs none. Inbox requests use the organisation's list (`list_organization_external_systems`, a core tool). External references are a sub-component an organisation or project can switch off; while it is off their tools answer not found.
 
 Scoring: a request holds an optional level per axis in `levels` (`{"impact": <level id>, "effort": null}`: an axis set to `null` is cleared, one not mentioned is kept). Axes: **Reach, Impact, Confidence, Ease** (higher is easier), **Effort** (a higher level lowers a RICE score) and **Demand** (derived from the requesters; set a level by hand only to override it, `derived_levels` shows what it resolved to). Find the ids with `product_feedback_get_request_scoring_scheme` (or `get_inbox_scoring_scheme`). Scores are derived, never written: **ICE** is Impact x Confidence x Ease, **RICE** is Reach x Impact x Confidence / Effort, **rice_demand** replaces Reach with Demand. `get_request` and `list_requests` return `scores` (model key to `raw`, `normalised`, band `label`) for the project's enabled models, or those named by `scoring_model` (comma-separated, the first is the primary shown as `score`); a score is null until every manual axis the model needs has a level. To find work to do, filter `list_requests` with `scored=unscored` (or `missing_axis=ease`). Reach is a manual level, separate from the derived demand; compare the two, do not substitute one for the other. Scores of different models are not comparable. The organisation and each project may add their own axes (keys `c_...`) and models (keys `m_...`: a product with divisors and exponents, or a weighted sum), and hide the built-in ones: the scheme tools return exactly what this project can use, with each criterion's `origin`, so read it before choosing an axis or model; a request cannot take a level on an axis its project cannot see. Defining or hiding criteria is done in the app by an administrator, not through these tools.
 
@@ -1752,6 +1763,7 @@ Rules and gotchas:
 - Triage: `move_inbox_request_to_project` re-homes an inbox request into a project (same id, status and history; the code becomes the project's next `ENH-nnn`, so quote the new code afterwards). It needs the organisation triager role and is refused with 409 if the request has links. A moved request cannot go back to the inbox.
 - The organisation inbox tools answer 404 when an organisation administrator has switched the inbox off.
 - There is no delete tool; archiving is a UI action.
+- A project may turn off Under review; `allowed_next_statuses` already reflects that, and a refused move names the states that are allowed.
 
 ### Tool list
 
@@ -1800,12 +1812,6 @@ Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
 #### `product_feedback_list_open_loops` (read)
 
 Lists the project's delivered or declined requests that still have requesters who have not been told the outcome, with those requesters.
-
-Parameters: `project_id*` (uuid, in path)
-
-#### `product_feedback_list_external_systems` (read)
-
-Lists the project's effective external systems (Jira, ServiceNow, ...): the ids a request's references take as system_id.
 
 Parameters: `project_id*` (uuid, in path)
 
@@ -1922,12 +1928,6 @@ Parameters: `organization_id*` (uuid, in path), `request_id*` (uuid, in path), `
 Submits an enhancement request to the organisation's inbox. Any organisation member may.
 
 Parameters: `organization_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `levels` (object, in body), `references` (array, in body)
-
-#### `product_feedback_list_inbox_external_systems` (read)
-
-Lists the organisation's external systems (Jira, ServiceNow, ...) an inbox request's references can use.
-
-Parameters: `organization_id*` (uuid, in path)
 
 #### `product_feedback_get_demand_ranking_report` (read)
 

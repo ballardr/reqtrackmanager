@@ -7,6 +7,8 @@ Five artefact types, each with its own lifecycle (read the current `status` befo
 - **Pain point**: `submitted` -> `triaged` -> `accepted` -> `addressed` -> `closed`; also `rejected` or `duplicate`.
 - **Open question**: `open` -> `investigating` -> `ready_for_decision` -> `resolved`, or `withdrawn`.
 
+A person may skip steps of a record's lifecycle in the application (a project setting, with a reason); an MCP tool never does. A refused move names the allowed next states: choose one of those.
+
 Read workflow: `list_<type>` then `get_<type>`; `list_<type>_relationships` shows how it connects to other artefacts. Reports (`..._report`) answer cross-cutting questions: prioritisation, strategy cascade and alignment gaps, coverage, roadmap, open question register, change history, summary, upgrade drivers.
 
 Write workflow:
@@ -21,3 +23,4 @@ Rules and gotchas:
 - `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a pain point, guiding principle or open question; responses return the same shape plus `label`. `null` clears it. On update, send the owner you want to keep, since an omitted owner is cleared.
 - Reports take `include_children` to roll up child projects.
 - Comments and file uploads are not available through MCP.
+- A project may turn off an optional state (a Pain Point's Triaged, a Strategy's Proposed and Under review, a Guiding Principle's Proposed, an Open Question's Investigating); the move then goes straight past it. A refused move names the states that are allowed, so use that list rather than guessing.

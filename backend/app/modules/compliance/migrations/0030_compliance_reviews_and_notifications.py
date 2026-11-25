@@ -4,21 +4,15 @@ Revision ID: 0030
 Revises: 0029
 Create Date: 2026-09-06
 
-Adds the two tables backing the Compliance Module's scheduled reviews
-(§17, §18, §28):
+Adds the tables of scheduled reviews (§17, §18, §28):
 
-- `compliance_reviews` (`app.modules.compliance.models.ComplianceReview`) —
-  either a standard-level or a project-level scheduled review; exactly one
-  of `standard_id`/`project_compliance_id` is set (a `CHECK` constraint).
-- `compliance_review_evidence_links` (`ComplianceReviewEvidenceLink`) — the
-  many-to-many evidence linkage a review may carry (§17's "Notes/evidence
-  associated with the review"), mirroring `compliance_evidence_requirement_
-  links`'s own shape.
+- `compliance_reviews` (`ComplianceReview`): a standard-level or project-level scheduled review; a `CHECK` keeps exactly
+  one of `standard_id` / `project_compliance_id` set.
+- `compliance_review_evidence_links` (`ComplianceReviewEvidenceLink`): the many-to-many evidence linkage of a review (§17
+  "Notes/evidence associated with the review").
 
-Also adds the reminder-already-sent bookkeeping columns the
-notification sweeps need, on three existing tables (`compliance_evidence`,
-`compliance_required_action_assessments`, `project_compliances`) — see each
-column's own comment in `models.py` for why each pair exists.
+Also adds the reminder-sent columns the notification sweeps need on `compliance_evidence`,
+`compliance_required_action_assessments` and `project_compliances` (see each column's comment in `models.py`).
 """
 
 from collections.abc import Sequence

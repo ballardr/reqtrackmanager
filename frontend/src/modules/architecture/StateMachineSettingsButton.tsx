@@ -2,9 +2,8 @@
  * Module: modules/architecture/StateMachineSettingsButton
  *
  * The gear beside Export in the state machine editor's toolbar: a `SettingsPopoverButton` holding the diagram-level Line hops
- * switch and default Line shape (stored when changed; they belong to the diagram and apply to every viewer and every export) and the viewer's own
- * display settings, Snap to grid (kept in this browser) and Always show attach points (kept in the person's account); neither
- * of these is stored with the diagram or applied to exports.
+ * and default Line shape (stored with the diagram, applying to every viewer and export) and the viewer's own display
+ * settings, Snap to grid (this browser) and Always show attach points (the person's account), which are never exported.
  */
 import { AttachPointsSetting } from "../../components/AttachPointsSetting";
 import { LineHopsSetting } from "../../components/LineHopsSetting";

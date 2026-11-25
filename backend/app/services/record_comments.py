@@ -1,29 +1,21 @@
 """
 Module: services.record_comments
 
-The generic comments of records of any registered artefact type that opts in through
-`ModuleDefinition.record_comments`: ordinary comments on a record and pinned threads on its drawing.
+Generic comments and pinned drawing threads for any artefact type that opts in through
+`ModuleDefinition.record_comments`.
 
 Responsibilities:
-- Read a record's comments and pins together in a fixed number of statements (`read_thread`), with each author's
-  display name and what the viewer may do with each row.
-- Add a comment, a reply, or a comment that opens a new pin; edit one's own comment; delete a comment or a whole
-  thread; resolve, reopen, move and re-anchor a pin; attach an existing ordinary comment to the drawing
-  (`add_comment`, `edit_comment`, `delete_comment`, `delete_pin`, `update_pin`, `pin_comment`).
-- Validate a pin's position and anchor against the type's provider (`check_pin`).
+- Read a record's comments and pins in a fixed number of statements (`read_thread`).
+- Add, reply, edit, delete, resolve, move and re-anchor comments and pins; validate a pin against the type's provider.
 - Clear a record's comments when the record is deleted (`forget_record_comments`).
 
 Design decisions:
-- Reading and commenting follow the record's visibility (the caller passes a record already opened through
-  `services.tags.require_visible_record`) and the project view right, as the module-local comments of Decisions and
-  Strategies do. Editing a comment is the author only; deleting a comment, deleting a thread and moving a pin are the
-  author (of the comment or of the pin) or a holder of `manage` on the record's type.
-- Comments are saved at once and never under a record's version lock: they are review conversation about a record,
-  not part of it.
-- Every mutation is an audit event against the record carrying ids and counts only, never the text.
-- A record owned by an organisation stores `organization_id` instead of `project_id`; the caller supplies which.
+- Access follows the record's visibility and the project view right; editing is the author only; deleting and moving
+  a pin need the author or `manage` on the record's type.
+- Comments save at once, outside the record's version lock, and each mutation audits ids and counts, never text.
+- An organisation-owned record stores `organization_id` instead of `project_id`.
 
-External dependencies: `models.record_comment`, `models.user`, `services.audit`, `modules.registry` (providers).
+Dependencies: `models.record_comment`, `models.user`, `services.audit`, `modules.registry`.
 """
 
 from __future__ import annotations

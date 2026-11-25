@@ -4,23 +4,13 @@ Revision ID: 0013
 Revises: 0012
 Create Date: 2026-08-25
 
-Actions had no draft/change-request gate
-the way a requirement's own fields do (`services.requirements.
-LOCKED_STATUSES`) — once a requirement is APPROVED/COMPLETED, creating or
-linking an action still went straight through with no review step, unlike
-every other requirement field. Adds a new `ADD_ACTION` `ChangeRequestKind`
-(a plain VARCHAR `str_enum` column — no migration needed for the enum value
-itself, same reasoning as 0012's own note on `ReviewTargetType.ACTION`) and
-six new nullable columns on `change_request_versions` carrying the proposed
-action's content: either `proposed_action_link_id` (link an existing
-`RequirementAction`) or `proposed_action_title` + `proposed_action_type_id`
-(create a new one), mutually exclusive — see
-`routers/change_requests.py::create_change_request`'s validation.
-
-All-nullable additive columns, so every existing `change_request_versions`
-row is unaffected (`NULL` on backfill, correct for a MODIFY_REQUIREMENT/
-NEW_REQUIREMENT version that has nothing to do with actions). No backfill
-needed.
+Gates action creation and linking on an APPROVED/COMPLETED requirement behind a change request, as a
+requirement's own fields are (`services.requirements.LOCKED_STATUSES`). Adds an `ADD_ACTION`
+`ChangeRequestKind` (a plain VARCHAR `str_enum` column, so the value needs no migration, as for
+`ReviewTargetType.ACTION` in 0012) and six nullable columns on `change_request_versions` for the
+proposed action: either `proposed_action_link_id` (link an existing `RequirementAction`) or
+`proposed_action_title` + `proposed_action_type_id` (create one), mutually exclusive (see
+`routers/change_requests.py::create_change_request`). Existing rows stay `NULL`; no backfill.
 """
 
 from collections.abc import Sequence

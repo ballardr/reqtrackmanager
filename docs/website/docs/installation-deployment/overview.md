@@ -15,15 +15,15 @@ ReqTrackManager ships as a set of Docker containers, orchestrated by Docker Comp
 
 ## Two Compose stacks, two purposes
 
-| | `docker-compose.yml` (repo root) | `tests/container/docker-compose.yml` |
+| | `deployments/full/docker-compose.yml` | `tests/container/docker-compose.yml` |
 | --- | --- | --- |
-| Purpose | **Production.** What a real deployment runs. | **Local development, evaluation, and automated testing.** |
+| Purpose | **Production (full).** What a real deployment runs: the application plus the optional observability, backup and documentation profiles. | **Local development, evaluation, and automated testing.** |
 | Secrets | Refuses to start until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY`, and `SMTP_HOST` — no insecure defaults. | Dev-friendly defaults for everything, no setup required. |
 | Extra services | None beyond the application itself (plus an optional observability profile). | MailHog (SMTP catcher) and a real Keycloak instance, for testing per-organisation SSO end-to-end. |
 | Database | Your production PostgreSQL. | Its own dedicated `reqtrack_test` database, isolated from anything else. |
 | Used by | Real users. | `backend/tests/` (pytest), the Playwright E2E suite, and CI. |
 
-These are deliberately kept separate rather than sharing one file with a dev override. Sharing led to a real, serious bug during this project's development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema. **Never run `pytest`, or anything under `tests/`, against the root stack**, and never point the `tests/container/` stack at the internet.
+These are deliberately kept separate rather than sharing one file with a dev override. Sharing led to a real, serious bug during this project's development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema. **Never run `pytest`, or anything under `tests/`, against the full stack**, and never point the `tests/container/` stack at the internet.
 
 ```mermaid
 flowchart TD
@@ -48,10 +48,22 @@ Reading this top to bottom: `db` and `storage` must be healthy before `backend` 
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO end-to-end | No — a real deployment points each org at its own IdP instead | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
 
+## Minimal stack
+
+`deployments/minimal/docker-compose.yml` is a third, self-contained file for a small installation or an evaluation on one host. It runs the application's own services (`db`, `storage`, `backend`, `frontend`, `mcp-server` and `converter`) and nothing else: no observability services, backup, documentation site, MailHog or Keycloak. It keeps the production protections and needs five secrets.
+
+```bash
+cd deployments/minimal
+cp .env.example .env    # fill in the five blank secrets
+docker compose up -d
+```
+
+Outgoing email is off until `EMAIL_DELIVERY=smtp` and the `SMTP_*` variables are set, so invitations and password-reset emails are not delivered before then. For backups, observability and tuning, use the `deployments/full/docker-compose.yml` ([Production deployment](./production-deployment.md)).
+
 ## Demonstration hosting
 
 :::note
-The `tests/container/` stack can also be set up as a demonstration with sample data (`scripts/demo.sh`). This is for demonstration hosting only and is not a standard way of hosting ReqTrackManager; use the production stack for real use. A demonstration is served over HTTPS by its own Caddy proxy (a certificate from a public authority for a DNS name, or a local authority for `localhost`), on one origin, with HTTP redirected to HTTPS. The daily reset can first pull the latest published images (`scripts/demo.sh --pull --reset`, run by a host timer), so the demonstration always shows the current build. It also collects usage metrics in its own Prometheus, which survives the daily reset, and one command (`scripts/demo.sh --export-metrics`) bundles them for a developer to review. The metrics describe which routes are used and how the server behaves; they never identify a person or a record. See the [demonstration reference](https://github.com/ballardr/reqtrackmanager/blob/main/docs/demo.md) for details.
+The `tests/container/` stack can also be set up as a demonstration with sample data (`scripts/demo.sh`). This is for demonstration hosting only and is not a standard way of hosting ReqTrackManager; use the production stack for real use. A demonstration is served over HTTPS by its own Caddy proxy (a certificate from a public authority for a DNS name, or a local authority for `localhost`), on one origin, with HTTP redirected to HTTPS. A run pulls the latest published images by default (`scripts/demo.sh --reset`, run by a host timer, or `--no-pull` to build the working tree), so the demonstration always shows the current build. It starts one backend worker and no Keycloak unless `--sso` is given, so it fits a host with 4 GiB of memory. It also collects usage metrics in its own Prometheus, which survives the daily reset, and one command (`scripts/demo.sh --export-metrics`) bundles them for a developer to review. The metrics describe which routes are used and how the server behaves; they never identify a person or a record. See the [demonstration reference](https://github.com/ballardr/reqtrackmanager/blob/main/docs/demo.md) for details.
 :::
 
 ## Where to go next

@@ -1,14 +1,12 @@
 /**
  * Module: utils/recordCode
  *
- * The one rule for how a record code is shown: `REQ-001` inside its own project, or the
- * qualified `ACME-REQ-001` once the project code is added. No page decides for itself; pages
- * call `useRecordCode` (hooks/useRecordCode.ts), which feeds this function.
- *
- * Rule: a record outside its own project is always qualified. Inside it, qualified when the
- * organisation enforces it, otherwise per the user's `show_project_code` preference.
- *
- * Dependencies: none.
+ * The one rule for how a record code is shown: `REQ-001` inside its own project,
+ * or the qualified `ACME-REQ-001`. Pages call `useRecordCode`
+ * (hooks/useRecordCode.ts), which feeds this function.
+ * Rule: a record outside its own project is always qualified; inside it,
+ * qualified when the organisation enforces it, otherwise per the user's
+ * `show_project_code` preference. Dependencies: none.
  */
 
 /** Matches the leading `PREFIX-nnn` code of a summary label (`FND-001 Title`, `SYS-PERF-014 — Name`). */

@@ -2,17 +2,19 @@
  * Module: modules/architecture/ConnectionFormModal
  *
  * Create and edit dialog for a connection between two elements, shared by the Connections list (create), the
- * detail page (edit), an element's page (create from that element) and told apart by whether `initial` is passed. The
- * two ends may be this project's elements or ones another owner shares with it (the caller passes both in `elements`);
- * a port is offered only when the chosen element has ports, and is cleared when the element changes. A new connection also takes quick
- * links, tags and "Save and activate" (a connection has no approval step).
+ * detail page (edit) and an element's page (create from that element); `initial` tells create from edit. The two
+ * ends may be this project's elements or ones another owner shares with it (passed in `elements`); a port is
+ * offered only when the chosen element has ports, and is cleared when the element changes. A new connection also
+ * takes quick links, tags and "Save and activate" (a connection has no approval step).
  *
- * A new connection's Protocol starts as its type's default protocol and follows the type while the person has not set it; after
- * that a type change replaces it only while it is empty or still the previous type's default (`protocolAfterTypeChange`).
+ * A new connection's Protocol starts as its type's default protocol and follows the type while the person has not
+ * set it; after that a type change replaces it only while it is empty or still the previous type's default
+ * (`protocolAfterTypeChange`).
  *
- * The fields are the shared `ConnectionFieldGroup` (also the diagram Selection card's), whose type picker is guided, never
- * restrictive. A diagram adds a connection at once and edits it in its Selection card; this dialog opens there only when the
- * project has no connection type (`setupPath` then links to where types are set up) and, by a double click, to edit.
+ * The fields are the shared `ConnectionFieldGroup` (also the diagram Selection card's), whose type picker is
+ * guided, never restrictive. A diagram adds a connection at once and edits it in its Selection card; this dialog
+ * opens there only when the project has no connection type (`setupPath` links to where types are set up) and, by a
+ * double click, to edit.
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";

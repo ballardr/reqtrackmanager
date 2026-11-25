@@ -1,17 +1,13 @@
 /**
  * Module: modules/stakeholders/EngagementAudiencePanel
  *
- * The Stakeholder groups an engagement was aimed at.
- * Picking groups in the shared `TreeSelect` and pressing "Add everyone in
- * group" records an audience link and copies each group's current members
- * (descendants included) into the participant list as a **snapshot**: the
- * engagement is a historical record, so later membership changes never alter who
- * attended, and a no-show is removed from the participants as usual. Removing an
- * audience removes the link only; the participants it added stay (the confirm
- * says so). The toast reports how many people were added and how many were
- * already taking part. Any group of the organisation or the project can be
- * chosen, so no node is disabled. The tree picker opens its own popover, and popovers do not nest,
- * so the (+) button opens a small `Modal` rather than a `Popover`.
+ * The Stakeholder groups an engagement was aimed at. Picking groups in the shared `TreeSelect` and pressing "Add
+ * everyone in group" records an audience link and copies each group's current members (descendants included) into the
+ * participant list as a **snapshot**: the engagement is a historical record, so later membership changes never alter
+ * who attended, and a no-show is removed from the participants as usual. Removing an audience removes the link only;
+ * the participants it added stay (the confirm says so). The toast reports how many people were added and how many were
+ * already taking part. Any group of the organisation or the project can be chosen, so no node is disabled. The tree
+ * picker opens its own popover and popovers do not nest, so the (+) button opens a small `Modal`.
  */
 import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -21,8 +17,10 @@ import { Modal } from "../../components/Modal";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
 import { TreeSelect } from "../../components/TreeSelect";
+import { Tooltip } from "../../components/Tooltip";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi } from "./api";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 import { allGroupSelectNodes, buildGroupTree, groupPath } from "./groupTree";
 import type { EngagementAudience, StakeholderGroup } from "./types";
 import { FormActions } from "../../components/FormActions";
@@ -114,12 +112,14 @@ export function EngagementAudiencePanel({
       label="Audience groups"
       gap="0.35rem"
       action={
-        <button
-          type="button" className="btn btn-sm btn-icon" aria-label="Add to Audience groups"
-          title="Add to Audience groups" aria-haspopup="dialog" disabled={nodes.length === 0} onClick={() => setPicking(true)}
-        >
-          <Plus aria-hidden="true" />
-        </button>
+        <Tooltip label="Add to Audience groups">
+          <button
+            type="button" className="btn btn-sm btn-icon" aria-label="Add to Audience groups"
+            aria-haspopup="dialog" disabled={nodes.length === 0} onClick={() => setPicking(true)}
+          >
+            <Plus aria-hidden="true" />
+          </button>
+        </Tooltip>
       }
     >
       {audiences.length === 0 ? (
@@ -128,7 +128,7 @@ export function EngagementAudiencePanel({
         <RemovableItemList
           items={audiences.map((a) => ({
             id: a.link_id,
-            content: <span title={groupPath(groups, a.group_id)}>{a.name}</span>,
+            content: <span title={groupPath(groups, a.group_id)}><PeopleKindLabel kind="group" name={a.name} /></span>,
             removeLabel: `Remove audience ${a.name}`,
           }))}
           onRemove={(id) => setRemoving(audiences.find((a) => a.link_id === id) ?? null)}

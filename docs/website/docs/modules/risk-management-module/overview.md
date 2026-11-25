@@ -52,7 +52,7 @@ Each composes with roles that already carry equivalent authority: a server admin
 
 ## Groups as owners
 
-A Risk's **Owner** can be a user, an organisation group or a project group, so a team can stand behind a Risk instead of one nominee who may leave. The register, the Risk page and the version history show the group's name, its kind (Organisation group or Project group) and how many people it stands for.
+A Risk's **Owner** can be a user, an organisation group or a project group, so a team can stand behind a Risk instead of one nominee who may leave. The register, the Risk page and the version history show the group's icon and name; hover to see its kind (Organisation group or Project group) and how many people it stands for.
 
 - **What the owner can do is unchanged.** The owner, or any member of an owner group, may [assess treatments](./treatment-and-relationships.md) and [record reviews](./reviews-and-notifications.md). A group gives no other right: editing, archiving and moving the Risk along its lifecycle still need the Risk Manager role.
 - **Notifications reach every member.** A review notice or a treatment-needs-reassessment notice goes to each active member of an owner group; a group with nobody to notify falls back to the project's Risk Managers and Project Managers.

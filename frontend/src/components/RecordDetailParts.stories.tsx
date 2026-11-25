@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser, Principal } from "../api/types";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "./RecordDetailParts";
@@ -61,7 +61,7 @@ export const PrincipalFieldReadOnlyNamesAGroupWithItsKind: Story = {
   render: () => <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={TEAM} orgUsers={ORG_USERS} readOnly onChange={fn()} />,
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Platform team")).toBeInTheDocument();
-    await expect(within(canvasElement).getByText("Organisation group · 3 members")).toBeInTheDocument();
+    await expect(within(canvasElement).getByText("Organisation group, 3 members")).toBeInTheDocument();
   },
 };
 
@@ -79,7 +79,7 @@ export const PrincipalFieldEditableUnassignsAGroup: Story = {
   ),
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Platform team")).toBeInTheDocument();
-    await userEvent.click(within(canvasElement).getByRole("button", { name: /Unassign/ }));
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /Clear/ }));
     await expect(onUnassign).toHaveBeenCalledWith(null);
   },
 };
@@ -108,3 +108,19 @@ export const VersionHistoryHiddenForASingleVersion: Story = {
 };
 
 export const DarkTheme: Story = { ...VersionHistoryNewestFirstWithKindColumns, globals: { theme: "dark" } };
+
+export const FieldShowsMarkdownAndEquationsWhenAsked: Story = {
+  render: () => (
+    <div className="stack">
+      <RecordField label="Rationale" markdown value={"The **hub** carries:\n\n- power\n- data"} />
+      <RecordField label="Description" math value={"Gain \\( g_1 \\) is **fixed**"} />
+      <RecordField label="Plain" value={"Typed **as is**"} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvasElement.querySelectorAll("li")).toHaveLength(2);
+    await waitFor(() => expect(canvasElement.querySelectorAll(".math-text")).toHaveLength(1));
+    await expect(canvas.getByText("Typed **as is**")).toBeInTheDocument();
+  },
+};

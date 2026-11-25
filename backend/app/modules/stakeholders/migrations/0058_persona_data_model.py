@@ -4,13 +4,9 @@ Revision ID: 0058
 Revises: 0057
 Create Date: 2026-10-05
 
-Adds the Persona tables: `persona_type_definitions`/`project_persona_types` (two-tier type
-vocabulary), `personas`/`persona_versions` (identity + temporal content, org or
-project scope), `project_persona_weights` (per-project weight override), and the
-module-local comment/attachment tables.
-
-Existing organisations get the default Primary/Secondary/Negative types
-backfilled, since `on_org_created` only seeds organisations created afterwards.
+Adds the Persona tables (two-tier type vocabulary, `personas`/`persona_versions`,
+per-project weights, module-local comment and attachment tables) and backfills
+the default types for existing organisations.
 """
 
 from collections.abc import Sequence

@@ -7,7 +7,7 @@
  * query the old per-type routes redirect to. Stakeholder Needs are not people: they have their own tab
  * (`NeedsPage`), switched by `NEEDS_SUBCOMPONENT`.
  */
-import { Drama, Handshake, UsersRound, type LucideIcon } from "lucide-react";
+import { Drama, Handshake, UsersRound, VenetianMask, type LucideIcon } from "lucide-react";
 
 import type { ListedRecord } from "./RecordListView";
 import type { Persona, Stakeholder, StakeholderGroup } from "./types";
@@ -32,6 +32,21 @@ export const PEOPLE_KIND_ICON: Record<PeopleKind, LucideIcon> = {
   persona: Drama,
   stakeholder: Handshake,
   group: UsersRound,
+};
+
+/** A kind of person-record chip: the three People kinds and an anonymous participant (a label, no record). */
+export type PersonKind = PeopleKind | "anonymous";
+
+/** The name of each chip kind, the tooltip and accessible name of its icon. */
+export const PERSON_KIND_LABEL: Record<PersonKind, string> = {
+  ...PEOPLE_KIND_LABEL,
+  anonymous: "Anonymous participant",
+};
+
+/** The icon of each chip kind; an anonymous participant has its own, apart from the user icon of a facilitator. */
+export const PERSON_KIND_ICON: Record<PersonKind, LucideIcon> = {
+  ...PEOPLE_KIND_ICON,
+  anonymous: VenetianMask,
 };
 
 /** The kind named in the filter chips. */
@@ -107,7 +122,7 @@ export function needsEnabled(disabledSubComponents: string[]): boolean {
   return !disabledSubComponents.includes(NEEDS_SUBCOMPONENT);
 }
 
-/** Whether a raw `?kind=` value names the retired Need kind, which now lives on the Needs tab. */
+/** Whether a raw `?kind=` value names the Need kind, which is listed on the Needs tab and not the People page. */
 export function namesNeedKind(raw: string | null): boolean {
   return (raw ?? "").split(",").includes("need");
 }

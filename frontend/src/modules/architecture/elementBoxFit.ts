@@ -1,24 +1,15 @@
 /**
  * Module: modules/architecture/elementBoxFit
  *
- * The least size an element box on a block diagram needs to show its symbol, its code line and its name whole. Pure functions,
- * no React.
- *
- * Responsibilities:
- * - Break a box's name into lines at the width the box is drawn at, between words only (`fitBox`), and total the height of the
- *   symbol, the name's lines and the caption line with the box's insets.
- * - Give the size a box is drawn at (`drawnBoxSize`): the larger of the stored size and that fit, in each direction.
- *
- * Design decisions:
- * - The stored size is never rewritten. A symbol is set on an element, on its type, or changed on the type later, which touches
- *   boxes on diagrams nobody has open, so the fit is computed wherever a box is read and the stored width and height stay what
- *   the person last drew.
- * - The server draws the same frame with a Python copy (`diagram_box_fit.py`); `elementBoxFitCases.json` holds the cases both
- *   are tested against, so a change is made in both. Widths come from the symbol label's width table (wider than the system
- *   fonts' glyphs), so a box may draw a little larger than its text needs and never smaller; the name is measured at the bold
- *   factor because the exports draw it bold.
- * - The symbol has a fixed height (`SYMBOL_HEIGHT`) rather than a share of the box, so the height is a plain sum and a taller
- *   box leaves room, never a larger symbol.
+ * The least size an element box on a block diagram needs to show its symbol, its code line and its name whole. Pure, no React.
+ * - `fitBox` breaks the name into lines between words at the drawn width and totals the height of the symbol, the name's
+ *   lines and the caption line with the box's insets; `drawnBoxSize` is the larger of the stored size and that fit.
+ * - The stored size is never rewritten: a symbol can change on a type and touch boxes on diagrams nobody has open, so the
+ *   fit is computed wherever a box is read.
+ * - The server draws the same frame with `diagram_box_fit.py`; `elementBoxFitCases.json` holds the cases both are tested
+ *   against, so a change is made in both. Widths come from the symbol label's width table (wider than system glyphs), so a
+ *   box may draw a little larger than its text needs and never smaller; the name is measured at the bold factor.
+ * - The symbol has a fixed height (`SYMBOL_HEIGHT`), so the height is a plain sum and a taller box leaves room.
  */
 
 import { textWidth, wrapLabel } from "./symbolLabelLayout";

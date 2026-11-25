@@ -341,6 +341,13 @@ enforced" (Q13). Traceability exposes status and never blocks.
 **Why:** the preferred behaviour is to prevent formal approval or baselining, not to block
 creation (§20).
 
+**Input from the Platform Review plan (Phase 20, 2026-11-19):** a requirement made independent from an
+alias is a draft that carries copies of the original's links. The status computation must be able to
+show a record whose verification or validation links are all *carried over* as "verification
+inherited", not as verified (the same rule as an approved waiver in Phase 13). The link carries a
+note naming the source record; the status reads it through a generic link field, never a
+requirement-specific case.
+
 ## Phase 13 — Traceability exceptions (`traceability_exceptions`)
 
 **Scope** (§22): `TraceabilityException` as a registered artefact type (Q15): record, rule,
@@ -379,6 +386,15 @@ separately maintained structure; saved definitions and ad hoc views (Q12); cover
   token's project scope) contributed through a `ModuleDefinition` hook consumed by
   `TagFilter`-style list filters. The Requirements list takes no module-specific code.
   Export respects the filter.
+
+**Aliases and carried-over links (cross-reference).** A requirement can sit in several components
+with an alias code each, and making an alias independent copies the original's links onto a new
+draft with `ArtefactLink.note` set to "Copied from REQ-001"
+([platform-review-2026-11-19-plan.md](completed/platform-review-2026-11-19-plan.md), phase 20; **Decided by:
+User**, 2026-11-21). Coverage counts a record once under all its codes, and a record whose
+verification links all carry that note reads "verification inherited", not verified, until a person
+confirms or replaces them: a status input registered through this module's own extension point,
+never a Traceability edit in the core requirement code. The note itself is generic and is built.
 
 **MCP tools** (write-enabled per Q17; names **Decided by: Agent**): list/create traceability
 rules, get matrix, get coverage report, request traceability exception (the request, not

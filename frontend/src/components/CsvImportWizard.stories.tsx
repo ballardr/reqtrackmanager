@@ -54,7 +54,7 @@ export const UnmatchedHeadersBlockThePreview: Story = {
   },
 };
 
-/** A Code column names the records to update, so required columns are no longer needed for a file of updates only. */
+/** A Code column names the records to update, so required columns are not needed for a file of updates only. */
 export const ACodeColumnLiftsTheRequiredColumns: Story = {
   args: { file: csvFile("code,level\nSW-001,Optional\n") },
   play: async () => {

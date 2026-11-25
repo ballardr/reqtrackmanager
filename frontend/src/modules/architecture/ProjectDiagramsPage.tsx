@@ -1,7 +1,8 @@
 /**
  * Module: modules/architecture/ProjectDiagramsPage
  *
- * The project's diagrams, the Diagrams tab of `SystemArchitecturePage` (`/projects/:projectId/modules/architecture?tab=diagrams`; `chrome` is the page's tab strip): a
+ * The project's diagrams, the Diagrams tab of `SystemArchitecturePage`
+ * (`/projects/:projectId/modules/architecture?tab=diagrams`; `chrome` is the page's tab strip): a
  * `DirectoryTable` (code opens the editor) listing block diagrams and state machine diagrams together, with a Type column, the
  * element, the contents (elements or states), status and a `FilterPanel` (search, Type, status, "Open only", folder, scope, tags,
  * archived). The list opens on open diagrams (`useOpenOnly`) and keeps its filters in the URL. A second view, **States**
@@ -10,9 +11,8 @@
  *
  * Design decisions:
  * - Each type keeps its own endpoints, so the list loads each and merges and sorts in the browser (the lists are not paged).
- * - A person sees a type only when they can read it: a type whose list answers 403 or 404 contributes no rows, its Type filter
- *   value, its Export group and the Type choice are left out, so someone with no state machine diagram access sees the tab
- *   as before. The tab shows an error only when no type can be read.
+ * - A person sees a type only when they can read it: a type whose list answers 403 or 404 contributes no rows, and its
+ *   Type filter value, Export group and Type choice are left out. The tab shows an error only when no type can be read.
  * - Export and Import are one `ListActions` per type shown (the page's `records` array), each acting on its own filtered rows;
  *   the Type filter hides the other group.
  */
@@ -21,7 +21,6 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
 import type { RecordListActions } from "../../components/ListActions";
-import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FieldHelp } from "../../components/FieldHelp";
 import { FilterBadge } from "../../components/FilterBadge";
@@ -39,9 +38,12 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { useStrings } from "../../context/TerminologyContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { sortRows } from "../../utils/sortRows";
@@ -85,7 +87,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
   const [kindFilter, setKindFilter] = useUrlChoice("type", KINDS);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, STATUSES);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(DIAGRAM_SORT_KEYS);
+  const listSort = useListSort("diagrams", DIAGRAM_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -147,7 +149,44 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
     };
   }, [search, statusFilter, kindFilter, folders]);
   const filtered = useMemo(() => rows.filter((r) => matches(r, openOnly)), [rows, matches, openOnly]);
-  const sorted = useMemo(() => sortRows(filtered, sort, DIAGRAM_ROW_SORT_VALUES), [filtered, sort]);
+  const sorted = useMemo(() => sortRows(filtered, listSort.sort, DIAGRAM_ROW_SORT_VALUES), [filtered, listSort.sort]);
+
+  const columns: DirectoryColumn<DiagramListRow>[] = [
+    { key: "code", label: "Code", sortable: true, render: (r) => <RecordCode code={r.source.unique_code} ownerProjectCode={r.source.from_project_code} /> },
+    { key: "name", label: "Name", sortable: true, render: (r) => <>{r.source.name}<ProjectScopeLabel row={r.source} /></> },
+    ...(offered.length > 1 ? [{ key: "type", label: "Type", sortable: true, optional: true, render: (r: DiagramListRow) => DIAGRAM_KIND_LABEL[r.kind] }] : []),
+    { key: "folder", label: "Folder", sortable: true, optional: true, render: (r) => (r.kind === "block" ? r.source.folder_path ?? "—" : "—") },
+    {
+      key: "scope", label: "Element", sortable: true, optional: true,
+      render: (r) => (r.kind === "block" && !r.source.scope_element_id
+        ? <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>
+        : rowElementText(r) || "—"),
+    },
+    {
+      key: "boxes", label: "Contents", sortable: true, optional: true,
+      render: (r) => (
+        <>
+          {rowContents(r)} {r.kind === "block" ? (rowContents(r) === 1 ? "element" : "elements") : (rowContents(r) === 1 ? "state" : "states")}
+          {r.kind === "state_machine" && r.source.error_count > 0 && <> <Badge tone="danger">{r.source.error_count} {r.source.error_count === 1 ? "error" : "errors"}</Badge></>}
+          {r.kind === "state_machine" && r.source.warning_count > 0 && <> <Badge tone="warning">{r.source.warning_count} {r.source.warning_count === 1 ? "warning" : "warnings"}</Badge></>}
+        </>
+      ),
+    },
+    { key: "toggles", label: "Switches", sortable: true, optional: true, defaultHidden: true, render: (r) => (r.kind === "block" ? r.source.toggle_count : "—") },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (r) => (
+        <FilterBadge
+          tone={ARCHITECTURE_STATUS_TONE[r.source.status]} active={statusFilter === r.source.status}
+          onClick={() => setStatusFilter(statusFilter === r.source.status ? "" : r.source.status)}
+        >
+          {ARCHITECTURE_STATUS_LABEL[r.source.status]}
+        </FilterBadge>
+      ),
+    },
+  ];
+
+  const shown = useOptionalColumns("architecture_diagrams", columns);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -161,6 +200,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
     if (openOnly) params.set("open_only", "true");
     folders.addParams(params);
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -176,48 +216,14 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
       };
     });
 
-  const columns: DirectoryColumn<DiagramListRow>[] = [
-    { key: "code", label: "Code", sortable: true, render: (r) => <RecordCode code={r.source.unique_code} ownerProjectCode={r.source.from_project_code} /> },
-    { key: "name", label: "Name", sortable: true, render: (r) => <>{r.source.name}<ProjectScopeLabel row={r.source} /></> },
-    ...(offered.length > 1 ? [{ key: "type", label: "Type", sortable: true, render: (r: DiagramListRow) => DIAGRAM_KIND_LABEL[r.kind] }] : []),
-    { key: "folder", label: "Folder", sortable: true, render: (r) => (r.kind === "block" ? r.source.folder_path ?? "—" : "—") },
-    {
-      key: "scope", label: "Element", sortable: true,
-      render: (r) => (r.kind === "block" && !r.source.scope_element_id
-        ? <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>
-        : rowElementText(r) || "—"),
-    },
-    {
-      key: "boxes", label: "Contents", sortable: true,
-      render: (r) => (
-        <>
-          {rowContents(r)} {r.kind === "block" ? (rowContents(r) === 1 ? "element" : "elements") : (rowContents(r) === 1 ? "state" : "states")}
-          {r.kind === "state_machine" && r.source.error_count > 0 && <> <Badge tone="danger">{r.source.error_count} {r.source.error_count === 1 ? "error" : "errors"}</Badge></>}
-          {r.kind === "state_machine" && r.source.warning_count > 0 && <> <Badge tone="warning">{r.source.warning_count} {r.source.warning_count === 1 ? "warning" : "warnings"}</Badge></>}
-        </>
-      ),
-    },
-    { key: "toggles", label: "Switches", sortable: true, render: (r) => (r.kind === "block" ? r.source.toggle_count : "—") },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (r) => (
-        <FilterBadge
-          tone={ARCHITECTURE_STATUS_TONE[r.source.status]} active={statusFilter === r.source.status}
-          onClick={() => setStatusFilter(statusFilter === r.source.status ? "" : r.source.status)}
-        >
-          {ARCHITECTURE_STATUS_LABEL[r.source.status]}
-        </FilterBadge>
-      ),
-    },
-  ];
-
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && rows.some((r) => matches(r, false));
 
   return (
     <div className="container stack">
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
-        records={records}
+        records={records} columnChooser={shown.chooser}
+        menuItems={folders.menuItems}
         actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New diagram</button>}
         filter={
           <FilterPanel
@@ -238,6 +244,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
             {folders.panel}
             <ProjectScopeFilter scope={projectScope} />
             <TagFilterField projectId={projectId} filter={tagFilter} />
+            <SortField list={listSort} columns={columns} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -245,12 +252,12 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
         {viewTabs}
         {folders.bar}
         <DirectoryTable
-          ariaLabel="Diagrams" columns={columns} rows={sorted} rowKey={(r) => r.id}
+          ariaLabel="Diagrams" columns={shown.columns} rows={sorted} rowKey={(r) => r.id}
           selection={{
             selected: folders.selected, onChange: folders.setSelected, label: (r) => `Select ${r.source.unique_code}`,
             selectable: (r) => r.kind === "block" && r.source.project_id === projectId, allLabel: "Select all diagrams",
           }}
-          sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
+          sort={listSort.sort} onSort={listSort.onHeaderSort}
           placements={{ projectId, artefactType: (r) => DIAGRAM_KIND_ARTEFACT_TYPE[r.kind], rowId: (r) => r.id }}
           rowHref={(r) => diagramEditorPath(rowProjectId(r.source, projectId), r.kind, r.id)}
           emptyState={

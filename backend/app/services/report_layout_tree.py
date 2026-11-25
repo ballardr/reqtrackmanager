@@ -1,53 +1,27 @@
 """
 Module: services.report_layout_tree
 
-The layout tree: the versioned JSON a person authors for a custom report, and the validator that
-decides whether a tree may be saved or run.
+The layout tree: the versioned JSON a person authors for a custom report and the validator that decides whether it
+may be saved or run.
 
 Responsibilities:
-- Define the tree vocabulary (`TREE_SCHEMA_VERSION`): document blocks `heading`, `text`, `table`,
-  `each`, `group`, `if`, `grid` (an author-written table with merged, aligned and coloured cells), `page_break`,
-  `spacer` (vertical space of an exact height), `contents` (a table of contents of the document's headings),
-  `bottom` (its contents at the foot of the page),
-  `section` (its contents in another page style), `equation` (display TeX),
-  `image` (a picture from the layout tier's image library, with size, alignment, caption and alt text),
-  `widget` (one component of a module report, by key), and the table-family block `sheet` (a root source plus
-  optional left `joins` along links, one row per combination).
-- Validate a tree with positioned errors (`validate_tree`): shape, unknown keys, depth/node/size
-  caps, record types and field names against the report field registry, operators and values per
-  field kind, conditions combined with `all` / `any` / `not`, aliases in scope and `{{alias.field}}`
-  placeholders.
-- Report, per container block, which `(record type, field)` pairs its subtree needs, so the
-  evaluator loads exactly those columns (`TreeAnalysis.refs`).
-- Hash a tree (`tree_hash`) for versioning and provenance.
-- Let an `if` test whether a module is available in the project being run (`{"module": key}`), so a layout that
-  spans modules leaves out the parts of one that is off instead of printing an empty section.
-- Check a `widget` block names a component in the widget catalogue (`services.report_widgets`)
-  and sets only parameters that report declares, with values of the declared type.
-- Check a layout's run-time `variables` (typed values supplied when it runs: `services.report_variables`) and that
-  every reference to one (`{"var": name}` as a condition value or widget parameter, `{{var.name}}` in text) names a
-  declared variable of a type that fits.
-- Check TeX at save time against the allow-list in `services.report_math` (an `equation` block's `tex`, and the
-  `\\( \\)` / `$$ $$` equations written in a text block); the extension point `register_block_spec` stays open for
-  other block types.
+- Define the vocabulary (`TREE_SCHEMA_VERSION`): document blocks (`heading`, `text`, `table`, `each`, `group`, `if`,
+  `grid`, `page_break`, `spacer`, `contents`, `bottom`, `section`, `equation`, `image`, `widget`) and the table-family
+  `sheet`; `register_block_spec` stays open for other block types.
+- `validate_tree`: positioned errors for shape, unknown keys, caps, record types and fields against the field registry,
+  operators and values, aliases and placeholders, widget parameters, run-time `variables` and `{"var": name}` references,
+  `{"module": key}` conditions and TeX (`report_math`). `TreeAnalysis.refs`: the fields each container needs.
+- `tree_hash` for versioning and provenance.
 
 Design decisions:
-- **No expressions.** A value is a `{{alias.field}}` reference or a literal; a condition is one
-  field, one operator, one literal. There is no template language (no Jinja), no raw HTML block and
-  no way to name a table or column the registry does not declare, so a layout cannot reach data the
-  registry omits (Restricted and consent-sensitive columns) or inject markup.
-- Strict shape: an unknown key is an error, so a typo is found when saved rather than ignored when run.
-- Everything an author can make unbounded is capped (`MAX_DEPTH`, `MAX_NODES`, `MAX_COLUMNS`,
-  `MAX_TEXT_CHARS`, `MAX_WIDGET_REPORTS`, `MAX_TREE_BYTES`); the evaluator caps what the data can make unbounded.
-- Link types in a source are stored by **name** (forward or reverse), never id, so a layout moves
-  between projects and organisations; the evaluator resolves them for the project it runs in.
-- The registry check is by key only. Whether the *runner* may see a type is decided at run time by
-  the link graph's resolver, never at save time (an author may write a layout for a type they
-  cannot read).
+- No expressions: a value is a `{{alias.field}}` reference or a literal and a condition is one field, one operator, one
+  literal; there is no template language or raw HTML, so a layout cannot reach columns the registry omits.
+- Strict shape: an unknown key is an error. Everything an author can make unbounded is capped (`MAX_DEPTH`, `MAX_NODES`,
+  `MAX_COLUMNS`, `MAX_TEXT_CHARS`, `MAX_WIDGET_REPORTS`, `MAX_TREE_BYTES`).
+- Link types are stored by name, so a layout moves between projects and organisations.
+- The registry check is by key only; whether the runner may see a type is decided at run time by the link graph.
 
-Dependencies: `services.report_math` (TeX allow-list), `services.report_variables` (variable vocabulary),
-`services.report_fields` (field catalogue), `services.report_widgets` (widget catalogue), `modules.registry`
-(reportable types), `services.report_model` (the allow-listed global placeholder names).
+Dependencies: `report_math`, `report_variables`, `report_fields`, `report_widgets`, `modules.registry`, `report_model`.
 """
 
 from __future__ import annotations

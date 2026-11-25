@@ -1,25 +1,17 @@
-"""Tests for the module system's module-contributed RBAC:
-`ModuleRoleDefinition`/`user_module_roles`
-grant-and-revoke idempotency (both org- and project-scoped), `services.rbac.
-require_module_role`'s admin-override composition at each scope, the
-404-not-403 behaviour when a role's module is disabled/non-entitled, the
-enabled-modules-only filtering `list_org_users`/`GET .../effective-members`/
-the two "available module roles" read endpoints all apply, the 400
+"""Tests for module-contributed RBAC: `ModuleRoleDefinition`/`user_module_roles`
+grant-and-revoke idempotency (org- and project-scoped), `services.rbac.require_module_role`'s
+admin-override composition at each scope, the 404-not-403 behaviour when a role's module
+is disabled or non-entitled, the enabled-modules-only filtering applied by `list_org_users`,
+`GET .../effective-members` and the two "available module roles" endpoints, the 400
 validation on `POST .../module-roles`, and `sync_module_role_definitions`'s
-own upsert-never-delete behaviour.
+upsert-never-delete behaviour.
 
-This is a separate file from `test_module_system_rbac.py` (the
-server-tier RBAC tests) rather than an extension of it — same reasoning
-as for why it isn't folded into `test_access_review.py`:
-this is a genuinely different module-system concern (module-contributed
-roles, not server-tier roles), even though both files register a fixture
-module into the same `INSTALLED_MODULES` list.
+Separate from `test_module_system_rbac.py` (server-tier roles): module-contributed roles are
+a different concern, although both files register a fixture module in `INSTALLED_MODULES`.
 
-Since no real module is registered in `INSTALLED_MODULES` yet, every test here uses the `fake_module` fixture
-below, which mirrors `test_module_registry.py`'s own fixture mechanics
-exactly (mutate `INSTALLED_MODULES` in place, rebuild the registry cache,
-always tear down) — see that fixture's own comment for why reassigning the
-list wouldn't work."""
+Every test uses the `fake_module` fixture, which mirrors `test_module_registry.py`'s fixture
+(mutate `INSTALLED_MODULES` in place, rebuild the registry cache, always tear down; see that
+fixture's comment for why reassigning the list would not work)."""
 
 import uuid as uuid_lib
 from types import SimpleNamespace
@@ -427,22 +419,15 @@ def test_require_module_role_404_when_module_disabled_even_for_admins(client, ad
 
 
 def test_require_module_role_project_scope_respects_project_override(client, admin_token, org_id, fake_module):
-    """Regression: `require_module_
-    role`'s project-scoped branch used to resolve whole-module state via
-    the org-only `is_module_enabled` directly, bypassing any project-level
-    override entirely. It must now 404 when *this project's own*
-    `ProjectModuleEnablement` override disables the module, even though
-    the organisation's own default is still enabled.
+    """`require_module_role`'s project-scoped branch honours the project-level
+    override: it 404s when *this project's own* `ProjectModuleEnablement` override
+    disables the module, even though the organisation's default is enabled.
 
-    **Corrected 2026-09-29** (Decided by: User — see `docs/decisions.md`'s
-    dated entry): the second half of this test originally proved a project
-    override could re-enable a module the organisation had *hard-disabled*
-    (`enabled=False`) — that widen is no longer valid; `is_module_enabled_
-    for_project`'s hard floor now blocks it, so this dependency must 404 in
-    that case too. What a project override *can* still do, symmetrically,
-    is widen past the organisation's own `default_project_enabled` value
-    while the module stays hard-`enabled=True` — proven as the corrected
-    second case below."""
+    A project override cannot re-enable a module the organisation has
+    hard-disabled (`enabled=False`): `is_module_enabled_for_project`'s hard floor
+    blocks it, so the dependency 404s then too. An override can widen past the
+    organisation's `default_project_enabled` while the module stays hard-`enabled=True`
+    (the second case below)."""
     from app.models.module import OrganizationModuleEnablement, ProjectModuleEnablement
 
     project = create_project(client, admin_token, org_id, "Require Module Role Project Override")
@@ -463,9 +448,8 @@ def test_require_module_role_project_scope_respects_project_override(client, adm
             dependency(project_id=project_uuid, request=_FakeRequest(), current_user=admin_user, db=db)
         assert exc_info.value.status_code == 404
 
-        # A project override can no longer cross the organisation's own
-        # hard-disable floor — still 404, not the pre-correction "wins
-        # symmetrically" pass.
+        # A project override cannot cross the organisation's hard-disable
+        # floor: still 404.
         db.query(ProjectModuleEnablement).filter(
             ProjectModuleEnablement.project_id == project_uuid, ProjectModuleEnablement.module_key == fake_module,
         ).delete()
@@ -476,12 +460,10 @@ def test_require_module_role_project_scope_respects_project_override(client, adm
             dependency(project_id=project_uuid, request=_FakeRequest(), current_user=admin_user, db=db)
         assert exc_info.value.status_code == 404
 
-        # The genuine new capability: hard-`enabled=True` (available), but
-        # `default_project_enabled=False` (off for new projects) — this
-        # project's own override may still widen past that default, and
-        # the dependency must pass (admin_user is a ProjectRole.
-        # PROJECT_MANAGER on this project, which `require_module_role`'s
-        # core-role override already satisfies).
+        # Hard-`enabled=True` with `default_project_enabled=False`: the project's
+        # override may widen past that default, and the dependency passes
+        # (admin_user is a PROJECT_MANAGER here, which `require_module_role`'s
+        # core-role override satisfies).
         db.query(ProjectModuleEnablement).filter(
             ProjectModuleEnablement.project_id == project_uuid, ProjectModuleEnablement.module_key == fake_module,
         ).delete()
@@ -688,10 +670,8 @@ def test_sync_module_role_definitions_never_deletes_a_row_for_a_removed_module(f
         rows = db.query(ModuleRoleDefinitionRow).filter(ModuleRoleDefinitionRow.module_key == fake_module).all()
         assert len(rows) == 2
     finally:
-        # Restore for the fixture's own teardown (which removes-by-key and
-        # rebuilds — harmless no-op if already absent, but keeps this test
-        # from leaving the registry in a state the fixture teardown doesn't
-        # expect).
+        # Restore the module so the fixture's remove-by-key teardown finds the
+        # registry in the state it expects.
         if not any(m.key == FAKE_MODULE_KEY for m in module_registry.INSTALLED_MODULES):
             module_registry.INSTALLED_MODULES.append(_fake_module())
             build_registry(force=True)

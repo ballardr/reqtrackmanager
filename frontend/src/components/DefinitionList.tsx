@@ -9,15 +9,18 @@ import {
   type DeleteInUseKeepOption,
   type DeleteInUseRemoveOption,
 } from "./DeleteInUseDialog";
+import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
-import { InlineTextInput, TextAreaField, TextField } from "./FormFields";
+import { CellText } from "./CellText";
+import { DefinitionAddModal } from "./DefinitionAddModal";
+import { InlineTextInput } from "./FormFields";
 
 const strings = t();
 
 /**
- * One editable text field of a `DefinitionList` row/add-form, keyed by
- * `key` into the `Record<string, string>` values passed to `onRename`/`onAdd`.
+ * One editable text field of a `DefinitionList` row or add form, keyed by `key` into the values passed to
+ * `onRename`/`onAdd`.
  */
 export interface DefinitionListField<T> {
   key: string;
@@ -37,6 +40,8 @@ export interface DefinitionListField<T> {
   label?: string;
   /** `layout="grid"` only: the column's CSS grid track (default `minmax(0, 1fr)`), e.g. `"6rem"`. */
   track?: string;
+  /** What the field is and affects (from `strings.help`), shown as its `(?)` in the Add dialog; omit for a self-explanatory field. */
+  help?: string;
 }
 
 /** What the in-use delete dialog shows for one item, when a vocabulary needs
@@ -54,7 +59,26 @@ export interface DeleteInUseConfig {
   moveBlockedReason?: string;
 }
 
-export interface DefinitionListProps<T extends { id: string }> {
+/**
+ * How the Add button creates an item: `onAdd` takes the values typed in the list's own name-and-fields dialog, and
+ * `onAddRequest` hands the button to the caller, which opens its own full form (the one Edit uses) so a type with
+ * more attributes than the list shows has one create, not a reduced one beside a full one.
+ */
+export type DefinitionListAdd =
+  | {
+    /** Creates the item from the values of the Add dialog (one field per entry of `fields`). */
+    onAdd: (values: Record<string, string>) => Promise<void>;
+    onAddRequest?: undefined;
+  }
+  | {
+    onAdd?: undefined;
+    /** Called when the Add button is pressed; the caller opens its own create dialog. `fields` are then only the columns. */
+    onAddRequest: () => void;
+  };
+
+export type DefinitionListProps<T extends { id: string }> = DefinitionListBaseProps<T> & DefinitionListAdd;
+
+interface DefinitionListBaseProps<T extends { id: string }> {
   items: T[];
   fields: DefinitionListField<T>[];
   /** Label shown for each candidate in the in-use delete dialog's reassign dropdown. */
@@ -63,23 +87,17 @@ export interface DefinitionListProps<T extends { id: string }> {
    * scoring levels, ordered by weight) — the reorder buttons are hidden. */
   onMove?: (id: string, direction: "up" | "down") => Promise<void>;
   onRename: (id: string, values: Record<string, string>) => Promise<void>;
-  onAdd: (values: Record<string, string>) => Promise<void>;
   /**
-   * Deletes the item. Called first with no `reassignToId` — per the
-   * shared server contract, a plain delete succeeds unless the item is
-   * in use, in which case it throws an `ApiError` with status 409 whose
-   * message names the conflicting count. `DefinitionList` catches that
-   * and opens `DeleteInUseDialog`, then calls this again with the chosen
-   * `reassignToId`. `keep` is true when the dialog's "keep for other
-   * projects" box was ticked (only vocabularies offering it, link types).
+   * Deletes the item. Called first with no `reassignToId`: a plain delete succeeds unless the item is in use, when
+   * it throws an `ApiError` with status 409 whose message names the count. `DefinitionList` then opens
+   * `DeleteInUseDialog` and calls this again with the chosen `reassignToId`. `keep` is true when the dialog's
+   * "keep for other projects" box was ticked (only vocabularies offering it, link types).
    */
   onDelete: (id: string, reassignToId?: string, keep?: boolean) => Promise<void>;
   /**
-   * Optional richer content for the in-use dialog, for a vocabulary whose
-   * deletion has more to say or more choices than the default (link types:
-   * usage counts, replacements that cannot take every link, delete-the-links).
-   * Called with the item and the 409 message; omit for the default dialog
-   * (every other item as a candidate, labelled by `getReassignLabel`).
+   * Richer content for the in-use dialog, for a vocabulary whose deletion has more choices than the default (link
+   * types: usage counts, replacements that cannot take every link, delete-the-links). Called with the item and the
+   * 409 message; omit for the default dialog (every other item as a candidate, labelled by `getReassignLabel`).
    */
   loadInUse?: (item: T, message: string) => Promise<DeleteInUseConfig>;
   deleteLabel: string;
@@ -89,19 +107,26 @@ export interface DefinitionListProps<T extends { id: string }> {
   /** Asks first (Tier 1) before deleting a row: return the dialog text for the
    * row, or `null` to delete at once. */
   confirmDelete?: (item: T) => { title: string; message: ReactNode; confirmLabel: string } | null;
+  /** The Add button's name and the title of the dialog it opens (one field per entry of `fields`); the list shows no empty fields. */
   addLabel: string;
   /**
-   * Optional per-row slot rendered between the text field(s) and the
-   * reorder/delete buttons — for a field this component's own text-only
-   * `fields` contract can't express (e.g. a boolean toggle). Added for the
-   * Compliance Module's mapping-relationship-type vocabulary
-   * (`implies_equivalence`) rather
-   * than bolting a boolean-specific field type onto `DefinitionListField`
-   * itself — a generic escape hatch here benefits any future "definition"
-   * entity with one extra non-text attribute, not just this one caller.
-   * Omit for the common all-text case (every pre-existing call site).
+   * The list's other actions (restoring hidden organisation defaults), as rows of one actions menu beside the Add
+   * button; the menu is absent when there are none (docs/ux-style-guide.md, "Pattern: page actions menu").
+   */
+  menuItems?: ActionMenuItem[];
+  /**
+   * Per-row slot rendered between the text fields and the reorder/delete buttons, for an attribute the text-only
+   * `fields` contract cannot express (a boolean toggle). Omit for the all-text case.
    */
   renderExtra?: (item: T) => ReactNode;
+  /**
+   * What `renderExtra` shows, which decides its column (`layout="grid"` only). `"text"` (default): a line of
+   * user-typed text (a summary), possibly with controls after it; the column is a bounded share of the grid, the
+   * text is a `CellText` that is cut and gives way, and controls keep their size and line. `"controls"`: only
+   * fixed-size controls (a toggle, a fixed-width select); the column is as wide as they are and they wrap in a
+   * narrow container. Record text never goes in a `"controls"` column: its width would follow the longest row.
+   */
+  extraContent?: "text" | "controls";
   /** Optional per-row slot rendered on its own line under the row — for a
    * group of controls too wide for the row itself (link types'
    * "can link from/to" restrictions). */
@@ -114,24 +139,18 @@ export interface DefinitionListProps<T extends { id: string }> {
   minItems?: number;
   /**
    * `"stack"` (default): each row is a line of unlabelled inputs. `"grid"`: one CSS grid with a heading per field
-   * (`DefinitionListField.label`/`track`), every row and the add row aligned under it and the row actions in a
-   * last column, for a list of several fields (a scoring level's name, weight and guidance) or one with a per-row
-   * control beside the fields (`renderExtra` gets its own right-aligned column, as wide as its controls but shrinking them when the container is short; keep its width the same on every
-   * row so the controls line up). In a container narrower than 34rem a list with `renderExtra` drops the columns: each
-   * row is its fields and actions on one line with the extra controls wrapping onto the line below, so a narrow card
-   * (the diagram editors' Selection card) holds the row instead of cutting it off. `renderDetails` is ignored in a grid.
+   * (`DefinitionListField.label`/`track`), rows and the add row aligned under it and row actions in a last
+   * column, for several fields or a per-row control (`renderExtra` gets its own column, see `extraContent`; keep
+   * its width equal on every row). In a container narrower than 34rem a list with `renderExtra` drops the columns:
+   * the extra controls wrap onto the line below the fields and actions. `renderDetails` is ignored in a grid.
    */
   layout?: "stack" | "grid";
 }
 
 /**
- * Shared CRUD list for the app's "definition" entities — small, ordered,
- * flat lists of named things (action types, project statuses, link
- * types, ...) that support inline rename, reorder, add, and a
- * delete-or-reassign-if-in-use flow, the latter through the shared
- * `DeleteInUseDialog`. Consolidates what were three near-identical
- * implementations of the same rename/reorder/delete logic in
- * `ProjectAdminPage`/`OrgAdminPage`.
+ * Shared CRUD list for the app's "definition" entities: small, ordered, flat lists of named things (action types,
+ * project statuses, link types ...) with inline rename, reorder, add (an Add button opening `DefinitionAddModal`)
+ * and a delete-or-reassign-if-in-use flow through `DeleteInUseDialog`.
  */
 export function DefinitionList<T extends { id: string }>({
   items,
@@ -140,22 +159,23 @@ export function DefinitionList<T extends { id: string }>({
   onMove,
   onRename,
   onAdd,
+  onAddRequest,
   onDelete,
   loadInUse,
   deleteLabel,
   getDeleteLabel,
   confirmDelete,
   addLabel,
+  menuItems,
   renderExtra,
+  extraContent = "text",
   renderDetails,
   isReadOnly,
   minItems = 1,
   layout = "stack",
 }: DefinitionListProps<T>) {
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
-  const [newDraft, setNewDraft] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((f) => [f.key, ""]))
-  );
+  const [adding, setAdding] = useState(false);
   const [inUse, setInUse] = useState<{ item: T; config: DeleteInUseConfig | null; message: string } | null>(null);
   const [confirming, setConfirming] = useState<{ item: T; title: string; message: ReactNode; confirmLabel: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -210,18 +230,30 @@ export function DefinitionList<T extends { id: string }>({
     else void handleAttemptDelete(item);
   }
 
-  async function handleAdd() {
-    setError(null);
-    try {
-      await onAdd(newDraft);
-      setNewDraft(Object.fromEntries(fields.map((f) => [f.key, ""])));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : strings.common.error);
-    }
-  }
+  /** The list's single Add control: the empty fields live in a dialog, not in the list (creation controls on demand);
+   * the list's other actions are rows of the one menu beside it. */
+  const addControl = (
+    <div className="row" style={{ alignItems: "center" }}>
+      <button
+        className="btn btn-primary btn--fit" aria-label={addLabel}
+        onClick={() => { setError(null); if (onAddRequest) onAddRequest(); else setAdding(true); }}
+      >
+        <Plus /> <CellText>{addLabel}</CellText>
+      </button>
+      {menuItems && menuItems.length > 0 && <ActionMenu triggerLabel={strings.recordTables.menuLabel} items={menuItems} />}
+    </div>
+  );
 
   const dialogs = (
     <>
+      {adding && onAdd && (
+        <DefinitionAddModal
+          title={addLabel}
+          fields={fields}
+          onAdd={onAdd}
+          onClose={() => setAdding(false)}
+        />
+      )}
       {confirming && (
         <ConfirmDialog
           title={confirming.title}
@@ -265,29 +297,24 @@ export function DefinitionList<T extends { id: string }>({
     </>
   );
 
-  /** A grid cell's control: a one-line input, or a text area that starts at one row and grows with its content.
-   * Only the add row shows the placeholder; an existing row is named by its column heading. */
-  function gridControl(
-    f: DefinitionListField<T>, value: string, onChange: (next: string) => void, adding = false, disabled = false,
-  ) {
-    // The add row keeps the name it always had (its placeholder, except for a one-line field among several, which
-    // takes its aria label), so a row's control and the add row's are told apart by name.
-    const addName = f.multiline || fields.length === 1 ? f.placeholder : f.ariaLabel;
-    const ariaLabel = adding ? (addName ?? f.ariaLabel ?? f.key) : (f.ariaLabel ?? f.placeholder ?? f.key);
-    const placeholder = adding ? f.placeholder : undefined;
+  /** A grid cell's control: a one-line input, or a text area that starts at one row and grows with its content;
+   * a row is named by its column heading. */
+  function gridControl(f: DefinitionListField<T>, value: string, onChange: (next: string) => void, disabled = false) {
+    const ariaLabel = f.ariaLabel ?? f.placeholder ?? f.key;
     return f.multiline ? (
-      <AutoGrowTextarea rows={1} aria-label={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} />
+      <AutoGrowTextarea plainText="Configuration text shown in pickers and tooltips" rows={1} aria-label={ariaLabel} value={value} onChange={onChange} disabled={disabled} />
     ) : (
-      <InlineTextInput type={f.inputType ?? "text"} ariaLabel={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} />
+      <InlineTextInput type={f.inputType ?? "text"} ariaLabel={ariaLabel} value={value} onChange={onChange} disabled={disabled} />
     );
   }
 
   if (layout === "grid") {
-    const columns = `${fields.map((f) => f.track ?? "minmax(0, 1fr)").join(" ")}${renderExtra ? " minmax(0, max-content)" : ""} max-content`;
+    const columns = `${fields.map((f) => f.track ?? "minmax(0, 1fr)").join(" ")}${renderExtra ? (extraContent === "text" ? " minmax(14rem, 1.5fr)" : " minmax(0, max-content)") : ""} max-content`; // grid-text-ok: the extra column is bounded for text, and the last column holds only the row's fixed-size buttons
     const floorHint = minItems > 1 ? strings.admin.deleteMinItemsHint(minItems) : strings.admin.deleteLastOneHint;
     return (
       <div className={renderExtra ? "stack definition-list--extra" : "stack"}>
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
+        {addControl}
         <div className="definition-grid" style={{ gridTemplateColumns: columns }}>
           {fields.map((f) => <span key={f.key} className="definition-grid__head">{f.label ?? f.placeholder ?? f.key}</span>)}
           {renderExtra && <span aria-hidden="true" className="definition-grid__head" />}
@@ -301,10 +328,12 @@ export function DefinitionList<T extends { id: string }>({
               <div key={item.id} className="definition-grid__row">
                 {fields.map((f) => (
                   <div key={f.key} className="definition-grid__cell">
-                    {gridControl(f, draft[f.key], (next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } })), false, readOnly)}
+                    {gridControl(f, draft[f.key], (next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } })), readOnly)}
                   </div>
                 ))}
-                {renderExtra && <div className="definition-grid__actions definition-grid__extra">{renderExtra(item)}</div>}
+                {renderExtra && (
+                  <div className={`definition-grid__actions definition-grid__extra definition-grid__extra--${extraContent}`}>{renderExtra(item)}</div>
+                )}
                 <div className="definition-grid__actions">
                   {/* Always laid out so the columns do not shift when a row becomes dirty; hidden (and out of
                       the accessibility tree) until there is something to save. */}
@@ -339,19 +368,6 @@ export function DefinitionList<T extends { id: string }>({
               </div>
             );
           })}
-          <div className="definition-grid__row">
-            {fields.map((f) => (
-              <div key={`add-${f.key}`} className="definition-grid__cell definition-grid__add">
-                {gridControl(f, newDraft[f.key], (next) => setNewDraft((d) => ({ ...d, [f.key]: next })), true)}
-              </div>
-            ))}
-            {renderExtra && <div className="definition-grid__add definition-grid__extra" />}
-            <div className="definition-grid__actions definition-grid__add">
-              <button className="btn btn-primary" title={addLabel} aria-label={addLabel} onClick={handleAdd} disabled={!isValid(newDraft)}>
-                <Plus /> Add
-              </button>
-            </div>
-          </div>
         </div>
         {dialogs}
       </div>
@@ -361,6 +377,7 @@ export function DefinitionList<T extends { id: string }>({
   return (
     <div className="stack">
       {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
+      {addControl}
       {items.map((item, idx) => {
         const draft = draftFor(item);
         const dirty = isDirty(item, draft);
@@ -374,6 +391,7 @@ export function DefinitionList<T extends { id: string }>({
                   f.multiline ? (
                     <AutoGrowTextarea
                       key={f.key}
+                      plainText="Configuration text shown in pickers and tooltips"
                       rows={2}
                       style={{ width: f.maxWidth ?? 360, maxWidth: "100%" }}
                       aria-label={f.ariaLabel ?? f.placeholder ?? f.key}
@@ -437,71 +455,7 @@ export function DefinitionList<T extends { id: string }>({
           </div>
         );
       })}
-      {confirming && (
-        <ConfirmDialog
-          title={confirming.title}
-          message={confirming.message}
-          confirmLabel={confirming.confirmLabel}
-          onCancel={() => setConfirming(null)}
-          onConfirm={() => {
-            const { item } = confirming;
-            setConfirming(null);
-            void handleAttemptDelete(item);
-          }}
-        />
-      )}
-      {inUse && (
-        <DeleteInUseDialog
-          title={strings.admin.deleteInUseTitle(fields[0].getValue(inUse.item))}
-          summary={inUse.config?.summary ?? inUse.message}
-          details={inUse.config?.details}
-          candidates={
-            inUse.config?.candidates ??
-            items
-              .filter((other) => other.id !== inUse.item.id)
-              .map((other) => ({ id: other.id, label: getReassignLabel(other) }))
-          }
-          onMove={(replacementId, keep) => onDelete(inUse.item.id, replacementId, keep)}
-          remove={inUse.config?.remove}
-          keep={inUse.config?.keep}
-          moveBlockedReason={inUse.config?.moveBlockedReason}
-          onKeepChange={
-            inUse.config?.reload
-              ? async (keep) => {
-                  const config = await inUse.config!.reload!(keep);
-                  setInUse((current) => (current ? { ...current, config } : current));
-                }
-              : undefined
-          }
-          onDeleteKeeping={inUse.config?.keep ? () => onDelete(inUse.item.id, undefined, true) : undefined}
-          onClose={() => setInUse(null)}
-        />
-      )}
-      <div className="row" style={{ alignItems: "flex-end" }}>
-        {fields.map((f) =>
-          f.multiline ? (
-            <TextAreaField helpNotNeeded
-              key={f.key}
-              label={f.placeholder ?? f.ariaLabel ?? f.key}
-              value={newDraft[f.key]}
-              onChange={(next) => setNewDraft((d) => ({ ...d, [f.key]: next }))}
-            />
-          ) : (
-            <TextField helpNotNeeded
-              key={f.key}
-              label={f.placeholder ?? f.ariaLabel ?? f.key}
-              ariaLabel={fields.length > 1 ? f.ariaLabel : undefined}
-              placeholder={f.placeholder}
-              value={newDraft[f.key]}
-              onChange={(next) => setNewDraft((d) => ({ ...d, [f.key]: next }))}
-              inputProps={{ type: f.inputType ?? "text" }}
-            />
-          )
-        )}
-        <button className="btn btn-primary" onClick={handleAdd} disabled={!isValid(newDraft)}>
-          <Plus /> {addLabel}
-        </button>
-      </div>
+      {dialogs}
     </div>
   );
 }

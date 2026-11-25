@@ -5,8 +5,8 @@ import { DetailCard } from "./DetailCard";
 import { RecordField } from "./RecordDetailParts";
 
 /**
- * The card a detail page puts a record's own fields (or a panel) in, under a heading. The page header
- * stays on the background above it.
+ * The card a detail page puts a record's own fields (or a panel) in, under a heading; the page header stays on the
+ * background above it.
  */
 const meta: Meta<typeof DetailCard> = {
   title: "Components/DetailCard",

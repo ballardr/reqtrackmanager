@@ -1,41 +1,25 @@
 """
 Module: services.search
 
-The global search: one query across every record type the caller may see, in one project,
-every project they can open, or a module-defined unit (a Compliance standard).
+The global search: one query across every record type the caller may see, in one project, every project they can open,
+or a module-defined unit (a Compliance standard).
 
 Responsibilities:
-- Resolve the scope to the projects searched (`_resolve_scope`), keep the ones the caller can
-  open, and work out per record type the projects where the type is offered (module and
-  sub-component enabled) and viewable (`view` permission) (`_authorised_projects`).
-- Build one SQL query per record type from its `ArtefactSearchProvider` (scope, text match,
-  filters, relevance tier), run it, and merge, rank and page the results (`run_search`).
-- Resolve the fields searched (request, else the user's `search_default_fields`, else ID, Title
-  and Tags) and list the fields the caller can choose from (`available_fields`).
-- Shape each hit: code, title, status label, owning project, snippet of the first matching
-  field, and the record to open.
+- Resolve the scope and the authorised projects per type (module and sub-component enabled, `view` held).
+- Build one SQL query per type from its `ArtefactSearchProvider`, run it, merge, rank and page (`run_search`); resolve
+  the fields searched (`available_fields`); shape each hit (code, title, status, project, snippet, record to open).
 
 Design decisions:
-- Authorisation is applied before querying and results are omitted, never redacted, so a type
-  count never discloses a record the caller cannot open. A project is searched only if the
-  caller holds a genuine role there (and, for a token, may reach it); a type only where its
-  module is enabled and `view` is held *in that project*. The same rules as the link finder
-  and the project-scope lists.
-- Query-time search per type, not a central index: a second copy of every record's text would
-  have to follow erasure, hard delete, per-project hiding and permission changes. Bounds keep it
-  cheap: a minimum query length, a per-type row cap of `offset + limit`, a depth limit of
-  `MAX_DEPTH`, a project cap, and a per-search `statement_timeout`.
-- Fields are opt-in per provider; ID (the record's code, qualified or not), Title and Tags are
-  built here, so every taggable type is searched on tags with no provider work. Component and category
-  names (`placements`) are built here the same way, opt-in and never a default.
-- A record owned by the organisation (a shared persona) is found only through a project that is
-  allowed to see it, using the owning module's `get_many_in_project` rule (per-project hiding),
-  and its count is taken after that check.
-- The query text is never logged, audited or traced: the log line carries the scope, field keys,
-  match mode, result count and duration only.
+- Authorisation precedes querying and results are omitted, never redacted, so a count never discloses a record; a project
+  is searched only with a genuine role there (and token reach), a type only where its module is on and `view` is held.
+- Query-time search, not a central index, which would have to follow erasure, hard delete, hiding and permission changes;
+  bounded by minimum query length, `offset + limit` per type, `MAX_DEPTH`, a project cap and a `statement_timeout`.
+- Fields are opt-in per provider; ID, Title, Tags, component and category names (`placements`) and external references
+  (`external_refs`: key and system name only) are built here, never default.
+- An organisation-owned record is found only through a project allowed to see it (`get_many_in_project`).
+- The query text is never logged, audited or traced; logs carry scope, field keys, match mode, count and duration.
 
-Dependencies: `modules.registry` (providers, scopes, enablement), `services.rbac`
-(permissions, memoised role lookups), `services.project_access`, `models.tag`.
+Dependencies: `modules.registry`, `services.rbac`, `services.project_access`, `models.tag`.
 """
 
 from __future__ import annotations
@@ -53,10 +37,12 @@ from sqlalchemy import String, and_, case, cast, exists, func, literal, or_, sel
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.models.external_reference import ExternalReference, ExternalSystemDefinition, ProjectExternalSystem
 from app.models.organization import Organization, UserOrgRole
 from app.models.placement import ArtefactPlacement
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement
+from app.models.requirement_alias import RequirementAlias
 from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
 from app.modules.registry import (
@@ -74,6 +60,8 @@ from app.modules.registry import (
     memoize_module_state,
     prefetch_project_module_state,
 )
+from app.services.external_references import references_for_records
+from app.services.markdown_text import plain_text
 from app.services.permissions import encode_permission
 from app.services.placements import COLUMN_PLACED_TYPES, placement_text, placements_for_records
 from app.services.project_access import accessible_project_ids
@@ -108,7 +96,11 @@ PROJECT_TYPE = "project"
 DEFAULT_FIELDS = ("id", "title", "tags")
 #: The reserved key for a record's component and category names (opt-in, never a default).
 PLACEMENTS_FIELD = "placements"
-_RESERVED_FIELDS = {"id": "ID", "title": "Title", "tags": "Tags", PLACEMENTS_FIELD: "Component and category"}
+#: The reserved key for a record's external references (the key and the system name; opt-in, never a default).
+REFERENCES_FIELD = "external_refs"
+_RESERVED_FIELDS = {
+    "id": "ID", "title": "Title", "tags": "Tags", PLACEMENTS_FIELD: "Component and category", REFERENCES_FIELD: "External references",
+}
 #: The reserved key for a record's comments: available only to the types that declare a comment table, and
 #: only ever chosen for one search, never a default (an `EXISTS` over a table per type is much dearer than
 #: matching the record's own columns).
@@ -562,7 +554,7 @@ def _placement_exists(artefact_type: str, id_column: Any, term: str) -> Any:
     component_name = func.lower(ProjectComponent.name).like(f"%{_escape_like(term)}%", escape="\\")
     category_name = func.lower(ProjectCategory.name).like(f"%{_escape_like(term)}%", escape="\\")
     if artefact_type in COLUMN_PLACED_TYPES:
-        return exists(
+        own = exists(
             select(1)
             .select_from(
                 Requirement.__table__.join(ProjectComponent.__table__, ProjectComponent.id == Requirement.component_id)
@@ -570,6 +562,19 @@ def _placement_exists(artefact_type: str, id_column: Any, term: str) -> Any:
             )
             .where(Requirement.id == id_column, or_(component_name, category_name))
         )
+        # A requirement is also found through the places of its aliases.
+        by_alias = exists(
+            select(1)
+            .select_from(
+                RequirementAlias.__table__.join(ProjectComponent.__table__, ProjectComponent.id == RequirementAlias.component_id)
+                .outerjoin(ProjectCategory.__table__, ProjectCategory.id == RequirementAlias.category_id)
+            )
+            .where(
+                RequirementAlias.requirement_id == id_column, RequirementAlias.is_retired.is_(False),
+                or_(component_name, category_name),
+            )
+        )
+        return or_(own, by_alias)
     return exists(
         select(1)
         .select_from(
@@ -579,6 +584,29 @@ def _placement_exists(artefact_type: str, id_column: Any, term: str) -> Any:
         .where(
             ArtefactPlacement.artefact_type == artefact_type, ArtefactPlacement.artefact_id == id_column,
             or_(component_name, category_name),
+        )
+    )
+
+
+def _reference_exists(artefact_type: str, id_column: Any, term: str) -> Any:
+    """Whether the record carries an external reference whose key, or whose system's name, contains `term`.
+
+    The key and the system name are what is searched; a reference's note and link are not."""
+    like = f"%{_escape_like(term)}%"
+    system_name = or_(
+        ExternalReference.org_system_id.in_(
+            select(ExternalSystemDefinition.id).where(func.lower(ExternalSystemDefinition.name).like(like, escape="\\"))
+        ),
+        ExternalReference.project_system_id.in_(
+            select(ProjectExternalSystem.id).outerjoin(
+                ExternalSystemDefinition, ExternalSystemDefinition.id == ProjectExternalSystem.org_type_id
+            ).where(func.lower(func.coalesce(ProjectExternalSystem.name_override, ExternalSystemDefinition.name)).like(like, escape="\\"))
+        ),
+    )
+    return exists(
+        select(1).select_from(ExternalReference.__table__).where(
+            ExternalReference.artefact_type == artefact_type, ExternalReference.artefact_id == id_column,
+            or_(func.lower(ExternalReference.key).like(like, escape="\\"), system_name),
         )
     )
 
@@ -621,6 +649,12 @@ def _text_condition(artefact_type: str, provider: ArtefactSearchProvider, fields
         alternatives: list[Any] = []
         if "id" in fields:
             alternatives.append(_like(columns.code, term))
+            if artefact_type in COLUMN_PLACED_TYPES:
+                # A requirement is also found by the code of any of its further places, retired ones included.
+                alternatives.append(exists(
+                    select(1).select_from(RequirementAlias.__table__)
+                    .where(RequirementAlias.requirement_id == columns.id, _like(RequirementAlias.unique_code, term))
+                ))
             qualified = _qualified_code_match(provider, term, context, exact=False)
             if qualified is not None:
                 alternatives.append(qualified)
@@ -630,6 +664,8 @@ def _text_condition(artefact_type: str, provider: ArtefactSearchProvider, fields
             alternatives.append(_tag_exists(artefact_type, columns.id, term))
         if PLACEMENTS_FIELD in fields and artefact_type not in get_not_placeable_types():
             alternatives.append(_placement_exists(artefact_type, columns.id, term))
+        if REFERENCES_FIELD in fields:
+            alternatives.append(_reference_exists(artefact_type, columns.id, term))
         if COMMENTS_FIELD in fields and provider.comments is not None:
             alternatives.append(_comment_exists(provider.comments, columns.id, term))
         alternatives.extend(_like(carried[k].column, term) for k in fields if k in carried)
@@ -911,6 +947,20 @@ def _placement_names(db: Session, rows: list[_Row]) -> dict[tuple[str, uuid.UUID
     return found
 
 
+def _reference_names(db: Session, rows: list[_Row]) -> dict[tuple[str, uuid.UUID], list[str]]:
+    """The `System:KEY` text of the given records' external references, one pass per type."""
+    by_type: dict[str, list[uuid.UUID]] = {}
+    for r in rows:
+        if r.type != PROJECT_TYPE:
+            by_type.setdefault(r.type, []).append(r.id)
+    found: dict[tuple[str, uuid.UUID], list[str]] = {}
+    for artefact_type, ids in by_type.items():
+        for record_id, references in references_for_records(db, artefact_type, ids).items():
+            if references:
+                found[(artefact_type, record_id)] = [f"{r.system_name}:{r.key}" for r in references]
+    return found
+
+
 def _comment_texts(db: Session, rows: list[_Row], terms: list[str], providers: dict[str, ArtefactSearchProvider]) -> dict[tuple[str, uuid.UUID], str]:
     """The earliest comment containing a term, for each of the given records, one query per type."""
     by_type: dict[str, list[uuid.UUID]] = {}
@@ -936,8 +986,11 @@ def _snippet(
     row: _Row, fields: list[str], terms: list[str], tags: dict[tuple[str, uuid.UUID], list[str]], labels: dict[str, str],
     comment_texts: dict[tuple[str, uuid.UUID], str] | None = None,
     placements: dict[tuple[str, uuid.UUID], list[str]] | None = None,
+    references: dict[tuple[str, uuid.UUID], list[str]] | None = None,
+    markdown: frozenset[str] = frozenset(),
 ) -> Snippet | None:
-    """The first of Tags, the placement names and the declared fields (in selection order) that contains a term."""
+    """The first of Tags, the placement names, the external references and the declared fields (in selection order)
+    that contains a term."""
     if "tags" in fields:
         matching = [n for n in tags.get((row.type, row.id), []) if any(t in n.lower() for t in terms)]
         if matching:
@@ -950,11 +1003,16 @@ def _snippet(
         windowed = _window("; ".join(matching), terms) if matching else None
         if windowed:
             return Snippet(PLACEMENTS_FIELD, labels.get(PLACEMENTS_FIELD, "Component and category"), windowed[0], windowed[1])
+    if REFERENCES_FIELD in fields:
+        matching = [n for n in (references or {}).get((row.type, row.id), []) if any(t in n.lower() for t in terms)]
+        windowed = _window("; ".join(matching), terms) if matching else None
+        if windowed:
+            return Snippet(REFERENCES_FIELD, labels.get(REFERENCES_FIELD, "External references"), windowed[0], windowed[1])
     for key in fields:
         value = row.field_values.get(key)
         if not value:
             continue
-        windowed = _window(" ".join(value.split()), terms)
+        windowed = _window(plain_text(value, diagrams="source") if key in markdown else " ".join(value.split()), terms)
         if windowed:
             return Snippet(key, labels.get(key, key), windowed[0], windowed[1])
     comment = (comment_texts or {}).get((row.type, row.id))
@@ -1108,8 +1166,15 @@ def _run_search(db: Session, user: User, params: SearchParams) -> SearchResult:
     field_labels = {k: v[0] for k, v in merged.items()}
     comment_texts = _comment_texts(db, page, terms, providers) if COMMENTS_FIELD in fields else {}
     placement_names = _placement_names(db, page) if PLACEMENTS_FIELD in fields else {}
+    reference_names = _reference_names(db, page) if REFERENCES_FIELD in fields else {}
+    markdown_keys = {
+        name: frozenset(f.key for f in provider.fields if f.markdown) for name, provider in providers.items()
+    }
     hits = [
-        _shape(r, providers, context, _snippet(r, fields, terms, tag_names, field_labels, comment_texts, placement_names))
+        _shape(r, providers, context, _snippet(
+            r, fields, terms, tag_names, field_labels, comment_texts, placement_names, reference_names,
+            markdown_keys.get(r.type, frozenset()),
+        ))
         for r in page
     ]
     total = None

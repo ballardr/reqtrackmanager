@@ -1,10 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { FileText, Package } from "lucide-react";
+import { FileText, Package, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { buildFolderTree, type FolderNode } from "../utils/reportFolders";
 import { FolderTreeList, type FolderTreeColumn } from "./FolderTreeList";
+import { realFolderIcon } from "./folderTreeIcons";
 
 interface Doc {
   id: string;
@@ -33,8 +36,11 @@ const collect = (node: FolderNode<Doc>): string[] => (node.kind === "item" ? [no
 
 /** Hosts the list with its own open folders, so a story sees the chevrons and rows follow the clicks. */
 function Host({
-  docs = DOCS, columns, initiallyOpen = [], width, extraFolders = [], folderActions = false, ticks = false,
-}: { docs?: Doc[]; columns?: FolderTreeColumn<Doc>[]; initiallyOpen?: string[]; width?: string; extraFolders?: string[]; folderActions?: boolean; ticks?: boolean }) {
+  docs = DOCS, columns, initiallyOpen = [], width, extraFolders = [], folderActions = false, ticks = false, order, emptyFolderText, groupIcon = false,
+}: {
+  docs?: Doc[]; columns?: FolderTreeColumn<Doc>[]; initiallyOpen?: string[]; width?: string; extraFolders?: string[]; folderActions?: boolean;
+  ticks?: boolean; order?: "sorted" | "given"; emptyFolderText?: string; groupIcon?: boolean;
+}) {
   const [open, setOpen] = useState(new Set(initiallyOpen));
   const [chosen, setChosen] = useState("");
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
@@ -46,7 +52,8 @@ function Host({
   return (
     <div style={width ? { width } : undefined}>
       <FolderTreeList
-        nodes={tree} label="Documents" expanded={open}
+        nodes={tree} label="Documents" expanded={open} order={order} emptyFolderText={emptyFolderText}
+        folderIcon={groupIcon ? () => <Users aria-hidden="true" /> : realFolderIcon}
         onToggle={(id, isOpen) => setOpen((c) => { const n = new Set(c); if (isOpen) n.add(id); else n.delete(id); return n; })}
         itemView={(d) => ({ icon: d.kind === "pack" ? <Package /> : <FileText />, iconLabel: d.kind === "pack" ? "Pack" : "Report", description: d.note })}
         isSelected={(d) => d.id === chosen} onOpenItem={(d) => setChosen(d.id)} columns={columns}
@@ -75,8 +82,8 @@ function Host({
 }
 
 /**
- * A file manager's list view of folders and items: a sortable Name header, a chevron and folder icon on each folder,
- * a type icon on each item, indented children and banded rows.
+ * A file manager's list view of folders and items: a sortable Name header, a chevron and folder icon on each
+ * folder, a type icon on each item, indented children and banded rows.
  */
 const meta: Meta<typeof Host> = { title: "Components/FolderTreeList", component: Host };
 export default meta;
@@ -255,6 +262,28 @@ export const FolderRowsCarryTheirOwnActions: Story = {
   },
 };
 
+/** The icon of a folder row is the list's own: a real folder shows a closed folder, and an open folder shows the open one. */
+export const RealFoldersShowTheFolderIcon: Story = {
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const icon = (name: string) => within(grid).getByRole("button", { name }).querySelector(".folder-tree-folder-icon svg");
+    await expect(icon("Expand Platform")).toHaveClass("lucide-folder");
+    await userEvent.click(within(grid).getByRole("button", { name: "Expand Platform" }));
+    await expect(icon("Collapse Platform")).toHaveClass("lucide-folder-open");
+  },
+};
+
+/** A list whose rows are not folders gives its own icon, and no folder icon is drawn. */
+export const AListCanGiveItsFolderRowsAnotherIcon: Story = {
+  args: { groupIcon: true },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const button = within(grid).getByRole("button", { name: "Expand Platform" });
+    await expect(button.querySelector(".folder-tree-folder-icon svg")).toHaveClass("lucide-users");
+    await expect(grid.querySelector(".lucide-folder, .lucide-folder-open")).toBeNull();
+  },
+};
+
 export const LightTheme: Story = { ...DeepFoldersIndent, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...DeepFoldersIndent, globals: { theme: "dark" } };
 
@@ -270,5 +299,105 @@ export const TickBoxesChooseRowsAndAFolderCoversItsItems: Story = {
     await userEvent.click(within(grid).getByRole("button", { name: "Expand 2026" }));
     await userEvent.click(within(grid).getByRole("checkbox", { name: "Select Handover document" }));
     await expect(within(grid).getByRole("checkbox", { name: "Select Handover" })).toHaveAttribute("aria-checked", "mixed");
+  },
+};
+
+/** With the given order, folders keep the order of the nodes passed in (here a folder that sorts first is last), and no header sorts. */
+export const GivenOrderKeepsTheCallersOrderAndNoHeaderSorts: Story = {
+  args: {
+    order: "given", extraFolders: ["Aardvark"],
+    columns: [{ id: "version", header: "Version", render: (d: Doc) => `v${d.version}`, sortValue: (d: Doc) => d.version, width: "5rem" }],
+  },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const names = within(grid).getAllByRole("button", { name: /^(Expand|Collapse) / }).map((b) => b.textContent);
+    await expect(names[names.length - 1]).toBe("Aardvark");
+    await expect(within(grid).queryByRole("button", { name: /Sort by/ })).not.toBeInTheDocument();
+    await expect(within(grid).getByRole("columnheader", { name: "Name" })).not.toHaveAttribute("aria-sort");
+  },
+};
+
+/** Without it (the default) the same folder sorts first, by name. */
+export const SortedOrderPlacesThatFolderFirst: Story = {
+  args: { extraFolders: ["Aardvark"] },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const names = within(grid).getAllByRole("button", { name: /^(Expand|Collapse) / }).map((b) => b.textContent);
+    await expect(names[0]).toBe("Aardvark");
+  },
+};
+
+/** A column may draw a cell for a folder row as well as for an item row. */
+export const AFolderRowCanCarryAColumnCell: Story = {
+  args: {
+    columns: [{ id: "count", header: "Count", render: (d: Doc) => `v${d.version}`, renderFolder: (n: FolderNode<Doc>) => `${n.count} inside`, width: "6rem" }],
+  },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    await expect(within(grid).getAllByText(/inside$/).length).toBeGreaterThan(0);
+    await expect(within(grid).getByText("2 inside")).toBeInTheDocument();
+  },
+};
+
+/** An open folder with nothing in it can say so in the caller's words. */
+export const EmptyFolderTextIsTheCallers: Story = {
+  args: { extraFolders: ["Archive"], initiallyOpen: ["f:archive"], emptyFolderText: "Nothing filed yet." },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Nothing filed yet.")).toBeInTheDocument();
+  },
+};
+
+/** A record with children of its own is a folder that carries its record as `item`. */
+function RecordFolderHost() {
+  const record = (id: string): Doc => ({ id, title: id, folder: "", kind: "report", version: 1, note: "" });
+  const nodes: FolderNode<Doc>[] = [{
+    id: "parent", kind: "folder", name: "Parent", path: "parent", item: record("parent"), count: 1,
+    children: [{ id: "child", kind: "item", name: "Child", path: "parent", item: record("child"), count: 0, children: [] }],
+  }];
+  const [chosen, setChosen] = useState("parent");
+  return (
+    <FolderTreeList
+      nodes={nodes} label="Records" expanded={new Set(["parent"])} onToggle={() => {}} order="given" folderIcon={() => <FileText aria-hidden="true" />}
+      itemView={() => ({ icon: <FileText />, iconLabel: "Record" })}
+      isSelected={(d) => d.id === chosen} onOpenItem={(d) => setChosen(d.id)}
+    />
+  );
+}
+
+/** A folder that carries an `item` is outlined and marked selected like an item row; a folder without one is not selectable. */
+export const AFolderThatCarriesAnItemCanBeTheSelectedRow: Story = {
+  render: () => <RecordFolderHost />,
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Records" });
+    const rowOf = (name: string) => within(grid).getByText(name).closest<HTMLElement>('[role="row"]')!;
+    await expect(rowOf("Parent")).toHaveAttribute("aria-selected", "true");
+    await expect(rowOf("Parent")).toHaveClass("folder-tree-selected");
+    await userEvent.click(within(grid).getByRole("button", { name: "Child" }));
+    await expect(rowOf("Parent")).toHaveAttribute("aria-selected", "false");
+    await expect(rowOf("Child")).toHaveAttribute("aria-selected", "true");
+  },
+};
+
+/** Long titles, a long unbroken word and a long note in several rows, open folders included: the columns keep their widths and the actions stay on their rows. */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      width={720}
+      render={(long) => (
+        <Host
+          columns={COLUMNS}
+          folderActions
+          initiallyOpen={["f:platform", "f:handover"]}
+          docs={[
+            { id: "a", title: stressText(long, "Requirements report"), folder: "Platform", kind: "report", version: 3, note: stressText(long, "Every requirement.", "summary") },
+            { id: "b", title: stressText(long, "Decision register", "word"), folder: "Platform", kind: "pack", version: 1, note: stressText(long, "", "word") },
+            { id: "c", title: "Handover", folder: stressText(long, "Handover", "word"), kind: "report", version: 7, note: stressText(long, "For the team.") },
+          ]}
+        />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
   },
 };

@@ -9,7 +9,7 @@ A Persona is a representative user archetype — a "Field Inspector", a "Complia
 | A project's Personas |
 | --- |
 | Falcon-3's Personas, including two shared from the organisation |
-| ![Personas list for the Falcon-3 project showing three Personas with type, scope, weight and status columns](../../../static/img/screenshots/persona-list.png) |
+| ![People list for the Falcon-3 project narrowed to Personas, showing three Personas with role, type, weight, status and component columns](../../../static/img/screenshots/persona-list.png) |
 
 ## Fields
 
@@ -51,12 +51,12 @@ A child project with no override of its own therefore inherits its parent projec
 
 | A Persona opened from a project |
 | --- |
-| An organisation Persona with this project's weight override, and its Pain Point link in the Links panel |
-| ![Detail page for the Field Inspector organisation Persona showing its goals, needs, behaviours, an importance weight of 5 marked Custom with Set override and Use inherited value controls, and a Links panel with an Experiences link to a Pain Point](../../../static/img/screenshots/persona-detail.png) |
+| An organisation Persona with its visibility in this project, and its Pain Point link in the Links panel |
+| ![Detail page for the Field Inspector organisation Persona showing its goals, needs and behaviours, its visibility in this project with a Hide from this project control, and a Links panel with an Experiences link to a Pain Point](../../../static/img/screenshots/persona-detail.png) |
 
 ## Groups as owners
 
-The **Owner** and **Champion** of a Persona, the **Owner** of a [Stakeholder](./stakeholder.md) and the **Owner** of a [Need](./stakeholder-need.md) can each be a user, an organisation group or a project group, so a team can stand behind a record instead of one nominee who may leave. The record shows the group's name, its kind (Organisation group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the Owner roles above still decide who can edit.
+The **Owner** and **Champion** of a Persona, the **Owner** of a [Stakeholder](./stakeholder.md) and the **Owner** of a [Need](./stakeholder-need.md) can each be a user, an organisation group or a project group, so a team can stand behind a record instead of one nominee who may leave. The record shows the group's icon and name; hover to see its kind (Organisation group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the Owner roles above still decide who can edit.
 
 - A project group can be named only on a record that belongs to that project. An organisation-level Persona or Stakeholder is shared by every project, so it can name users and organisation groups only.
 - The version history lists who owned each version. If a group is later deleted, older versions show it as a deleted group.

@@ -1,15 +1,13 @@
-"""Tests for Fine-Grained Access Control's `get_effective_
-permissions`, `permission_satisfied`'s sub-type wildcard composition rule,
-and the `require_permission` FastAPI dependency factory — the resolution
-engine the data model (`test_custom_roles.py`) is inert without.
+"""Tests for Fine-Grained Access Control's `get_effective_permissions`,
+`permission_satisfied`'s sub-type wildcard composition rule and the
+`require_permission` dependency factory, the resolution engine for the data
+model in `test_custom_roles.py`.
 
-Covers, in order: the static fixed-role mapping (zero
-behavioural change for an org that never touches custom roles), direct and
-group custom-role grants at both `"org"` and `"project"` scope (including
-tenant isolation across organisations), the optional `ModuleRoleDefinition.
-permissions` field, the sub-type wildcard rule, and `require_permission`
-itself (server-admin bypass, path-derived scope resolution, 403 on
-insufficient permission).
+Covers: the static fixed-role mapping (no behaviour change for an org without
+custom roles), direct and group custom-role grants at `"org"` and `"project"`
+scope (with tenant isolation), `ModuleRoleDefinition.permissions`, the sub-type
+wildcard rule, and `require_permission` (server-admin bypass, path-derived scope
+resolution, 403 on insufficient permission).
 """
 
 import uuid as uuid_lib
@@ -281,11 +279,9 @@ def test_group_custom_role_grant_via_transitive_org_group_membership(client, adm
         child_group = OrgGroup(organization_id=org["id"], name="Child Group")
         db.add_all([parent_group, child_group])
         db.flush()
-        # The user is only a direct member of the *child* group, nested
-        # inside the parent — `get_user_org_group_ids` resolves the parent
-        # as an inherited ancestor, so a grant made to the parent should
-        # still reach the user (mirrors `_has_module_role_grant`'s own
-        # descendant-expansion, applied here via the ancestor direction).
+        # The user is a direct member of the child group only, nested in the
+        # parent; `get_user_org_group_ids` resolves the parent as an inherited
+        # ancestor, so a grant to the parent reaches the user.
         db.add(OrgGroupMember(org_group_id=child_group.id, user_id=uuid_lib.UUID(member_id)))
         db.add(OrgGroupMember(org_group_id=parent_group.id, member_org_group_id=child_group.id))
         db.flush()

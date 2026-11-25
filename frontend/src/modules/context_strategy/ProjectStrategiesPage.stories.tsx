@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
-import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { ProjectStrategiesPage } from "./ProjectStrategiesPage";
 import type { Strategy } from "./types";
 import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
@@ -37,6 +37,7 @@ const meta: Meta<typeof ProjectStrategiesPage> = {
   component: ProjectStrategiesPage,
   decorators: [
     withRouter(`/projects/${PROJECT_ID}/modules/context_strategy/strategies`, "/projects/:projectId/modules/context_strategy/strategies"),
+    withStatefulAuth(buildUser()),
     withToast(),
   ],
 };
@@ -87,7 +88,7 @@ export const ExportCarriesThePageFilters: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/strategy/export"));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/strategy/export?sort=code&order=asc"));
   },
 };
 
@@ -97,5 +98,24 @@ export const TitleHeaderSortsTheStrategies: Story = {
   play: async ({ canvasElement }) => {
     const table = await within(canvasElement).findByRole("table");
     await expectHeaderOrdersText(table, "Title");
+  },
+};
+
+/** Version is off by default; the column chooser adds it and the reset puts it away again. */
+export const VersionColumnIsOptionalAndOffByDefault: Story = {
+  beforeEach: () => mockPageApis([strategy()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Strategies" });
+    for (const name of ["Title", "Code", "Priority", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await expect(within(table).queryByRole("columnheader", { name: "Version" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Version" }));
+    await expect(within(table).getByRole("columnheader", { name: "Version" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Version" })).not.toBeInTheDocument();
   },
 };

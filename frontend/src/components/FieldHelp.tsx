@@ -1,24 +1,18 @@
 /**
  * Module: components/FieldHelp
  *
- * The help affordance every non-obvious form field carries (docs/ux-style-guide.md, "Pattern: field
- * help"): a `(?)` button after the field's caption that reveals one or two sentences saying what the
- * field is, what it affects and typical values, as a tooltip. `FieldCaption` is the caption line every shared field
- * component renders, so the label and the help sit the same way everywhere.
+ * The help affordance every non-obvious form field carries (docs/ux-style-guide.md, "Pattern: field help"): a
+ * `(?)` button after the caption revealing one or two sentences as a tooltip. `FieldCaption` is the caption line
+ * every shared field component renders.
  *
- * Design decisions:
- * - The text is a pinnable `Tooltip` (hover or keyboard focus shows it, a click or tap pins it, Escape or
- *   an outside press closes it), not an in-place disclosure and not a `Popover`: it is portalled to
- *   `document.body`, so opening it never moves the fields around the caption, and fields are built inside
- *   dialogs and popovers where a popover opened from a popover is not allowed.
- * - The button is a keyboard-focusable control named "Help: {label}" and described by the tooltip text.
- *   It is named by visually-hidden text, not `aria-label`, so a label lookup for the field ("Name")
- *   finds the field alone and never also its help button.
- * - A field that is self-explanatory (a title, a name) passes `helpNotNeeded` instead of `help`, which
- *   keeps the opt-out greppable; `scripts/check_field_help.py` fails on a field with neither.
- * - A button inside a `<label>` becomes that label's control (the first labelable descendant), so a
- *   field with help never wraps its control in the label: `FieldShell` ties a sibling `<label>` to the
- *   control by `htmlFor` instead, and keeps the plain wrapping `<label>` for a field without help.
+ * - The text is a pinnable `Tooltip` (hover or focus shows it, a click pins it, Escape or an outside press closes
+ *   it), portalled to `document.body`, so opening it never moves the fields around the caption and works inside
+ *   dialogs and popovers, where a popover from a popover is not allowed.
+ * - The button is named "Help: {label}" by visually hidden text, not `aria-label`, so a label lookup for the field
+ *   finds the field alone, and described by the tooltip text.
+ * - A self-explanatory field passes `helpNotNeeded` instead (`scripts/check_field_help.py` fails on neither).
+ * - A button inside a `<label>` becomes its control, so a field with help ties a sibling `<label htmlFor>` to the
+ *   control (`FieldShell`), and keeps the wrapping `<label>` only for a field without help.
  */
 import { CircleHelp } from "lucide-react";
 import { useId } from "react";
@@ -77,21 +71,24 @@ export function FieldHelp({ label, help }: { label: string; help: string }) {
  * @param label The visible caption.
  * @param help The help text, when the field has any.
  * @param extra A control beside the caption.
+ * @param actions Controls at the far end of the caption line (the Markdown editor's view switch); they take no row of
+ * their own, so a field that shows them only while in use never moves.
  * @param muted Renders the small bold style detail pages use for a field group's caption.
  * @param required Adds the `*` after the caption.
  */
 export function FieldCaption({
-  label, help, extra, htmlFor, muted, required,
-}: { label: string; help?: string; extra?: ReactNode; htmlFor?: string; muted?: boolean; required?: boolean }) {
+  label, help, extra, actions, htmlFor, muted, required,
+}: { label: string; help?: string; extra?: ReactNode; actions?: ReactNode; htmlFor?: string; muted?: boolean; required?: boolean }) {
   const mark = required ? <RequiredMark /> : null;
   const text = htmlFor ? <label htmlFor={htmlFor}>{label}{mark}</label> : <span>{label}{mark}</span>;
   const mutedText = <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}{mark}</span>;
-  if (!help && !extra) return muted ? mutedText : text;
+  if (!help && !extra && !actions) return muted ? mutedText : text;
   return (
     <span className="field-caption">
       {muted ? mutedText : text}
       {extra}
       {help && <FieldHelp label={label} help={help} />}
+      {actions && <span className="field-caption__actions">{actions}</span>}
     </span>
   );
 }
@@ -101,8 +98,8 @@ export function FieldCaption({
  * optional hint under it.
  *
  * Without help or `extra` the whole block is one `<label>`, so clicking the caption focuses the control.
- * With either, the caption is a sibling `<label htmlFor>` (a button or pill inside the label would
- * hijack it) and the control carries `controlId`.
+ * With either, the caption is a sibling `<label htmlFor>` (a button or pill inside the label would hijack it) and the
+ * control carries `controlId`.
  *
  * @param label The visible caption.
  * @param controlId The control's `id`, always set on it so the caption can point at it.
@@ -114,7 +111,10 @@ export function FieldCaption({
  */
 export function FieldShell({
   label, controlId, help, extra, hint, required, children,
-}: { label: string; controlId: string; help?: string; extra?: ReactNode; hint?: ReactNode; required?: boolean; children: ReactNode }) {
+}: {
+  label: string; controlId: string; help?: string; extra?: ReactNode; hint?: ReactNode; required?: boolean;
+  children: ReactNode;
+}) {
   const hintNode = hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>;
   if (!help && !extra) {
     return (

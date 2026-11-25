@@ -5,15 +5,14 @@
  * the records of the surrounding group; with optional conditions (`where`), up to three sort keys and, for a type,
  * whether archived records are included.
  *
- * Responsibilities:
- * - Offer only what the surrounding blocks give: the "linked from" and "group" choices list the names in scope.
- * - Keep the stored shape exactly as the server validates it, dropping keys that no longer apply when the mode
- *   changes (a group source has no record type).
- *
- * Design decisions: link types are typed by name (a layout stores names, not ids, so it moves between projects),
- * so the server's check, not a client list, says whether a name exists. A sheet's join has no "all records" mode
- * (`joinMode`): it can only follow a link from an earlier name.
+ * It offers only what the surrounding blocks give (the "linked from" and "group" choices list the names in scope)
+ * and keeps the stored shape exactly as the server validates it, dropping keys that do not apply to the mode (a
+ * group source has no record type). Link types are typed by name (a layout stores names, not ids, so it moves
+ * between projects), so the server's check, not a client list, says whether a name exists. A sheet's join has no
+ * "all records" mode (`joinMode`): it can only follow a link from a name already in scope.
  */
+import { X } from "lucide-react";
+
 import type { BlockCatalogue, ReportFieldCatalogue } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import { nameOption, type NameInScope } from "../utils/reportLayoutTree";
@@ -37,7 +36,7 @@ const modeOf = (source: Source): Mode => ("group" in source ? "group" : "linked_
  * @param catalogue The record types and fields.
  * @param blocks The block catalogue (operators for the `where` tests).
  * @param variables Names of the layout's declared variables.
- * @param joinMode A sheet's join: it can only follow a link from an earlier name.
+ * @param joinMode A sheet's join: it can only follow a link from a name already in scope.
  * @param disabled Read-only.
  */
 export function ReportLayoutSourceEditor({
@@ -156,8 +155,8 @@ export function ReportLayoutSourceEditor({
                   onChange={(on) => change({ sort: sort.map((k, j) => (j === i ? { field: k.field, ...(on ? { descending: true } : {}) } : k)) })}
                 />
                 {!disabled && (
-                  <button type="button" className="btn btn-sm" aria-label={text.removeSort(i + 1)} onClick={() => change({ sort: sort.filter((_, j) => j !== i) })}>
-                    {text.removeSort(i + 1)}
+                  <button type="button" className="btn btn-sm btn-icon" aria-label={text.removeSort(i + 1)} title={text.removeSort(i + 1)} onClick={() => change({ sort: sort.filter((_, j) => j !== i) })}>
+                    <X size={14} aria-hidden="true" />
                   </button>
                 )}
               </span>

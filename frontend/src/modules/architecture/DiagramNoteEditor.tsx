@@ -100,7 +100,7 @@ export function DiagramNoteEditor({
         />
       </div>
       <div ref={textBox} className="stack" onBlur={() => { if (draft !== note.text) onChange({ text: draft }); }}>
-        <TextAreaField label="Note text" help={ARCHITECTURE_HELP.noteText} value={draft} onChange={setDraft} disabled={!editable} />
+        <TextAreaField plainText="Text drawn inside a note shape on the diagram, which exports as a diagram label" label="Note text" help={ARCHITECTURE_HELP.noteText} value={draft} onChange={setDraft} disabled={!editable} />
       </div>
       <LabeledSelect
         label="Alignment" help={ARCHITECTURE_HELP.noteAlign} placeholder={null} disabled={!editable} value={note.textAlign}

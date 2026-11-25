@@ -18,13 +18,18 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.organization import Organization
 from app.models.pat import PersonalAccessToken
+from app.models.project import Project
+from app.models.user import User
+from app.security import generate_pat
 from app.services.lookups import affected_rows
+from app.services.rbac import get_effective_org_roles, get_effective_project_roles
 
 settings = get_settings()
 
@@ -52,6 +57,62 @@ def compute_expiry_ceiling(db: Session, allowed_organization_ids: list[UUID], re
     if requested_expires_at is not None and requested_expires_at < ceiling:
         return requested_expires_at
     return ceiling
+
+
+def create_token(
+    db: Session, *, owner: User, issuer: User, name: str, organization_ids: list[UUID], project_ids: list[UUID],
+    requested_expires_at: datetime | None,
+) -> tuple[PersonalAccessToken, str]:
+    """Creates a token for `owner`, issued by `issuer` (the owner themself, or an administrator for a service user).
+
+    The one place a token row is made, so hash-only storage, the scope rules, the expiry ceiling and the
+    organisation lifetime cap apply the same to both routes. The owner must hold a role in every listed organisation
+    and some role on every listed project (not a security boundary: real access control still gates what the token
+    does, this only prevents a token that could never do anything).
+
+    Args:
+        db: Active session; the row is added and flushed, not committed.
+        owner: The account the token authenticates as.
+        issuer: Who is issuing it (recorded as `created_by_user_id`).
+        name: The label (blank is refused).
+        organization_ids: The organisations it may be used against (at least one).
+        project_ids: Optional further restriction to projects of those organisations.
+        requested_expires_at: A shorter expiry than the ceiling, or `None` for the ceiling.
+
+    Returns:
+        The token row and its raw secret, which the caller shows once and never stores or logs.
+
+    Raises:
+        HTTPException: 400 for a blank name, no organisation, a role or project access the owner lacks, or a
+            project outside the listed organisations.
+    """
+    who = "You do" if owner.id == issuer.id else "The service user does"
+    if not name.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Name is required.")
+    if not organization_ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "At least one organisation must be selected.")
+    for org_id in organization_ids:
+        if not get_effective_org_roles(db, owner.id, org_id):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{who} not have a role in one or more selected organisations.")
+    allowed_org_ids = set(organization_ids)
+    for project_id in project_ids:
+        project = db.get(Project, project_id)
+        if project is None or project.organization_id not in allowed_org_ids:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Each selected project must belong to one of the selected organisations."
+            )
+        if not get_effective_project_roles(db, owner.id, project_id):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{who} not have access to one or more selected projects.")
+    raw_token, token_hash, token_prefix = generate_pat()
+    pat = PersonalAccessToken(
+        user_id=owner.id, created_by_user_id=issuer.id, name=name.strip(), token_hash=token_hash,
+        token_prefix=token_prefix, allowed_organization_ids=[str(i) for i in organization_ids],
+        allowed_project_ids=[str(i) for i in project_ids],
+        expires_at_ceiling=compute_expiry_ceiling(db, organization_ids, requested_expires_at),
+    )
+    db.add(pat)
+    db.flush()
+    return pat, raw_token
 
 
 def effective_expiry(db: Session, pat: PersonalAccessToken) -> datetime:

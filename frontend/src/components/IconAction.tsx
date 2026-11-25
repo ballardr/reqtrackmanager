@@ -1,14 +1,11 @@
 /**
  * Module: components/IconAction
  *
- * A small icon-only button (or link) named by its label, which is also its tooltip: the one shape for an action in a
- * crowded place (a comment row, a Selection card, a table row) where a text button would compete with the content
- * (docs/ux-style-guide.md, "Pattern: help on interactive elements" and "Pattern: button sizes").
- *
- * Design decisions:
- * - The label is both the accessible name and the tooltip, so a pointer, keyboard and screen reader user get the same
- *   words; the caller never writes a separate `aria-label`.
- * - A destination is a real link (`to`), not a button that navigates, so it opens in a new tab and is announced as a link.
+ * A small icon-only button (or link) named by its label, which is also its tooltip: the one shape for an action in
+ * a crowded place (a comment row, a Selection card, a table row) (docs/ux-style-guide.md, "Pattern: help on
+ * interactive elements" and "Pattern: button sizes"). The label is the accessible name and the tooltip, so the
+ * caller writes no `aria-label`. A destination is a real link (`to`), so it opens in a new tab and is announced as
+ * a link.
  */
 import { useId, type ReactNode } from "react";
 import { Link } from "react-router-dom";

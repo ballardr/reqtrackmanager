@@ -34,7 +34,7 @@ import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { architectureTabPath } from "./architectureTabs";
 import { projectConnectionApi, projectElementApi, projectSymbolUrl } from "./api";
 import { diffElementFields, elementCodeRecord, valuesFromElement } from "./architectureFields";
-import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
+import { architectureLifecycle } from "./architectureLifecycle";
 import { useCreateConnection } from "./useCreateConnection";
 import { useCreateElement } from "./useCreateElement";
 import { ConnectionFormModal } from "./ConnectionFormModal";
@@ -48,6 +48,7 @@ import { PortList } from "./PortList";
 import { RecordDiagramsCard } from "./RecordDiagramsCard";
 import { SymbolImage } from "./SymbolImage";
 import { useArchitectureReference } from "./useArchitectureReference";
+import { MarkdownView } from "../../components/MarkdownView";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE,
   type ArchitectureConnection, type ArchitectureElement, type ArchitectureRecordStatus, type ElementFieldValues,
@@ -158,6 +159,8 @@ export function ElementDetailPage() {
     }
   }
 
+  const { lifecycle, menuRows } = architectureLifecycle(element.status, element.allowed_status_moves, moveTo, readOnly);
+
   const portsApi = {
     add: async (values: Parameters<typeof elementApi.addPort>[1]) => { await elementApi.addPort(element.id, values); reload(); },
     change: async (portId: string, change: Parameters<typeof elementApi.updatePort>[2]) => { await elementApi.updatePort(element.id, portId, change); reload(); },
@@ -174,7 +177,7 @@ export function ElementDetailPage() {
         title={element.name}
         code={element.unique_code}
         codeOwner={ownerCode}
-        tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_element" artefactId={element.id} />}
+        tags={<RecordTags projectId={projectId} artefactType="architecture_element" artefactId={element.id} />}
         back={{ to: architectureTabPath(projectId, "elements"), label: "Elements" }}
         badges={
           <>
@@ -188,14 +191,13 @@ export function ElementDetailPage() {
           <>{element.element_type_name} · Owner: <PrincipalBadge principal={element.owner} placeholder="None" /></>
         }
         onEdit={readOnly || element.is_archived ? undefined : () => setEditing(true)}
-        actions={[archive.item, remove.item]}
-        stateMenu={readOnly ? undefined : <ArchitectureStatusControls status={element.status} moves={element.allowed_status_moves} onMove={moveTo} />}
+        actions={[...menuRows, archive.item, remove.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
       {remove.dialog}
-      <div className="stack">
         <DetailCard>
-          {element.description && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{element.description}</p>}
+          {element.description && <MarkdownView text={element.description} />}
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
             <RecordFieldGroup help={ARCHITECTURE_HELP.elementDisplayNote} label="Display note">
               {element.display_note ? <span style={{ whiteSpace: "pre-wrap" }}>{element.display_note}</span> : <span className="text-muted">None</span>}
@@ -253,7 +255,6 @@ export function ElementDetailPage() {
         <ElementSharingCard projectId={projectId} element={element} />
 
         <RecordCommentsCards projectId={projectId} artefactType="architecture_element" recordId={element.id} currentUserId={user?.id} />
-      </div>
 
       {editing && (
         <ElementFormModal

@@ -2,10 +2,9 @@
  * Module: components/ReportLayoutVariablesField
  *
  * The layout's run-time variables in the outline: the same declaration editor a report pack uses
- * (`ReportPackVariablesEditor`), because a pack variable is declared exactly as a layout's is.
- *
- * Responsibilities: give the shared editor the client-only ids it keys rows by, and hand the layout back a plain
- * list of declarations (or none, so the saved tree has no empty `variables` key).
+ * (`ReportPackVariablesEditor`), because a pack variable is declared exactly as a layout's is. It gives the shared
+ * editor the client-only ids it keys rows by and hands the layout back a plain list of declarations (or none, so
+ * the saved tree has no empty `variables` key).
  */
 import { useState } from "react";
 

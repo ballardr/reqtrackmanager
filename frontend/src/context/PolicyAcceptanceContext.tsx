@@ -1,12 +1,12 @@
 /**
  * Module: context/PolicyAcceptanceContext
  *
- * Holds the policies the signed-in person must accept (`GET /api/v1/policies/mine/pending`), so the notice above
- * every page, the sign-in dialog and the Policies page agree and update together when one is accepted.
+ * Holds the policies the signed-in person must accept (`GET /api/v1/policies/mine/pending`), so the notice above every
+ * page, the sign-in dialog and the Policies page agree and update together when one is accepted.
  *
- * Responsibilities: read the list when the person signs in and when the window regains focus (an administrator may
- * have published a requirement meanwhile), and expose `reload`. A failed read leaves the list as it was: a notice must
- * never get in the way of the page it sits on, and the server enforces the requirement either way.
+ * Responsibilities: read the list at sign-in and when the window regains focus (an administrator may have published a
+ * requirement meanwhile), and expose `reload`. A failed read leaves the list as it was: a notice must never get in the way
+ * of its page, and the server enforces the requirement either way.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 

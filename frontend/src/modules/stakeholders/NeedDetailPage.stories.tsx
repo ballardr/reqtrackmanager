@@ -9,6 +9,7 @@ import { buildNeed, buildPersona, buildStakeholder } from "./fixtures";
 import { NeedDetailPage } from "./NeedDetailPage";
 import type { Need, NeedHolder, NeedRequirement } from "./types";
 import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
 
 const PROJECT_ID = "project-1";
 const NEED_ID = "need-1";
@@ -85,14 +86,17 @@ export const ActiveShowsFieldsAndLinks: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Diagnose faults quickly" })).toBeInTheDocument());
-    await expect(canvas.getByText("Active", { exact: true })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Active");
+    await expect(await recordActionNames(canvas, "Stakeholder Need")).toContain("Retire");
     await expect(canvas.queryByText("active")).not.toBeInTheDocument();
     await expect(canvas.getByText("Observed on site visits; each delay costs an hour.")).toBeInTheDocument();
     await waitFor(() => expect(canvas.getByRole("link", { name: "Pat Regulator" })).toBeInTheDocument());
     await expect(canvas.getByRole("link", { name: "Pat Regulator" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/stakeholders/stakeholder-1`);
     await expect(canvas.getByRole("link", { name: "Field Technician" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/personas/persona-1`);
     await expect(canvas.getByRole("link", { name: "Remote diagnostics in 30 seconds" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements/req-1`);
+    // Each holder carries the icon of its kind; the Requirement is not a person and has none.
+    await expect(canvas.getByRole("img", { name: "Stakeholder" })).toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: "Persona" })).toBeInTheDocument();
     // The code is shown through the one display rule, beside the title rather than inside the link's name.
     await expect(canvas.getByText(/SW-PERF-001$/)).toBeInTheDocument();
   },
@@ -102,8 +106,11 @@ export const DraftOffersActivateAndRetire: Story = {
   beforeEach: () => mockDetailApis(buildNeed({ status: "draft" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Activate" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Active" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Stakeholder Need");
+    await expect(names[0]).toBe("Promote to Active");
+    await expect(names).toContain("Retire");
+    await expect(currentLifecycleStep(canvasElement)).toBe("Draft");
   },
 };
 
@@ -114,13 +121,13 @@ export const RetireAsksForConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Retire" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Retire" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Stakeholder Need actions" }));
+    await chooseRecordAction(canvas, "Stakeholder Need", "Retire");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Retire this Stakeholder Need?" }));
     await userEvent.type(dialog.getByLabelText("Transition comment"), "Superseded");
     await userEvent.click(dialog.getByRole("button", { name: "Retire" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}/retire`, { comment: "Superseded" }));
-    await waitFor(() => expect(canvas.getByText("Retired", { exact: true })).toBeInTheDocument());
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Retired"));
   },
 };
 
@@ -220,7 +227,7 @@ export const OwnerCanBeAnOrgGroup: Story = {
     await userEvent.type(picker.getByLabelText("Need owner"), "platform");
     await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}`, { owner: { type: "org_group", id: "group-1" } }));
-    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument());
   },
 };
 

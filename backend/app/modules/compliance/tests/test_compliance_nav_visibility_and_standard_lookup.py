@@ -1,26 +1,12 @@
-"""Permission-boundary tests for the Compliance Module's global (no
-org/project id in the path) endpoints: `GET /api/v1/compliance/nav-visibility` and `GET /api/v1/
-compliance/standards/{standard_id}` — mounted via `ModuleDefinition.
-get_global_router` rather than either of this module's other two routers,
-since neither endpoint has a single org/project id of its own to key a
-per-request permission dependency off (see `global_router.py`'s own module
-docstring for the full reasoning).
+"""Permission-boundary tests for the Compliance Module's global endpoints, `GET /api/v1/compliance/nav-visibility` and
+`GET /api/v1/compliance/standards/{standard_id}`, mounted through `ModuleDefinition.get_global_router` because neither has
+an organisation or project id to key a permission dependency off (see `global_router.py`). They pin the matrix of
+`docs/soc2/policies/access-control-policy.md`: 404, not 403, for a non-member, so an inaccessible resource looks absent.
 
-Covers the exact matrix asks for, and
-this repo's `docs/soc2/policies/access-control-policy.md` posture every
-other compliance endpoint already gives (404, not 403, for "not a member of
-this org at all" — a disabled/inaccessible resource must be
-indistinguishable from a nonexistent one):
-
-- `nav-visibility`: `False` for a plain member with no role and no
-  standards; `True` in isolation for a `compliance_manager` grant, for
-  `org_admin`, and for `is_server_admin`; `False` for a user with zero org
-  memberships anywhere.
-- `standards/{id}`: 404 (not 403, not 200 with someone else's data) for a
-  member of a *different* org than the one the standard belongs to
-  (cross-org leak check) and for a genuine member of the right org whose
-  org has the module disabled; 200 with the right `organization_id` for a
-  real member; 404 for a genuinely nonexistent id.
+- `nav-visibility`: `False` for a plain member with no role and no standards; `True` in isolation for a
+  `compliance_manager` grant, `org_admin` and `is_server_admin`; `False` for a user with no organisation membership.
+- `standards/{id}`: 404 for a member of a different organisation (cross-organisation leak check), for a member whose
+  organisation has the module disabled and for a nonexistent id; 200 with the right `organization_id` for a member.
 """
 
 from __future__ import annotations
@@ -66,21 +52,12 @@ def _get_current_user_id(client, token) -> str:
 
 
 def _grant_plain_membership_directly(user_id: str, organization_id: str) -> None:
-    """Grants `user_id` a plain `member` `UserOrgRole` on `organization_id`
-    via direct ORM insert, mirroring `tests/conftest.py::direct_project_
-    roles`'s own precedent for reaching a state the real API has no
-    endpoint for.
+    """Grants `user_id` a plain `member` `UserOrgRole` on `organization_id` by direct ORM insert, as
+    `tests/conftest.py::direct_project_roles` does for a state the API cannot reach.
 
-    Needed only for the server-admin isolation test below: the real
-    `POST /orgs/{id}/users` endpoint always creates a *brand-new* user
-    (409s on an existing email), so there is no API path to add the
-    already-existing bootstrap server admin as a second org's plain
-    member — this is a genuine gap in the directory API, not something
-    this test works around for convenience; the bootstrap admin having
-    membership in a second org is exactly the "server admin who also
-    happens to be a member somewhere" case `get_nav_visibility` needs to
-    isolate from its own `org_admin`/`compliance_manager` branches.
-    """
+    The server-admin isolation test needs it: `POST /orgs/{id}/users` always creates a new user (409 on an existing
+    email), so the API cannot add the bootstrap server admin to a second organisation as a plain member, the case
+    `get_nav_visibility` must isolate from its `org_admin` and `compliance_manager` branches."""
     db = SessionLocal()
     try:
         db.add(UserOrgRole(user_id=uuid.UUID(user_id), organization_id=uuid.UUID(organization_id), role=OrgRole.MEMBER))
@@ -98,7 +75,7 @@ def test_nav_visibility_false_for_plain_member_with_no_role_and_no_standards(cli
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(member_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": False}
+    assert resp.json() == {"visible": False, "status_organization_ids": []}
 
 
 def test_nav_visibility_true_for_compliance_manager_grant(client, admin_token, org_id):
@@ -108,7 +85,7 @@ def test_nav_visibility_true_for_compliance_manager_grant(client, admin_token, o
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(manager_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": True}
+    assert resp.json() == {"visible": True, "status_organization_ids": [str(org_id)]}
 
 
 def test_nav_visibility_true_for_org_admin(client, admin_token, org_id):
@@ -117,7 +94,7 @@ def test_nav_visibility_true_for_org_admin(client, admin_token, org_id):
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(org_admin_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": True}
+    assert resp.json() == {"visible": True, "status_organization_ids": [str(org_id)]}
 
 
 def test_nav_visibility_true_for_server_admin_via_plain_membership(client, admin_token, org_id):
@@ -133,7 +110,9 @@ def test_nav_visibility_true_for_server_admin_via_plain_membership(client, admin
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(admin_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": True}
+    body = resp.json()
+    assert body["visible"] is True
+    assert str(second_org["id"]) in body["status_organization_ids"]
 
 
 def test_nav_visibility_false_for_user_with_no_org_memberships_at_all(client, admin_token, org_id):
@@ -149,7 +128,19 @@ def test_nav_visibility_false_for_user_with_no_org_memberships_at_all(client, ad
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(orgless_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": False}
+    assert resp.json() == {"visible": False, "status_organization_ids": []}
+
+
+def test_nav_visibility_lists_no_status_organisation_for_a_member_who_only_sees_a_standard(client, admin_token, org_id):
+    """A plain member sees the Standards tab because the organisation has a standard, but holds no role that reads the
+    status views, so the By standard and Outstanding tabs (and the Organisation filter) must not list the organisation."""
+    _create_standard(client, admin_token, org_id, reference="NAV-VIS-1", name="Visible Standard")
+    create_org_user(client, admin_token, org_id, "nav-reader@example.com", role="member")
+    reader_token = login(client, "nav-reader@example.com", "Password123!")
+
+    resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(reader_token))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"visible": True, "status_organization_ids": []}
 
 
 # --- standards/{id} ---------------------------------------------------------------

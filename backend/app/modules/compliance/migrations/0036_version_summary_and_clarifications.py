@@ -4,27 +4,15 @@ Revision ID: 0036
 Revises: 0035
 Create Date: 2026-09-09
 
-Adds the two schema changes needs
-(§4, §31 — the human-review request
-that a published version remain editable for clarifications/minor updates,
-fully tracked, and that a version's own description/summary be editable at
-any time):
+Adds the schema for editing a published version for clarifications and minor updates, fully tracked (§4, §31):
 
-- `compliance_standard_versions.summary` — a version's own current-standing
-  description, distinct from the existing `change_note` (what changed
-  *relative to the previous version*). Editable at any lifecycle stage; see
-  `models.py`'s clarification design decisions.
-- Four new columns on `compliance_requirements` recording the most recent
-  post-publish clarification made to a requirement's wording:
-  `clarification_count`, `last_clarified_at`, `last_clarified_by`,
-  `last_clarification_note` — mirrors `project_compliance_requirements.
-  decision_note`'s already-established "last decision's note lives on the
-  row; full history is the audit trail" precedent, not a new table. Every
-  clarification is also logged via `services.audit.log_event` (action
-  `"clarified"`).
+- `compliance_standard_versions.summary`: a version's current-standing description, distinct from `change_note` (what
+  changed relative to the previous version); editable at any lifecycle stage.
+- Four columns on `compliance_requirements` recording the latest post-publish clarification: `clarification_count`,
+  `last_clarified_at`, `last_clarified_by`, `last_clarification_note`. The last note lives on the row and the full
+  history is the audit trail (`services.audit.log_event`, action `"clarified"`), as for `decision_note`.
 
-This migration adds no data of its own beyond column defaults — no existing
-row's behaviour changes as a result of this migration alone.
+No data changes beyond column defaults.
 """
 
 from collections.abc import Sequence

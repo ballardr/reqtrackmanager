@@ -3,24 +3,21 @@ Module: services.login_throttle
 
 Progressive delay on password sign-in (access control Known Gap 1).
 
-Responsibilities:
-- Count recent failed sign-in attempts per account (since the account's last success) and per source address, from
-  `login_events`, which every worker and replica already shares.
-- Past a free allowance, require a wait that doubles with each further failure up to a maximum, and refuse an attempt
-  made inside it before the password is checked.
-- Serialise attempts on one account with a transaction-scoped advisory lock so a burst of parallel guesses cannot
-  all pass the check before the first failure is recorded. A later attempt waits for the lock for a few seconds
-  (`login_lock_wait_seconds`) rather than being refused, so two sign-ins that overlap by chance (a double submit, two
-  devices) both complete; the wait is bounded and each waiter is already limited by the request admission queue.
+Responsibilities: count recent failed attempts per account (since its last success) and per source address from
+`login_events`, which every worker and replica shares; past a free allowance, require a wait that doubles with
+each failure up to a maximum, and refuse an attempt inside it before the password is checked; serialise
+attempts on one account with a transaction-scoped advisory lock, so parallel guesses cannot all pass the check
+before the first failure is recorded. A later attempt waits for the lock briefly (`login_lock_wait_seconds`)
+instead of being refused, so chance overlaps (a double submit, two devices) both complete; the wait is bounded.
 
 Design decisions:
-- A delay, not a lock: it ends by itself and is capped, so a third party who knows an address can slow a person's
-  sign-in by at most the maximum, never keep them out. Refused attempts are stored but do not count, so repeated
-  attempts do not extend the wait.
-- The same answer is given whether or not the address belongs to an account (the count is by the address typed).
-- All instants are UTC; the wait is computed from the last counted failure.
+- A delay, not a lock: it ends by itself and is capped, so a third party who knows an address can slow a
+  sign-in by at most the maximum and never keep a person out. Refused attempts are stored but do not count, so
+  repeats do not extend the wait.
+- The answer is the same whether or not the address belongs to an account (the count is by the address typed).
+- All instants are UTC; the wait runs from the last counted failure.
 
-External dependencies: PostgreSQL (`login_events`, `pg_try_advisory_xact_lock`), `app.config`.
+Dependencies: PostgreSQL (`login_events`, `pg_try_advisory_xact_lock`), `app.config`.
 """
 
 from __future__ import annotations

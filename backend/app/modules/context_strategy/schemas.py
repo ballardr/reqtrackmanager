@@ -1,67 +1,12 @@
 """
 Module: modules.context_strategy.schemas
 
-Pydantic request/response models for Context & Strategy's backend
-API — sits alongside `models.py` (the ORM shapes these expose over HTTP),
-`service.py` (versioning/lifecycle logic), and the two routers (`router.py`
-org-scoped, `project_router.py` project-scoped).
-
-Conventions, matching `app.modules.decisions.schemas`'s own established
-shape for this codebase's module schemas:
-- `StrategyOut` is always built explicitly by the router (`_strategy_to_out`),
-  never `from_attributes` alone — it merges the `Strategy` identity row with
-  its *current* `StrategyVersion`'s content, and `is_locked` is a computed
-  field, not a column, mirroring `DecisionOut`'s identical pattern.
-- `StrategyCommentOut` mirrors `DecisionCommentOut`'s shape (no reaction
-  fields — `StrategyComment` has no reaction mechanism, same reasoning).
-
-Future State has the same shapes (`FutureStateCreate`/`Update`/
-`Out`/`VersionOut`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/
-`CommentOut`) for the standalone Future State artefact, following every
-one of the conventions above identically.
-
-Pain Points have `PainPointTypeOut` (a plain `PainPointTypeDefinition`
-row, org-scoped type CRUD), `EffectivePainPointTypeOut` (one row of a
-project's merged effective type list — mirrors `service.
-EffectivePainPointType` field-for-field, a Pydantic sibling of that plain
-dataclass since the dataclass itself is never returned directly over HTTP),
-`ProjectPainPointTypeOut` (a raw `ProjectPainPointType` override/local row,
-returned by its own create/override endpoints), and `PainPointCreate`/
-`Update`/`Out`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/
-`CommentOut` for the artefact itself — no `PainPointVersionOut` (no version
-table; see `models.py`'s own docstring).
-
-Guiding Principles have `GuidingPrincipleCreate`/`Update`/`Out`/
-`VersionOut`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/`CommentOut`
-for the standalone Guiding Principle artefact, following every one of the
-conventions above identically (`GuidingPrincipleOut` always built explicitly
-by the router, merging identity + current version; `is_locked` computed).
-
-Open Questions have `OpenQuestionCreate`/`Update`/`Out`/
-`TransitionRequest`/`CommentCreate`/`CommentUpdate`/`CommentOut` — back to
-Pain Point's shape (no `OpenQuestionVersionOut`; no version table, see
-`models.py`'s own docstring).
-
-Cross-artefact relationships use one shared `ContextStrategyLinkOut`
-(returned by every source artefact's `GET .../relationships` and `POST
-.../relationships` endpoints alike — one shape covers all five source types,
-unlike Decision Management's single `DecisionLinkOut`, since this module has
-five source types rather than one; `other_type`/`other_display_code`/
-`other_display_name` are resolved the same best-effort way `modules.
-decisions.project_router.relationships._resolve_other_artefact_display`
-does, including declining to resolve a Decision-typed target per this
-module's own "Decision-target relationships stay reserved" call, see
-`service.py`'s own docstring) and one `*LinkCreate` request payload per
-source artefact type (`kind` + `target_id` — `kind` is the corresponding
-`service.*LinkKind` enum, so an invalid `target_type` string is never a
-possible client input at all), plus `StrategySupersessionCreate`/
-`FutureStateSupersessionCreate`/`GuidingPrincipleSupersessionCreate` (each
-just `{old_<artefact>_id, comment}`, mirroring `DecisionSupersessionCreate`).
-
-`owner` (Pain Point, Guiding Principle, Open Question) is a principal: a user,
-an organisation group or (where the record is project-scoped) a project group.
-Requests send a `PrincipalRef` (`{type, id}`; null clears it) and responses
-return a resolved `PrincipalOut` (`_shared.owner_labels`).
+Pydantic request/response models for the five artefact types, their comments
+and cross-artefact links.
+- Versioned types (Strategy, Future State, Guiding Principle) are built
+  explicitly by the router: identity plus current version, computed `is_locked`.
+- One `ContextStrategyLinkOut` serves every source type.
+- `owner` is a principal: a `PrincipalRef` in, a `PrincipalOut` out.
 """
 
 from __future__ import annotations

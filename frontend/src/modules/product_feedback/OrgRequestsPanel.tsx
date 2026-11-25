@@ -1,14 +1,14 @@
 /**
  * Module: modules/product_feedback/OrgRequestsPanel
  *
- * The organisation's request inbox: requests that arrived before anyone knew which project they belong to. It is a
- * group on the Organisation Overview (`module.ts`'s `orgOverviewSections`), the same placement and reasoning as the
- * organisation-level Strategy list: it is day-to-day content, not configuration.
+ * The organisation's request inbox: requests that arrived before anyone knew their project. It is a group on Org
+ * Resources (`module.ts`'s `orgResourceSections`), placed as the organisation-level Strategy list is: day-to-day
+ * content, not configuration.
  *
- * Triage is moving a request into a project (on the request's page), which renumbers it there. An inbox request has
- * no links or tags (those belong to a project), so the list shows no demand or Pain Point warnings, and it scores only
- * on the organisation's own scoring scheme. An organisation administrator can switch the inbox off; the panel then
- * says so rather than showing an error.
+ * Triage moves a request into a project (on the request's page), which renumbers it there. An inbox request has no
+ * links or tags (those belong to a project), so the list shows no demand or Pain Point warnings, and it scores only on
+ * the organisation's own scoring scheme. An organisation administrator can switch the inbox off; the panel then says
+ * so rather than showing an error.
  */
 import { useEffect, useState } from "react";
 
@@ -20,7 +20,7 @@ import { FilterPanel } from "../../components/FilterPanel";
 import { ListActions } from "../../components/ListActions";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
-import { cycleSort } from "../../components/sortState";
+import { SortField } from "../../components/SortField";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { orgRequestApi } from "./api";
@@ -101,8 +101,8 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
           ariaLabel="Request inbox"
           columns={columns}
           rows={sortRequests(filtered, filters)}
-          sort={filters.sort}
-          onSort={(key) => filters.setSort((current) => cycleSort(current, key))}
+          sort={filters.listSort.sort}
+          onSort={filters.listSort.onHeaderSort}
           rowKey={(r) => r.id}
           rowHref={(r) => `/orgs/${orgId}/modules/product_feedback/requests/${r.id}`}
           emptyState={<p className="text-muted">{requests.length > 0 ? "No requests match these filters." : "The inbox is empty."}</p>}
@@ -113,6 +113,7 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
           searchPlaceholder="Search the inbox…" searchAriaLabel="Search the request inbox"
         >
           <RequestFilterFields filters={filters} scheme={scheme} requests={requests} />
+          <SortField list={filters.listSort} columns={columns} titleKey="title" />
         </FilterPanel>
       </div>
 

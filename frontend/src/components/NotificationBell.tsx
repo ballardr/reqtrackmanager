@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
-import { getNotificationLink } from "../modules/artefactPaths";
+import { notificationOpenPath } from "../modules/notificationTargets";
 import { t } from "../i18n/strings";
 import { Tooltip } from "./Tooltip";
 import { useResetOnChange } from "../hooks/useResetOnChange";
@@ -28,10 +28,7 @@ export function NotificationBell() {
 
   useLoadOnChange(reload, [], { intervalMs: 30_000 });
 
-  // The dropdown previously stayed open across navigation (it's rendered
-  // in the header, outside the routed content, so nothing else was ever
-  // telling it to close) — closing it on every route change matches how a
-  // popover is expected to behave everywhere else in the app.
+  // The dropdown renders in the header, outside the routed content, so nothing else closes it on navigation.
   useResetOnChange([location.pathname], () => setOpen(false));
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
@@ -43,11 +40,8 @@ export function NotificationBell() {
 
   function openNotification(n: Notification) {
     if (!n.read_at) markRead(n.id);
-    const link = getNotificationLink(n);
-    if (link) {
-      setOpen(false);
-      navigate(link);
-    }
+    setOpen(false);
+    navigate(notificationOpenPath(n));
   }
 
   async function markAllRead() {
@@ -73,13 +67,11 @@ export function NotificationBell() {
       </Tooltip>
       {open && (
         <div
-          className="card stack notification-dropdown"
+          className="card stack notification-dropdown scroll-region"
           style={{
-            position: "absolute", right: 0, top: "2.5rem", width: 320, maxHeight: 400, overflowY: "auto", zIndex: 10,
-            // The empty state is just a header + one line of text — the
-            // card's normal 1rem padding plus the stack gap around it
-            // read as a lot of bare space for that little content, so
-            // both are tightened specifically for that case.
+            position: "absolute", right: 0, top: "2.5rem", width: 320, maxHeight: 400, zIndex: 10,
+            // The empty state is one header and one line; the card's normal padding and stack gap leave too much
+            // bare space around it, so both are tightened for that case.
             padding: notifications.length === 0 ? "0.6rem 0.75rem" : undefined,
             gap: notifications.length === 0 ? "0.4rem" : undefined,
           }}
@@ -99,7 +91,7 @@ export function NotificationBell() {
             <div
               key={n.id}
               className="card"
-              style={{ cursor: getNotificationLink(n) ? "pointer" : "default", opacity: n.read_at ? 0.6 : 1 }}
+              style={{ cursor: "pointer", opacity: n.read_at ? 0.6 : 1 }}
               onClick={() => openNotification(n)}
             >
               <div style={{ fontWeight: n.read_at ? 400 : 700 }}>{n.title}</div>

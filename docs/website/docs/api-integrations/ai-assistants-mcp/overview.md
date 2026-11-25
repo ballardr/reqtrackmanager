@@ -30,9 +30,12 @@ Twenty-two read tools, always available:
 | `list_link_candidate_projects` | The projects a link from this project may reach: itself, its parent projects and its child projects you can open |
 | `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
 | `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
+| `list_components` / `list_categories` / `list_stages` | The project's components, categories (optionally one component's) and stages in display order, with the ids that `create_requirement` and `list_requirements` take; an empty `list_components` means the project has no structure yet |
 | `list_tags` | The project's tag vocabulary with usage counts, and whether new tags are free or limited to the list |
 | `get_artefact_tags` | The tags on one record of any type, whether the caller may change them, and the tags to choose from |
 | `find_artefacts_by_tag` | Records of every type that carry some tags (any or all), limited to those the caller can open |
+| `list_external_systems` / `list_organization_external_systems` | The outside tools (Jira, ServiceNow and so on) a record's external references can name, with each system's `id` and optional link template |
+| `get_artefact_external_references` / `find_artefacts_by_external_reference` | A record's external references and the systems it may name; the records carrying a key (exact, ignoring case), optionally in one system or record type |
 | `search_records` | Records of every type (and projects) found by text: code, title and tags by default, more fields on request; scoped to all projects, one project or a module's unit such as a Compliance standard. Only what the caller can open; the first 500 matches |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail, including the links it proposes (`proposed_links`) |
@@ -45,16 +48,19 @@ Twenty-two read tools, always available:
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Plus seven write tools, only when write mode is enabled. A requirement's `owner` and `reviewer` are `{"type": "user" | "org_group" | "project_group", "id": …}` in both directions, so a team can be accountable:
+Plus these write tools, only when write mode is enabled. A requirement's `owner` and `reviewer` are `{"type": "user" | "org_group" | "project_group", "id": …}` in both directions, so a team can be accountable:
 
 | Tool | Purpose |
 | --- | --- |
 | `create_requirement` | Creates a new requirement (always starts in "draft") |
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+| `create_component` / `update_component` / `move_component` / `delete_component` | Structures a project: adds, renames or re-prefixes, reorders (`up` or `down`) and deletes a component. Delete only when it has no categories and no placed records. Needs the project manager role; the prefix is unique and forms the requirement code, and may be left out on create (it is then suggested from the name) |
+| `create_category` / `update_category` / `move_category` / `move_category_to_component` / `delete_category` | The same for a category under one component; `move_category_to_component` moves a category with its requirements under another component, leaving their existing codes unchanged. `delete_category` succeeds only when no requirement and no placed record is in the category (otherwise it is refused with the counts), so move requirements first with `update_requirement` |
 | `create_artefact_link` | Links an artefact to another record of the same project, from either end — subject to the organisation's link restrictions and the caller's own permissions |
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
 | `add_artefact_tag` / `remove_artefact_tag` | Adds or removes one tag on a record, keeping the others |
+| `add_artefact_external_reference` / `update_artefact_external_reference` / `remove_artefact_external_reference` | Adds, edits (only the fields passed change) or removes an external reference on a record of any type; allowed on an approved requirement, since a reference is not record content |
 | `approve_requirement` | Approves a draft or reviewed requirement — only when AI approval is enabled for the project and its organisation |
 | `decide_change_request` | Approves or rejects a submitted change request — only when AI approval is enabled for the project and its organisation. `merge_link_ids` chooses which proposed links to create (omitted: every valid one; empty: none); a chosen link that is no longer valid fails the call with a conflict |
 | `complete_requirement` | Marks an approved requirement completed — only when AI approval is enabled for the project and its organisation |
@@ -63,7 +69,7 @@ No tool, in any configuration, can vote, comment, or record a review outcome. Se
 
 ## Write mode
 
-On by default (`MCP_WRITES_ENABLED` unset, or anything other than `false`/`0`/`no`/`off`) — set it to `false` explicitly to opt a deployment back into read-only-only. Both the bundled dev/test stack and the production stack default it on. When it's off, none of the seven write tools above exist at all: an MCP client's tool list never mentions them.
+On by default (`MCP_WRITES_ENABLED` unset, or anything other than `false`/`0`/`no`/`off`) — set it to `false` explicitly to opt a deployment back into read-only-only. Both the bundled dev/test stack and the production stack default it on. When it's off, none of the write tools above exist at all: an MCP client's tool list never mentions them.
 
 **`create_requirement`/`update_requirement`: requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through either tool, regardless of what the calling account's own role could do directly via the API. Editing an already-approved (locked) requirement is rejected with a clear error pointing at a change request instead.
 
@@ -132,7 +138,7 @@ For a deployment with no module registered, this section has no visible effect �
 Part of both Compose stacks already — no extra step beyond the normal `docker compose up`:
 
 ```bash
-cd tests/container && docker compose up -d --build   # dev/test; also available in the root docker-compose.yml
+cd tests/container && docker compose up -d --build   # dev/test; also available in the root deployments/full/docker-compose.yml
 ```
 
 It listens on `:8100`, with the MCP endpoint at `http://localhost:8100/mcp` and a plain liveness check at `http://localhost:8100/health`. `REQTRACK_API_URL` (default `http://backend:8000`, the Compose-internal address) points it at the backend.

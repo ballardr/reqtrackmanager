@@ -1,29 +1,26 @@
 /**
  * Module: navigation/projectNav
  *
- * Pure logic for the per-user "Project" nav-rail section layout
- *: which items show in which
- * order, and which sit behind "More".
+ * Pure logic for the per-user "Project" nav-rail section layout: which items show in which order, and which sit behind
+ * "More".
  *
  * Responsibilities:
- * - Define the stored preference shape (`NavPref`) and its `ui_preferences` keys: the user's
- *   default (`project_nav`) and an optional per-project override (`project_nav:<projectId>`).
+ * - Define the stored preference shape (`NavPref`) and its `ui_preferences` keys: the user's default (`project_nav`)
+ *   and an optional per-project override (`project_nav:<projectId>`).
  * - Validate whatever was stored (the bag is open-ended JSON) rather than trust it.
- * - Arrange the *currently available* items against a stored preference, tolerating keys that
- *   no longer exist (module disabled) and items the preference predates (module enabled).
- * - Lift the item for the current route out of "More" so a user is never stranded on a page
- *   whose link is hidden.
+ * - Arrange the currently available items against a stored preference, tolerating keys that no longer exist (module
+ *   disabled) and items the preference predates (module enabled).
+ * - Lift the item for the current route out of "More" so a user is never stranded on a page whose link is hidden.
  *
  * Design decisions:
- * - "Hide" means "move behind More", never remove. `PINNED_NAV_KEYS` cannot go into More
- *   (Overview, and Admin — a hidden Admin link strands whoever needs it).
- * - The preference stores the full order (main items then More items) plus the More subset,
- *   so More's own order is user-controlled too.
- * - An item missing from the stored order (a newly enabled module) is inserted after its
- *   nearest preceding default-order neighbour, so it appears where it would by default
- *   instead of vanishing or jumping to an end.
- * - Items are generic (`key`, `to`, `exact`); module items are keyed `<module_key>:<nav_path>`
- *   by the caller, so this file never names a module.
+ * - "Hide" means "move behind More", never remove. `PINNED_NAV_KEYS` cannot go into More (Overview, and Admin: a
+ *   hidden Admin link strands whoever needs it).
+ * - The preference stores the full order (main items then More items) plus the More subset, so More's own order is
+ *   user-controlled too.
+ * - An item missing from the stored order (a newly enabled module) is inserted after its nearest preceding
+ *   default-order neighbour, so it appears where it would by default.
+ * - Items are generic (`key`, `to`, `exact`); module items are keyed `<module_key>:<nav_path>` by the caller, so this
+ *   file never names a module.
  */
 
 import type { ReactNode } from "react";
@@ -87,9 +84,8 @@ export function parseNavPref(raw: unknown): NavPref | null {
 }
 
 /**
- * Picks the stored layout in effect for a project: its override, else the user's default.
- * A malformed override falls through to the default rather than hiding the whole section.
- * `null` means "use the product default".
+ * Picks the stored layout in effect for a project: its override, else the user's default. A malformed override falls
+ * through to the default; `null` means "use the product default".
  */
 export function resolveNavPref(userDefault: unknown, override: unknown): NavPref | null {
   return parseNavPref(override) ?? parseNavPref(userDefault);
@@ -102,8 +98,7 @@ export interface NavArrangement<T extends NavItemLike> {
 }
 
 /**
- * Arranges `items` (given in product-default order) per `pref`, without any route awareness
- * (the editor edits this form).
+ * Arranges `items` (given in product-default order) per `pref`, without route awareness (the editor edits this form).
  *
  * Args:
  *   items: Every currently available item, in product-default order.
@@ -144,10 +139,7 @@ export function arrangeProjectNav<T extends NavItemLike>(items: T[], pref: NavPr
   return { main, more };
 }
 
-/**
- * `arrangeProjectNav` plus the active-route guarantee: any More item whose link is active for
- * `pathname` is shown at the end of the main list instead, so the current page is never hidden.
- */
+/** `arrangeProjectNav` plus the active-route guarantee: a More item whose link is active for `pathname` is shown at the end of the main list, so the current page is never hidden. */
 export function layoutProjectNav<T extends NavItemLike>(items: T[], pref: NavPref | null, pathname: string): NavArrangement<T> {
   const { main, more } = arrangeProjectNav(items, pref);
   const lifted = more.filter((item) => isNavPathActive(pathname, item.to, item.exact));

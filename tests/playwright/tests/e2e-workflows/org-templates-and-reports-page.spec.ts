@@ -39,8 +39,7 @@ test.describe("Organisation Reports page", () => {
     const { org } = await setup(page, request);
 
     await test.step("only Reports is open", async () => {
-      await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Reports");
+      await page.goto(`/orgs/${org.id}/resources/reports`);
       await expect(page.getByRole("button", { name: "Report layouts section" })).toHaveAttribute("aria-expanded", "true");
       for (const title of ["Report snippets", "Configuration"]) {
         await expect(page.getByRole("button", { name: `${title} section` })).toHaveAttribute("aria-expanded", "false");
@@ -61,7 +60,6 @@ test.describe("Organisation Reports page", () => {
       await expect(page.getByText("Settings saved.")).toBeVisible();
 
       await page.reload();
-      await selectOrgAdminGroup(page, "Reports");
       await ensureExpanded(page, "Configuration");
       await expect(page.getByRole("textbox", { name: "Default report file name" })).toHaveValue("{{project_name}}-{{report_title}}");
       await expect(page.getByLabel("Keep background report files for (days)")).toHaveValue("4");
@@ -74,7 +72,7 @@ test.describe("Organisation Reports page", () => {
   test("the old Templates & reports address lands on the Reports group", async ({ page, request }) => {
     const { org } = await setup(page, request);
     await page.goto(`/orgs/${org.id}/admin/templates-reports`);
-    await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/admin/reports$`));
+    await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/resources/reports$`));
     await expect(page.getByRole("button", { name: "Report layouts section" })).toHaveAttribute("aria-expanded", "true");
   });
 

@@ -1,15 +1,9 @@
 """
 Module: services.ordering
 
-Shared reordering logic for any `sort_order`-ordered sibling group.
-Extracted from `routers.projects` (originally private to that module,
-serving only `ProjectComponent`/`ProjectCategory` reordering) so the new
-org-scoped and project-scoped definition tables introduced alongside
-project statuses, requirement link types, and requirement actions
-(`ProjectStatusDefinition`, `RequirementLinkTypeDefinition`,
-`ActionTypeDefinition`) can reuse the exact same swap logic instead of each
-router reimplementing it — this codebase's CLAUDE.md explicitly calls for
-reusing existing helpers rather than reinventing them.
+Shared reordering logic for any `sort_order`-ordered sibling group
+(components, categories and the org- and project-scoped definition tables),
+so every router reuses the same swap logic.
 """
 
 from __future__ import annotations

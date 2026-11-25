@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { chooseColumn } from "../../columnChooser";
 import { installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 
@@ -19,7 +20,7 @@ async function chooseType(page: Page, dialog: Locator, name: string, search: str
 /**
  * Job to be done: an engineer who draws many SPI links sets "SPI mode 0" once on the connection type, so a new connection of
  * that type starts with it (and can still be given another protocol), and a diagram with Connection detail on writes it beside
- * the line without each connection being filled in by hand.
+ * the line without each connection being filled in manually.
  *
  * Disposable org, admin and project via `setUpOrg` with System Architecture on; the two elements are created through the API
  * (not what is under test), the type default, the connections and the edit through the UI.
@@ -40,8 +41,8 @@ test.describe("System Architecture: a connection type's default protocol", () =>
     await test.step("set a default protocol on a new connection type; the list shows it", async () => {
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Connection Types", "System Architecture");
-      await page.getByRole("button", { name: "New connection type with details" }).click();
-      const dialog = page.getByRole("dialog", { name: "New connection type" });
+      await page.getByRole("button", { name: "Add connection type", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Add connection type" });
       await dialog.getByLabel("Name", { exact: true }).fill(typeName);
       await dialog.getByLabel("Default protocol", { exact: true }).fill("SPI mode 0");
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
@@ -58,7 +59,8 @@ test.describe("System Architecture: a connection type's default protocol", () =>
       await chooseType(page, dialog, typeName, "sensor bus");
       await expect(dialog.getByLabel("Protocol", { exact: true })).toHaveValue("SPI mode 0");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
+      await chooseColumn(page, "Protocol");
       await expect(page.locator("tr", { hasText: `Gateway ${suffix}` }).getByText("SPI mode 0", { exact: true })).toBeVisible();
     });
 

@@ -1,10 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { ProjectLifecycle } from "../../api/lifecycles";
+import { buildDecisionLifecycle, buildProjectLifecycles, DECISION_SKIPS } from "../../testing/lifecycleFixtures";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser, Principal } from "../../api/types";
 import { api } from "../../api/client";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 import { DecisionDetailPage } from "./DecisionDetailPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
 
@@ -34,7 +37,7 @@ function decision(overrides: Partial<Decision> = {}): Decision {
     status: "under_review", decision_date: "2026-02-01", decision_maker: USER_ALEX, owner: GROUP_PLATFORM,
     context: "The legacy MySQL cluster is nearing end of life.", options_considered: "PostgreSQL, MySQL 8, CockroachDB.",
     chosen_option: "PostgreSQL", rationale: "Best fit for our existing operational tooling.", consequences: null,
-    assumptions: null, constraints: null, creator_id: "user-1", is_archived: false, archived_at: null,
+    assumptions: null, constraints: null, document: null, creator_id: "user-1", is_archived: false, archived_at: null,
     archived_by: null, is_locked: false, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };
@@ -44,8 +47,9 @@ const LINKED_REQUIREMENT = buildGraphNode({
   type: "requirement", id: "req-1", type_label: "Requirement", label: "REQ-001 Remote diagnostics", status: null,
 });
 
-function mockDetailApis(current: Decision) {
+function mockDetailApis(current: Decision, lifecycle?: ProjectLifecycle) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (lifecycle && path === `/api/v1/projects/${PROJECT_ID}/lifecycles`) return buildProjectLifecycles([lifecycle]);
     if (path.endsWith(`/decisions/${DECISION_ID}`)) return current;
     if (path.includes("/decision-types")) return DECISION_TYPES;
     if (path.includes("/comments")) return [];
@@ -58,12 +62,7 @@ function mockDetailApis(current: Decision) {
   });
 }
 
-/**
- * `DecisionDetailPage` replaced the `SidePanel`-only `DecisionDetailPanel`
- * — see that page's own module docstring. It's a real
- * routed page, so stories go through `withRouter`/`withAuth` rather than
- * passing props directly.
- */
+/** A routed page: stories go through `withRouter`/`withAuth` rather than passing props. */
 const meta: Meta<typeof DecisionDetailPage> = {
   title: "Modules/Decisions/DecisionDetailPage",
   component: DecisionDetailPage,
@@ -77,25 +76,110 @@ export default meta;
 
 type Story = StoryObj<typeof DecisionDetailPage>;
 
-export const UnderReviewShowsApproveReject: Story = {
+export const UnderReviewShowsPromoteToApprovedAndReject: Story = {
   beforeEach: () => mockDetailApis(decision()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    await expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Under review");
+    await expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Decision")).toEqual(["Promote to Approved", "Reject", "Archive"]);
     // Owner (a group, with its kind and size) and decision maker (a user) are shown.
     await expect(canvas.getByText("Platform Architecture")).toBeInTheDocument();
-    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument();
     await expect(canvas.getByText("Alex Morgan")).toBeInTheDocument();
   },
 };
 
-export const DraftShowsPropose: Story = {
-  beforeEach: () => mockDetailApis(decision({ status: "draft" })),
+const DOCUMENT = "## Failover\n\n```mermaid\nflowchart LR\n  A[Active] --> B[Standby]\n```\n\n| Option | Cost |\n|---|---|\n| Dual | Moderate |";
+
+/** The text fields and the long-form document are Markdown: formatted, with a table and a diagram. */
+export const ShowsMarkdownAndTheDocument: Story = {
+  beforeEach: () => mockDetailApis(decision({ rationale: "It is **cheaper** to run.", document: DOCUMENT })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Propose" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("cheaper").tagName).toBe("STRONG"));
+    const card = within(canvas.getByRole("region", { name: "Document" }));
+    await expect(card.getByRole("heading", { level: 4, name: "Failover" })).toBeInTheDocument();
+    await expect(card.getByRole("cell", { name: "Moderate" })).toBeInTheDocument();
+    // The diagram is drawn as an image with a text alternative.
+    await waitFor(() => expect(card.getByRole("img")).toBeInTheDocument(), { timeout: 15000 });
+  },
+};
+
+/** A Decision with no document has no Document card. */
+export const NoDocumentNoCard: Story = {
+  beforeEach: () => mockDetailApis(decision()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
+    await expect(canvas.queryByRole("region", { name: "Document" })).not.toBeInTheDocument();
+  },
+};
+
+/** With Proposed and Under review turned off, Draft promotes straight to Approved through the approval dialog. */
+export const ReviewStepsTurnedOffPromoteDraftToApproved: Story = {
+  beforeEach: () => mockDetailApis(
+    decision({ status: "draft" }),
+    buildDecisionLifecycle({
+      disabled: ["proposed", "under_review"], own_disabled: ["proposed", "under_review"], source: "project",
+      transitions: { draft: ["approved", "rejected"], approved: ["superseded"] },
+    }),
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Next step: Approved" }));
+    await expect(await within(document.body).findByRole("button", { name: "Promote to Approved" })).toBeInTheDocument();
+    await expect(canvas.queryByText("Proposed")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Under review")).not.toBeInTheDocument();
+  },
+};
+
+/** A project that allows it offers Skip steps: a Draft goes to Approved by the approver, the steps in between named. */
+export const SkipStepsMovesDraftToApproved: Story = {
+  beforeEach: () => {
+    mockDetailApis(decision({ status: "draft" }), buildDecisionLifecycle({ skip_transitions: DECISION_SKIPS }));
+    spyOn(api, "post").mockImplementation(async (path: string) => {
+      if (path.endsWith("/approve")) return decision({ status: "approved", is_locked: true });
+      throw new Error(`Unmocked POST: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Decision actions" }));
+    await chooseRecordAction(canvas, "Decision", "Skip steps…");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Skip steps of this Decision" }));
+    const select = dialog.getByRole("combobox", { name: /Move to/ });
+    await expect(within(select).getByRole("option", { name: "Approved (skips Proposed, Under review)" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "approved");
+    await userEvent.type(dialog.getByLabelText(/Reason/), "Agreed in the design review");
+    await userEvent.click(dialog.getByRole("button", { name: "Skip steps" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/decisions/${DECISION_ID}/approve`, { comment: null },
+    ));
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Approved"));
+  },
+};
+
+/** Draft and Proposed each promote straight to the next step, with no dialog. */
+export const DraftPromotesToProposedThenUnderReview: Story = {
+  beforeEach: () => {
+    mockDetailApis(decision({ status: "draft" }));
+    spyOn(api, "post").mockImplementation(async (path: string) => {
+      if (path.endsWith("/propose")) return decision({ status: "proposed" });
+      if (path.endsWith("/submit-for-review")) return decision({ status: "under_review" });
+      throw new Error(`Unmocked POST: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Next step: Proposed" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Proposed" }));
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Proposed"));
+    await expect(await recordActionNames(canvas, "Decision")).toEqual(["Promote to Under review", "Archive"]);
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Under review" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Under review" }));
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Under review"));
   },
 };
 
@@ -105,6 +189,8 @@ export const ApprovedIsLockedAndUnEditable: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: /Locked: approved and superseded/ })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Next step/ })).not.toBeInTheDocument();
     await expect(canvas.getByText(/new attachments can no longer be added/)).toBeInTheDocument();
   },
 };
@@ -113,8 +199,8 @@ export const RejectRequiresComment: Story = {
   beforeEach: () => mockDetailApis(decision()),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Reject" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Reject" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Decision actions" }));
+    await chooseRecordAction(canvas, "Decision", "Reject");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Reject this Decision?" }));
     await expect(dialog.getByRole("button", { name: "Reject" })).toBeDisabled();
     await userEvent.type(dialog.getByLabelText("Rejection comment"), "Needs a cost comparison first.");
@@ -132,8 +218,8 @@ export const ApproveDecision: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Approve" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Approve" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Next step: Approved" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Promote to Approved" }));
     const dialog = within(within(document.body).getByRole("dialog", { name: "Approve this Decision?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
 
@@ -141,7 +227,7 @@ export const ApproveDecision: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/decisions/${DECISION_ID}/approve`,
       { comment: null }
     ));
-    await waitFor(() => expect(canvas.getByText("Approved")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("listitem", { current: "step" })).toHaveTextContent("Approved"));
   },
 };
 
@@ -167,5 +253,5 @@ export const LinksPanelShowsLinksAndOffersSupersede: Story = {
   },
 };
 
-export const LightTheme: Story = { ...UnderReviewShowsApproveReject };
-export const DarkTheme: Story = { ...UnderReviewShowsApproveReject, globals: { theme: "dark" } };
+export const LightTheme: Story = { ...UnderReviewShowsPromoteToApprovedAndReject };
+export const DarkTheme: Story = { ...UnderReviewShowsPromoteToApprovedAndReject, globals: { theme: "dark" } };

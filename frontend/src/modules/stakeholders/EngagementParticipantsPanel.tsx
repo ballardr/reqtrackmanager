@@ -1,17 +1,15 @@
 /**
  * Module: modules/stakeholders/EngagementParticipantsPanel
  *
- * The "Participants" list of an Engagement's detail page: the Stakeholders who took part and, with the
- * Research extras on, the anonymous participants (a label, optionally the Persona they represent), as
- * one row of removable chips under one heading with one (+). The (+) opens a filterable list of the
- * Stakeholders not yet recorded; choosing one adds it at once. While the extras are on, text typed that
- * matches no Stakeholder is offered as an anonymous participant. An anonymous participant's Persona is
- * chosen in the create and edit forms, so every chip here reads alike. Removal of either kind sits behind a
- * tier-1 confirm.
+ * The "Participants" list of an Engagement's detail page: the Stakeholders who took part and, with the Research extras
+ * on, the anonymous participants (a label, optionally the Persona they represent), as one row of removable chips under
+ * one heading with one (+). The (+) opens a filterable list of the Stakeholders not yet recorded; choosing one adds it
+ * at once. While the extras are on, typed text that matches no Stakeholder is offered as an anonymous participant. An
+ * anonymous participant's Persona is chosen in the create and edit forms, so every chip here reads alike. Removal of
+ * either kind sits behind a tier-1 confirm.
  *
- * Stakeholders and anonymous participants are separate records behind separate endpoints; this panel
- * only presents them together. It renders nothing when the Stakeholder participants cannot be read
- * (their sub-component is off), like the other link panels.
+ * Stakeholders and anonymous participants are separate records behind separate endpoints; this panel only presents
+ * them together. It renders nothing when the Stakeholder participants cannot be read (their sub-component is off).
  */
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -25,6 +23,7 @@ import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { AnonymousParticipantChip, ANONYMOUS_LABEL_NOTE } from "./AnonymousParticipantChip";
 import { projectEngagementApi, projectResearchApi } from "./api";
+import { PeopleKindLabel } from "./PeopleKindLabel";
 import type { AnonymousParticipant, EngagementParticipant } from "./types";
 
 type Option = { value: string; label: string };
@@ -96,14 +95,16 @@ export function EngagementParticipantsPanel({
     ...stakeholders.map((p) => ({
       id: `stakeholder:${p.link_id}`,
       content: (
-        <>
-          {showCodes && p.unique_code && (
+        <PeopleKindLabel
+          kind="stakeholder"
+          name={p.name}
+          to={`/projects/${projectId}/modules/stakeholders/stakeholders/${p.stakeholder_id}`}
+          before={showCodes && p.unique_code ? (
             <span className="text-muted" style={{ fontSize: "0.85rem" }}>
-              <ScopedRecordCode record={{ unique_code: p.unique_code, scope: p.scope, organization_id: p.organization_id }} />{" "}
+              <ScopedRecordCode record={{ unique_code: p.unique_code, scope: p.scope, organization_id: p.organization_id }} />
             </span>
-          )}
-          <Link to={`/projects/${projectId}/modules/stakeholders/stakeholders/${p.stakeholder_id}`}>{p.name}</Link>
-        </>
+          ) : undefined}
+        />
       ),
       removeLabel: `Remove ${p.name}`,
     })),

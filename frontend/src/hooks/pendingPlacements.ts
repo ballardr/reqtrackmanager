@@ -1,13 +1,10 @@
 /**
  * Module: hooks/pendingPlacements
  *
- * The places a create form has collected for a record that does not exist yet, handed from the form's
- * `ComponentField` to the create path's `useCommitTags` without every form's `onSave` signature growing a
- * parameter. Keyed by project and record type, because a create form is open for one record type at a time;
- * the field clears its entry when it unmounts, so a cancelled form leaves nothing behind.
- *
- * This is deliberately the same contract as tags (collected on the form, applied once the record exists): the
- * field and the commit step are the only two places that know about it.
+ * The places a create form has collected for a record that does not exist yet, handed from the form's `ComponentField` to
+ * the create path's `useCommitTags` without every form's `onSave` signature growing a parameter. Keyed by project and
+ * record type, since a create form is open for one record type at a time; the field clears its entry on unmount, so a
+ * cancelled form leaves nothing behind. The same contract as tags: collected on the form, applied once the record exists.
  */
 import type { PlacementPair } from "../api/placements";
 

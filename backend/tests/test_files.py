@@ -52,17 +52,11 @@ def test_upload_and_download_requirement_attachment(client, admin_token, org_id)
 
 
 def test_uploaded_filename_cannot_escape_its_organisations_storage_key_prefix(client, admin_token, org_id):
-    """Regression test for a hardening-review finding: a crafted filename
-    like `../../other-org/evil.txt` used to reintroduce real path
-    traversal into the generated storage key (the uuid prefix only
-    neutralises the *first* `../` segment by merging with it into one
-    literal component, leaving any additional ones as live traversal
-    operators) — letting an upload resolve into a different organisation's
-    key prefix on the local storage backend while still passing its own
-    confinement check. The storage key itself isn't exposed via the API,
-    so this asserts directly against the DB row that it's confined to
-    `{organization_id}/` with no path separators or `..` from the filename
-    surviving into it, and that the file still round-trips correctly."""
+    """A crafted filename like `../../other-org/evil.txt` cannot traverse out of the
+    organisation's storage key prefix: the uuid prefix neutralises only the first
+    `../` segment, so the filename is sanitised. The key is not exposed by the API,
+    so this asserts against the DB row that it is confined to `{organization_id}/`
+    with no path separators or `..` surviving, and that the file round-trips."""
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
@@ -230,11 +224,9 @@ def test_avatar_upload_and_org_logo_upload(client, admin_token, org_id):
 
 
 def test_org_logo_and_login_background_are_downloadable_with_no_authentication(client, admin_token, org_id):
-    """Regression test: the org-branded login page (`/login/{slug}`) renders
-    these images before any session exists, so `GET /api/v1/files/{id}` must
-    serve them to a fully anonymous caller — not just any authenticated
-    user. Previously it required auth unconditionally, so an uploaded login
-    background never actually appeared on the real login page."""
+    """The org-branded login page (`/login/{slug}`) renders these images before any
+    session exists, so `GET /api/v1/files/{id}` serves them to an anonymous caller,
+    not only to an authenticated user."""
     logo = client.post(
         f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
         data={"kind": "logo"}, headers=auth_headers(admin_token),
@@ -249,15 +241,11 @@ def test_org_logo_and_login_background_are_downloadable_with_no_authentication(c
 
 
 def test_delete_org_logo_and_login_background_revert_to_the_platform_default(client, admin_token, org_id):
-    """Logo and login background had no revert path at
-    all, in the UI or the API — unlike the text-based branding overrides
-    (`OverridePill`). These `DELETE` endpoints close that gap: clearing
-    the override falls back to the platform default (`GET /system/branding`)
-    the same way a null `header_title`/`email_footer_*` already does, and
-    the now-orphaned file is actually removed from storage, not just
-    unlinked — matching `delete_org_resource`'s cleanup. Both `kind`s are
-    exercised via the single merged `POST`/`DELETE /branding-image`
-    endpoints (2026-09-22, see docs/decisions.md)."""
+    """`DELETE /branding-image` clears the logo or login background override: the
+    platform default (`GET /system/branding`) applies again, as for a null
+    `header_title`/`email_footer_*`, and the orphaned file is removed from
+    storage, not just unlinked (as `delete_org_resource` does). Both `kind`s are
+    exercised through the shared `POST`/`DELETE /branding-image` endpoints."""
     logo = client.post(
         f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
         data={"kind": "logo"}, headers=auth_headers(admin_token),
@@ -447,18 +435,13 @@ def test_system_branding_is_readable_with_no_authentication(client):
 
 
 def test_project_files_endpoint_combines_sources_and_scopes_by_project(client, admin_token, org_id):
-    """GET /projects/{id}/files (gap docs/requirements.md U-P-05 anticipated
-    but left unspec'd — file_count was a metric only) must combine files
-    reachable via all three join tables — a direct requirement attachment
-    (RequirementFile), a requirement action attachment
-    (RequirementActionFile), and a comment attachment (CommentFile) — into
-    one project-scoped list, each row carrying its originating context.
+    """GET /projects/{id}/files combines files from all three join tables (a
+    requirement attachment, a requirement action attachment and a comment
+    attachment) into one project-scoped list, each row carrying its originating
+    context.
 
-    Critically also asserts same-target-scoped resolution (a hard
-    access-control-policy requirement, not "has access somewhere"): a file
-    belonging to a *different* project, uploaded by the same caller who has
-    full access to both projects, must never appear in this project's file
-    list.
+    Resolution is scoped to the target project: a file of a different project,
+    uploaded by a caller with full access to both, never appears in this list.
     """
     project = create_project(client, admin_token, org_id, name="Files Project")
     other_project = create_project(client, admin_token, org_id, name="Other Files Project")

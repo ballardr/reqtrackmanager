@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
-import { withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildNeed, buildPersona } from "./fixtures";
 import { NeedsPage } from "./NeedsPage";
 import type { Need } from "./types";
@@ -35,7 +35,7 @@ const withNeedsRoute: Decorator = (Story, context) =>
 const meta: Meta<typeof NeedsPage> = {
   title: "Modules/Stakeholders/NeedsPage",
   component: NeedsPage,
-  decorators: [withNeedsRoute, withToast()],
+  decorators: [withNeedsRoute, withToast(), withStatefulAuth(buildUser())],
 };
 export default meta;
 
@@ -109,6 +109,6 @@ export const ExportAndImportAreOnTheTitleRow: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder_need/export`));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder_need/export?sort=code&order=asc`));
   },
 };

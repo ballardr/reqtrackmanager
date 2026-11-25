@@ -1,21 +1,12 @@
 """
 Module: modules.stakeholders._stakeholder_shared
 
-Helpers shared by the org-scoped (`stakeholder_router.py`) and project-scoped
-(`stakeholder_project_router.py`) Stakeholder routers, mirroring `_shared.py`
-for Personas: the routers declare their own routes and these hold the bodies
-the two would otherwise duplicate. Comments and files go through the shared
-`services.module_attachments` kit.
-
-RBAC: viewing is gated by sub-component enablement
-alone; create/edit/archive/retire/erase need the scope's owner role
-(`org_stakeholder_owner`/`stakeholder_owner`) or a Fine-Grained Access Control
-`(stakeholder, manage)` grant. Stakeholder-type admin (and scoring
-configuration) is the separate org-scoped `stakeholder_type_admin` role.
-
-Personal data: a stakeholder is a record about an
-identifiable person, so audit events here never carry the name, contact info
-or filenames, and `erase_stakeholder_endpoint` hard-deletes the record.
+Helpers shared by the org-scoped and project-scoped Stakeholder routers
+(mirroring `_shared.py` for Personas); comments and files use
+`services.module_attachments`. Viewing needs the sub-component; changes need the
+scope's owner role or `(stakeholder, manage)`; type and scoring configuration
+need `stakeholder_type_admin`. A stakeholder is a record about a person, so audit
+events carry no name, contact or filename and `erase_stakeholder_endpoint` hard-deletes.
 """
 
 from __future__ import annotations

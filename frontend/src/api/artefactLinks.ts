@@ -47,6 +47,8 @@ export interface LinkGraphEdge {
   cross_project: boolean;
   nesting_permitted: boolean;
   dedicated: boolean;
+  /** Why the link exists when it was not authored directly (a carried-over link: "Copied from REQ-001"). */
+  note?: string | null;
 }
 
 export interface LinkGraph {

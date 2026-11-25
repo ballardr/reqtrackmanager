@@ -1,9 +1,8 @@
 """
 Module: modules.decisions.project_router.decision_types
 
-Decision Types (project-scoped definition table): list/create/rename/
-move/delete. See the package's own `__init__.py` docstring for the full
-router-split account.
+Decision Types (project-scoped definition table): list/create/rename/move/delete;
+see the package `__init__.py`.
 """
 
 from __future__ import annotations
@@ -51,12 +50,10 @@ def _get_decision_type_in_project(db: Session, project_id: UUID, decision_type_i
 def list_decision_types(
     project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Lists a project's decision types — any project member may select one
-    when creating a Decision, so listing isn't manage-only (only
-    create/rename/move/delete are). A project with none of its own falls
-    back to its nearest ancestor's (hierarchical projects, always on
-    independent of RBAC inheritance settings, 2026-09-22 — see
-    `service.resolve_effective_decision_types`)."""
+    """Lists a project's decision types; any project member may list them
+    (only create/rename/move/delete are restricted). A project with none of its
+    own falls back to its nearest ancestor's
+    (`service.resolve_effective_decision_types`), independent of RBAC inheritance."""
     return resolve_effective_decision_types(db, project_id)
 
 
@@ -126,22 +123,12 @@ def delete_decision_type(
     project_id: UUID, decision_type_id: UUID, reassign_to_id: UUID | None = Query(None),
     current_user: User = Depends(_require_owner_role), db: Session = Depends(get_db),
 ):
-    """Deletes a project's Decision Type, applying the shared rename/
-    delete/reassign rules (`services.definitions`). Unlike `Decision
-    Template` (org-scoped, no persistent FK from `Decision`), `Decision.decision_type_id` **is** a real, non-null
-    FK, so deleting an in-use type requires an explicit `reassign_to_id`
-    (409 naming the count if omitted) — resolved independently of the
-    template answer rather than copying it.
-
-    `allow_empty=project.parent_project_id is not None` (2026-09-22, **Decided by: User** — supersedes this endpoint's own
-    earlier **Decided by: Agent** call that Decision Types would
-    never allow emptying a project, unlike `ActionTypeDefinition`): a
-    project with a parent may now be emptied of its own decision types,
-    since it falls back to its nearest ancestor's
-    (`service.resolve_effective_decision_types`) — exact mirror of
-    `routers.action_types.delete_action_type`'s identical guard. A *root*
-    project (no parent) still can't be emptied — `min_count_message` below
-    still fires for it."""
+    """Deletes a project's Decision Type under the shared rename/delete/reassign
+    rules (`services.definitions`). `Decision.decision_type_id` is a non-null
+    FK, so deleting an in-use type requires `reassign_to_id` (409 naming the
+    count if omitted). A project with a parent may be emptied of its own types
+    (`allow_empty`), since it falls back to its ancestor's
+    (`service.resolve_effective_decision_types`); a root project cannot."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")

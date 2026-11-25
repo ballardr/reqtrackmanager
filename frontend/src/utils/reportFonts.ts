@@ -1,11 +1,10 @@
 /**
  * Module: utils/reportFonts
  *
- * The facts about document fonts the designer needs without asking the server: the four standard fonts (the same keys as
- * `backend/app/services/report_fonts.py`) and the shape of a layout's stored `styles` value.
- *
- * Responsibilities: name the standard fonts for places that have no list from the server (a story, an older server), and
- * type the `styles` value. The server is the judge of what is valid and available.
+ * The document font facts the designer needs without asking the server: the four
+ * standard fonts (the keys of `backend/app/services/report_fonts.py`), for places
+ * with no server list (a story), and the type of a layout's stored `styles`
+ * value. The server judges what is valid and available.
  */
 import type { ReportFontChoice } from "../api/reportLayouts";
 

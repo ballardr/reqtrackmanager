@@ -126,10 +126,8 @@ def complete_stage(
         elif tracked := tracked_component_ids(db, project, stage):
             query = query.where(Requirement.component_id.not_in(tracked))
         targeting = db.scalars(query).all()
-        # Sets the completion overlay directly (C-G-11), same as
-        # `routers.requirements.complete_requirement` — cascading a stage
-        # completion doesn't change any requirement's content, so this must
-        # not create a new `RequirementVersion` for each one either.
+        # Sets the completion overlay directly (C-G-11), as `routers.requirements.complete_requirement` does: a
+        # cascaded stage completion changes no content, so it creates no `RequirementVersion`.
         for requirement in targeting:
             requirement.is_completed = True
             requirement.completed_at = now

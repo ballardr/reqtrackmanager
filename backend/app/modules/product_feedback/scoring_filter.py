@@ -1,17 +1,12 @@
 """
 Module: modules.product_feedback.scoring_filter
 
-The request lists' "Unscored" filter: `scored=unscored|scored` against a scoring model, and
-`missing_axis=<key>` to find who lacks one criterion (`missing_axis=any`: who lacks at least one, so is not fully
-rated). Shared by both list endpoints, the record-table export and the MCP list tools (through
-`service.filter_requests`), so the same rows come back everywhere.
-
-A request is unscored under a model when it has no level on one of the model's *manual* axes (multiplied or
-divisor); a derived axis (Demand) is never missing, since a value always falls in a level. The test reads the
-per-axis score rows of the candidates' current versions in one statement, so it costs the same for ten requests
-as for ten thousand and never depends on how a page was cut.
-
-Dependencies: `models.py`, `scoring.py`, `services.scoring`.
+The request lists' "Unscored" filter: `scored=unscored|scored` against a model
+and `missing_axis=<key>` (`any` for at least one). Shared by both list
+endpoints, record-table export and MCP list tools through
+`service.filter_requests`. A request is unscored when a model's manual axis has
+no level; derived axes (Demand) are never missing. One statement reads the
+candidates' score rows. Dependencies: `models.py`, `scoring.py`, `services.scoring`.
 """
 
 from __future__ import annotations

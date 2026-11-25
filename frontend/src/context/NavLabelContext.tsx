@@ -1,17 +1,14 @@
 /**
  * Module: context/NavLabelContext
  *
- * Provider of navigation names (a project or organisation renaming "Decisions" to "ADRs"). Fetches the
- * names that apply to the current project and offers them, keyed by the route each navigation entry opens,
- * so the navigation rail, a list page's title and a record page's back link all read the one answer
- * (hooks in `NavLabelValue.ts`).
+ * Provider of navigation names (a project or organisation renaming "Decisions" to "ADRs"). Fetches the names that apply
+ * to the current project and offers them keyed by the route each navigation entry opens, so the navigation rail, a list
+ * page's title and a record page's back link read one answer (hooks in `NavLabelValue.ts`).
  *
- * Design decisions:
- * - Names are looked up by route path, not by key: the server returns each entry's resolved path with its
- *   name, and every page already knows its own list path, so no module or page needs to know a key.
- * - Only an entry that has an override is stored; a path with none keeps the built-in text its caller passes.
- * - Outside a project, or while loading or after a failed load, no override applies (the built-in names show).
- * - `refreshNavLabels` lets the administration panel make a saved change appear without a reload.
+ * Design decisions: names are looked up by route path, not key (the server returns each entry's resolved path with its
+ * name and every page knows its own list path). Only an entry with an override is stored; a path with none keeps the
+ * built-in text its caller passes. Outside a project, while loading or after a failed load no override applies.
+ * `refreshNavLabels` lets the administration panel show a saved change without a reload.
  *
  * External dependencies: `GET /api/v1/projects/{id}/nav-labels`.
  */

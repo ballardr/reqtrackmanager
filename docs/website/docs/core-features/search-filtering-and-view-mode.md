@@ -26,6 +26,31 @@ flowchart LR
     D["Open the list from the navigation"] --> E["Top of the list, default filters"]
 ```
 
+## Sorting a list
+
+Every record list has a **Sort by** and an **Order** field in its filter panel, and the column headers sort the same way: every column that shows data can be sorted, including **Target**, **Component** and **External references**, and a record with no value in the column comes last in ascending order. **Sort by** offers the table's sortable columns, then **Created** and **Modified**; **Modified** is when the record was last changed, including a new version. Hover or focus the field's **(?)** to read what each choice orders by. The order is **Code, ascending** until you choose another, with the numbers read by value (`REQ-2` before `REQ-10`).
+
+- Click a column heading to sort by it ascending, and click it again to switch between descending and ascending; the fields follow the headings, and the other way round. To return to the default, choose **Code** and **Ascending**.
+- The sort is part of the page address, so a copied link opens in the same order, and your last choice for each list is remembered with your account and applies when you open the list again with no sort in the address.
+- The list's **Export**, **Download report** and bulk edit grid follow the sort, like the filters.
+- The **Requirements** list is sorted by component, then category, then the project's own order unless you choose otherwise: that order is the choice **Component and category**, which has no direction. Choose **Created** with **Descending** to put the newest requirement at the top.
+- A new record can be found at once: after you create a record from a list, the confirmation names it by its code (for example *Decision DEC-004 created*) and its button (**Open DEC-004**) goes straight to it, even when the sort or a filter keeps it off the visible rows.
+
+```mermaid
+flowchart LR
+    A["Sort in the address"] --> D["Sort in force"]
+    B["Your last choice for this list"] --> D
+    C["Code, ascending"] --> D
+    D --> E["Column headings, Sort by and Order"]
+    D --> F["Export, Download report, bulk edit grid"]
+```
+
+Read left to right in priority: the address wins, then your remembered choice, then the default.
+
+## Choosing columns
+
+A list with five or more columns has a **Choose columns** button beside its actions menu. It opens a list of the columns you can show or hide; the name or title, the code and the status are always shown. A column that few people need, such as the **Switches** count on Diagrams or **Version** on Strategies, starts hidden. **Show the default columns** returns the list to how it began. The choice is kept for you on each list and follows you to another browser. It changes the screen only: **Sort by** still offers a hidden column, and **Export** still contains it.
+
 ## Hiding the filter panel
 
 Every list page with a filter panel has a round collapse button in the panel's **Filters** header. Collapsing it gives the list the full width; a **Filters** button beside the **List actions** menu on the title row brings it back. Collapsing never clears a filter, and the panel opens again on your next visit.
@@ -49,7 +74,7 @@ flowchart LR
 
 ## View modes
 
-The Projects list offers **tile**, **list**, and (for an organisation with hierarchical projects) **tree** view; the Requirements list offers tile and list view. Each page remembers its own view-mode choice independently — switching Projects to list view doesn't change what Requirements shows, and the choice persists across visits rather than resetting to a default every time the page loads.
+The Projects list offers **tile**, **list**, and (for an organisation with hierarchical projects) **tree** view; the Requirements list offers tile and list view. A requirement tile shows the first three lines of its description as plain words, with equations drawn and no formatting marks. Each page remembers its own view-mode choice independently — switching Projects to list view doesn't change what Requirements shows, and the choice persists across visits rather than resetting to a default every time the page loads.
 
 ## Project navigation order
 
@@ -69,6 +94,15 @@ flowchart LR
     A["This project's own layout"] -->|"none"| B["Your default for all projects"]
     B -->|"none"| C["Product default order"]
 ```
+
+## Folding navigation groups
+
+Each group of the left navigation (**Project**, **Global**, a standard's own group and **Administration**) has a chevron beside its label. Select the label to fold the group, so the groups below it are reached with less scrolling, and select it again to unfold.
+
+- The choice is stored with your account for each group, so it follows you across devices.
+- Opening a page inside a folded group (from a link, a notification or a bookmark) unfolds it.
+- Folding the group that holds the page you are on leaves just that page's entry visible.
+- The icon-only rail has no chevrons and shows every entry.
 
 ## Where this fits
 

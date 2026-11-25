@@ -7,11 +7,9 @@ const strings = t();
 
 /** Activity timeline of one record, newest first: audit events, version history and link events
  * (`RecordActivity` feeds it). Each entry is an `ActivityRow`, whose wording the project History table shares
- * (`describeActivityEntry` / `describeActivityAction` in `api/types.ts`), so the two never describe the same
- * data differently.
+ * (`describeActivityEntry` / `describeActivityAction` in `api/types.ts`).
  *
- * `getLink` says which record each row is about for a list that spans several records; a record's own aside is
- * about the one record already on screen and omits it. */
+ * `getLink` says which record each row is about for a list that spans several records; a record's own aside omits it. */
 export function ActivityPanel({
   entries,
   getLink,

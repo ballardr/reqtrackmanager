@@ -5,8 +5,9 @@
  * administration panel, a card, a dialog), where the sort stays local so it leaves the page's own address alone.
  *
  * Responsibilities: keep the table's `SortState`, cycle it on a header click (unsorted, ascending, descending) and
- * return the rows in that order through `sortRows` (`useSortState` is the state alone, for rows built after an early return). A page-level list keeps its sort in the URL instead
- * (`useUrlSort`, docs/ux-style-guide.md "Pattern: sortable column header"); a paged list sorts on the server.
+ * return the rows in that order through `sortRows` (`useSortState` is the state alone, for rows built after an early
+ * return). A page-level list keeps its sort in the URL instead (`useUrlSort`, docs/ux-style-guide.md "Pattern:
+ * sortable column header"); a paged list sorts on the server.
  */
 import { useMemo, useState } from "react";
 

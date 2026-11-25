@@ -286,12 +286,9 @@ def test_org_dashboard_endpoints_require_compliance_manager(client, admin_token,
 
 
 def test_org_dashboard_lists_cost_a_fixed_number_of_queries_per_extra_project(client, admin_token, org_id):
-    """Org-wide listings preload the whole organisation's assignment data
-    into one `ComplianceVersionCache` (2026-10-05: they made ~5 queries per
-    assignment, several per requirement, and timed the dashboard out for an
-    org with ~70 projects). An extra project now costs at most one query
-    (outstanding actions' per-assignment assessment load), independent of
-    how many requirements its version has."""
+    """Organisation-wide listings preload the whole organisation's assignment data into one `ComplianceVersionCache`, so
+    an extra project costs at most one query (outstanding actions' per-assignment assessment load), independent of how
+    many requirements its version has."""
     from sqlalchemy import event
 
     from app.database import engine

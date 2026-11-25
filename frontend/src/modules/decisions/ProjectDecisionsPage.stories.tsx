@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { Principal } from "../../api/types";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
-import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildUser, withStatefulAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
 import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
@@ -28,7 +28,7 @@ function decision(overrides: Partial<Decision> = {}): Decision {
     decision_statement: "Use PostgreSQL as the backing store.", decision_type_id: "dt-1", status: "approved",
     decision_date: "2026-02-01", decision_maker: USER_ALEX, owner: GROUP_PLATFORM, context: null,
     options_considered: null, chosen_option: null, rationale: null, consequences: null, assumptions: null,
-    constraints: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
+    constraints: null, document: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     is_locked: true, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };
@@ -57,7 +57,7 @@ const meta: Meta<typeof ProjectDecisionsPage> = {
         "/projects/:projectId/modules/decisions",
       )(Story, context),
     withToast(),
-    withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
+    withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
   ],
 };
 export default meta;
@@ -79,6 +79,23 @@ export const ListsDecisions: Story = {
     await expect(canvas.getByText("DEC-001")).toBeInTheDocument();
     // The Owner column shows a group owner by name with its kind.
     await expect(canvas.getAllByText("Platform Architecture")).toHaveLength(2);
+  },
+};
+
+/** A row is a link to the Decision page, in its own project for a row from a nested project. */
+export const RowsLinkToTheDecisionPage: Story = {
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockPageApis([
+    decision({ id: "decision-1", unique_code: "DEC-001" }),
+    decision({ id: "decision-9", unique_code: "DEC-009", title: "Child project decision", from_project_id: "child-project", from_project_code: "CHILD" }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const own = await canvas.findByRole("link", { name: "DEC-001" });
+    await expect(own).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/decisions/decision-1`);
+    const nested = await canvas.findByRole("link", { name: /DEC-009/ });
+    await expect(nested).toHaveAttribute("href", "/projects/child-project/modules/decisions/decision-9");
+    await expect(canvas.queryByRole("dialog")).not.toBeInTheDocument();
   },
 };
 
@@ -167,13 +184,35 @@ export const ExportCarriesThePageFilters: Story = {
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
     await waitFor(() =>
-      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/decision/export?search=postgres&mine=true&open_only=true`),
+      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/decision/export?search=postgres&mine=true&open_only=true&sort=unique_code&order=asc`),
     );
   },
 };
 
 export const LightTheme: Story = { ...ListsDecisions };
 export const DarkTheme: Story = { ...ListsDecisions, globals: { theme: "dark" } };
+
+/** Sort by offers Modified; choosing it with Descending puts the decision changed last at the top and goes to the Export. */
+export const SortFieldOrdersByModifiedAndTheExportFollows: Story = {
+  beforeEach: () => {
+    mockPageApis([
+      decision({ id: "decision-old", unique_code: "DEC-001", title: "Older decision", status: "draft", is_locked: false, updated_at: "2026-01-01T09:00:00Z" }),
+      decision({ id: "decision-new", unique_code: "DEC-002", title: "Newer decision", status: "draft", is_locked: false, updated_at: "2026-11-01T09:00:00Z" }),
+    ]);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code,title\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Decisions" });
+    const codes = () => within(table).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
+    await expect(codes()).toEqual(["DEC-001", "DEC-002"]);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Sort by" }), "modified");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Order" }), "desc");
+    await waitFor(() => expect(codes()).toEqual(["DEC-002", "DEC-001"]));
+    await chooseExport(canvas, "CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("sort=modified&order=desc")));
+  },
+};
 
 /** The Title header orders the decisions, ascending then descending. */
 export const TitleHeaderSortsTheDecisions: Story = {
@@ -185,5 +224,24 @@ export const TitleHeaderSortsTheDecisions: Story = {
   play: async ({ canvasElement }) => {
     const table = await within(canvasElement).findByRole("table", { name: "Decisions" });
     await expectHeaderOrdersText(table, "Title");
+  },
+};
+
+/** Owner is on by default; the column chooser hides it and the reset shows it again. */
+export const OwnerColumnIsOptionalAndOnByDefault: Story = {
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockPageApis(MIXED),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Decisions" });
+    for (const name of ["Code", "Title", "Type", "Status", "Owner"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Owner" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Owner" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Owner" })).toBeInTheDocument();
   },
 };

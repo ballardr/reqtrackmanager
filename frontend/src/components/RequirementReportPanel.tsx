@@ -1,14 +1,12 @@
 /**
  * Module: components/RequirementReportPanel
  *
- * The requirement report's configuration and generation surface (R-F-01 PDF, Word,
- * OpenDocument text and HTML, R-F-02 the flat table as CSV, Excel and OpenDocument spreadsheet), shown in the Reports dialog beside the catalogue reports in the same picker. It
- * carries a chapter-per-component/continuous layout choice and organisation shared resource sections
- * (R-G-04). Branding is never chosen here: a download uses the organisation's default template. Narrowing
- * the requirements (R-G-03) is done on the requirements list, whose Export and Download report carry the
- * list's filters. An introduction, chapters or appendices are written in a report layout (the
- * "Requirements by Component" starter), not here. It has its own request model
- * (`POST /projects/{id}/reports`), which is why it is not a catalogue entry.
+ * The requirement report's configuration and generation surface (R-F-01 PDF, Word, OpenDocument text and HTML; R-F-02
+ * the flat table as CSV, Excel and OpenDocument spreadsheet), shown in the Reports dialog beside the catalogue reports.
+ * It carries a chapter-per-component or continuous layout choice and organisation shared resource sections (R-G-04).
+ * Branding is never chosen here: a download uses the organisation's default template. Narrowing (R-G-03) is done on the
+ * requirements list, whose Export and Download report carry its filters; introductions, chapters and appendices are
+ * written in a report layout. It has its own request model (`POST /projects/{id}/reports`), so it is not a catalogue entry.
  */
 import { useEffect, useState } from "react";
 
@@ -21,6 +19,7 @@ import { downloadBlob } from "../utils/download";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ReportExportButton } from "./ReportExportButton";
 import { Spinner } from "./Spinner";
+import { CheckboxField } from "./FormFields";
 import { FormGrid } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
 
@@ -42,6 +41,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const [resourceFileIds, setResourceFileIds] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [chaptersPerComponent, setChaptersPerComponent] = useState<boolean | null>(null);
+  const [ownPlacesOnly, setOwnPlacesOnly] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -62,6 +62,8 @@ export function RequirementReportPanel({ project }: { project: Project }) {
         format: kind,
         resource_file_ids: resourceFileIds,
         chapters_per_component: TABLE_FORMATS.includes(kind) ? null : chaptersPerComponent,
+        // Sent only when ticked: a requirement in several components is otherwise listed under each.
+        ...(ownPlacesOnly ? { primary_places_only: true } : {}),
       });
       const projectName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
       downloadBlob(blob, `${projectName}-requirements.${kind}`);
@@ -93,6 +95,10 @@ export function RequirementReportPanel({ project }: { project: Project }) {
             { value: "false", label: strings.reports.chapterLayoutContinuous },
           ]}
           placeholder={strings.reports.chapterLayoutAuto}
+        />
+        <CheckboxField
+          help={strings.help.reportOwnPlacesOnly} heading={strings.reports.placesHeading}
+          label={strings.reports.ownPlacesOnly} checked={ownPlacesOnly} onChange={setOwnPlacesOnly}
         />
       </FormGrid>
 

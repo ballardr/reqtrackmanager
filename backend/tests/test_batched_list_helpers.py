@@ -1,5 +1,4 @@
-"""The batched helpers behind the lists that used to look a record up per row return exactly what the per-record
-helpers return, in a fixed number of statements.
+"""The batched list helpers return exactly what the per-record helpers return, in a fixed number of statements.
 
 Covered: `current_versions` (one statement; a record without a current version raises), `comments_out` (the shape of a
 module comment thread, with an attachment-free thread and an unknown author), `resolve_persona_weights` against

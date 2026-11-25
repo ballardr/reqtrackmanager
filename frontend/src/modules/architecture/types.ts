@@ -21,6 +21,15 @@ export const ARCHITECTURE_STATUS_LABEL: Record<ArchitectureRecordStatus, string>
   rejected: "Rejected",
 };
 
+/** What each status means, the tooltip of its step in the lifecycle track. */
+export const ARCHITECTURE_STATUS_DESCRIPTION: Record<ArchitectureRecordStatus, string> = {
+  draft: "Being written. It is not yet part of the plan.",
+  proposed: "Put forward for consideration. It is not yet agreed.",
+  active: "In force.",
+  retired: "No longer in force. It can be reactivated.",
+  rejected: "Considered and not adopted. It can be reopened as a draft.",
+};
+
 export type PortDirection = "in" | "out" | "both";
 
 /** The colour family of an annotation note on a diagram; `none` draws the text alone, with no box. */
@@ -198,6 +207,90 @@ export interface ArchitectureSymbol {
   builtin_key: string | null;
   is_builtin: boolean;
   sort_order: number;
+  /** The folder of the owner's symbol tree it is filed in, or `null` at the top level. */
+  folder_id?: string | null;
+}
+
+/** Whose symbol a library row is, from the viewer's place: the organisation's, the project's own, or an ancestor project's. */
+export type SymbolTier = "organization" | "project" | "inherited";
+
+/** The kind of file a symbol came from: drawn in code, an SVG, or an EPS or PDF converted to SVG when it was uploaded. */
+export type SymbolFileType = "builtin" | "svg" | "eps" | "pdf";
+
+/** The kinds of file a symbol is filtered by, in the order the filter offers them. */
+export const SYMBOL_FILE_TYPES = ["svg", "eps", "pdf"] as const;
+
+export const SYMBOL_FILE_TYPE_LABEL: Record<SymbolFileType, string> = {
+  builtin: "Built-in",
+  svg: "SVG",
+  eps: "EPS (converted)",
+  pdf: "PDF (converted)",
+};
+
+/** The Source filter's choices: drawn in code, or uploaded as a file. */
+export const SYMBOL_SOURCE_LABEL = { builtin: "Built-in", uploaded: "Uploaded" } as const;
+
+/** The Used filter's choices. */
+export const SYMBOL_USED_LABEL = { used: "Used", unused: "Not used" } as const;
+
+/** The library's sortable columns (the server sorts). */
+export const SYMBOL_SORT_KEYS = ["name", "source", "folder", "used"] as const;
+
+/** One row of the symbol library page (`GET .../symbols/library`). */
+export interface SymbolLibraryRow {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  name: string;
+  builtin_key: string | null;
+  is_builtin: boolean;
+  sort_order: number;
+  tier: SymbolTier;
+  folder_id: string | null;
+  /** Names from the top, joined by `/`; `null` at the top level. An organisation symbol's path is an organisation folder. */
+  folder_path: string | null;
+  file_type: SymbolFileType;
+  /** Whether the viewer's own folders may hold it (not a built-in, not another tier's). */
+  can_file: boolean;
+  /** Element types and elements that refer to it (within the project, on a project's page). */
+  usage_count: number;
+  /** The owners' names when there are at most two (the organisation's page only). */
+  used_by: string[];
+  usage_owner_count: number;
+}
+
+/** A folder of the organisation that holds symbols a project's library offers. */
+export interface SymbolLibraryFolder {
+  path: string;
+  symbol_count: number;
+}
+
+/** A page of the library after the filters and the sort. */
+export interface SymbolLibraryPage {
+  items: SymbolLibraryRow[];
+  total: number;
+  library_total: number;
+  offset: number;
+  limit: number;
+  /** Whether an EPS or PDF upload is accepted. */
+  converter_available: boolean;
+  /** A project's page only: the organisation's folders that hold symbols the project offers. */
+  organization_folders: SymbolLibraryFolder[];
+}
+
+/** One owner that uses a symbol. */
+export interface SymbolUsageOwner {
+  kind: "project" | "organization" | "other_projects";
+  name: string;
+  element_type_count: number;
+  element_count: number;
+  /** Element type names (up to twenty); element names are never listed. */
+  element_types: string[];
+}
+
+/** Where one symbol is used. */
+export interface SymbolUsage {
+  owners: SymbolUsageOwner[];
 }
 
 /** A project type hidden from an organisation default (`.../hidden`). */
@@ -472,7 +565,7 @@ export interface DiagramViewPort {
   connection_type_name: string | null;
 }
 
-/** A placed element as drawn. A `locked` node is one the viewer can no longer read (its code only). */
+/** A placed element as drawn. A `locked` node is one the viewer cannot read (its code only). */
 export interface DiagramViewNode {
   placement_id: string;
   element_id: string;
@@ -713,7 +806,7 @@ export interface BoundaryValues {
 // --- Folders (mirror the folder schemas in `backend/app/modules/architecture/schemas.py`) ---
 
 /** Which list a folder organises; each kind has its own tree. */
-export type FolderKind = "element" | "connection" | "diagram";
+export type FolderKind = "element" | "connection" | "diagram" | "symbol";
 
 /** A folder: a name in a tree that organises one list. Navigation only. */
 export interface ArchitectureFolder {

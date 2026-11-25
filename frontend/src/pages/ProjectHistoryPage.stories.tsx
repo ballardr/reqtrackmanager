@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ChangeEntry, Principal } from "../api/types";
-import { buildChangeEntry, withRouter } from "../testing/storybook-helpers";
+import { buildChangeEntry, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ProjectHistoryPage } from "./ProjectHistoryPage";
 import { chooseMenuRow } from "../testing/menuTree";
 
@@ -17,7 +17,7 @@ type Story = StoryObj<typeof ProjectHistoryPage>;
 
 /** The page's route, at `search` (a story that opens from a link sets the query), declared per story because a story-level
  * decorator would otherwise nest a second router inside the page's. */
-const at = (search = "") => [withRouter(`/projects/project-1/history${search}`, "/projects/:projectId/history")];
+const at = (search = "") => [withRouter(`/projects/project-1/history${search}`, "/projects/:projectId/history"), withStatefulAuth(buildUser({ id: "user-1" }))];
 
 const facets = {
   entity_types: ["requirement", "change_request", "decision", "artefact_link", "tag", "project_stage"],
@@ -359,3 +359,25 @@ export const ExportMenuSendsTheFilters: Story = {
 
 export const LightTheme: Story = { ...ChangeHistory, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ChangeHistory, globals: { theme: "dark" } };
+
+/** Time and Event are always drawn; the column chooser hides Type, Record and Person and the reset brings them back. */
+export const ColumnChooserHidesOptionalColumns: Story = {
+  decorators: at(),
+  beforeEach: () => {
+    mockSideReads();
+    spyOn(api, "getPage").mockResolvedValue(pageOf([buildChangeEntry({ detail: { unique_code: "SW-PERF-014", name: "Response time budget" } })]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Project history" });
+    const heads = () => within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    await expect(heads()).toEqual(["Time", "Type", "Event", "Record(s)", "Person"]);
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Person" }));
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Type" }));
+    await expect(heads()).toEqual(["Time", "Event", "Record(s)"]);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(heads()).toEqual(["Time", "Type", "Event", "Record(s)", "Person"]);
+  },
+};

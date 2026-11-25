@@ -1,4 +1,4 @@
-import { BarChart3, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, Library, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -26,48 +26,30 @@ import { AppFooter } from "./AppFooter";
 import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
 import { ReportRunsIndicator } from "./ReportRunsIndicator";
+import { NavGroup } from "./NavGroup";
 import { NavRailLink } from "./NavRailLink";
 import { PolicyAcceptNotice } from "./PolicyAcceptNotice";
 import { ProjectNavSection } from "./ProjectNavSection";
 import { Tooltip } from "./Tooltip";
 
-// Matches theme.css's `@media (max-width: 860px)` nav-rail breakpoint, which force-collapses
-// the rail to icon-only regardless of the user's own `nav_rail_collapsed` preference (not
-// enough room for a full-width rail alongside content below this width). Anything that decides
-// "is the rail showing icon-only right now" needs to account for this CSS-only forced
-// collapse too, not just the JS preference (see `railIconOnly` below) — otherwise a user with
-// the rail set to expanded gets no tooltips once the CSS has forced their links to icons.
+// Matches theme.css's `@media (max-width: 860px)` nav-rail breakpoint, which force-collapses the rail to icons
+// regardless of the `nav_rail_collapsed` preference. Anything deciding "is the rail icon-only now" must include
+// this CSS-only collapse (see `railIconOnly`), or links get no tooltips once CSS has forced them to icons.
 const MOBILE_BREAKPOINT_PX = 860;
 
 /**
- * App shell: a fixed top bar plus a pinned, full-height nav rail (U-P-02,
- * U-P-03). Project-scoped links only render once a project is selected
- * (path contains /projects/:id). The nav rail uses the same theme-aware
- * surface colours as the rest of the UI (--color-surface/-text/etc in
- * theme.css), with a project-context group above a global group. The rail
- * is `position: fixed` against the true left edge, full viewport height
- * below the header, and stays on-screen while the content column scrolls
- * (rather than living inside the same centred/padded container as the
- * page content). `railCollapsed` shrinks it to icons-only, toggled from a
- * small circular button (`.nav-rail-toggle`, theme.css) fixed to the
- * viewport and centred on the rail/content divider, not part of the
- * rail's own scrolling content, so it stays put regardless of rail scroll
- * position or content length. Its `left` is set inline here from
- * `railCollapsed` (`var(--nav-rail-width)` / `var(--nav-rail-width-
- * collapsed)`, the same tokens `.app-content`'s own margin uses) rather
- * than via a CSS sibling selector on `.nav-rail`, because the button
- * renders inside `Tooltip`'s own wrapping span and so isn't actually a
- * DOM sibling of `.nav-rail` — the header's hamburger button was removed
- * as a pure duplicate of that same control — and persisted via
- * `useUiPreference` (`nav_rail_collapsed`)
- * so it follows the user across devices the same way their theme/
- * landing-page choices already do.
- * `contentBoxed` (`useUiPreference("content_boxed", false)`) is a second,
- * independent display preference: content fills the space next to the
- * rail by default, or a user can opt into the previous capped/centred
- * 1200px width from Preferences. Wraps content in `TerminologyProvider`
- * (C-C-03) so the nav labels below and every page rendered as `children`
- * can resolve the current project's terminology overrides.
+ * App shell: a fixed top bar plus a pinned, full-height nav rail (U-P-02, U-P-03). Project-scoped links render only
+ * once a project is selected (path contains /projects/:id). The rail uses the theme's surface colours, with a
+ * project-context group above a global group, is `position: fixed` against the left edge below the header and
+ * stays on screen while the content scrolls. `railCollapsed` shrinks it to icons, toggled from a small circular
+ * button (`btn btn-icon btn-sm btn-round`) fixed to the viewport and centred on the rail/content divider, so it
+ * stays put whatever the rail scroll or content length. Its `left` is set inline from `railCollapsed`
+ * (`var(--nav-rail-width)` / `var(--nav-rail-width-collapsed)`, the tokens `.app-content`'s margin uses) because
+ * the button renders inside `Tooltip`'s wrapping span and is not a DOM sibling of `.nav-rail`. The choice persists
+ * through `useUiPreference` (`nav_rail_collapsed`) across devices.
+ * `contentBoxed` (`useUiPreference("content_boxed", false)`) is a second display preference: content fills the
+ * space beside the rail, or is capped and centred at 1200px. Wraps content in `TerminologyProvider` (C-C-03) so the
+ * nav labels and every page in `children` resolve the project's terminology overrides.
  */
 export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -96,10 +78,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [railCollapsed, setRailCollapsed] = useUiPreference<boolean>("nav_rail_collapsed", false);
   const isNarrowViewport = useNarrowViewport(MOBILE_BREAKPOINT_PX);
-  // Whether the rail is actually rendering icon-only right now, whether that's
-  // by the user's own preference or because the viewport is too narrow for a
-  // full-width rail (see `MOBILE_BREAKPOINT_PX` above) — the value every
-  // nav-rail-link tooltip decision should use instead of the raw preference.
+  // Whether the rail is rendering icon-only now, by preference or because the viewport is narrower than
+  // `MOBILE_BREAKPOINT_PX`: the value every nav-rail-link tooltip decision uses instead of the raw preference.
   const railIconOnly = railCollapsed || isNarrowViewport;
   const [contentBoxed] = useUiPreference<boolean>("content_boxed", false);
   const branding = useBranding();
@@ -118,20 +98,12 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const { modules: enabledModules } = useProjectEnabledModules(projectId);
   // Delivery status has nothing to show until the project goes beyond its default stage, so its entry waits for that.
   const hasStages = useProjectHasStages(projectId ?? null);
-  // Every installed module's own top-level nav links (`globalNavItems`) and
-  // "standalone workspace" nav sections (`standaloneWorkspaces`,
-  // `modules/types.ts`) — a generic mechanism a module registers into
-  // (is its first user, "Compliance
-  // Standards"/"Standard"), the same "core doesn't hardcode a specific
-  // module's UI" boundary `orgAdminSections` already establishes for
-  // `OrgAdminPage.tsx`. Each global nav item owns its own visibility
-  // (returns `null` when not applicable, e.g. Compliance's own nav-
-  // visibility check) — `Layout.tsx` invites every one of them to render
-  // unconditionally rather than deciding on any module's behalf. At most
-  // one standalone workspace is active at a time: the first one (in
-  // installed-module order) whose own `matchPath` matches the current
-  // path, mirroring how the "Project" section above is likewise gated on a
-  // single regex match rather than several independent ones.
+  // Every installed module's top-level nav links (`globalNavItems`) and "standalone workspace" nav sections
+  // (`standaloneWorkspaces`, `modules/types.ts`): a generic registration, so core hardcodes no module's UI
+  // (as `orgAdminSections` for `OrgAdminPage.tsx`). Each global nav item owns its visibility (returns `null` when
+  // not applicable), so every one renders unconditionally. At most one standalone workspace is active: the first
+  // (in installed-module order) whose `matchPath` matches the current path, as the "Project" section above is
+  // gated on a single regex match.
   const globalNavItems = installedModules.flatMap((m) => m.globalNavItems ?? []);
   let activeStandaloneWorkspace: { entityId: string; render: (props: { entityId: string; railCollapsed: boolean }) => ReactNode } | null = null;
   for (const workspace of installedModules.flatMap((m) => m.standaloneWorkspaces ?? [])) {
@@ -142,14 +114,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
     }
   }
 
-  // The Project nav section's items, in product-default order: the core work items, then one per
-  // (module, nav entry) pair for every currently-enabled module that declares a frontend
-  // manifest, Tier A or Tier B alike (several entries per
-  // module since Context & Strategy). A module whose manifest was
-  // rejected (e.g. a Tier B frame_url outside the deployment's allowlist) simply has no entry,
-  // since `get_frontend_manifest` already omitted it server-side. History and Project admin come
-  // last, after the module items. `ProjectNavSection` applies
-  // the user's order/"More" preference to this list without knowing what any item is.
+  // The Project nav section's items in product-default order: the core work items, then one per (module, nav
+  // entry) pair for every enabled module with a frontend manifest (Tier A or B). A module whose manifest the server
+  // rejected (a Tier B frame_url outside the allowlist) has no entry. History and Project admin come last.
+  // `ProjectNavSection` applies the user's order and "More" preference without knowing what any item is.
   const projectNavItems: ProjectNavItem[] = projectId
     ? [
         { key: "overview", to: `/projects/${projectId}`, exact: true, label: navLabel(`/projects/${projectId}`, strings.nav.overview), icon: <LayoutDashboard size={16} /> },
@@ -258,63 +226,54 @@ function LayoutShell({ children }: { children: ReactNode }) {
               toggle free so neither a link nor the scrollbar runs under it (see `.nav-rail-scroll`, theme.css). */}
           <div className="nav-rail-scroll stack" style={{ gap: "0.15rem" }}>
             {projectId && <ProjectNavSection projectId={projectId} items={projectNavItems} railCollapsed={railIconOnly} />}
-            {/* A module-contributed "standalone workspace" section
-                ("Standard" is the first one) — a sibling structural
-                pattern to "Project" above, not nested inside it. See this
-                file's own `activeStandaloneWorkspace` computation above. */}
+            {/* A module-contributed "standalone workspace" section, a sibling of "Project" above, not nested in it
+                (see `activeStandaloneWorkspace`). */}
             {activeStandaloneWorkspace &&
               activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed: railIconOnly })}
-            <div className="nav-section-label">Global</div>
-            <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
-            {/* "Files" — the files of every project the person can open in their organisation. Shown to every
-                member, as the page is (it lists only files the caller may see); `/org-files` resolves the
-                organisation the way `/org-overview` does, and the entry stays active on the page itself. */}
-            <NavRailLink to="/org-files" exact alsoActiveOn={/^\/orgs\/[^/]+\/files(\/|$)/} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
-            {/* Module-contributed top-level nav links ("Compliance
-                Standards" is the first one) — each item owns its own
-                visibility and may render nothing at all; see this file's own
-                `globalNavItems` computation above. */}
-            {globalNavItems.map((item) => (
-              <Fragment key={item.key}>{item.render({ railCollapsed: railIconOnly })}</Fragment>
-            ))}
-            {hasFavourites && (
-              <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
-            )}
-            {/* Shown only when a review is due (`useHasReviewsDue`); the page stays reachable by address and from
-                notifications. The full Notifications page has no entry here: the header bell links to it. */}
-            {hasReviewsDue && (
-              <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
-            )}
-            {/* "Organisation Overview" — a core, always-visible
-                nav-rail link (unlike the module-contributed
-                nav links above, this one carries general-purpose org stats every org
-                has regardless of compliance, so it's shown unconditionally,
-                the same precedent as the always-shown Projects link above —
-                see docs/decisions.md's "Compliance module, human review
-                follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
-                single-org/multi-org auto-redirect convention as its entry
-                point, the same way `/orgs` already does for org admin. */}
-            <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
-            {/* The only path to org administration: /orgs already auto-redirects
-                straight to a single org's admin page, or lists every org a
-                user belongs to otherwise — it just had no rail entry before
-                this, for anyone but a server admin drilling in through
-                /server/organisations. See docs/ux-style-guide.md, "Pattern:
-                wayfinding". */}
-            <NavRailLink to="/orgs" exact label={strings.nav.orgSettings(orgLabelCap)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+            <NavGroup groupKey="global" label="Global" railCollapsed={railIconOnly}>
+              <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
+              {/* "Files" — the files of every project the person can open in their organisation. Shown to every
+                  member, as the page is (it lists only files the caller may see); `/org-files` resolves the
+                  organisation the way `/org-overview` does, and the entry stays active on the page itself. */}
+              <NavRailLink to="/org-files" exact alsoActiveOn={/^\/orgs\/[^/]+\/files(\/|$)/} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
+              {/* Module-contributed top-level nav links; each item owns its visibility and may render nothing (see
+                  `globalNavItems`). */}
+              {globalNavItems.map((item) => (
+                <Fragment key={item.key}>{item.render({ railCollapsed: railIconOnly })}</Fragment>
+              ))}
+              {hasFavourites && (
+                <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
+              )}
+              {/* Shown only when a review is due (`useHasReviewsDue`); the page stays reachable by address and from
+                  notifications. The full Notifications page has no entry here: the header bell links to it. */}
+              {hasReviewsDue && (
+                <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
+              )}
+              {/* "Organisation Overview": a core, always-visible nav-rail link carrying general org stats every
+                  organisation has, shown unconditionally like the Projects link above (docs/decisions.md,
+                  "Compliance module, human review follow-ups"). `/org-overview` reuses `OrgListPage`'s
+                  single-org/multi-org auto-redirect, as `/orgs` does for org admin. */}
+              <NavRailLink to="/org-overview" exact alsoActiveOn={/^\/orgs\/[^/]+\/overview(\/|$)/} label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
+              {/* "Org Resources" — the records and content the organisation shares with its projects; its sections
+                  are contributed through the module registry (`orgResourceSections`), so this entry names no module. */}
+              <NavRailLink to="/org-resources" exact alsoActiveOn={/^\/orgs\/[^/]+\/resources(\/|$)/} label={strings.nav.orgResources(orgLabelCap)} icon={<Library size={16} />} railCollapsed={railIconOnly} />
+              {/* The path to org administration for anyone but a server admin (who drills in through
+                  /server/organisations): /orgs auto-redirects to a single org's admin page or lists every org the
+                  user belongs to. See docs/ux-style-guide.md, "Pattern: wayfinding". */}
+              <NavRailLink to="/orgs" exact label={strings.nav.orgSettings(orgLabelCap)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+            </NavGroup>
             {/* Each entry shows only to someone the server says may use it (`useServerAccess`): a Platform
                 subscription manager or Subscription removal authority sees Organisations, a Module administrator
                 sees Server management (Modules only), a server administrator sees both. */}
             {serverAccess && (serverAccess.can_view_organizations || showServerManagement) && (
-              <>
-                <div className="nav-section-label">Administration</div>
+              <NavGroup groupKey="administration" label="Administration" railCollapsed={railIconOnly}>
                 {serverAccess.can_view_organizations && (
                   <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
                 )}
                 {showServerManagement && (
                   <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
                 )}
-              </>
+              </NavGroup>
             )}
           </div>
         </nav>
@@ -326,7 +285,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
           style={{ left: `var(${railCollapsed ? "--nav-rail-width-collapsed" : "--nav-rail-width"})` }}
         >
           <button
-            className="btn nav-rail-toggle"
+            className="btn btn-icon btn-sm btn-round"
             onClick={() => setRailCollapsed(!railCollapsed)}
             aria-label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
           >

@@ -1,33 +1,28 @@
 """
 Module: models.generated_report
 
-Provenance of a custom report run: one row per run of a report layout, recording what was run, for
-whom, over what, so a report can be traced back to the layout version and data it came from and is
-never a second, unattributed source of truth.
+Provenance of a custom report run: one row per run of a report layout, recording what was run, for whom and
+over what, so a report traces to the layout version and data it came from.
 
 Responsibilities:
-- `GeneratedReport`: the layout (id, name, version, tree hash), the caller, the UTC time, the engine
-  version, the output format, the run's parameters and scope, the widgets used, record counts per
-  type and a digest of the records read.
+- `GeneratedReport`: the layout (id, name, version, tree hash), the caller, the UTC time, the engine version,
+  the output format, the parameters and scope, the widgets used, record counts per type and a digest of the
+  records read.
 
 Design decisions:
-- **A provenance row; output is stored only for a background run.** No generated file is kept for a
-  synchronous run (`status` `completed`); only its description. A background run's row is also its job:
-  `queued` -> `running` -> `ready` (the file is in object storage under `output_key`) or `failed`, and a
-  `ready` row becomes `expired` when the retention passes (`services.report_run_jobs`), the file deleted and the
-  row kept as provenance. The row holds the request (layout version, format, parameters) so the job can run
-  later as the same person.
-- **The layout is named, not linked.** `layout_id` has no foreign key and the name and tree hash are
-  copied, so the row still says what was run after the layout (and its versions) is deleted. The
-  organisation foreign key cascades, so deleting the organisation removes its provenance; the project
-  key is `SET NULL` because `scope_project_ids` already names every project covered.
-- **Versions for versioned records, a digest for all.** `record_versions` names the version of every
-  versioned record in the report (`{type: {record id: version number}}`), bounded by
-  `report_layout_eval.MAX_RECORDED_VERSIONS` (`record_versions_truncated` says when it was cut).
-  `source_digest` is a SHA-256 over every record in the report (type, id, last-change time, which for a
-  versioned record is its current version's time), so a later run can tell whether the data changed even
-  when the list was cut.
-- Contains no record content, layout text or cell value: only identifiers, counts and keys.
+- Output is stored only for a background run. A synchronous run (`status` `completed`) keeps only its
+  description. A background run's row is also its job: `queued`, `running`, then `ready` (the file is in
+  object storage under `output_key`) or `failed`; a `ready` row becomes `expired` when retention passes
+  (`services.report_run_jobs`), the file deleted and the row kept. The row holds the request so the job
+  can run later as the same person.
+- The layout is named, not linked: `layout_id` has no foreign key and the name and tree hash are copied, so
+  the row still says what was run after the layout is deleted. The organisation foreign key cascades; the
+  project key is `SET NULL` because `scope_project_ids` names every project covered.
+- `record_versions` names each versioned record's version (`{type: {record id: version number}}`), bounded
+  by `report_layout_eval.MAX_RECORDED_VERSIONS` (`record_versions_truncated` marks a cut). `source_digest` is
+  a SHA-256 over every record in the report (type, id, last-change time), so a later run can tell whether
+  the data changed even when the list was cut.
+- No record content, layout text or cell value: only identifiers, counts and keys.
 """
 
 from __future__ import annotations

@@ -213,10 +213,8 @@ export const ClickInsideDoesNotClose: Story = {
   },
 };
 
-/** Style guide Principle 8: opening the dialog moves
- * focus into it (here, its own Close button, since this story's children
- * have no focusable content of their own) rather than leaving focus
- * wherever it was on the page behind the backdrop. */
+/** Opening the dialog moves focus into it (here its own Close button, as the story's children have no focusable
+ * content) rather than leaving focus on the page behind the backdrop (style guide Principle 8). */
 export const FocusMovesIntoDialogOnOpen: Story = {
   play: async () => {
     const body = within(document.body);

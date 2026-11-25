@@ -1,30 +1,22 @@
 /**
  * Module: components/linkTrace
  *
- * Pure logic behind the trace views (tree and map) of a record's links: no React,
- * no network. The server resolves each edge's `flow` (upstream / downstream /
- * related) relative to the record the edge starts from, so nothing here
- * re-derives direction from link types.
+ * Pure logic behind the trace views (tree and map) of a record's links: no React, no network. The server resolves each
+ * edge's `flow` (upstream / downstream / related) relative to the record the edge starts from, so nothing here re-derives
+ * direction from link types.
  *
  * Responsibilities:
- * - `hopsFrom`: the edges leaving one record, optionally in one direction only,
- *   paired with the record at their far end (the tree's children).
+ * - `hopsFrom`: the edges leaving one record, optionally in one direction, paired with the record at their far end.
  * - `mergeGraphs`: fold a further graph read (an expanded branch) into the graph shown.
- * - `layoutLinkMap`: place a graph in layered columns and return SVG coordinates, optionally
- *   skipping hidden (inactive) records and joining what they link to the record in front.
- * - `wrapLabel`: break a record's label into the few short lines a map node has room for.
+ * - `layoutLinkMap`: place a graph in layered columns as SVG coordinates, optionally skipping hidden (inactive) records
+ *   and joining what they link to the record in front.
+ * - `wrapLabel`: break a label into the few short lines a map node has room for.
  *
- * Design decisions:
- * - A trace keeps its direction of travel: a record reached upstream is only
- *   continued through its own upstream edges, a related one through related
- *   edges, so a branch never doubles back through the record it came from or
- *   crosses into the other side. Edges that would break this are not drawn.
- * - The map is deliberately layered, not force-directed (readable at any size,
- *   stable between renders, and navigable by keyboard in DOM order). Upstream
- *   sits left of the focus record, downstream right, related below.
- * - Depth is unbounded: the layout handles any number of levels and the map
- *   grows as the user expands records. `MAP_NODE_CAP` bounds what is drawn at
- *   once, so a very large graph stays usable; the rest is reachable through the tree.
+ * Design decisions: a trace keeps its direction of travel (an upstream record continues only through its own upstream
+ * edges, a related one through related edges), so a branch never doubles back or crosses to the other side; edges that
+ * would break this are not drawn. The map is layered, not force-directed (readable at any size, stable between renders,
+ * keyboard-navigable in DOM order): upstream left of the focus record, downstream right, related below. Depth is
+ * unbounded; `MAP_NODE_CAP` bounds what is drawn at once and the rest is reachable through the tree.
  */
 import type { LinkGraph, LinkGraphEdge, LinkGraphFlow, LinkGraphNode } from "../api/artefactLinks";
 

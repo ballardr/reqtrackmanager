@@ -1,29 +1,22 @@
 """
 Module: modules.stakeholders.summaries
 
-`ArtefactSummaryProvider`s for Personas, Stakeholders, Stakeholder Needs, Stakeholder Groups,
-Engagements and Research Findings, so
-core (the artefact link graph) can label and visibility-check them as link
-targets without importing the models.
+`ArtefactSummaryProvider`s for Personas, Stakeholders, Needs, Stakeholder Groups, Engagements and
+Research Findings, so the artefact link graph can label and visibility-check them without importing the models.
 
 Responsibilities:
-- Build an `ArtefactSummary` (name, status, archived flag, owner) per record
-  from its current version, with the type (Persona, Stakeholder) or status (Need)
-  facet the link finder's browse level reads.
-- Offer a one-query batch lookup scoped to a viewing project
-  (`get_many_in_project`) that applies this module's visibility rules.
+- Build an `ArtefactSummary` (name, status, archived flag, owner) per record from its current version,
+  with the type (Persona, Stakeholder) or status (Need) facet the link finder reads.
+- Offer a one-query batch lookup scoped to a viewing project (`get_many_in_project`).
 
 Design decisions:
-- An Engagement and a Finding are project-only and never archived, so a project sees exactly its own.
-- A Persona or Stakeholder is visible to a project when the project owns it,
-  or its organisation owns it and the project has not hidden it
-  (`service.hidden_persona_ids` / `hidden_stakeholder_ids`, which already walk
-  ancestor projects). A Need is project-only.
-- Org-owned records carry `project_id=None` and their `organization_id`, so a
-  plain project-equality check never mistakes one for a project's own.
+- An Engagement and a Finding are project-only and never archived. A Persona or Stakeholder is visible to a
+  project when the project owns it, or its organisation owns it and the project has not hidden it
+  (`service.hidden_persona_ids` / `hidden_stakeholder_ids`, which walk ancestor projects). A Need is project-only.
+- Org-owned records carry `project_id=None` and their `organization_id`, so a plain project-equality
+  check never mistakes one for a project's own.
 
-Dependencies: this module's own models and `service`; `modules.registry` for
-the summary dataclasses; core `Project` for the viewing project's organisation.
+Dependencies: this module's models and `service`; `modules.registry`; core `Project`.
 """
 
 from __future__ import annotations

@@ -1,36 +1,23 @@
 """
 Module: services.report_fields
 
-The field registry behind custom report layouts: what a layout may print, filter or group by
-for each registered artefact type, and the batch loader that reads those values.
+The field registry behind custom report layouts: what a layout may print, filter or group by for each registered
+artefact type, and the batch loader that reads the values.
 
 Responsibilities:
-- Offer the builders a type's `ReportFieldProvider` is written with (`from_search`, `text_field`,
-  `enum_field`, `date_field`, `principal_field`, `name_lookup_field`).
-- Describe the fields of a type for a field picker (`field_catalogue`).
-- Load records by id in one query per type (`load_records`), with enum values as labels,
-  principals as names, tags as text and the reserved `code`/`title`/`status`/`tags` fields. Every placeable type
-  also offers the shared `placements` text field (`Component / Category; Component`), built here, not by a provider.
-- Format a loaded value as report text (`format_value`).
+- The builders a `ReportFieldProvider` is written with (`from_search`, `text_field`, `enum_field`, `date_field`,
+  `principal_field`, `name_lookup_field`); `field_catalogue` for the picker; `load_records` (one query per type);
+  `format_value`. Every placeable type also gets the shared `placements` text field, built here.
 
 Design decisions:
-- Fields are opt-in per type. A column that is not declared cannot be reached from a layout, so a
-  Restricted or consent-sensitive column is excluded by omission, exactly as for search.
-- The loader **does not authorise**. It is only ever given ids the link graph's `ArtefactResolver`
-  already showed the caller (`services.report_traversal`), so there is one authorisation point;
-  a caller that skips the resolver is a defect, and the engine's public entry points take
-  resolver-approved records only.
-- A provider reuses the type's search declaration for its joins, current-version filter and
-  identity columns (`from_search`), so a versioned type is joined once and kept in one place; the
-  search's vetted text fields come across by default and a type lists its typed fields on top.
-- Values are returned typed (`date`, `datetime`, `bool`, numbers) and formatted at the edge
-  (`format_value`), so a renderer can sort and compare before it prints. A past instant stays UTC;
-  a calendar date is a plain `date` and means the person's own day.
-- A person field shows the user's name or `Name (Organisation group)` for a group (`principal_text`), never
-  an email address.
+- Fields are opt-in: an undeclared column (Restricted, consent-sensitive) is unreachable, as for search.
+- The loader does not authorise; it only receives ids the link graph's `ArtefactResolver` showed the caller
+  (`services.report_traversal`), keeping one authorisation point.
+- `from_search` reuses a type's search joins and vetted text fields, so a versioned type is joined once.
+- Values stay typed until `format_value`; a past instant stays UTC and a calendar date is a plain `date`.
+- A person field shows a name or `Name (Organisation group)`, never an email address.
 
-Dependencies: `modules.registry` (provider shapes and merge), `services.principals` (names),
-`services.tags` (tag text).
+Dependencies: `modules.registry`, `services.principals`, `services.tags`.
 """
 
 from __future__ import annotations
@@ -52,6 +39,11 @@ from app.modules.registry import (
     ReportFieldProvider,
     get_not_placeable_types,
     get_report_field_providers,
+)
+from app.services.external_reference_surfaces import (
+    REFERENCES_COLUMN_KEY,
+    REFERENCES_FIELD_LABEL,
+    reference_texts,
 )
 from app.services.placements import PLACEMENTS_FIELD_KEY, placement_texts
 from app.services.principals import principal_labels, principal_ref, principal_text
@@ -77,6 +69,7 @@ class FieldInfo:
         key / label / kind: As on `ReportField`; `reserved` fields are the engine's own.
         choices: For an `enum`, the display labels a value can take, else empty.
         math: Whether the field may hold equations, which a layout's text block then draws.
+        markdown: Whether the field holds Markdown, which a layout's text block that prints only this field draws formatted.
     """
 
     key: str
@@ -85,6 +78,7 @@ class FieldInfo:
     reserved: bool = False
     choices: tuple[str, ...] = ()
     math: bool = False
+    markdown: bool = False
 
 
 @dataclass
@@ -123,9 +117,9 @@ class ReportRecord:
 # --- builders ------------------------------------------------------------------------------------
 
 
-def text_field(key: str, label: str, column: Any, *, math: bool = False) -> ReportField:
-    """A free-text field; `math` marks one in which people write equations."""
-    return ReportField(key, label, column, "text", math=math)
+def text_field(key: str, label: str, column: Any, *, math: bool = False, markdown: bool = False) -> ReportField:
+    """A free-text field; `math` marks one in which people write equations, `markdown` one that holds Markdown."""
+    return ReportField(key, label, column, "text", math=math, markdown=markdown)
 
 
 def date_field(key: str, label: str, column: Any) -> ReportField:
@@ -221,7 +215,8 @@ def from_search(
     math_keys = frozenset(math_fields)
     core_keys = frozenset(core_fields)
     from_search_fields = (
-        tuple(text_field(f.key, f.label, f.column, math=f.key in math_keys) for f in search.fields) if search_fields else ()
+        tuple(text_field(f.key, f.label, f.column, math=f.key in math_keys, markdown=f.markdown) for f in search.fields)
+        if search_fields else ()
     )
     seen = {f.key for f in from_search_fields}
     extra = tuple(f for f in fields if f.key not in seen)
@@ -259,6 +254,8 @@ def validate_provider(artefact_type: str, provider: ReportFieldProvider) -> list
             problems.append(f"{artefact_type}.{f.key}: principal field without id_column")
         if f.math and f.kind != "text":
             problems.append(f"{artefact_type}.{f.key}: only a text field can be math-capable")
+        if f.markdown and f.kind != "text":
+            problems.append(f"{artefact_type}.{f.key}: only a text field can hold Markdown")
         if f.kind == "enum" and not f.labels:
             problems.append(f"{artefact_type}.{f.key}: enum field without labels")
     return problems
@@ -293,11 +290,15 @@ def field_catalogue(artefact_type: str) -> list[FieldInfo]:
         FieldInfo("tags", "Tags", "text", reserved=True),
     ]
     own = [
-        FieldInfo(f.key, f.label, f.kind, choices=tuple(f.labels.values()) if f.kind == "enum" else (), math=f.math)
+        FieldInfo(
+            f.key, f.label, f.kind, choices=tuple(f.labels.values()) if f.kind == "enum" else (), math=f.math, markdown=f.markdown,
+        )
         for f in provider.fields
     ]
     if artefact_type not in get_not_placeable_types():
         own.append(FieldInfo(PLACEMENTS_FIELD_KEY, "Component and category", "text"))
+    if REFERENCES_COLUMN_KEY not in {f.key for f in provider.fields}:
+        own.append(FieldInfo(REFERENCES_COLUMN_KEY, REFERENCES_FIELD_LABEL, "text"))
     return reserved + own
 
 
@@ -333,6 +334,8 @@ def field_domain(db: Session, artefact_type: str, key: str, project_ids: Sequenc
         return None
     by_key = {f.key: f for f in provider.fields}
     if key == PLACEMENTS_FIELD_KEY and key not in by_key and artefact_type not in get_not_placeable_types():
+        return None  # free text
+    if key == REFERENCES_COLUMN_KEY and key not in by_key:
         return None  # free text
     if key not in by_key:
         raise UnknownReportFieldError(f"{artefact_type}.{key}")
@@ -398,9 +401,13 @@ def load_records(
     by_key = {f.key: f for f in provider.fields}
     wanted: list[ReportField] = []
     with_placements = False
+    with_references = False
     for key in dict.fromkeys(k for k in field_keys if k not in RESERVED_FIELD_KEYS):
         if key == PLACEMENTS_FIELD_KEY and key not in by_key and artefact_type not in get_not_placeable_types():
             with_placements = True
+            continue
+        if key == REFERENCES_COLUMN_KEY and key not in by_key:
+            with_references = True
             continue
         if key not in by_key:
             raise UnknownReportFieldError(f"{artefact_type}.{key}")
@@ -460,6 +467,10 @@ def load_records(
         for rid, text in placement_texts(db, artefact_type, list(out)).items():
             if rid in out:
                 out[rid].values[PLACEMENTS_FIELD_KEY] = text
+    if with_references and out:
+        for rid, text in reference_texts(db, artefact_type, list(out)).items():
+            if rid in out:
+                out[rid].values[REFERENCES_COLUMN_KEY] = text
     if with_tags and out:
         for rid, names in tag_names_for_records(db, artefact_type, list(out)).items():
             if rid in out:

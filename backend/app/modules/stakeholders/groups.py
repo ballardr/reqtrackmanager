@@ -1,31 +1,12 @@
 """
 Module: modules.stakeholders.groups
 
-Business logic for Stakeholder Groups: a tree of org- or
-project-scoped classification groups with many-to-many stakeholder membership.
-
-Responsibilities:
-- Create/update/move/delete groups with the scope rules (an org group's parent
-  and members are org-scoped only; a project group's parent is an org group or
-  a group of the same project and its members are org or own-project
-  stakeholders), cycle and depth guards, and unique sibling names.
-- Direct membership add/remove, with the `exclusive_children` rule (a stakeholder
-  sits in at most one direct-child branch of such a group).
-- Transitive membership: being in a group means being in all its ancestors, so
-  `descendant_ids` + `member_ids` answer "everyone in Acme".
-- Reading groups per stakeholder (`group_refs`) and sorting by a root group
-  (`branch_sort_key`) for lists.
-- Proposing and creating groups from the stakeholders' free-text
-  "organisation / group" field.
-
-Design decisions (Decided by: Agent):
-- Walks are cycle-safe and depth-capped (`MAX_GROUP_DEPTH`).
-- A viewer's "universe" is its org's groups plus, in a project, that project's
-  own groups: another project's groups are never read or named.
-- Rule violations raise `GroupRuleError`, which carries the HTTP status the
-  router should answer with (404 absent, 400 invalid, 409 conflicting).
-- Groups are classification, not principals: no version table, comments or
-  lifecycle. Mutations are audit-logged by the callers' routers with ids only.
+Business logic for Stakeholder Groups: a tree of org- or project-scoped
+classification groups with many-to-many membership. Scope rules, cycle and depth
+guards (`MAX_GROUP_DEPTH`), unique sibling names, `exclusive_children`,
+transitive membership (`descendant_ids` + `member_ids`), per-stakeholder reads
+and creating groups from free text. A viewer sees its org's groups plus its
+project's. Violations raise `GroupRuleError` (HTTP status attached).
 """
 
 from __future__ import annotations

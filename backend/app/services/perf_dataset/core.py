@@ -1,25 +1,22 @@
 """
 Module: services.perf_dataset.core
 
-The core artefact types' dataset generators: requirements (with their version history, tags, comments, links
-and audit events) and requirement actions (with their links to requirements).
+The core artefact types' dataset generators: requirements (with version history, tags, comments, links and
+audit events) and requirement actions (with their links to requirements).
 
-Responsibilities:
-- Write the same rows the application's create paths write (`services.requirements.create_requirement`,
-  `routers.actions`, `services.tags.set_record_tags`, `routers.requirements.comments`, `create_link`) for
-  thousands of records at once, in proportions taken from the dataset spec.
-- Keep the counters the application relies on ahead of the generated codes (`Project.next_requirement_seq`,
-  `Project.next_action_seq`).
-- Report the realised link-degree histogram, so "links per record" is a measured fact of the run.
+Responsibilities: write the rows the application's create paths write (`services.requirements.create_requirement`,
+`routers.actions`, `services.tags.set_record_tags`, `routers.requirements.comments`, `create_link`) for
+thousands of records at once, in proportions from the dataset spec; keep the counters ahead of the generated
+codes (`Project.next_requirement_seq`, `Project.next_action_seq`); report the realised link-degree histogram.
 
 Design decisions:
-- Bulk Core inserts, not the API: 20,000 requirements and their links and history through HTTP would take hours
-  and would measure the API, not the data. Drift from the real create path is guarded by the parity test, which
-  compares the populated columns of a generated row with an API-created one.
-- Link endpoints are drawn from a Zipf-weighted distribution (`hub_exponent`), giving a heavy tail: most
-  requirements have a few links and a handful are hubs with hundreds. Edges are oriented from the earlier to the
-  later requirement so directional link types can never form a cycle.
-- History is the fastest-growing data: every extra version adds a version row and an audit event, as an edit does.
+- Bulk Core inserts, not the API: 20,000 requirements with links and history over HTTP would take hours and
+  measure the API, not the data. Drift from the real create path is guarded by the parity test, which compares
+  the populated columns of a generated row with an API-created one.
+- Link endpoints follow a Zipf-weighted distribution (`hub_exponent`): most requirements have a few links and a
+  handful are hubs with hundreds. Edges run from the earlier to the later requirement, so directional link
+  types cannot form a cycle.
+- History is the fastest-growing data: each extra version adds a version row and an audit event, as an edit does.
 
 Dependencies: SQLAlchemy models, `perf_dataset.context/textgen`, `models.*`.
 """
@@ -27,7 +24,6 @@ Dependencies: SQLAlchemy models, `perf_dataset.context/textgen`, `models.*`.
 from __future__ import annotations
 
 import itertools
-import math
 import random
 import uuid
 from datetime import date, datetime, timedelta
@@ -47,9 +43,12 @@ from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.models.tag import ArtefactTag, Tag
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import ANCHOR, CHUNK, PerfProjectContext, insert_rows, uuid_from
+from app.services.perf_dataset.context import poisson as _poisson
+from app.services.perf_dataset.references import write_references
 
 #: Final-status mix of generated requirements.
 _STATUS_MIX = (
@@ -131,18 +130,6 @@ def extra_versions(rng: random.Random, mean_versions: float) -> int:
     while count < _MAX_EXTRA_VERSIONS and rng.random() > p:
         count += 1
     return count
-
-
-def _poisson(rng: random.Random, mean: float) -> int:
-    """A Poisson draw (Knuth), fine for the small means used here."""
-    if mean <= 0:
-        return 0
-    limit, k, p = math.exp(-mean), 0, 1.0
-    while True:
-        p *= rng.random()
-        if p <= limit:
-            return k
-        k += 1
 
 
 def _zipf_cumulative(rng: random.Random, n: int, exponent: float) -> list[float]:
@@ -288,9 +275,49 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
     _generate_tags(ctx, audit, requirement_ids, created_times, org_id)
     _generate_comments(ctx, requirement_ids, created_times)
     _generate_links(ctx, audit, requirement_ids, created_times)
+    alias_count = _generate_aliases(ctx, requirement_ids, categories, prefixes, count)
     audit.flush()
-    db.query(Project).filter(Project.id == project_id).update({Project.next_requirement_seq: count + 1})
+    db.query(Project).filter(Project.id == project_id).update({Project.next_requirement_seq: count + alias_count + 1})
     return {table: ctx.counts.get(table, 0) - start_counts.get(table, 0) for table in ctx.counts}
+
+
+def _generate_aliases(
+    ctx: PerfProjectContext, requirement_ids: list[uuid.UUID], categories: list[tuple[str, str, str]],
+    prefixes: dict[str, str], count: int,
+) -> int:
+    """The further places of some requirements (`requirement_aliases`), each numbered after the requirements from the
+    one counter, in a category other than the requirement's own.
+
+    Args:
+        ctx: The project's context.
+        requirement_ids: The generated requirements, in creation order.
+        categories: `(category id, component id, category prefix)` of the project's categories.
+        prefixes: Component prefix by component id.
+        count: How many requirements were generated (alias numbers continue from it).
+
+    Returns:
+        How many aliases were written.
+    """
+    if len(categories) < 2 or ctx.spec.ratios.aliases_per_requirement <= 0:
+        return 0
+    rng = ctx.rng
+    rows: list[dict[str, Any]] = []
+    number = count
+    for index, requirement_id in enumerate(requirement_ids):
+        own = index % len(categories)
+        others = [i for i in range(len(categories)) if i != own]
+        wanted = min(_poisson(rng, ctx.spec.ratios.aliases_per_requirement), len(others))
+        for other in rng.sample(others, wanted):
+            category_id, component_id, category_prefix = categories[other]
+            number += 1
+            rows.append({
+                "id": uuid_from(rng), "project_id": ctx.project_uuid, "requirement_id": requirement_id,
+                "component_id": uuid.UUID(component_id), "category_id": uuid.UUID(category_id),
+                "unique_code": f"{prefixes[component_id]}-{category_prefix}-{number:03d}",
+                "is_retired": False, "retired_at": None, "created_by": ctx.user_ids[0], "created_at": ANCHOR - timedelta(days=30),
+            })
+    ctx.add_count("requirement_aliases", insert_rows(ctx.db, RequirementAlias, rows))
+    return len(rows)
 
 
 def _generate_tags(
@@ -346,6 +373,7 @@ def _generate_tags(
                 organization_id=org_id,
             )
     ctx.add_count("artefact_tags", insert_rows(ctx.db, ArtefactTag, attachments))
+    write_references(ctx, ArtefactType.REQUIREMENT.value, requirement_ids, created, audit)
 
 
 def _generate_comments(ctx: PerfProjectContext, requirement_ids: list[uuid.UUID], created: list[datetime]) -> None:

@@ -1,15 +1,10 @@
 /**
  * Module: components/LinkTraceModal
  *
- * The large dialog that traces one record's links, opened from the Links panel's
- * "Trace" button: a Tree tab (every branch expandable without limit) and a Map tab
- * (a scrollable layered diagram that grows as records are opened).
- *
- * Responsibilities:
- * - Host the shared `Tabs` over the two views (style guide: a `Modal` whose body is `Tabs`).
- * - Own the "Hide inactive records" switch, shared by both views, so the choice survives a tab change.
- * - Close when a record link inside is followed, so the dialog never lingers over the
- *   page it just navigated to.
+ * The large dialog that traces one record's links, opened from the Links panel's "Trace" button: a Tree tab (every
+ * branch expandable without limit) and a Map tab (a scrollable layered diagram). It hosts the shared `Tabs` (a
+ * `Modal` whose body is `Tabs`), owns the "Hide inactive records" switch shared by both views so the choice
+ * survives a tab change, and closes when a record link inside is followed.
  */
 import { useState } from "react";
 

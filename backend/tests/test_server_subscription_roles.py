@@ -426,7 +426,7 @@ def test_a_server_gate_anywhere_else_in_the_route_table_is_known():
 #: does so fails until it is added here, so an inline platform-administrator check is a visible decision.
 _INLINE_SERVER_ADMIN_CHECKS = {
     "app/models/enums.py", "app/models/server_role.py", "app/models/user.py", "app/modules/compliance/global_router.py",
-    "app/modules/compliance/module.py", "app/modules/compliance/router/_shared.py",
+    "app/modules/compliance/router/_shared.py",
     "app/modules/compliance/router/version_requirements.py", "app/modules/context_strategy/_shared.py",
     "app/modules/decisions/project_router/workflow.py", "app/modules/registry.py", "app/routers/orgs/core.py",
     "app/routers/orgs/membership.py", "app/routers/orgs/settings.py", "app/routers/orgs/storage.py", "app/routers/scim.py",

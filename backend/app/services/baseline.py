@@ -31,6 +31,7 @@ from app.modules.registry import (
     get_baseline_snapshot_providers,
     is_module_enabled_for_project,
 )
+from app.services import approval_separation
 from app.services.component_stages import tracked_component_ids
 from app.services.rbac import can_manage_project_settings, get_effective_permissions, permission_satisfied
 from app.services.requirements import apply_new_version, get_current_version_for_update
@@ -102,6 +103,11 @@ def create_baseline_for_stage(
             # deadlock), and it is re-read under the lock: a concurrent edit may have moved it on.
             current_version = get_current_version_for_update(db, requirement.id)
         if current_version.status in (RequirementStatus.DRAFT, RequirementStatus.REVIEWED):
+            approval_separation.enforce_approval(
+                db, user=actor, artefact_type="requirement", record_id=requirement.id,
+                creator_id=requirement.creator_id, organization_id=project.organization_id, project_id=project.id,
+                comment=label,
+            )
             current_version = apply_new_version(
                 db, requirement, current_version, actor,
                 status_value=RequirementStatus.APPROVED,

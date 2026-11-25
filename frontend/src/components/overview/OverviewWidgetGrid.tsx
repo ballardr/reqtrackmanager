@@ -1,53 +1,45 @@
 /**
  * Module: components/overview/OverviewWidgetGrid
  *
- * Draws the project overview's widgets in a 12-column grid, one cell per visible widget, in layout order, each as
- * wide as its width and at least as tall as its height. With `edit` the same grid is the editor: every widget
- * (hidden ones too, dimmed) gets a handle to drag it to a new place, a corner to resize it, and buttons for its
- * settings, hiding and removing, so the page is edited as it will look.
+ * Draws the project overview's widgets in a 12-column grid, one cell per visible widget, in layout order, each as wide as
+ * its width and at least as tall as its height. With `edit` the same grid is the editor: every widget (hidden ones too,
+ * dimmed) gets a handle to drag it, a corner to resize it, and buttons for settings, hiding and removing.
  *
  * Responsibilities:
- * - Turn each widget and its figure (`OverviewMetricResult`) into the right view: a metric tile, a gauge, a pie
- *   or bar chart, stage progress, record totals, the activity feed, the tiles enabled modules contribute, or a
- *   widget a module contributes itself.
+ * - Turn each widget and its figure (`OverviewMetricResult`) into the right view: a metric tile, a gauge, a pie or bar
+ *   chart, stage progress, record totals, the activity feed, module-contributed tiles, or a module's own widget.
  * - Show a notice, not a zero, for a figure the caller may not read, that timed out or failed.
- * - Link a tile or chart row to the list it summarises, only where a list shows exactly that figure.
+ * - Link a tile or chart row to its list only where a list shows exactly that figure.
  * - Mark a figure read beyond this project ("With children, 3 projects"), so a count is never mistaken for one project's.
  *
- * Design decisions:
- * - The grid is a flow with spans, not absolute positions, so it collapses to six columns on a medium screen and two on a
- *   phone with no second layout (`gridSpans`); dragging reorders the flow and the corner changes the spans.
- * - The grid never imports a module: module tiles and widgets come from the registry
- *   (`overviewWidgets`), so a module needs no edit here; a module's widget is as movable and resizable as any other.
- * - Default titles come from the string table for core metrics (so they follow the project's terminology) and
- *   from the server's metric label for any other (a module's, or a record type's plural name).
- * - Figures arrive in one batched request made by the page (`useOverviewMetrics`); the activity feed is the one
- *   widget that reads its own data, because it is a list of changes, not a figure.
+ * Design decisions: the grid is a flow with spans, not absolute positions, so it collapses to six columns on a medium
+ * screen and two on a phone with no second layout (`gridSpans`). It never imports a module: module tiles and widgets come
+ * from the registry (`overviewWidgets`). Default titles come from the string table for core metrics (following the
+ * project's terminology) and from the server's metric label otherwise. Figures arrive in one batched request made by the
+ * page (`useOverviewMetrics`); the activity feed reads its own data because it is a list of changes, not a figure.
  */
 import { GripVertical, Eye, EyeOff, MoveDiagonal2, SlidersHorizontal, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, api } from "../../api/client";
 import type { ChangeEntry, OverviewScope, OverviewWidget } from "../../api/types";
-import { activityEntityLabel, activityEntryNotes, describeActivityEntry } from "../../api/types";
-import { activityRecordLink } from "../../utils/activityLink";
+import { toActivityRows } from "../../utils/activityRows";
 import type { ProjectScope } from "../../api/projectScope";
-import { useOrgLabelCapitalized } from "../../context/BrandingContext";
 import { useStrings } from "../../context/TerminologyContext";
 import type { OverviewMetricsState } from "../../hooks/useOverviewMetrics";
 import { getInstalledModule } from "../../modules/registry";
 import { buildRecordTotalsChart, RECORD_SLICE_COLORS } from "../../utils/recordTotals";
-import { renderMarkdown } from "../../utils/safeMarkdown";
 import {
   chartDestination, clamp, effectiveScope, formatMetricValue, gridSpans, isScopedType, moveWidgetTo, orgTileDestination, OVERVIEW_COLUMNS,
   OVERVIEW_MAX_ROWS, resizedBy, tileDestination,
 } from "../../utils/overviewWidgets";
-import { ActivityNote } from "../ActivityNote";
+import { MarkdownView } from "../MarkdownView";
 import { rowLabel, titleOf } from "./overviewTitles";
-import { Badge } from "../Badge";
 import { BarChart } from "../BarChart";
+import { Badge } from "../Badge";
 import { Gauge } from "../Gauge";
+import { ProjectActivityTable } from "../ProjectActivityTable";
 import { MetricTile } from "../MetricTile";
 import { Spinner } from "../Spinner";
 import { StatusPieChart } from "../StatusPieChart";
@@ -63,10 +55,13 @@ function Notice({ title, message }: { title: string; message: string }) {
   );
 }
 
-/** The widget's latest changes, read on its own (a feed, not a figure). */
+/**
+ * The widget's latest changes, read on its own (a feed, not a figure): the History page's table (`ProjectActivityTable`),
+ * capped at `limit` and stacked when the widget is narrow, with a link to the History page, which has the sorting and
+ * the filters this feed leaves out.
+ */
 function ActivityWidget({ projectId, title, limit }: { projectId: string; title: string; limit: number }) {
   const strings = useStrings();
-  const orgLabelCap = useOrgLabelCapitalized();
   const [entries, setEntries] = useState<ChangeEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -83,43 +78,25 @@ function ActivityWidget({ projectId, title, limit }: { projectId: string; title:
       cancelled = true;
     };
   }, [projectId, limit, strings.overviewWidgets.figureError]);
+  const rows = useMemo(() => toActivityRows(entries ?? []), [entries]);
   if (error) return <Notice title={title} message={error} />;
   return (
     <div className="card stack">
       <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>
-      {entries && entries.length === 0 && <p className="text-muted">{strings.history.empty}</p>}
-      {entries?.map((c, idx) => {
-        const link = activityRecordLink(c, projectId);
-        return (
-          <div
-            key={idx}
-            className="row"
-            style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}
-          >
-            <span className="stack" style={{ gap: "var(--space-1)", minWidth: 0 }}>
-              <span>
-                <Badge>{activityEntityLabel(c.entity_type, orgLabelCap)}</Badge> {describeActivityEntry(c)}
-                {link && (
-                  <>
-                    {" "}
-                    <Link to={link.to}>{link.label}</Link>
-                  </>
-                )}
-              </span>
-              {activityEntryNotes(c).map((note) => <ActivityNote key={note} text={note} />)}
-            </span>
-            <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
-          </div>
-        );
-      })}
+      {entries && (
+        <ProjectActivityTable
+          rows={rows} projectId={projectId} ariaLabel={title} stacks
+          emptyState={<p className="text-muted">{strings.history.empty}</p>}
+        />
+      )}
+      <Link to={`/projects/${projectId}/history`} style={{ alignSelf: "flex-start" }}>{strings.history.viewAll}</Link>
     </div>
   );
 }
 
 /**
  * A widget a module contributes, drawn by the module's own renderer. While editing, its name is shown above it, so a
- * widget that has nothing to show for this project (a module with no tile yet) is still a block that can be moved,
- * hidden or removed.
+ * widget with nothing to show for this project is still a block that can be moved, hidden or removed.
  */
 function ModuleWidget({
   widget, projectId, organizationId, projectScope, title, editingName,
@@ -154,12 +131,12 @@ export interface OverviewGridEdit {
   onOpenSettings: (id: string) => void;
 }
 
-/** The text widget: its title (when it has one) and its markdown, rendered without raw HTML or images. */
+/** The text widget: its title (when it has one) and its Markdown, formatted without raw HTML or images. */
 function TextWidget({ title, markdown }: { title: string; markdown: string }) {
   return (
     <div className="card overview-text">
       {title && <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>}
-      {renderMarkdown(markdown)}
+      <MarkdownView text={markdown} />
     </div>
   );
 }

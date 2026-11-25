@@ -3,25 +3,10 @@ const NONE: GuidingPrinciple[] = [];
 /**
  * Module: modules/context_strategy/OrgGuidingPrinciplesPanel
  *
- * The org-scoped equivalent of `ProjectGuidingPrinciplesPage.tsx` — an
- * organisation's own org-scoped Guiding Principle records (the
- * org/project scope discriminator), rendered as an `OrgOverviewPage.tsx`
- * `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
- *
- * **Placement decision, Decided by: Agent — follows `OrgStrategiesPanel.tsx`/
- * `OrgFutureStatesPanel.tsx`'s own precedent directly, resolving that
- * precedent's own "revisit if a later org/project-scoped artefact suggests a
- * different placement" note.** An org-scoped Guiding Principle is the same
- * shape as an org-scoped Strategy/Future State — org-level *content* an
- * Owner/Approver works with day to day, not an admin-configuration table —
- * so it lands on `orgOverviewSections` (Org Dashboard) too, for the same
- * reasoning those two components' own docstrings already give. Pain Point
- * Type landed on `orgAdminSections` instead because it *is* a
- * configuration table with no org-scoped artefact behind it at all — a
- * different case entirely, not a competing precedent for this one. No
- * deviation found worth flagging: Guiding Principle's org/project dual scope
- * is exactly the case that precedent's own "revisit" note anticipated, and
- * it confirms rather than overturns the existing placement.
+ * The organisation-scoped equivalent of `ProjectGuidingPrinciplesPage.tsx`: an organisation's own Guiding Principle
+ * records, rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s `orgResourceSections`). Placement
+ * follows `OrgStrategiesPanel.tsx`. Pain Point Type is a configuration table with no organisation-scoped record, so it
+ * is an `orgAdminSections` entry instead.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -33,15 +18,18 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { GUIDING_PRINCIPLE_SORT_VALUES } from "./contextStrategySort";
+import { GUIDING_PRINCIPLE_SORT_KEYS, GUIDING_PRINCIPLE_SORT_VALUES } from "./contextStrategySort";
 import { orgGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useTableSort } from "../../hooks/useTableSort";
-import { filterString } from "../../utils/listFilterParams";
+import { useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows } from "../../utils/sortRows";
+import { filterStringWithSort } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
 
@@ -71,27 +59,31 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reloadGuidingPrinciples, [orgId, includeArchived]);
 
-  const table = useTableSort(guidingPrinciples ?? NONE, GUIDING_PRINCIPLE_SORT_VALUES);
+  const listSort = useListSort("org_guiding_principles", GUIDING_PRINCIPLE_SORT_KEYS, "code", true);
+  const sortedRows = sortRows(guidingPrinciples ?? NONE, listSort.sort, GUIDING_PRINCIPLE_SORT_VALUES);
+
+  const columns: DirectoryColumn<GuidingPrinciple>[] = [
+    { key: "name", label: "Name", sortable: true, render: (g) => g.name },
+    { key: "code", label: "Code", sortable: true, render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (g) => `v${g.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("org_guiding_principles", columns);
+
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciples === null) return <Spinner />;
 
-  const filtered = table.rows.filter((g) => {
+  const filtered = sortedRows.filter((g) => {
     if (statusFilter && g.status !== statusFilter) return false;
     if (priorityFilter && g.priority !== priorityFilter) return false;
     if (search && !`${g.unique_code} ${g.name}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
-
-  const columns: DirectoryColumn<GuidingPrinciple>[] = [
-    { key: "name", label: "Name", sortable: true, render: (g) => g.name },
-    { key: "code", label: "Code", sortable: true, render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
-    { key: "priority", label: "Priority", sortable: true, render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
-    },
-    { key: "version", label: "Version", sortable: true, render: (g) => `v${g.version_number}` },
-  ];
 
   return (
     <div className="stack">
@@ -100,16 +92,17 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
           New Guiding Principle
         </button>
         <ListActions
-          organizationId={orgId} recordType="guiding_principle" filters={filterString({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived })} onImported={reloadGuidingPrinciples}
+          organizationId={orgId} recordType="guiding_principle" filters={filterStringWithSort({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived }, listSort.sort)} onImported={reloadGuidingPrinciples}
         />
+        {shown.chooser}
       </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Organisation Guiding Principles"
-          columns={columns}
+          columns={shown.columns}
           rows={filtered}
-          sort={table.sort}
-          onSort={table.onSort}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(g) => g.id}
           onRowClick={(g) => navigate(`/orgs/${orgId}/modules/context_strategy/guiding-principles/${g.id}`)}
           emptyState={<p className="text-muted">No organisation-scoped Guiding Principle recorded yet.</p>}
@@ -132,6 +125,7 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
             allLabel="All priorities"
             options={labelOptions(GUIDING_PRINCIPLE_PRIORITY_LABEL)}
           />
+          <SortField list={listSort} columns={columns} titleKey="name" />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

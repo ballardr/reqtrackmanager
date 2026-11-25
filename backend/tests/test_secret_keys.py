@@ -40,7 +40,7 @@ def test_a_previous_key_still_decrypts_and_rotation_moves_the_value_to_the_new_k
     finally:
         db.close()
 
-    _use_keys(monkeypatch, new)  # the previous key is no longer needed
+    _use_keys(monkeypatch, new)  # the previous key is dropped; only the new key is needed
     db = SessionLocal()
     try:
         assert db.query(User).filter(User.email == "rotate@example.com").one().totp_secret == "JBSWY3DPEHPK3PXP"

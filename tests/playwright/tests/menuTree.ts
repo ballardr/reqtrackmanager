@@ -23,7 +23,11 @@ export async function menuRow(page: Page, name: string | RegExp, within?: Locato
   for (let guard = 0; guard < 12; guard += 1) {
     if ((await row.count()) > 0) return row.first();
     const closed = scope.getByRole("menuitem", { expanded: false });
-    if ((await closed.count()) === 0) break;
+    if ((await closed.count()) === 0) {
+      // Nothing left to open: the menu may still be re-rendering as the list's data arrives, so give the row a moment.
+      if (await row.first().waitFor({ state: "attached", timeout: 3000 }).then(() => true, () => false)) return row.first();
+      break;
+    }
     await closed.first().click();
   }
   throw new Error(`No menu row named ${String(name)} in the open menu, even with every parent opened.`);

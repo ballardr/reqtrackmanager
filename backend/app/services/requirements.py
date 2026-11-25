@@ -9,14 +9,14 @@ management (C-M-01, C-G-09).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import String, and_, cast, exists, func, or_, select
+from sqlalchemy import ColumnElement, String, and_, case, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.change_request import ChangeRequest, ReviewComment
@@ -32,6 +32,7 @@ from app.models.enums import (
 from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
+from app.models.requirement_alias import RequirementAlias
 from app.models.user import User
 from app.modules.registry import ArtefactChange
 from app.schemas.principal import PrincipalOut, PrincipalRef
@@ -39,14 +40,17 @@ from app.services import component_stages, engagement
 from app.services import tags as tag_service
 from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
 from app.services.custom_fields import validate_custom_field_values
+from app.services.external_reference_surfaces import reference_clause
+from app.services.list_sort import apply_direction, code_order_columns, instant, text_order_column
 from app.services.lookups import present, project_or_404
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import lock_project_for_update, lock_row_for_update
 
-# C-G-11: completion is an overlay marker on top of APPROVED, not a
-# separate lifecycle status a requirement can be "in" — a completed
-# requirement's status is still APPROVED (see `Requirement.is_completed`),
-# so this set no longer needs a second member to cover it.
+if TYPE_CHECKING:
+    from app.services.placements import PlacementPair
+
+# C-G-11: completion is an overlay marker on APPROVED (`Requirement.is_completed`), not a separate status,
+# so a completed requirement is still APPROVED and this set has one member.
 LOCKED_STATUSES = {RequirementStatus.APPROVED}
 
 
@@ -118,14 +122,11 @@ def requires_change_request_for_links(db: Session, project: Project) -> bool:
 
 
 def _next_sequence(db: Session, project: Project) -> int:
-    """Returns the next requirement sequence number for `project`, advancing
-    the counter so it is never reused (C-G-06), including for archived
-    requirements.
+    """Returns the next requirement sequence number for `project`, advancing the counter so it is never reused
+    (C-G-06), including for archived requirements.
 
-    Locks the project row and re-reads the counter first (2026-10-05): two
-    concurrent creates in one project each read the same value and the
-    second failed on the unique `(project_id, unique_code)` constraint with
-    a 500 — the same race `services.sequences` already closes this way.
+    Locks the project row and re-reads the counter first, so concurrent creates cannot take the same value
+    (the same lock `services.sequences` uses).
     """
     lock_project_for_update(db, project.id)
     db.refresh(project, attribute_names=["next_requirement_seq"])
@@ -171,6 +172,8 @@ def create_requirement(
     review_date: date | None = None,
     review_lead_days: int | None = None,
     reviewer: PrincipalRef | None = None,
+    unique_code: str | None = None,
+    change_note: str = "Initial creation.",
 ) -> Requirement:
     """Creates a requirement and its initial (version 1) content snapshot.
 
@@ -184,8 +187,11 @@ def create_requirement(
             falsifying the audit trail of who technically made the request.
         owner: The responsible principal (the caller has validated it); the creator when omitted.
         reviewer: The principal accountable for the scheduled review, or None.
+        unique_code: A code already issued for this requirement (an alias code taken over when the alias is made
+            independent); a fresh code is numbered from the project counter when omitted.
+        change_note: The first version's note.
     """
-    unique_code = generate_unique_code(db, project, component, category)
+    unique_code = unique_code or generate_unique_code(db, project, component, category)
     requirement = Requirement(
         project_id=project.id, component_id=component.id, category_id=category.id,
         unique_code=unique_code, creator_id=creator_override_id or creator.id,
@@ -201,7 +207,7 @@ def create_requirement(
         **principal_columns("owner", owner or PrincipalRef(type=PrincipalType.USER, id=creator.id)),
         target_stage_id=target_stage_id, level=level,
         sort_order=sort_order, created_by=creator.id, created_at=now,
-        change_note="Initial creation.", custom_fields=custom_fields or {},
+        change_note=change_note, custom_fields=custom_fields or {},
         review_date=review_date, review_lead_days=review_lead_days, **principal_columns("reviewer", reviewer),
     )
     db.add(version)
@@ -262,6 +268,7 @@ def apply_new_version(
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    requirement.updated_at = now  # a new version is a change to the record: its Modified time moves
 
     new_version = RequirementVersion(
         requirement_id=requirement.id,
@@ -356,10 +363,8 @@ OPEN_CR_STATUSES = (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW
 
 @dataclass
 class ListPrefetch:
-    """Per-requirement lookups for a whole list, loaded in a fixed number of
-    queries (`prefetch_for_list`) instead of five per row — the list
-    endpoint was the second-hottest backend path in the e2e suite (99
-    queries for one page of Alpha-1, 2026-10-04 profiling).
+    """Per-requirement lookups for a whole list, loaded in a fixed number of queries (`prefetch_for_list`) instead of
+    five per row.
 
     Attributes:
         versions: Current (`valid_to IS NULL`) version per requirement id.
@@ -368,6 +373,7 @@ class ListPrefetch:
         comment_counts: Comment count per requirement id (absent = 0).
         open_change_request: Requirement ids with an open change request.
         people: Resolved owner and reviewer (`services.principals.principal_labels`), keyed by `(type, id)`.
+        aliases: Active aliases per requirement id (absent = none).
     """
 
     versions: dict[UUID, RequirementVersion] = field(default_factory=dict)
@@ -376,6 +382,7 @@ class ListPrefetch:
     comment_counts: dict[UUID, int] = field(default_factory=dict)
     open_change_request: set[UUID] = field(default_factory=set)
     people: dict[tuple[str, UUID], PrincipalOut] = field(default_factory=dict)
+    aliases: dict[UUID, list[RequirementAlias]] = field(default_factory=dict)
 
 
 def prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id: UUID) -> ListPrefetch:
@@ -396,6 +403,12 @@ def prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
     prefetch.people = version_people(db, prefetch.versions.values())
     prefetch.keywords = tag_service.keywords_for_requirements(db, requirement_ids)
+    for alias in db.scalars(
+        select(RequirementAlias)
+        .where(RequirementAlias.requirement_id.in_(requirement_ids), RequirementAlias.is_retired.is_(False))
+        .order_by(RequirementAlias.created_at, RequirementAlias.unique_code)
+    ):
+        prefetch.aliases.setdefault(alias.requirement_id, []).append(alias)
     prefetch.subscribed = set(db.scalars(select(Subscription.entity_id).where(
         Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
         Subscription.entity_type == "requirement",
@@ -421,10 +434,12 @@ class RequirementFilters:
 
     include_archived: bool = False
     is_completed: bool | None = None
-    component_id: UUID | None = None
-    category_id: UUID | None = None
+    component_ids: tuple[UUID, ...] = ()
+    category_ids: tuple[UUID, ...] = ()
     tag_names: tuple[str, ...] = ()
     tag_match_all: bool = False
+    external_systems: tuple[str, ...] = ()
+    external_key: str | None = None
     keyword: str | None = None
     search: str | None = None
     status: RequirementStatus | None = None
@@ -444,8 +459,11 @@ class ListRow:
     stage filter and the component/category order are applied in SQL instead of read back.
 
     Attributes:
-        id / project_id / unique_code / created_at: The identity row's values (`project_id` is the project asked for).
+        id / project_id / unique_code / created_at / updated_at: The identity row's values (`project_id` is the project
+            asked for).
         name / status / sort_order: The current version's values the list filters and orders by.
+        order_value: The value of the `ROW_ORDER_COLUMNS` sort asked for (`target`, `placement`), read with the row so a
+            list widened over several projects orders the same way the database does; `None` for any other sort.
         from_project_id / from_project_name / from_project_code: Set by `ProjectScope.collect` on a row of
             another project.
     """
@@ -454,12 +472,14 @@ class ListRow:
     project_id: UUID
     unique_code: str
     created_at: datetime
+    updated_at: datetime
     name: str
     status: RequirementStatus
     sort_order: int
     from_project_id: UUID | None = None
     from_project_name: str | None = None
     from_project_code: str | None = None
+    order_value: Any = None
 
 
 @dataclass
@@ -520,27 +540,86 @@ def _stage_range(db: Session, project_id: UUID, filters: RequirementFilters) -> 
     return {s.id for s in ordered[low:high + 1]}
 
 
-LIST_SORT_COLUMNS = ("unique_code", "name", "status", "created_at")
-"""The columns `GET .../requirements?sort=` accepts."""
+LIST_SORT_COLUMNS = ("unique_code", "name", "status", "created_at", "updated_at")
+"""The columns `GET .../requirements?sort=` accepts, in the list's own names (`services.list_sort.KEY_ALIASES` also
+lets a caller write `code`, `title`, `created` and `modified`)."""
+
+#: The list's canonical sort keys (`services.list_sort`) in `LIST_SORT_COLUMNS`' names.
+_CANONICAL_TO_COLUMN = {"code": "unique_code", "title": "name", "created": "created_at", "modified": "updated_at"}
+
+
+#: Sorts whose value comes from tables the row query joins (the target stage, the component and category), read as
+#: `ListRow.order_value`; `references` is ordered by the caller from the references' text (`ROW_TEXT_SORTS`).
+ROW_ORDER_COLUMNS = ("target", "placement")
+ROW_TEXT_SORTS = ("references",)
+"""The extra keys `GET .../requirements?sort=` accepts: `target` (the target stage's position, then the level), `placement`
+(the component's then the category's name) and `references` (the first external reference's system and key)."""
+
+_LEVEL_RANK = case(
+    (RequirementVersion.level == RequirementLevel.REQUIREMENT, 0),
+    (RequirementVersion.level == RequirementLevel.RECOMMENDED, 1),
+    else_=2,
+)
+
+
+def _row_order_expression(sort: str | None) -> ColumnElement[Any] | None:
+    """The SQL value behind a `ROW_ORDER_COLUMNS` sort, or `None` for any other sort: the target stage's position times
+    ten plus the level's rank (mandatory, recommended, optional), or the component name and category name, lower-cased
+    and joined by a control character that sorts before any letter."""
+    if sort == "target":
+        return ProjectStage.sort_order * 10 + _LEVEL_RANK
+    if sort == "placement":
+        return func.lower(ProjectComponent.name) + "\x01" + func.lower(ProjectCategory.name)
+    return None
+
+
+def list_sort_column(sort: str | None) -> str | None:
+    """`sort` as one of `LIST_SORT_COLUMNS` (a canonical key such as `title` is translated), or `None` when it is neither."""
+    if sort is None:
+        return None
+    column = _CANONICAL_TO_COLUMN.get(sort, sort)
+    return column if column in LIST_SORT_COLUMNS else None
+
+
+def list_row_sort_value(row: ListRow, column: str) -> Any:
+    """The value a `ListRow` is ordered by for `column` (one of `LIST_SORT_COLUMNS` or `ROW_ORDER_COLUMNS`): the order a
+    widened scope applies in Python after joining several projects' rows, the same as the database's order for one project."""
+    if column in ROW_ORDER_COLUMNS:
+        return row.order_value
+    if column == "status":
+        return row.status.value
+    if column in ("created_at", "updated_at"):
+        return instant(getattr(row, column))
+    return getattr(row, column)
 
 
 def _sql_order(sort: str | None, descending: bool) -> list:
     """The ORDER BY for a list: the project's component, category and manual order when `sort` is None, else one
     column. Text is ordered by its lower-cased bytes (`COLLATE "C"`, the same order as Python's `str.lower()`
-    comparison), never the database's locale, so the order does not depend on the server's collation. The
-    creation time and id break ties so a page is stable."""
+    comparison), never the database's locale, so the order does not depend on the server's collation, and a code by
+    its prefix and then its number (`REQ-2` before `REQ-10`). The creation time and id break ties so a page is stable."""
     keys: list[Any]
-    if sort is None:
+    column_key = list_sort_column(sort)
+    row_order = _row_order_expression(sort)
+    if row_order is not None:
+        keys = apply_direction([row_order.collate("C") if sort == "placement" else row_order], descending)
+    elif column_key is None:
         keys = [ProjectComponent.sort_order, ProjectCategory.sort_order, RequirementVersion.sort_order]
     else:
-        column = {
-            "unique_code": func.lower(Requirement.unique_code).collate("C"),
-            "name": func.lower(RequirementVersion.name).collate("C"),
-            "status": cast(RequirementVersion.status, String).collate("C"),
-            "created_at": Requirement.created_at,
-        }[sort]
-        keys = [column.desc() if descending else column]
+        columns: Any = {
+            "unique_code": code_order_columns(Requirement.unique_code),
+            "name": [text_order_column(RequirementVersion.name)],
+            "status": [cast(RequirementVersion.status, String).collate("C")],
+            "created_at": [Requirement.created_at],
+            "updated_at": [Requirement.updated_at],
+        }[column_key]
+        keys = apply_direction(columns, descending)
     return [*keys, Requirement.created_at, Requirement.id]
+
+
+def _alias_clause(*where: ColumnElement[bool]) -> ColumnElement[bool]:
+    """An EXISTS over the requirement's active aliases that satisfy `where` (a component or category match)."""
+    return exists().where(RequirementAlias.requirement_id == Requirement.id, RequirementAlias.is_retired.is_(False), *where)
 
 
 def filter_requirement_rows(
@@ -579,16 +658,29 @@ def filter_requirement_rows(
 
     if filters.is_completed is not None:
         conditions.append(Requirement.is_completed.is_(filters.is_completed))
-    if filters.component_id:
-        conditions.append(Requirement.component_id == filters.component_id)
-    if filters.category_id:
-        conditions.append(Requirement.category_id == filters.category_id)
+    # A requirement also sits in the places of its aliases, so a component or category filter matches those too.
+    # Several ids match as every other record list's placement filter does: a requirement in any listed component or
+    # any listed category.
+    if filters.component_ids or filters.category_ids:
+        places: list[ColumnElement[bool]] = []
+        if filters.component_ids:
+            places.append(Requirement.component_id.in_(filters.component_ids))
+            places.append(_alias_clause(RequirementAlias.component_id.in_(filters.component_ids)))
+        if filters.category_ids:
+            places.append(Requirement.category_id.in_(filters.category_ids))
+            places.append(_alias_clause(RequirementAlias.category_id.in_(filters.category_ids)))
+        conditions.append(or_(*places))
     if any(t.strip() for t in filters.tag_names):
         conditions.append(Requirement.id.in_(
             tag_service.tagged_ids(
                 db, project=project_or_404(db, project_id), artefact_type="requirement",
                 names=list(filters.tag_names), match_all=filters.tag_match_all,
             )
+        ))
+    if filters.external_systems or filters.external_key:
+        conditions.append(reference_clause(
+            db, project_or_404(db, project_id).organization_id, "requirement", Requirement.id,
+            filters.external_systems, filters.external_key,
         ))
     if filters.target_stage_id:
         conditions.append(RequirementVersion.target_stage_id == filters.target_stage_id)
@@ -604,6 +696,10 @@ def filter_requirement_rows(
         conditions.append(or_(
             func.strpos(func.lower(RequirementVersion.name), needle) > 0,
             func.strpos(func.lower(Requirement.unique_code), needle) > 0,
+            exists().where(
+                RequirementAlias.requirement_id == Requirement.id,
+                func.strpos(func.lower(RequirementAlias.unique_code), needle) > 0,
+            ),
         ))
     if filters.has_comments:
         conditions.append(exists().where(
@@ -619,10 +715,12 @@ def filter_requirement_rows(
         query = query.outerjoin(RequirementVersion, and_(
             RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
         ))
-        if sort is None:
+        if list_sort_column(sort) is None:
             query = query.join(ProjectComponent, ProjectComponent.id == Requirement.component_id).join(
                 ProjectCategory, ProjectCategory.id == Requirement.category_id,
             )
+        if sort == "target":
+            query = query.outerjoin(ProjectStage, ProjectStage.id == RequirementVersion.target_stage_id)
         return query.where(*conditions)
 
     def matching_count() -> int:
@@ -637,13 +735,21 @@ def filter_requirement_rows(
 
     # A keyword narrows in Python, so the page is cut after it; every other filter is already in the query.
     paged_in_sql = not filters.keyword
-    query = joined(select(
-        Requirement.id, Requirement.unique_code, Requirement.created_at,
+    row_order = _row_order_expression(sort)
+    columns: list[Any] = [
+        Requirement.id, Requirement.unique_code, Requirement.created_at, Requirement.updated_at,
         RequirementVersion.name, RequirementVersion.status, RequirementVersion.sort_order,
-    )).order_by(*_sql_order(sort, descending))
+    ]
+    query = joined(select(*columns, *([row_order] if row_order is not None else []))).order_by(*_sql_order(sort, descending))
     if paged_in_sql and limit is not None:
         query = query.limit(limit).offset(offset)
-    rows = [ListRow(row[0], project_id, *row[1:]) for row in db.execute(query).all()]
+    rows = [
+        ListRow(
+            row[0], project_id, row[1], row[2], row[3], row[4], row[5], row[6],
+            order_value=row[7] if row_order is not None else None,
+        )
+        for row in db.execute(query).all()
+    ]
     if any(row.status is None for row in rows):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
     if paged_in_sql:
@@ -725,6 +831,7 @@ def edit_requirement(
     component_id: UUID | None = None,
     category_id: UUID | None = None,
     keywords: list[str] | None = None,
+    additional_places: Sequence[PlacementPair] | None = None,
 ) -> RequirementVersion:
     """A direct edit of a requirement: the version lock, validation and new version the edit endpoint applies.
 
@@ -740,6 +847,8 @@ def edit_requirement(
         custom_fields: The **complete** custom field values to store (validated here), or `None` to keep them.
         component_id / category_id: Move the requirement (both given, the category inside the component).
         keywords: Replace the keyword set, or `None` to leave it.
+        additional_places: Make the requirement sit in exactly these further places, each with its own alias
+            code (`services.requirement_aliases.set_aliases`), or `None` to leave them.
 
     Returns:
         The new version.
@@ -748,6 +857,8 @@ def edit_requirement(
         HTTPException: 409 when the requirement is approved (changes then go through a change request); 400/422
             for a custom field value, person, component or category that is not valid for the project.
     """
+    from app.services import requirement_aliases  # imported here: that module builds on this one
+
     current_version = get_current_version_for_update(db, requirement.id)
     if is_locked(current_version):
         raise HTTPException(status.HTTP_409_CONFLICT, "This requirement is approved; changes must be made via a change request.")
@@ -778,6 +889,10 @@ def edit_requirement(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
         requirement.component_id = component_id
         requirement.category_id = category_id
+        # An alias in the pair the requirement just moved to would name the same place twice.
+        requirement_aliases.drop_redundant(db, project, requirement, actor.id)
+    if additional_places is not None:
+        requirement_aliases.set_aliases(db, project=project, requirement=requirement, actor_id=actor.id, pairs=additional_places)
     if keywords is not None:
         set_keywords(db, requirement, keywords, actor.id)
     return new_version

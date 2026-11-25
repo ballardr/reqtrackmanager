@@ -2,19 +2,15 @@
  * Module: utils/clarity
  *
  * Optional Microsoft Clarity session analytics for a demonstration deployment.
- *
- * Responsibilities:
- * - Validate the project identifier supplied at container start (`window.__ENV__.CLARITY_PROJECT_ID`).
- * - Insert Clarity's loader script once, only when a valid identifier is present.
- *
- * Design decisions:
- * - Off unless the operator sets `DEMO_CLARITY_PROJECT_ID`; a production deployment never sets it, so no
- *   third-party script loads and nothing is sent to a vendor.
- * - The identifier is checked against a strict pattern before it is placed in a script URL, so a malformed
- *   value can never inject script or change the host.
- * - What Clarity records and masks is configured in the operator's own Clarity project, not here.
- *
- * External dependencies: Microsoft Clarity (`https://www.clarity.ms/tag/<id>`), loaded only when enabled.
+ * Responsibilities: validate the project identifier supplied at container start
+ * (`window.__ENV__.CLARITY_PROJECT_ID`) and insert Clarity's loader script once,
+ * only when a valid identifier is present.
+ * Design: off unless the operator sets `DEMO_CLARITY_PROJECT_ID`, so a
+ * production deployment loads no third-party script. The identifier is checked
+ * against a strict pattern before it is placed in a script URL, so a malformed
+ * value cannot inject script or change the host. What Clarity records and masks
+ * is configured in the operator's own Clarity project.
+ * External dependencies: Microsoft Clarity (`https://www.clarity.ms/tag/<id>`).
  */
 
 const PROJECT_ID_PATTERN = /^[A-Za-z0-9]{4,32}$/;
@@ -36,7 +32,7 @@ export function validClarityProjectId(value: string | undefined | null): string 
  *
  * @param projectId The raw configured identifier (`window.__ENV__?.CLARITY_PROJECT_ID`).
  * @param doc The document to add the script to.
- * @returns True when the script was added by this call.
+ * @returns True when this call added the script.
  * @sideEffects Appends a `<script async>` element to the document head and defines `window.clarity`.
  */
 export function loadClarity(projectId: string | undefined | null, doc: Document = document): boolean {

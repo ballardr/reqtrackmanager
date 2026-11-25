@@ -1,17 +1,11 @@
 /**
  * Module: modules/compliance/MappingTypesPanel
  *
- * The organisation-scoped cross-standard mapping relationship-type
- * vocabulary (§19 — Equivalent/Satisfies/Derived From/Related To/Overlaps/
- * Conflicts With are examples, not a fixed enum; an org defines its own).
- * Reuses `DefinitionList` for the shared rename/reorder/add/
- * delete-with-reassign shape, extended with its new `renderExtra` slot
- * (added alongside this panel, see `DefinitionList.tsx`) for
- * `implies_equivalence` — a boolean `DefinitionList`'s own text-only
- * `fields` contract can't express. Toggling it is a separate call from
- * renaming (both go through the same `PATCH` endpoint, which replaces both
- * fields together, so each handler always sends the other field's current,
- * unchanged value alongside the one it's actually changing).
+ * The organisation-scoped cross-standard mapping relationship-type vocabulary (§19): Equivalent, Satisfies, Derived From,
+ * Related To, Overlaps and Conflicts With are examples, not a fixed enum. It reuses `DefinitionList` for rename, reorder, add
+ * and delete-with-reassign, with its `renderExtra` slot for `implies_equivalence`, a boolean the text-only `fields` contract
+ * cannot express. Toggling it is a separate call from renaming, but both use one `PATCH` that replaces both fields, so each
+ * handler sends the other field's current value unchanged.
  */
 import { useState } from "react";
 import { Spinner } from "../../components/Spinner";
@@ -74,6 +68,7 @@ export function MappingTypesPanel({ orgId }: { orgId: string }) {
         }}
         deleteLabel="Delete relationship type"
         addLabel="Add relationship type"
+        extraContent="controls"
         renderExtra={(item) => (
           <span key="implies-equivalence" className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>Implies equivalence</span>

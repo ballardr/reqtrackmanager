@@ -4,20 +4,14 @@ Revision ID: 0048
 Revises: 0047
 Create Date: 2026-09-28
 
-Adds the six tables backing Context & Strategy's Strategy data model
-(organisation & project scope):
+Adds the six tables of Context & Strategy's Strategy data model (organisation and project scope):
 
-- `strategies` (identity row: `scope` discriminator, exactly one of
-  `organization_id`/`project_id` set, enforced by a CHECK constraint).
-- `strategy_versions` (temporal content snapshot, mirrors
-  `requirement_versions` exactly).
-- `strategy_comments` / `strategy_comment_files` / `strategy_files` — this
-  module's own module-local comment-thread and attachment tables, mirroring
-  migration 0045's `decision_comments`/`decision_comment_files`/
-  `decision_files`.
+- `strategies`: the identity row (`scope` discriminator; a CHECK keeps exactly one of `organization_id` and `project_id`).
+- `strategy_versions`: the temporal content snapshot, as `requirement_versions`.
+- `strategy_comments`, `strategy_comment_files` and `strategy_files`: the module-local comment and attachment tables, as
+  migration 0045's `decision_comments`, `decision_comment_files` and `decision_files`.
 
-No backfill needed — this is a brand-new artefact type with no pre-existing
-rows anywhere.
+A new artefact type, so no backfill.
 """
 
 from collections.abc import Sequence

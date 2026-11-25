@@ -3,29 +3,27 @@ Module: services.component_stages
 
 Component phases: with the project switch on, each component follows a workflow for each project stage.
 
-Responsibilities:
-- Resolve the project's `component_phases_mode` (own setting, else the nearest ancestor's, else off).
-- Read every component's track (workflow, phase, owner, "not applicable") for a project's stages in a few
-  queries; a component with no row follows the stage's workflow at its starting phase.
-- Change a track (workflow, owner, not applicable) and move it between phases through the same
-  `stage_workflows.apply_phase_move` a stage uses, so a locked phase baselines and approves only that
-  component's requirements for the stage.
-- Say which components a project stage's own lock leaves to their tracks (`tracked_component_ids`).
+Responsibilities: resolve the project's `component_phases_mode` (own, else nearest ancestor's, else off); read
+every component's track (workflow, phase, owner, "not applicable") for a project's stages in a few queries (a
+component with no row follows the stage's workflow at its starting phase); change a track and move it between
+phases through `stage_workflows.apply_phase_move`, so a locked phase baselines and approves only that
+component's requirements for the stage; say which components a stage's own lock leaves to their tracks
+(`tracked_component_ids`).
 
 Design decisions:
-- Off means inert: nothing is read, shown or applied, and the project stage is the only phase (rows are kept,
-  so switching back on restores them). A project with the switch unset behaves exactly as before.
-- A component's lock approves that component's requirements that target that stage (Decided by: User), and the
-  project stage's own lock then skips components that have an applicable track for it (Decided by: User).
-- The track's owner (a user or a group) may move it, including into and out of a locked phase, as well as a
-  project manager (Decided by: User; recorded in the SOC 2 review, because a nominee can then approve).
+- Off means inert: nothing is read, shown or applied and the project stage is the only phase (rows are kept,
+  so switching on restores them).
+- A component's lock approves that component's requirements targeting that stage, and the project stage's lock
+  skips components with an applicable track for it (Decided by: User).
+- The track's owner (user or group) may move it, including into and out of a locked phase, as may a project
+  manager (Decided by: User; recorded in the SOC 2 review, because a nominee can then approve).
 - Progression between stages is advisory (Decided by: User): a component can start the next stage at any time;
-  `previous_closed` only tells the screen whether the earlier stage has reached a closed phase.
-- A track may change workflow, or become not applicable, only while it is in an open phase with no baseline of
-  its own, the rule a stage follows, so an edit cannot unlock approved requirements.
+  `previous_closed` only tells the screen whether the earlier stage reached a closed phase.
+- A track may change workflow or become not applicable only in an open phase with no baseline of its own (the
+  stage rule), so an edit cannot unlock approved requirements.
 - Nested projects: a state, not a definition table, so there is no fallback; only the switch inherits.
 
-Dependencies: `services.stage_workflows` (phases, moves), `services.principals` (owner), `services.rbac`.
+Dependencies: `services.stage_workflows`, `services.principals`, `services.rbac`.
 """
 
 from __future__ import annotations

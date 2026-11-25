@@ -71,8 +71,8 @@ def _clause_provider() -> ArtefactSearchProvider:
             updated_at=ComplianceRequirement.updated_at, organization_id=ComplianceStandard.organization_id,
         ),
         fields=(
-            SearchField("description", "Description", ComplianceRequirement.description),
-            SearchField("reasoning", "Reasoning", ComplianceRequirement.reasoning),
+            SearchField("description", "Description", ComplianceRequirement.description, markdown=True),
+            SearchField("reasoning", "Reasoning", ComplianceRequirement.reasoning, markdown=True),
         ),
         status_labels={"draft": "Draft", "published": "Published", "retired": "Retired"},
         organization_owned=True,
@@ -101,10 +101,10 @@ def _project_requirement_provider() -> ArtefactSearchProvider:
             updated_at=ProjectComplianceRequirement.updated_at,
         ),
         fields=(
-            SearchField("description", "Description", ComplianceRequirement.description),
-            SearchField("reasoning", "Reasoning", ComplianceRequirement.reasoning),
-            SearchField("justification", "Justification", ProjectComplianceRequirement.justification),
-            SearchField("notes", "Notes", ProjectComplianceRequirement.notes),
+            SearchField("description", "Description", ComplianceRequirement.description, markdown=True),
+            SearchField("reasoning", "Reasoning", ComplianceRequirement.reasoning, markdown=True),
+            SearchField("justification", "Justification", ProjectComplianceRequirement.justification, markdown=True),
+            SearchField("notes", "Notes", ProjectComplianceRequirement.notes, markdown=True),
         ),
         status_labels=COMPLIANCE_STATUS_LABEL,
     )
@@ -132,8 +132,8 @@ def _assessment_provider() -> ArtefactSearchProvider:
             is_archived=ProjectCompliance.is_archived, updated_at=ComplianceRequiredActionAssessment.updated_at,
         ),
         fields=(
-            SearchField("description", "Description", ComplianceRequiredAction.description),
-            SearchField("notes", "Notes", ComplianceRequiredActionAssessment.notes),
+            SearchField("description", "Description", ComplianceRequiredAction.description, markdown=True),
+            SearchField("notes", "Notes", ComplianceRequiredActionAssessment.notes, markdown=True),
         ),
         status_labels=_ASSESSMENT_STATUS_LABEL,
     )
@@ -148,8 +148,8 @@ def _evidence_provider() -> ArtefactSearchProvider:
             updated_at=ComplianceEvidence.updated_at,
         ),
         fields=(
-            SearchField("description", "Description", ComplianceEvidence.description),
-            SearchField("notes", "Notes", ComplianceEvidence.notes),
+            SearchField("description", "Description", ComplianceEvidence.description, markdown=True),
+            SearchField("notes", "Notes", ComplianceEvidence.notes, markdown=True),
             SearchField("issuing_organisation", "Issuing organisation", ComplianceEvidence.issuing_organisation),
         ),
     )

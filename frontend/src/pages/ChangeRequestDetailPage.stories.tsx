@@ -7,6 +7,8 @@ import type {
   RequirementLink,
 } from "../api/types";
 import { buildGraph, buildGraphNode } from "../testing/artefactLinksFixtures";
+import { promoteViaTrack } from "../testing/lifecycleTrack";
+import { chooseRecordAction, recordActionNames } from "../testing/recordActions";
 import { activityPage } from "../testing/recordActivityFixtures";
 import {
   buildActionType,
@@ -27,11 +29,7 @@ const CR_ID = "cr-1";
 
 const emptyTally: ChangeRequestVoteTally = { votes: [], approve_count: 0, reject_count: 0 };
 
-/** Same role-permutation-pinning rationale as RequirementDetailPage.stories
- * — `canDecide`/`canManageTasks`/`canVote` mirror `rbac.py`'s role
- * hierarchy in JS for UI convenience only (see docs/decisions.md); these
- * stories catch drift between the two rather than re-implementing the
- * check itself. */
+/** Same role-permutation pinning as RequirementDetailPage.stories: `canDecide`, `canManageTasks` and `canVote` mirror `rbac.py`'s role hierarchy in JS for UI convenience only (see docs/decisions.md); these stories catch drift between the two instead of re-implementing the check. */
 function mockChangeRequestDetailApis(
   myRoles: ProjectRole[], crOverrides: Parameters<typeof buildChangeRequest>[0] = {},
   extra: {
@@ -85,7 +83,7 @@ export default meta;
 type Story = StoryObj<typeof ChangeRequestDetailPage>;
 
 /** submit/withdraw aren't role-gated at all (project settings, not rbac,
- * control who may create one in the first place) — a draft CR shows both
+ * control who may create one in the first place) — a draft CR offers the next step Submitted and a Withdraw row
  * regardless of role. */
 export const DraftShowsSubmitAndWithdraw: Story = {
   beforeEach: () => {
@@ -94,8 +92,8 @@ export const DraftShowsSubmitAndWithdraw: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Add password reset flow" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Submit" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Submitted" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Change request")).toContain("Withdraw");
     await expect(canvas.getByRole("link", { name: "← Change requests" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/change-requests`);
   },
 };
@@ -133,6 +131,24 @@ export const AddActionShowsProposedActionContent: Story = {
   },
 };
 
+/** The proposed action's description is Markdown, shown formatted on the detail page, not as typed. */
+export const AddActionDescriptionIsShownFormatted: Story = {
+  beforeEach: () => {
+    mockChangeRequestDetailApis(["member"], {
+      kind: "add_action", status: "submitted",
+      proposed_action_title: "Verify audit log retention", proposed_action_description: "A **full** sweep:\n\n- first\n- second",
+      proposed_action_type_id: "at1", reason: "gap",
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Proposed action")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("full").tagName).toBe("STRONG"));
+    await expect(canvas.getAllByRole("listitem").some((item) => item.textContent === "first")).toBe(true);
+    await expect(canvas.queryByText(/\*\*/)).not.toBeInTheDocument();
+  },
+};
+
 /** The link-existing-action half of ADD_ACTION shows which action is being
  * linked, resolved from `GET .../actions/{id}` rather than a bare id. */
 export const AddActionShowsLinkedActionPreview: Story = {
@@ -151,10 +167,7 @@ export const AddActionShowsLinkedActionPreview: Story = {
   },
 };
 
-/** REMOVE_ACTION (closing the asymmetry
- * `unlink_action` had with ADD_ACTION's already-gated add side) resolves
- * the same way ADD_ACTION's link-existing preview does, and also hides
- * Target/Level. */
+/** REMOVE_ACTION resolves like ADD_ACTION's link-existing preview (`unlink_action` is gated on the remove side as ADD_ACTION is on the add side) and also hides Target/Level. */
 export const RemoveActionShowsLinkedActionPreview: Story = {
   beforeEach: () => {
     const action = buildRequirementAction({ id: "action-9", unique_code: "ACT-009", title: "Existing security review" });
@@ -172,10 +185,7 @@ export const RemoveActionShowsLinkedActionPreview: Story = {
   },
 };
 
-/** ADD_LINK (an opt-in sibling of ADD_ACTION
- * for `RequirementLink`) is the one-link case of the proposed-links mechanism:
- * the request page lists the link exactly as a modify or new
- * request would, the relationship read from the requirement's side. */
+/** ADD_LINK (an opt-in sibling of ADD_ACTION for `RequirementLink`) is the one-link case of the proposed-links mechanism: the request page lists the link as a modify or new request would, with the relationship read from the requirement's side. */
 export const AddLinkShowsProposedLinkContent: Story = {
   beforeEach: () => {
     const requirement = buildRequirement({ id: "requirement-1", unique_code: "AUTH-001", name: "Users can reset their password" });
@@ -261,7 +271,7 @@ export const ApprovingWithProposedLinksOpensTheMergeDialog: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Approve" }));
+    await promoteViaTrack(canvas, "Approved");
     const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve change request" }));
     const first = await dialog.findByRole("checkbox", { name: /Merge link: Depends on AUTH-002/ });
     await expect(first).toBeChecked();
@@ -316,8 +326,7 @@ export const SubmitShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Submit" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Submit" }));
+    await promoteViaTrack(canvas, "Submitted");
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringContaining("/submit")));
     await expect(within(document.body).getByText("Change request submitted")).toBeInTheDocument();
   },
@@ -331,33 +340,30 @@ export const RejectShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Change request actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Change request", "Reject");
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringContaining("/decide"), { approve: false, note: "" }));
     await expect(within(document.body).getByText("Change request rejected")).toBeInTheDocument();
   },
 };
 
-/** A project manager sees Approve/Reject on a submitted CR — `canDecide`. */
+/** A project manager sees the next step Approved and a Reject row on a submitted CR — `canDecide`. */
 export const SubmittedManagerCanDecide: Story = {
   beforeEach: () => {
     mockChangeRequestDetailApis(["project_manager"], { status: "submitted", proposed_name: "Add password reset flow" });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Change request")).toContain("Reject");
   },
 };
 
 /**
- * C-G-11: when a MODIFY_REQUIREMENT change request targets a currently-
- * completed requirement, a project manager sees a second "Approve and clear
- * completion" action alongside the plain "Approve" — plain Approve keeps
- * `is_completed` untouched (today's default carry-forward behaviour); the
- * second button explicitly clears it via `clear_completion: true`. Neither
- * button appears for a target that isn't completed (`SubmittedManagerCanDecide`
- * above pins that single-button default).
+ * C-G-11: when a MODIFY_REQUIREMENT change request targets a completed requirement, a project manager sees a second
+ * "Approve and clear completion" action beside the plain "Approve". Plain Approve leaves `is_completed` untouched
+ * (the default carry-forward); the second button clears it via `clear_completion: true`. Neither button appears for a
+ * target that is not completed (`SubmittedManagerCanDecide` above pins the single-button default).
  */
 export const SubmittedManagerSeesClearCompletionOptionForCompletedTarget: Story = {
   beforeEach: () => {
@@ -373,8 +379,8 @@ export const SubmittedManagerSeesClearCompletionOptionForCompletedTarget: Story 
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Approve and clear completion" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Change request")).toContain("Approve and clear completion");
   },
 };
 
@@ -394,8 +400,8 @@ export const ApproveAndClearCompletionSendsFlag: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const button = await canvas.findByRole("button", { name: "Approve and clear completion" });
-    await userEvent.click(button);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Change request actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Change request", "Approve and clear completion");
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         expect.stringContaining("/decide"),
@@ -414,7 +420,7 @@ export const SubmittedStakeholderCanVoteNotDecide: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Vote to approve" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Next step: Approved" })).not.toBeInTheDocument();
   },
 };
 
@@ -425,8 +431,10 @@ export const SubmittedMemberCannotDecideOrVote: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Change request actions" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Change request")).toContain("Withdraw");
+    await expect(canvas.queryByRole("button", { name: "Next step: Approved" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: "You do not have permission to promote this record to Approved." })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Vote to approve" })).not.toBeInTheDocument();
   },
 };
@@ -471,10 +479,7 @@ export const ProjectAdministratorCanAddTask: Story = {
   },
 };
 
-/** MODIFY_REQUIREMENT change requests only render the fields they actually
- * propose to change (`changed_fields`) — matches ChangeRequestsPage's
- * "ticking pre-fills, unticked is never shown" rule from
- * help/03-change-requests.md. */
+/** MODIFY_REQUIREMENT change requests render only the fields they propose to change (`changed_fields`), as ChangeRequestsPage's "ticking pre-fills, unticked is never shown" rule (help/03-change-requests.md). */
 export const ModifyRequirementShowsOnlyChangedFields: Story = {
   beforeEach: () => {
     mockChangeRequestDetailApis(["project_manager"], {

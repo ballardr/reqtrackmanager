@@ -9,16 +9,15 @@ installCleanupHook();
 /**
  * Job to be done: a person who cannot sign in gets back in without anyone seeing their password, and an
  * administrator can help or force the issue.
+ *  1. "Forgot your password?" emails a single-use link; the page clears the secret from the address bar, the new
+ *     password works and the old one does not, and the link cannot be used twice.
+ *  2. An organisation admin sends a member a reset link from Users (the member receives it; the admin sees only a
+ *     confirmation).
+ *  3. A server admin forces a credential reset for one organisation from Server Management: the member's correct
+ *     password is refused with the reset message, and the emailed link restores access.
  *
- *  1. "Forgot your password?" emails a single-use link; the page clears the secret from the address bar,
- *     the new password works and the old one does not, and the link cannot be used twice.
- *  2. An organisation admin sends a member a reset link from Users (the member receives it; the admin sees
- *     only a confirmation).
- *  3. A server admin forces a credential reset for one organisation from Server Management: the member's
- *     correct password is now refused with the reset message, and the emailed link restores access.
- *
- * Every account and organisation is disposable and uses a unique email, so reruns and other specs are
- * unaffected. The disposable organisation (and with it every member's access) is deleted afterwards.
+ * Every account and organisation is disposable with a unique email, and the organisation (and every member's access)
+ * is deleted afterwards.
  */
 
 const API = "http://localhost:8000/api/v1";

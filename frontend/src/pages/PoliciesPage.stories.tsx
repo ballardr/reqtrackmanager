@@ -5,7 +5,9 @@ import { api } from "../api/client";
 import {
   buildMemberPolicy, buildPendingPolicy, buildPolicyBody, buildPublicPolicy, buildUser, withAuth, withPolicyAcceptance, withRouter, withToast,
 } from "../testing/storybook-helpers";
-import { PoliciesPage } from "./PoliciesPage";
+import { mockLicenceFetch } from "../testing/licenceFixtures";
+import { MemoryRouter } from "react-router-dom";
+import { PoliciesPage, PublicPoliciesPage } from "./PoliciesPage";
 
 const PRIVACY = buildPublicPolicy({ id: "p1", key: "privacy", title: "Privacy policy" });
 const DATA = buildPublicPolicy({ id: "p2", key: "data", title: "Data policy", effective_from: null, version: 1, body: buildPolicyBody("Data is kept for seven years.") });
@@ -23,20 +25,22 @@ export default meta;
 
 type Story = StoryObj<typeof PoliciesPage>;
 
-/** With none published the page does not exist: it redirects to the front page and shows nothing. */
-export const NoPoliciesPublished: Story = {
-  decorators: [withRouter("/policies", "/policies/:policyId?")],
-  beforeEach: () => mockPolicies(),
+/** With none published the Licences group is all the page holds: it opens on the product licence and has a menu of its sections. */
+export const NoPoliciesPublishedShowsLicences: Story = {
+  decorators: [withRouter("/policies", "/policies/*")],
+  beforeEach: () => { mockPolicies(); mockLicenceFetch(); },
   play: async ({ canvasElement }) => {
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/public/policies"));
-    await expect(within(canvasElement).queryByRole("heading", { name: "Policies" })).not.toBeInTheDocument();
-    await expect(within(canvasElement).queryByText("No policy has been published yet.")).not.toBeInTheDocument();
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("heading", { name: "Product licence", level: 2 })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Third-party components" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Fonts" })).toBeInTheDocument();
+    await expect(canvas.queryByText("No policy has been published yet.")).not.toBeInTheDocument();
   },
 };
 
-/** One policy shows its text, effective date and version without any other policy in the menu. */
+/** One policy shows its text, effective date and version; the Licences group sits beside it in the menu. */
 export const OnePolicy: Story = {
-  decorators: [withRouter("/policies", "/policies/:policyId?")],
+  decorators: [withRouter("/policies", "/policies/*")],
   beforeEach: () => mockPolicies(PRIVACY),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -49,7 +53,7 @@ export const OnePolicy: Story = {
 
 /** Several policies list in the menu, the first is shown, and choosing another shows it. */
 export const SeveralPoliciesSwitchFromTheMenu: Story = {
-  decorators: [withRouter("/policies", "/policies/:policyId?")],
+  decorators: [withRouter("/policies", "/policies/*")],
   beforeEach: () => mockPolicies(PRIVACY, DATA),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -61,7 +65,7 @@ export const SeveralPoliciesSwitchFromTheMenu: Story = {
 
 /** An address naming a policy that is not published shows the first policy, so the page never dead-ends. */
 export const UnknownAddressShowsTheFirstPolicy: Story = {
-  decorators: [withRouter("/policies/p9", "/policies/:policyId?")],
+  decorators: [withRouter("/policies/p9", "/policies/*")],
   beforeEach: () => mockPolicies(PRIVACY),
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText("We keep only what the service needs.")).toBeInTheDocument();
@@ -83,7 +87,7 @@ function mockWithMember(server: ReturnType<typeof buildPublicPolicy>[], member: 
 
 /** A signed-in member sees the server's policies, then their organisation's under its name; choosing one shows its text. */
 export const MemberSeesOrganisationPoliciesBesideTheServers: Story = {
-  decorators: [withRouter("/policies", "/policies/:policyId?"), withAuth(buildUser())],
+  decorators: [withRouter("/policies", "/policies/*"), withAuth(buildUser())],
   beforeEach: () => mockWithMember([PRIVACY], [ACCESS, CONFIDENTIALITY, OTHER_ORG]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -100,7 +104,7 @@ export const MemberSeesOrganisationPoliciesBesideTheServers: Story = {
 
 /** A member of an organisation with policies but no server policy still gets the page. */
 export const OnlyOrganisationPolicies: Story = {
-  decorators: [withRouter("/policies", "/policies/:policyId?"), withAuth(buildUser())],
+  decorators: [withRouter("/policies", "/policies/*"), withAuth(buildUser())],
   beforeEach: () => mockWithMember([], [ACCESS]),
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByRole("heading", { name: "Access policy", level: 2 })).toBeInTheDocument();
@@ -109,7 +113,7 @@ export const OnlyOrganisationPolicies: Story = {
 
 /** A signed-out visitor never reads the member endpoint. */
 export const SignedOutNeverReadsOrganisationPolicies: Story = {
-  decorators: [withRouter("/policies", "/policies/:policyId?"), withAuth(null)],
+  decorators: [withRouter("/policies", "/policies/*"), withAuth(null)],
   beforeEach: () => mockWithMember([PRIVACY], [ACCESS]),
   play: async ({ canvasElement }) => {
     await within(canvasElement).findByRole("heading", { name: "Privacy policy", level: 2 });
@@ -119,7 +123,7 @@ export const SignedOutNeverReadsOrganisationPolicies: Story = {
 
 /** A policy the person must accept shows the panel with Accept, and accepting posts the version being read. */
 export const ARequiredPolicyShowsTheAcceptPanel: Story = {
-  decorators: [withToast(), withPolicyAcceptance([buildPendingPolicy({ id: "org-policy-1", version: 1 })]), withAuth(buildUser()), withRouter("/policies", "/policies/:policyId?")],
+  decorators: [withToast(), withPolicyAcceptance([buildPendingPolicy({ id: "org-policy-1", version: 1 })]), withAuth(buildUser()), withRouter("/policies", "/policies/*")],
   beforeEach: () => {
     const member = buildMemberPolicy({ id: "org-policy-1", title: "Confidentiality agreement", requires_acknowledgement: true });
     spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -139,7 +143,7 @@ export const ARequiredPolicyShowsTheAcceptPanel: Story = {
 
 /** A policy that is read but not pending (accepted, or not required) has no panel. */
 export const NoAcceptPanelWhenNothingIsPending: Story = {
-  decorators: [withPolicyAcceptance([]), withAuth(buildUser()), withRouter("/policies", "/policies/:policyId?")],
+  decorators: [withPolicyAcceptance([]), withAuth(buildUser()), withRouter("/policies", "/policies/*")],
   beforeEach: () => {
     const member = buildMemberPolicy({ id: "org-policy-1", title: "Access policy" });
     spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -151,5 +155,64 @@ export const NoAcceptPanelWhenNothingIsPending: Story = {
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByRole("heading", { name: "Access policy", level: 2 })).toBeInTheDocument();
     await expect(within(canvasElement).queryByText("Your acceptance is required")).not.toBeInTheDocument();
+  },
+};
+
+/** The Licences group lists its three sections; the product licence names the licence and links to its text and the source. */
+export const LicencesProductSection: Story = {
+  decorators: [withRouter("/policies/licences/product", "/policies/*")],
+  beforeEach: () => { mockPolicies(PRIVACY); mockLicenceFetch(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("heading", { name: "Product licence", level: 2 })).toBeInTheDocument();
+    await expect(canvas.getByText(/GNU Affero General Public License, version 3 \(AGPL-3.0-only\)/)).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Licence text" })).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(canvas.getByRole("link", { name: "Source code" })).toHaveAttribute("href", expect.stringMatching(/^https:\/\//));
+    await expect(canvas.getByRole("link", { name: "Commercial licence" })).toHaveAttribute("href", expect.stringMatching(/COMMERCIAL-LICENSE\.md$/));
+    await expect(canvas.getByRole("link", { name: "Product licence" })).toHaveAttribute("aria-current", "page");
+  },
+};
+
+/** Choosing a licence section from the menu shows it, and a policy stays reachable from the same menu. */
+export const LicencesMenuSwitchesBetweenSectionsAndPolicies: Story = {
+  decorators: [withRouter("/policies", "/policies/*")],
+  beforeEach: () => { mockPolicies(PRIVACY); mockLicenceFetch(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("We keep only what the service needs.")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Licences" }));
+    await userEvent.click(await canvas.findByRole("link", { name: "Fonts" }));
+    await expect(await canvas.findByRole("heading", { name: "Fonts", level: 2 })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("link", { name: "Privacy policy" }));
+    await expect(await canvas.findByText("We keep only what the service needs.")).toBeInTheDocument();
+  },
+};
+
+/** A signed-out visitor reads the Licences group through the static assets only, never an API read of the member policies. */
+export const LicencesAreReadableSignedOut: Story = {
+  decorators: [withRouter("/policies/licences/components", "/policies/*"), withAuth(null)],
+  beforeEach: () => { mockWithMember([], []); mockLicenceFetch(); },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("heading", { name: "Third-party components", level: 2 })).toBeInTheDocument();
+    await expect(api.get).not.toHaveBeenCalledWith("/api/v1/policies/mine");
+  },
+};
+
+/** An unknown licence section falls back to the product licence rather than a blank page. */
+export const UnknownLicenceSectionShowsTheProductLicence: Story = {
+  decorators: [withRouter("/policies/licences/nothing", "/policies/*")],
+  beforeEach: () => { mockPolicies(); mockLicenceFetch(); },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("heading", { name: "Product licence", level: 2 })).toBeInTheDocument();
+  },
+};
+
+/** The signed-out page renders outside any route, yet still selects the policy or licence section the address names. */
+export const SignedOutPageReadsTheAddressWithoutARoute: Story = {
+  render: () => <MemoryRouter initialEntries={["/policies/p2"]}><PublicPoliciesPage /></MemoryRouter>,
+  beforeEach: () => { mockPolicies(PRIVACY, DATA); mockLicenceFetch(); },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText("Data is kept for seven years.")).toBeInTheDocument();
+    await expect(within(canvasElement).getByRole("link", { name: "Back to sign in" })).toBeInTheDocument();
   },
 };

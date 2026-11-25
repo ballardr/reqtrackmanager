@@ -5,11 +5,11 @@ Revises: 0081
 Create Date: 2026-10-12
 
 `requirement_actions.assignee_id` and
-`change_request_versions.proposed_action_assignee_id` may now name a user, an
+`change_request_versions.proposed_action_assignee_id` may name a user, an
 organisation group or a project group.
 Each gets a `*_type` column
 (existing rows backfill to `user`), the foreign key to `users` is dropped (the
-id now points at one of three tables; the service validates it), and a check
+id points at one of three tables; the service validates it), and a check
 constraint keeps the pair consistent. Every change request version row is
 backfilled, so history keeps who each version proposed.
 """

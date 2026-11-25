@@ -1,20 +1,16 @@
 /**
  * Module: modules/risk_management/RiskDetailPage
  *
- * A single risk's full detail as a routed page (`/projects/:projectId/modules/
- * risk_management/risks/:riskId`, `module.ts`; the path `module.ts` also
- * declares for `artefactPaths`). A risk carries a lifecycle with
- * a dialog per move, treatment verdicts, a review history, version history,
- * attachments, comments and a Links panel, so it is a page rather than a
+ * A single risk's full detail as a routed page (`/projects/:projectId/modules/risk_management/risks/:riskId`, the path
+ * `module.ts` also declares for `artefactPaths`). A risk carries a lifecycle with a dialog per move, treatment
+ * verdicts, a review history, versions, attachments, comments and a Links panel, so it is a page rather than a
  * `SidePanel` (docs/ux-style-guide.md "Pattern: entity detail panel").
  *
- * The page fetches its own data. Edit is a Modal layer that sends only changed
- * fields (a new version). The matrix shows where the risk sits, inherent and
- * residual, on the project's configured grid. The Links panel makes the
- * relationships (Mitigated by, Treated by, Verified by, ...); `RiskTreatmentsPanel`
- * then records whether each treatment actually works. Every mutating control
- * always renders regardless of role; the backend enforces Risk Manager / Risk
- * Acceptor and a 403 surfaces as a toast or in the dialog.
+ * The page fetches its own data. Edit is a Modal layer that sends only changed fields (a new version). The matrix
+ * shows where the risk sits, inherent and residual, on the project's configured grid. The Links panel makes the
+ * relationships (Mitigated by, Treated by, Verified by, ...); `RiskTreatmentsPanel` records whether each treatment
+ * works. Every mutating control renders whatever the role; the backend enforces Risk Manager / Risk Acceptor and a 403
+ * surfaces as a toast or in the dialog.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -30,6 +26,7 @@ import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
+import { MarkdownView } from "../../components/MarkdownView";
 import { RecordField, RecordFieldGroup, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -37,19 +34,37 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { riskApi } from "./api";
 import { diffRiskFields, valuesFromRisk } from "./riskFields";
 import { RiskFormModal } from "./RiskFormModal";
-import { RiskLifecycleControls } from "./RiskLifecycleControls";
 import { RiskMatrix } from "./RiskMatrix";
 import { RiskRatingBadge } from "./RiskRatingBadge";
 import { RiskReviewsPanel } from "./RiskReviewsPanel";
+import { RiskTransitionDialog } from "./RiskTransitionDialog";
 import { RiskTreatmentsPanel } from "./RiskTreatmentsPanel";
 import {
   CONSEQUENCE_AXIS, DETECTABILITY_AXIS, levelName, LIKELIHOOD_AXIS, useRiskScheme,
 } from "./useRiskScheme";
-import { RISK_STATUS_LABEL, RISK_STATUS_TONE, TREATMENT_STRATEGY_LABEL } from "./types";
+import { RISK_MAIN_PATH, RISK_STATUS_DESCRIPTION, RISK_STATUS_LABEL, RISK_STATUS_TONE, TREATMENT_STRATEGY_LABEL } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus, RiskVersion } from "./types";
 import { Badge } from "../../components/Badge";
 import { RISK_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
+import type { ActionMenuItem } from "../../components/ActionMenu";
+import { lifecycleSteps } from "../../components/lifecycleSteps";
+import { useApprovalStatus } from "../../hooks/useApprovalStatus";
+import { useProjectLifecycle } from "../../hooks/useProjectLifecycle";
+import { useSkipSteps } from "../../components/useSkipSteps";
+import { withLifecycleSkip } from "../../api/client";
+
+/** Why the signed-off assessment of an accepted risk cannot be changed. */
+const ACCEPTED_LOCKED_REASON = "Locked: the rating, acceptance criteria and treatment strategy are signed off.";
+
+/** Outcome statuses, drawn as the one branch step while current. */
+const OUTCOME_STATUSES: readonly RiskStatus[] = ["accepted", "transferred", "avoided", "realised", "rejected"];
+
+/** The menu row that moves a risk to a status other than the next forward step. */
+function moveLabel(target: RiskStatus): string {
+  if (OUTCOME_STATUSES.includes(target)) return `Mark as ${RISK_STATUS_LABEL[target]}`;
+  return `Return to ${RISK_STATUS_LABEL[target]}`;
+}
 
 /** "Likely × Major" (and "× Undetectable" when scored), or "—" when nothing is set. */
 function levelSummary(
@@ -65,6 +80,7 @@ function levelSummary(
 
 export function RiskDetailPage() {
   const { projectId, riskId } = useParams<{ projectId: string; riskId: string }>();
+  const lifecycle = useProjectLifecycle(projectId, "risk");
   const { user } = useAuth();
   const { showToast } = useToast();
   const scheme = useRiskScheme(projectId);
@@ -73,11 +89,13 @@ export function RiskDetailPage() {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [riskTypes, setRiskTypes] = useState<{ id: string; name: string }[]>([]);
   const [risk, setRisk] = useState<Risk | null>(null);
+  const approval = useApprovalStatus(projectId ? { projectId } : null, "risk", risk?.id, risk?.status);
   const [versions, setVersions] = useState<RiskVersion[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [treatmentsRefresh, setTreatmentsRefresh] = useState(0);
+  const [moveTarget, setMoveTarget] = useState<RiskStatus | null>(null);
 
   useEffect(() => {
     if (!projectId || !riskId) return;
@@ -149,9 +167,38 @@ export function RiskDetailPage() {
     },
   });
 
+  const skipSteps = useSkipSteps<Risk>({
+    lifecycle, current: risk?.status ?? "", labels: RISK_STATUS_LABEL, noun: "Risk",
+    move: (target, reason) => {
+      if (!projectId || !risk) return Promise.reject(new Error("This move is not available."));
+      return withLifecycleSkip(reason, () => riskApi.transition(projectId, risk.id, target as RiskStatus, ""));
+    },
+    onMoved: setRisk,
+    hidden: risk?.is_archived ?? false,
+  });
+
   if (!projectId || !riskId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (risk === null || project === null) return <Spinner />;
+
+  // The next forward move, when the backend allows it; every other allowed move is a row of the actions menu.
+  const nextOnPath = lifecycle.nextOnPath(RISK_MAIN_PATH, risk.status) as RiskStatus | undefined;
+  const promoteTo: RiskStatus | undefined = risk.is_archived ? undefined
+    : OUTCOME_STATUSES.includes(risk.status) ? "closed"
+    : nextOnPath;
+  const promote = promoteTo && risk.allowed_next_statuses.includes(promoteTo)
+    ? { to: promoteTo, onPromote: () => setMoveTarget(promoteTo) }
+    : undefined;
+  const moveRows: ActionMenuItem[] = risk.is_archived ? [] : risk.allowed_next_statuses
+    .filter((s) => s !== promote?.to)
+    .map((s) => ({ label: moveLabel(s), onSelect: () => setMoveTarget(s), danger: s === "rejected" }));
+  const offPathStep = OUTCOME_STATUSES.includes(risk.status) ? {
+    key: risk.status,
+    label: RISK_STATUS_LABEL[risk.status],
+    description: RISK_STATUS_DESCRIPTION[risk.status],
+    after: risk.status === "rejected" ? "identified" : "assessed",
+    ...(risk.status === "accepted" ? { locked: true, lockedReason: ACCEPTED_LOCKED_REASON } : {}),
+  } : undefined;
 
   const userNames = Object.fromEntries(orgUsers.map((u) => [u.user_id, u.display_name]));
 
@@ -174,6 +221,7 @@ export function RiskDetailPage() {
         recordLabel="Risk"
         title={risk.title}
         code={risk.unique_code}
+        approval={approval.status}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="risk" artefactId={risk.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/risk_management/risks`, label: "Risks" }}
         badges={
@@ -191,25 +239,35 @@ export function RiskDetailPage() {
           </>
         }
         onEdit={risk.is_archived ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          <RiskLifecycleControls
-            risk={risk}
-            onTransition={async (status: RiskStatus, comment: string) => {
-              setRisk(await riskApi.transition(projectId, risk.id, status, comment));
-              showToast(`Risk moved to ${RISK_STATUS_LABEL[status]}.`);
-            }}
-          />
-        }
+        actions={[skipSteps.menuRow, ...moveRows, archive.item]}
+        lifecycle={{
+          steps: lifecycle.visibleSteps(lifecycleSteps(RISK_MAIN_PATH, RISK_STATUS_LABEL, { descriptions: RISK_STATUS_DESCRIPTION }), risk.status),
+          current: risk.status,
+          offPath: offPathStep,
+          promote,
+          skip: skipSteps.track,
+        }}
       />
       {archive.dialog}
-      <div className="stack">
+      {skipSteps.dialog}
+
+      {moveTarget && (
+        <RiskTransitionDialog
+          risk={risk}
+          target={moveTarget}
+          onClose={() => setMoveTarget(null)}
+          onTransition={async (status, comment) => {
+            setRisk(await riskApi.transition(projectId, risk.id, status, comment));
+            showToast(`Risk moved to ${RISK_STATUS_LABEL[status]}.`);
+          }}
+        />
+      )}
         <DetailCard>
-          {risk.statement && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{risk.statement}</p>}
-          {risk.cause && <RecordField label="Cause" value={risk.cause} />}
-          {risk.risk_event && <RecordField label="Risk event" value={risk.risk_event} />}
-          {risk.consequence && <RecordField label="Consequence" value={risk.consequence} />}
-          {risk.acceptance_criteria && <RecordField label="Acceptance criteria" value={risk.acceptance_criteria} />}
+          {risk.statement && <MarkdownView text={risk.statement} />}
+          {risk.cause && <RecordField markdown label="Cause" value={risk.cause} />}
+          {risk.risk_event && <RecordField markdown label="Risk event" value={risk.risk_event} />}
+          {risk.consequence && <RecordField markdown label="Consequence" value={risk.consequence} />}
+          {risk.acceptance_criteria && <RecordField markdown label="Acceptance criteria" value={risk.acceptance_criteria} />}
         </DetailCard>
 
         <DetailCard heading="Rating">
@@ -257,7 +315,6 @@ export function RiskDetailPage() {
           attachmentsReadOnly={risk.is_archived}
           attachmentsHint="This Risk is archived; new attachments can no longer be added."
         />
-      </div>
 
       {editing && (
         <RiskFormModal

@@ -4,9 +4,8 @@ import { FormGrid, FormGridFull } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
 
 /**
- * Renders dynamic form fields for a project's custom attribute definitions
- * (C-C-01, C-C-02), keyed by definition id — used on requirement and change
- * request create/edit forms.
+ * Renders dynamic form fields for a project's custom attribute definitions (C-C-01, C-C-02), keyed by definition
+ * id, on requirement and change request create/edit forms.
  */
 export function CustomFieldsForm({
   definitions,
@@ -29,7 +28,7 @@ export function CustomFieldsForm({
         if (def.field_type === "long_text") {
           return (
             <FormGridFull key={def.id}>
-              <TextAreaField helpNotNeeded label={label} rows={3} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />
+              <TextAreaField plainText="A custom field value is a short value shown in lists and exports" helpNotNeeded label={label} rows={3} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />
             </FormGridFull>
           );
         }

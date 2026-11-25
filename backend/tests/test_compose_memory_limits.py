@@ -1,5 +1,5 @@
 """
-Pins the memory limits of the production Compose stack (`docker-compose.yml`).
+Pins the memory limits of the production Compose stack (`deployments/full/docker-compose.yml`).
 
 Why: every always-on service carries a limit taken from the measured peaks in docs/performance.md, so a runaway
 service is killed by its own cap instead of taking the host down. A limit that is missing, that cannot be set from
@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-COMPOSE = ROOT / "docker-compose.yml"
+COMPOSE = ROOT / "deployments" / "full" / "docker-compose.yml"
 
 pytestmark = pytest.mark.skipif(not COMPOSE.is_file(), reason="repository root not available")
 

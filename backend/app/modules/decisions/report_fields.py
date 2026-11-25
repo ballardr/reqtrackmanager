@@ -1,18 +1,10 @@
 """
 Module: modules.decisions.report_fields
 
-The `ReportFieldProvider` for the `decision` artefact type, so custom report layouts can print and
-group Decisions.
-
-Responsibilities:
-- Declare the Decision fields a layout may use: the decision record's text (from the search
-  declaration), the type's name, the decision date, the owner and the decision maker.
-
-Design decisions:
-- Owner and decision maker are principals (a user or a group), shown by name.
-- Opt-in only; the joins and identity columns come from the search declaration.
-
-Dependencies: this module's models; `services.report_fields` (builders).
+The `ReportFieldProvider` for the `decision` type, so custom report layouts can
+print and group Decisions: the record's text (from the search declaration), the
+type name, decision date, owner and decision maker (principals shown by name).
+Opt-in only. Dependencies: this module's models; `services.report_fields`.
 """
 
 from __future__ import annotations
@@ -32,6 +24,10 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         date_field("decision_date", "Decision date", Decision.decision_date),
         principal_field("owner", "Owner", Decision.owner_type, Decision.owner_id),
         principal_field("decision_maker", "Decision maker", Decision.decision_maker_type, Decision.decision_maker_id),
+        math_fields=(
+            "decision_statement", "context", "options_considered", "chosen_option", "rationale", "consequences",
+            "assumptions", "constraints", "document",
+        ),
         core_fields=("decision_statement", "owner"),
     ),
 }

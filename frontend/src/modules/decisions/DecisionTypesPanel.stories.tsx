@@ -2,18 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { DecisionTypesPanel } from "./DecisionTypesPanel";
 import type { DecisionTypeDefinition } from "./types";
 
 const PROJECT_ID = "project-1";
 
-/**
- * `DecisionTypesPanel` fetches and reloads its own list
- * (it lives in Project Admin's `projectAdminSections` — see this
- * panel's own module docstring), so these stories mock the `api` directly
- * rather than wrapping it in a state-owning `Harness`.
- */
+/** The panel (a `projectAdminSections` entry) fetches and reloads its own list, so these stories mock `api` directly instead of wrapping it in a state-owning `Harness`. */
 function mockDecisionTypeApis(initial: DecisionTypeDefinition[]) {
   let items = initial;
   spyOn(api, "get").mockImplementation(async () => items);
@@ -80,9 +75,9 @@ export const AddDecisionType: Story = {
   beforeEach: () => mockDecisionTypeApis([SEED[0]]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByPlaceholderText("Decision type name"));
-    await userEvent.type(canvas.getByPlaceholderText("Decision type name"), "Engineering");
-    await userEvent.click(canvas.getByRole("button", { name: "Add decision type" }));
+    const dialog = await openAddDialog(canvas, "Add decision type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Decision type name" }), "Engineering");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/decisions/decision-types`,

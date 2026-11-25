@@ -1,16 +1,12 @@
 """Tests for groups on core fields (users and groups on parity), through the real HTTP endpoints.
 
-A change request task's assignee (a member of an assigned group may mark
-the task done, a non-member or removed member may not; project bundle round trip; the
-`0083` migration).
+A change request task's assignee (a member of an assigned group may mark the task done, a non-member or removed
+member may not; project bundle round trip; the `0083` migration).
 
-A requirement action's assignee and a change
-request's proposed action assignee — each principal kind on create, update,
-clear and list; validation (a foreign organisation's group or user, another
-project's group, an unknown id — the assignee was not validated at all before);
-a proposal carried through approval into the new action; deleting a group that
-is assigned actions (usage counts, blocked, reassigned, cleared, open proposals
-rewritten and decided ones left as history); and the real `0082` migration.
+A requirement action's assignee and a change request's proposed action assignee: each principal kind on create,
+update, clear and list; validation (a foreign organisation's group or user, another project's group, an unknown id);
+a proposal carried through approval into the new action; deleting a group that is assigned actions (usage counts,
+blocked, reassigned, cleared, open proposals rewritten and decided ones left as history); and the `0082` migration.
 """
 
 from __future__ import annotations
@@ -83,7 +79,7 @@ def test_an_action_takes_each_principal_kind_and_shows_a_group_by_name(client, a
     assert unassigned.status_code == 201 and unassigned.json()["assignee"] is None
     by_org = _create_action(client, admin_token, pid, assignee=_org(team))
     assert by_org.json()["assignee"] == {
-        "type": "org_group", "id": team, "label": "QA Team", "member_count": 1, "exists": True, "imported": False,
+        "type": "org_group", "id": team, "label": "QA Team", "member_count": 1, "exists": True, "imported": False, "service": False,
     }
     by_project = _create_action(client, admin_token, pid, assignee=_project(squad))
     assert by_project.json()["assignee"]["label"] == "Test Squad"
@@ -322,7 +318,10 @@ def test_a_task_takes_each_principal_kind_and_a_response_is_a_valid_request(clie
     none = client.post(url, json={"description": "Unassigned"}, headers=h).json()
     assert none["assignee"] is None
     by_org = client.post(url, json={"description": "Org", "assignee": _org(team)}, headers=h).json()
-    assert by_org["assignee"] == {"type": "org_group", "id": team, "label": "Task Team", "member_count": 1, "exists": True, "imported": False}
+    assert by_org["assignee"] == {
+        "type": "org_group", "id": team, "label": "Task Team", "member_count": 1,
+        "exists": True, "imported": False, "service": False,
+    }
     by_project = client.post(url, json={"description": "Project", "assignee": _project(squad)}, headers=h).json()
     assert by_project["assignee"]["label"] == "Task Squad"
     by_user = client.post(url, json={"description": "User", "assignee": _user(member)}, headers=h).json()
@@ -522,7 +521,10 @@ def test_a_requirement_defaults_its_owner_to_the_creator_and_takes_each_principa
     default = _requirement(client, admin_token, pid)
     assert default["owner"]["type"] == "user" and default["owner"]["id"] == me and default["reviewer"] is None
     by_org = _requirement(client, admin_token, pid, owner=_org(team), reviewer=_project(squad))
-    assert by_org["owner"] == {"type": "org_group", "id": team, "label": "Req Owners", "member_count": 1, "exists": True, "imported": False}
+    assert by_org["owner"] == {
+        "type": "org_group", "id": team, "label": "Req Owners", "member_count": 1,
+        "exists": True, "imported": False, "service": False,
+    }
     assert by_org["reviewer"]["label"] == "Req Squad" and by_org["reviewer"]["type"] == "project_group"
 
     listed = {r["id"]: r for r in client.get(f"/api/v1/projects/{pid}/requirements", headers=auth_headers(admin_token)).json()}
@@ -955,10 +957,13 @@ def test_a_watching_group_notifies_its_members_who_can_view_the_project(client, 
 
     got = client.get(f"/api/v1/projects/{pid}/requirements/{requirement['id']}", headers=auth_headers(tokens["insider"])).json()
     assert got["is_subscribed"] is False, "is_subscribed means the caller subscribed themselves"
-    assert client.get(url, headers=auth_headers(tokens["insider"])).json() == added.json()
+    listed = client.get(url, headers=auth_headers(tokens["insider"])).json()
+    assert [(w["type"], w["id"]) for w in listed] == [("org_group", team), ("user", ids["direct"])], (
+        "the list holds the group and the person who subscribed themselves"
+    )
 
     removed = client.delete(f"{url}/org_group/{team}", headers=h)
-    assert removed.status_code == 200 and removed.json() == []
+    assert removed.status_code == 200 and [w["id"] for w in removed.json()] == [ids["direct"]]
     client.post(f"/api/v1/projects/{pid}/requirements/{requirement['id']}/comments", json={"body": "Second"}, headers=h)
     assert len(_comment_notifications(client, tokens["insider"], requirement["id"])) == 1
 
@@ -979,12 +984,61 @@ def test_only_managers_add_watchers_and_only_groups_of_this_project_and_organisa
     cr = _submitted_cr(client, admin_token, pid)
     for kind, record in (("requirements", requirement["id"]), ("change-requests", cr["id"])):
         url = _watchers_url(pid, kind, record)
-        assert client.post(url, json={"group": _project(squad)}, headers=h).status_code == 201, kind
-        for bad in (_user(_me(client, admin_token)), _org(foreign), _project(elsewhere), _org(uuid.uuid4())):
-            assert client.post(url, json={"group": bad}, headers=h).status_code == 400, (kind, bad)
+        assert client.post(url, json={"group": _project(squad)}, headers=h).status_code == 201, "the earlier `group` name is still accepted"
+        for bad in (_org(foreign), _project(elsewhere), _org(uuid.uuid4())):
+            assert client.post(url, json={"principal": bad}, headers=h).status_code == 400, (kind, bad)
         assert client.post(url, json={"group": _project(squad)}, headers=auth_headers(member_token)).status_code == 403
         assert client.delete(f"{url}/project_group/{squad}", headers=auth_headers(member_token)).status_code == 403
         assert client.get(url, headers=auth_headers(member_token)).status_code == 200
+
+
+def test_a_user_can_be_set_as_a_watcher_and_is_listed_with_the_people_who_subscribed_themselves(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    h = auth_headers(admin_token)
+    pid = project["id"]
+    emails = {n: f"watch_user_{n}@core.example.com" for n in ("added", "self", "outsider")}
+    ids = {n: create_org_user(client, admin_token, org_id, e, role="member") for n, e in emails.items()}
+    for name in ("added", "self"):
+        client.post(f"/api/v1/projects/{pid}/roles", json={"user_id": ids[name], "role": "stakeholder"}, headers=h)
+    tokens = {n: login(client, e, "Password123!") for n, e in emails.items()}
+    other_org, other_token = create_org_admin_in(client, admin_token, "Core Watch User Foreign Co")
+    foreign_user = _me(client, other_token)
+    requirement = _requirement(client, admin_token, pid)
+    cr = _submitted_cr(client, admin_token, pid)
+    for kind, record in (("requirements", requirement["id"]), ("change-requests", cr["id"])):
+        url = _watchers_url(pid, kind, record)
+        added = client.post(url, json={"principal": _user(ids["added"])}, headers=h)
+        assert added.status_code == 201, (kind, added.text)
+        assert [(w["type"], w["id"], w["member_count"]) for w in added.json()] == [("user", ids["added"], None)]
+        assert client.post(url, json={"principal": _user(ids["added"])}, headers=h).json() == added.json(), "idempotent"
+        assert client.post(url, json={"principal": _user(ids["outsider"])}, headers=h).status_code == 400, "no project access"
+        assert client.post(url, json={"principal": _user(foreign_user)}, headers=h).status_code == 400, "another organisation"
+        assert client.post(url, json={"principal": _user(ids["added"])}, headers=auth_headers(tokens["self"])).status_code == 403
+        assert client.delete(f"{url}/user/{ids['added']}", headers=auth_headers(tokens["self"])).status_code == 403
+
+    sub = f"/api/v1/projects/{pid}/requirements/{requirement['id']}/subscription"
+    assert client.put(sub, headers=auth_headers(tokens["self"])).status_code == 204
+    url = _watchers_url(pid, "requirements", requirement["id"])
+    listed = client.get(url, headers=auth_headers(tokens["self"])).json()
+    assert {w["id"] for w in listed} == {ids["added"], ids["self"]}, "a person who subscribed themselves is listed too"
+
+    client.post(f"/api/v1/projects/{pid}/requirements/{requirement['id']}/comments", json={"body": "Ping"}, headers=h)
+    assert len(_comment_notifications(client, tokens["added"], requirement["id"])) == 1
+    assert len(_comment_notifications(client, tokens["self"], requirement["id"])) == 1
+
+    removed = client.delete(f"{url}/user/{ids['added']}", headers=h)
+    assert removed.status_code == 200 and [w["id"] for w in removed.json()] == [ids["self"]]
+    client.post(f"/api/v1/projects/{pid}/requirements/{requirement['id']}/comments", json={"body": "Again"}, headers=h)
+    assert len(_comment_notifications(client, tokens["added"], requirement["id"])) == 1, "no longer watching"
+    with SessionLocal() as db:
+        rows = db.execute(
+            text(
+                "SELECT action, detail -> 'watcher' ->> 'id' FROM audit_events "
+                "WHERE entity_id = :e AND action LIKE 'watcher_%' ORDER BY created_at"
+            ),
+            {"e": requirement["id"]},
+        ).all()
+    assert [(a, w) for a, w in rows] == [("watcher_added", ids["added"]), ("watcher_removed", ids["added"])]
 
 
 def test_a_change_request_has_watching_groups_too_and_deleting_a_group_removes_its_subscriptions(client, admin_token, org_id):

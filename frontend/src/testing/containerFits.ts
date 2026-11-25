@@ -1,14 +1,11 @@
 /**
  * Module: testing/containerFits
  *
- * The shared "does everything in a container fit its width?" assertion. A control group wider than the card, popover or
- * panel that holds it runs out of it and is cut off at the edge; this reads the rendered boxes and returns what sticks out,
- * so Storybook play functions fail instead of someone spotting it in a screenshot. `popoverFit` builds on it for popovers.
- *
- * Rules:
- * - the container does not scroll horizontally;
- * - no visible element inside it, outside a region that deliberately clips or scrolls (an `overflow` other than visible),
- *   extends past the container's left or right edge.
+ * The shared "does everything in a container fit its width?" assertion: reads
+ * the rendered boxes and returns what sticks out of a card, popover or panel;
+ * `popoverFit` builds on it. Rules: the container does not scroll horizontally,
+ * and no visible element inside it, outside a region that deliberately clips or
+ * scrolls (an `overflow` other than visible), extends past its left or right edge.
  */
 import { expect } from "storybook/test";
 

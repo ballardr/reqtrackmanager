@@ -16,6 +16,7 @@ from app.models.change_request import (
     ChangeRequestVote,
     ReviewComment,
 )
+from app.models.code_prefix import OrganizationCodePrefix, ProjectCodePrefix
 from app.models.credential_reset import CredentialResetToken
 from app.models.custom_field import CustomFieldDefinition
 from app.models.custom_role import (
@@ -26,8 +27,18 @@ from app.models.custom_role import (
 )
 from app.models.definition_suppression import ProjectDefinitionSuppression
 from app.models.engagement import CommentReaction, Subscription
+from app.models.external_reference import (
+    ExternalReference,
+    ExternalSystemDefinition,
+    ProjectExternalSystem,
+)
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.generated_report import GeneratedReport
+from app.models.lifecycle import (
+    OrganizationLifecycleExemption,
+    OrganizationLifecycleRequirement,
+    ProjectLifecycleSetting,
+)
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
 from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
@@ -76,6 +87,7 @@ from app.models.requirement import (
     RequirementVersion,
 )
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.models.requirement_link_type import (
     ArtefactTypeLinkRule,
     ArtefactTypeLinkRuleEntry,
@@ -95,12 +107,21 @@ from app.models.scoring import (
 )
 from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
 from app.models.server_role import UserServerRole
+from app.models.service_user import ServiceUserProfile
 from app.models.stage_workflow import ComponentStageState, StagePhasePlan, StageWorkflow, StageWorkflowPhase
 from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
 
 __all__ = [
     "ActionTypeDefinition",
+    "ExternalReference",
+    "ExternalSystemDefinition",
+    "OrganizationCodePrefix",
+    "OrganizationLifecycleExemption",
+    "OrganizationLifecycleRequirement",
+    "ProjectLifecycleSetting",
+    "ProjectCodePrefix",
+    "ProjectExternalSystem",
     "ArtefactPlacement",
     "RecordComment",
     "RecordCommentPin",
@@ -130,6 +151,7 @@ __all__ = [
     "Subscription",
     "FileAsset",
     "GeneratedReport",
+    "RequirementAlias",
     "RequirementFile",
     "RequirementActionFile",
     "CommentFile",
@@ -197,6 +219,7 @@ __all__ = [
     "ScoringLevel",
     "ScoringModelDefault",
     "UserServerRole",
+    "ServiceUserProfile",
     "OrganizationModuleEntitlement",
     "OrganizationModuleEnablement",
     "ServerModuleDefault",

@@ -6,17 +6,16 @@ data volumes they apply to.
 
 Responsibilities:
 - Name every scenario the load generator defines (`perf/loadgen/scenarios.py::SCENARIOS` has the same names; a test
-  keeps the two in step) with its kind, simulated-user levels, durations and limits.
+  keeps the two in step) with its kind, user levels, durations and limits.
 - Choose the scenarios and parameters for a mode (`quick` or `full`) at a dataset tier.
 
 Design decisions:
 - The runner never imports Locust; this file is the host side's whole knowledge of the scenarios.
-- Quick mode is T0 and T1, one repeat, no soak, short measured periods: minutes, for "did my change move anything".
-  Full mode runs every tier with repeats and the soak: the figures that get published.
+- Quick mode is T0 and T1, one repeat, no soak, for a fast check that a change moved nothing. Full mode runs every
+  tier with repeats and the soak: the published figures.
 - Heavy scenarios (reports, bundles, imports, attachments, unpaged lists at large tiers, soak) are opt-in on a
-  shared host (`--allow-heavy`): on a machine that also serves production they are the ones that can hurt.
-- A scenario that is closed-loop and slow runs until `min_requests` complete (bounded by `max_seconds`), so a
-  slow endpoint still yields samples instead of an empty row.
+  shared host (`--allow-heavy`), where they can hurt production.
+- A slow closed-loop scenario runs until `min_requests` complete (bounded by `max_seconds`), so it still yields samples.
 
 Dependencies: standard library only (Python 3.9+).
 """

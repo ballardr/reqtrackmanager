@@ -1,38 +1,12 @@
 """
 Module: modules.decisions.export
 
-This module's contribution to the core org/project bundle export/import
-(`app.services.org_export`/`project_export`), registered through
-`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION` rather
-than those core files importing this module.
-
-- Org level: the Decision templates.
-- Project level: the project's own Decision types, its Decisions (with
-  attachments) and the links between Decisions and to Requirements.
-
-Design decisions (all Decided by: Agent):
-- A Decision has no version table, so it travels as it is: content, status,
-  decision maker, owner and decision date. Comments and comment attachments are
-  not carried (a bundle is a migration artefact, as for the other modules).
-- Status is imported as exported, as the core Requirement and Risk sections do:
-  the bundle is a restore and importing a project is itself privileged. A
-  superseded Decision keeps its status and its "Supersedes" link; replaying the
-  link does not run the status transition again.
-- A Decision's type travels by name. Types are project-scoped and a child project
-  may inherit its ancestor's, so a type the bundle's own list lacks is created in
-  the new project with the same name, in a stable order after the exported ones.
-  An imported project is a root, so its own types are exactly those the bundle names.
-- Codes are information only: an import numbers Decisions afresh in their original
-  order, and addresses them inside the bundle by their exported code (`ref`).
-- Owner and decision maker are principals (`{type, email | name}`); one the target
-  cannot match falls back to the importer (owner) or is left unset (decision maker),
-  with a warning.
-- Links travel only between this project's Decisions and Requirements
-  (`services.bundle_links`); a link to another module's record is that module's.
-- Organisation-level files cannot travel; templates have none.
-
-Dependencies: `app.services.bundle_common`, `app.services.bundle_links`,
-`app.services.principals`, `app.services.tags`, this module's models and service.
+Contributes Decisions to the org/project bundle export and import through
+`ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`: Decision templates (org),
+and the project's Decision types, Decisions (with attachments) and links.
+- Status is imported as exported (a restore); a superseded Decision keeps its
+  "Supersedes" link without re-running the transition. Comments do not travel.
+- Types travel by name; codes are information only; owners are principals.
 """
 
 from __future__ import annotations
@@ -50,17 +24,17 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.models import Decision, DecisionFile, DecisionTemplateDefinition, DecisionTypeDefinition
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
+from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links, prime_file_links
 from app.services.bundle_links import export_artefact_links, import_artefact_links
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 from app.services.template_reset import fresh_drafts
 
-DECISION_CODE_PREFIX = "DEC"
-_TEXT_FIELDS = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints")
+_TEXT_FIELDS = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints", "document")
 _TEMPLATE_FIELDS = (
     "description", "context_prompt", "options_considered_prompt", "chosen_option_prompt", "rationale_prompt",
     "consequences_prompt", "assumptions_prompt", "constraints_prompt",
@@ -136,6 +110,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     emails = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_({u for u in user_ids if u})))} if decisions else {}
     prime_record_tag_names(db, DECISION_ARTEFACT_TYPE, [d.id for d in decisions])
     prime_record_placements(db, DECISION_ARTEFACT_TYPE, [d.id for d in decisions])
+    prime_record_references(db, DECISION_ARTEFACT_TYPE, [d.id for d in decisions])
     prime_file_links(db, DecisionFile, "decision_id", [d.id for d in decisions])
     entries = [
         {
@@ -147,6 +122,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "archived_at": _j(d.archived_at), "archived_by_email": (emails.get(d.archived_by) if d.archived_by else None),
             "tags": record_tag_names(db, DECISION_ARTEFACT_TYPE, d.id),
             "placements": record_placements(db, DECISION_ARTEFACT_TYPE, d.id),
+            "external_references": record_references(db, DECISION_ARTEFACT_TYPE, d.id),
             "attachments": export_file_links(db, DecisionFile, "decision_id", d.id, assets),
         }
         for d in decisions
@@ -219,6 +195,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=creator_id,
             artefact_type=DECISION_ARTEFACT_TYPE, artefact_id=decision.id, entries=entry.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=DECISION_ARTEFACT_TYPE, artefact_id=decision.id, entries=entry.get("external_references"),
         )
         import_file_links(
             db, organization_id=organization_id, file_model=DecisionFile, fk="decision_id", record_id=decision.id,

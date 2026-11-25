@@ -1,54 +1,30 @@
 """
 Module: services.project_export
 
-Exports a project's full structure and history (components/categories/
-stages/custom field definitions/groups, every requirement's full version
-history, every change request with its versions/tasks/votes/comments,
-baselines, review outcomes, and structural audit events) as a self-
-contained, versioned zip bundle, and imports such a bundle back as a brand
-new project — same organisation or a different one.
+Exports a project's full structure and history (components, categories, stages, custom field definitions,
+groups, every requirement's version history, change requests with versions/tasks/votes/comments, baselines,
+review outcomes and structural audit events) as a versioned zip bundle, and imports a bundle as a new
+project in the same or a different organisation.
 
-Every cross-reference inside the bundle uses a portable key instead of a
-raw database id, since ids from the source database are meaningless in the
-target one: requirements by `unique_code`, change requests by `ref` (their
-`unique_code`; an import numbers its change requests afresh), components/categories by prefix, stages/custom field
-definitions by name, and every user reference by email (resolved on import
-via `services.bundle_common.UserResolver`).
+Every cross-reference uses a portable key, since source ids mean nothing in the target: requirements by
+`unique_code`, change requests by `ref` (an import numbers them afresh), components/categories by prefix,
+stages and custom field definitions by name, users by email (`services.bundle_common.UserResolver`).
+Actions travel through `services.project_actions_bundle`.
 
-Requirement actions travel too (`services.project_actions_bundle`): the project's action types, each action with its
-comments, attachments, tags and places, and its links to requirements, by `unique_code`.
+Excluded:
+- `Notification`, `NotificationPreference`, `Subscription` (per-user inbox state) and `LoginEvent` (security log).
+- `ChangeRequestVersion.proposed_attachment_file_ids` (organisation-resource files outside this bundle's
+  file enumeration); imported as empty.
+- `ProjectGroupMember` rows: only group structure (name, roles) is recreated. Re-granting membership by email
+  match would give an unrelated account project access (privilege escalation, especially across
+  organisations); member emails stay in the export for reference. The importing user is always a project
+  manager, as with `POST /projects`.
 
-Deliberately out of scope (documented rather than silently dropped):
-`Notification`/`NotificationPreference`/`Subscription` (per-user, per-
-deployment inbox state that's meaningless once ids change) and `LoginEvent`
-(security/auth log, not project content) are never included.
-`ChangeRequestVersion.proposed_attachment_file_ids` references
-organisation-resource files outside this project bundle's own file
-enumeration (`RequirementFile`/`CommentFile` attachments only) and is
-always imported as empty — re-attaching those is a manual follow-up.
-`ProjectGroupMember` rows are never recreated on import at all — only the
-group *structure* (name/roles) is. Blindly re-granting membership by email
-match would let an account with no prior relationship to the target
-organisation gain project access purely because its email happens to
-match, which is a privilege-escalation risk, not a convenience worth the
-exposure — especially for a cross-organisation import. Member emails are
-still included in the export for a human to re-populate manually. The
-importing user is always guaranteed project-manager access regardless
-(the same guarantee `POST /projects` gives its own caller).
-
-A registered module's own project-level bundle content (`app.modules.
-registry.get_all_module_project_bundle_hooks` — e.g. the Compliance
-module's own project *assessment* data) is folded into `collect_project_
-data`'s/`apply_project_data`'s own return value/`data` dict the same
-generic way `services.org_export` folds in each module's org-level content,
-via that module's own `ModuleProjectBundleHooks.export`/`import_` — this
-file never constructs a module's own entity types directly. See
-`app.modules.compliance.export`'s own module docstring for why Compliance's
-own project *assessment* content (which standards a project is assigned to,
-its per-requirement state, evidence, reviews) travels with *this* bundle
-while the *standard definitions* it assesses against stay organisation-
-level content in `services.org_export`'s bundle instead, resolved at import
-time by a portable `(standard reference, version label)` key.
+A module's project-level content travels through its `ModuleProjectBundleHooks`
+(`app.modules.registry.get_all_module_project_bundle_hooks`), folded into `collect_project_data` and
+`apply_project_data` as `services.org_export` folds in org-level content; this file never builds a module's
+types. Compliance assessments travel here while standard definitions stay in the organisation bundle,
+matched on import by `(standard reference, version label)` (`app.modules.compliance.export`).
 """
 
 from __future__ import annotations
@@ -104,10 +80,11 @@ from app.models.requirement import (
     RequirementReview,
     RequirementVersion,
 )
+from app.models.requirement_alias import RequirementAlias
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.registry import get_all_module_project_bundle_hooks, get_all_registered_artefact_types
-from app.services import nav_labels, overview_widgets
+from app.services import approval_separation, code_prefixes, lifecycles, nav_labels, overview_widgets
 from app.services.audit import log_event
 from app.services.bundle_approval_state import count_approval_state, strip_approval_state
 from app.services.bundle_common import (
@@ -124,10 +101,18 @@ from app.services.bundle_common import (
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
+from app.services.external_references import (
+    EXTERNAL_SYSTEMS,
+    prime_record_references,
+    record_references,
+    restore_record_references,
+    share_system_resolver,
+)
 from app.services.files import read_file, resolve_bundle_files
 from app.services.imported_people import PeopleChoices, PersonPreview, classify_people, people_section
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.lookups import get_or_404
+from app.services.markdown_images import importing_images
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.project_actions_bundle import export_project_actions, import_project_action_types, import_project_actions
@@ -138,6 +123,7 @@ from app.services.report_layout_bundle import export_project_layouts, import_pro
 from app.services.report_pack_bundle import export_project_packs, import_project_packs
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
+from app.services.requirement_aliases import MODES, aliases_for_requirements
 from app.services.scoring_config import export_project_scoring, import_project_scoring
 from app.services.sequences import generate_unique_code
 from app.services.stage_workflow_bundle import (
@@ -159,6 +145,7 @@ from app.services.tags import (
     restore_record_tags,
     set_keywords,
 )
+from app.services.vocabulary_bundle import NameResolver, export_project_list
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -218,11 +205,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     stage_name_by_id = {s.id: s.name for s in stages}
     component_prefix_by_id = {c.id: c.prefix for c in components}
     category_by_id = {c.id: c for c in categories}
-    # RequirementVersion.custom_fields/ChangeRequestVersion.custom_fields are
-    # JSONB dicts keyed by the *stringified* definition id (see
-    # models.requirement.RequirementVersion.custom_fields's docstring) — the
-    # lookup below must match on that string form, not the UUID object
-    # itself, or every value silently fails the `k in cf_name_by_id` check.
+    # Version custom_fields are keyed by the stringified definition id, so this lookup keys on the string form.
     cf_name_by_id = {str(d.id): d.name for d in definitions}
     req_code_by_id = {r.id: r.unique_code for r in requirements}
     cr_ref_by_id = {cr.id: cr.unique_code for cr in change_requests}
@@ -238,15 +221,11 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         vs.sort(key=lambda v: v.version_number)
 
     keywords_by_req = keywords_for_requirements(db, req_ids)
+    aliases_by_req = aliases_for_requirements(db, req_ids, include_retired=True)
 
-    # Requirement-to-requirement traceability links only (not untyped
-    # action links, which also live in `artefact_links` but aren't part of
-    # this bundle's own requirement-links section) — filtering on
-    # `source_type == REQUIREMENT` already excludes those, since an action
-    # link's source is always a `RequirementAction`, never a `Requirement`.
-    # Same-project links only: a link to an ancestor or descendant project's artefact is
-    # left out (a bundle must not embed another project's content, and import never
-    # recreates one); the manifest reports how many were left out.
+    # Requirement-to-requirement links only (action links have another source type). Same-project
+    # links only: a link to an ancestor or descendant project's artefact is left out, because a
+    # bundle must not embed another project's content; the manifest reports how many were left out.
     links = list(
         db.scalars(
             select(ArtefactLink).where(
@@ -257,14 +236,9 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         )
         if req_ids else []
     )
-    # Link types are exported/matched by name, not id — like every other
-    # cross-tenant reference in this bundle (users by email, custom fields
-    # by name), an id from the source deployment's
-    # `requirement_link_type_definitions` table means nothing on import
-    # (`apply_project_data` looks this back up by `forward_name` within the
-    # *target* organisation's own link types).
-    # Only the types the exported links reference are loaded (never every type the
-    # organisation has, which would include other projects' local types).
+    # Link types are exported by name, not id: an id means nothing in the target deployment
+    # (`apply_project_data` matches `forward_name` within the target organisation's link types).
+    # Only the types the exported links reference are loaded, so other projects' local types stay out.
     link_type_ids = {link.link_type_id for link in links if link.link_type_id is not None}
     link_type_forward_name_by_id = {
         lt.id: lt.forward_name
@@ -419,6 +393,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "attachments": comment_attachments_by_comment.get(c.id, []),
         }
 
+    prime_record_references(db, ArtefactType.REQUIREMENT.value, [r.id for r in requirements])
     requirements_json = []
     for r in requirements:
         _, category_prefix = category_ref(r.category_id)
@@ -431,6 +406,17 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "is_completed": r.is_completed, "completed_at": _j(r.completed_at), "completed_by_email": email(r.completed_by),
             "versions": [serialize_requirement_version(v) for v in versions_by_req.get(r.id, [])],
             "keywords": keywords_by_req.get(r.id, []), "attachments": attachments_by_req.get(r.id, []),
+            "external_references": record_references(db, ArtefactType.REQUIREMENT.value, r.id),
+            # The further places the requirement sits in; a code is kept as it is, like the requirement's own.
+            "aliases": [
+                {
+                    "unique_code": a.unique_code,
+                    "component_prefix": component_prefix_by_id.get(a.component_id) if a.component_id else None,
+                    "category_prefix": category_by_id[a.category_id].prefix if a.category_id and a.category_id in category_by_id else None,
+                    "is_retired": a.is_retired, "retired_at": _j(a.retired_at),
+                }
+                for a in aliases_by_req.get(r.id, [])
+            ],
         })
 
     requirement_links_json = [
@@ -438,7 +424,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "source_unique_code": req_code_by_id.get(link.source_id),
             "target_unique_code": req_code_by_id.get(link.target_id),
             "link_type_forward_name": (link_type_forward_name_by_id.get(link.link_type_id) if link.link_type_id else None),
-            "created_by_email": email(link.created_by),
+            "created_by_email": email(link.created_by), "note": link.note,
         }
         for link in links if link.source_id in req_code_by_id and link.target_id in req_code_by_id
     ]
@@ -450,6 +436,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     prime_record_tag_names(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
     prime_record_placements(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
+    prime_record_references(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
     change_requests_json = []
     for cr in change_requests:
         cr_versions_json = []
@@ -477,6 +464,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "decision_note": cr.decision_note, "versions": cr_versions_json,
             "tags": record_tag_names(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
             "placements": record_placements(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
+            "external_references": record_references(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
             "tasks": [
                 {
                     "description": t.description, "assignee": principal_to_bundle(db, t.assignee_type, t.assignee_id),
@@ -552,6 +540,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "allow_member_change_requests": project.allow_member_change_requests,
         "require_change_request_for_approved_links": project.require_change_request_for_approved_links,
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
+        "requirement_aliases": project.requirement_aliases,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "tags": export_vocabulary(db, project),
         **export_project_scoring(db, project),
@@ -571,6 +560,11 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             }
             for c in components
         ],
+        "code_prefixes": code_prefixes.export_overrides(db, project),
+        "lifecycles": lifecycles.export_project(db, project),
+        "lifecycle_skip": lifecycles.export_project_skip(db, project),
+        "approval_separation": approval_separation.export_project(db, project),
+        "external_systems": export_project_list(db, project, EXTERNAL_SYSTEMS),
         "custom_field_definitions": [
             {
                 "entity_kind": d.entity_kind.value, "name": d.name, "field_type": d.field_type.value,
@@ -684,12 +678,24 @@ def new_project_from_bundle_data(
         require_change_request_for_approved_links=data.get("require_change_request_for_approved_links", False),
         exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),
         terminology=data.get("terminology") or {},
+        requirement_aliases=data.get("requirement_aliases") if data.get("requirement_aliases") in MODES else None,
         review_reminder_lead_days_default=data.get("review_reminder_lead_days_default", 7),
         status_id=get_default_project_status_id(db, organization_id),
     )
 
 
 def apply_project_data(
+    db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes],
+    current_user: User, users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    """Reconstructs a project from a bundle and carries the pictures in its Markdown text over (`_apply_project_data`
+    does the reconstruction; the pictures' file ids are rewritten once the records and their attachments exist)."""
+    with importing_images(file_bytes_by_ref) as pictures:
+        _apply_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+        pictures.finish(db)
+
+
+def _apply_project_data(
     db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes],
     current_user: User, users: UserResolver, warnings: BundleImportWarnings,
 ) -> None:
@@ -728,6 +734,10 @@ def apply_project_data(
     # The bundle's own action types; a bundle that lists none (one written before action types were carried)
     # starts with the defaults a brand-new project gets, as `routers/projects.py::create_project` does.
     import_project_action_types(db, project, data)
+    code_prefixes.import_overrides(db, project, data.get("code_prefixes"), current_user.id, warnings.add)
+    lifecycles.import_project(db, project, data.get("lifecycles"), current_user.id, warnings.add)
+    lifecycles.import_project_skip(db, project, data.get("lifecycle_skip"))
+    approval_separation.import_project(db, project, data.get("approval_separation"), warnings.add)
     import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_packs(db, project, data, current_user, warnings)
     import_project_snippets(db, project, data, current_user, warnings, file_bytes_by_ref)
@@ -781,32 +791,13 @@ def apply_project_data(
                 out[str(definition_id)] = value
         return out
 
-    # Group *structure* (name/role) is recreated, but membership is
-    # deliberately NOT replayed from `member_emails`, even though those
-    # emails were resolved for every other reference in this bundle: doing
-    # so would silently grant a real account project access purely because
-    # its email happens to match — including, for a cross-organisation
-    # import, an account with no prior relationship to the target
-    # organisation at all. That's a privilege-escalation-via-import risk,
-    # not a convenience worth the exposure. `member_emails` stays in the
-    # export purely as a human-readable reference for whoever re-populates
-    # membership by hand afterward. The importing user always ends up a
-    # project manager regardless (see the `get_effective_project_managers` fallback
-    # below), matching the same guarantee `create_project` gives its caller.
+    # Group structure (name, roles) is recreated but membership is NOT replayed from `member_emails`:
+    # that would grant a real account project access purely because its email matches, including
+    # an account with no relationship to the target organisation (privilege escalation via import).
+    # `member_emails` stays in the export as a reference only. The importing user always ends up a
+    # project manager (see the `get_effective_project_managers` fallback below), as in `create_project`.
     for g in data.get("groups", []):
-        # A bundle exported before default project groups were removed
-        # may still carry an `"is_default"` key from the old format —
-        # ignored on import, same as any other retired field: `is_default`
-        # no longer exists on `ProjectGroup` at all, and re-creating a
-        # group from a bundle is always an ordinary, fully-manageable group
-        # regardless of what it originally was.
-        #
-        # `"roles"` (docs/decisions.md) replaced the old single
-        # required `"role"` key with a list — a group may now hold zero,
-        # one, or several roles. A bundle exported before the group-roles change still carries
-        # the old singular `"role"` key instead; read either shape so an
-        # older export can still be imported without losing its group's
-        # role, without needing to re-export it first.
+        # `"roles"` is a list; the singular `"role"` key is also read so an export carrying it keeps its group's role.
         new_group = ProjectGroup(project_id=project.id, name=g["name"])
         db.add(new_group)
         db.flush()
@@ -826,6 +817,12 @@ def apply_project_data(
         )
 
     requirement_id_by_code: dict[str, UUID] = {}
+    # The project's external systems exist before any record that references one (a requirement, a change request or a
+    # module's); the ones it hides are hidden afterwards, because a record may use a system the project hides.
+    systems_data = data.get("external_systems") or {}
+    systems = NameResolver(db, EXTERNAL_SYSTEMS, project.organization_id, project, warnings, "external system")
+    systems.import_project_rows(systems_data.get("rows", []) if isinstance(systems_data, dict) else [])
+    share_system_resolver(db, systems)
     version_id_by_code_and_number: dict[tuple[str, int], UUID] = {}
     max_seq = 0
     for r in data.get("requirements", []):
@@ -845,9 +842,26 @@ def apply_project_data(
         db.add(requirement)
         db.flush()
         requirement_id_by_code[r["unique_code"]] = requirement.id
-        tail = r["unique_code"].rsplit("-", 1)[-1]
-        if tail.isdigit():
-            max_seq = max(max_seq, int(tail))
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=ArtefactType.REQUIREMENT.value, artefact_id=requirement.id, entries=r.get("external_references"),
+        )
+        for code in (r["unique_code"], *(a.get("unique_code", "") for a in r.get("aliases", []))):
+            tail = code.rsplit("-", 1)[-1]
+            if tail.isdigit():
+                max_seq = max(max_seq, int(tail))
+        for alias_entry in r.get("aliases", []):
+            alias_component = component_id_by_prefix.get(alias_entry.get("component_prefix") or "")
+            alias_category = category_id_by_key.get((alias_entry.get("component_prefix"), alias_entry.get("category_prefix")))
+            retired = bool(alias_entry.get("is_retired"))
+            if not alias_entry.get("unique_code") or (not retired and (alias_component is None or alias_category is None)):
+                warnings.add(f"Requirement {r['unique_code']}: an alias with an unknown component/category prefix was skipped.")
+                continue
+            db.add(RequirementAlias(
+                project_id=project.id, requirement_id=requirement.id, unique_code=alias_entry["unique_code"],
+                component_id=alias_component, category_id=alias_category, is_retired=retired,
+                retired_at=_dt(alias_entry.get("retired_at")), created_by=current_user.id,
+            ))
 
         for v in r.get("versions", []):
             version = RequirementVersion(
@@ -889,17 +903,10 @@ def apply_project_data(
                 ))
     project.next_requirement_seq = max(project.next_requirement_seq, max_seq + 1)
 
-    # Link types are matched by forward_name within the *target*
-    # organisation's own `requirement_link_type_definitions` — like every
-    # other cross-tenant reference in this bundle (users by email, custom
-    # fields by name), a source-deployment link-type id means nothing here.
-    # A bundle link whose type name has no match in the target organisation
-    # (e.g. it was a custom, non-default type the target org never defined)
-    # is skipped with a warning rather than guessing a fallback type, which
-    # would silently misrepresent the link's asserted meaning.
-    # Resolved among the types usable in the *target* project (organisation-wide, or
-    # local to it or an ancestor; the winner of a duplicate name), so a name can never
-    # land on a type the project cannot use.
+    # Link types are matched by forward_name among the types usable in the target project
+    # (organisation-wide, or local to it or an ancestor; the winner of a duplicate name), so a name
+    # never lands on a type the project cannot use. A link with no matching type is skipped with a
+    # warning, because a fallback type would misstate the link's meaning.
     link_type_id_by_name = {
         scoped.link_type.forward_name: scoped.link_type.id
         for scoped in resolve_link_type_scope(db, project)
@@ -910,12 +917,13 @@ def apply_project_data(
         target_id = requirement_id_by_code.get(link["target_unique_code"])
         link_type_id = link_type_id_by_name.get(link.get("link_type_forward_name"))
         if source_id and target_id and link_type_id is not None:
-            create_artefact_link(
+            imported_link = create_artefact_link(
                 db, source_type=ArtefactType.REQUIREMENT, source_id=source_id,
                 target_type=ArtefactType.REQUIREMENT, target_id=target_id, link_type_id=link_type_id,
                 created_by=users.resolve(link.get("created_by_email"), required=True, context="Requirement link creator"),
                 enforce_rules=False,  # replaying existing data, not a new user-chosen link
             )
+            imported_link.note = (link.get("note") or None) and str(link["note"])[:200]
         elif source_id and target_id:
             warnings.add(
                 f"Requirement link {link.get('source_unique_code')} -> {link.get('target_unique_code')} "
@@ -969,6 +977,10 @@ def apply_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=current_user.id,
             artefact_type=CHANGE_REQUEST_ARTEFACT_TYPE, artefact_id=change_request.id, entries=cr.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=CHANGE_REQUEST_ARTEFACT_TYPE, artefact_id=change_request.id, entries=cr.get("external_references"),
         )
 
         for v in cr.get("versions", []):
@@ -1079,6 +1091,7 @@ def apply_project_data(
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         if hooks.import_late is not None:
             hooks.import_late(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+    systems.hide(systems_data.get("hidden", []) if isinstance(systems_data, dict) else [])
     # After every module: the project's custom scoring models and axes exist by now, and the configuration names them.
     import_project_scoring(db, project, data, warnings)
 

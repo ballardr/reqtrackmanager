@@ -1,22 +1,17 @@
 """
 Module: modules.stakeholders.search
 
-`ArtefactSearchProvider`s for the six Stakeholders & Personas artefact types (persona,
-stakeholder, stakeholder need, stakeholder group, engagement, research finding), so the
-global search finds them by code, title, tags and the fields declared here.
-
-Responsibilities:
-- Declare, per type, the columns the search reads and the free-text fields it may match.
+`ArtefactSearchProvider`s for the six artefact types (persona, stakeholder, stakeholder need,
+stakeholder group, engagement, research finding), so the global search finds them by code, title, tags
+and the fields declared here.
 
 Design decisions:
-- Opt-in fields: a stakeholder's contact details and availability are personal data and
-  are never matched; nothing else is searchable unless listed here.
-- Personas, stakeholders and groups may be organisation-owned; the search finds those only
-  through a project that is allowed to see them (`organization_owned`), so a persona hidden
-  from a project is not found from it.
+- Opt-in fields: a stakeholder's contact details and availability are personal data and never matched.
+- Personas, stakeholders and groups may be organisation-owned; search finds those only through a project
+  allowed to see them (`organization_owned`), so a persona hidden from a project is not found from it.
 - A research finding has no page of its own; a hit opens its engagement.
 
-Dependencies: this module's models and enums; `services.search_core` (builders).
+Dependencies: this module's models and enums; `services.search_core`.
 """
 
 from __future__ import annotations
@@ -75,15 +70,15 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         comments=comments_of(PersonaComment, PersonaComment.persona_id),
         status_labels=humanise_labels(PersonaStatus),
         fields=(
-            SearchField("description", "Description", PersonaVersion.description),
+            SearchField("description", "Description", PersonaVersion.description, markdown=True),
             SearchField("role_title", "Role title", PersonaVersion.role_title),
-            SearchField("goals", "Goals", PersonaVersion.goals),
-            SearchField("needs", "Needs", PersonaVersion.needs),
-            SearchField("behaviours", "Behaviours", PersonaVersion.behaviours),
-            SearchField("context_environment", "Context and environment", PersonaVersion.context_environment),
-            SearchField("skills_proficiency", "Skills and proficiency", PersonaVersion.skills_proficiency),
-            SearchField("frequency_of_use", "Frequency of use", PersonaVersion.frequency_of_use),
-            SearchField("constraints", "Constraints", PersonaVersion.constraints),
+            SearchField("goals", "Goals", PersonaVersion.goals, markdown=True),
+            SearchField("needs", "Needs", PersonaVersion.needs, markdown=True),
+            SearchField("behaviours", "Behaviours", PersonaVersion.behaviours, markdown=True),
+            SearchField("context_environment", "Context and environment", PersonaVersion.context_environment, markdown=True),
+            SearchField("skills_proficiency", "Skills and proficiency", PersonaVersion.skills_proficiency, markdown=True),
+            SearchField("frequency_of_use", "Frequency of use", PersonaVersion.frequency_of_use, markdown=True),
+            SearchField("constraints", "Constraints", PersonaVersion.constraints, markdown=True),
         ),
     ),
     "stakeholder": versioned_provider(
@@ -91,15 +86,15 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         comments=comments_of(StakeholderComment, StakeholderComment.stakeholder_id),
         status_labels=humanise_labels(StakeholderStatus),
         fields=(
-            SearchField("description", "Description", StakeholderVersion.description),
+            SearchField("description", "Description", StakeholderVersion.description, markdown=True),
             SearchField("role", "Role", StakeholderVersion.role),
             SearchField("organisation_group", "Organisation group", StakeholderVersion.organisation_group),
-            SearchField("interests", "Interests", StakeholderVersion.interests),
-            SearchField("responsibilities", "Responsibilities", StakeholderVersion.responsibilities),
-            SearchField("goals_needs", "Goals and needs", StakeholderVersion.goals_needs),
-            SearchField("priorities", "Priorities", StakeholderVersion.priorities),
-            SearchField("constraints", "Constraints", StakeholderVersion.constraints),
-            SearchField("workflows_scenarios", "Workflows and scenarios", StakeholderVersion.workflows_scenarios),
+            SearchField("interests", "Interests", StakeholderVersion.interests, markdown=True),
+            SearchField("responsibilities", "Responsibilities", StakeholderVersion.responsibilities, markdown=True),
+            SearchField("goals_needs", "Goals and needs", StakeholderVersion.goals_needs, markdown=True),
+            SearchField("priorities", "Priorities", StakeholderVersion.priorities, markdown=True),
+            SearchField("constraints", "Constraints", StakeholderVersion.constraints, markdown=True),
+            SearchField("workflows_scenarios", "Workflows and scenarios", StakeholderVersion.workflows_scenarios, markdown=True),
         ),
     ),
     "stakeholder_need": versioned_provider(
@@ -107,8 +102,8 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         comments=comments_of(StakeholderNeedComment, StakeholderNeedComment.need_id),
         status_labels=humanise_labels(NeedStatus),
         fields=(
-            SearchField("description", "Description", StakeholderNeedVersion.description),
-            SearchField("rationale", "Rationale", StakeholderNeedVersion.rationale),
+            SearchField("description", "Description", StakeholderNeedVersion.description, markdown=True),
+            SearchField("rationale", "Rationale", StakeholderNeedVersion.rationale, markdown=True),
         ),
     ),
     "stakeholder_group": ArtefactSearchProvider(
@@ -118,20 +113,20 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             title=StakeholderGroup.name, status=_no_status(), is_archived=_never_archived(),
             updated_at=StakeholderGroup.updated_at, organization_id=StakeholderGroup.organization_id,
         ),
-        fields=(SearchField("description", "Description", StakeholderGroup.description),),
+        fields=(SearchField("description", "Description", StakeholderGroup.description, markdown=True),),
         organization_owned=True,
     ),
     "engagement": _project_record(
         Engagement, Engagement.title,
         (
-            SearchField("purpose", "Purpose", Engagement.purpose),
-            SearchField("summary", "Summary", Engagement.summary),
-            SearchField("notes", "Notes", Engagement.notes),
+            SearchField("purpose", "Purpose", Engagement.purpose, markdown=True),
+            SearchField("summary", "Summary", Engagement.summary, markdown=True),
+            SearchField("notes", "Notes", Engagement.notes, markdown=True),
         ),
         comments=comments_of(EngagementComment, EngagementComment.engagement_id),
     ),
     "research_finding": _project_record(
-        ResearchFinding, ResearchFinding.title, (SearchField("description", "Description", ResearchFinding.description),),
+        ResearchFinding, ResearchFinding.title, (SearchField("description", "Description", ResearchFinding.description, markdown=True),),
         owner_id=ResearchFinding.engagement_id, open_owner_type="engagement",
     ),
 }

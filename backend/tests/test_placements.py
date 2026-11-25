@@ -249,6 +249,20 @@ def test_deleting_a_category_moves_its_placements_and_drops_a_duplicate(world):
     assert _shown(world.client.get(_url(project, (PAIN, both)), headers=auth_headers(world.token))) == [("Hardware", "New")]
 
 
+def test_a_category_with_placed_records_is_not_deleted_without_a_replacement(world):
+    project = world.project()
+    hardware = _component(world, project, "Hardware", "HW")
+    old = _category(world, project, hardware, "Old", "OLD")
+    record = (PAIN, world.pain_point(project))
+    _put(world, project, record, [{"component_id": hardware, "category_id": old}])
+    url = f"{_base(project)}/categories/{old}"
+    refused = world.client.delete(url, headers=auth_headers(world.token))
+    assert refused.status_code == 409 and "placed records: 1" in refused.json()["detail"]
+    assert _shown(world.client.get(_url(project, record), headers=auth_headers(world.token))) == [("Hardware", "Old")]
+    _put(world, project, record, [{"component_id": hardware}])
+    assert world.client.delete(url, headers=auth_headers(world.token)).status_code == 204
+
+
 def test_a_component_with_placed_records_cannot_be_deleted(world):
     project = world.project()
     hardware = _component(world, project, "Hardware", "HW")

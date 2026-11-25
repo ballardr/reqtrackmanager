@@ -1,27 +1,22 @@
 /**
  * Module: modules/risk_management/ProjectRisksPage
  *
- * The project's risk register, mounted at `/projects/:projectId/modules/
- * risk_management/risks` (`module.ts`, reached from the "Risks" nav-rail
- * entry) —
+ * The project's risk register, mounted at `/projects/:projectId/modules/risk_management/risks` (`module.ts`, the
+ * "Risks" nav-rail entry).
  *
  * Two views over the same filtered set, switched with `Tabs`:
- * - *Register*: a `DirectoryTable` (code opens the detail page) with inherent
- *   and residual rating, status, owner and next-review columns, plus a
- *   `FilterPanel` (search, status, type, "review overdue", "no effective
- *   treatment yet", archived).
- * - *Matrix*: the configured Likelihood × Consequence grid with the risks
- *   plotted by inherent or residual rating (`RiskMatrix`). Clicking a cell
- *   narrows the register to that cell and returns to it.
+ * - *Register*: a `DirectoryTable` (code opens the detail page) with inherent and residual rating, status, owner and
+ *   next-review columns (each but code, title and status can be hidden with the column chooser), plus a `FilterPanel` (search, status, type, "review overdue", "no effective treatment yet",
+ *   archived).
+ * - *Matrix*: the configured Likelihood x Consequence grid with the risks plotted by inherent or residual rating
+ *   (`RiskMatrix`). Clicking a cell narrows the register to that cell and returns to it.
  *
- * The register opens on open risks only (the "Open only" filter is ticked and
- * stays visible); a link with a valid `status`, or `open=0`, starts with it
- * off (`hooks/useOpenOnly.ts`). The view, matrix cell and filters are kept in
- * the URL (`hooks/useUrlFilter.ts`), so the register comes back as it was left.
+ * The register opens on open risks only (the "Open only" filter is ticked and visible); a link with a valid `status`,
+ * or `open=0`, starts with it off (`hooks/useOpenOnly.ts`). The view, matrix cell and filters are kept in the URL
+ * (`hooks/useUrlFilter.ts`), so the register returns as left.
  *
- * Status and type render through their label maps; the rating is derived by the
- * backend. The project, org users, types, scheme and risks are fetched here
- * (no `ProjectContext` provider, as `ProjectDecisionsPage` does).
+ * Status and type render through their label maps; the backend derives the rating. The project, organisation users,
+ * types, scheme and risks are fetched here (no `ProjectContext` provider, as `ProjectDecisionsPage`).
  */
 import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useMemo, useState } from "react";
@@ -34,13 +29,12 @@ import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useAuth } from "../../context/AuthContext";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { riskApi } from "./api";
 import { countPlottable, type RiskMatrixBasis } from "./riskFields";
 import { RiskFormModal } from "./RiskFormModal";
@@ -52,10 +46,14 @@ import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
-import { sortRows, type SortValue } from "../../utils/sortRows";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
+import { sortRows, TIME_SORT_VALUES, type SortValue } from "../../utils/sortRows";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -101,10 +99,11 @@ function inCell(risk: Risk, cell: CellFilter): boolean {
   return likelihood === cell.likelihoodLevelId && consequence === cell.consequenceLevelId;
 }
 
-const RISK_SORT_KEYS = ["code", "title", "type", "inherent", "residual", "status", "owner", "review"] as const;
+const RISK_SORT_KEYS = ["code", "title", "type", "inherent", "residual", "status", "owner", "review", ...TIME_SORT_KEYS] as const;
 
 /** Sortable value of each sortable column; a rating sorts by its normalised score, so the order follows severity. */
 const RISK_SORT_VALUES: Record<string, (risk: Risk) => SortValue> = {
+  ...TIME_SORT_VALUES,
   code: (r) => r.unique_code,
   title: (r) => r.title,
   type: (r) => r.risk_type_name,
@@ -119,9 +118,9 @@ export function ProjectRisksPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "risk");
   const commitTags = useCommitTags(projectId ?? "", "risk");
+  const announceCreated = useCreatedToast(projectId ?? "", "risk");
   const initial = useInitialSearchParams();
   const scheme = useRiskScheme(projectId);
   const [project, setProject] = useState<Project | null>(null);
@@ -148,7 +147,7 @@ export function ProjectRisksPage() {
   const [overdueOnly, setOverdueOnly] = useUrlFlag("overdue");
   const [untreatedOnly, setUntreatedOnly] = useUrlFlag("untreated");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(RISK_SORT_KEYS);
+  const listSort = useListSort("risks", RISK_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -198,6 +197,7 @@ export function ProjectRisksPage() {
     if (untreatedOnly) params.set("untreated", "true");
     if (cell) params.set("cell", formatCell(cell));
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
@@ -216,17 +216,12 @@ export function ProjectRisksPage() {
   }, [search, statusFilter, typeFilter, overdueOnly, untreatedOnly, cell]);
   const filtered = useMemo(() => (risks ?? []).filter((r) => matches(r, openOnly)), [risks, matches, openOnly]);
 
-  if (!projectId) return null;
-  if (loadError) return <p className="text-muted">{loadError}</p>;
-  if (risks === null || project === null) return <Spinner />;
-
-
   const columns: DirectoryColumn<Risk>[] = [
     { key: "code", label: "Code", sortable: true, render: (r) => <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /> },
     { key: "title", label: "Title", sortable: true, render: (r) => <>{r.title}<ProjectScopeLabel row={r} /></> },
-    { key: "type", label: "Type", sortable: true, render: (r) => r.risk_type_name ?? "—" },
-    { key: "inherent", label: "Inherent", sortable: true, render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },
-    { key: "residual", label: "Residual", sortable: true, render: (r) => <RiskRatingBadge rating={r.residual_rating} /> },
+    { key: "type", label: "Type", sortable: true, optional: true, render: (r) => r.risk_type_name ?? "—" },
+    { key: "inherent", label: "Inherent", sortable: true, optional: true, render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },
+    { key: "residual", label: "Residual", sortable: true, optional: true, render: (r) => <RiskRatingBadge rating={r.residual_rating} /> },
     {
       key: "status", label: "Status", sortable: true,
       render: (r) => (
@@ -238,14 +233,20 @@ export function ProjectRisksPage() {
         </FilterBadge>
       ),
     },
-    { key: "owner", label: "Owner", sortable: true, render: (r) => <PrincipalBadge principal={r.owner} placeholder="—" /> },
+    { key: "owner", label: "Owner", sortable: true, optional: true, render: (r) => <PrincipalBadge principal={r.owner} placeholder="—" /> },
     {
-      key: "review", label: "Next review", sortable: true,
+      key: "review", label: "Next review", sortable: true, optional: true,
       render: (r) => r.review_date
         ? <span>{r.review_date}{r.is_review_overdue && <> <Badge tone="danger">Overdue</Badge></>}</span>
         : "—",
     },
   ];
+
+  const shown = useOptionalColumns("risks", columns);
+
+  if (!projectId) return null;
+  if (loadError) return <p className="text-muted">{loadError}</p>;
+  if (risks === null || project === null) return <Spinner />;
 
   // An empty register the "Open only" default caused says so, so it is not read as "nothing recorded".
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && risks.some((r) => matches(r, false));
@@ -255,6 +256,7 @@ export function ProjectRisksPage() {
     <div className="container stack">
       <ListPageLayout
         title="Risks"
+        columnChooser={view === "register" ? shown.chooser : null}
         records={{ projectId, recordType: "risk", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -285,6 +287,7 @@ export function ProjectRisksPage() {
             <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -309,10 +312,10 @@ export function ProjectRisksPage() {
             {view === "register" ? (
               <DirectoryTable
                 ariaLabel="Risks"
-                columns={columns}
-                rows={sortRows(filtered, sort, RISK_SORT_VALUES)}
-                sort={sort}
-                onSort={(key) => setSort((current) => cycleSort(current, key))}
+                columns={shown.columns}
+                rows={sortRows(filtered, listSort.sort, RISK_SORT_VALUES)}
+                sort={listSort.sort}
+                onSort={listSort.onHeaderSort}
                 rowKey={(r) => r.id}
                 placements={{ projectId, artefactType: "risk", rowId: (r) => r.id }}
                 rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
@@ -361,7 +364,7 @@ export function ProjectRisksPage() {
             setCreateError(null);
             try {
               const created = await riskApi.create(projectId, values);
-              showToast("Risk created.");
+              announceCreated("Risk", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

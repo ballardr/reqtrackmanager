@@ -5,33 +5,19 @@ Revision ID: 0004
 Revises: 0003
 Create Date: 2026-08-10
 
-- `requirement_versions.target_stage_id` becomes NOT NULL (backfilled from
-  each requirement's own project's earliest stage, by `sort_order`, for any
-  row that doesn't already have one — every project has at least one stage
-  from creation, see `routers/projects.py::create_project`, so this always
-  has something to backfill to).
+- `requirement_versions.target_stage_id` becomes NOT NULL, backfilled from the project's earliest stage
+  by `sort_order` (every project has a stage from creation; see `routers/projects.py::create_project`).
 - `requirement_versions.description`: new optional free-text field.
-- `RequirementLevel` gains an `"optional"` member — no migration needed for
-  the column itself (`str_enum` stores these as plain VARCHAR, see
-  `models/base.py::str_enum`'s docstring for why).
-- `change_request_versions.changed_fields` (JSONB list of field-name
-  strings): the explicit record of which fields a change request actually
-  proposes to change — see `docs/decisions.md`'s "Change request field-level
-  tracking" entry for the full reasoning. `proposed_description` and
-  `proposed_attachment_file_ids` are the two new proposed-content columns
-  this feature needs alongside it.
-- `comment_files`: new join table so a `ReviewComment` (the discussion
-  thread shared by requirements and change requests) can carry file
-  attachments.
+- `RequirementLevel` gains an `"optional"` member; the column needs no migration because `str_enum`
+  stores plain VARCHAR (see `models/base.py::str_enum`).
+- `change_request_versions.changed_fields` (JSONB list of field names) records which fields a change
+  request proposes to change (docs/decisions.md, "Change request field-level tracking");
+  `proposed_description` and `proposed_attachment_file_ids` are the matching proposed-content columns.
+- `comment_files`: join table so a `ReviewComment` can carry file attachments.
 
-`IF NOT EXISTS`/`IF EXISTS` for the new columns/table, same reason 0002/0003
-use it: 0001's `create_all()` already creates these against the *current*
-model classes on a brand-new database, so a plain `ADD COLUMN`/`CREATE
-TABLE` would fail there with "already exists"; an already-migrated database
-from before this revision is genuinely missing them. The `target_stage_id`
-backfill+NOT NULL is safe unconditionally either way: a fresh database has
-no rows to backfill (no-op), and `SET NOT NULL` on an already-not-null
-column is a no-op in Postgres too.
+`IF NOT EXISTS`/`IF EXISTS` for the new columns and table, as in 0002. The `target_stage_id` backfill
+and NOT NULL are idempotent: a fresh database has no rows to backfill and `SET NOT NULL` on a NOT NULL
+column is a no-op.
 """
 
 from collections.abc import Sequence
@@ -59,14 +45,10 @@ def upgrade() -> None:
         """
     )
     op.execute("ALTER TABLE requirement_versions ALTER COLUMN target_stage_id SET NOT NULL")
-    # The FK's ON DELETE action must change from SET NULL to CASCADE now
-    # that the column is NOT NULL — SET NULL against a NOT NULL column
-    # raises exactly the IntegrityError this migration is trying to
-    # prevent, the moment a ProjectStage is ever removed via its parent
-    # project/organisation being deleted (there's no standalone "delete a
-    # stage" endpoint — see RequirementVersion.target_stage_id's model
-    # docstring for why CASCADE is correct and safe here). Postgres has no
-    # in-place "ALTER CONSTRAINT ... ON DELETE" — drop and recreate.
+    # The FK's ON DELETE action changes from SET NULL to CASCADE: SET NULL on a NOT NULL column raises an
+    # IntegrityError when a parent project or organisation deletion removes a ProjectStage (see
+    # RequirementVersion.target_stage_id). Postgres cannot alter the action in place, so the constraint is
+    # dropped and recreated.
     op.execute("ALTER TABLE requirement_versions DROP CONSTRAINT IF EXISTS requirement_versions_target_stage_id_fkey")
     op.execute(
         "ALTER TABLE requirement_versions ADD CONSTRAINT requirement_versions_target_stage_id_fkey "

@@ -1,27 +1,12 @@
 """
 Module: modules.product_feedback._shared
 
-Helpers behind the two routers (`project_router.py`, `router.py`) and the record-table import: the
-gates, the API shape (a request merged with its current version), the create / update / transition
-bodies, and the comment and file wrappers over the shared `services.module_attachments` kit.
-
-RBAC: viewing needs the sub-component enabled and membership. Submitting needs only that, unless a
-project administrator restricted submission to triagers (`SubmissionPolicy.TRIAGERS`). Editing,
-transitions, archiving and attachments need the triager role of the tier (`feedback_triager` in a
-project, `org_feedback_triager` in the organisation) or a Fine-Grained Access Control
-`(enhancement_request, manage)` grant.
-
-Closing the loop: `close_the_loop_out` reads what became of a request (who was told, the problems and work it is
-linked to, the cue to mark it delivered), `inform_from_payload` is the gated, audited body of the "told" endpoint and
-`open_loops_out` is the project's list of delivered or declined requests with requesters still to be told.
-
-Demand and merging: `request_extras` adds each request's place in a merge and its demand to the list and detail
-shapes in a fixed number of statements; `merge_from_payload` / `unmerge_from_payload` are the gated, audited
-bodies of the merge endpoints, and `demand_out` is the per-request demand breakdown with names the caller may
-view.
-
-Tenancy: every lookup is scoped to the project or organisation in the URL, so another tenant's ids
-look absent (404), and an owner must belong to the organisation.
+Helpers behind the two routers and the record-table import: gates, the API
+shape (a request merged with its current version), create/update/transition
+bodies, comment and file wrappers, close-the-loop and demand/merge shapes.
+Viewing needs the sub-component and membership; submitting only that unless
+`SubmissionPolicy.TRIAGERS`; edits and transitions need the triager role or an
+`(enhancement_request, manage)` grant. Lookups are tenant-scoped (404 otherwise).
 """
 
 from __future__ import annotations
@@ -117,6 +102,7 @@ from app.schemas.principal import PrincipalOut
 from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
+from app.services.lifecycles import ResolvedLifecycle, lifecycle_for, next_states
 from app.services.link_graph import ArtefactResolver
 from app.services.permissions import encode_permission
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
@@ -243,14 +229,34 @@ def rating_context_for(
     return ctx
 
 
+def _allowed_next_statuses(
+    db: Session, request: EnhancementRequest, status: EnhancementRequestStatus,
+    lifecycles: dict[uuid.UUID, ResolvedLifecycle] | None,
+) -> list[EnhancementRequestStatus]:
+    """The legal next statuses of a request: a project request follows its project's lifecycle (turned-off states
+    stepped over), an organisation inbox request the base table. A direct move to Duplicate is never offered (a merge
+    makes one)."""
+    if request.project_id is None:
+        moves = [s.value for s in ALLOWED_TRANSITIONS[status]]
+    else:
+        cache = lifecycles if lifecycles is not None else {}
+        if request.project_id not in cache:
+            cache[request.project_id] = lifecycle_for(db, request.project_id, REQUEST_ARTEFACT_TYPE)
+        moves = next_states(cache[request.project_id], status.value)
+    wanted = {EnhancementRequestStatus(m) for m in moves} - {EnhancementRequestStatus.DUPLICATE}
+    return sorted(wanted, key=list(EnhancementRequestStatus).index)
+
+
 def request_to_out(
     db: Session, request: EnhancementRequest, version: EnhancementRequestVersion, labels: OwnerLabels | None = None,
     extras: RequestExtras | None = None, ctx: RatingContext | None = None,
     scoring_model: Sequence[str] | None = None, levels: dict[str, uuid.UUID] | None = None,
+    lifecycles: dict[uuid.UUID, ResolvedLifecycle] | None = None,
 ) -> RequestOut:
     """Merges a request with its current version. `labels` (owner data), `extras` (merge status and demand),
-    `ctx` (scoring configuration) and `levels` (the version's scoring levels) are pre-resolved when building
-    many, resolved here when omitted; `scoring_model` picks the models scored (default: the enabled ones)."""
+    `ctx` (scoring configuration), `levels` (the version's scoring levels) and `lifecycles` (each project's resolved
+    lifecycle, filled as it is read) are pre-resolved when building many, resolved here when omitted; `scoring_model`
+    picks the models scored (default: the enabled ones)."""
     labels = labels if labels is not None else owner_labels(db, [version])
     extras = extras if extras is not None else request_extras(db, [request])
     ctx = ctx if ctx is not None else rating_context_for(db, request, scoring_model)
@@ -264,10 +270,7 @@ def request_to_out(
         unique_code=request.unique_code, creator_id=request.creator_id, is_archived=request.is_archived,
         archived_at=request.archived_at, archived_by=request.archived_by, title=version.title,
         description=version.description, status=version.status,
-        allowed_next_statuses=sorted(
-            ALLOWED_TRANSITIONS[version.status] - {EnhancementRequestStatus.DUPLICATE},
-            key=list(EnhancementRequestStatus).index,
-        ),
+        allowed_next_statuses=_allowed_next_statuses(db, request, version.status, lifecycles),
         owner=_owner_of(labels, version), external_refs=extras.references.get(request.id, []),
         decline_reason=version.decline_reason,
         levels=levels, derived_levels=derived_levels(ctx, levels, demand.weighted),
@@ -295,9 +298,11 @@ def requests_to_out(
     extras = request_extras(db, requests)
     levels = version_levels(db, [v.id for v in versions])
     contexts: dict[tuple[uuid.UUID, uuid.UUID | None], RatingContext] = {}
+    lifecycles: dict[uuid.UUID, ResolvedLifecycle] = {}
     return [
         request_to_out(
             db, r, v, labels, extras, rating_context_for(db, r, scoring_model, contexts), levels=levels[v.id],
+            lifecycles=lifecycles,
         )
         for r, v in zip(requests, versions, strict=True)
     ]
@@ -598,7 +603,7 @@ def move_to_project_from_payload(
     enabled, and the actor must be allowed to submit there (its submission policy applies, so a triager of the
     inbox cannot push requests into a project that restricted submission to its own triagers). Anything else about
     the project looks absent (404). Locks the request, re-owns it (`triage.move_to_project`), writes one audit event
-    carrying the old code and commits.
+    carrying the code before the move and commits.
 
     Raises:
         HTTPException: 404 for a project the actor cannot open, of another organisation or with the list disabled;
@@ -907,7 +912,7 @@ def add_reference_from_payload(
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    audit_request(db, holder, request, "reference_added", actor, {"reference_id": str(row.id), "role": row.role.value})
+    audit_request(db, holder, request, "reference_added", actor, {"reference_id": str(row.id), "role": row.role.value if row.role else None})
     db.commit()
     return next(r for r in refs.references_by_request(db, [request.id])[request.id] if r.id == row.id)
 

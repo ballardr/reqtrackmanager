@@ -1,28 +1,17 @@
 /**
  * Module: components/CreateLinkedRecord
  *
- * The "Create new record" choice of the shared Links panel's "Add link" menu: creates a record of another type and
- * links it to the page's record in one step, so a person does not leave the page to make the thing they want to link to.
+ * The "Create new record" choice of the Links panel's "Add link" menu: creates a record of another type and links
+ * it to the page's record in one step.
  *
- * Responsibilities:
- * - `useCreatableRecordTypes` (`hooks/useCreatableRecordTypes`): offer each record type a link type from the page's record reaches (the server's link
- *   options, already filtered by restriction, enabled modules and what the caller may link) that the owning module
- *   can create (`modules/linkedRecordCreators`) and that the server says the caller may create (`can_create`); an empty list means the panel offers no create choice, so a record never offers one that would be refused.
- * - `CreateLinkedRecordDialog`: step 1 chooses the record type and the relationship; step 2 shows the owning module's
- *   own create dialog (core never imports a module's form) and links the new record once it reports the id.
- *
- * Design decisions:
- * - The relationship defaults to the one the page record's module prefers (`preferredLinkPhrases`: a request's
- *   Pain Points are the ones it "Addresses", which other features count), else the first specific link type; the
- *   symmetric "Related to" leads only when nothing else reaches the type. Changing the record type resets the
- *   relationship to that type's default.
- * - The default relationship is the first option and is marked "(default)" when there is a choice.
- * - With one creatable type the record type select is unavailable and a tooltip (beside the pointer) says why, so a person does not
- *   wonder whether something is missing.
- * - The two choices are a step of their own, in a modal, so the panel header keeps one "Add link" control (a menu of
- *   linking an existing record or creating a new one) and its Trace and View options buttons stay on the same row.
- * - Not offered while links need a change request (the panel does not ask then): the new record would have to be
- *   proposed, not linked.
+ * - `useCreatableRecordTypes` offers each type a link type from the page record reaches (the server's link options,
+ *   filtered by restriction, modules and rights) that the owning module can create (`modules/linkedRecordCreators`)
+ *   and the server says the caller may create (`can_create`); empty means no create choice.
+ * - `CreateLinkedRecordDialog`: step 1 chooses record type and relationship; step 2 shows the owning module's
+ *   create dialog (core never imports a module's form) and links the new record once it reports the id.
+ * - The relationship defaults to the page record's module preference (`preferredLinkPhrases`), else the first
+ *   specific link type, marked "(default)" and reset when the type changes. Not offered while links need a change
+ *   request: the new record would have to be proposed.
  */
 import { useState } from "react";
 

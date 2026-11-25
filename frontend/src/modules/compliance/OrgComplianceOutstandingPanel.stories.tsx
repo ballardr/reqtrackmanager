@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import type { Organization } from "../../api/types";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { OrgComplianceOutstandingPanel } from "./OrgComplianceOutstandingPanel";
 import type {
@@ -15,6 +16,8 @@ import type {
 } from "./types";
 
 const ORG_ID = "org-1";
+const ORG = { id: ORG_ID, name: "Acme" } as Organization;
+const OTHER_ORG = { id: "org-2", name: "Globex" } as Organization;
 
 function mockApis(overrides: {
   nonCompliant?: OrgNonCompliantRequirement[];
@@ -38,13 +41,13 @@ function mockApis(overrides: {
   });
 }
 
-const DEFAULT_PATH = "/orgs/org-1/overview/compliance-outstanding";
+const DEFAULT_PATH = "/standards/outstanding?org=org-1";
 
 const meta: Meta<typeof OrgComplianceOutstandingPanel> = {
   title: "Modules/Compliance/OrgComplianceOutstandingPanel",
   component: OrgComplianceOutstandingPanel,
   decorators: [withToast()],
-  args: { orgId: ORG_ID },
+  args: { frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined, orgs: [ORG], showOrg: false } },
 };
 export default meta;
 
@@ -131,7 +134,7 @@ export const WithOutstandingItems: Story = {
  * evidence" tile links here with `?category=evidence&validity=expired`, so
  * only the Evidence section renders, narrowed to the expired row alone. */
 export const CategoryFilteredViaUrl: Story = {
-  decorators: [withRouter(`${DEFAULT_PATH}?category=evidence&validity=expired`)],
+  decorators: [withRouter(`${DEFAULT_PATH}&category=evidence&validity=expired`)],
   beforeEach: () =>
     mockApis({
       nonCompliant: NON_COMPLIANT, pending: PENDING, outstandingActions: OUTSTANDING_ACTIONS,
@@ -167,12 +170,9 @@ const REQUIREMENTS_VER_1: ComplianceRequirement[] = [
   { id: "req-2", standard_version_id: "ver-1", parent_requirement_id: "sec-5", reference: "A.5.16", name: "Identity management", sort_order: 1, ...REQUIREMENT_DEFAULTS },
 ];
 
-/** Filtering by Project narrows every section that carries a
- * `project_id` (all five), and filtering by Standard then Sub-section
- * additionally narrows the three requirement-scoped sections (both
- * `req-1`/`req-2` sit under "Annex A.5," so picking "Clause 4" empties
- * them while Evidence and Reviews — not per-requirement — are unaffected
- * by the sub-section pick specifically). */
+/** Filtering by Project narrows every section carrying a `project_id` (all five). Filtering by Standard and then Sub-section
+ * narrows the three requirement-scoped sections (`req-1` and `req-2` sit under "Annex A.5", so "Clause 4" empties them) while
+ * Evidence and Reviews, which are not per-requirement, are unaffected by the sub-section. */
 export const FilteredByProjectStandardAndSubSection: Story = {
   decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () =>
@@ -239,3 +239,26 @@ export const NothingOutstanding: Story = {
 
 export const LightTheme: Story = { ...WithOutstandingItems };
 export const DarkTheme: Story = { ...WithOutstandingItems, globals: { theme: "dark" } };
+
+/** Reading two organisations joins their rows, each row states its organisation and Export is not offered. */
+export const EveryOrganisationAtOnce: Story = {
+  args: { frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined, orgs: [ORG, OTHER_ORG], showOrg: true } },
+  decorators: [withRouter("/standards/outstanding")],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith(`/api/v1/orgs/${ORG_ID}/`) && path.endsWith("/non-compliant-requirements")) return NON_COMPLIANT;
+      if (path.startsWith("/api/v1/orgs/org-2/") && path.endsWith("/pending-approvals")) return PENDING;
+      if (path.includes("/reviews-due") || path.endsWith("/non-compliant-requirements") || path.endsWith("/pending-approvals") ||
+          path.endsWith("/outstanding-required-actions") || path.endsWith("/expiring-evidence")) return [];
+      throw new Error(`unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText("Non-compliant requirements (1)");
+    await expect(canvas.getByText("Pending approval (1)")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Acme")[0]).toBeInTheDocument();
+    await expect(canvas.getAllByText("Globex")[0]).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+  },
+};

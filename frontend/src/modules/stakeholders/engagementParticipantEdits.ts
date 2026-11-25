@@ -1,15 +1,14 @@
 /**
  * Module: modules/stakeholders/engagementParticipantEdits
  *
- * Loads and saves an Engagement's participants for the edit form, which shows them with the same
- * field the create form uses. `loadParticipantEntries` reads the Stakeholders and (with the
- * Research extras on) the anonymous participants; `applyParticipantChanges` compares the form's
- * result with what was loaded and issues only the calls that differ (add or remove a Stakeholder;
- * add, remove or change the Persona of an anonymous participant).
+ * Loads and saves an Engagement's participants for the edit form, which shows them with the field the create form
+ * uses. `loadParticipantEntries` reads the Stakeholders and (with the Research extras on) the anonymous participants;
+ * `applyParticipantChanges` compares the form's result with what was loaded and issues only the calls that differ (add
+ * or remove a Stakeholder; add, remove or change the Persona of an anonymous participant).
  *
- * These are the same endpoints the detail page's Participants list uses, so audit events, the
- * Research extras gate and permissions are unchanged. A Stakeholder the form cannot display (hidden
- * from the project) stays in `stakeholderIds`, so it is neither shown nor removed by an edit.
+ * These are the endpoints the detail page's Participants list uses, so audit events, the Research extras gate and
+ * permissions are the same. A Stakeholder the form cannot display (hidden from the project) stays in `stakeholderIds`,
+ * so an edit neither shows nor removes it.
  */
 import { projectEngagementApi, projectResearchApi } from "./api";
 import type { ParticipantEntries } from "./types";

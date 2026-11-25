@@ -15,6 +15,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.metrics import count_login_attempt
 from app.models.audit import AuditEvent, LoginEvent
 
 
@@ -68,7 +69,7 @@ def log_login(
     success: bool,
     kind: str = "password",
 ) -> LoginEvent:
-    """Writes a login attempt event (C-A-07).
+    """Writes a login attempt event (C-A-07) and counts it in `login_attempts_total`.
 
     Args:
         db: An active database session.
@@ -92,4 +93,5 @@ def log_login(
         created_at=datetime.now(UTC),
     )
     db.add(event)
+    count_login_attempt(success=success, kind=kind)
     return event

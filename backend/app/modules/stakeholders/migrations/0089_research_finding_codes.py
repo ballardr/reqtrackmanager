@@ -4,11 +4,8 @@ Revision ID: 0089
 Revises: 0088
 Create Date: 2026-10-13
 
-Adds `research_findings.unique_code` (unique per project), the same `PREFIX-nnn` shape Risks and
-Decisions carry, so a finding can be named and found from the record it is linked to. Existing
-findings are numbered per project in the order they were recorded, and the project's
-`research_finding` sequence counter is set past the highest number, so a code is never reused.
-Guarded throughout: a database built from the current models already has the column.
+Adds `research_findings.unique_code`, numbering existing findings per project
+and setting the sequence counter past the highest. Guarded and repeatable.
 """
 
 from collections.abc import Sequence

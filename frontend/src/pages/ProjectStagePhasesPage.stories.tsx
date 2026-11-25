@@ -45,6 +45,34 @@ export const ListsStagesWithTheirPhase: Story = {
   },
 };
 
+/** A person who may change the stages gets a settings link to project administration's stages and phases. */
+export const ManagerSeesTheSettingsLink: Story = {
+  beforeEach: () => mockReads(buildComponentPhases({ mode: "off", own_mode: "off", tracks: [] })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "Stage and phase settings" });
+    await expect(link).toHaveAttribute("href", "/projects/project-1/admin/stagesPhases");
+  },
+};
+
+/** Someone who cannot change the stages is not offered a link to a page they cannot use. */
+export const MemberDoesNotSeeTheSettingsLink: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/component-stages")) return buildComponentPhases({ mode: "off", own_mode: "off", tracks: [] });
+      if (path.endsWith("/phase-plans")) return buildPhasePlans();
+      if (path.endsWith("/stages")) return [{ ...STAGE, can_lock: false }];
+      if (path.endsWith("/components")) return [SOFTWARE];
+      return [buildStageWorkflow()];
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Design")).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Stage and phase settings" })).not.toBeInTheDocument();
+  },
+};
+
 /** A track's owner (not a manager) moves their own track from here. */
 export const AnOwnerMovesTheirTrack: Story = {
   beforeEach: () => {

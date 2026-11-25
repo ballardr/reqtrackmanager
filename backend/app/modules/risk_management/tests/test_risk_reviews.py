@@ -1,15 +1,12 @@
-"""Tests for the Risk Management module's reviews and reassessment
-scheduling, through the real HTTP
-endpoints and the module's own sweep and hook entry points.
+"""
+Tests for reviews and reassessment scheduling through the real HTTP endpoints,
+the module's sweep and its change hook.
 
-Covers: recording a review (who may, snapshot of the ratings, the next review
-date, validation, archived/closed refusal, the confirm-versus-stale rule), the
-review history endpoints, the overdue flag and filter, the daily due/overdue
-notification sweep (once per date, re-arming, recipients, exclusions), the
-change-detection hook raised by a requirement edit or archive (verdict moved to
-needs-reassessment, one notification, unaffected verdicts left alone), the
-module-registered notification types in the preferences API, and the declared
-MCP tools.
+Covers recording a review (who may, rating snapshot, next date, validation,
+refusals, the confirm-versus-stale rule), history, the overdue flag and filter,
+the due/overdue sweep (once per date, recipients), change detection (verdict
+moved to needs-reassessment, one notification), notification types in the
+preferences API and the declared MCP tools.
 """
 
 from __future__ import annotations

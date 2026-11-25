@@ -1,37 +1,11 @@
 """
 Module: modules.decisions.schemas
 
-Pydantic request/response models for Decision Management's backend
-API — sits
-alongside `models.py` (the ORM shapes these expose over HTTP),
-`project_router.py` (the project-scoped Decision/comment/file/relationship
-endpoints), and `router.py` (the org-scoped Decision Template endpoints).
-
-Conventions, matching `app.modules.compliance.schemas`' own established
-shape for this codebase's module schemas:
-- Every `*Out` schema that maps 1:1 onto an ORM row sets
-  `model_config = {"from_attributes": True}`.
-- `DecisionOut` is the one exception: `is_locked` (the
-  content-lock-after-approval rule, enforced at the router layer — see
-  `project_router.py`'s module docstring) is a computed field, not a
-  column, so `DecisionOut` is always built explicitly by the router from a
-  `Decision` row, the same "computed field -> build explicitly" pattern
-  `ProjectComplianceRequirementOut`/`ComplianceEvidenceOut` already use.
-- `DecisionLinkOut` is this module's own presentation shape over the
-  generic, polymorphic `ArtefactLink` (`app.models.relationship`) —
-  deliberately not reusing `RequirementLinkOut`
-  (`app.schemas.requirement`), since that schema is hard-coded to a
-  requirement-to-requirement link (`source_requirement_id`/
-  `target_requirement_id`/`other_requirement_*`) and no generic link-
-  presentation schema exists in `app.schemas` to reuse instead (checked
-  before writing this one) — a Decision's own links can point at either another
-  Decision or a Requirement, so the shape needs to stay polymorphic rather
-  than assume one target type. **Decided by: Agent.**
-- `DecisionCommentOut` mirrors `app.schemas.requirement.CommentOut`'s
-  shape minus the reaction fields (`reaction_count`/`reacted_by_me`) — a
-  `DecisionComment` has no reaction mechanism (not asked for, and the module-local `DecisionComment` table has no
-  `CommentReaction`-equivalent join table), so those two fields are simply
-  omitted rather than carried over unused. **Decided by: Agent.**
+Pydantic request/response models for Decision Management's API.
+- `*Out` schemas mapping 1:1 onto an ORM row set `from_attributes`.
+- `DecisionOut` is built explicitly by the router (computed `is_locked`).
+- `DecisionLinkOut` is a polymorphic presentation of `ArtefactLink`.
+- `DecisionCommentOut` omits reaction fields: comments have no reactions.
 """
 
 from __future__ import annotations
@@ -133,6 +107,7 @@ class DecisionCreate(BaseModel):
     consequences: str | None = None
     assumptions: str | None = None
     constraints: str | None = None
+    document: str | None = None
 
 
 class DecisionUpdate(BaseModel):
@@ -156,6 +131,7 @@ class DecisionUpdate(BaseModel):
     consequences: str | None = None
     assumptions: str | None = None
     constraints: str | None = None
+    document: str | None = None
 
 
 class DecisionOut(ProjectScopedRow):
@@ -180,6 +156,7 @@ class DecisionOut(ProjectScopedRow):
     consequences: str | None
     assumptions: str | None
     constraints: str | None
+    document: str | None
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None

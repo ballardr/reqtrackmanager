@@ -1,19 +1,12 @@
 /**
  * Module: modules/context_strategy/OrgPainPointTypesPanel
  *
- * The organisation-scoped shared base tier of Pain Point's type vocabulary
- * (§6.2) — a thin wrapper over the shared
- * `OrgTypeVocabularyPanel` (`components/TypeVocabularyPanels.tsx`, which
- * documents the shared behaviour: `DefinitionList` rename/reorder/add/
- * delete, the active toggle, and why a 409 on delete blocks rather than
- * offering reassignment).
+ * The organisation-scoped base tier of Pain Point's type vocabulary: a thin wrapper over the shared
+ * `OrgTypeVocabularyPanel` (`components/TypeVocabularyPanels.tsx`, which documents the shared behaviour).
  *
- * **Placement: `orgAdminSections` (Org Management), not `orgOverviewSections`
- * (Org Dashboard)** — a type vocabulary is a configuration table an org
- * admin manages, not day-to-day artefact content like an org-scoped
- * Strategy, the same distinction `DecisionTemplatesPanel.tsx` draws
- * (Decided by: Agent). Gated on the `pain_point_type_admin` module role,
- * enforced server-side.
+ * Placement is `orgAdminSections` (Org Management), not `orgResourceSections`: a type vocabulary is a configuration
+ * table an organisation administrator manages, as in `DecisionTemplatesPanel.tsx`. Gated on the
+ * `pain_point_type_admin` module role, enforced server-side.
  */
 import { OrgTypeVocabularyPanel } from "../../components/TypeVocabularyPanels";
 import { orgPainPointTypeApi } from "./api";

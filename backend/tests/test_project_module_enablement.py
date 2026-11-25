@@ -1,38 +1,25 @@
-"""Tests for the project-level
-override of whole-module enablement: `ProjectModuleEnablement`, `app.modules.registry.
-is_module_enabled_for_project`'s resolution, `require_project_module_enabled`/
-`require_project_module_enabled_dynamic`'s switch onto it, the project-tier
-`GET`/`PUT /projects/{id}/modules/{module_key}/enablement` endpoints,
-copy-on-create / copy-before-default-change (Decided by: User,
-2026-10-04 — an org default only affects projects created afterwards; an
-org hard Off still reaches every project), and — the one part that isn't purely additive —
-the regression proving a project-level whole-module override correctly
-cascades into `is_module_subcomponent_enabled`'s own resolution (the
-sub-component tests only prove the org-level disable case cascades, a different
-code path now that the project-override tier sits ahead of it).
+"""Tests for the project-level override of whole-module enablement:
+`ProjectModuleEnablement`, `app.modules.registry.is_module_enabled_for_project`'s
+resolution, `require_project_module_enabled`/`require_project_module_enabled_dynamic`,
+the project-tier `GET`/`PUT /projects/{id}/modules/{module_key}/enablement` endpoints,
+copy-on-create / copy-before-default-change (an org default only affects projects
+created afterwards; an org hard Off still reaches every project), and the cascade of
+a project-level whole-module override into `is_module_subcomponent_enabled`'s
+resolution (the sub-component tests cover only the org-level disable cascade).
 
-**Corrected 2026-09-29** (Decided by: User — see `docs/decisions.md`'s
-dated entry): the resolution is no longer "org default,
-project override symmetric in either direction" as a single tier. It is
-now four tiers — entitlement, the organisation's own hard `enabled` floor
-(absolute — no project override can cross it upward, in either direction),
-the organisation's own `default_project_enabled` (what a project gets
-absent its own override), and a project's own override (symmetric, but
-only ever operating *within* the `enabled=True` floor, against
-`default_project_enabled` specifically). Every test below that exercised
-the original "project override always wins" shape against a hard-disabled
-module has been corrected to expect the new floor instead; sub-component
-overrides (`test_module_subcomponent_enablement.py`) are unaffected by
-this correction.
+Resolution has four tiers (see `docs/decisions.md`): entitlement; the organisation's hard
+`enabled` floor (absolute: no project override can cross it); the organisation's
+`default_project_enabled` (what a project gets without its own override); and the
+project's override (symmetric, but only within the `enabled=True` floor, against
+`default_project_enabled`). Sub-component overrides
+(`test_module_subcomponent_enablement.py`) are independent of the floor.
 
-Projects created through the API get a row per module copied in at
-creation, so resolution tests that exercise the "no project row" tier
-first call `_drop_snapshot` — modelling a project created before the
-module was registered, the only case that still reaches that tier.
+Projects created through the API get a row per module copied in at creation, so
+resolution tests of the "no project row" tier first call `_drop_snapshot`, modelling a
+project created before the module was registered.
 
-Uses a fake `ModuleDefinition` (mirroring `test_module_registry.py`'s own
-`fake_module` fixture pattern), not a real content module, so this suite
-doesn't depend on Context & Strategy existing."""
+Uses a fake `ModuleDefinition` (as `test_module_registry.py`'s `fake_module` does), not
+a real content module."""
 
 import uuid as uuid_lib
 from types import SimpleNamespace
@@ -60,13 +47,11 @@ from app.services.rbac import require_project_module_enabled, require_project_mo
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 FAKE_MODULE_KEY = "fake_pme_test_module"
-# Kept short deliberately: `update_org_module_enablement`'s audit-log call
-# writes `entity_id=f"{organization_id}:{module_key}"` into `audit_events.
-# entity_id` (VARCHAR(64), pre-existing core column) — a 36-char UUID plus
-# colon already uses 37 of those, leaving 27 for `module_key`. Real
-# registered module keys are short slugs ("compliance", "context_strategy"),
-# so this is a fixture-naming constraint, not a product one; a longer key
-# here previously overflowed the column (`StringDataRightTruncation`).
+# Short on purpose: `update_org_module_enablement`'s audit-log call writes
+# `entity_id=f"{organization_id}:{module_key}"` into `audit_events.entity_id`
+# (VARCHAR(64)); a 36-char UUID plus colon uses 37, leaving 27 for `module_key`.
+# Registered module keys are short slugs ("compliance", "context_strategy");
+# a longer fixture key overflows the column (`StringDataRightTruncation`).
 SUBCOMPONENT_KEY = "widget"
 
 
@@ -147,19 +132,15 @@ def test_project_enablement_resolution_all_four_paths(client, admin_token, org_i
         db.commit()
         assert is_module_enabled_for_project(db, project_uuid, fake_module) is False
 
-        # (c) **Corrected 2026-09-29**: a project override can no longer
-        # cross the hard floor — attempting to widen past `enabled=False`
-        # stays False, not the pre-correction "symmetric, wins either
-        # direction" behaviour.
+        # (c) A project override cannot cross the hard floor: widening past
+        # `enabled=False` stays False.
         db.add(ProjectModuleEnablement(project_id=project_uuid, module_key=fake_module, enabled=True))
         db.commit()
         assert is_module_enabled_for_project(db, project_uuid, fake_module) is False
 
-        # (d) Once the org's hard floor is True, a project override is
-        # symmetric against `default_project_enabled` specifically — this
-        # is the corrected feature the reversal exists to support: the org
-        # makes the module available but off by default, and a project can
-        # still opt in.
+        # (d) With the org's hard floor True, a project override is symmetric
+        # against `default_project_enabled`: the org makes the module available
+        # but off by default, and a project can still opt in.
         db.query(ProjectModuleEnablement).filter(
             ProjectModuleEnablement.project_id == project_uuid,
             ProjectModuleEnablement.module_key == fake_module,
@@ -245,10 +226,9 @@ def test_project_level_whole_module_override_cascades_to_subcomponent_resolution
         project_uuid = uuid_lib.UUID(project["id"])
         _drop_snapshot(db, project_uuid, fake_module)
 
-        # Org default for the whole module stays enabled (unset — registry
-        # default_enabled=True) and the sub-component itself has no
-        # override of its own — before any project-level whole-module
-        # override, the sub-component is enabled.
+        # The org default for the whole module is enabled (unset; registry
+        # default_enabled=True) and the sub-component has no override of its
+        # own, so it is enabled before any project-level whole-module override.
         assert is_module_subcomponent_enabled(db, project_uuid, fake_module, SUBCOMPONENT_KEY) is True
 
         # A project-level *whole-module* override disables the module for
@@ -256,8 +236,8 @@ def test_project_level_whole_module_override_cascades_to_subcomponent_resolution
         db.add(ProjectModuleEnablement(project_id=project_uuid, module_key=fake_module, enabled=False))
         db.commit()
 
-        # The sub-component must now resolve to disabled too — this is
-        # the cascade the fix is responsible for.
+        # The sub-component resolves to disabled too: the whole-module override
+        # cascades.
         assert is_module_subcomponent_enabled(db, project_uuid, fake_module, SUBCOMPONENT_KEY) is False
 
         # Confirm this isn't a false negative from some other cause: a
@@ -285,9 +265,8 @@ def test_project_level_whole_module_override_cascades_to_subcomponent_resolution
 
 
 def test_require_project_module_enabled_404_when_project_override_disables(client, admin_token, org_id, fake_module):
-    """Originally only an org-level disable could 404 this
-    dependency. Now a project-level override alone (org default left
-    enabled) must too."""
+    """A project-level override alone (org default left enabled) 404s this
+    dependency, as an org-level disable does."""
     project = create_project(client, admin_token, org_id, "Require Project Module Enabled Override Disabled")
     db = SessionLocal()
     try:
@@ -312,11 +291,8 @@ def test_require_project_module_enabled_404_when_project_override_disables(clien
 def test_require_project_module_enabled_404_when_project_override_enables_over_hard_disabled_org(
     client, admin_token, org_id, fake_module
 ):
-    """**Corrected 2026-09-29**: the org's hard `enabled=False` is now an
-    absolute floor — a project override of `enabled=True` can no longer
-    cross it, unlike the original 2026-09-28 "symmetric, wins either
-    direction" design this test used to assert. The dependency must 404,
-    the same as if no override existed at all."""
+    """The org's hard `enabled=False` is an absolute floor: a project override of
+    `enabled=True` cannot cross it, so the dependency 404s as if no override existed."""
     project = create_project(client, admin_token, org_id, "Require Project Module Enabled Hard Floor")
     db = SessionLocal()
     try:
@@ -423,9 +399,8 @@ def test_project_module_enablement_endpoint_get_and_put(client, admin_token, org
     assert body["org_hard_enabled"] is False
     assert body["project_override_enabled"] is True
 
-    # **Corrected 2026-09-29**: a project-level override of True can no
-    # longer cross the org's own hard `enabled=False` floor — rejected
-    # (400), not the pre-correction "wins symmetrically" 200.
+    # A project-level override of True cannot cross the org's hard
+    # `enabled=False` floor: rejected (400).
     resp = client.put(
         f"/api/v1/projects/{project_id}/modules/{fake_module}/enablement", json={"enabled": True},
         headers=auth_headers(admin_token),
@@ -530,20 +505,13 @@ def test_project_module_enablement_endpoint_404_for_unregistered_module(client, 
 def test_project_module_enablement_endpoint_does_not_shadow_a_modules_own_bare_project_router_route(
     client, admin_token, org_id,
 ):
-    """Regression for the routing collision verification
-    found and fixed: before the `/enablement` suffix was added, `GET/PUT
-    /projects/{project_id}/modules/{module_key}` (registered on the core
-    `routers.projects` router, mounted in `main.py` *before* any module's
-    own `get_project_router()`) shadowed Decision Management's own bare
-    `GET ""`/`POST ""` list/create routes at that exact path
-    (`app.modules.decisions.project_router.core`) — a request to `GET
-    /api/v1/projects/{project_id}/modules/decisions` silently returned
-    this endpoint's `ProjectModuleEnablementOut` shape instead of the
-    expected list of decisions. Exercised here against the real,
-    registered `decisions` module (not a fake one), since the bug is about
-    *route registration order* across the whole app, which a fake module
-    appended to `INSTALLED_MODULES` at test time does not reproduce the
-    same way a real, `main.py`-mounted module does."""
+    """The `/enablement` suffix keeps the core `routers.projects` routes (mounted in
+    `main.py` before any module's `get_project_router()`) from shadowing Decision
+    Management's bare `GET ""`/`POST ""` routes (`app.modules.decisions.project_router.core`):
+    `GET /api/v1/projects/{project_id}/modules/decisions` returns the list of decisions, not
+    a `ProjectModuleEnablementOut`. Uses the real registered `decisions` module, since the
+    behaviour depends on route registration order across the app, which a fake module
+    appended at test time does not reproduce."""
     org, org_admin_token = create_org_admin_in(client, admin_token, "Decisions Route Shadow Regression Co")
     resp = client.put(
         f"/api/v1/orgs/{org['id']}/modules/decisions", json={"enabled": True}, headers=auth_headers(org_admin_token),
@@ -642,7 +610,7 @@ def test_list_project_modules_for_project_role_who_is_not_org_admin(
     assert resp.status_code == 403
 
 
-# --- Copy-on-create / copy-before-default-change (Decided by: User, 2026-10-04) ----------
+# --- Copy-on-create / copy-before-default-change ----------
 
 
 def _project_module(client, token, project_id, module_key):

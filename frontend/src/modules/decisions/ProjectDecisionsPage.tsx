@@ -1,36 +1,20 @@
 /**
  * Module: modules/decisions/ProjectDecisionsPage
  *
- * The Decision Management module's project-scoped route component,
- * mounted at
- * `/projects/:projectId/modules/decisions` (`module.ts`): a `DirectoryTable`
- * + `FilterPanel` list, a "New decision" `Modal`, and a row click opening
- * `DecisionQuickViewPanel` as a minimal read-only `SidePanel` peek — whose
- * own "View full details" link leads to `DecisionDetailPage.tsx`'s full
- * page for management and full context (see that
- * page's own docstring and `docs/ux-style-guide.md`'s "Pattern: entity
- * detail panel" checklist for why the two-tier shape replaced the original
- * SidePanel-only `DecisionDetailPanel.tsx`). Fetches the owning project's
- * `organization_id` once and passes it down wherever an org-scoped call is
- * needed (Decision Templates, org member list) — same "no `ProjectContext`
- * provider, fetch the project directly" convention `ProjectCompliancePage
- * .tsx` describes.
+ * The Decision Management module's project-scoped route component, mounted at `/projects/:projectId/modules/decisions`
+ * (`module.ts`): a `DirectoryTable` + `FilterPanel` list and a "New decision" `Modal`. A row is a link to
+ * `DecisionDetailPage.tsx` in the row's own project (`rowProjectId`), as in every other record list. It fetches the project's
+ * `organization_id` once and passes it down wherever an organisation-scoped call is needed (Decision Templates,
+ * organisation member list), without a `ProjectContext` provider, as `ProjectCompliancePage.tsx` does.
  *
- * Decision Types moved off this page's own tab bar to Project Admin's
- * `projectAdminSections` contribution (grouped with the
- * project's other definition-table settings — Action Types, Custom
- * Fields — rather than the module's day-to-day working page); this page
- * still fetches the project's decision types (`decisionTypes` state) for
- * the list's Type column/filter and the create/detail forms, it just no
- * longer hosts their CRUD UI.
+ * It also fetches the project's decision types (`decisionTypes`) for the Type column and filter and the create and
+ * detail forms; their CRUD is in Project Admin's `projectAdminSections` entry.
  *
- * The list opens on Decisions still to be made (draft, proposed, under review): the
- * "Open only" filter is ticked and stays visible, and a link with a valid
- * `status`, or `open=0`, starts with it off (`hooks/useOpenOnly.ts`).
+ * The list opens on Decisions still to be made (draft, proposed, under review): the "Open only" filter is ticked and
+ * visible, and a link with a valid `status`, or `open=0`, starts with it off (`hooks/useOpenOnly.ts`).
  *
- * Links to and from a Decision (Requirements, Pain Points, other Decisions, ...) are shown and
- * edited in the shared Links panel on `DecisionDetailPage.tsx`, and a Decision's links appear on
- * the other record's own page the same way — nothing here is Decision-specific.
+ * Links to and from a Decision are shown and edited in the shared Links panel on `DecisionDetailPage.tsx`, and appear
+ * on the other record's page the same way; nothing here is Decision-specific.
  */
 import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useState } from "react";
@@ -42,24 +26,26 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionFormModal } from "./DecisionFormModal";
-import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
 import { DECISION_OPEN_STATUSES, DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
 import { Badge } from "../../components/Badge";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
-import { sortRows } from "../../utils/sortRows";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, TIME_SORT_KEYS, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
+import { SortField } from "../../components/SortField";
+import { sortRows, TIME_SORT_VALUES } from "../../utils/sortRows";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -70,15 +56,15 @@ import { addSharedListFilters } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
 
-const DECISION_SORT_KEYS = ["unique_code", "title", "type", "status", "owner"] as const;
+const DECISION_SORT_KEYS = ["unique_code", "title", "type", "status", "owner", ...TIME_SORT_KEYS] as const;
 
 export function ProjectDecisionsPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "decision");
   const commitTags = useCommitTags(projectId ?? "", "decision");
+  const announceCreated = useCreatedToast(projectId ?? "", "decision");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -94,13 +80,12 @@ export function ProjectDecisionsPage() {
   const [decisionTypeFilter, setDecisionTypeFilter] = useUrlText("type");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const [ownedByMe, setOwnedByMe] = useUrlFlag("mine");
-  const [sort, setSort] = useUrlSort<string>(DECISION_SORT_KEYS);
+  const listSort = useListSort("decisions", DECISION_SORT_KEYS, "unique_code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Decision | null>(null);
 
   async function reloadDecisions() {
     if (!projectId) return;
@@ -142,8 +127,28 @@ export function ProjectDecisionsPage() {
     if (ownedByMe) params.set("mine", "true");
     if (openOnly) params.set("open_only", "true");
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
+
+  const columns: DirectoryColumn<Decision>[] = [
+    { key: "unique_code", label: "Code", sortable: true, render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
+    { key: "title", label: "Title", sortable: true, render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
+    {
+      key: "type", label: "Type", sortable: true, optional: true,
+      render: (d) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? "—",
+    },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (d) => <Badge tone={DECISION_STATUS_TONE[d.status]}>{DECISION_STATUS_LABEL[d.status]}</Badge>,
+    },
+    {
+      key: "owner", label: "Owner", sortable: true, optional: true,
+      render: (d) => <PrincipalBadge principal={d.owner} />,
+    },
+  ];
+
+  const shown = useOptionalColumns("decisions_list", columns);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -153,7 +158,8 @@ export function ProjectDecisionsPage() {
   // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
   const emptyBecauseOfOpenOnly = openOnly && rows.length === 0 && decisions.length > 0;
   const typeName = (d: Decision) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? null;
-  const sorted = sortRows(rows, sort, {
+  const sorted = sortRows(rows, listSort.sort, {
+    ...TIME_SORT_VALUES,
     unique_code: (d) => d.unique_code,
     title: (d) => d.title,
     type: typeName,
@@ -161,27 +167,11 @@ export function ProjectDecisionsPage() {
     owner: (d) => d.owner?.label ?? null,
   });
 
-  const columns: DirectoryColumn<Decision>[] = [
-    { key: "unique_code", label: "Code", sortable: true, render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
-    { key: "title", label: "Title", sortable: true, render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
-    {
-      key: "type", label: "Type", sortable: true,
-      render: (d) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? "—",
-    },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (d) => <Badge tone={DECISION_STATUS_TONE[d.status]}>{DECISION_STATUS_LABEL[d.status]}</Badge>,
-    },
-    {
-      key: "owner", label: "Owner", sortable: true,
-      render: (d) => <PrincipalBadge principal={d.owner} />,
-    },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Decisions"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "decision", filters: filterParams().toString(), onImported: reloadDecisions }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -211,19 +201,20 @@ export function ProjectDecisionsPage() {
             <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} codeKey="unique_code" />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
       >
         <DirectoryTable
           ariaLabel="Decisions"
-          columns={columns}
+          columns={shown.columns}
           rows={sorted}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(d) => d.id}
           placements={{ projectId, artefactType: "decision", rowId: (d) => d.id }}
-          onRowClick={setSelected}
+          rowHref={(d) => `/projects/${rowProjectId(d, projectId)}/modules/decisions/${d.id}`}
           emptyState={
             <p className="text-muted">
               {emptyBecauseOfOpenOnly
@@ -250,7 +241,7 @@ export function ProjectDecisionsPage() {
             setCreateError(null);
             try {
               const created = await decisionsApi.createDecision(projectId, values);
-              showToast("Decision created.");
+              announceCreated("Decision", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);
@@ -259,15 +250,6 @@ export function ProjectDecisionsPage() {
               setCreateError(toErrorMessage(err, "Could not create decision."));
             }
           }}
-        />
-      )}
-
-      {selected && (
-        <DecisionQuickViewPanel
-          projectId={rowProjectId(selected, projectId)}
-          decision={selected}
-          decisionTypes={decisionTypes}
-          onClose={() => setSelected(null)}
         />
       )}
     </div>

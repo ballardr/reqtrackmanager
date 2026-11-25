@@ -1,57 +1,28 @@
 """
 Module: services.record_tables
 
-The engine behind every record list's **Export** and **Import**: one file format both ways, for every
-registered artefact type that has a `RecordTableProvider`.
+The engine behind every record list's **Export**, **Import** and bulk edit grid, for every artefact type with a
+`RecordTableProvider` (project-owned and, through `OrganizationRecordTable`, organisation-owned).
 
 Responsibilities:
-- Authorise a table request (record type enabled for the project, `view` permission; the type's own create /
-  update check for an import) and resolve which columns may leave or enter (`resolve_export_columns`).
-- Build the table of a list (`build_table`): the provider's filtered rows, the project scope (`parents`,
-  `children`, `both`) and tag filter applied generically, cells written for a spreadsheet.
-- Run an import (`run_import`): parse the CSV, match each row to a record by its `code`, and create or update
-  it **through the type's own create/update path**, as a preview (rolled back) or an apply (committed).
-- Do the same for the records an **organisation** owns (`org_provider_for`, `build_org_table`, `run_org_import`),
-  through the provider's `OrganizationRecordTable`: one import body serves both tiers, so a rule added to it
-  reaches the organisation lists too.
-- Serve the **bulk edit grid** of a project list (`build_grid`, `update_row`): the same rows, filters, scope and
-  column policy as the export, with the editable columns as cells, saved one record at a time through the type's
-  own update path.
-- Audit an export or an apply as one event each; counts and keys only, never cell values.
+- Authorise a request and resolve which columns may leave or enter (`resolve_export_columns`); build the filtered,
+  scoped table (`build_table`, `build_org_table`, `build_grid`); run an import (`run_import`, `run_org_import`)
+  and a grid save (`update_row`); audit an export or apply as one event (counts and keys only).
 
 Design decisions:
-- The CSV an export writes is the CSV an import reads. A row with a `code` updates that record, a blank `code`
-  creates one, a code that is unknown, or belongs to another project or organisation, is a row error and says
-  the same thing for all three so it cannot be used to probe other projects.
-- A preview is the apply run inside a transaction that is rolled back, so what it reports is what the type's
-  own validation, version lock and approval gate say, not a second implementation of them. Each row runs in a
-  savepoint: a refused row leaves nothing behind and the rest still apply.
-- Update changes only the columns that differ from the exported value, so re-importing an unchanged export
-  reports no change and writes no new version.
-- Spreadsheet safety: a cell starting with `=`, `+`, `-`, `@`, tab or CR is written with a leading `'`
-  (`services.csv_safety`); the importer strips exactly that one prefix again so the round trip is lossless.
-- A provider never commits and never skips an authorisation the type's own endpoint makes; this engine only
-  decides who may use the table at all.
-- The organisation tier matches only the organisation's own records (a code of a project's record is a row error,
-  as is a code of another organisation) and applies the organisation-level personal-data grant, since there is no
-  project to hold a project grant. Its codes are always qualified by the organisation code (`ACME-PER-001`); the
-  bare form is accepted on the way in.
-- A grid save is one record per request (so one failure never blocks the others) and is audited by the type's own
-  update path, with no second event. It changes only the cells that differ from the value the person loaded
-  (`expected`): a cell someone else changed meanwhile is refused with the current value instead of being
-  overwritten, which is the version lock for types whose update path has none.
-  Only closed-value columns (`GRID_KINDS`) are edited in the grid; free text is edited in the record's form.
-- Personal-data columns: every column carries a sensitivity tag set by the provider. `resolve_export_columns`
-  is the single place that decides which are kept, and every route (export, import, the record-list report, the
-  grid) goes through it, so the rule cannot be bypassed on one of them. A tagged column needs the organisation's
-  policy (`services.record_policy`) to allow its tag and the person to hold `export_personal_data`; otherwise it
-  is left out and the response says so.
-- Placement: every type except the requirement (which has its own component and category columns) gets one
-  shared `placements` column (`services.placements.placement_column`), added here, never by a provider. An import
-  writes it after the type's own create or update path, through `set_record_placements`.
+- The exported CSV is the import file. A `code` updates that record, a blank one creates; an unknown or foreign code
+  is one row error that reads the same everywhere, so it cannot probe other projects.
+- A preview is the apply inside a rolled-back transaction, each row in a savepoint, so it reports what the type's own
+  validation, version lock and approval gate say. Only differing columns change, so an unchanged re-import writes nothing.
+- A cell starting `=`, `+`, `-`, `@`, tab or CR gets a leading `'` (`services.csv_safety`); import strips that one prefix.
+- A grid save is one record per request and edits only cells that differ from the loaded value (`expected`); a cell
+  changed meanwhile is refused, which is the version lock for types without one. Only `GRID_KINDS` columns are editable.
+- `resolve_export_columns` is the single decision point for personal-data columns (policy tag plus
+  `export_personal_data`); every route goes through it. The organisation tier uses the organisation-level grant.
+- Every type but the requirement gets the shared `placements` column here, written after the type's own update path.
 
-Dependencies: `modules.registry` (the provider shapes), `services.rbac` and `services.permissions` (access),
-`services.project_scope` and `services.tags` (the shared list filters), `services.codes`, `services.audit`.
+Dependencies: `modules.registry`, `services.rbac`, `services.permissions`, `services.project_scope`, `services.tags`,
+`services.codes`, `services.audit`.
 """
 
 from __future__ import annotations
@@ -92,7 +63,14 @@ from app.services import pubsub
 from app.services.audit import log_event
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
+from app.services.external_reference_surfaces import (
+    REFERENCES_COLUMN_KEY,
+    ReferenceCells,
+    apply_imported_references,
+    reference_column,
+)
 from app.services.link_graph import ArtefactResolver
+from app.services.list_sort import CODE_KEY, CREATED_KEY, MODIFIED_KEY, TITLE_KEY, ListSort, instant, natural_key, order_records
 from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
 from app.services.placements import PLACEMENT_COLUMN_KEY, apply_imported_placements, can_place, placement_column
@@ -100,16 +78,23 @@ from app.services.principals import group_ref_from_text, principal_labels, princ
 from app.services.project_scope import ProjectScope, gate_open
 from app.services.rbac import can_manage_project_settings, get_effective_org_roles, get_effective_permissions, permission_satisfied
 from app.services.record_policy import REASON_PERMISSION, tag_decisions
-from app.services.tags import TagFilter
+from app.services.tags import TagFilter, can_tag
 
 logger = logging.getLogger(__name__)
 
 MAX_IMPORT_ROWS = 5000
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
+# The csv reader refuses a cell over 131072 characters by default, so a long Markdown field (a 200000-character
+# Decision document) exported by this module would not import back. The upload cap above already bounds every cell,
+# so the reader's limit is set to it (the setting is process-wide; no other reader in the product relies on the default).
+csv.field_size_limit(MAX_IMPORT_BYTES)
 CODE_COLUMN = "code"
 PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.
-GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode", "component_id", "category_id"})
+GENERIC_PARAMS = frozenset({
+    "format", "project_scope", "tag", "tag_mode", "component_id", "category_id", "external_system", "external_key",
+    "sort", "order",
+})
 #: Further query parameters the record-list report takes (its own, never a provider's filter).
 REPORT_PARAMS = frozenset({"record_type"})
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
@@ -504,11 +489,68 @@ def _qualified(
     )
 
 
+def sort_value_reader(
+    provider: RecordTableProvider, columns: Sequence[RecordColumn], key: str | None,
+) -> Callable[[Any, Any], Any] | None:
+    """How to read the value a list is ordered by for `key`, or `None` when the list does not offer that key.
+
+    The type's own `sort_keys` win; otherwise `code` is the record's code, `created` and `modified` its `created_at` and
+    `updated_at`, `title` the provider's title column, and any other key a column of the table by its cell text (a
+    status by the label a person sees). A column the personal-data policy left out of `columns` cannot be sorted by,
+    so the order never reveals what the file omits.
+
+    Args:
+        provider: The type's table.
+        columns: The columns the caller may read.
+        key: The requested key (canonical; see `services.list_sort.canonical_key`).
+
+    Returns:
+        `(prepared, record) -> text, number or None`.
+    """
+    if key is None:
+        return None
+    if key in provider.sort_keys:
+        return provider.sort_keys[key]
+    if key == CODE_KEY:
+        return lambda _prepared, record: provider.code_of(record)
+    if key == CREATED_KEY:
+        return lambda _prepared, record: instant(getattr(record, "created_at", None))
+    if key == MODIFIED_KEY:
+        return lambda _prepared, record: instant(getattr(record, "updated_at", None))
+    column_key = provider.title_column if key == TITLE_KEY else key
+    column = next((c for c in columns if c.key == column_key), None)
+    return (lambda prepared, record: column.get(prepared, record)) if column is not None else None
+
+
+def sorted_records(
+    provider: RecordTableProvider, columns: Sequence[RecordColumn], prepared: Any, records: list[Any], sort: ListSort | None,
+) -> list[Any]:
+    """`records` in the order the list was asked for: the requested key, or **code ascending** when none is requested or
+    the type does not offer the key. A missing value sorts last ascending; equal values read by code, then record id.
+
+    Args:
+        provider: The type's table.
+        columns: The columns the caller may read.
+        prepared: The provider's `prepare` result handed to every column's `get`.
+        records: The rows, in any order.
+        sort: The requested sort, or `None`.
+    """
+    reader = sort_value_reader(provider, columns, sort.key if sort else None)
+    descending = bool(sort and sort.descending and reader is not None)
+    if reader is None:
+        reader = sort_value_reader(provider, columns, CODE_KEY)
+    assert reader is not None
+    return order_records(
+        records, lambda record: reader(prepared, record), descending=descending, id_of=provider.id_of,
+        tie_of=lambda record: natural_key(provider.code_of(record)),
+    )
+
+
 def build_table(
     db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider, *,
-    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope,
+    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope, sort: ListSort | None = None,
 ) -> RecordTable:
-    """Builds the table of `artefact_type` with the page's filters, tag filter and project scope.
+    """Builds the table of `artefact_type` with the page's filters, tag filter, project scope and sort.
 
     Args:
         db: Active session (read only).
@@ -519,13 +561,16 @@ def build_table(
         filters: The provider's own filters.
         tag_filter: The shared tag filter.
         project_scope: The shared nested-project scope.
+        sort: The list's sort (`services.list_sort`); code ascending when omitted or not offered by the type.
 
     Returns:
         The `RecordTable`; rows from a related project are labelled in a trailing `project` column.
     """
     shared = placement_column(db, project, artefact_type, may_place=False, id_of=provider.id_of)
+    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
+    refs_shared = reference_column(db, organization, project, artefact_type, may_edit=False, id_of=provider.id_of)
     columns, omitted = resolve_export_columns(
-        db, user, [*provider.columns(db, project), *([shared[0]] if shared else [])],
+        db, user, [*provider.columns(db, project), *([shared[0]] if shared else []), *([refs_shared[0]] if refs_shared else [])],
         organization_id=project.organization_id, project_id=project.id, purpose="export",
     )
 
@@ -535,9 +580,11 @@ def build_table(
 
     records = project_scope.collect(db, project, user.id, artefact_type, rows_for, gate=provider.gate, id_of=provider.id_of)
     prepared = provider.prepare(db, project, records) if provider.prepare is not None else None
+    records = sorted_records(provider, columns, prepared, records, sort)
     if shared:
         shared[1].expect(provider.id_of(record) for record in records)
-    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
+    if refs_shared:
+        refs_shared[1].expect(provider.id_of(record) for record in records)
     owners: dict[uuid.UUID, Project] = {project.id: project}
     header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
     if project_scope.widened:
@@ -593,7 +640,7 @@ def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, s
         HTTPException: 422 for a parameter the organisation list cannot honour.
     """
     tier = org_tier(provider)
-    allowed = {"format"} | tier.filter_params
+    allowed = {"format", "sort", "order"} | tier.filter_params
     unknown = sorted({k for k, _ in query if k not in allowed})
     if unknown:
         raise HTTPException(
@@ -607,27 +654,35 @@ def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, s
 
 
 def build_org_table(
-    db: Session, user: User, organization: Organization, provider: RecordTableProvider, *, filters: RecordFilters,
+    db: Session, user: User, organization: Organization, artefact_type: str, provider: RecordTableProvider, *,
+    filters: RecordFilters, sort: ListSort | None = None,
 ) -> RecordTable:
-    """Builds the table of the organisation's own records of one type with the organisation list's filters.
+    """Builds the table of the organisation's own records of one type with the organisation list's filters and sort.
 
     Args:
         db: Active session (read only).
         user: The caller (authorised by the route).
         organization: The request organisation.
+        artefact_type: The record type.
         provider: The type's provider (it has an organisation tier).
         filters: The organisation tier's filters.
+        sort: The list's sort (`services.list_sort`); code ascending when omitted or not offered by the type.
 
     Returns:
         The `RecordTable`; every code is qualified by the organisation's code, as the organisation's records are
         always cited.
     """
     tier = org_tier(provider)
+    refs_shared = reference_column(db, organization, None, artefact_type, may_edit=False, id_of=provider.id_of)
     columns, omitted = resolve_export_columns(
-        db, user, tier.columns(db, organization), organization_id=organization.id, purpose="export",
+        db, user, [*tier.columns(db, organization), *([refs_shared[0]] if refs_shared else [])],
+        organization_id=organization.id, purpose="export",
     )
     records = tier.list_records(db, user, organization, filters)
     prepared = tier.prepare(db, organization, records) if tier.prepare is not None else None
+    records = sorted_records(provider, columns, prepared, records, sort)
+    if refs_shared:
+        refs_shared[1].expect(provider.id_of(record) for record in records)
     header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
     rows = [
         [display_code(provider.code_of(record), organization.code, organization_owned=True), *(c.get(prepared, record) for c in columns)]
@@ -738,7 +793,7 @@ class RecordGrid:
 
 def build_grid(
     db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider, *,
-    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope,
+    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope, sort: ListSort | None = None,
 ) -> RecordGrid:
     """The rows and columns of the grid for a list, narrowed exactly as its export is.
 
@@ -751,6 +806,7 @@ def build_grid(
         filters: The provider's own filters.
         tag_filter: The shared tag filter.
         project_scope: The shared nested-project scope.
+        sort: The list's sort (`services.list_sort`), so the grid lists rows as the page does.
 
     Returns:
         The `RecordGrid`; `can_edit` is false (and the page offers no grid) for a type the caller cannot update or
@@ -758,6 +814,7 @@ def build_grid(
     """
     table = build_table(
         db, user, project, artefact_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
+        sort=sort,
     )
     keys = [c.key for c in table.kept]
     rows = [
@@ -1056,6 +1113,7 @@ class _ImportTarget:
         create / update: The provider's write paths, already `None` where the caller lacks the right.
         code_of / id_of: Read a record's code and id.
         place: How the tier reads in a message ("project" / "organisation").
+        references: The shared external references column's reader, or `None` while the type has none.
     """
 
     organization: Organization
@@ -1069,6 +1127,7 @@ class _ImportTarget:
     code_of: Callable[[Any], str]
     id_of: Callable[[Any], Any]
     place: str
+    references: ReferenceCells | None = None
 
     @property
     def owner(self) -> Project | Organization:
@@ -1113,18 +1172,27 @@ def run_import(
         may_place=can_place(ArtefactResolver(db, project, user.id), artefact_type),
     )
 
+    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
+    refs_shared = reference_column(
+        db, organization, project, artefact_type, id_of=provider.id_of,
+        may_edit=can_tag(ArtefactResolver(db, project, user.id), artefact_type),
+    )
+
     def prepare(records: list[Any]) -> Any:
-        """The provider's lookups, with the shared placement cells of the same records loaded together."""
+        """The provider's lookups, with the shared placement and reference cells of the same records loaded together."""
         if shared:
             shared[1].expect(provider.id_of(record) for record in records)
+        if refs_shared:
+            refs_shared[1].expect(provider.id_of(record) for record in records)
         return provider_prepare(db, project, records) if provider_prepare is not None else None
 
     target = _ImportTarget(
-        organization=get_or_404(db, Organization, project.organization_id, "Organisation"), project=project,
-        columns=[*provider.columns(db, project), *([shared[0]] if shared else [])],
+        organization=organization, project=project,
+        columns=[*provider.columns(db, project), *([shared[0]] if shared else []), *([refs_shared[0]] if refs_shared else [])],
         find=lambda code: _find_record(db, project, provider, code),
         find_many=(lambda codes: _find_many_exported(provider_find_many, db, project, codes)) if provider_find_many is not None else None,
-        prepare=prepare if shared or provider_prepare is not None else None,
+        prepare=prepare if shared or refs_shared or provider_prepare is not None else None,
+        references=refs_shared[1] if refs_shared else None,
         create=provider.create if may_create else None, update=provider.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="project",
     )
@@ -1152,13 +1220,24 @@ def run_org_import(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
     tier_find_many = tier.find_many  # bound here so the lambdas below keep the not-None narrowing
     tier_prepare = tier.prepare
+    # Whoever may create or update the organisation's records of this type may also change their references.
+    refs_shared = reference_column(db, organization, None, artefact_type, id_of=provider.id_of, may_edit=may_create or may_update)
+
+    def prepare(records: list[Any]) -> Any:
+        """The tier's lookups, with the shared reference cells of the same records loaded together."""
+        if refs_shared:
+            refs_shared[1].expect(provider.id_of(record) for record in records)
+        return tier_prepare(db, organization, records) if tier_prepare is not None else None
+
     target = _ImportTarget(
-        organization=organization, project=None, columns=list(tier.columns(db, organization)),
+        organization=organization, project=None,
+        columns=[*tier.columns(db, organization), *([refs_shared[0]] if refs_shared else [])],
         find=lambda code: _find_org_record(db, organization, tier, code),
         find_many=(lambda codes: _find_many_exported(tier_find_many, db, organization, codes)) if tier_find_many is not None else None,
-        prepare=(lambda records: tier_prepare(db, organization, records)) if tier_prepare is not None else None,
+        prepare=prepare if refs_shared or tier_prepare is not None else None,
         create=tier.create if may_create else None, update=tier.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="organisation",
+        references=refs_shared[1] if refs_shared else None,
     )
     return _import_rows(db, user, target, artefact_type, data, apply=apply)
 
@@ -1258,11 +1337,14 @@ def _import_rows(
                 assert create_fn is not None  # a missing create right was rejected above
                 values = {key: parse(ctx, cells[key]) for key, parse in parsers.items()}
                 placed = values.pop(PLACEMENT_COLUMN_KEY, None)
+                referenced = values.pop(REFERENCES_COLUMN_KEY, None)
                 with db.begin_nested():
                     created = create_fn(ctx, values)
                     db.flush()
                     if placed:
                         apply_imported_placements(ctx, artefact_type, created, placed)
+                    if referenced and target.references is not None:
+                        apply_imported_references(ctx, artefact_type, created, referenced, target.references)
                 result.action = "create"
                 result.code = ""
             else:
@@ -1279,11 +1361,14 @@ def _import_rows(
                     assert update_fn is not None  # a missing update right was rejected above
                     values = {c.column: parsers[c.column](ctx, c.after) for c in changes}
                     placed = values.pop(PLACEMENT_COLUMN_KEY, None)
+                    referenced = values.pop(REFERENCES_COLUMN_KEY, None)
                     with db.begin_nested():
                         if values:
                             update_fn(ctx, record, values)
                         if placed is not None:
                             apply_imported_placements(ctx, artefact_type, record, placed)
+                        if referenced is not None and target.references is not None:
+                            apply_imported_references(ctx, artefact_type, record, referenced, target.references)
                         db.flush()
                     result.action = "update"
                     result.changes = changes

@@ -1,25 +1,20 @@
 /**
  * Module: modules/stakeholders/StakeholderFormModal
  *
- * Create/edit dialog for a Stakeholder's content fields (docs/ux-style-guide.md
- * principle 3: a full entity create/edit is a `Modal`). Shared by create and
- * edit (distinguished by whether `initial` is passed) and by the org and
- * project scopes (`scopeLabel` only changes the title).
+ * Create/edit dialog for a Stakeholder's content fields (docs/ux-style-guide.md principle 3: a full entity create/edit
+ * is a `Modal`). Shared by create and edit (when `initial` is passed) and by the organisation and project scopes
+ * (`scopeLabel` only changes the title).
  *
- * `owner`/`user_id` are not fields here — `StakeholderDetailPage` assigns
- * owner through `RecordPrincipalField`, and `user_id` is set by "create from org
- * user". Influence and Interest use the shared `ScoringLevelPicker` over the
- * org's `stakeholder` scheme (`scheme`; omitted if it couldn't be loaded).
- * Once both are set, the form shows the suggested engagement cadence for that
- * power/interest position next to the cadence field (`loadHint`); it is a hint
- * only and never changes the field. Contact info is Confidential personal
- * data, flagged as such. `change_note` only renders when editing.
+ * `owner` and `user_id` are not fields: `StakeholderDetailPage` assigns the owner through `RecordPrincipalField`, and
+ * `user_id` is set by "create from organisation user". Influence and Interest use the shared `ScoringLevelPicker` over
+ * the organisation's `stakeholder` scheme (`scheme`; omitted if it could not be loaded). Once both are set, the form
+ * shows the suggested engagement cadence for that position beside the cadence field (`loadHint`); it is a hint only and
+ * never changes the field. Contact info is Confidential personal data, flagged as such. `change_note` renders only when
+ * editing.
  *
- * Groups: when creating and `groups` is given, a `TreeSelect` picks the
- * new stakeholder's groups of this `tier`; they are returned as `group_ids` and
- * applied by the caller after the create (group membership is not part of the
- * stakeholder's own versioned fields). Editing changes groups from the detail
- * page's `StakeholderGroupsField` instead.
+ * Groups: when creating and `groups` is given, a `TreeSelect` picks the new stakeholder's groups of this `tier`; they
+ * are returned as `group_ids` and applied by the caller after the create (group membership is not part of the
+ * stakeholder's versioned fields). Editing changes groups from the detail page's `StakeholderGroupsField`.
  */
 import { useEffect, useState } from "react";
 
@@ -180,20 +175,20 @@ export function StakeholderFormModal({
           )}
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
             </FormGridFull>
           ))}
           <FormGridFull>
-            <TextAreaField helpNotNeeded
+            <TextAreaField markdown helpNotNeeded
               label="Contact / reference information" value={contact} onChange={setContact}
               hint="Confidential personal data. Everyone who can see this stakeholder can read it."
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField help={STAKEHOLDERS_HELP.stakeholderAvailability}
+            <TextAreaField markdown help={STAKEHOLDERS_HELP.stakeholderAvailability}
               label="Availability constraints" value={availability} onChange={setAvailability}
             />
           </FormGridFull>

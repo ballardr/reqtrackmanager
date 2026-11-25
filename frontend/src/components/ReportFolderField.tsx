@@ -68,7 +68,7 @@ export function ReportFolderField({
         <ChevronDown size={14} aria-hidden="true" />
       </button>
       {open && (
-        <Popover anchorRef={triggerRef} title={text.moveTitle} onClose={close} fit>
+        <Popover anchorRef={triggerRef} title={text.moveTitle} onClose={close} matchAnchor maxWidth={448}>
           <ReportFolderChooser
             value={value} onChange={onChange} api={api} label={text.moveLabel} onChanged={onChanged}
             onBusyChange={busyChange} onConfirmChange={confirmChange} onPick={() => setOpen(false)}

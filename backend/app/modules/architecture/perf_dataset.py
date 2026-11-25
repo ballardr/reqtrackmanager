@@ -1,32 +1,25 @@
 """
 Module: modules.architecture.perf_dataset
 
-The dataset generators for the `architecture_element`, `architecture_connection`, `architecture_diagram`,
-`architecture_state_machine_diagram` and `architecture_state` artefact types: project elements in a tree with ports,
-connections between them, diagrams placing them, and state machine diagrams with their states and transitions, with
-tags and places, links to earlier types, and the audit events the application writes.
-
-Responsibilities:
-- Write `architecture_elements`, `architecture_ports`, `architecture_connections`, `architecture_diagrams` with their
-  placements, notes, toggles and toggle members, tags, places, cross-type links and "created" audit events, and the
-  project's sequence counters.
+Dataset generators for the `architecture_element`, `architecture_connection`, `architecture_diagram`,
+`architecture_state_machine_diagram` and `architecture_state` types: elements in a tree with ports, connections,
+diagrams (placements, notes, toggles), state machine diagrams with states and transitions, plus tags, places, links to
+earlier types, "created" audit events and the project's sequence counters.
 
 Design decisions:
-- Elements form a tree at most four levels deep (a share are roots); ports sit on most elements and a
-  connection joins two elements, on a port each when both have one. Connections are generated after elements
-  (`order`), so their ends exist, and diagrams after both.
-- The first diagram of a project is the large one (up to `_LARGE_DIAGRAM` elements, with a toggle and a note), so the
-  view and the SVG are measured on a big drawing; the others place a handful of elements. A share of the lines between
-  neighbouring boxes carry anchors. Toggle rules name a domain row, never a record. The first diagram and a few others are
-  scoped to an element that has outer connections and carry boundary boxes for them, with a realising inner connection
-  for some (the cap keeps the connection scan bounded at any size).
-- Each kind has its own folder tree (about one folder per twenty records, up to four deep) and about two thirds of its
-  records sit in a folder, so the folder paths a list reads are part of what is measured.
-- State machine diagrams are generated after the diagrams, each describing one element; their states come from a
-  second generator (the state is its own type with its own codes), shared out over the diagrams so each has an initial
-  and a final state, some nested states and a few transitions, with the first diagram the largest.
-- Only project-owned records are generated. Organisation-owned elements, collections and grants are not (a
-  profile's unit is the project); the visibility resolver's cost is covered by the scaling-shape guard instead.
+- Elements form a tree at most four levels deep (a share are roots); a connection joins two elements, on a port each when
+  both have one. `order` generates elements, then connections, then diagrams.
+- The first diagram of a project is the large one (up to `_LARGE_DIAGRAM` elements, a toggle and a note) so the view and
+  SVG are measured on a big drawing; a share of lines carry anchors; toggle rules name a domain row, never a record. The
+  first and a few other diagrams are scoped to an element with outer connections and carry boundary boxes (the cap
+  keeps the connection scan bounded).
+- Each kind has its own folder tree (about one folder per twenty records, up to four deep) with about two thirds of its
+  records filed, so folder-path reads are measured.
+- State machine diagrams follow the diagrams, each describing one element; states come from a second generator (the
+  state is its own type with its own codes), each diagram getting an initial and a final state, some nesting and a few
+  transitions.
+- Only project-owned records are generated (a profile's unit is the project); the visibility resolver's cost is covered
+  by the scaling-shape guard.
 
 Dependencies: `perf_dataset.records`, this module's models and service constants.
 """

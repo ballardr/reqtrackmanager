@@ -1,11 +1,9 @@
 /**
  * Module: components/ComponentFilterField
  *
- * The component filter of a list's `FilterPanel`: a collapsible tree of the project's components, each with its categories (tick any
- * number); a record matches when it sits in any ticked component or category. The list page owns the state
- * (`useTagFilter`) and sends it to the server. `TagFilterField` renders it, so every list with a tag filter has it.
- *
- * Renders nothing while the project has no components, so a project that never uses them sees no new control.
+ * The component filter of a list's `FilterPanel`: a collapsible tree of the project's components with their
+ * categories; a record matches when it sits in any ticked one. The list page owns the state (`useTagFilter`) and
+ * sends it to the server. `TagFilterField` renders it. Renders nothing while the project has no components.
  */
 import { useEffect, useState } from "react";
 

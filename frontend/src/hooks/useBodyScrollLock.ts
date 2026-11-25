@@ -1,16 +1,15 @@
 /**
  * Module: hooks/useBodyScrollLock
  *
- * Stops the page behind a modal dialog or side panel from scrolling while it is open, so a wheel or touch scroll
- * that reaches the end of the dialog's own body (or lands on the backdrop) does not move the page underneath.
+ * Stops the page behind a modal dialog or side panel from scrolling while it is open.
  *
  * Responsibilities:
  * - Hide the viewport's scrolling (`overflow: hidden` on `<html>` and `<body>`) and pad `<body>` by the scrollbar's
- *   width so the page does not shift sideways when the scrollbar disappears.
+ *   width so the page does not shift sideways.
  * - Count open dialogs, so a dialog opened over another one keeps the lock until the last one closes.
  *
- * Design decision: the lock is applied by the modal chrome itself (`ModalBase`, `SidePanel`), never by a caller, so
- * every dialog behaves the same; `Popover` does not lock because it is a small anchored layer, not a blocking one.
+ * Design decision: the modal chrome (`ModalBase`, `SidePanel`) applies the lock, never a caller; `Popover` does not
+ * lock because it is a small anchored layer, not a blocking one.
  */
 import { useEffect } from "react";
 

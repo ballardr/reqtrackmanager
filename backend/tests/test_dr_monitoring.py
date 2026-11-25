@@ -428,7 +428,7 @@ def test_the_crontab_example_calls_the_wrapper_for_both_jobs():
 
 
 def test_backup_may_use_a_read_only_storage_identity_but_restore_never_does():
-    compose = yaml.safe_load((_ROOT / "docker-compose.yml").read_text())["services"]
+    compose = yaml.safe_load((_ROOT / "deployments" / "full" / "docker-compose.yml").read_text())["services"]
     backup, restore = compose["backup"]["environment"], compose["restore"]["environment"]
     assert backup["STORAGE_S3_ACCESS_KEY"].startswith("${BACKUP_STORAGE_ACCESS_KEY:-")
     assert backup["STORAGE_S3_SECRET_KEY"].startswith("${BACKUP_STORAGE_SECRET_KEY:-")
@@ -438,7 +438,7 @@ def test_backup_may_use_a_read_only_storage_identity_but_restore_never_does():
 
 
 def test_compose_wires_the_scheduler_status_volume_and_metric_pipeline():
-    compose = yaml.safe_load((_ROOT / "docker-compose.yml").read_text())["services"]
+    compose = yaml.safe_load((_ROOT / "deployments" / "full" / "docker-compose.yml").read_text())["services"]
     scheduler = compose["backup-scheduler"]
     assert scheduler["extends"]["service"] == "backup" and scheduler["command"] == ["schedule"]
     assert scheduler["profiles"] == ["backup-schedule"] and scheduler["restart"] == "unless-stopped"
@@ -447,7 +447,7 @@ def test_compose_wires_the_scheduler_status_volume_and_metric_pipeline():
     assert status_mount in compose["backup"]["volumes"]
     assert status_mount + ":ro" in compose["alloy"]["volumes"]
     assert "--web.enable-remote-write-receiver" in compose["prometheus"]["command"]
-    assert "./observability/alerts:/etc/prometheus/alerts:ro" in compose["prometheus"]["volumes"]
+    assert "../../observability/alerts:/etc/prometheus/alerts:ro" in compose["prometheus"]["volumes"]
     assert (_ROOT / "observability" / "prometheus.yml").read_text().count("/etc/prometheus/alerts/*.rules.yml") == 1
     alloy = (_ROOT / "observability" / "alloy.river").read_text()
     assert 'directory = "/backup/status"' in alloy and "prometheus.remote_write" in alloy and 'set_collectors = ["textfile"]' in alloy

@@ -1,15 +1,10 @@
 """
 Module: routers.projects.core
 
-Core project CRUD (create/import/list/tree/get/patch), favouriting,
-project-scoped file listing, export, terminology, the changes-over-time
-timeline, and overview metrics (U-P-05) — plus `_accessible_project_ids`,
-the shared project-visibility computation every other `routers.projects`
-sub-module (and `routers.orgs`'s org overview-stats endpoint) builds on.
-
-Split out of the former flat `routers/projects.py` (now the `projects`
-package) as a pure code-organization refactor — see
-`routers/projects/__init__.py`'s module docstring for the package layout.
+Core project CRUD (create/import/list/tree/get/patch), favouriting, project-scoped file listing, export,
+terminology, the changes-over-time timeline and overview metrics (U-P-05), plus `_accessible_project_ids`,
+the shared project-visibility computation every other `routers.projects` module (and `routers.orgs`'s
+overview-stats endpoint) builds on.
 """
 
 from __future__ import annotations
@@ -110,35 +105,17 @@ from app.services.templates import clone_project
 router = APIRouter(tags=["projects-core"])
 
 def _project_out_with_redacted_parent(db: Session, current_user: User, project: Project) -> ProjectOut:
-    """Builds a `ProjectOut` with `parent_project_id`/`parent_project_name`
-    redacted unless the caller has effective view access to the parent, or
-    manages `project` itself — the same visibility-boundary rule
-    `list_projects` already applies to `ProjectListItemOut`, extended here
-    to every endpoint that returns a single `Project` directly (`GET/PATCH/
-    POST .../archive/.../unarchive/.../terminology`). Without the general
-    redaction, `GET /{project_id}` — gated by `require_project_view`, not
-    manage — would let *any* project viewer learn a hidden parent's
-    identity just by fetching the project directly, even though
-    `list_projects`/`/ancestors` correctly redact it.
+    """Builds a `ProjectOut` with `parent_project_id`/`parent_project_name` redacted unless the caller has
+    effective view access to the parent or manages `project` itself: the visibility-boundary rule
+    `list_projects` applies to `ProjectListItemOut`, extended to every endpoint returning a single `Project`
+    (`GET/PATCH/POST .../archive/.../unarchive/.../terminology`). Without it, `GET /{project_id}` (gated by
+    `require_project_view`) would reveal a hidden parent's identity to any viewer.
 
-    The manager exemption closes a real gap found in this branch's own
-    hardening pass: `ProjectAdminPage.tsx`'s settings form (frontend) has
-    always assumed — per its own inline comment and docs/decisions.md's
-    "Hierarchical projects" entry ("a project's own manager already holds
-    the highest level of authority over this relationship and needs to see
-    it to do their job") — that a project's manager sees the true parent
-    here, never a redacted one. Before this fix that assumption was false:
-    a manager with no independent view access to the parent (a realistic,
-    common case — nothing ties managing a child to having any role on its
-    parent) saw `parent_project_id: null`, the same as any other viewer.
-    Combined with `saveSettings()` unconditionally resending
-    `parent_project_id` on every save (not just when the field was
-    actually touched), this silently detached the project from its real
-    parent on the next unrelated settings save — a genuine, unannounced
-    structural mutation the manager never intended. A project's own
-    manager already has unilateral authority to detach or reparent this
-    exact relationship via this same endpoint, so showing them the true
-    value they already have the power to change is not a new disclosure.
+    The manager exemption exists because `ProjectAdminPage.tsx`'s settings form assumes a project's manager
+    sees the true parent (docs/decisions.md's "Hierarchical projects" entry). A manager with no view access
+    to the parent would otherwise see `parent_project_id: null` and, as `saveSettings()` resends
+    `parent_project_id` on every save, silently detach the project on the next unrelated save. A manager can
+    already detach or reparent via this endpoint, so showing them the true value is not a new disclosure.
     """
     out = ProjectOut.model_validate(project)
     out.code_change_locked = project_code_locked_for(db, project, current_user.id)
@@ -155,21 +132,14 @@ def _project_out_with_redacted_parent(db: Session, current_user: User, project: 
 
 
 def _ensure_project_has_a_manager(db: Session, project: Project, fallback_user_id: UUID) -> None:
-    """C-U-08 fallback: guarantees `project` has at least one effective
-    manager, granting `fallback_user_id` one if it doesn't.
+    """C-U-08 fallback: guarantees `project` has at least one effective manager, granting `fallback_user_id`
+    one if it doesn't.
 
-    Shared by both of `create_project`'s branches (2026-08-31 — previously only the template-clone branch needed this
-    at all, since the non-template branch always auto-created its own
-    manager-role `ProjectGroup` and added the creator to it directly).
-    Prefers adding `fallback_user_id` to an existing manager-role
-    `ProjectGroup` on `project` if one exists (only possible here via a
-    template clone that copied a user-created manager-role group — a
-    from-scratch project has zero groups at the point this is called, so
-    that branch is structurally unreachable there and this always falls
-    through to the direct grant); otherwise grants a direct
-    `PROJECT_MANAGER` `UserProjectRole`, mirroring the guarantee
-    `import_project_bundle` (`services.project_export`) gives its own
-    importer for the same reason.
+    Shared by both of `create_project`'s branches. Prefers adding `fallback_user_id` to an existing
+    manager-role `ProjectGroup` on `project` (possible only after a template clone copied a user-created
+    manager-role group; a from-scratch project has no groups, so it falls through to the direct grant);
+    otherwise grants a direct `PROJECT_MANAGER` `UserProjectRole`, as `import_project_bundle`
+    (`services.project_export`) guarantees for its importer.
     """
     if get_effective_project_managers(db, project.id):
         return
@@ -206,52 +176,26 @@ def create_project(
 ):
     """Creates a project within an organisation.
 
-    Two authorization paths (hierarchical-projects decision 11 in
-    docs/decisions.md):
-      1. Org-level (C-U-01: project_creator/org_admin) — today's original
-         behaviour, unchanged. Works with or without `parent_project_id`.
-      2. Relaxed, parent-scoped — the caller lacks an org-level role but
-         `parent_project_id` is set, they manage that exact parent
-         (`can_manage_project_settings`), and the organisation hasn't
-         turned this path off (`Organization.allow_relaxed_child_project_
-         creation`, default on). This is what makes "Add sub-project" from
-         a project's own page usable by an ordinary project manager. The
-         resulting project is marked `parent_required=True` — see
-         `Project.parent_required`'s docstring for why, and
-         `update_project` below for the one behavioural consequence.
-    Either path: if `parent_project_id` is set, the caller must also manage
-    the target parent (not just view it) — attaching to a parent is
-    authorized by *both* sides, unlike detaching (see decision 12).
+    Two authorisation paths (decision 11 in docs/decisions.md's hierarchical-projects entry):
+      1. Org-level (C-U-01: project_creator/org_admin), with or without `parent_project_id`.
+      2. Relaxed, parent-scoped: the caller lacks an org-level role but `parent_project_id` is set, they
+         manage that exact parent (`can_manage_project_settings`) and the organisation has not turned this
+         path off (`Organization.allow_relaxed_child_project_creation`, default on). It lets an ordinary
+         project manager use "Add sub-project"; the project is marked `parent_required=True` (see
+         `Project.parent_required` and `update_project`).
+    Either path: if `parent_project_id` is set, the caller must also manage the target parent, so attaching
+    is authorised by both sides, unlike detaching (decision 12).
 
-    On creation, the creator is granted a direct `PROJECT_MANAGER`
-    `UserProjectRole` (C-U-10) — unless a template project is used (C-E-05),
-    per C-U-10's explicit "unless using a template project" clause:
-    groups/members (and, 2026-08-31, direct role
-    grants too) are copied from the template instead, via `clone_project`.
-    If that leaves the new project with no manager at all, the creator is
-    still added as a fallback (the exact same
-    `get_effective_project_managers`-then-fallback-`UserProjectRole` code
-    path both branches below now share) so C-U-08 (every project must have
-    a manager) can never be violated. This is unconditional regardless of
-    `parent_project_id`/`role_inheritance_mode` — a newly created project
-    always gets its own direct, individually accountable manager, so
-    creation-time C-U-08 never depends on inheritance being present or
-    stable later.
+    On creation the creator is granted a direct `PROJECT_MANAGER` `UserProjectRole` (C-U-10), unless a
+    template project is used (C-E-05): groups, members and direct role grants are then copied from the
+    template via `clone_project`. If that leaves no manager, the creator is added as a fallback (the
+    `get_effective_project_managers`-then-`UserProjectRole` path both branches share), so C-U-08 (every
+    project has a manager) holds. This is unconditional regardless of `parent_project_id` or
+    `role_inheritance_mode`: a new project always has its own direct, accountable manager.
 
-    Prior to 2026-08-31 (2026-08-31), the non-template
-    path instead auto-created four "standard" `ProjectGroup` rows
-    (`is_default=True`) and added the creator to the manager-role one —
-    see docs/decisions.md's entry on that migration for why this changed
-    (in short: those four groups could never be deleted, existed on every
-    project whether wanted or not, and made group membership the only path
-    to a first manager even though direct grants were always the simpler,
-    equally-supported mechanism for a single person).
-
-    `organization_id` lives in the request body here (the project doesn't
-    exist yet to have a path segment of its own), so — unlike every other
-    org/project-scoped endpoint — it isn't covered by `require_org_role`'s
-    or `require_project_*`'s built-in PAT-scope check; enforced explicitly
-    here instead.
+    `organization_id` is in the request body (the project does not exist yet to have a path segment), so
+    `require_org_role`'s and `require_project_*`'s PAT-scope check does not cover it and is enforced
+    explicitly here.
     """
     check_pat_scope(request, payload.organization_id)
     org = db.get(Organization, payload.organization_id)
@@ -327,30 +271,22 @@ def create_project(
 
         new_stage(db, project, "Scoping", 0, is_current=True)
 
-        # C-U-10: the creator becomes the project's initial manager via a
-        # direct grant — no group is auto-created any more (docs/decisions.md). This project
-        # has zero groups at this point, so `_ensure_project_has_a_manager`'s
-        # "existing manager-role group" branch is unreachable here and it
-        # always takes the direct-grant path — the exact same fallback the
-        # template-clone branch above uses, reused rather than duplicated.
+        # C-U-10: the creator becomes the initial manager via a direct grant (no group is auto-created,
+        # docs/decisions.md). The project has no groups yet, so `_ensure_project_has_a_manager`'s
+        # "existing manager-role group" branch is unreachable and it takes the direct-grant path, the same
+        # fallback the template-clone branch uses.
         _ensure_project_has_a_manager(db, project, current_user.id)
 
-        # Default action types (Review, Test) — seeded fresh for a manually-
-        # created project. A template-cloned project instead *copies* the
-        # template's own action types (see `clone_project`), the same
-        # treatment as its custom field definitions, so an admin's
-        # customisations to a template carry over rather than being
-        # silently reset to defaults. A project created with a parent is
-        # skipped entirely: it starts with zero of its own and immediately
-        # falls back to the nearest ancestor's
-        # (`services.project_hierarchy.resolve_effective_action_types`),
-        # always on regardless of the RBAC inheritance settings above.
+        # Default action types (Review, Test) are seeded for a manually created project. A template-cloned
+        # project copies the template's action types (`clone_project`), as its custom field definitions, so an
+        # admin's customisations carry over. A project created with a parent is skipped: it starts with none
+        # of its own and falls back to the nearest ancestor's
+        # (`services.project_hierarchy.resolve_effective_action_types`), independent of the RBAC inheritance settings.
         if payload.parent_project_id is None:
             seed_action_types(db, project.id)
 
-    # Copy the org's current module/sub-component defaults into the new
-    # project (blank or template-cloned alike), so a later change to an org
-    # default never flips this project (Decided by: User, 2026-10-04).
+    # Copy the org's current module/sub-component defaults into the new project (blank or template-cloned),
+    # so a later change to an org default never flips this project.
     snapshot_project_module_state(db, project.id, project.organization_id)
 
     ensure_may_publish_template(
@@ -374,12 +310,9 @@ def create_project(
         organization_id=payload.organization_id, project_id=project.id,
         detail={"template_project_id": str(template_project_id)} if template_project_id else None,
     )
-    # Generic module-contributed project-creation reaction (e.g.
-    # Compliance's reconciliation of `applies_to_all_projects`
-    # standards) — this core router never imports a specific module; see
-    # `ModuleDefinition.on_project_created`'s own docstring for why
-    # project-creation time, not a module-enable hook, is where this has to
-    # run.
+    # Generic module-contributed project-creation reaction (e.g. Compliance's reconciliation of
+    # `applies_to_all_projects` standards); this core router never imports a specific module (see
+    # `ModuleDefinition.on_project_created` for why it runs at creation time).
     run_on_project_created_hooks(db, project, current_user.id)
 
     if payload.parent_project_id is not None:
@@ -434,16 +367,13 @@ async def import_project(
     file: UploadFile = File(...), skip_files: bool = Form(False), people: str | None = Form(None),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Creates a brand-new project in `organization_id` from an uploaded
-    project export bundle (`GET /{project_id}/export` — see
-    `services.project_export`'s module docstring for the full bundle
-    contents: structure, custom field definitions, and full history).
+    """Creates a brand-new project in `organization_id` from an uploaded project export bundle
+    (`GET /{project_id}/export`; see `services.project_export` for the contents: structure, custom field
+    definitions and full history).
 
-    Authorization mirrors plain project creation (`POST /projects`) exactly
-    — org admins or project creators of the *target* organisation — which
-    is what makes cross-organisation import safe: the bundle itself carries
-    no ids or org references, only names/prefixes/emails resolved fresh
-    against whatever org the caller is authorized to create in.
+    Authorisation mirrors plain project creation (`POST /projects`): org admins or project creators of the
+    target organisation. That makes cross-organisation import safe: the bundle carries no ids or org
+    references, only names/prefixes/emails resolved against the org the caller may create in.
 
     The bundle's files are imported whenever they can be stored. While uploads are disabled the call is refused
     (403 `uploads_disabled`, with the file count and size) unless `skip_files` is set, which imports without them.
@@ -452,8 +382,7 @@ async def import_project(
     member id}, "keep_original_email": bool}`); omitted, each person is matched by email and otherwise becomes an
     imported person.
 
-    Registered before `GET /{project_id}` so the static "/import" path
-    isn't swallowed by that dynamic route.
+    Registered before `GET /{project_id}` so the static "/import" path is not swallowed by that dynamic route.
     """
     check_pat_scope(request, organization_id)
     org_roles = get_effective_org_roles(db, current_user.id, organization_id)
@@ -483,10 +412,8 @@ def get_project_tree(
     by that dynamic route (same reasoning as `POST /import`'s ordering).
     """
     accessible_ids = _accessible_project_ids(db, current_user.id)
-    # Defence in depth: same-org is already enforced when parent_project_id
-    # is set, but build_project_tree also re-filters by organization_id
-    # itself, matching this codebase's existing pattern of re-checking a
-    # write-time invariant on the read side too.
+    # Defence in depth: same-org is enforced when parent_project_id is set, and build_project_tree also
+    # re-filters by organization_id, re-checking a write-time invariant on the read side.
     return build_project_tree(db, organization_id, accessible_ids)
 
 
@@ -510,45 +437,29 @@ def list_projects(
 ):
     """Project list view (U-E-03, U-E-04): active/archived projects the user can access.
 
-    Template projects (`is_template`) are left out unless `include_templates` is set;
-    `templates_only` returns only templates (the "New project" template picker and the
-    organisation default-template setting use it), and overrides `include_templates`.
+    Template projects (`is_template`) are left out unless `include_templates` is set; `templates_only` returns
+    only templates (the "New project" template picker and the organisation default-template setting) and
+    overrides `include_templates`.
 
-    `favorite_only` powers `FavouritesPage`, the same shape as every other
-    filter here rather than a separate endpoint — a favourited-projects
-    listing is otherwise identical to this one (search, org filter, and
-    pagination all still make sense over it, and it needs sorted-favourites-
-    first no more or less than the unfiltered list already gets below).
-
-    Supports an optional `role` filter (only projects where the caller holds
-    the given effective project role), `stage_phase_kind` filter (only projects
-    whose current stage is in a phase of the given kind) for U-E-05, and
-    `organization_id` (only projects in that organisation — for a user
-    belonging to more than one, this replaces having to visit each
-    organisation separately to see just its projects). Results are sorted
-    with the caller's favourited projects (U-U-03) first, then by name.
-    `limit`/`offset` (U-P-06) are optional pagination — see
-    `list_requirements` for the same pattern and its rationale.
+    `favorite_only` powers `FavouritesPage` as a filter, since a favourites listing is otherwise this list.
+    Optional filters: `role` (the caller holds that effective project role), `stage_phase_kind` (the current
+    stage is in a phase of that kind, U-E-05) and `organization_id`. Results sort favourited projects
+    (U-U-03) first, then by name. `limit`/`offset` (U-P-06) paginate, as `list_requirements`.
 
     `include_unjoined` adds the projects of every organisation the caller administers that the caller holds no
     role in, as identity-only rows (`UnjoinedProjectListItemOut`: no summary, counts, stage or status). It is
-    honoured only for those organisations and ignored for anyone else, never widened; `X-Can-Include-Unjoined`
-    tells the page whether the caller administers any organisation, so the filter is offered only to them. The
-    extra rows follow the same archived, template, organisation and search filters; the `role`,
-    `stage_phase_kind` and `favorite_only` filters describe membership and so exclude them. Opening such a
-    project is still refused (`require_project_view`); the only action on a row is managing its users.
+    honoured only for those organisations, never widened; `X-Can-Include-Unjoined` tells the page whether the
+    caller administers any organisation, so the filter is offered only to them. The extra rows follow the same
+    archived, template, organisation and search filters; the `role`, `stage_phase_kind` and `favorite_only`
+    filters describe membership and so exclude them. Opening such a project is still refused
+    (`require_project_view`); the only action on a row is managing its users.
 
-    `X-Total-Unfiltered-Count` is a second response header reporting the
-    count within only the mandatory accessible-projects + default
-    archived-visibility scope, before `organization_id`/`search`/`role`/
-    `stage_phase_kind`/`favorite_only` narrow it further — unlike
-    `X-Total-Count`, it does not change when the caller applies one of
-    those filters.
+    `X-Total-Unfiltered-Count` is the count within only the mandatory accessible-projects and default
+    archived-visibility scope, before `organization_id`/`search`/`role`/`stage_phase_kind`/`favorite_only`
+    narrow it; unlike `X-Total-Count` it does not change with those filters.
     """
-    # Role resolution below runs once per accessible project; cache the
-    # caller's user-level lookups (org groups, org roles) for this read-only
-    # request instead of re-querying them per project — see
-    # `rbac.memoize_user_lookups`.
+    # Role resolution runs once per accessible project; the caller's user-level lookups (org groups, org
+    # roles) are cached for this read-only request (`rbac.memoize_user_lookups`).
     with memoize_user_lookups():
         # No server-admin bypass here (I-M-05): project listings are "data within
         # organisations", so even server admins only see projects they hold a
@@ -571,19 +482,13 @@ def list_projects(
             projects = []
             response.headers["X-Total-Unfiltered-Count"] = "0"
         else:
-            # Joins to Organization to exclude projects belonging to a disabled
-            # org (`Organization.is_active`) — a disabled org locks out its own
-            # content everywhere else (`rbac._require_org_active`), and this
-            # aggregate cross-org listing had been the one place that check
-            # didn't reach, since it filters by project accessible-ids rather
-            # than going through a per-org `require_org_role` dependency.
+            # Joins to Organization to exclude projects of a disabled org (`Organization.is_active`): a
+            # disabled org locks out its content everywhere (`rbac._require_org_active`), and this cross-org
+            # listing filters by accessible ids rather than a per-org `require_org_role` dependency.
             #
-            # `base_conditions` (no `organization_id`) is the mandatory scope
-            # for the unfiltered count above — `organization_id` is itself a
-            # FilterPanel filter (the "Organisation" dropdown), the same
-            # relationship `category_id` has to `RequirementsPage`'s unfiltered
-            # count, so it's added only to `conditions` below, after the count
-            # is taken.
+            # `base_conditions` (no `organization_id`) is the mandatory scope for the unfiltered count above;
+            # `organization_id` is a FilterPanel filter, so it is added only to `conditions` below, after the
+            # count is taken.
             base_conditions = [
                 Project.id.in_(accessible_ids),
                 Project.is_archived == archived,
@@ -649,23 +554,14 @@ def list_projects(
             ).tuples().all()
         )
 
-        # Hierarchical projects: parent_project_name/children are populated only
-        # from projects in `accessible_ids` — the caller's own accessible set,
-        # already computed above — so a hidden parent/child never surfaces even
-        # from a project the caller *can* see (visibility-boundary rule, see
-        # docs/decisions.md), **or** from a project in an organisation the
-        # caller is `org_admin` of — added as a narrow, explicit OR-condition
-        # here (not a change to what `_accessible_project_ids` itself returns)
-        # so an org admin sees the true hierarchy of any project in their own
-        # organisation regardless of their own role on the parent/child, per
-        # the "Project hierarchy on Project Overview" entry in
-        # docs/decisions.md. Safe to key off each row's own `organization_id`
-        # for both its parent and its children: `parent_project_id` is
-        # validated same-organisation at write time (`create_project`/
-        # `update_project`, "must be a project in this organisation"), so a
-        # project's parent/children always share its own organisation.
-        # `admin_org_ids` is computed once per distinct organisation actually
-        # present in `projects`, not per row.
+        # parent_project_name/children are populated only from projects in `accessible_ids` (the caller's own
+        # accessible set, computed above), so a hidden parent/child never surfaces even from a visible project
+        # (visibility-boundary rule, docs/decisions.md), or from a project in an organisation the caller is
+        # `org_admin` of: a narrow explicit OR-condition, not a change to `_accessible_project_ids`, so an org
+        # admin sees the true hierarchy of any project in their organisation (docs/decisions.md's "Project
+        # hierarchy on Project Overview" entry). Keying off each row's own `organization_id` for parent and
+        # children is safe because `parent_project_id` is validated same-organisation at write time. `admin_org_ids`
+        # is computed once per distinct organisation present in `projects`, not per row.
         admin_org_ids = {
             oid for oid in {p.organization_id for p in projects} if is_org_admin(db, current_user.id, oid)
         } | {p.organization_id for p in unjoined_projects}
@@ -693,8 +589,7 @@ def list_projects(
                     ProjectAncestorOut(id=child_id, name=child_name)
                 )
 
-        # One query for every listed project's current stage, not one per row
-        # (2026-10-04 profiling: this endpoint was the hottest in the e2e suite).
+        # One query for every listed project's current stage, not one per row.
         current_stages = {
             stage.project_id: stage
             for stage in db.scalars(
@@ -798,12 +693,9 @@ def unset_favorite_project(
 def get_my_project_roles(
     project_id: UUID, current_user: User = Depends(require_project_view_or_manage), db: Session = Depends(get_db),
 ):
-    """Returns the caller's effective roles on this one project, sorted — for
-    pages that hide actions the viewer can't take. Replaces reading
-    `my_roles` out of the whole `GET /projects` list, which resolved roles
-    for every accessible project (the e2e suite's hottest backend call,
-    2026-10-04) and missed archived projects entirely. Same gate as
-    `get_project`: an org admin with no project role gets `[]`.
+    """Returns the caller's effective roles on this one project, sorted, for pages that hide actions the
+    viewer cannot take. Avoids resolving roles for every accessible project as `GET /projects` does, and
+    includes archived projects. Same gate as `get_project`: an org admin with no project role gets `[]`.
     """
     roles = sorted(get_effective_project_roles(db, current_user.id, project_id), key=lambda r: r.value)
     return ProjectMyRolesOut(roles=roles)
@@ -815,20 +707,13 @@ def get_project(
 ):
     """Returns a single project.
 
-    Gated by `require_project_view_or_manage`, not `require_project_view`
-    — an org admin of the project's organisation can already unilaterally
-    change every field this returns via `PATCH` (`require_project_manage`
-    has the same `can_manage_project_settings`/`is_org_admin` bypass), so
-    blocking them from *reading* it first was a real, pre-existing
-    inconsistency, not a deliberate narrower boundary: it silently forced
-    a "manage settings you can't see" experience and, concretely, made
-    `_project_out_with_redacted_parent`'s own manager/org-admin exemption
-    (below) unreachable for an org admin who holds no independent role on
-    `project_id` itself. Confirmed via `require_project_view_or_manage`'s
-    own precedent (`list_project_groups` already uses it for the same
-    "structure, not content" reasoning) and via a full grep of this
-    endpoint's existing test coverage before switching it — see
-    docs/decisions.md's "Project hierarchy on Project Overview" entry.
+    Gated by `require_project_view_or_manage`, not `require_project_view`: an org admin of the project's
+    organisation can already change every field this returns via `PATCH` (`require_project_manage` has the
+    same `can_manage_project_settings`/`is_org_admin` bypass), so blocking them from reading it would force a
+    "manage settings you cannot see" experience and make `_project_out_with_redacted_parent`'s manager/org-admin
+    exemption unreachable for an org admin with no role on `project_id`. `list_project_groups` uses the same
+    gate for the same "structure, not content" reason (docs/decisions.md's "Project hierarchy on Project
+    Overview" entry).
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -877,20 +762,18 @@ def list_project_files(
     db: Session = Depends(get_db),
 ):
     """Lists every file reachable from this project: direct requirement attachments (C-M-02, including linked
-    organisation shared resources, which `RequirementFile` covers), requirement action attachments, files attached
-    to a comment on one of the project's own requirements, and the pictures in the project's report image library.
-    Fills the gap `ProjectMetricsOut.file_count` only anticipated as a metric (U-P-05's "number of files in project,
-    if files are implemented") without ever listing them: `FileAsset` joins a project through each of the
-    context-specific link tables (and, for a library picture, its own `project_id`).
+    organisation shared resources, which `RequirementFile` covers), requirement action attachments, files
+    attached to a comment on one of the project's own requirements, and the pictures in the project's report
+    image library. `FileAsset` joins a project through each context-specific link table (and, for a library
+    picture, its own `project_id`).
 
-    Each row carries the context needed to make sense of a flat, project-wide list (which requirement/action/comment
-    it came from, uploader, upload time), see `ProjectFileOut`. Comments on a *change request's* discussion thread
-    are deliberately excluded, matching `ProjectMetricsOut.file_count`'s existing scope (requirement-attached
-    content only).
+    Each row carries the context needed for a flat, project-wide list (the requirement, action or comment it
+    came from, uploader, upload time; see `ProjectFileOut`). Comments on a change request's discussion thread
+    are excluded, matching `ProjectMetricsOut.file_count` (requirement-attached content only).
 
-    `limit`/`offset` (U-P-06): same optional pagination and `X-Total-Count` header convention as
-    `list_requirements`/`list_projects`. This unfiltered read is kept for callers with no filters; the page uses
-    `POST .../files/search`, which can carry the file name text out of the URL.
+    `limit`/`offset` (U-P-06): the optional pagination and `X-Total-Count` convention of
+    `list_requirements`/`list_projects`. This unfiltered read is for callers with no filters; the page uses
+    `POST .../files/search`, which keeps the file name text out of the URL.
     """
     return _files_page(db, response, project_id, project_scope, current_user, FileFilters(), limit, offset)
 
@@ -966,29 +849,20 @@ def update_project(
     project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Updates project settings: name/summary, the member change-request
-    toggle (C-U-13), the template flag (C-E-05), visibility, status, and
-    hierarchical-projects settings (parent, forward RBAC inheritance mode).
+    """Updates project settings: name/summary, the member change-request toggle (C-U-13), the template flag
+    (C-E-05), visibility, status, and hierarchical-projects settings (parent, forward RBAC inheritance mode).
 
-    Parent/inheritance validation order (see docs/decisions.md's
-    "Hierarchical projects" entry):
-      1. Attaching to a new/different parent requires the caller to manage
-         *both* this project and the target parent (decision 12) — same-org
-         too — and the target parent must have `can_be_parent=True` (a
-         project isn't eligible to be a parent until its own manager opts
-         in; see `Project.can_be_parent`'s docstring).
-      2. Detaching (clearing `parent_project_id` to null) is instead gated
-         by `Project.parent_required` (decision 11): rejected unless it's
-         `False` or the current actor holds `ORG_ADMIN`/`PROJECT_CREATOR`
-         in this project's organisation.
+    Parent/inheritance validation order (docs/decisions.md's "Hierarchical projects" entry):
+      1. Attaching to a new parent requires the caller to manage both this project and the target parent
+         (decision 12), in the same org, and the parent must have `can_be_parent=True` (its manager has
+         opted in; see `Project.can_be_parent`).
+      2. Detaching (clearing `parent_project_id`) is gated by `Project.parent_required` (decision 11):
+         rejected unless it is `False` or the actor holds `ORG_ADMIN`/`PROJECT_CREATOR` in the organisation.
       3. Cycle prevention (attach/reparent only).
-      4. The `role_inheritance_mode`/`role_inheritance_filter_role`
-         MIRROR_ROLE invariant, enforced against the fully-merged proposed
-         state.
-      5. C-U-08: if the change would leave zero effective managers
-         (`get_effective_project_managers` with the proposed values),
-         reject — inside the same row lock as the write, to close the
-         TOCTOU window a separate check-then-write would leave open.
+      4. The `role_inheritance_mode`/`role_inheritance_filter_role` MIRROR_ROLE invariant, checked against the
+         fully merged proposed state.
+      5. C-U-08: if the change would leave zero effective managers (`get_effective_project_managers` with the
+         proposed values), reject, inside the same row lock as the write to close the TOCTOU window.
     """
     if payload.name is not None:
         project.name = payload.name
@@ -1017,11 +891,9 @@ def update_project(
     if payload.exempt_from_org_link_lock is not None:
         project.exempt_from_org_link_lock = payload.exempt_from_org_link_lock
     if payload.allow_ai_approvals is not None:
-        # AI approval via MCP (docs/decisions.md) — project half of the
-        # two-level opt-in gate; see Project.allow_ai_approvals's docstring.
-        # The frontend requires an explicit acknowledgment dialog before
-        # ever sending `allow_ai_approvals=true`, same as the org-level
-        # counterpart in update_advanced_settings.
+        # AI approval via MCP (docs/decisions.md): project half of the two-level opt-in gate (see
+        # Project.allow_ai_approvals). The frontend requires an explicit acknowledgement dialog before
+        # sending `allow_ai_approvals=true`, as for the org-level counterpart in update_advanced_settings.
         project.allow_ai_approvals = payload.allow_ai_approvals
     ensure_may_publish_template(
         db, current_user, project.organization_id,
@@ -1197,7 +1069,7 @@ def get_project_changes_endpoint(
     unless `include_comments=true` or the `comments` kind is asked for.
 
     One page is read: every filter is part of each source's query and each source reads only its newest
-    `offset + limit` rows, so the cost follows the page and not the size of the project
+    `offset + limit` rows, so the cost follows the page, not the project size
     (`services.changes.get_project_changes_page`). The match count, before slicing, is in `X-Total-Count`. Each
     entry carries its `kind` and, for a record of a registered type the caller may see, its `record_label`.
 

@@ -86,11 +86,8 @@ export const ClickInsideDoesNotClose: Story = {
   },
 };
 
-/** Same focus-trap/restoration behaviour as `Modal` (shared via
- * `dialogA11y.ts`) — see `Modal.stories.tsx` for the equivalent coverage of
- * `AutoFocusChildWins` and `TabTrapCycles`; this file only re-proves the
- * open/restore lifecycle to guard against a future SidePanel-specific
- * regression, not duplicate every case. */
+/** Same focus-trap and restoration behaviour as `Modal` (shared via `dialogA11y.ts`; see `Modal.stories.tsx` for
+ * `AutoFocusChildWins` and `TabTrapCycles`); this file re-proves only the open and restore lifecycle. */
 export const FocusMovesIntoDialogOnOpen: Story = {
   play: async () => {
     const body = within(document.body);

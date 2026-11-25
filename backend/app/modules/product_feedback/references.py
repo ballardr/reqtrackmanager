@@ -1,21 +1,12 @@
 """
 Module: modules.product_feedback.references
 
-A request's external references: pointers to the same work in outside tools (a Jira epic, a ServiceNow ticket),
-each with the system it lives in and a role (`origin`: where the request came from; `delivery`: where it is built).
-
-Responsibilities:
-- `references_by_request`: many requests' references with their system names in a fixed number of statements.
-- `add_reference` / `update_reference` / `remove_reference`: the gated bodies' data changes (no commit, no audit).
-- `convert_to_project`: re-points an inbox request's references at the target project's systems when it is triaged.
-- `apply_legacy_link`: the single `external_ref_url` / `external_ref_key` pair older clients still send, kept as a
-  delivery reference on the "Other" system.
-
-Design decisions:
-- References are not versioned with the request: each is added, changed and removed on its own with its own audit
-  event, so a change here does not create a content version.
-- A reference needs a key or a URL (or both); the URL is an absolute http(s) link (`schemas.check_web_url`).
-- At most `MAX_REFERENCES` per request, so a list stays bounded.
+A request's external references: pointers to the same work in outside tools,
+each with a system and a role (`origin` or `delivery`). Data is the shared
+`ExternalReference` (type `enhancement_request`); rules are
+`services.external_references`. Reads are flat per list; changes do not commit
+or audit; `convert_to_project` re-points an inbox request's references on
+triage. References are unversioned and capped at `MAX_REFERENCES`.
 """
 
 from __future__ import annotations
@@ -26,44 +17,35 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.external_reference import ExternalReference
 from app.models.project import Project
 from app.models.user import User
 from app.modules.product_feedback.enums import ExternalRefRole
-from app.modules.product_feedback.models import (
-    EnhancementRequest,
-    EnhancementRequestExternalRef,
-    ExternalSystemDefinition,
-    ProjectExternalSystem,
-)
+from app.modules.product_feedback.models import EnhancementRequest
 from app.modules.product_feedback.schemas import ExternalRefOut
-from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, OTHER_NAME, resolve_system
+from app.modules.product_feedback.service import REQUEST_ARTEFACT_TYPE
+from app.services import external_references as core
+from app.services.external_references import MAX_REFERENCES, OTHER_NAME
 
-MAX_REFERENCES = 50
+__all__ = [
+    "MAX_REFERENCES", "add_reference", "apply_legacy_link", "convert_to_project", "get_reference",
+    "references_by_request", "remove_reference", "update_reference",
+]
 
 
 def references_by_request(db: Session, request_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[ExternalRefOut]]:
     """The references of many requests, oldest first, in a fixed number of statements. A request with none is
     present with an empty list."""
-    out: dict[uuid.UUID, list[ExternalRefOut]] = {i: [] for i in request_ids}
-    if not out:
-        return out
-    rows = list(db.scalars(
-        select(EnhancementRequestExternalRef).where(EnhancementRequestExternalRef.request_id.in_(list(out)))
-        .order_by(EnhancementRequestExternalRef.created_at, EnhancementRequestExternalRef.id)
-    ))
-    names = EXTERNAL_SYSTEMS.display_names(db, {(r.org_system_id, r.project_system_id) for r in rows})
-    for row in rows:
-        out[row.request_id].append(reference_out(row, names.get((row.org_system_id, row.project_system_id))))
-    return out
+    found = core.references_for_records(db, REQUEST_ARTEFACT_TYPE, request_ids)
+    return {request_id: [_request_out(r) for r in refs] for request_id, refs in found.items()}
 
 
-def reference_out(row: EnhancementRequestExternalRef, system_name: str | None) -> ExternalRefOut:
-    """The API shape of one reference; `system_id` is the id the system picker of the request's tier uses."""
-    system_id = row.project_system_id or row.org_system_id
-    assert system_id is not None  # the CHECK constraint guarantees one
+def _request_out(ref: core.ExternalReferenceOut) -> ExternalRefOut:
+    """The request API shape of a shared reference (an unset role reads as `delivery`, the module's default)."""
     return ExternalRefOut(
-        id=row.id, request_id=row.request_id, system_id=system_id, system_name=system_name or "", key=row.key,
-        url=row.url, role=row.role, created_by=row.created_by, created_at=row.created_at,
+        id=ref.id, request_id=ref.artefact_id, system_id=ref.system_id, system_name=ref.system_name, key=ref.key,
+        url=ref.url, link=ref.link, role=ref.role or ExternalRefRole.DELIVERY, created_by=ref.created_by,
+        created_at=ref.created_at,
     )
 
 
@@ -83,62 +65,40 @@ def _organization_id(db: Session, request: EnhancementRequest) -> uuid.UUID:
 def add_reference(
     db: Session, request: EnhancementRequest, *, system_id: uuid.UUID, key: str, url: str | None,
     role: ExternalRefRole, actor: User,
-) -> EnhancementRequestExternalRef:
+) -> ExternalReference:
     """Adds a reference to `request` (flushed, not committed).
 
     Raises:
         ValueError: If the request already has `MAX_REFERENCES`, neither a key nor a URL is given, or the system is
             not an enabled one of the request's tier.
     """
-    if not key.strip() and not url:
-        raise ValueError("A reference needs a key or a link.")
-    count = len(db.scalars(select(EnhancementRequestExternalRef.id).where(EnhancementRequestExternalRef.request_id == request.id)).all())
-    if count >= MAX_REFERENCES:
-        raise ValueError(f"A request can have at most {MAX_REFERENCES} references.")
-    org_system_id, project_system_id = resolve_system(db, _organization_id(db, request), _project_of(db, request), system_id)
-    row = EnhancementRequestExternalRef(
-        request_id=request.id, org_system_id=org_system_id, project_system_id=project_system_id, key=key.strip(),
-        url=url or None, role=role, created_by=actor.id,
+    return core.add_reference(
+        db, artefact_type=REQUEST_ARTEFACT_TYPE, artefact_id=request.id, organization_id=_organization_id(db, request),
+        project=_project_of(db, request), system_id=system_id, key=key, url=url, role=role, actor_id=actor.id,
     )
-    db.add(row)
-    db.flush()
-    return row
 
 
-def get_reference(db: Session, request: EnhancementRequest, reference_id: uuid.UUID) -> EnhancementRequestExternalRef | None:
+def get_reference(db: Session, request: EnhancementRequest, reference_id: uuid.UUID) -> ExternalReference | None:
     """A reference of `request`, or `None` (also for another request's reference id)."""
-    row = db.get(EnhancementRequestExternalRef, reference_id)
-    return row if row is not None and row.request_id == request.id else None
+    return core.get_reference(db, REQUEST_ARTEFACT_TYPE, request.id, reference_id)
 
 
 def update_reference(
-    db: Session, request: EnhancementRequest, row: EnhancementRequestExternalRef, changes: dict,
-) -> EnhancementRequestExternalRef:
-    """Applies the keys present in `changes` (`system_id`, `key`, `url`, `role`) to a reference.
+    db: Session, request: EnhancementRequest, row: ExternalReference, changes: dict,
+) -> ExternalReference:
+    """Applies the keys present in `changes` (`system_id`, `key`, `url`, `role`) to a reference. A `role` of `None`
+    keeps the current one (a request's reference always has a role).
 
     Raises:
         ValueError: If the result has neither a key nor a URL, or `system_id` is not usable.
     """
-    if "system_id" in changes and changes["system_id"] is not None:
-        row.org_system_id, row.project_system_id = resolve_system(
-            db, _organization_id(db, request), _project_of(db, request), changes["system_id"],
-        )
-    if "key" in changes and changes["key"] is not None:
-        row.key = changes["key"].strip()
-    if "url" in changes:
-        row.url = changes["url"] or None
-    if "role" in changes and changes["role"] is not None:
-        row.role = changes["role"]
-    if not row.key and not row.url:
-        raise ValueError("A reference needs a key or a link.")
-    db.flush()
-    return row
+    changes = {k: v for k, v in changes.items() if not (k == "role" and v is None)}
+    return core.update_reference(db, row, _project_of(db, request), changes)
 
 
-def remove_reference(db: Session, row: EnhancementRequestExternalRef) -> None:
+def remove_reference(db: Session, row: ExternalReference) -> None:
     """Deletes a reference (flushed, not committed)."""
-    db.delete(row)
-    db.flush()
+    core.remove_reference(db, row)
 
 
 def convert_to_project(db: Session, request: EnhancementRequest, project: Project) -> int:
@@ -149,29 +109,7 @@ def convert_to_project(db: Session, request: EnhancementRequest, project: Projec
     Returns:
         How many references were converted.
     """
-    rows = list(db.scalars(select(EnhancementRequestExternalRef).where(
-        EnhancementRequestExternalRef.request_id == request.id, EnhancementRequestExternalRef.org_system_id.is_not(None),
-    )))
-    for row in rows:
-        org_system = db.get(ExternalSystemDefinition, row.org_system_id)
-        assert org_system is not None  # the FK guarantees it
-        try:
-            _org_id, project_id = resolve_system(db, project.organization_id, project, org_system.id)
-        except ValueError:
-            project_id = _local_system(db, project, org_system.name).id
-        row.org_system_id = None
-        row.project_system_id = project_id
-    db.flush()
-    return len(rows)
-
-
-def _local_system(db: Session, project: Project, name: str) -> ProjectExternalSystem:
-    """The project's own system called `name`, created if it has none."""
-    existing = db.scalar(select(ProjectExternalSystem).where(
-        ProjectExternalSystem.project_id == project.id, ProjectExternalSystem.org_type_id.is_(None),
-        ProjectExternalSystem.name_override == name,
-    ))
-    return existing if existing is not None else EXTERNAL_SYSTEMS.create_project_local(db, project.id, name)
+    return core.convert_record_to_project(db, REQUEST_ARTEFACT_TYPE, request.id, project)
 
 
 def apply_legacy_link(db: Session, request: EnhancementRequest, *, changes: dict, actor: User) -> None:
@@ -184,21 +122,18 @@ def apply_legacy_link(db: Session, request: EnhancementRequest, *, changes: dict
     """
     project = _project_of(db, request)
     organization_id = _organization_id(db, request)
-    other = db.scalar(select(ExternalSystemDefinition).where(
-        ExternalSystemDefinition.organization_id == organization_id, ExternalSystemDefinition.name == OTHER_NAME,
-        ExternalSystemDefinition.is_active.is_(True),
-    ))
-    if other is None:
+    other_id = core.other_system_id(db, organization_id)
+    if other_id is None:
         raise ValueError(f"The organisation has no '{OTHER_NAME}' external system; add a reference with a system instead.")
-    org_system_id, project_system_id = resolve_system(db, organization_id, project, other.id)
+    org_system_id, project_system_id = core.resolve_system(db, organization_id, project, other_id)
     system_match = (
-        EnhancementRequestExternalRef.org_system_id == org_system_id if org_system_id
-        else EnhancementRequestExternalRef.project_system_id == project_system_id
+        ExternalReference.org_system_id == org_system_id if org_system_id
+        else ExternalReference.project_system_id == project_system_id
     )
-    existing = db.scalar(select(EnhancementRequestExternalRef).where(
-        EnhancementRequestExternalRef.request_id == request.id, EnhancementRequestExternalRef.role == ExternalRefRole.DELIVERY,
-        system_match,
-    ).order_by(EnhancementRequestExternalRef.created_at))
+    existing = db.scalar(select(ExternalReference).where(
+        ExternalReference.artefact_type == REQUEST_ARTEFACT_TYPE, ExternalReference.artefact_id == request.id,
+        ExternalReference.role == ExternalRefRole.DELIVERY, system_match,
+    ).order_by(ExternalReference.created_at))
     url = changes["external_ref_url"] if "external_ref_url" in changes else (existing.url if existing else None)
     key = changes["external_ref_key"] if "external_ref_key" in changes else (existing.key if existing else "")
     key = (key or "").strip()
@@ -208,5 +143,5 @@ def apply_legacy_link(db: Session, request: EnhancementRequest, *, changes: dict
     elif existing is not None:
         existing.key, existing.url = key, url or None
     else:
-        add_reference(db, request, system_id=other.id, key=key, url=url, role=ExternalRefRole.DELIVERY, actor=actor)
+        add_reference(db, request, system_id=other_id, key=key, url=url, role=ExternalRefRole.DELIVERY, actor=actor)
     db.flush()

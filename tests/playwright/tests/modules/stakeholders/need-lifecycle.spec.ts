@@ -32,7 +32,7 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     await dialog.getByLabel("Need", { exact: true }).fill("Find out what is wrong without a laptop.");
     await dialog.getByLabel("Rationale").fill("Each delay costs an hour.");
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText("Stakeholder Need created.")).toBeVisible();
+    await expect(page.getByText(/Stakeholder Need( \S+-\d+)? created\./)).toBeVisible();
 
     // --- The list renders the label-mapped status.
     const row = page.locator("tr", { hasText: name });
@@ -45,7 +45,7 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     await expect(page.getByText("Each delay costs an hour.")).toBeVisible();
 
     // --- Activate behind a confirm dialog; no approval step.
-    await page.getByRole("button", { name: "Activate" }).click();
+    await chooseRecordAction(page, "Stakeholder Need", "Promote to Active");
     await page.getByRole("dialog", { name: "Activate this Stakeholder Need?" }).getByRole("button", { name: "Activate" }).click();
     await expect(statusBadge(page, "Active")).toBeVisible();
 

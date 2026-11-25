@@ -344,6 +344,8 @@ export const SYMBOL_SVG = new Blob(
 
 /** What `mockArchitectureReads` answers with; each list defaults to the fixtures above or empty. */
 export interface ArchitectureReads {
+  /** The organisation defaults a project has hidden, answered by every vocabulary's `.../hidden` (none by default). */
+  hiddenDefinitions?: { id: string; name: string }[];
   /** The allocation view of a requirement or an element (nothing allocated or suggested by default, so no card). */
   allocation?: AllocationView;
   elements?: ArchitectureElement[];
@@ -395,11 +397,9 @@ export interface ArchitectureReads {
 export const SYMBOL_PICKER_VIEW_KEY = "architecture.symbolPickerView";
 
 /**
- * Holds the symbol picker's remembered view in memory for the running story, so it starts at List and a story that
- * chooses Gallery cannot change what another story opens at. Storybook's test files share one browser origin and run
- * concurrently, so a value written to the real `localStorage` by one file is read by the pickers mounted in the others
- * (Gallery tiles are radios, not options, so a form story that picks a symbol then fails). The spies are per test file,
- * because each file runs in its own frame.
+ * Holds the symbol picker's remembered view in memory for the running story, so it starts at List and a story that chooses
+ * Gallery cannot change what another story opens at. Storybook test files share one browser origin and run concurrently, so a
+ * view written to the real `localStorage` would be read by pickers mounted in the others; the spies are per test file.
  *
  * @returns The cleanup that restores the real storage methods; return it from `beforeEach`.
  */
@@ -435,6 +435,7 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
   spyOn(api, "getForBlob").mockResolvedValue(SYMBOL_SVG);
   return spyOn(api, "get").mockImplementation(async (path: string) => {
     const base = path.split("?")[0];
+    if (/\/modules\/architecture\/(domains|element-types|connection-types|symbols)\/hidden$/.test(base)) return reads.hiddenDefinitions ?? [];
     if (base.endsWith("/modules/architecture/capabilities")) return { manage_types: reads.canManageTypes ?? false };
     if (base.endsWith("/enabled-modules")) {
       return [{ module_key: "architecture", name: "System Architecture", frontend_manifest: null, disabled_sub_components: reads.disabledSubComponents ?? [] }];

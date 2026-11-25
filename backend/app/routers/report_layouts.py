@@ -2,36 +2,29 @@
 Module: routers.report_layouts
 
 Custom report layouts at the two tiers (`services.report_layouts`, `services.report_layout_scope`):
-
 - Organisation: `/api/v1/orgs/{organization_id}/report-layouts` (list, create, read, versions, save a
   version, the shared draft, rename, delete).
-- Project: `/api/v1/projects/{project_id}/report-layouts`, the same, plus `PUT .../{id}/visibility` to hide
-  or show an inherited layout and `POST .../restore` to show every hidden one.
+- Project: `/api/v1/projects/{project_id}/report-layouts`, the same, plus `PUT .../{id}/visibility` to hide or
+  show an inherited layout and `POST .../restore` to show every hidden one.
 
-Access: listing needs membership (an organisation role, or the project's view); everything that reads a
-tree or writes needs the matching manage permission (`manage_org_report_layouts`,
-`manage_project_report_layouts`; `services.rbac`). A project's list is its *effective* set (own, ancestors',
-organisation's, de-duplicated by name); an inherited layout can be read by a project manager but only
-changed where it is owned. Running a layout is a later endpoint and needs neither permission.
+Access: listing needs membership (an organisation role, or the project's view); anything that reads a tree or
+writes needs the matching manage permission (`manage_org_report_layouts`, `manage_project_report_layouts`;
+`services.rbac`). A project's list is its effective set (own, ancestors', organisation's, de-duplicated by
+name); an inherited layout can be read by a project manager but changed only where it is owned. Running a
+layout needs neither permission.
 
-`GET|PUT|DELETE .../{id}/draft` read, autosave and discard the layout's one shared draft (`services.report_layouts`); the save
-endpoint takes `from_draft` to publish it as the next version. They need the same manage permission, a project reaches only its
-own layouts' drafts, and the tree is never logged. No run, list, copy or bundle reads a draft.
-
-`POST .../text/parse` and `.../text/format` convert between a tree and its text view
-(`services.report_layout_text`) for the designer; they store nothing, need the manage permission and never
-log the text.
-
-`GET .../blocks` lists the block types the visual designer can add with the form each needs
-(`services.report_layout_block_schema`), and `POST .../validate` checks a draft tree and answers every problem with its path;
-neither stores anything and the tree is never logged.
-
-`GET .../snippets` lists the report snippets the scope can insert and `POST .../snippets/{key}/apply` returns the draft tree with one
-inserted (`services.report_snippets`); neither stores anything, both need the manage permission, and the tree and parameter
-values are never logged.
-
-`GET .../widgets` lists the report components a `widget` block can embed (`services.report_widgets`), narrowed to the
-modules the organisation (or project) can use, for the designer's widget picker.
+Designer endpoints (all need the manage permission and never log the tree or text):
+- `GET|PUT|DELETE .../{id}/draft`: read, autosave and discard the layout's one shared draft; the save
+  endpoint's `from_draft` publishes it as the next version. A project reaches only its own layouts' drafts, and
+  no run, list, copy or bundle reads a draft.
+- `POST .../text/parse` and `.../text/format`: convert between a tree and its text view
+  (`services.report_layout_text`); nothing is stored.
+- `GET .../blocks` (the block types the designer can add, with their forms, `services.report_layout_block_schema`)
+  and `POST .../validate` (every problem in a draft tree, with its path); nothing is stored.
+- `GET .../snippets` and `POST .../snippets/{key}/apply` (the draft tree with a snippet inserted,
+  `services.report_snippets`); nothing is stored and parameter values are never logged.
+- `GET .../widgets`: the report components a `widget` block can embed (`services.report_widgets`), narrowed to
+  the modules the organisation or project can use.
 """
 
 from __future__ import annotations

@@ -4,12 +4,9 @@ Revision ID: 0090
 Revises: 0089
 Create Date: 2026-10-13
 
-A finding now has a structural "Has finding" link from its engagement, made when the finding is, so
-a trace from a Pain Point, Need or Open Question a finding raised reaches the engagement it came
-from. This backfills the link for findings recorded before it existed: it creates the organisation's
-"Has finding" / "Is a finding of" link type where missing (dedicated, so the generic link endpoints
-neither offer nor delete it) and one link per finding that lacks one. The downgrade removes the links
-and the link type; nothing else changes.
+Backfills the structural "Has finding" link from an engagement to each finding
+that lacks one, creating the organisation's dedicated "Has finding" / "Is a
+finding of" link type where missing. The downgrade removes the links and the type.
 """
 
 from collections.abc import Sequence

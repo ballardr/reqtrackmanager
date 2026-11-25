@@ -1,29 +1,19 @@
 /**
  * Module: components/CanvasCommentLayer
  *
- * Comments on a graph canvas, as the props a `GraphCanvas` needs: a comment mode, a marker for each pinned thread and a
- * pop-over with its thread. A module passes its record and how its anchors map to canvas ids, and spreads `canvasProps`
- * onto the canvas; it needs no comment code of its own (Modules 16 and 17 reuse it).
+ * Comments on a graph canvas, as the props a `GraphCanvas` needs: a comment mode, a marker per pinned thread and a
+ * pop-over with its thread. A module passes its record and anchor mapping (`anchorOf`, `placeOf`) and spreads
+ * `canvasProps` onto the canvas, which stays generic.
  *
- * Responsibilities:
- * - Load the record's comments (`useRecordComments`) and turn the pinned threads into canvas pins, hiding resolved ones or
- *   all of them on request.
- * - In comment mode turn a canvas click into a composer at that spot (anchored to the box or line clicked, else free) and a
- *   dropped pin into a move; open a thread from its marker; centre the canvas on a thread (`focusPin`).
- * - Open the thread a link names (`?pin=`) and only then: a canvas never starts with a thread open. The link is handled once,
- *   after the canvas has fitted the drawing, and every way of closing the thread (Escape, a click outside, its marker or its
- *   close button) removes `pin` from the address (a replace, so Back does not reopen it and a reload stays closed).
- * - Keep comments out of the layout: they are saved at once, so they never mark a drawing as having unsaved changes.
+ * - Loads the comments (`useRecordComments`) and turns pinned threads into pins (resolved ones hidden on request).
+ * - In comment mode a canvas click opens a composer at that spot (anchored to the box or line clicked, else free),
+ *   a dropped pin moves, a marker opens its thread and `focusPin` centres the canvas on it. A click closing an open
+ *   pop-over only closes it.
+ * - Opens only the thread a link names (`?pin=`), once, after the canvas has fitted; closing removes `pin` with a
+ *   replace. Comments save at once, never mark the layout unsaved, and are re-read on window focus and after changes.
  *
- * Design decisions:
- * - The canvas stays generic (pins, a render slot, a click callback); everything about comments lives here, and everything
- *   about a record's anchors is a pair of callbacks from the module (`anchorOf`, `placeOf`).
- * - A click that closes an open pop-over only closes it: it does not also start a new comment.
- * - A pin dropped by a drag keeps its new place at once while the change is stored, so it does not jump back.
- * - Comments are not live: the thread is read again when the window regains focus and after each change.
- *
- * Dependencies: `api/recordComments`, `hooks/useRecordComments`, `GraphCanvas` types, `CommentMarker`, `CommentThreadView`,
- * react-router (the `pin` search parameter).
+ * Dependencies: `api/recordComments`, `hooks/useRecordComments`, `GraphCanvas` types, `CommentMarker`,
+ * `CommentThreadView`, react-router.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -111,8 +101,8 @@ export function useCanvasComments(options: CanvasCommentsOptions): CanvasComment
   }, [thread]);
 
   /**
-   * The canvas anchor of a stored place: the module's node or line, or an anchor naming nothing on the canvas when the
-   * place is anchored to a box or line that is not drawn (so the canvas marks the pin as detached and keeps its last place).
+   * The canvas anchor of a stored place: the module's node or line, or an anchor naming nothing when the box or
+   * line is not drawn, so the canvas marks the pin detached and keeps its last place.
    */
   const canvasAnchor = useCallback(
     (place: { anchor_kind: PinAnchorKind; anchor_key: string | null }): GraphCanvasPin["anchor"] => {

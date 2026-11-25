@@ -4,25 +4,20 @@ Revision ID: 0071
 Revises: 0070
 Create Date: 2026-10-11
 
-Adds `report_contents`: the introduction, chapters and appendices a report
-template, a project or an organisation holds for one report type
-(`models/report_content.py`). The three sets of columns that held this for the
-requirements report only are moved into `report_key = 'requirements'` rows and
-dropped, so there is one store:
+Adds `report_contents`: the introduction, chapters and appendices a report template, project or
+organisation holds for one report type (`models/report_content.py`). The requirements-report-only
+columns move into `report_key = 'requirements'` rows and are dropped, leaving one store:
 
 - `report_templates.intro / chapters / appendices`
 - `projects.report_intro / report_chapters / report_appendices`
 - `organizations.default_report_intro / default_report_chapters / default_report_appendices`
 
-Only non-empty content is copied (an empty value meant "inherit", which is now
-the absence of a row). Every step checks whether the old column exists:
-revision 0001 builds a brand-new database from the current models, which have
-neither the old columns nor need the copy, while an already-migrated database
-has both.
+Only non-empty content is copied (an empty value meant "inherit", now the absence of a row). Each step
+checks that the old column exists, because a database built from the current models by 0001 has neither
+the old columns nor anything to copy.
 
-The downgrade restores the columns from each scope's `requirements` row; rows
-for other report types and the "all reports" row are dropped with the table
-(they have no column to return to).
+The downgrade restores the columns from each scope's `requirements` row; other report types and the
+"all reports" row are dropped with the table.
 """
 
 from collections.abc import Sequence

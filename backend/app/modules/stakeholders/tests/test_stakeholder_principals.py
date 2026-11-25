@@ -1,15 +1,11 @@
-"""Tests for groups as Persona / Stakeholder / Need owners and Persona champions
-(users and groups on parity).
+"""Tests for groups as Persona / Stakeholder / Need owners and Persona champions (users and groups on parity).
 
-Covers: each principal kind on create, update and clear; the display fields of a
-group; an organisation-scoped record rejecting a project group while a project
-record accepts only its own project's group; cross-organisation rejection;
-versions carrying the owner so history shows who owned each version; deleting a
-group that owns records (usage counts current versions only, blocked, reassigned,
-cleared, the audit event names the record, older versions keep a deleted group);
-project and organisation bundle round trips (a group matched by name, an
-unmatched one left empty with a warning, a bundle from before groups restored);
-and the migration backfilling existing rows to `user`.
+Covers: each principal kind on create, update and clear; a group's display fields; an organisation-scoped
+record rejecting a project group while a project record accepts only its own project's group;
+cross-organisation rejection; versions carrying the owner; deleting a group that owns records (usage counts
+current versions only; blocked, reassigned or cleared; the audit event names the record; older versions
+keep the deleted group); bundle round trips (a group matched by name, an unmatched one left empty with a
+warning); and the migration backfilling existing rows to `user`.
 """
 
 from __future__ import annotations
@@ -67,7 +63,10 @@ def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(clien
     persona = _create_project_persona(
         client, token, project["id"], owner={"type": "org_group", "id": team}, champion={"type": "project_group", "id": squad},
     )
-    assert persona["owner"] == {"type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False}
+    assert persona["owner"] == {
+        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1,
+        "exists": True, "imported": False, "service": False,
+    }
     assert persona["champion"]["label"] == "Squad" and persona["champion"]["type"] == "project_group"
 
     stakeholder = _create_project_stakeholder(client, token, project["id"], owner={"type": "project_group", "id": squad})

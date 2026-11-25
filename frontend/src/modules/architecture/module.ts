@@ -22,22 +22,17 @@ import { ARCHITECTURE_INACTIVE_STATUSES, ARCHITECTURE_STATUS_LABEL } from "./typ
 /**
  * Module: modules/architecture/module
  *
- * The System Architecture module's frontend registration, the mirror of `backend/app/modules/architecture/
- * module.py`'s `MODULE_DEFINITION`. `frontend/src/modules/registry.ts` auto-discovers this file.
- *
- * `artefactPaths` / `artefactListPaths`: where an element, a connection, a diagram, a state machine diagram, a state and their lists live, so links,
- * notifications and search hits resolve without core naming this module.
- * `artefactStatusLabels` / `artefactInactiveStatuses`: a retired record is greyed out in shared lists.
- *
- * `routes`: the System Architecture page (tabs Elements, Connections, Diagrams, Baselines), the earlier list paths redirecting to its
- * tabs, the detail pages (the baseline's reads what it holds and compares it; the diagram's is the editor; a state redirects to its state machine diagram), and the Sharing page (collections).
- * `overviewWidgets`: the allocation coverage tiles of the project overview.
- * `requirementDetailSections`: the "Architecture" allocation card on a requirement (`AllocationPanel`), shown only when it has
- * something to list.
- * `linkedRecordCreators`: "Create new" element or diagram in another record's Links panel. A connection needs two elements, so it
- * is created from the Connections list or an element's page.
- * `projectAdminSections` / `orgAdminSections`: the two type vocabularies and the symbol library at each level, and the
- * organisation's own elements and collections, under one "System Architecture" group.
+ * The System Architecture module's frontend registration, the mirror of `backend/app/modules/architecture/module.py`'s
+ * `MODULE_DEFINITION`. `frontend/src/modules/registry.ts` auto-discovers this file.
+ * - `artefactPaths` / `artefactListPaths`: where each record type and its list live, so links, notifications and search hits
+ *   resolve without core naming this module. `artefactStatusLabels` / `artefactInactiveStatuses`: a retired record is
+ *   shown as inactive in shared lists.
+ * - `routes`: the System Architecture page (tabs), the redirects from the list paths to its tabs, the detail pages (a state
+ *   redirects to its state machine diagram) and the Sharing page (collections). `overviewWidgets`: the allocation coverage tiles.
+ * - `requirementDetailSections`: the "Architecture" allocation card on a requirement, shown only when it has something to list.
+ * - `linkedRecordCreators`: "Create new" element or diagram in another record's Links panel (a connection needs two elements).
+ * - `projectAdminSections` / `orgAdminSections`: types, domains and the project's symbol library under one "System
+ *   Architecture" group. `orgResourceSections`: the organisation's elements, collections and symbol library on Org Resources.
  */
 
 /** The architecture settings share one expandable entry in the project and organisation admin menus. */
@@ -135,13 +130,15 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "architecture-domains", label: "Domains", group: ARCHITECTURE_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ArchitectureTypesPanel, { scope: { kind: "org", organizationId: orgId }, kind: "domain" }),
     },
+  ],
+  orgResourceSections: [
     {
-      key: "architecture-symbols", label: "Symbols", group: ARCHITECTURE_ADMIN_GROUP,
-      render: ({ orgId }) => createElement(SymbolLibraryPanel, { scope: { kind: "org", organizationId: orgId } }),
+      key: "architecture-elements", label: "Architecture Elements and Collections",
+      render: ({ orgId }) => createElement(OrgElementsPanel, { orgId }),
     },
     {
-      key: "architecture-elements", label: "Elements and Collections", group: ARCHITECTURE_ADMIN_GROUP,
-      render: ({ orgId }) => createElement(OrgElementsPanel, { orgId }),
+      key: "architecture-symbols", label: "Architecture Symbols", subComponent: "architecture_type",
+      render: ({ orgId }) => createElement(SymbolLibraryPanel, { scope: { kind: "org", organizationId: orgId } }),
     },
   ],
 };

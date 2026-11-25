@@ -14,40 +14,35 @@ import {
   selectProjectAdminGroup,
 } from "./helpers";
 
+/** The title link of the tile card for a project (the card's own title, not a "Child of" / "Parent of" link to it). */
+function tileTitleLink(page: Page, name: string) {
+  return page.locator("a.tile-card-title").filter({ has: page.getByText(name, { exact: true }) });
+}
+
 /**
- * Opens a project by name from the project list, forced to tile view. A
- * plain `getByText(name).click()` is ambiguous for any project that
- * participates in a parent/child relationship — a "Parent of:"/"Child of:"
- * cross-reference elsewhere on the page can carry the exact same text (see
- * helpers.ts's `openRequirementByCode` docstring for the general shape of
- * this class of bug). Tile rows carry a `title` attribute on their own name
- * link that a cross-reference link does not, which is what makes "this
- * project's own row" unambiguous.
+ * Opens a project by name from the project list, forced to tile view. A plain `getByText(name).click()` is ambiguous
+ * for a project in a parent/child relationship, because a "Parent of:"/"Child of:" cross-reference elsewhere on the
+ * page can carry the same text (see `openRequirementByCode` in helpers.ts). A tile's own name link has the
+ * `tile-card-title` class that a cross-reference link lacks.
  */
 async function openProjectByName(page: Page, name: string): Promise<void> {
   await page.goto("/projects");
   await page.getByRole("button", { name: "Tile view" }).click();
   // Search first: the list pages at 30 and Gamma's projects outgrow it.
   await page.getByPlaceholder("Search projects").fill(name);
-  await page.locator(`a[title="${name}"]`).click();
+  await tileTitleLink(page, name).click();
 }
 
 /**
- * Job to be done: a large programme can be modelled as a parent project
- * with its own sub-projects, each with their own requirement sets, while
- * still being manageable as a whole — see docs/decisions.md's
- * "Hierarchical projects" entry for the full design (backend RBAC/cycle/
- * authorization correctness is covered exhaustively there and in
- * backend/tests/test_project_hierarchy.py; this spec proves the resulting
- * UI is actually wired up end to end against the real browser).
+ * Job to be done: a large programme can be modelled as a parent project with its own sub-projects, each with their
+ * own requirement sets, while remaining manageable as a whole (design: docs/decisions.md "Hierarchical projects"
+ * entry; backend RBAC, cycle and authorization correctness is covered in backend/tests/test_project_hierarchy.py;
+ * this spec proves the UI is wired up end to end in a real browser).
  *
- * Uses Gamma (single-org persona, avoids interfering with Alpha/Beta specs
- * sharing this suite's single-worker run — same choice org-group-nesting.spec.ts
- * and org-security-controls.spec.ts make) plus a second, project-scoped-only
- * persona (`projectMgrGamma`) for the relaxed child-creation path, and the
- * fixed Gamma-3/Gamma-4 fixture (backend/scripts/seed_e2e_dataset.py) for
- * scenarios that need a pre-existing, already-configured relationship
- * rather than one this spec builds itself.
+ * Uses Gamma (single-org persona, avoiding interference with Alpha/Beta specs, as org-group-nesting.spec.ts and
+ * org-security-controls.spec.ts do), a second project-scoped-only persona (`projectMgrGamma`) for the relaxed
+ * child-creation path, and the fixed Gamma-3/Gamma-4 fixture (backend/scripts/seed_e2e_dataset.py) for scenarios
+ * needing a pre-existing, configured relationship.
  */
 /** Looks up the seeded Gamma organisation's id (for onCleanup closures). */
 async function gammaOrgId(request: APIRequestContext, headers: Record<string, string>): Promise<string> {
@@ -68,22 +63,10 @@ test.describe("hierarchical (parent/child) projects", () => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/projects");
 
-    // Archives (doesn't delete — projects have no hard-delete endpoint,
-    // `archive_project` in routers/projects.py) both throwaway projects at
-    // the end, by an onCleanup (afterEach — runs even on timeout): an earlier version left them behind forever,
-    // on the same "leaving throwaway fixtures behind is harmless"
-    // assumption `role-display-collapsing.spec.ts` had for its own
-    // throwaway groups (see that spec's docstring/fix, docs/decisions.md).
-    // That assumption was false there once a paginated table accumulated
-    // enough rows to hide a just-created one from a locator entirely; the
-    // same class of failure reproduced here after enough repeated runs
-    // left 15+ leftover "Hierarchy Parent/Child {timestamp}" pairs on the
-    // Projects list page, causing a `toBeVisible` timeout on a freshly
-    // created project's own card. Best-effort (each archive call wrapped
-    // individually) so a failure archiving one doesn't skip the other or
-    // mask whatever the `try` block itself failed with.
-    // Archives this run's disposable projects even if the test fails or times
-    // out (afterEach via onCleanup).
+    // Archives (projects have no hard-delete endpoint, `archive_project` in routers/projects.py) both throwaway
+    // projects in an onCleanup (afterEach, which runs even on timeout). Leaving them behind accumulates "Hierarchy
+    // Parent/Child {timestamp}" pairs until a `toBeVisible` on a new project's card times out. Each archive call is
+    // wrapped individually so a failure archiving one does not skip the other or mask the `try` block's failure.
     onCleanup(async (request) => {
       const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
       const projects: { id: string; name: string }[] = await (await request.get(`http://localhost:8000/api/v1/projects?archived=false`, { headers })).json();
@@ -151,7 +134,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       // land past the first page.
       await page.getByRole("textbox", { name: "Search projects" }).fill(String(suffix));
       const cardFor = (name: string) =>
-        page.locator(`a[title="${name}"]`).locator(
+        tileTitleLink(page, name).locator(
           "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]"
         );
 
@@ -178,12 +161,9 @@ test.describe("hierarchical (parent/child) projects", () => {
     await test.step("Gamma-3 (the parent) lists Gamma-4 as a member source", async () => {
       await openProjectByName(page, PROJECT_NAMES.gamma3);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      // the members/groups directory rework: "Member sources"
-      // moved from the Overview tab onto the Groups tab, rendering as a
-      // type-badged row in the same table as real project groups rather
-      // than a separate `<ul>` — no more `<Link>` on the row itself (the
-      // Groups tab's row-click affordance is reserved for real groups), so
-      // this now checks for the row's cell text instead of a link role.
+      // "Member sources" render on the Groups tab as a type-badged row in the same table as real project groups; the row
+      // has no `<Link>` (the Groups tab's row-click affordance is reserved for real groups), so this checks the row's cell
+      // text instead of a link role.
       await selectProjectAdminGroup(page, "Project groups");
       await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
       await expect(page.getByRole("cell", { name: PROJECT_NAMES.gamma4, exact: true })).toBeVisible();
@@ -194,18 +174,11 @@ test.describe("hierarchical (parent/child) projects", () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Project groups");
       await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
-      // Gamma-3's own name is expected to appear elsewhere on this page (the
-      // "Parent project" field always shows the current parent plainly to
-      // the child's own manager, per docs/decisions.md) — what must NOT
-      // exist is any control letting Gamma-4 manage *being consumed by*
-      // Gamma-3: there simply is no such control anywhere, on either
-      // project's page — `ProjectMemberSource` rows only ever live on the
-      // receiving side's own list. Generalized member-source (docs/
-      // decisions.md) means Gamma-4's own "consume from" picker is no
-      // longer restricted to direct children and does offer other
-      // same-organisation projects (Gamma-3 included) as candidates —
-      // proof of the generalization working end to end, not evidence of
-      // the authorization asymmetry being any weaker.
+      // Gamma-3's name appears elsewhere on this page (the "Parent project" field shows the current parent to the child's
+      // manager, per docs/decisions.md). What must not exist is a control letting Gamma-4 manage being consumed by
+      // Gamma-3: `ProjectMemberSource` rows live only on the receiving side's list. Gamma-4's "consume from" picker
+      // offers other same-organisation projects (Gamma-3 included) as candidates under the generalised member-source
+      // design (docs/decisions.md), which does not weaken the authorization asymmetry.
       const sourceProjectSelect = page.getByRole("combobox", { name: "Source project" });
       await expect(sourceProjectSelect).toBeVisible();
       // A native <select>'s own <option>s report as Playwright-"hidden"
@@ -217,12 +190,8 @@ test.describe("hierarchical (parent/child) projects", () => {
     });
 
     await test.step("effective members shows the stakeholder-on-Gamma-3 as forward-inherited (mirror all roles) on Gamma-4", async () => {
-      // Effective members moved onto its own "Members" section
-      // (docs/decisions.md) — the old combined "Project groups" tab no
-      // longer has it. Rebuilt again onto the unified `ProjectMembersTable`, which renders
-      // immediately (no lazy "Show members" button/collapsed section any
-      // more — this is now the tab's primary content, not a secondary
-      // audit view).
+      // Effective members are on their own "Members" section (docs/decisions.md), rendered by the unified
+      // `ProjectMembersTable` immediately (no lazy "Show members" button or collapsed section).
       await selectProjectAdminGroup(page, "Members");
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
       await expect(memberRow).toBeVisible();
@@ -243,21 +212,16 @@ test.describe("hierarchical (parent/child) projects", () => {
       await page.getByRole("button", { name: "Convert all inherited access to direct roles" }).click();
       await expect(page.getByText(/Converted \d+ users? to direct roles\./)).toBeVisible();
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
-      // A user with both a direct grant and an inherited one now shows
-      // "Direct and group" as the row's summary button; the per-source
-      // breakdown (still both lines, same as before) is behind the
-      // same popover as above.
+      // A user with both a direct grant and an inherited one shows "Direct and group" as the row's summary button; the
+      // per-source breakdown (both lines) is behind the same popover as above.
       await memberRow.getByRole("button", { name: "Direct and group" }).click();
       const popover = page.getByRole("dialog", { name: `${PERSONAS.projectMgrGamma.name}'s access sources` });
       await expect(popover.getByText(/Direct \(Stakeholder\)/)).toBeVisible();
       await expect(popover.getByText(/Inherited from/)).toBeVisible();
       await page.keyboard.press("Escape");
 
-      // Materialize is a one-way, permanent grant — revert it via a direct
-      // API call so this spec stays idempotent across repeated runs against
-      // the same database (this project's test-independence rule), leaving
-      // Gamma-4 back at "stakeholder access purely via inheritance" for the
-      // next run, exactly as this test found it.
+      // Materialize is a one-way, permanent grant: revert it through a direct API call so repeated runs against the same
+      // database stay idempotent, leaving Gamma-4 at "stakeholder access purely via inheritance".
       const gamma4Id = page.url().match(/\/projects\/([0-9a-f-]+)\/admin/)![1];
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const authHeaders = { Authorization: `Bearer ${token}` };
@@ -292,13 +256,9 @@ test.describe("hierarchical (parent/child) projects", () => {
     const gamma1Id = await projectIdByName(PROJECT_NAMES.gamma1);
     const gamma2Id = await projectIdByName(PROJECT_NAMES.gamma2);
 
-    // No project auto-creates any group any more (2026-08-31) — Gamma-1 previously had a default "Members" group
-    // this test reused for its own project-referencing-group case; that no
-    // longer exists, so this test now maintains its own dedicated, fixed-
-    // name custom group instead (created idempotently — get-or-create, not
-    // always-create — so the defensive `cleanup()` below, and a fresh run
-    // after an earlier one failed mid-test, both still find the same group
-    // rather than accumulating duplicates).
+    // No project auto-creates a group, so this test maintains its own dedicated, fixed-name custom group for the
+    // project-referencing-group case, created idempotently (get-or-create) so the defensive `cleanup()` below, and a
+    // fresh run after one that failed mid-test, find the same group rather than accumulating duplicates.
     const sourceRefGroupName = "E2E Gamma-1 Source Ref Group";
     async function ensureSourceRefGroup(): Promise<{ id: string; name: string }> {
       const groups: { id: string; name: string }[] = await page
@@ -306,10 +266,8 @@ test.describe("hierarchical (parent/child) projects", () => {
         .then((r) => r.json());
       const existing = groups.find((g) => g.name === sourceRefGroupName);
       if (existing) return existing;
-      // the members/groups directory rework: `ProjectGroupCreate`
-      // no longer accepts a role — created bare, which is fine here since
-      // this test only exercises the group's project-reference UI, never
-      // its actual granted access.
+      // `ProjectGroupCreate` takes no role: the group is created bare, since this test exercises only the group's
+      // project-reference UI, never its granted access.
       return page
         .request.post(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, {
           headers: authHeaders, data: { name: sourceRefGroupName },
@@ -351,12 +309,9 @@ test.describe("hierarchical (parent/child) projects", () => {
     await test.step("add Gamma-2 as a 'Mirror all roles' member source of Gamma-1 (unrelated projects, not parent/child)", async () => {
       await openProjectByName(page, PROJECT_NAMES.gamma1);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      // "Member sources" moved from the Overview tab onto the Groups
-      // tab, as a type-badged row in the same table as real project
-      // groups rather than a separate `<ul>` — the row is now a `<tr>`,
-      // not a `<li>`, has no `<Link>` on its name (read-only detail; a
-      // real group row keeps the click-to-open affordance instead), and
-      // carries two `.badge` spans (Type, then mode), not one.
+      // "Member sources" render on the Groups tab as a type-badged row in the same table as real project groups: a `<tr>`
+      // with no `<Link>` on its name (read-only detail; a real group row keeps the click-to-open affordance) and two
+      // `.badge` spans (Type, then mode).
       await selectProjectAdminGroup(page, "Project groups");
       await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
       await page.getByRole("combobox", { name: "Source project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
@@ -377,15 +332,10 @@ test.describe("hierarchical (parent/child) projects", () => {
       // The referenced-project line also links to that project's
       // own new Members page now, with a "this is live" clarifying hint.
       await expect(panel.getByRole("link", { name: "View members" })).toBeVisible();
-      // Scoped to the hint's own `<p>` element (`viaProjectMembersHint`,
-      // strings.ts), not a bare page-wide `getByText(/Live/)` — this org
-      // (Gamma) can independently accumulate other specs' own leftover,
-      // dynamically-named fixture projects (e.g. single-org-admin.spec.ts's
-      // "Gamma E2E Live {timestamp}", never cleaned up by design), which
-      // also render as `<option>`s in this same panel's "Referenced
-      // project" combobox — a bare substring match can incidentally
-      // resolve to one of those instead of this hint text, a real
-      // strict-mode violation found running the full suite together.
+      // Scoped to the hint's `<p>` element (`viaProjectMembersHint`, strings.ts), not a page-wide `getByText(/Live/)`:
+      // this org (Gamma) can accumulate other specs' leftover dynamically named projects (e.g. single-org-admin.spec.ts's
+      // "Gamma E2E Live {timestamp}", never cleaned up by design), which also render as `<option>`s in the "Referenced
+      // project" combobox, so a bare substring match can resolve to one of those and violate strict mode.
       await expect(panel.locator("p", { hasText: "Live" })).toBeVisible();
       await page.getByRole("button", { name: "Close" }).click();
     });
@@ -397,21 +347,11 @@ test.describe("hierarchical (parent/child) projects", () => {
     const suffix = Date.now();
     const childName = `Relaxed Path Child ${suffix}`;
 
-    // This test permanently grants `projectMgrGamma` the org-wide "Project
-    // creator" role partway through (see the third step below) in order to
-    // prove the detach-guard's own success path — a role that, left
-    // ungranted, makes this exact persona "a plain project manager with no
-    // org-level role" for every *other* spec relying on that (e.g. the
-    // very next test in this file, which found this leak: it disables the
-    // relaxed child-creation toggle and expects `projectMgrGamma` to be
-    // blocked from creating a sub-project, which silently stopped being
-    // true once this grant went unrevoked). An onCleanup (afterEach)
-    // mirrors this file's existing cleanup-on-shared-fixture convention
-    // (see e.g. the org-group-nesting test above) — run this test alone,
-    // repeated, or before/after any other spec and the persona's roles end
-    // up exactly as this test found them either way.
-    // Revokes the 'Project creator' grant from the shared persona even if this
-    // test fails or times out (afterEach via onCleanup); a no-op if never made.
+    // This test grants `projectMgrGamma` the org-wide "Project creator" role partway through (the third step below) to
+    // prove the detach-guard's success path. Left in place, it would change this persona from "a plain project manager
+    // with no org-level role" for other specs (the next test in this file expects it to be blocked from creating a
+    // sub-project once relaxed child creation is off). The onCleanup (afterEach) revokes the grant even if this test
+    // fails or times out; it is a no-op if the grant was never made.
     onCleanup(async (request) => {
       const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
       const orgId = await gammaOrgId(request, headers);
@@ -446,15 +386,10 @@ test.describe("hierarchical (parent/child) projects", () => {
       await ensureExpanded(page, "Organisation users");
       const row = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.email });
       await row.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` }).click();
-      // Waits for the grant's own `POST .../roles` response before the
-      // very next line navigates away (`loginAs` below immediately calls
-      // `page.goto("/login")`) — without this, a real, if intermittent,
-      // race exists: `page.goto` can abort an in-flight fetch the click's
-      // `onChange` handler kicked off but hadn't yet completed, so the
-      // grant silently never reaches the server despite the checkbox
-      // having visibly ticked. Mirrors the "turn the org toggle off" step
-      // above (`Promise.all([waitForResponse(...), click()])`), which
-      // already gets this right for the advanced-settings PUT.
+      // Waits for the grant's `POST .../roles` response before the next line navigates away (`loginAs` calls
+      // `page.goto("/login")`): otherwise `page.goto` can abort an in-flight fetch from the click's `onChange` handler and
+      // the grant never reaches the server although the checkbox ticked. As in the "turn the org toggle off" step above
+      // (`Promise.all([waitForResponse(...), click()])`).
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/roles") && r.request().method() === "POST"),
         page.getByRole("checkbox", { name: `Grant Project creator to ${PERSONAS.projectMgrGamma.name}` }).click(),
@@ -474,19 +409,9 @@ test.describe("hierarchical (parent/child) projects", () => {
   test("an org admin can disable the relaxed child-creation path, blocking a plain project manager's 'Add sub-project'", async ({
     page,
   }) => {
-    // This test flips a shared, org-wide toggle off partway through and
-    // must always flip it back — every other test in this file (and this
-    // persona's own default "plain project manager" status) depends on it
-    // starting `true`. An onCleanup (afterEach) here (rather than a bare fourth
-    // `test.step`, which this test originally used) means the toggle gets
-    // restored even if the middle assertion below fails for some unrelated
-    // reason — found the hard way: an earlier failure in the middle step
-    // left this toggle stuck `false` in this environment, which then broke
-    // the *other*, unrelated test in this file that assumes relaxed
-    // creation is on by default (per this repo's standing "tests must not
-    // depend on state left behind by another test" rule).
-    // Restores the shared org-wide toggle even if this test fails or times
-    // out (afterEach via onCleanup); idempotent — only flips it if it's off.
+    // This test flips a shared, org-wide toggle off partway through and must always flip it back: every other test in
+    // this file (and this persona's "plain project manager" status) depends on it starting `true`. The onCleanup
+    // (afterEach) restores it even if the middle assertion fails, and is idempotent: it flips the toggle only if it is off.
     onCleanup(async (request) => {
       const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
       const orgId = await gammaOrgId(request, headers);

@@ -1,0 +1,11 @@
+{
+  "_about": "What a Mermaid diagram is drawn with, on screen and (later) by the server's renderer: one engine version, one font and the same limits, so a diagram reads the same in a report as on the page. `version` must equal the `mermaid` pin in package.json (a story checks it); the server's own copy of these values is checked against this file by backend/tests/test_markdown_text.py.",
+  "version": "12.3.0",
+  "fontFamily": "DejaVu Sans",
+  "limits": {
+    "sourceChars": 20000,
+    "elements": 4000,
+    "edges": 300,
+    "renderMilliseconds": 10000
+  }
+}

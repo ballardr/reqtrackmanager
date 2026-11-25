@@ -47,11 +47,8 @@ export const SelectAndAttach: Story = {
   },
 };
 
-/** Multiple sources: the left pane lists every source, switching reloads
- * the right pane's files for the newly-active one — built pluggable
- * (`sources: ResourcePickerSource[]`) so a future source (a report
- * chapter's image pool, a project's own uploads) is a new array entry,
- * not a rewrite. */
+/** Multiple sources: the left pane lists every source and switching reloads the right pane's files. Sources are a
+ * `ResourcePickerSource[]` array, so a new source is a new entry. */
 export const MultipleSources: Story = {
   args: {
     title: "Link from shared resources",

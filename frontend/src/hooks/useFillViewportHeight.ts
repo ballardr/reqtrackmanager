@@ -4,14 +4,13 @@
  * The height an element needs to reach the bottom of the browser window from where it starts, so a working surface
  * (the diagram canvas) is wholly in view without scrolling the page.
  *
- * Responsibilities: measure the element's offset from the top of the page, subtract it and a bottom gap from the window
- * height, never go below a minimum, and keep the answer live as the window or the content above the element changes
- * size (`ResizeObserver` on the document body, `resize` on the window).
+ * Responsibilities: subtract the element's offset from the top of the page and a bottom gap from the window height,
+ * never go below a minimum, and stay live as the window or the content above the element resizes (`ResizeObserver`
+ * on the document body, `resize` on the window).
  *
- * Design decisions: the offset is taken from the page (`top + scrollY`), not the viewport, so scrolling does not
- * change the answer. The caller passes the element as state (a callback ref), as in `useTallerThanViewport`. Measure a
- * wrapper that does not take its height from the result's own content, or the answer can chase itself. Where the
- * window is shorter than the minimum, the minimum wins and the page scrolls.
+ * Design decisions: the offset is `top + scrollY`, so scrolling does not change the answer. The caller passes the
+ * element as state (a callback ref), as in `useTallerThanViewport`. Measure a wrapper whose height does not come from
+ * the result, or the answer chases itself. Below the minimum the page scrolls.
  */
 import { useEffect, useState } from "react";
 

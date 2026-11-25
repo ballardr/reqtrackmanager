@@ -2,27 +2,22 @@
 Module: services.template_content
 
 The configuration and starter content a project created from a template receives beyond what
-`services.templates.clone_project` copies for the core record types:
+`services.templates.clone_project` copies for the core record types.
 
-- the project's plain settings (review reminder lead days, tag mode) and tag vocabulary,
-- module enablement (which modules and sub-components the template has on, still capped by what
-  the organisation allows),
-- report setup (layouts, packs, snippets, placements, folders),
-- every module's configuration and starter records, through its `ModuleProjectBundleHooks`,
-- the project's own scoring configuration (`services.scoring_config`).
+Responsibilities:
+- Plain settings (review reminder lead days, tag mode) and tag vocabulary; module enablement (capped by what the
+  organisation allows); report setup (layouts, packs, snippets, placements, folders); each module's configuration and
+  starter records through its `ModuleProjectBundleHooks`; the scoring configuration (`services.scoring_config`).
 
 Design decisions:
-- Modules are copied by re-using their bundle export and import (the same round-trip code a project
-  bundle relies on), filtered to the keys the module declares (`template_configuration_keys`,
-  `template_record_keys`) and with `template_reset` returning the records to their starting state.
-  No per-module clone code exists, and a module cannot add a bundle key without classifying it.
-- Starter records are fresh drafts: initial status, never archived, no reviews, votes, scores or other
-  history, numbered afresh, owned by the person creating the project when the original owner cannot be
-  carried. An approval gate is never bypassed because no approval state is copied.
-- Links are copied, including those to requirements: a clone keeps the template's requirement codes, so
-  a link names the same requirement in the new project.
+- Modules are copied by reusing their bundle export and import, filtered to the keys they declare
+  (`template_configuration_keys`, `template_record_keys`) with `template_reset` returning records to their starting
+  state, so there is no per-module clone code and a bundle key cannot be left unclassified.
+- Starter records are fresh drafts (initial status, not archived, no reviews, votes, scores or history, numbered afresh,
+  owned by the creator when the original owner cannot be carried); no approval state is copied, so no gate is bypassed.
+- Links are copied; a clone keeps the template's requirement codes, so a link names the same requirement.
 
-External dependencies: the module registry, the report setup bundle helpers and the file storage backend.
+Dependencies: the module registry, the report setup bundle helpers and the file storage backend.
 """
 
 from __future__ import annotations

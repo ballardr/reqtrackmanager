@@ -4,13 +4,10 @@ Revision ID: 0080
 Revises: 0079
 Create Date: 2026-10-12
 
-Deleting an organisation cascades to its action types and relationship types and, through its
-standards, to the required actions and mappings that reference them. The foreign keys were
-immediate `NO ACTION`, so whichever cascade branch Postgres ran first could be rejected
-("update or delete on table compliance_action_type_definitions violates foreign key constraint"),
-and an organisation with a standard that had a required action could not be deleted. Making the
-two constraints deferrable and initially deferred checks them at commit, after every cascade
-branch has run; an in-use type is still refused.
+Deleting an organisation cascades to its action types and relationship types and, through its standards, to the required
+actions and mappings that reference them. Immediate `NO ACTION` foreign keys can be rejected by whichever cascade branch
+runs first, so these two constraints are deferrable and initially deferred: they are checked at commit, after every
+cascade branch, and an in-use type is still refused.
 """
 
 from collections.abc import Sequence

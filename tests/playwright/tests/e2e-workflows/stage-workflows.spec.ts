@@ -77,6 +77,38 @@ test.describe("stage workflows", () => {
       await expect(page.getByText("In use", { exact: true })).toHaveCount(0);
     });
 
+    await test.step("the edit dialog shows one line per phase, and reorders and removes a phase from its row menu", async () => {
+      await page.getByRole("button", { name: `Edit workflow ${workflowName}` }).click();
+      const dialog = page.getByRole("dialog", { name: "Edit workflow" });
+      const lineOf = async (n: number) => {
+        const name = (await dialog.getByRole("textbox", { name: `Phase name ${n}` }).boundingBox())!;
+        const kind = (await dialog.getByRole("combobox", { name: `Kind ${n}` }).boundingBox())!;
+        const menu = (await dialog.getByRole("button", { name: /^Actions for phase/ }).nth(n - 1).boundingBox())!;
+        const centre = (box: { y: number; height: number }) => box.y + box.height / 2;
+        // The name, the kind and the row menu share one line, and the kind is narrower than the name field.
+        expect(Math.abs(centre(name) - centre(kind))).toBeLessThan(2);
+        expect(Math.abs(centre(name) - centre(menu))).toBeLessThan(2);
+        expect(kind.width).toBeLessThan(name.width);
+        return { name, kind };
+      };
+      const first = await lineOf(1);
+      const third = await lineOf(3);
+      expect(Math.abs(first.kind.x - third.kind.x)).toBeLessThan(1);
+      // Add a spare phase, move it up above the last one, then remove it again: the saved workflow is unchanged.
+      await dialog.getByRole("button", { name: "Add phase" }).click();
+      await dialog.getByRole("textbox", { name: "Phase name 4" }).fill("Spare");
+      await dialog.getByRole("button", { name: "Actions for phase Spare" }).click();
+      await page.getByRole("menuitem", { name: "Move up" }).click();
+      await expect(dialog.getByRole("textbox", { name: "Phase name 3" })).toHaveValue("Spare");
+      await expect(dialog.getByRole("textbox", { name: "Phase name 4" })).toHaveValue("Contract awarded");
+      await dialog.getByRole("button", { name: "Actions for phase Spare" }).click();
+      await page.getByRole("menuitem", { name: "Remove" }).click();
+      await expect(dialog.getByRole("textbox", { name: /^Phase name/ })).toHaveCount(3);
+      await dialog.getByRole("button", { name: "Save" }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByRole("list", { name: `Phases of ${workflowName}` }).getByRole("listitem")).toHaveCount(3);
+    });
+
     await test.step("a stage follows it, and a phase of kind locked baselines the requirements", async () => {
       const component = project.components[0];
       const category = project.categories[0];

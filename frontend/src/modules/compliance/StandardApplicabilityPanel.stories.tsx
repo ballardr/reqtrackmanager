@@ -74,13 +74,9 @@ function mockApis(options: { exclusions?: ComplianceStandardDefaultExclusion[] }
 }
 
 /**
- * The org-wide-mandate secondary path — the toggle switching a
- * standard's `applicability_default`, and (once switched on) the
- * exclusion-list `DirectoryTable` + "Exclude a project" modal. The
- * default, primary Project-Manager self-service assignment path has no
- * story here — it's exercised by `ProjectCompliancePage.stories.tsx`'s
- * own `AssignStandardFlow` instead, since it's a project-scoped action
- * this panel never touches.
+ * The org-wide-mandate path: the toggle switching a standard's `applicability_default` and, once on, the exclusion-list
+ * `DirectoryTable` and the "Exclude a project" modal. The primary Project Manager self-service assignment path is a
+ * project-scoped action this panel never touches and is covered by `ProjectCompliancePage.stories.tsx`'s `AssignStandardFlow`.
  */
 const meta: Meta<typeof StandardApplicabilityPanel> = {
   title: "Modules/Compliance/StandardApplicabilityPanel",

@@ -1,23 +1,15 @@
 /**
  * Module: testing/storybook-helpers
  *
- * Shared fixtures and decorators for Storybook stories. Pages/components
- * under test talk to three things a bare render can't provide: the `api`
- * REST client (frontend/src/api/client.ts), `AuthContext`, and
- * `TerminologyContext`'s `ProjectContext` — this module is the one seam for
- * all three, so every story mocks them the same way instead of each file
- * reinventing fixture shapes or provider wiring.
- *
- * `api`'s methods are spied directly with `spyOn` from "storybook/test"
- * (re-exported from @vitest/spy) at each story's own `beforeEach`/`play`,
- * rather than through a bespoke wrapper here — `spyOn(api, "get")
- * .mockResolvedValue(...)` is already the whole primitive a story needs;
- * wrapping it would only add a layer with nothing of its own to say. This
- * module only provides what genuinely is shared: fixture data shapes and
- * the two context providers.
+ * Shared fixtures and decorators for Storybook stories. Components under test
+ * need the `api` REST client (frontend/src/api/client.ts), `AuthContext` and
+ * `TerminologyContext`'s `ProjectContext`; this module is the one seam for all
+ * three. `api`'s methods are spied directly with `spyOn` from "storybook/test"
+ * in each story's `beforeEach`/`play`; this module provides only the fixture
+ * data shapes and the context providers.
  */
 import type { Decorator } from "@storybook/react-vite";
-import { userEvent, type within } from "storybook/test";
+import { userEvent, within } from "storybook/test";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { ScoringScheme } from "../api/scoring";
@@ -382,20 +374,13 @@ export function buildCategory(overrides: Partial<Category> = {}): Category {
 }
 
 export function buildRequirement(overrides: Partial<Requirement> = {}): Requirement {
-  // `is_locked`/`requires_approval` derive from `status` by the same rule
-  // the backend uses (`LOCKED_STATUSES`/`REQUIRES_APPROVAL_STATUSES`,
-  // backend/app/services/requirements.py,
-  // backend/app/routers/requirements.py) so a story only needs to set
-  // `status` and gets a consistent, real derived state — rather than every
-  // "approved" story call site having to separately remember to
-  // also pass `is_locked: true`. An explicit override
-  // for either still wins, via the trailing `...overrides` spread.
-  //
-  // C-G-11: completion (`is_completed`/`completed_at`/`completed_by`) is now
-  // an independent overlay, not derived from `status` at all (unlike the
-  // old "completed" status value this replaced) — a story that wants a
-  // completed fixture must pass `is_completed: true` explicitly, same as
-  // any other override.
+  // `is_locked`/`requires_approval` derive from `status` by the backend's rule
+  // (`LOCKED_STATUSES`/`REQUIRES_APPROVAL_STATUSES` in
+  // backend/app/services/requirements.py), so a story sets only `status`; an
+  // explicit override wins via the trailing `...overrides` spread.
+  // C-G-11: completion (`is_completed`/`completed_at`/`completed_by`) is an
+  // overlay independent of `status`; a completed fixture passes
+  // `is_completed: true` explicitly.
   const status = overrides.status ?? "draft";
   return {
     id: nextId("requirement"),
@@ -507,6 +492,7 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
     decided_by: null,
     decision_note: "",
     created_at: "2026-02-01T09:00:00Z",
+    updated_at: "2026-02-01T09:00:00Z",
     is_subscribed: false,
     comment_count: 0,
     requires_approval: true,
@@ -572,6 +558,7 @@ export function buildNotification(overrides: Partial<Notification> = {}): Notifi
     entity_id: "requirement-1",
     created_at: "2026-02-02T10:00:00Z",
     read_at: null,
+    target_kinds: ["record"],
     ...overrides,
   };
 }
@@ -631,12 +618,10 @@ export function withAuth(user: User | null, overrides: Partial<AuthContextValue>
 }
 
 /**
- * Like `withAuth`, but with a real, stateful `setUiPreference` — needed for
- * any story that exercises a `useUiPreference`-backed control (view-mode
- * toggles, collapsible sections, the nav rail's collapse button, ...) and
- * asserts the resulting UI actually changes, not just that the callback
- * fired. `withAuth`'s `setUiPreference` is a no-op by design (most stories
- * don't need it); this is the one seam where a story does.
+ * Like `withAuth`, but with a stateful `setUiPreference`, for stories that
+ * exercise a `useUiPreference`-backed control (view-mode toggles, collapsible
+ * sections, the nav rail's collapse button) and assert the UI changes. The
+ * `setUiPreference` of `withAuth` is a no-op.
  */
 export function withStatefulAuth(initialUser: User, overrides: Partial<AuthContextValue> = {}): Decorator {
   return (Story) => (
@@ -702,4 +687,18 @@ export function withThemeProvider(): Decorator {
 export async function expandScoringLevels(canvas: ReturnType<typeof within>): Promise<void> {
   const folded = canvas.queryAllByRole("button", { expanded: false }).filter((b: HTMLElement) => /\d+ levels/.test(b.textContent ?? ""));
   for (const bar of folded) await userEvent.click(bar);
+}
+
+/**
+ * Opens a `DefinitionList`'s Add dialog (docs/ux-style-guide.md, "Pattern: creation controls on demand"): clicks the
+ * list's Add button and returns queries scoped to the dialog, which is named like the button and renders in a portal
+ * outside the story canvas. Fill its fields by their captions, then press its "Add" button.
+ *
+ * @param canvas Queries over the story canvas holding the list.
+ * @param name The list's add label (the button's and the dialog's accessible name).
+ * @returns Queries scoped to the dialog.
+ */
+export async function openAddDialog(canvas: ReturnType<typeof within>, name: string): Promise<ReturnType<typeof within>> {
+  await userEvent.click(await canvas.findByRole("button", { name }));
+  return within(await within(document.body).findByRole("dialog", { name }));
 }

@@ -1,44 +1,30 @@
 """
 Module: modules.architecture.module
 
-Registers the System Architecture module into the modular feature system's
-registry via `MODULE_DEFINITION`. As built so far it delivers the element type and
-connection type vocabularies (an organisation's defaults, a project's own rows, and
-hiding and restoring a default in a project), the project's and the organisation's elements, ports and
-connections, sharing (collections of elements granted to projects and groups, read through `visibility`), the
-symbol library (built-in and uploaded SVG drawings an element type or element is shown with) and diagrams (saved
-views with placements, notes and view toggles, resolved by one rule into nodes and lines and drawn as a server SVG).
+Registers the System Architecture module through `MODULE_DEFINITION`: element and connection type vocabularies (an
+organisation's defaults, a project's own rows, hiding and restoring a default), elements, ports and connections for
+projects and the organisation, sharing (collections granted to projects and groups, read through `visibility`), the
+symbol library, diagrams (views with placements, notes and toggles drawn as a server SVG) and state machine diagrams.
 
 Registered contributions:
-- Roles (not additions to `ProjectRole`): `architect` (project; carries the
-  Fine-Grained Access Control `(architecture_element, manage)`,
-  `(architecture_connection, manage)`, `(architecture_diagram, manage)` and `(architecture_state_machine_diagram, manage)`
-  atoms) creates and changes elements, ports,
-  connections, diagrams and collections; `architecture_admin` (project) changes a project's vocabularies and
-  `architecture_org_admin` (organisation) changes the organisation's defaults (types and symbols), its own elements and its
-  collections, and reads every organisation-owned element. `architecture_admin` also manages the project's symbols.
-- Sub-components `architecture_type` (the types and the symbol library), `architecture_element`,
-  `architecture_connection`, `architecture_diagram` and `architecture_state_machine` (state machine diagrams and
-  their states: the behaviour of one element).
-- `artefact_types` for the element, the connection, the diagram, the state machine diagram and the state, with their summary providers,
-  search, report fields, record tables (export; import for the element and connection, `NOT_IMPORTABLE` for the
-  diagram), scaling probes, dataset generators and the link types the module adds (`LINK_TYPE_SEEDS`). All are
-  taggable through the shared tables, and placeable except the state (`not_placeable`).
-- `baseline_snapshots` (`baseline_snapshot`): an element, connection, diagram and state machine diagram enter every baseline of
-  a project (with their ports, boxes, states and transitions), read back and compared through `baseline_routes`.
-- `principal_references` for an element's owner and for the group a collection grant names.
-- `on_org_created` seeds each new organisation's default types; the migration
-  backfills existing organisations so a module switched on later has them.
-- `org_bundle_hooks` / `project_bundle_hooks` (`export.py`); the vocabularies are
-  template configuration and the records are template records; dismissed allocations (`allocation_export`) are excluded
-  from templates.
-- `overview_metrics` (`allocation_metrics`) and the `allocation_coverage` overview widget: the project's allocation coverage figures.
-- `frontend_manifest`: one navigation entry, "System Architecture", opening a page with the tabs Elements, Connections and
-  Diagrams (shown while any of the three sub-components is on); the pages, the
-  "Create new" element dialog and the settings panels are served by `frontend/src/modules/architecture/module.ts`.
+- Roles (not `ProjectRole` additions): `architect` (project; Fine-Grained Access Control `manage` atoms for element,
+  connection, diagram and state machine diagram) creates and changes records and collections; `architecture_admin`
+  (project) changes the project's vocabularies and symbols; `architecture_org_admin` (organisation) changes the
+  organisation's defaults, its own elements and collections, and reads every organisation-owned element.
+- Sub-components `architecture_type` (types and symbol library), `architecture_element`, `architecture_connection`,
+  `architecture_diagram` and `architecture_state_machine`.
+- `artefact_types` for element, connection, diagram, state machine diagram and state, with summary providers, search,
+  report fields, record tables (the diagram types export only: `NOT_IMPORTABLE`), scaling probes, dataset generators and
+  `LINK_TYPE_SEEDS`; all are taggable and placeable except the state (`not_placeable`).
+- `baseline_snapshots` (element, connection, diagram, state machine diagram with their parts), `principal_references`
+  (an element's owner, a collection grant's group), `overview_metrics` and the `allocation_coverage` widget.
+- `on_org_created` seeds each new organisation's default types.
+- `org_bundle_hooks` / `project_bundle_hooks` (`export.py`): vocabularies are template configuration, records are
+  template records, dismissed allocations are excluded from templates.
+- `frontend_manifest`: one "System Architecture" navigation entry with Elements, Connections and Diagrams tabs; pages,
+  dialogs and settings panels are served by `frontend/src/modules/architecture/module.ts`.
 
-`default_enabled=False`: an organisation opts in explicitly, as for the other
-modules; a fresh install is switched on through the server default table.
+`default_enabled=False`: an organisation opts in; a fresh install is switched on through the server default table.
 """
 
 from __future__ import annotations
@@ -66,6 +52,7 @@ from app.modules.architecture.allocation_metrics import OVERVIEW_METRICS
 from app.modules.architecture.baseline_snapshot import SNAPSHOT_PROVIDERS
 from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
 from app.modules.architecture.comments import RECORD_COMMENTS
+from app.modules.architecture.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.architecture.mcp_tools import build_mcp_tools
 from app.modules.architecture.models import (
     ArchitectureCollectionGrant,
@@ -92,13 +79,18 @@ from app.modules.architecture.search import SEARCH_PROVIDERS
 from app.modules.architecture.service import (
     ARCHITECTURE_MODULE_KEY,
     CONNECTION_ARTEFACT_TYPE,
+    CONNECTION_CODE_PREFIX,
     CONNECTION_SUBCOMPONENT_KEY,
     DIAGRAM_ARTEFACT_TYPE,
+    DIAGRAM_CODE_PREFIX,
     DIAGRAM_SUBCOMPONENT_KEY,
     ELEMENT_ARTEFACT_TYPE,
+    ELEMENT_CODE_PREFIX,
     ELEMENT_SUBCOMPONENT_KEY,
     STATE_ARTEFACT_TYPE,
+    STATE_CODE_PREFIX,
     STATE_MACHINE_ARTEFACT_TYPE,
+    STATE_MACHINE_CODE_PREFIX,
     STATE_MACHINE_SUBCOMPONENT_KEY,
     TYPE_SUBCOMPONENT_KEY,
     seed_org_defaults,
@@ -208,6 +200,11 @@ MODULE_DEFINITION = ModuleDefinition(
         "architecture_domain": "structure",
     },
     artefact_types=_ALL,
+    default_code_prefixes={
+        ELEMENT_ARTEFACT_TYPE: ELEMENT_CODE_PREFIX, CONNECTION_ARTEFACT_TYPE: CONNECTION_CODE_PREFIX,
+        DIAGRAM_ARTEFACT_TYPE: DIAGRAM_CODE_PREFIX, STATE_MACHINE_ARTEFACT_TYPE: STATE_MACHINE_CODE_PREFIX,
+        STATE_ARTEFACT_TYPE: STATE_CODE_PREFIX,
+    },
     artefact_type_labels={
         ELEMENT_ARTEFACT_TYPE: "Element", CONNECTION_ARTEFACT_TYPE: "Connection", DIAGRAM_ARTEFACT_TYPE: "Diagram",
         STATE_MACHINE_ARTEFACT_TYPE: "State machine diagram", STATE_ARTEFACT_TYPE: "State",
@@ -219,6 +216,8 @@ MODULE_DEFINITION = ModuleDefinition(
         STATE_ARTEFACT_TYPE: STATE_SUMMARY_PROVIDER,
     },
     search_providers=SEARCH_PROVIDERS,
+    markdown_fields=MARKDOWN_FIELDS,
+    plain_text_fields=PLAIN_TEXT_FIELDS,
     reports=REPORT_DEFINITIONS,
     mcp_tools=build_mcp_tools(_PROJECT_ROUTER_PREFIX)
     + report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PROJECT_ROUTER_PREFIX),

@@ -1,24 +1,11 @@
 """
 Module: modules.product_feedback.service
 
-Business logic for Product Feedback: creating a request, editing it as a new version, the
-lifecycle, archiving, list queries and the project submission policy.
-
-Responsibilities:
-- `create_request` / `apply_new_version`: a request and its version 1, and later versions that
-  carry unchanged content forward.
-- `transition_request` and `ALLOWED_TRANSITIONS`: the legal status moves and what each demands.
-- `RecordOwner`: whether a record sits in a project or in the organisation's inbox.
-- `validate_levels` / `version_levels`: a version's scoring levels (one per scheme axis, stored as
-  `EnhancementRequestVersionScore` rows) belong to the organisation's scheme; read for many versions in one statement.
-- `get_submission_policy` / `set_submission_policy`: who may submit in a project.
-
-Design decisions:
-- Nothing here commits or checks who may do it; the caller owns the transaction and the gate.
-- A move to `DUPLICATE` is not a direct transition: only a merge sets it. Declining needs a reason.
-- Content is never locked: a request stays editable at every status (each edit is a version).
-
-Dependencies: `services.sequences` (codes), `services.audit` is used by the callers.
+Business logic for Product Feedback: `create_request`/`apply_new_version`,
+`transition_request` with `ALLOWED_TRANSITIONS`, `RecordOwner`, scoring-level
+validation, list queries and the submission policy. Nothing commits or checks
+the role; the caller owns both. `DUPLICATE` is set only by a merge; declining
+needs a reason; content is never locked (each edit is a version).
 """
 
 from __future__ import annotations
@@ -46,6 +33,8 @@ from app.modules.product_feedback.models import (
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.scoring_filter import ScoredFilter, keep_by_scoring
 from app.services.current_versions import current_versions
+from app.services.external_references import EXTERNAL_REFERENCES_SUBCOMPONENT_KEY as SHARED_REFERENCES_SUBCOMPONENT_KEY
+from app.services.lifecycles import check_move
 from app.services.scoring_custom import effective_scheme
 from app.services.sequences import code_owner, generate_unique_code
 
@@ -56,7 +45,7 @@ REQUEST_SUBCOMPONENT_KEY = "enhancement_request"
 ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY = "organization_requests"
 #: Links to items in outside tools (Jira, ServiceNow) and the list of systems they point at; switchable per project and
 #: by organisation default like any sub-component. Turning it off hides the feature; stored references are kept.
-EXTERNAL_REFERENCES_SUBCOMPONENT_KEY = "external_references"
+EXTERNAL_REFERENCES_SUBCOMPONENT_KEY = SHARED_REFERENCES_SUBCOMPONENT_KEY
 
 #: The content fields a version carries (everything an edit may change except the status and the scoring
 #: levels, which are rows of their own: `version_levels`).
@@ -227,6 +216,7 @@ def apply_new_version(
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    request.updated_at = now  # a new version is a change to the record: its Modified time moves
     values = {f: getattr(current_version, f) for f in (*REQUEST_CONTENT_FIELDS, "status")}
     values.update({k: v for k, v in changes.items() if k in (*REQUEST_CONTENT_FIELDS, "status")})
     levels = dict(version_levels(db, [current_version.id])[current_version.id])
@@ -262,11 +252,9 @@ def transition_request(
         raise ValueError("An archived request cannot change status; unarchive it first.")
     if target == _S.DUPLICATE:
         raise ValueError("A request becomes a duplicate by being merged into another request.")
-    if target not in ALLOWED_TRANSITIONS[current.status]:
-        raise ValueError(
-            f"Cannot move a request from '{request_status_label(current.status.value)}' to "
-            f"'{request_status_label(target.value)}'."
-        )
+    check_move(
+        db, request.project_id, REQUEST_ARTEFACT_TYPE, current.status.value, target.value, record_id=request.id,
+    )
     changes: dict[str, Any] = {"status": target}
     if target == _S.DECLINED:
         if not comment.strip():

@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildElement, buildFolder, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ProjectElementsPage } from "./ProjectElementsPage";
 
@@ -11,6 +11,12 @@ const ELEMENTS = [
   buildElement({ id: "el-2", unique_code: "ELM-002", name: "Orders", element_type_id: "et-1", parent_id: "el-1", ports: [] }),
   buildElement({ id: "el-3", unique_code: "ELM-003", name: "Legacy bus", status: "retired", ports: [] }),
 ];
+
+/** A person who has chosen every optional column, including the two that are off by default. */
+const withEveryColumn = withAuth(buildUser({
+  id: "user-1",
+  ui_preferences: { column_choice_architecture_elements: ["type", "folder", "parent", "owner", "connections"] },
+}));
 
 const meta: Meta<typeof ProjectElementsPage> = {
   title: "Modules/Architecture/ProjectElementsPage",
@@ -30,6 +36,7 @@ export default meta;
 type Story = StoryObj<typeof ProjectElementsPage>;
 
 export const ListShowsTypeParentAndStatusAndHidesRetiredByDefault: Story = {
+  decorators: [withEveryColumn],
   beforeEach: () => { mockArchitectureReads({ elements: ELEMENTS }); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -125,6 +132,7 @@ export const NameHeaderSortsTheList: Story = {
 
 /** Connections sort by number, not text: a column of counts is ordered by value. */
 export const ConnectionCountSortsNumerically: Story = {
+  decorators: [withEveryColumn],
   beforeEach: () => {
     mockArchitectureReads({ elements: [
       buildElement({ connection_count: 10 }),
@@ -194,5 +202,27 @@ export const SelectedElementsMoveToAFolder: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/architecture/element-folders/move-records`, { record_ids: ["el-1", "el-5"], folder_id: "f-hw" },
     ));
     await waitFor(() => expect(canvas.queryByText("2 selected")).toBeNull());
+  },
+};
+
+/** Parent and Connections are off by default; the column chooser adds them and the reset puts them away again. */
+export const ParentAndConnectionsAreOptionalAndOffByDefault: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
+  beforeEach: () => { mockArchitectureReads({ elements: ELEMENTS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Elements" });
+    for (const name of ["Code", "Name", "Type", "Folder", "Owner", "Status"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    for (const name of ["Parent", "Connections"]) {
+      await expect(within(table).queryByRole("columnheader", { name })).not.toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Parent" }));
+    await expect(within(table).getByRole("columnheader", { name: "Parent" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Parent" })).not.toBeInTheDocument();
   },
 };

@@ -4,23 +4,17 @@ Revision ID: 0070
 Revises: 0069
 Create Date: 2026-10-11
 
-Adds `change_request_proposed_links`: the links a change request proposes, merged
-into the requirement on approval as the approver chooses. A real table with a
-foreign key to the link type (not a JSON list) so deleting an in-use link type
-can repoint or block on them.
+Adds `change_request_proposed_links`: the links a change request proposes, merged into the requirement
+on approval as the approver chooses. It is a table with a foreign key to the link type (not a JSON list)
+so deleting an in-use link type can repoint or block on them.
 
-`ADD_LINK` becomes the one-link case of the same mechanism: each existing
-`change_request_versions` row carrying `proposed_link_target_requirement_id` is
-copied in (an outgoing link to a requirement of the request's own project) and
-the two ADD_LINK columns are dropped. Outcomes of existing requests are
-reconstructed: an open request's link is `pending`; an approved one is `merged`
-when the link exists and `skipped` otherwise (approval re-checked the link and
-may have dropped it, and that was never recorded); a rejected or withdrawn one is
-`declined`. A pending row whose link type was already stripped (`SET NULL`) is
-`skipped`, since it could no longer be applied.
+`ADD_LINK` is the one-link case: each `change_request_versions` row with
+`proposed_link_target_requirement_id` is copied in as an outgoing link to a requirement of the request's
+project, and the two ADD_LINK columns are dropped. Outcomes: an open request's link is `pending`; an
+approved one is `merged` when the link exists, else `skipped`; a rejected or withdrawn one is `declined`;
+a pending row whose link type was stripped (`SET NULL`) is `skipped`.
 
-The downgrade restores the two columns from each ADD_LINK request's first
-proposed link (a request with several loses the extras) and drops the table.
+The downgrade restores the two columns from each ADD_LINK request's first proposed link and drops the table.
 """
 
 from collections.abc import Sequence

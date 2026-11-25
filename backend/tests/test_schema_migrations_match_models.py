@@ -1,25 +1,14 @@
-"""Guards against the exact production incident recorded in
-docs/decisions.md where `Organization`/`ServerSettings` gained
-`email_footer_*` model columns but no Alembic migration was written for
-them: `create_all()` (used implicitly by any workflow that builds its
-schema straight from the models) papered over the gap in dev, while a real
-deployment running `alembic upgrade head` (`app/migrations.py`) hit
-`UndefinedColumn` in production.
+"""Guards against a model column with no Alembic migration (see docs/decisions.md):
+`create_all()` hides the gap in dev, while a deployment running `alembic upgrade head`
+(`app/migrations.py`) hits `UndefinedColumn`.
 
-The `_schema` session fixture in conftest.py already builds the test
-database by running the real Alembic migrations rather than
-`Base.metadata.create_all()` (see its own docstring for why), so by the
-time this test runs, comparing the live migrated schema against
-`Base.metadata` is exactly Alembic's own autogenerate diff — the same
-check `alembic revision --autogenerate` uses to decide whether a new
-migration is needed. A nonempty diff here means a model field was
-added/changed/removed without a matching migration in either
-backend/alembic/versions/ (core) or a first-party module's own
-`migrations_dir` (e.g. backend/app/modules/compliance/migrations/,
- follow-up) — `app.modules.registry.
-configure_alembic_version_locations` merges both into the one chain this
-test's own `_schema` fixture (conftest.py) migrates against, so a drift in
-either location is caught identically here.
+The `_schema` session fixture in conftest.py builds the test database with the real
+Alembic migrations, so comparing the live migrated schema against `Base.metadata` is
+Alembic's autogenerate diff. A nonempty diff means a model field was added, changed or
+removed without a migration in backend/alembic/versions/ (core) or a first-party module's
+`migrations_dir` (e.g. backend/app/modules/compliance/migrations/);
+`app.modules.registry.configure_alembic_version_locations` merges both into the one chain
+the fixture migrates, so drift in either location is caught.
 """
 
 from alembic.autogenerate import compare_metadata

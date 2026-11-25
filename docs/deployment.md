@@ -13,10 +13,22 @@ This guide covers installing and configuring a new ReqTrackManager instance, fro
 
 ReqTrackManager ships **two** Compose files with different purposes — using the wrong one for the wrong purpose is the single most important thing to get right:
 
-- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY`, and `SMTP_HOST`. This is what a real deployment runs.
+- **`deployments/full/docker-compose.yml`** — the **full, production-oriented** stack: the application plus the optional observability, backup, restore, converter and docs profiles. Run it from `deployments/full/`, with its `.env` beside it. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY`, and `SMTP_HOST`. This is what a real deployment runs.
 - **`tests/container/docker-compose.yml`** — the **local development and automated testing** stack. Same shape, plus MailHog and a real Keycloak instance (for testing per-organisation SSO end-to-end, E-U-01), with dev-friendly defaults for everything and its own dedicated `reqtrack_test` Postgres database. This is what `backend/tests/` (pytest), `tests/playwright/`, and CI (`.github/workflows/ci.yml`) all run against.
 
-These two are deliberately kept separate rather than sharing one file with a dev override, because sharing led to a real, serious bug during development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema (see [decisions.md](decisions.md), "Database: the test suite was wiping the live database"). Never run `pytest`, or anything from `tests/`, against the root stack.
+These two are deliberately kept separate rather than sharing one file with a dev override, because sharing led to a real, serious bug during development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema (see [decisions.md](decisions.md), "Database: the test suite was wiping the live database"). Never run `pytest`, or anything from `tests/`, against the full stack.
+
+### Minimal example stack
+
+[`deployments/minimal/`](../deployments/minimal/docker-compose.yml) is a third, self-contained file for a small installation or an evaluation on one host: `db`, `storage`, `backend`, `frontend`, `mcp-server` and `converter`, and nothing else (no Grafana, Prometheus, Loki, Tempo, Alloy, cAdvisor, backup, documentation site, MailHog or Keycloak). It keeps the production protections (strong-secret check, one-bucket storage identity, sandboxed converter) and needs only five secrets:
+
+```bash
+cd deployments/minimal
+cp .env.example .env          # fill in the five blank secrets (openssl rand -base64 36)
+docker compose up -d
+```
+
+Differences from the full stack: two backend workers and a 3 GiB limit (the full stack defaults are four and 5 GiB), outgoing email off until `EMAIL_DELIVERY=smtp` and the `SMTP_*` variables are set (so invitations and password-reset emails are not delivered until then), and none of the optional profiles. The `deployments/full/docker-compose.yml` remains the reference for a full production deployment (backups, observability, tuning); when the two differ, the full stack file applies. `backend/tests/test_minimal_compose_example.py` pins the service list and the protections.
 
 ## Components
 
@@ -29,7 +41,7 @@ flowchart TD
     BE --> FE[frontend]
     BE --> MCP[mcp-server]
     SMTP[external SMTP provider] -.->|outgoing mail| BE
-    CV["converter (optional)"] -.->|EPS and PDF logos| BE
+    CV["converter (optional)"] -.->|EPS and PDF logos, report diagrams| BE
 ```
 
 | Service | Purpose | In root (prod) stack? | In tests/container stack? |
@@ -39,7 +51,7 @@ flowchart TD
 | `frontend` | Static React SPA served by nginx | Yes | Yes |
 | `storage` | Bundled S3-compatible file storage (SeaweedFS) | Yes | Yes |
 | `mcp-server` | Read-only MCP server exposing requirements to AI assistants (see [mcp-server.md](mcp-server.md)) | Yes | Yes |
-| `converter` | Converts uploaded EPS and PDF logos to SVG in an isolated container (see [below](#optional-eps-and-pdf-logos-the-converter)) | Opt-in (`--profile converter`) | Yes |
+| `converter` | Converts uploaded EPS and PDF logos to SVG and draws Mermaid diagrams for reports, in an isolated container (see [below](#optional-logos-and-report-diagrams-the-converter)) | Opt-in (`--profile converter`) | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy`, `cadvisor` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
@@ -58,7 +70,7 @@ For a populated instance to actually evaluate (rather than an empty bootstrap ad
 
 ## Production deployment
 
-Production deployment uses the root `docker-compose.yml` and the same container images used for local dev; the difference is entirely in configuration, and the compose file itself enforces the important parts — `docker compose up` fails immediately with a clear error naming the missing variable if any of these aren't set, rather than starting with an insecure default. Create a `.env` file next to `docker-compose.yml` (Docker Compose loads it automatically) and set at minimum:
+Production deployment uses the `deployments/full/docker-compose.yml` (run every `docker compose` command from `deployments/full/`) and the same container images used for local dev; the difference is entirely in configuration, and the compose file itself enforces the important parts — `docker compose up` fails immediately with a clear error naming the missing variable if any of these aren't set, rather than starting with an insecure default. Create a `.env` file next to `deployments/full/docker-compose.yml` (Docker Compose loads it automatically) and set at minimum:
 
 ```bash
 # Secrets — generate strong random values, do not reuse the defaults
@@ -90,18 +102,20 @@ The full list of backend environment variables, with defaults, is documented in 
 
 CI (`.github/workflows/ci.yml`) builds the production `backend`, `backup`, `frontend`, `mcp-server`, `converter` and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once the `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `image-scan` and `restore-test` jobs pass on a push to `main`, publishes all six to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
+An image that names no release inside it (`mcp-server`, `converter` and `docs`) is published again only when its sources changed. CI tags each published one with `src-<tree>` (the git tree of its build directory); when that tag already exists, the new `latest`, commit and SemVer tags are put on the existing image instead of building and pushing another. A host that pulls the new tag finds the digest it already has, so it downloads nothing and has no extra image to prune. The `backend`, `backup` and `frontend` images carry the version and commit they were built from, so each release has its own.
+
 Each image is tagged three ways:
 
 - **`latest`** — always the most recent build from `main`. What `IMAGE_TAG` defaults to below.
 - **`<git sha>`** — the exact commit it was built from, for pinning to a specific build without needing a release version.
 - **a SemVer** (e.g. `1.4.0`) — computed by [GitVersion](https://gitversion.net/) (`GitVersion.yml`, repo root) from the commit graph in `ContinuousDeployment` mode: every merge to `main` is a release, so the version increments automatically without anyone pushing a git tag by hand.
 
-`docker-compose.yml` declares both `image:` (pointing at these published tags) and `build:` (a local Dockerfile build) for `backend`/`frontend`/`mcp-server`. This means:
+`deployments/full/docker-compose.yml` declares both `image:` (pointing at these published tags) and `build:` (a local Dockerfile build) for `backend`/`frontend`/`mcp-server`. This means:
 
 - **First run, or after `docker compose up --build -d`**: builds locally, exactly as before — nothing here requires ever touching `ghcr.io`.
 - **To deploy an already-published image instead of building**: set `IMAGE_TAG` in your `.env` (a SemVer to pin a specific release, a commit SHA, or leave it unset/`latest` to track the newest `main` build), then `docker compose pull && docker compose up -d`. This is the faster path for upgrading an existing deployment — no build step, no source checkout needed on the host at all.
 
-If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `docker-compose.yml`.
+If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `deployments/full/docker-compose.yml`.
 
 **Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is also baked into it at build time (`APP_VERSION`/`GIT_SHA`/`BUILD_DATE` build args, set by the `docker-build` CI jobs — see `backend/Dockerfile` and `frontend/Dockerfile`), so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's own bundled version and the backend's, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no `--build-arg`s (the default for the two paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
 
@@ -114,11 +128,16 @@ If your images live in a different registry/namespace (e.g. a private mirror), o
 
 CI runners use 4 KB memory pages while a Raspberry Pi 5 uses 16 KB, which some native libraries mishandle; CI cannot catch that, so check a first run on a Pi with `docker compose ps` and the backend logs. The optional MailHog mail catcher in the development stack ([tests/container/](../tests/container/docker-compose.yml)) is amd64-only upstream and is not part of the production stack.
 
-### Optional: EPS and PDF logos (the converter)
+### Optional: logos and report diagrams (the converter)
 
-The report image library accepts PNG, JPEG, GIF, WebP and SVG out of the box. EPS and PDF logos (what Illustrator and Affinity users often hold) are converted to SVG by a separate container, because reading them means running Ghostscript and poppler on uploaded files. It is **off by default**: if you do not want the extra container, do nothing and the upload dialog does not offer EPS or PDF.
+One separate container does the two jobs that run an interpreter on content a person supplies:
 
-To turn it on, add to `.env`:
+| Job | What it runs | Without it |
+| --- | --- | --- |
+| EPS and PDF logos to SVG, once, at upload | Ghostscript and poppler | The report image library does not offer EPS or PDF; PNG, JPEG, GIF, WebP and SVG work as before. |
+| Mermaid diagrams drawn for reports and exports, at run time | The Mermaid library in an embedded JavaScript engine (no browser), in the same version and font as the screen | A diagram prints as a labelled block of its source text and the run reports a warning; nothing else changes. |
+
+It is **off by default**. To turn it on, add to `.env`:
 
 ```bash
 COMPOSE_PROFILES=converter
@@ -130,7 +149,8 @@ then `docker compose up -d`. The backend waits for the converter to be healthy w
 - The service has no route to the network outside Compose (the `converter` network is `internal` and shared only with the backend), no secrets, a read-only filesystem, no Linux capabilities and a non-root user. Do not attach it to another network or publish its port.
 - Running the image another way (Kubernetes, say)? Reproduce that isolation: deny all egress from the pod, drop all capabilities, read-only root with a small scratch volume, and reach it only from the backend.
 - A PDF contributes its first page; an EPS is cropped to its bounding box. Both are stored as `<name>.eps.svg` / `<name>.pdf.svg`. Text becomes shapes, so no font is needed when a report is run.
-- The image is published with the others (`ghcr.io/<owner>/<repo>-converter`).
+- A diagram is drawn in a process of its own, ended after 30 seconds, with a memory ceiling of 1.5 GiB; two drawings run at once, and a third request waits up to ten seconds. The container limit of 2.5 GiB and two CPUs covers that. A large diagram (hundreds of nodes) takes many times longer here than in a browser; one that exceeds the limit prints as source text. The backend remembers each drawing (in memory, by the text, theme and Mermaid version), so a report run again does not draw again, and one run draws at most 40 diagrams.
+- The image is about 255 MB, 27 MB more than it was without the diagram renderer, and is published with the others (`ghcr.io/<owner>/<repo>-converter`).
 
 ### Extra report fonts
 
@@ -167,9 +187,9 @@ flowchart LR
 
 Read left to right: CI publishes a docs image tagged with the same version as the app, you run it, and the backend tells the UI where it is.
 
-- The image is the same static site as the public one, served by unprivileged nginx on port 8080 (`docker-compose.yml` publishes it on 8200 under the `docs` profile). It is built for the root of its own host; to serve it under a sub-path such as `/docs/` behind your reverse proxy, set `DOCS_BASE_URL=/docs/` (and `DOCS_URL`) in your `.env` and build it with `docker compose --profile docs build docs`. The base path is baked in at build time, so a pulled image keeps its published `/`.
+- The image is the same static site as the public one, served by unprivileged nginx on port 8080 (`deployments/full/docker-compose.yml` publishes it on 8200 under the `docs` profile). It is built for the root of its own host; to serve it under a sub-path such as `/docs/` behind your reverse proxy, set `DOCS_BASE_URL=/docs/` (and `DOCS_URL`) in your `.env` and build it with `docker compose --profile docs build docs`. The base path is baked in at build time, so a pulled image keeps its published `/`.
 - `HELP_URL` must be reachable from users' browsers, not just from the backend.
-- The dev/test stack (`tests/container/`) already sets `HELP_URL` to its own docs service, so Help is local there; only the production `docker-compose.yml` defaults to the public site.
+- The dev/test stack (`tests/container/`) already sets `HELP_URL` to its own docs service, so Help is local there; only the production `deployments/full/docker-compose.yml` defaults to the public site.
 - No internal mirror and no wish for an external link? Set `HELP_ENABLED=false` to remove the Help link.
 
 ### Storage credential scope
@@ -228,6 +248,15 @@ What is already in place: a single bucket-scoped identity, no published ports, a
 7. **Transport and rest.** Traffic between `backend` and `storage` is plain HTTP on the Compose network; if they are ever on different hosts, put TLS in front or use an external provider. Encrypt the `reqtrack_storage_data` volume at the host or disk level.
 8. **Do not publish storage ports** or remove the loopback flags (`-ip.bind=127.0.0.1`) from the `storage` command; the filer and master have no authentication.
 
+### Upgrading: the stack moved to `deployments/full`
+
+The compose file, its `.env` and every `docker compose` command moved from the repository root to `deployments/full/`. Move an existing installation as follows:
+
+1. Back up (`./scripts/dr-backup.sh`), then `git pull`. The root `docker-compose.yml` no longer exists.
+2. Move your `.env`, and any `docker-compose.override.yml`, `report-fonts` extras or `external-modules` directory you keep beside the compose file, into `deployments/full/`. Relative paths in an override resolve against `deployments/full/`.
+3. Keep your volumes: the Compose project is now always named `reqtrackmanager`, where it used to take the name of the directory the repository was cloned into. `docker volume ls | grep reqtrack_db_data` shows the prefix your data uses. If it is `reqtrackmanager_`, nothing is needed. If it is another name, put `COMPOSE_PROJECT_NAME=<that name>` in the moved `.env`. Starting under a different name creates empty volumes, so the application appears to have lost its data; the data is untouched, and stopping the stack and setting the name restores access.
+4. From `deployments/full/`, run `docker compose up -d`. The scripts in `scripts/` (backup, restore, restore test) locate the stack themselves and run from any directory.
+
 ### Upgrading to the bucket-scoped credential
 
 **No `.env` change is required.** An existing `.env` with `STORAGE_ROOT_PASSWORD` (and optionally `STORAGE_ROOT_USER`) keeps working: those values become the access key and secret. Tested by writing a file under the previous setup and reading it back with the same credential after upgrading. What changes is what that credential can do:
@@ -236,7 +265,7 @@ What is already in place: a single bucket-scoped identity, no published ports, a
 - The filer, master and volume ports are no longer reachable from other containers. Tooling that called `storage:8888` or `storage:9333` across the network must run inside the container instead.
 - `storage` can take up to 30 seconds to report healthy after a restart.
 
-Steps: back up (`./scripts/dr-backup.sh`, see [disaster-recovery.md](disaster-recovery.md); it covers the database and the stored files); **replace your `docker-compose.yml` with the new one** (`git pull`, or copy it; `docker compose pull` fetches images only, and the storage configuration lives in this file, so pulling alone leaves the old, unscoped setup running; re-apply any local edits you made to the file); then `docker compose pull && docker compose up -d`. This needs Docker Compose 2.23.1 or newer (`docker compose version`), for inline `configs`. Check that `docker compose ps` shows `storage` and `backend` healthy and that an existing attachment opens. Optionally rename `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` to `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
+Steps: back up (`./scripts/dr-backup.sh`, see [disaster-recovery.md](disaster-recovery.md); it covers the database and the stored files); **replace your `deployments/full/docker-compose.yml` with the new one** (`git pull`, or copy it; `docker compose pull` fetches images only, and the storage configuration lives in this file, so pulling alone leaves the old, unscoped setup running; re-apply any local edits you made to the file); then `docker compose pull && docker compose up -d`. This needs Docker Compose 2.23.1 or newer (`docker compose version`), for inline `configs`. Check that `docker compose ps` shows `storage` and `backend` healthy and that an existing attachment opens. Optionally rename `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` to `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
 
 | Symptom | Cause and fix |
 |---------|---------------|
@@ -245,7 +274,7 @@ Steps: back up (`./scripts/dr-backup.sh`, see [disaster-recovery.md](disaster-re
 | `storage` exits with `unmarshal error` in its log | A value contains a quote or backslash (fine before this release, not now); change it |
 | Uploads fail with `AccessDenied` | The bucket name differs from `STORAGE_S3_BUCKET`, or the credential in use is not the one `storage` was started with; run `docker compose up -d storage backend` |
 
-**Rolling back:** restore the previous `docker-compose.yml` and image tag and run `docker compose up -d`. Data is untouched and the same variables are read.
+**Rolling back:** restore the previous `deployments/full/docker-compose.yml` and image tag and run `docker compose up -d`. Data is untouched and the same variables are read.
 
 **Development and test stack (`tests/container`):** no `.env` change; run `docker compose up -d` there so `storage` and `backend` are recreated.
 
@@ -255,13 +284,13 @@ ReqTrackManager's containers serve plain HTTP internally (frontend on 3000, back
 
 This is the two-hostname pattern (e.g. `app.example.com` for the UI, `api.example.com` for the backend) and it needs `CORS_ORIGINS` set correctly on the backend, since the browser treats the two as different origins. The alternative below avoids that entirely.
 
-**Weak secrets and request sizes**: set `REQUIRE_STRONG_SECRETS=true` (the root `docker-compose.yml` defaults it on) and the backend refuses to start while `JWT_SECRET` is a placeholder or under 32 characters, `APP_SECRET_ENCRYPTION_KEY` is the placeholder, or the S3 secret is the bundled store's default; it logs a warning for the same values either way. The backend caps any request body at `MAX_REQUEST_BODY_BYTES` (52 MB; imports 200 MB) and a single uploaded file at `MAX_UPLOAD_BYTES` (50 MB), answering 413; also set your reverse proxy's `client_max_body_size` to the same order of magnitude so oversized bodies never reach the application. File URLs and the WebSocket handshake carry a 15-minute media token (`POST /api/v1/auth/media-token`), never the session token, so the access log and Loki do not hold a usable credential; an organisation's own SMTP relay (its "send test email" action) must resolve to a public address unless `ORG_SMTP_ALLOW_PRIVATE_NETWORK_TARGETS=true`.
+**Weak secrets and request sizes**: set `REQUIRE_STRONG_SECRETS=true` (the `deployments/full/docker-compose.yml` defaults it on) and the backend refuses to start while `JWT_SECRET` is a placeholder or under 32 characters, `APP_SECRET_ENCRYPTION_KEY` is the placeholder, or the S3 secret is the bundled store's default; it logs a warning for the same values either way. The backend caps any request body at `MAX_REQUEST_BODY_BYTES` (52 MB; imports 200 MB) and a single uploaded file at `MAX_UPLOAD_BYTES` (50 MB), answering 413; also set your reverse proxy's `client_max_body_size` to the same order of magnitude so oversized bodies never reach the application. File URLs and the WebSocket handshake carry a 15-minute media token (`POST /api/v1/auth/media-token`), never the session token, so the access log and Loki do not hold a usable credential; an organisation's own SMTP relay (its "send test email" action) must resolve to a public address unless `ORG_SMTP_ALLOW_PRIVATE_NETWORK_TARGETS=true`.
 
 **Client address behind a proxy**: the application records and rate-limits the address of the connecting client. It takes `X-Forwarded-For` and `X-Forwarded-Proto` only from the peers listed in `FORWARDED_ALLOW_IPS` (uvicorn's setting; comma-separated addresses or networks, and the IPv4-mapped form `::ffff:<address>` because the backend listens dual-stack). Set it to your reverse proxy's address and make the proxy **replace** `X-Forwarded-For` with the address it saw (`proxy_set_header X-Forwarded-For $remote_addr;`, not `$proxy_add_x_forwarded_for`). Left unset, every client appears as the proxy's address and the sign-in delay and rate limits treat all users as one; a header sent by an unlisted peer is ignored.
 
 **Security response headers**: the backend (`security_headers_middleware`, `backend/app/main.py`) and the frontend's nginx configuration send `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`; API JSON answers carry `Cache-Control: no-store`. The frontend adds a `Permissions-Policy`, `Strict-Transport-Security` (only on a request your proxy marks `X-Forwarded-Proto: https`), `Cache-Control: no-cache` for the page and `immutable` for hashed files, and a **Content-Security-Policy** built when the container starts (`frontend/docker/env-config-entrypoint.sh`): `default-src 'self'`; `script-src 'self'` plus the origins in `CSP_SCRIPT_SRC_EXTRA` (Module Federation modules served elsewhere) and the analytics host when `CLARITY_PROJECT_ID` is set; `style-src 'self' 'unsafe-inline'`; `connect-src`, `img-src` and `media-src` for this site and the API origin from `PUBLIC_API_BASE_URL` (and its WebSocket form); `frame-src` from `MODULE_FRAME_ALLOWED_ORIGINS` (otherwise `'none'`); `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`. Each listed origin must be a plain `https://host[:port]`; anything else is ignored with a message in the container log. A reverse proxy in front should pass these headers through and add its own `Strict-Transport-Security`; if it adds a Content-Security-Policy too, the browser applies both, so the stricter wins.
 
-**Binding the published ports**: the root `docker-compose.yml` publishes the backend on `127.0.0.1` (`BACKEND_BIND_ADDRESS`, default loopback) because the API serves an unauthenticated `/metrics` and `/docs`; a proxy on the same host or on the Compose network reaches it. Set `BACKEND_BIND_ADDRESS=0.0.0.0` (or `::`) only for a proxy on another host, and then limit the port to that proxy with a firewall. The observability profile publishes Prometheus, Loki, Tempo, Alloy and Grafana on loopback too (`OBSERVABILITY_BIND_ADDRESS`), has no anonymous Grafana access and will not start without `GRAFANA_ADMIN_PASSWORD`.
+**Binding the published ports**: the `deployments/full/docker-compose.yml` publishes the backend on `127.0.0.1` (`BACKEND_BIND_ADDRESS`, default loopback) because the API serves an unauthenticated `/metrics` and `/docs`; a proxy on the same host or on the Compose network reaches it. Set `BACKEND_BIND_ADDRESS=0.0.0.0` (or `::`) only for a proxy on another host, and then limit the port to that proxy with a firewall. The observability profile publishes Prometheus, Loki, Tempo, Alloy and Grafana on loopback too (`OBSERVABILITY_BIND_ADDRESS`), has no anonymous Grafana access and will not start without `GRAFANA_ADMIN_PASSWORD`.
 
 **Sign-in rules**: `REQUIRE_EMAIL_CONFIRMATION` (default `true`) makes a public sign-up confirm its email address before the account can sign in; `FORCE_PASSWORD_CHANGE_ON_ADMIN_SET` (default `true`) makes an account whose password an administrator typed change it first. Sign-in is delayed after repeated failures (`LOGIN_DELAY_*`: window 15 minutes, 5 free attempts per account and 30 per address, 5 seconds doubling to 5 minutes); overlapping attempts on one account wait for each other for up to `LOGIN_LOCK_WAIT_SECONDS` (default 5). Passwords are 8 to 72 bytes and not on a built-in common list. An organisation can also switch off imported approval state and, for its identity provider, the creation of new accounts (Organisation administration).
 
@@ -320,7 +349,7 @@ This pattern was verified against a real reverse proxy (not just described): an 
 
 ### Storage backend
 
-- `STORAGE_BACKEND=local` (default outside Compose) stores files on the backend container's filesystem at `STORAGE_LOCAL_DIR`. The root `docker-compose.yml` mounts this as the named volume `reqtrack_local_files` so files survive container recreation; if you run the backend outside this Compose file, mount an equivalent persistent volume yourself. The built-in disk-usage monitor (I-M-11) only runs for this backend, emailing `DEPLOYMENT_NOTIFICATION_EMAIL` when usage crosses `DISK_USAGE_WARNING_THRESHOLD_PERCENT`.
+- `STORAGE_BACKEND=local` (default outside Compose) stores files on the backend container's filesystem at `STORAGE_LOCAL_DIR`. The `deployments/full/docker-compose.yml` mounts this as the named volume `reqtrack_local_files` so files survive container recreation; if you run the backend outside this Compose file, mount an equivalent persistent volume yourself. The built-in disk-usage monitor (I-M-11) only runs for this backend, emailing `DEPLOYMENT_NOTIFICATION_EMAIL` when usage crosses `DISK_USAGE_WARNING_THRESHOLD_PERCENT`.
 - `STORAGE_BACKEND=s3` (the Compose default) stores files in any S3-compatible bucket — the bundled SeaweedFS service, a self-hosted SeaweedFS/MinIO cluster, or real AWS S3. Set `STORAGE_S3_ENDPOINT_URL` to your provider (omit or point at AWS's endpoint for real S3), and set `STORAGE_S3_BUCKET`/`STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY`/`STORAGE_S3_REGION` accordingly. This is the recommended choice for any deployment with more than one backend replica, since local disk storage doesn't get shared across replicas.
 - **Storage health.** Every `STORAGE_HEALTH_CHECK_INTERVAL_SECONDS` (default 300) the elected leader writes, reads back and deletes a tiny probe object through the configured backend (any backend, including S3-compatible ones whose free space the app cannot read). A failing probe is logged at ERROR on every check, sets the Prometheus gauge `storage_write_healthy` to `0` (alert on it), and notifies every server admin in-app (and by email per their preferences, plus the `DEPLOYMENT_NOTIFICATION_EMAIL` address if set) once per confirmed outage (after `STORAGE_HEALTH_FAILURES_BEFORE_ALERT` consecutive failed probes, default 2, so one dropped write does not alert), with a second notification on recovery; a restart or leader change during an outage neither repeats the alert nor misses the recovery. For local storage the disk-percentage warning (`DISK_USAGE_WARNING_THRESHOLD_PERCENT`) also notifies server admins. Each probe is one write, one read and one delete, which a metered S3 provider bills; set `STORAGE_HEALTH_CHECK_ENABLED=false` to turn the periodic probe off, or raise the interval. A server admin can still probe on demand with `GET /api/v1/system/storage-health`.
 
@@ -400,7 +429,7 @@ The modular feature system's frontend half also supports a genuinely third-party
        - ./external-modules:/usr/share/nginx/external-modules:ro
    ```
 
-   (`docker-compose.yml`'s own `frontend` service has this exact block, commented out, for discoverability.) If you'd rather host the bundle somewhere else entirely (your own CDN, another origin), skip this mount and have the module's `remote_entry_url` point at that absolute URL instead — mirrors Tier B's existing "`frame_url` can be any allowlisted origin" precedent, except there is no allowlist to configure for Tier C (see `modules.md`'s own explanation of why that's a deliberate, not missing, design choice). Note that if this project ever tightens its currently-minimal CSP with a `script-src` directive (a documented follow-up — see `frontend/nginx.conf`'s own comment), the same-origin mount above needs no allowlist change (`'self'` already covers it), while an externally-hosted `remote_entry_url` would need its origin added at that point.
+   (`deployments/full/docker-compose.yml`'s own `frontend` service has this exact block, commented out, for discoverability.) If you'd rather host the bundle somewhere else entirely (your own CDN, another origin), skip this mount and have the module's `remote_entry_url` point at that absolute URL instead — mirrors Tier B's existing "`frame_url` can be any allowlisted origin" precedent, except there is no allowlist to configure for Tier C (see `modules.md`'s own explanation of why that's a deliberate, not missing, design choice). Note that if this project ever tightens its currently-minimal CSP with a `script-src` directive (a documented follow-up — see `frontend/nginx.conf`'s own comment), the same-origin mount above needs no allowlist change (`'self'` already covers it), while an externally-hosted `remote_entry_url` would need its origin added at that point.
 4. `docker compose up -d backend frontend` (or restart both containers) — no rebuild of either image.
 5. Enable the module for an organisation via the existing Modules admin UI (`/orgs/:orgId/admin/modules`), exactly like any other module.
 
@@ -452,7 +481,7 @@ to match.
 
 ## Sizing and memory limits
 
-Every always-on service has a memory limit in `docker-compose.yml`, set from the peaks in [performance.md](performance.md) and overridable from `.env` (`0` removes a limit). A service over its limit is killed by the kernel and restarted, so raise the limit before the load that needs it, not after the first restart.
+Every always-on service has a memory limit in `deployments/full/docker-compose.yml`, set from the peaks in [performance.md](performance.md) and overridable from `.env` (`0` removes a limit). A service over its limit is killed by the kernel and restarted, so raise the limit before the load that needs it, not after the first restart.
 
 | Service | Variable | Default | Measured |
 |---------|----------|---------|----------|

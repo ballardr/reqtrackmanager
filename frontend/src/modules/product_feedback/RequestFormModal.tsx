@@ -99,7 +99,7 @@ export function RequestFormModal({
             systems={initial || !referencesOn || systems.length === 0 ? undefined : systems} previewScores={scheme ? previewScores : undefined} requestId={initial?.id}
             beside={initial
               ? <TextField help={PRODUCT_FEEDBACK_HELP.changeNote} label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
-              : projectId ? <TagField projectId={projectId} artefactType="enhancement_request" value={tags} onChange={setTags} /> : undefined}
+              : projectId ? <TagField projectId={projectId} artefactType="enhancement_request" value={tags} onChange={setTags} references={false} /> : undefined}
           />
           {projectId && !initial && (
             <FormGridFull>

@@ -292,10 +292,8 @@ def test_removing_last_member_of_fallback_group_that_is_a_standards_only_coverag
     resp = _revoke_standard_role(client, admin_token, org_id, standard["id"], manager_id, "standards_manager")
     assert resp.status_code == 204, resp.text
 
-    # Now remove the group's only member — this must be blocked the same way
-    # "remove a project's last manager" already is (routers/orgs.py's own
-    # remove_org_group_member 400 shape), since this org's whole compliance
-    # fallback floor is currently resting on this one person.
+    # Removing the group's only member must be blocked as removing a project's last manager is
+    # (`routers/orgs.py::remove_org_group_member`, 400), because the compliance fallback floor rests on this person.
     resp = client.delete(
         f"/api/v1/orgs/{org_id}/groups/{group_id}/members/{fallback_member_id}", headers=auth_headers(admin_token),
     )

@@ -1,39 +1,15 @@
 /**
  * Module: modules/compliance/OutstandingPanel
  *
- * The Project Compliance View's "what remains outstanding" summary (§21's
- * own explicit goal — "The view should make it easy for a Project Manager
- * or Compliance Officer to determine what remains outstanding") — gathers
- * the four cross-assignment, read-only drillable listings §20/§21/§22 call
- * for as their own lists, not just counts: Non-Compliant requirements
- * (§20/§21), requirements Pending Approval (§12), outstanding Required
- * Actions (§22's own explicit "identifying projects with outstanding
- * Required Actions," shown from the flattened, cross-assignment listing
- * that also powers the org-wide equivalent), and scheduled reviews currently due/overdue
- * (§17/§21) across every one of this project's active standard
- * assignments, all in one place rather than requiring each assignment to
- * be opened in turn.
- *
- * Read-only by design — acting on a row (assessing, approving, completing
- * a review, completing a required action) happens in `ApplicabilityTree`/
- * `ReviewsPanel` via the Standards tab, not duplicated here.
- *
- * Standard/Standard version/Sub-section filtering has parity
- * with the org-wide `OrgComplianceOutstandingPanel`'s filters,
- * minus a Project filter (this page is already scoped to one project). A
- * project with several standards assigned would otherwise show every
- * non-compliant requirement/pending approval/outstanding action/review
- * from all of them in one flat set of four sections; see
- * `OrgComplianceOutstandingPanel.tsx`'s notes for why
- * Evidence and the per-requirement Sub-section filter are scoped the way
- * they are.
- *
- * An "Export" trigger (`ReportExportButton`) is scoped to this
- * panel's current Standard/Standard version/Sub-section filters —
- * `complianceApi.downloadProjectComplianceReport` passes them through as
- * query params, matching `OrgComplianceOutstandingPanel.tsx`'s identical
- * convention (minus a Project filter, since this page is already
- * project-scoped by URL).
+ * The Project Compliance View's "what remains outstanding" summary (§21): the four read-only, drillable listings §20-§22 call
+ * for, across every active standard assignment of the project, as lists and not only counts: Non-Compliant requirements,
+ * requirements Pending Approval (§12), outstanding Required Actions (§22, from the flattened cross-assignment listing that
+ * also powers the org-wide equivalent) and reviews due or overdue (§17). Acting on a row (assess, approve, complete a
+ * review or required action) happens in `ApplicabilityTree` and `ReviewsPanel` on the Standards tab.
+ * - Standard, Standard version and Sub-section filters match `OrgComplianceOutstandingPanel` without a Project filter (the
+ *   page is project-scoped), so a project with several standards need not show everything in one flat set; that panel's notes
+ *   explain how Evidence and the Sub-section filter are scoped.
+ * - Export (`ReportExportButton`) passes the current filters to `complianceApi.downloadProjectComplianceReport`.
  */
 import { useEffect, useMemo, useState } from "react";
 
@@ -57,6 +33,7 @@ import {
 import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();
@@ -164,10 +141,8 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
 
   async function downloadReport(kind: complianceApi.ComplianceReportKind) {
     try {
-      // Scoped to this panel's own current Standard/Standard version/Sub-
-      // section filters — matches `OrgComplianceOutstandingPanel.tsx`'s
-      // identical convention. No Project filter here to pass through (this
-      // page is already scoped to one project by URL).
+      // Scoped to the panel's current Standard, Standard version and Sub-section filters, as in
+      // `OrgComplianceOutstandingPanel.tsx`; there is no Project filter because the URL scopes the page.
       const blob = await complianceApi.downloadProjectComplianceReport(projectId, kind, {
         standardId: standardFilter || undefined,
         standardVersionId: versionFilter || undefined,
@@ -211,7 +186,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
               {filteredNonCompliant.map((row) => (
                 <li key={row.project_compliance_requirement_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                   <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
-                  {row.justification && <span className="text-muted"> — {row.justification}</span>}
+                  {row.justification && <span className="text-muted"> — {markdownPlainText(row.justification)}</span>}
                 </li>
               ))}
             </ul>

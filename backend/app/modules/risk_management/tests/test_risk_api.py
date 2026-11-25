@@ -53,6 +53,18 @@ def test_create_assigns_sequential_codes_and_starts_identified_and_unscored(clie
     assert client.get(f"{_risks(project['id'])}/{first['id']}", headers=auth_headers(token)).json()["id"] == first["id"]
 
 
+def test_a_new_version_moves_the_risks_modified_time_so_the_list_can_sort_by_it(client, admin_token):
+    """A risk's content lives in its versions, so an edit must move the identity row's `updated_at`, which every list's
+    Modified sort and the export read (`services.list_sort`)."""
+    _, project, token = setup(client, admin_token, "Risk Modified Co")
+    risk = create_risk(client, token, project["id"])
+    url = f"{_risks(project['id'])}/{risk['id']}"
+    before = client.get(url, headers=auth_headers(token)).json()["updated_at"]
+    edited = client.put(url, json={"cause": "Refined cause"}, headers=auth_headers(token))
+    assert edited.status_code == 200, edited.text
+    assert client.get(url, headers=auth_headers(token)).json()["updated_at"] > before
+
+
 def test_codes_are_per_project(client, admin_token):
     org, project_a, token = setup(client, admin_token, "Risk Codes Co")
     project_b = create_project(client, token, org["id"], "Risk Codes B")

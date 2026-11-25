@@ -21,16 +21,58 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.notification import DigestMode, Notification, NotificationPreference
 from app.models.user import User
-from app.modules.registry import get_all_notification_types
-from app.schemas.notification import NotificationOut, NotificationPreferenceOut, NotificationPreferenceUpdate
+from app.modules.registry import get_all_notification_targets, get_all_notification_types
+from app.schemas.notification import (
+    NotificationDetailOut,
+    NotificationOut,
+    NotificationPreferenceOut,
+    NotificationPreferenceUpdate,
+)
 from app.security import decode_email_unsubscribe_token
 from app.services.audit import log_event
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_page
+from app.services.notification_targets import subject_available
 from app.services.rbac import restrict_to_session_scope
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 settings = get_settings()
+
+
+def _out(notification: Notification, targets: dict[str, tuple[str, ...]] | None = None) -> NotificationOut:
+    """The API shape of a notification, with the target kinds declared for its type.
+
+    Args:
+        notification: The row.
+        targets: The merged target table, passed by a list so it is built once per request.
+
+    Returns:
+        The notification with `target_kinds` set (empty for a type that declares none).
+    """
+    out = NotificationOut.model_validate(notification)
+    out.target_kinds = list((targets if targets is not None else get_all_notification_targets()).get(notification.type, ()))
+    return out
+
+
+def _require_in_credential_scope(db: Session, notification: Notification) -> None:
+    """Refuses a notification a scoped credential may not reach.
+
+    A token or module frame limited to some organisations or projects sees only notifications that concern a
+    project it may reach, never account-level notices; the refusal is the same 404 as an absent notification.
+
+    Args:
+        db: Active session carrying the credential's scope in `db.info`.
+        notification: The caller's own notification.
+
+    Raises:
+        HTTPException: 404 when the credential's scope excludes the notification's project (or it has none).
+    """
+    allowed_orgs, allowed_projects = db.info.get("pat_allowed_org_ids"), db.info.get("pat_allowed_project_ids")
+    if allowed_orgs is None and allowed_projects is None and "module_frame_project_id" not in db.info:
+        return
+    reachable = restrict_to_session_scope(db, {notification.project_id} if notification.project_id else set())
+    if notification.project_id is None or notification.project_id not in reachable:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
 
 
 @router.get("", response_model=list[NotificationOut])
@@ -45,17 +87,12 @@ def list_notifications(
 ):
     """Lists the caller's notifications, newest first.
 
-    `limit`/`offset` (U-P-06) are optional — omitting both preserves the
-    original unbounded-fetch behaviour the dropdown bell still relies on.
-    The dedicated notifications page passes both, plus `search` (matches
-    title or body), for lazy-loaded browsing back through notification
-    history without pulling the whole list up front. When `limit` is
-    given, the total match count is returned in `X-Total-Count`, same
-    convention as `list_requirements`.
+    `limit`/`offset` (U-P-06) are optional; omitting both returns everything (as the bell dropdown does). The
+    notifications page passes both, plus `search` (matches title or body). When `limit` is given the total
+    match count is returned in `X-Total-Count`, as `list_requirements`.
 
-    Types the caller has opted out of in-app (`NotificationPreference.
-    ui_enabled` false) are excluded at query time; the rows are still
-    recorded (see `services.notifications.notify`).
+    Types the caller has opted out of in-app (`NotificationPreference.ui_enabled` false) are excluded at
+    query time; the rows are still recorded (see `services.notifications.notify`).
     """
     ui_opted_out = select(NotificationPreference.type).where(
         NotificationPreference.user_id == current_user.id, NotificationPreference.ui_enabled.is_(False)
@@ -76,12 +113,13 @@ def list_notifications(
         query = query.where(Notification.project_id.in_(reachable) if reachable else false())
     query = query.order_by(Notification.created_at.desc())
 
+    targets = get_all_notification_targets()
     if limit is None:
-        return db.scalars(query).all()
+        return [_out(n, targets) for n in db.scalars(query).all()]
 
     total = len(db.scalars(query).all())
     response.headers["X-Total-Count"] = str(total)
-    return db.scalars(query.offset(offset).limit(limit)).all()
+    return [_out(n, targets) for n in db.scalars(query.offset(offset).limit(limit)).all()]
 
 
 @router.post("/{notification_id}/read", response_model=NotificationOut)
@@ -89,11 +127,12 @@ def mark_read(notification_id: UUID, current_user: User = Depends(get_current_us
     notification = db.get(Notification, notification_id)
     if notification is None or notification.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+    _require_in_credential_scope(db, notification)
     if notification.read_at is None:
         notification.read_at = datetime.now(UTC)
         db.commit()
         db.refresh(notification)
-    return notification
+    return _out(notification)
 
 
 @router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT)
@@ -153,29 +192,17 @@ def set_preference(
 
 @router.get("/unsubscribe", response_class=HTMLResponse, include_in_schema=False)
 def unsubscribe(token: str, db: Session = Depends(get_db)):
-    """Public, unauthenticated landing page for the "manage your email
-    preferences" link in every outgoing email's footer
-    (`services/notifications.py::_unsubscribe_url`,
-    `security.create_email_unsubscribe_token`).
+    """Public, unauthenticated landing page for the "manage your email preferences" link in every outgoing
+    email's footer (`services/notifications.py::_unsubscribe_url`, `security.create_email_unsubscribe_token`).
 
-    Deliberately narrow: the token can only ever set
-    `User.email_digest_mode = DigestMode.NONE` — the exact same field a
-    logged-in user can already set themselves from the Preferences page
-    (`PUT /auth/me`), so a one-click unsubscribe and "the login
-    preferences" are provably the same state, not a parallel flag. No
-    other account state is reachable through this endpoint. This is a
-    deliberate, narrow exception to normal authenticated-request handling
-    (mirroring the "shared UI chrome" carve-out documented in
-    `docs/soc2/policies/access-control-policy.md`'s Authorization section)
-    rather than a gap: an unauthenticated recipient clicking a link in
-    their mail client has no session to present, so the alternative would
-    be no one-click unsubscribe at all.
+    Deliberately narrow: the token can only set `User.email_digest_mode = DigestMode.NONE`, the field a
+    logged-in user sets from the Preferences page (`PUT /auth/me`), so a one-click unsubscribe is the same
+    state, not a parallel flag, and no other account state is reachable. This is a narrow exception to
+    authenticated-request handling (as the "shared UI chrome" carve-out in
+    `docs/soc2/policies/access-control-policy.md`): a recipient clicking a mail link has no session.
 
-    Every use — successful or a rejected/expired/tampered token — writes
-    an audit trail entry (`services/audit.py::log_event`) per
-    `docs/soc2/policies/system-operations-monitoring-and-logging-policy.md`,
-    so misuse or an unexpectedly-invalid link is visible without needing to
-    reconstruct it from anything else.
+    Every use, successful or a rejected, expired or tampered token, writes an audit entry
+    (`services/audit.py::log_event`) per `docs/soc2/policies/system-operations-monitoring-and-logging-policy.md`.
     """
     user_id_str = decode_email_unsubscribe_token(token)
     user: User | None = None
@@ -204,3 +231,30 @@ def unsubscribe(token: str, db: Session = Depends(get_db)):
         cta_url=f"{settings.frontend_base_url}/preferences",
     )
     return HTMLResponse(html)
+
+
+@router.get("/{notification_id}", response_model=NotificationDetailOut)
+def get_notification(notification_id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """One of the caller's notifications, with whether its subject is still reachable.
+
+    This is the page every notification link opens (the bell, the list, the email), so the browser can open the
+    subject, or show the full message when no page applies or the person's access to it has ended. Another
+    person's notification, and one a scoped credential may not see, answer as absent. Registered after the fixed
+    paths above so `preferences` and `unsubscribe` are not read as an id.
+
+    Args:
+        notification_id: The notification.
+
+    Returns:
+        The notification and `subject_available`.
+
+    Raises:
+        HTTPException: 404 when it is not the caller's, or the credential's scope excludes its project.
+    """
+    notification = db.get(Notification, notification_id)
+    if notification is None or notification.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+    _require_in_credential_scope(db, notification)
+    detail = NotificationDetailOut.model_validate(_out(notification).model_dump())
+    detail.subject_available = subject_available(db, current_user.id, notification)
+    return detail

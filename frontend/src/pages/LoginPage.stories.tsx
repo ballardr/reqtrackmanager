@@ -1,10 +1,11 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { AnnouncementNotice, ServerSettings, SignupConfig } from "../api/types";
 import { buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
+import { clearReturnTo, peekReturnTo, rememberReturnTo } from "../utils/returnTo";
 import { LoginPage } from "./LoginPage";
 
 const SERVER_SETTINGS: ServerSettings = {
@@ -27,25 +28,18 @@ function mockBrandingAndSignup(
   });
 }
 
-// Stable mock references reconfigured per-story via `beforeEach`, rather
-// than a fresh `fn()` per story's `decorators` array — Vitest browser mode
-// doesn't fully remount LoginPage between stories in this file, so a
-// per-story `withAuth(null, { login: fn()... })` closure could still be
-// showing a PREVIOUS story's stale resolved/rejected value by the time this
-// story's `play` runs. Reconfiguring the same reference in `beforeEach`
-// (the pattern already used for `api.get` throughout this codebase) avoids
-// that ordering hazard entirely.
+// Stable mock references are reconfigured per story in `beforeEach` instead of a fresh `fn()` in
+// `decorators`: Vitest browser mode does not fully remount LoginPage between stories, so a per-story
+// closure could still return the previous story's resolved or rejected value.
 const loginMock = fn();
 const verify2faMock = fn();
 
 const meta: Meta<typeof LoginPage> = {
   title: "Pages/LoginPage",
   component: LoginPage,
-  // No router decorator at the meta level: `ReauthMessage` below needs a
-  // MemoryRouter carrying route `state`, and story-level decorators
-  // compose WITH (not instead of) meta-level ones — two `<MemoryRouter>`s
-  // would nest, which React Router forbids. Each story that doesn't need
-  // special router state adds its own plain `withRouter("/login")` instead.
+  // No router decorator at the meta level: story decorators compose with meta ones, and `ReauthMessage`
+  // needs a MemoryRouter carrying route `state`; two nested routers are forbidden. Each other story adds
+  // its own `withRouter("/login")`.
   decorators: [withAuth(null, { login: loginMock, verify2fa: verify2faMock })],
 };
 export default meta;
@@ -153,8 +147,7 @@ export const InvalidCredentials: Story = {
   },
 };
 
-/** A 2FA-enrolled account's login returns a challenge token instead of a
- * session — the page switches to the code-entry form. */
+/** A 2FA-enrolled account's login returns a challenge token instead of a session; the page shows the code-entry form. */
 export const TwoFactorChallenge: Story = {
   decorators: [withRouter("/login")],
   beforeEach: () => {
@@ -177,15 +170,102 @@ const withReauthState: Decorator = (Story) => (
   </MemoryRouter>
 );
 
-/** Redirected here after a forced logout (expired token, password changed
- * elsewhere) — App.tsx passes a `message` via router state. `withAuth` is
- * already provided at the meta level; this only adds the router. */
+/** Arrival after a forced logout (expired token, password changed elsewhere): App.tsx passes a `message` in router state. */
 export const ReauthMessage: Story = {
   decorators: [withReauthState],
   beforeEach: () => mockBrandingAndSignup(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText(/signed out/)).toBeInTheDocument();
+  },
+};
+
+/** Login and the page it returns to, as two routes so a story can see where the person ends up. */
+const withReturnRoutes: Decorator = (Story) => (
+  <MemoryRouter initialEntries={["/login"]}>
+    <Routes>
+      <Route path="/login" element={<Story />} />
+      <Route path="/projects/:projectId/requirements" element={<div>Requirements page</div>} />
+      <Route path="/projects" element={<div>Landing page</div>} />
+    </Routes>
+  </MemoryRouter>
+);
+
+async function signIn(canvas: ReturnType<typeof within>) {
+  await userEvent.type(canvas.getByLabelText("Email"), "alex@example.com");
+  await userEvent.type(canvas.getByLabelText("Password"), "correct-password");
+  await userEvent.click(canvas.getByRole("button", { name: "Sign in" }));
+}
+
+/** A page was remembered when sign-in was required: the form adds no text, and signing in returns to that page. */
+export const ReturnsToTheRememberedPage: Story = {
+  decorators: [withReturnRoutes],
+  beforeEach: () => {
+    mockBrandingAndSignup();
+    clearReturnTo();
+    rememberReturnTo("/projects/p1/requirements?status=open");
+    loginMock.mockResolvedValue({ requires2fa: false, user: buildUser({ landing_preference: "overview" }) });
+    return clearReturnTo;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByText(/continue to the page you requested/)).not.toBeInTheDocument();
+    await signIn(canvas);
+    await waitFor(() => expect(canvas.getByText("Requirements page")).toBeInTheDocument());
+    await expect(peekReturnTo()).toBeNull();
+  },
+};
+
+/** Without a remembered page the landing preference applies. */
+export const WithoutARememberedPageUsesTheLandingPreference: Story = {
+  decorators: [withReturnRoutes],
+  beforeEach: () => {
+    mockBrandingAndSignup();
+    clearReturnTo();
+    loginMock.mockResolvedValue({ requires2fa: false, user: buildUser({ landing_preference: "overview" }) });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByText(/continue to the page you requested/)).not.toBeInTheDocument();
+    await signIn(canvas);
+    await waitFor(() => expect(canvas.getByText("Landing page")).toBeInTheDocument());
+  },
+};
+
+/** A remembered path that is not on this site is ignored (open redirect). */
+export const IgnoresAPathOnAnotherSite: Story = {
+  decorators: [withReturnRoutes],
+  beforeEach: () => {
+    mockBrandingAndSignup();
+    clearReturnTo();
+    sessionStorage.setItem("reqtrack:return-to", "//evil.example/phish");
+    loginMock.mockResolvedValue({ requires2fa: false, user: buildUser({ landing_preference: "overview" }) });
+    return clearReturnTo;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await signIn(canvas);
+    await waitFor(() => expect(canvas.getByText("Landing page")).toBeInTheDocument());
+  },
+};
+
+/** The two-factor step returns to the remembered page as well. */
+export const TwoFactorReturnsToTheRememberedPage: Story = {
+  decorators: [withReturnRoutes],
+  beforeEach: () => {
+    mockBrandingAndSignup();
+    clearReturnTo();
+    rememberReturnTo("/projects/p1/requirements");
+    loginMock.mockResolvedValue({ requires2fa: true, challengeToken: "challenge-1" });
+    verify2faMock.mockResolvedValue(buildUser({ landing_preference: "overview" }));
+    return clearReturnTo;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await signIn(canvas);
+    await userEvent.type(await canvas.findByLabelText("Authentication code"), "123456");
+    await userEvent.click(canvas.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(canvas.getByText("Requirements page")).toBeInTheDocument());
   },
 };
 

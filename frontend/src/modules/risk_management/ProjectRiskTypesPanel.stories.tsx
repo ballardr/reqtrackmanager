@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import { withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { PROJECT_ID, RISK_TYPES } from "./riskFixtures";
 import { ProjectRiskTypesPanel } from "./ProjectRiskTypesPanel";
 
@@ -36,8 +36,9 @@ export const AddLocalTypeUsesTheRiskEndpoint: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByPlaceholderText("Project Risk type name"), "Regulatory");
-    await userEvent.click(canvas.getByRole("button", { name: "Add project-only Risk type" }));
+    const dialog = await openAddDialog(canvas, "Add project-only Risk type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Regulatory");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(URL, { name: "Regulatory", display_order: 2 }));
   },
 };

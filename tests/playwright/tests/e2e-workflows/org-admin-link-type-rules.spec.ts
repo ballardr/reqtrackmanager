@@ -6,22 +6,16 @@ import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWO
 installCleanupHook();
 
 /**
- * Job to be done: an org admin decides which kinds of record each link type
- * may join ("Can link from" / "Can link to"), which link types each artefact
- * type may use ("By artefact type"), and can delete a link type that is still
- * in use without losing track of its links: move them to another type, or
- * delete them too behind a type-the-name confirmation.
+ * Job to be done: an org admin decides which kinds of record each link type may join ("Can link from" / "Can link
+ * to"), which link types each artefact type may use ("By artefact type"), and can delete a link type that is in
+ * use without losing its links: move them to another type, or delete them behind a type-the-name confirmation.
  *
- * Covers: restriction pickers show artefact-type *labels* (never the raw
- * `pain_point` key), save at once with a Toast, persist across a reload and
- * clear back to "Any artefact"; the rules tab limits an artefact type (starting
- * from every link type ticked), refuses to empty a rule, enforces the rule on a
- * new link, and removes it after a confirmation; the delete dialog states what
- * depends on the type, disables a replacement that cannot take the links with
- * its reason, and both exits report what happened.
+ * Covers: restriction pickers show artefact-type labels (never the raw `pain_point` key), save at once with a
+ * Toast and persist across reload; the rules tab limits an artefact type, refuses to empty a rule and enforces it
+ * on a new link; the delete dialog states what depends on the type and disables a replacement that cannot take the
+ * links, giving its reason.
  *
- * Each test builds its own organisation, so none depends on state left by
- * another test or an earlier run.
+ * Each test builds its own organisation, so none depends on state left by another test or an earlier run.
  */
 
 const apiBaseUrl = "http://localhost:8000";

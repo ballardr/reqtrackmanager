@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
-import { buildNotification } from "../testing/storybook-helpers";
-import { getArtefactListPath, getArtefactPath, getArtefactStatusLabel, getNotificationLink, getSearchHitPath, isArtefactInactive } from "./artefactPaths";
+import { getArtefactListPath, getArtefactPath, getArtefactStatusLabel, getSearchHitPath, isArtefactInactive } from "./artefactPaths";
 import { installedModules } from "./registry";
 import registeredArtefactTypes from "./registeredArtefactTypes.json";
 
@@ -78,23 +77,6 @@ export const ResolvesInactiveRecords: Story = {
     await expect(isArtefactInactive("stakeholder", "retired", false)).toBe(true);
     await expect(isArtefactInactive("not_a_type", "superseded", false)).toBe(false);
     await expect(isArtefactInactive("decision", null, false)).toBe(false);
-  },
-};
-
-/** A notification about a module-owned record opens that record via the module's `artefactPaths`; core types keep their routes. */
-export const ResolvesNotificationLinks: Story = {
-  render: () => <div>Notification links</div>,
-  play: async () => {
-    const link = (entity_type: string | null, project_id: string | null = "p-1", entity_id: string | null = "x-1") =>
-      getNotificationLink(buildNotification({ entity_type, entity_id, project_id }));
-    await expect(link("risk")).toBe("/projects/p-1/modules/risk_management/risks/x-1");
-    await expect(link("requirement")).toBe("/projects/p-1/requirements/x-1");
-    await expect(link("change_request")).toBe("/projects/p-1/change-requests/x-1");
-    await expect(link("not_a_type")).toBe("/projects/p-1");
-    await expect(link("risk", null)).toBeNull();
-    // A background report opens its own page, for a project run and for an organisation-wide run (no project).
-    await expect(link("generated_report", "p-1", "run-1")).toBe("/report-runs/run-1");
-    await expect(link("generated_report", null, "run-1")).toBe("/report-runs/run-1");
   },
 };
 

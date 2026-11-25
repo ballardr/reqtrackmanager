@@ -196,7 +196,7 @@ test.describe("project history / metadata separated from records", () => {
  * The period is the person's own wall-clock time, converted to UTC instants in the browser. Each case runs in a
  * browser whose time zone is fixed, so the instants sent to the server are exact: 09:00 at UTC+11 (Sydney in
  * summer), 23:00 at UTC-8 (Los Angeles in winter), and the same 09:00 a week either side of Sydney's daylight
- * saving change (5 April 2026), which differ by an hour in UTC.
+ * saving change, which differ by an hour in UTC.
  */
 const BOUNDARY_CASES: { zone: string; since: string; until: string; sinceUtc: string; untilUtc: string }[] = [
   { zone: "Australia/Sydney", since: "2026-01-15T09:00", until: "2026-01-15T17:00", sinceUtc: "2026-01-14T22:00:00.000Z", untilUtc: "2026-01-15T06:00:59.999Z" },

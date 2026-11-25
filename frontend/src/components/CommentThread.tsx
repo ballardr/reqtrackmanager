@@ -5,8 +5,9 @@ import { FileDetailsToggle } from "./FileDetailsPanel";
 import { fileUrl } from "../api/client";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import type { Comment } from "../api/types";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FileUploadTrigger } from "./FileUploadTrigger";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { MarkdownView } from "./MarkdownView";
 import { t } from "../i18n/strings";
 import { ItemRow } from "./ItemRow";
 import { RemovableChip } from "./RemovableChip";
@@ -14,15 +15,12 @@ import { RemovableChip } from "./RemovableChip";
 const strings = t();
 
 /**
- * Discussion thread shared by requirement and change-request detail pages
- * (mockup: author name, timestamp, and a heart reaction count per comment).
+ * Discussion thread shared by requirement and change-request detail pages (author, timestamp and a heart reaction
+ * count per comment).
  *
- * Attachments are only ever added while composing a new comment or editing
- * your own existing one — never as a standalone action against an
- * already-posted comment — matching the backend's author-only enforcement
- * on the underlying upload/remove endpoints. A comment shows "(edited)"
- * once `edited_at` is set; only the comment's own author sees the Edit
- * control at all (`currentUserId`).
+ * Attachments are added only while composing a new comment or editing one's own, never against a posted comment,
+ * matching the backend's author-only upload and remove endpoints. A comment shows "(edited)" once `edited_at` is
+ * set; only its author sees Edit (`currentUserId`).
  */
 export function CommentThread({
   comments,
@@ -113,7 +111,7 @@ export function CommentThread({
 
             {isEditing ? (
               <div className="stack" style={{ gap: "var(--space-2)" }}>
-                <AutoGrowTextarea rows={2} value={editBody} onChange={setEditBody} aria-label="Edit comment" />
+                <MarkdownEditor simple value={editBody} onChange={setEditBody} ariaLabel="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -148,7 +146,7 @@ export function CommentThread({
               </div>
             ) : (
               <>
-                <div>{c.body}</div>
+                <MarkdownView text={c.body} />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -207,12 +205,9 @@ export function CommentThread({
             </>
           }
         >
-          <input
-            className="input"
-            placeholder={strings.requirements.addComment}
-            aria-label={strings.requirements.addComment}
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
+          <MarkdownEditor
+            simple rows={1} value={newComment} onChange={setNewComment} ariaLabel={strings.requirements.addComment}
+            textareaProps={{ placeholder: strings.requirements.addComment }}
           />
         </ItemRow>
         {pendingFiles.length > 0 && (

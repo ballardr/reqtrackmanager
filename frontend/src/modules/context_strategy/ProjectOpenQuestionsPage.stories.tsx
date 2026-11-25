@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
-import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { ProjectOpenQuestionsPage } from "./ProjectOpenQuestionsPage";
 import type { OpenQuestion } from "./types";
 import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
@@ -47,6 +47,7 @@ const meta: Meta<typeof ProjectOpenQuestionsPage> = {
         `/projects/${PROJECT_ID}/modules/context_strategy/open-questions${context.parameters.query ?? ""}`,
         "/projects/:projectId/modules/context_strategy/open-questions",
       )(Story, context),
+    withStatefulAuth(buildUser()),
     withToast(),
   ],
 };
@@ -63,6 +64,20 @@ export const ListsOpenQuestions: Story = {
     await expect(canvas.getByText("Resolved long ago")).toBeInTheDocument();
     await expect(canvas.getByRole("columnheader", { name: "Code" })).toBeInTheDocument();
     await expect(canvas.getAllByText(/OQ-\d{3}/).length).toBeGreaterThan(0);
+  },
+};
+
+/** The question cell shows the words without marks and draws an equation, never the TeX or the marks. */
+export const QuestionCellShowsPlainWordsWithEquationsDrawn: Story = {
+  beforeEach: () => mockPageApis([question({ id: "oq-eq", question: "Is the **peak** load \\(\\sigma = F/A\\) within limits?" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvasElement.querySelector(".markdown-summary")).not.toBeNull());
+    const cell = canvasElement.querySelector<HTMLElement>(".markdown-summary") as HTMLElement;
+    await expect(cell.textContent).toContain("Is the peak load");
+    await expect(cell.textContent).not.toMatch(/\*|\\\(/);
+    await expect(cell.querySelector(".katex")).not.toBeNull();
+    await expect(canvas.queryByText(/\*\*peak\*\*/)).not.toBeInTheDocument();
   },
 };
 
@@ -157,7 +172,7 @@ export const ExportCarriesThePageFilters: Story = {
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/open_question/export?open_only=true"));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/open_question/export?open_only=true&sort=code&order=asc"));
   },
 };
 
@@ -167,5 +182,24 @@ export const QuestionHeaderSortsTheOpenQuestions: Story = {
   play: async ({ canvasElement }) => {
     const table = await within(canvasElement).findByRole("table");
     await expectHeaderOrdersText(table, "Question");
+  },
+};
+
+/** Due is on by default; the column chooser hides it and the reset shows it again. */
+export const DueColumnIsOptionalAndOnByDefault: Story = {
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockPageApis(QUESTIONS),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Open Questions" });
+    for (const name of ["Question", "Code", "Priority", "Status", "Due"]) {
+      await expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const dialog = await screen.findByRole("dialog", { name: "Columns" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Due" }));
+    await expect(within(table).queryByRole("columnheader", { name: "Due" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show the default columns" }));
+    await expect(within(table).getByRole("columnheader", { name: "Due" })).toBeInTheDocument();
   },
 };

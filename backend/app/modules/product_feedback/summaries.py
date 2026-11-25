@@ -1,22 +1,11 @@
 """
 Module: modules.product_feedback.summaries
 
-The `ArtefactSummaryProvider` for the `enhancement_request` artefact type, so core (the link graph, the
-"Add a link" finder) and other modules can label, status-badge and visibility-check a request without
-importing its models.
-
-Responsibilities:
-- Build an `ArtefactSummary` (`ENH-001 title`, status, archived flag) from a request's current version, with
-  a `status` facet for the finder.
-- Offer a one-query batch lookup scoped to a viewing project.
-
-Design decisions:
-- A project sees only its own requests. An organisation's inbox request has no project, so it is never offered
-  as a project's link target (its `project_id` is `None` and `organization_id` is set).
-- The current version (`valid_to IS NULL`) supplies label and status.
-
-Dependencies: this module's models and labels; `modules.registry` for the summary dataclasses;
-`services.summary_facets`.
+The `ArtefactSummaryProvider` for `enhancement_request`: an `ArtefactSummary`
+(`ENH-001 title`, status, archived flag, `status` facet) from the current
+version, with a one-query batch lookup for a viewing project. A project sees
+only its own requests; an inbox request is never a link target.
+Dependencies: this module's models; `modules.registry`; `services.summary_facets`.
 """
 
 from __future__ import annotations

@@ -1,19 +1,16 @@
 /**
  * Module: api/scoring
  *
- * Types and calls for the generic scoring-matrix API (Context &
- * Strategy). A module registers a scoring scheme (axes with
- * weighted levels, models, default bands) on the backend; these calls read
- * a scheme's effective configuration for an org or project and edit it.
- * Core code only ever addresses a scheme by its key — the module that owns
- * it passes that key into the shared components (`ScoringSchemeEditor`,
- * `ProjectScoringSettings`).
+ * Types and calls for the generic scoring-matrix API (Context & Strategy). A module
+ * registers a scoring scheme (axes with weighted levels, models, default bands) on the
+ * backend; these calls read a scheme's effective configuration for an org or project and
+ * edit it. Core code addresses a scheme only by its key, which the owning module passes
+ * into the shared components (`ScoringSchemeEditor`, `ProjectScoringSettings`).
  *
- * Score maths mirror `backend/app/services/scoring.py`: a model's score is
- * the product of its axes' level weights; bands use the score normalised by
- * the model's maximum possible score. A two-axis model may also carry
- * explicit per-cell ratings (`ScoringCellRating`), which win over the
- * thresholds for their cell only.
+ * Score maths mirror `backend/app/services/scoring.py`: a model's score is the product of
+ * its axes' level weights; bands use the score normalised by the model's maximum possible
+ * score. A two-axis model may carry explicit per-cell ratings (`ScoringCellRating`), which
+ * win over the thresholds for their cell only.
  */
 import { api } from "./client";
 import type { BadgeTone } from "./types";

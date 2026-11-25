@@ -4,8 +4,7 @@ Revision ID: 0096
 Revises: 0095
 Create Date: 2026-10-18
 
-Adds `change_requests.unique_code` (unique per project); replaces the per-export `CR-n` a project
-export used to invent.
+Adds `change_requests.unique_code` (unique per project); the project export carries it as the record's code.
 Existing rows are numbered per project in the order they were created and the project's sequence
 counter is set past the highest number, so a code is never reused. Guarded throughout: a database
 built from the current models already has the columns.

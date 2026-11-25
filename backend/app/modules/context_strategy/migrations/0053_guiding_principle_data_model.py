@@ -4,26 +4,18 @@ Revision ID: 0053
 Revises: 0052
 Create Date: 2026-09-28
 
-Adds the five tables backing Context & Strategy's Guiding Principle data model,
-a structural mirror of migration 0048's `strategies`/
-`strategy_versions`/`strategy_comments`/`strategy_comment_files`/
-`strategy_files` set (identity+version split, org/project `scope`
-discriminator, full version-history requirement) for the
-Guiding Principle artefact:
+Adds the five tables of the Guiding Principle data model, mirroring migration 0048's strategy tables (identity and version
+split, organisation or project `scope`, full version history):
 
-- `guiding_principles` (identity row: `scope` discriminator, exactly one of
-  `organization_id`/`project_id` set, enforced by a CHECK constraint).
-- `guiding_principle_versions` (temporal content snapshot — §8.3's field set: `name`, `principle_statement`, `rationale`, `priority`,
-  `status`, `owner_id` — no `type` field, no `time_horizon`/`expected_
-  outcomes`/`constraints`/`measures_of_success` the way `strategy_versions`
-  has).
-- `guiding_principle_comments` / `guiding_principle_comment_files` /
-  `guiding_principle_files` — this module's own module-local comment-thread
-  and attachment tables, mirroring `strategy_comments`/`strategy_comment_
-  files`/`strategy_files`.
+- `guiding_principles`: the identity row (`scope` discriminator; a CHECK keeps exactly one of `organization_id` and
+  `project_id`).
+- `guiding_principle_versions`: the temporal content snapshot (§8.3: `name`, `principle_statement`, `rationale`,
+  `priority`, `status`, `owner_id`; no `type`, `time_horizon`, `expected_outcomes`, `constraints` or
+  `measures_of_success`).
+- `guiding_principle_comments`, `guiding_principle_comment_files` and `guiding_principle_files`: the module-local comment
+  and attachment tables.
 
-No backfill needed — this is a brand-new artefact type with no pre-existing
-rows anywhere.
+A new artefact type, so no backfill.
 """
 
 from collections.abc import Sequence

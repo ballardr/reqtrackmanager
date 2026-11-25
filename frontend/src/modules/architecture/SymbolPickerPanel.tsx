@@ -1,24 +1,21 @@
 /**
  * Module: modules/architecture/SymbolPickerPanel
  *
- * The panel the symbol picker opens: a name filter above, the chosen view of the symbols in the middle and the view buttons
- * below (List, Gallery and, when the person may change the library, Upload), as an emoji picker lays them out. It owns the
- * filter text and nothing else: the view, the choice and the upload result belong to the picker.
- *
- * Design decisions:
- * - The panel has no width of its own: the popover is as wide as the field it opened from (never under its floor), so a
- *   fixed minimum here ran out of the bubble, the card and the window in a narrow Selection card.
- * - The filter is the first control, so the popover's own focus management puts the focus there on opening and a person can
- *   type at once; it is hidden in the Upload view, where it would filter nothing.
- * - The Upload view is only offered when `scope` is given, so a person who may not upload sees no such button (not a
- *   disabled one).
- *
+ * The panel the symbol picker opens: a name filter above, the chosen view (List, Gallery and, when the person may change the
+ * library, Upload) in the middle and the view buttons below. It owns the filter text only; the view, the choice and the upload
+ * result belong to the picker.
+ * - No width of its own: the popover is as wide as its field, so a fixed minimum would overflow a narrow card.
+ * - The filter is the first control, so the popover's focus management lets a person type at once; it is hidden in Upload.
+ * - Upload is offered only when `scope` is given, so a person who may not upload sees no such button.
+ * - The library link opens in a new tab so the form being filled in is kept; it is a plain link because a picker is also
+ *   drawn where no router is mounted (a story, a dialog opened from a canvas).
  * Dependencies: `SymbolGallery`, `SymbolList`, `SymbolUploadField`, `useSymbolUpload`.
  */
 import { LayoutGrid, List, Upload } from "lucide-react";
 import { useId, useState } from "react";
 
 import { InlineTextInput } from "../../components/FormFields";
+import { orgResourcesPath } from "../orgResources";
 import { ToggleButton } from "../../components/ToggleButton";
 import type { TypesScope } from "./ArchitectureTypesPanel";
 import { ARCHITECTURE_HELP } from "./help";
@@ -30,6 +27,13 @@ import { useSymbolUpload } from "./useSymbolUpload";
 
 /** What the panel shows: the names, the drawings or the upload control. */
 export type SymbolPickerView = "list" | "gallery" | "upload";
+
+/** The address of the library's own page for a library owner. */
+function libraryPath(scope: TypesScope): string {
+  return scope.kind === "project"
+    ? `/projects/${scope.projectId}/admin/architecture/architecture-symbols`
+    : orgResourcesPath(scope.organizationId, "architecture-symbols");
+}
 
 /** The Upload view: the file control with its own upload state. */
 function UploadView({ scope, onUploaded }: { scope: TypesScope; onUploaded: (symbol: ArchitectureSymbol) => void }) {
@@ -90,6 +94,11 @@ export function SymbolPickerPanel({
           </ToggleButton>
         )}
       </div>
+      {scope && (
+        <a href={libraryPath(scope)} target="_blank" rel="noopener noreferrer" style={{ alignSelf: "center", fontSize: "0.85rem" }}>
+          Manage symbols (opens in a new tab)
+        </a>
+      )}
     </div>
   );
 }

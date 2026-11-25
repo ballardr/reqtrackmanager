@@ -1,42 +1,27 @@
 """
 Module: services.report_pack_run
 
-Runs a report pack: every entry is produced as the caller and the files are returned as one zip with a manifest.
+Runs a report pack: every entry is produced as the caller and returned as one zip with a manifest.
 
 Responsibilities:
-- `run_project_pack` / `run_organization_pack`: run a pinned pack version for a project, or across the projects the
-  caller can read, with one set of pack variable values.
-- `preview_*`: the same resolution and evaluation without rendering, storing or recording anything, so a person can
-  see how many records each entry would include before they download.
-- `build_zip`: the files plus `manifest.json`, with flat server-built names.
-- `record_pack_run`: one `GeneratedReport` row per included entry, sharing a `pack_run_id`.
+- `run_project_pack` / `run_organization_pack` (a pinned version, with one set of variable values); `preview_*` (the same
+  resolution without rendering, storing or recording, so entry record counts are visible first); `build_zip` (files plus
+  `manifest.json`, flat server-built names); `record_pack_run` (one `GeneratedReport` per entry sharing a `pack_run_id`).
 
 Design decisions:
-- **Each entry goes through the report's own run path as the caller.** A layout entry is `custom_report_run`'s
-  project or organisation run, a module report entry `report_module_run`'s, so every entry keeps its own gate,
-  caps, cell tones and record codes; the pack adds no visibility rule. A record the caller cannot read is counted
-  and never named inside the entry, exactly as in a single run.
-- **An entry that cannot run is skipped and listed, never silently dropped** (the layout is not reachable, was
-  hidden by the project, does not offer the format, its module is off, the caller lacks the role, its variables
-  cannot be set). The manifest says which and why in words that carry no record content. A pack with no runnable
-  entry is an error (`NothingToRunError`).
-- **Variables.** The pack declares variables; a layout entry receives the pack variable of the same name, type and
-  list-ness, or the value the entry fixes itself, else the layout's own default. Values are checked by the layout's
-  declarations (`report_variables.resolve_values`), so a pack value cannot bypass a layout's rules. They narrow
-  what a report shows and are not access control: the manifest records the values used and the preview shows the
-  counts, so a wrong choice is visible before anything is sent on.
-- **Names.** The zip holds flat files `NN-<stem>.<ext>` (`NN` is the entry's position, so names are unique and
-  ordered); the stem is the entry's `filename` template, else its layout's `file_name`, else its layout or report
-  name, filled in and reduced to letters, digits and `._- ` (`services.report_file_names`), so a name from user
-  text or a record value can never be a path. The zip itself is named by the pack's `file_name`, else the
-  organisation's default, else scope then pack name.
-- **Bounded.** At most `MAX_ENTRIES` entries, `MAX_ZIP_BYTES` of output and `MAX_PACK_SECONDS` of wall time for the
-  whole pack (each layout entry also keeps its own caps). Going over is `PackLimitError`; nothing partial is returned
-  or recorded.
-- The manifest holds names, keys, counts, formats, variable values and UTC times; never a cell value.
+- Each entry uses the report's own run path as the caller (`custom_report_run`, `report_module_run`), so it keeps its
+  gate, caps, tones and record codes; the pack adds no visibility rule, and an unreadable record is counted, not named.
+- An entry that cannot run is skipped and listed with a reason that carries no record content, never silently dropped;
+  a pack with no runnable entry raises `NothingToRunError`.
+- Variables follow the layout's declarations (`report_variables.resolve_values`), so a pack value cannot bypass a rule;
+  they narrow output and are not access control, and the manifest records them.
+- Files are `NN-<stem>.<ext>` (position-numbered, unique); the stem is the entry's `filename`, else its layout's
+  `file_name`, else its name, reduced by `report_file_names`, so user text can never be a path. The zip is named by the
+  pack's `file_name`, else the organisation default, else scope then pack name.
+- Bounded by `MAX_ENTRIES`, `MAX_ZIP_BYTES` and `MAX_PACK_SECONDS`; exceeding raises `PackLimitError` and returns or
+  records nothing. The manifest holds names, keys, counts, formats, variable values and UTC times, never a cell value.
 
-Dependencies: `services.custom_report_run`, `services.report_module_run`, `services.report_pack_scope`,
-`services.report_layout_scope`, `services.report_variables`.
+Dependencies: `custom_report_run`, `report_module_run`, `report_pack_scope`, `report_layout_scope`, `report_variables`.
 """
 
 from __future__ import annotations

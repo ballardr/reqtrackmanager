@@ -4,25 +4,20 @@ Module: services.report_placements
 Where each report appears in the Reports picker for one organisation or project, and whether it appears at all.
 
 Responsibilities:
-- Name every report by a stable key (`report:<module>.<key>`, `layout:<id>`, `pack:<id>`).
-- Store and resolve placement overrides: an organisation's, and a project's over its ancestors' and the organisation's,
-  nearest first, per attribute (`folder`, `hidden`), the way an action type falls back to its nearest ancestor's.
-- Apply the resolved placements to the report catalogue (a folder for each entry, hidden module reports left out).
-- List what a scope's managers can place (`candidates`), hidden ones included, so a hidden report can be restored.
+- Key every report (`report:<module>.<key>`, `layout:<id>`, `pack:<id>`); store and resolve placement overrides
+  (organisation's, then a project's over its ancestors' and the organisation's, nearest first, per `folder`/`hidden`).
+- Apply them to the report catalogue; `candidates` lists what a scope's managers can place, hidden ones included.
 
 Design decisions:
-- **Tidying, not access.** A placement changes what the picker lists, never what a person may run: a hidden report
-  still answers on its route and the run still checks the caller's role and module state. The documentation says so.
-- **Layouts and packs keep their own hide.** A shared layout or pack is hidden per project through the definition
-  suppression mechanism (and restored there); a placement may only *move* it. Only module and platform reports are
-  hidden by a placement, since nothing else hides them.
-- **Default folders** are decided here, once: a module report files under its module's name, the platform's reports
-  under "Platform", an unfiled layout under "Custom reports" and an unfiled pack under "Report packs". An author's
-  `folder` replaces the default; a placement replaces both.
-- Every change is audited with the key and the folder/hidden values (configuration, never record content).
+- Tidying, not access: a placement changes what the picker lists, never what a person may run; a hidden report still
+  answers on its route and the run checks role and module state.
+- Layouts and packs keep their own hide (definition suppression); a placement only moves them. Only module and
+  platform reports are hidden by a placement.
+- Default folders are decided once here: a module report under its module name, platform reports under "Platform",
+  unfiled layouts under "Custom reports", unfiled packs under "Report packs"; an author's `folder`, then a placement, win.
+- Every change is audited with the key and folder/hidden values, never record content.
 
-Dependencies: `models.report_placement`, `services.report_folders`, `services.report_layout_scope`,
-`services.report_pack_scope`, `services.report_framework` (the catalogue).
+Dependencies: `models.report_placement`, `report_folders`, `report_layout_scope`, `report_pack_scope`, `report_framework`.
 """
 
 from __future__ import annotations

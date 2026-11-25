@@ -5,10 +5,8 @@ import { ToastProvider } from "../src/context/ToastContext";
 import "../src/styles/theme.css";
 
 /**
- * Applies the toolbar's selected theme (U-U-01: light and dark are both
- * first-class) the same way the real app does — a `data-theme` attribute
- * on <html>, read by src/styles/theme.css's CSS variables — so every story
- * renders with the actual product palette, not Storybook's own chrome.
+ * Applies the toolbar's selected theme (U-U-01) as the app does, through a `data-theme`
+ * attribute on <html> read by src/styles/theme.css, so stories use the product palette.
  */
 const withTheme: Decorator = (Story, context) => {
   const theme = context.globals.theme ?? "light";
@@ -32,7 +30,28 @@ const withToasts: Decorator = (Story) => (
   </ToastProvider>
 );
 
+/**
+ * A Markdown field opens in Visual by default (a per-person choice kept in `localStorage`); every story starts from
+ * Write, and a story testing the Visual default or a remembered choice sets its own in its `beforeEach`, which runs
+ * after this one.
+ */
+const MARKDOWN_VIEW_KEY = "reqtrack.markdownEditorView";
+
 const preview: Preview = {
+  beforeEach: () => {
+    try {
+      localStorage.setItem(MARKDOWN_VIEW_KEY, "write");
+    } catch {
+      // Blocked storage: the editor's own default applies.
+    }
+    return () => {
+      try {
+        localStorage.removeItem(MARKDOWN_VIEW_KEY);
+      } catch {
+        // Nothing to clean up.
+      }
+    };
+  },
   parameters: {
     controls: {
       matchers: {

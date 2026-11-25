@@ -5,7 +5,29 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import { Badge } from "./Badge";
 import { RecordHeader } from "./RecordHeader";
 import { ReturnLink } from "./ReturnLink";
+import { buildApprovalStatus } from "../testing/approvalSeparationFixtures";
 import { orphanedControlViolations } from "../testing/orphanedControls";
+import { STRESS_TEXT, expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
+
+/**
+ * Asserts the code follows the title: on the title's last line after its last word, or on the line below it. Never beside
+ * the actions on the first line of a title that wraps.
+ */
+async function expectCodeFollowsTitle(canvasElement: HTMLElement, code: string) {
+  const heading = canvasElement.querySelector<HTMLElement>(".record-header__heading")!;
+  const codeEl = within(canvasElement).getByText(code, { exact: false }).closest<HTMLElement>(".record-header__code")!;
+  const range = document.createRange();
+  range.selectNodeContents(heading);
+  const lines = Array.from(range.getClientRects());
+  const last = lines[lines.length - 1];
+  const c = codeEl.getBoundingClientRect();
+  const afterLastWord = c.top < last.bottom && c.bottom > last.top && c.left >= last.right - 1;
+  const onTheNextLine = c.top >= last.bottom - 1;
+  await expect(afterLastWord || onTheNextLine, `code at ${c.left},${c.top}; title ends ${last.right},${last.bottom}`).toBe(true);
+  const row = canvasElement.querySelector<HTMLElement>(".item-row")!;
+  await expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1);
+}
 
 const meta: Meta<typeof RecordHeader> = {
   title: "Components/RecordHeader",
@@ -20,7 +42,7 @@ const meta: Meta<typeof RecordHeader> = {
     back: { to: "/personas", label: "Personas" },
     badges: <><Badge>Project</Badge><Badge tone="accent">Active</Badge></>,
     onEdit: fn(),
-    transitions: <button className="btn btn-danger">Retire</button>,
+    lifecycle: { steps: [{ key: "draft", label: "Draft" }, { key: "approved", label: "Approved" }], current: "draft", promote: { to: "approved", onPromote: fn() } },
     actions: [{ label: "Archive", danger: true, onSelect: fn() }],
   },
 };
@@ -33,7 +55,7 @@ export const Default: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Edit" }));
     await expect(args.onEdit).toHaveBeenCalled();
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Next step: Approved" })).toBeInTheDocument();
     // The header draws the back arrow; the page passes only the list's plural name.
     await expect(canvas.getByRole("link", { name: "← Personas" })).toHaveAttribute("href", "/personas");
     await userEvent.click(canvas.getByRole("button", { name: "Persona actions" }));
@@ -90,7 +112,7 @@ export const SingleActionStillUsesTheMenu: Story = {
 
 /** No permissions: no Edit, no menu, no empty kebab. */
 export const NoPermissions: Story = {
-  args: { onEdit: undefined, actions: [false, null], transitions: undefined },
+  args: { onEdit: undefined, actions: [false, null], lifecycle: undefined },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
@@ -98,11 +120,74 @@ export const NoPermissions: Story = {
   },
 };
 
-/** A very long title wraps inside its own box; Edit and the menu stay on the title row. */
+/** A very long title wraps inside its own box; Edit and the menu stay on the title row, and the code follows the title's last word. */
 export const LongTitle: Story = {
   args: { title: "An exceptionally long record title ".repeat(8) },
   play: async ({ canvasElement }) => {
     await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+  },
+};
+
+/** A long unbroken title breaks inside its box; the code stays after it. */
+export const LongUnbrokenTitle: Story = {
+  args: { title: STRESS_TEXT.word.repeat(3) },
+  play: async ({ canvasElement }) => {
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+  },
+};
+
+/** A title with no actions still carries the code after its last word. */
+export const LongTitleWithoutActions: Story = {
+  args: { title: "An exceptionally long record title ".repeat(8), onEdit: undefined, actions: [], lifecycle: undefined },
+  play: async ({ canvasElement }) => {
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+  },
+};
+
+/** A long project-qualified code stays whole and inside the row, after a long title. */
+export const LongCodeWithLongTitle: Story = {
+  args: { title: "An exceptionally long record title ".repeat(4), code: "REQ-000123", codeOwner: "ACME-ENGINEERING-PLATFORM" },
+  play: async ({ canvasElement }) => {
+    await expectCodeFollowsTitle(canvasElement, "ACME-ENGINEERING-PLATFORM-REQ-000123");
+  },
+};
+
+/** The code and a title switcher flow after the title, in that order. */
+export const LongTitleWithSwitcher: Story = {
+  args: { title: "An exceptionally long record title ".repeat(4), titleAddon: <button className="btn btn-icon" aria-label="Switch record">⇅</button> },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+    await expect(canvas.getByText("PER-001").compareDocumentPosition(canvas.getByRole("button", { name: "Switch record" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  },
+};
+
+/** A phone-width column: the title wraps over several lines and the code still follows it. */
+export const LongTitleNarrow: Story = {
+  args: { title: "An exceptionally long record title ".repeat(4) },
+  decorators: [(Story) => <div style={{ maxWidth: 320 }}><Story /></div>],
+  play: async ({ canvasElement }) => {
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+    await expectCodeFollowsTitle(canvasElement, "PER-001");
+  },
+};
+
+export const LongTitleDark: Story = { ...LongTitle, globals: { theme: "dark" } };
+
+/** Short and long text at the same width: the actions keep their place and nothing leaves the row. */
+export const LongText: Story = {
+  render: (args) => (
+    <TextStress
+      width={640}
+      render={(long) => (
+        <RecordHeader {...args} title={stressText(long, "Ada Lovelace")} code={long ? STRESS_TEXT.code : "PER-001"} />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
   },
 };
 
@@ -118,34 +203,56 @@ export const ManyBadges: Story = {
 
 export const DarkTheme: Story = { globals: { theme: "dark" } };
 
-/** With `tagsInline` the tags sit on the badge line after the version, not on a line of their own. */
-export const TagsInlineBesideTheVersion: Story = {
-  args: { tagsInline: true, tags: <span>Safety</span> },
+/** Tags, components and references sit on the line under the title, after the badges and the version. */
+export const TagsAfterTheBadgesAndVersion: Story = {
+  args: { tags: <span>Safety</span> },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const line = canvas.getByText("Version 3").parentElement;
+    const line = canvas.getByText("Version 3").parentElement!;
     await expect(line).toContainElement(canvas.getByText("Safety"));
     await expect(line).toContainElement(canvas.getByText("Active"));
+    await expect(canvas.getByText("Version 3").compareDocumentPosition(canvas.getByText("Safety")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   },
 };
 
-/** Tags alone still open the badge line (a record with no badges and no version). */
-export const TagsInlineWithNoBadgesOrVersion: Story = {
-  args: { tagsInline: true, tags: <span>Safety</span>, badges: undefined, version: undefined },
-  play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText("Safety").closest(".row")).not.toBeNull();
-  },
-};
-
-/** A `stateMenu` sits beside Edit in the title row, before it, and counts as a control by itself. */
-export const StateMenuBesideEdit: Story = {
-  args: { stateMenu: <button className="btn">Change status</button> },
+/** A record whose latest approval was given by its creator carries the Self-approved marker on the badge line. */
+export const SelfApprovedMarker: Story = {
+  args: { approval: buildApprovalStatus({ self_approved: true, approved_by_name: "Ada Lovelace", approved_at: "2026-11-24T09:00:00Z" }) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const state = canvas.getByRole("button", { name: "Change status" });
-    const edit = canvas.getByRole("button", { name: "Edit" });
-    await expect(state.parentElement).toBe(edit.parentElement);
-    await expect(state.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await expect(canvas.getByText("Self-approved").closest(".record-header__line")).toContainElement(canvas.getByText("Active"));
+  },
+};
+
+/** A record with no badges and no version still gets the line for its tags. */
+export const TagsWithNoBadgesOrVersion: Story = {
+  args: { tags: <span>Safety</span>, badges: undefined, version: undefined },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Safety").closest(".record-header__line")).not.toBeNull();
+  },
+};
+
+/** A `tags` element that draws nothing (a record with none that the viewer cannot add to) and no badges leave no line and no gap. */
+export const EmptyTagsLeaveNoLine: Story = {
+  args: { tags: <></>, badges: undefined, version: undefined },
+  play: async ({ canvasElement }) => {
+    const line = canvasElement.querySelector<HTMLElement>(".record-header__line")!;
+    await expect(getComputedStyle(line).display).toBe("none");
+  },
+};
+
+/** The lifecycle track runs under the title, full width, and Promote is also the first row of the actions menu. */
+export const LifecycleTrackAndPromoteRow: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const track = canvasElement.querySelector<HTMLElement>(".lifecycle-track")!;
+    const header = canvasElement.querySelector<HTMLElement>(".record-header")!;
+    await expect(Math.abs(track.getBoundingClientRect().right - header.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
+    await userEvent.click(canvas.getByRole("button", { name: "Persona actions" }));
+    const first = within(document.body).getAllByRole("menuitem")[0];
+    await expect(first).toHaveTextContent("Promote to Approved");
+    await userEvent.click(first);
+    await expect(args.lifecycle?.promote?.onPromote).toHaveBeenCalled();
   },
 };
 

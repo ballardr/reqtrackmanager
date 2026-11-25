@@ -1,18 +1,11 @@
 """
 Module: modules.risk_management.schemas
 
-Pydantic request/response schemas for the Risk Management module's project
-router: Risk create/update/out, version history, derived ratings and comments.
-Type-vocabulary schemas are the shared ones in `app.schemas.type_vocabulary`.
-
-`RiskUpdate` is partial: only fields present in the request body change, so a
-nullable field (type, strategy, any level, owner, review date) can be cleared
-by sending an explicit `null`. `status` is not editable here (the lifecycle
-transition endpoint owns it).
-
-`owner` is a principal: a user, an organisation group or a project group.
-Requests send a `PrincipalRef` (`{type, id}`; null clears it) and responses
-return a resolved `PrincipalOut` (`_shared.owner_labels`).
+Pydantic schemas for the project router: Risk create/update/out, versions,
+derived ratings and comments (type-vocabulary schemas are shared). `RiskUpdate`
+is partial (an explicit `null` clears a nullable field); `status` changes only
+through the transition endpoint. `owner` is a principal: a `PrincipalRef` in,
+a `PrincipalOut` out (`_shared.owner_labels`).
 """
 
 from __future__ import annotations

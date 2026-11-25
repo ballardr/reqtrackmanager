@@ -7,7 +7,8 @@
  */
 import { useCallback, useState } from "react";
 
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { projectConnectionApi } from "./api";
@@ -20,7 +21,7 @@ import type { ConnectionFieldValues } from "./types";
  * @returns `error` (the last refusal, or null), `clearError`, and `create`, which the form's `onSave` calls.
  */
 export function useCreateConnection(projectId: string, onCreated: (id: string) => void) {
-  const { showToast } = useToast();
+  const announceCreated = useCreatedToast(projectId, "architecture_connection");
   const commitQuickLinks = useCommitQuickLinks(projectId, "architecture_connection");
   const commitTags = useCommitTags(projectId, "architecture_connection");
   const [error, setError] = useState<string | null>(null);
@@ -28,13 +29,13 @@ export function useCreateConnection(projectId: string, onCreated: (id: string) =
     setError(null);
     try {
       const created = await projectConnectionApi(projectId).create({ ...values, activate: extras.activate });
-      showToast("Connection created.");
+      announceCreated("Connection", created);
       await commitQuickLinks(created.id, extras.quickLinks);
       await commitTags(created.id, extras.tags);
       onCreated(created.id);
     } catch (err) {
       setError(toErrorMessage(err, "Could not create the connection."));
     }
-  }, [projectId, showToast, commitQuickLinks, commitTags, onCreated]);
+  }, [projectId, announceCreated, commitQuickLinks, commitTags, onCreated]);
   return { error, clearError: useCallback(() => setError(null), []), create };
 }

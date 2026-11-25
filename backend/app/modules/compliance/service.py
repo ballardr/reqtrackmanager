@@ -1,87 +1,36 @@
 """
 Module: modules.compliance.service
 
-Pure/near-pure business logic for the Compliance Module's project
-compliance assessment layer (§9, §20) — kept out of `project_router.py`/`router.py` so it's independently
-testable and reusable (the approval workflow and scheduled reviews both need
-"what is this assignment's current overall state" the same way the
-assessment layer does).
+Business logic of the Compliance Module's assessment layer (§9, §20), kept out of the routers so it is testable and
+shared (the approval workflow and scheduled reviews need an assignment's overall state as the assessment layer does).
 
 Responsibilities:
-- `resolve_applicability_for_version`: §9's hierarchical applicability
-  resolution — computes each requirement's *effective* applicability and
-  how it was determined (explicit/inherited/overridden), in one pass over
-  a standard version's full requirement tree. Never stored — see
-  `models.py`'s own docstring for why `ProjectComplianceRequirement.
-  explicit_applicability` only ever holds what a user actually set.
-- `materialize_assessment_rows`: creates one `ProjectComplianceRequirement`
-  per `ComplianceRequirement`, and one `ComplianceRequiredActionAssessment`
-  per `ComplianceRequiredAction`, for a newly-created `ProjectCompliance`.
-- `summarize_project_compliance`: §20's overall status calculation — the
-  exact, documented rule. See that
-  function's own docstring for the full rule.
-- `compute_evidence_validity_state`/`build_evidence_out` (§14):
-  the exact, documented "valid/expiring/expired" derivation for a
-  `ComplianceEvidence` row — see `compute_evidence_validity_state`'s own
-  docstring for the rule and its warning-window constant.
-- `advance_approval_state_on_assessment`/`invalidate_approval_if_in_flight`
-  (§12/§16/§27): the two state-machine transition rules a
-  `ProjectComplianceRequirement`'s `approval_state` goes through outside
-  the explicit `submit-for-approval`/`approve`/`reject` actions themselves
-  (which are simple enough to stay inline in `project_router.py`, mirroring
-  how `update_requirement_applicability`/`update_requirement_
-  assessment` never needed a service-layer wrapper for their own direct
-  transitions either) — see each function's own docstring for the exact
-  rule and why the two mutation-triggers (a fresh assessment vs. every
-  other material change) transition differently.
-- `compute_review_schedule_state`/`build_review_out`/`complete_review`
-  (§17): the "upcoming/due/overdue" derivation for a `SCHEDULED`
-  `ComplianceReview` (computed, never stored — mirrors `compute_evidence_
-  validity_state`'s own reasoning), the response-schema builder, and the
-  completion action's recurrence logic (creates the next cycle's row when
-  `recurrence_days` is set — see that function's own docstring).
-- `get_effective_compliance_officers`/`get_effective_compliance_managers`
-  (§18): notification-recipient resolution for Compliance's own
-  event-driven notifications (`router.py`/`project_router.py`) — deliberately
-  *not* an authorization check (RBAC gating stays exactly
-  `require_module_role`, unchanged), just "who should be told about this,"
-  so a same-org/-project fan-out that misses an edge case (e.g. an org
-  group granting `ORG_ADMIN`, which this codebase's groups don't support
-  anyway — see each function's own docstring) is a missed notification, not
-  a security gap.
-- `diff_standard_versions`/`build_diff_out` (§27): the exact,
-  documented "added/removed/modified/replaced/re-mapped" derivation
-  between any two versions of the same standard, walking `Compliance
-  Requirement.cloned_from_requirement_id`'s clone-lineage chain and
-  `ComplianceRequirementMapping`'s links — see `diff_standard_versions`'s
-  own docstring for the full rule.
-- `migrate_project_compliance`/`build_migration_result_out` (§27): the explicit, user-triggered project version-migration action —
-  creates a new `ProjectCompliance` row and carries forward only the
-  assessments `diff_standard_versions` proves are for content-identical,
-  lineage-matched requirements, downgrading a carried-forward `APPROVED`/
-  `PENDING_APPROVAL` state via the existing `invalidate_approval_
-  if_in_flight` — see that function's own docstring for the full rule and
-  for why a `replaced`/`modified`/`added` requirement is deliberately never
-  carried forward.
-- `seed_compliance_action_types`: the two default
-  `ComplianceActionTypeDefinition` rows a fresh organisation ships with,
-  mirroring `services.definitions.seed_action_types`'s existing pattern for
-  the generic per-project `ActionTypeDefinition` — see that function's own
-  docstring for why organisation-creation time, not a module-enablement
-  hook, is where this has to run.
-- `get_latest_published_version`/`reconcile_standard_applicability`/
-  `reconcile_new_project_for_all_standards` (§3/§7): a standard's
-  "applies to all projects by default, except..." mode — materialises a
-  real `ProjectCompliance` row (never a virtual/computed default) for every
-  current, non-archived, non-excluded project when a standard is switched
-  to `APPLIES_TO_ALL_PROJECTS` or a project is un-excluded, and for a
-  single newly-created project against every such standard in its org. See
-  `_reconcile_one_project`'s own docstring for the exact per-project rule
-  (never duplicates an existing live assignment; reuses an exclusion-time-
-  archived row rather than violating `ProjectCompliance`'s own uniqueness
-  constraint).
+- `resolve_applicability_for_version`: §9's hierarchical applicability for a version's whole requirement tree in one
+  pass (explicit, inherited or overridden). Never stored.
+- `materialize_assessment_rows`: one `ProjectComplianceRequirement` per requirement and one
+  `ComplianceRequiredActionAssessment` per required action of a new `ProjectCompliance`.
+- `summarize_project_compliance`: §20's overall status rule.
+- `compute_evidence_validity_state` / `build_evidence_out` (§14): the valid, expiring or expired derivation.
+- `advance_approval_state_on_assessment` / `invalidate_approval_if_in_flight` (§12, §16, §27): the `approval_state`
+  transitions outside the explicit submit, approve and reject actions (which stay inline in `project_router`); a fresh
+  assessment and any other material change transition differently.
+- `compute_review_schedule_state` / `build_review_out` / `complete_review` (§17): the computed upcoming, due or overdue
+  state of a `SCHEDULED` review, the response builder, and the next-cycle row when `recurrence_days` is set.
+- `get_effective_compliance_officers` / `get_effective_compliance_managers` (§18): notification recipients. They are
+  not an authorization check (RBAC stays `require_module_role`), so a missed edge case is a missed notification, not a
+  security gap.
+- `diff_standard_versions` / `build_diff_out` (§27): the added, removed, modified, replaced and re-mapped derivation
+  between two versions of a standard, walking `ComplianceRequirement.cloned_from_requirement_id` lineage and
+  `ComplianceRequirementMapping` links.
+- `migrate_project_compliance` / `build_migration_result_out` (§27): the user-triggered version migration; it carries
+  forward only assessments of content-identical, lineage-matched requirements, downgrading `APPROVED` and
+  `PENDING_APPROVAL` through `invalidate_approval_if_in_flight`.
+- `seed_compliance_action_types`: the default action types of a new organisation.
+- `get_latest_published_version` / `reconcile_standard_applicability` / `reconcile_new_project_for_all_standards`
+  (§3, §7): the "applies to all projects by default, except..." mode materialises a real `ProjectCompliance` for every
+  current, non-archived, non-excluded project (`_reconcile_one_project` has the per-project rule).
 
-External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
+External dependencies: `app.modules.compliance.models`, `.enums`, SQLAlchemy.
 """
 
 from __future__ import annotations
@@ -217,31 +166,16 @@ def assessment_to_out(db: Session, assessment: ComplianceRequiredActionAssessmen
 
 ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, ComplianceApplicabilitySource]]
 
-# Fine-Grained Access Control — the permission atoms this module's four
-# `ModuleRoleDefinition`s declare via their `permissions` field (`module.py`)
-# and the two endpoints migrated to accept `require_permission` as an
-# alternative to their existing `require_module_role` gate (`project_router/
-# evidence.py`'s `create_evidence`/`update_evidence`; `router/version_
-# requirements.py`'s `update_requirement`) check directly — the same
-# "declare the constant once in `service.py`, import it from both `module.py`
-# and the router" shape Decision Management's `DECISION_APPROVE_PERMISSION`
-# already established.
+# Fine-Grained Access Control permission atoms: the constants this module's four `ModuleRoleDefinition`s declare through
+# `permissions` (`module.py`) and that `create_evidence`, `update_evidence` (`project_router/evidence.py`) and
+# `update_requirement` (`router/version_requirements.py`) check through `require_permission`, declared once here and
+# imported by both.
 #
-# `COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION`/`_APPROVE_BASELINE_
-# PERMISSION` reuse the `project_compliance_requirement` artefact type
-# rather than a dedicated one for `ComplianceRequirement` (a standard's own
-# catalogue content — `standards_manager`/`standards_contributor`'s actual
-# subject — which is a distinct model from `ProjectComplianceRequirement`,
-# a project's own tracked instance of it). Compliance registers only three
-# linkable artefact types (`models.py`), and none of them is this one;
-# adding a fourth purely to obtain an accurately-named permission atom, with
-# no `ArtefactLink` ever pointing at it, was judged not worth the scope
-# creep here (**Decided by: Agent** — see `docs/decisions.md` for the full
-# reasoning). The `MANAGE`/`APPROVE_BASELINE` *level*
-# distinction still maps cleanly onto "edit this standard's draft content"
-# vs. "publish/retire one of its versions," even though the atom's
-# artefact-type label in the Role Management UI's permission picker reads
-# "project_compliance_requirement" rather than "compliance_requirement."
+# `COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION` and `_APPROVE_BASELINE_PERMISSION` reuse the
+# `project_compliance_requirement` artefact type for a standard's own catalogue content rather than adding a fourth
+# linkable type that no `ArtefactLink` would point at (**Decided by: Agent**, see `docs/decisions.md`). The `MANAGE` and
+# `APPROVE_BASELINE` levels still separate editing draft content from publishing or retiring a version; only the
+# permission picker's artefact-type label reads "project_compliance_requirement".
 COMPLIANCE_CLAUSE_VIEW_PERMISSION = encode_permission(ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT, PermissionLevel.VIEW.value)
 COMPLIANCE_EVIDENCE_VIEW_PERMISSION = encode_permission(ARTEFACT_TYPE_EVIDENCE, PermissionLevel.VIEW.value)
 COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION = encode_permission(ARTEFACT_TYPE_EVIDENCE, PermissionLevel.PROPOSE_CREATE.value)
@@ -259,64 +193,37 @@ COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION = encode_permission(
     ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, PermissionLevel.MANAGE.value
 )
 
-# Aliases used by the entity-scoped (`entity_scope="standard"`) call site
-# specifically, kept as their own names so that call site
-# (`router/version_requirements.py`) reads with the label matching what it
-# actually means ("this standard's own content"), even though both names
-# currently resolve to the identical encoded string as the plain
-# `COMPLIANCE_REQUIREMENT_*` constants above — see the module comment above
-# for why there is no separate artefact type to derive a truly distinct atom
-# from.
+# Aliases for the entity-scoped (`entity_scope="standard"`) call site in `router/version_requirements.py`, named for what
+# it means ("this standard's own content"); they equal the `COMPLIANCE_REQUIREMENT_*` constants above because there is no
+# separate artefact type to derive a distinct atom from.
 COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION = COMPLIANCE_REQUIREMENT_MANAGE_PERMISSION
 COMPLIANCE_STANDARD_CONTENT_APPROVE_BASELINE_PERMISSION = COMPLIANCE_REQUIREMENT_APPROVE_BASELINE_PERMISSION
 
-# Mirrors `services.definitions.DEFAULT_ACTION_TYPES`' two names — chosen to
-# match what `backend/scripts/seed_demo_data.py` already invented by hand
-# for its own compliance demo data, now made a real product default instead
-# of a script-only convention.
+# Mirrors `services.definitions.DEFAULT_ACTION_TYPES`; the names match `backend/scripts/seed_demo_data.py`.
 DEFAULT_COMPLIANCE_ACTION_TYPES: list[str] = ["Document Review", "Test"]
 
 
 def seed_compliance_action_types(db: Session, organization_id: uuid.UUID) -> None:
-    """Adds the default `ComplianceActionTypeDefinition` rows for a newly
-    created organisation (not committed/flushed — caller owns the
+    """Adds the default `ComplianceActionTypeDefinition` rows for a new organisation (not committed: the caller owns the
     transaction).
 
-    Called unconditionally at organisation-creation time
-    (`routers.orgs.create_organization`), not on compliance module
-    enablement: the module system has no "on enable" callback to hook into
-    (`ModuleDefinition` has none), and Compliance defaults to enabled for
-    virtually every organisation anyway, so organisation-creation time is
-    the one deterministic point that can't race or double-seed. Mirrors
-    `services.definitions.seed_action_types`'s identical shape for the
-    generic, project-scoped `ActionTypeDefinition`.
-    """
+    Called at organisation-creation time (`on_org_created`), not on module enablement: `ModuleDefinition` has no "on
+    enable" callback, and organisation creation is the one deterministic point that cannot race or double-seed."""
     for i, name in enumerate(DEFAULT_COMPLIANCE_ACTION_TYPES):
         db.add(ComplianceActionTypeDefinition(organization_id=organization_id, name=name, sort_order=i))
 
 
 def has_assignable_standard(db: Session, organization_id: uuid.UUID) -> bool:
-    """Whether `organization_id` has at least one `PUBLISHED` compliance
-    standard version — i.e. whether there is anything a project in this
-    organisation could actually be assigned (module boundary cleanup,
-    2026-09-08). A `DRAFT`-only standard has nothing assignable yet.
-
-    This module's `ModuleDefinition.project_nav_visible` hook
-    (`app.modules.compliance.module`) calls this to decide whether a
-    project's Compliance nav entry/route should show at all, rather than
-    sending the user to an empty "assign a standard" screen — moved here
-    from an inline query that used to live directly in
-    `app.routers.projects.list_project_enabled_modules`, a core,
-    module-agnostic endpoint that had no business importing this module's
-    own models/enums.
+    """Whether `organization_id` has at least one `PUBLISHED` compliance standard version, i.e. anything a project could
+    be assigned. `ModuleDefinition.project_nav_visible` uses it to hide the project's Compliance nav entry rather than
+    show an empty "assign a standard" screen; a `DRAFT`-only standard has nothing assignable.
 
     Args:
         db: An active database session.
         organization_id: The organisation to check.
 
     Returns:
-        `True` if at least one of the organisation's standards has a
-        `PUBLISHED` version.
+        `True` if at least one of the organisation's standards has a `PUBLISHED` version.
     """
     return (
         db.scalar(
@@ -404,10 +311,8 @@ def _reconcile_one_project(
         )
     )
     if existing_same_version is not None:
-        # Must be archived (an active row for this exact pair would already
-        # have been caught by the `already_tracked` check above) — reuse it
-        # rather than violate the (project_id, standard_version_id)
-        # uniqueness constraint with a second row.
+        # An active row for this pair would have matched `already_tracked`, so this one is archived; reuse it to keep
+        # the `(project_id, standard_version_id)` uniqueness.
         existing_same_version.is_archived = False
         existing_same_version.archived_at = None
         existing_same_version.archived_by = None
@@ -669,58 +574,26 @@ def summarize_project_compliance(
     pcrs: list[ProjectComplianceRequirement],
     applicability: ApplicabilityResolution,
 ) -> ProjectComplianceStatusSummary:
-    """§20's "Overall Project Compliance Status" — the exact, documented
-    calculation:
+    """§20's "Overall Project Compliance Status":
 
-    - `total_requirements`: every `ProjectComplianceRequirement` row for
-      this assignment, applicable or not (§20's own "152 total
-      requirements" example counts every requirement, not just applicable
-      ones).
-    - `not_applicable_count`/`applicable_count`: partition by *effective*
-      applicability (§9) — `applicable_count = total - not_applicable`.
-    - `counts_by_status`: a count per `ComplianceStatus` value, among
-      **applicable** rows only (a Not Applicable row's own
-      `compliance_status` is not meaningful and must not be counted here
-      or anywhere else — §20: "Not Applicable requirements should not
-      count against the project's compliance percentage").
-    - `compliance_percentage`: `compliant / applicable * 100`, rounded to
-      one decimal place. `100.0` when `applicable_count == 0` (vacuously
-      fully compliant — nothing applicable can be non-compliant) rather
-      than a division-by-zero or a misleading `0.0`.
-    - `has_non_compliant`: whether any applicable row is `NON_COMPLIANT`
-      — always shown, per §20's "If any requirement is Non-Compliant, the
-      overall compliance state should clearly indicate this," regardless
-      of how high the percentage is.
-    - `not_yet_assessed`: `True` when there is at least one applicable
-      requirement and every single one of them is still `NOT_STARTED` —
-      i.e. this assignment has had literally zero assessment activity.
-      Deliberately a field of its own rather than a value folded into
-      `overall_compliance_state` (which already has four other call
-      sites depending on its existing meaning): a caller that renders a
-      binary "is this non-compliant?" affordance from `has_non_compliant`
-      alone must check this field too, so "nobody has assessed this yet"
-      is never displayed the same way as "assessed and found compliant"
-      (a prior binary Yes/No render
-      of `has_non_compliant` alone did exactly that).
-    - `overall_compliance_state`: `"not_applicable"` if nothing is
-      applicable; else `"non_compliant"` if `has_non_compliant`; else
-      `"compliant"` if every applicable row is `COMPLIANT`; else
-      `"in_progress"` (some mix of Not Started/In Progress/Blocked/
-      Pending Review/Rejected, but no outright Non-Compliant row — this
-      bucket also covers the all-`NOT_STARTED`/`not_yet_assessed` case;
-      it is not further split here so existing consumers of this field's
-      four-value meaning are unaffected).
-    - `overall_approval_state`: see `_aggregate_approval_state` — kept as
-      a **separate** field from `overall_compliance_state`, never folded
-      into it, per §20's explicit "Approval/sign-off should be reflected
-      separately from the calculated compliance percentage."
+    - `total_requirements`: every `ProjectComplianceRequirement` row, applicable or not.
+    - `not_applicable_count` / `applicable_count`: partition by effective applicability (§9).
+    - `counts_by_status`: a count per `ComplianceStatus` among applicable rows only (§20: Not Applicable requirements do
+      not count against the percentage).
+    - `compliance_percentage`: `compliant / applicable * 100` to one decimal place; `100.0` when nothing is applicable
+      (nothing can be non-compliant).
+    - `has_non_compliant`: whether any applicable row is `NON_COMPLIANT`, shown whatever the percentage (§20).
+    - `not_yet_assessed`: `True` when at least one requirement is applicable and every applicable one is `NOT_STARTED`.
+      A separate field, because a render driven by `has_non_compliant` alone would show "not assessed" like "compliant".
+    - `overall_compliance_state`: `"not_applicable"` if nothing is applicable; else `"non_compliant"` if
+      `has_non_compliant`; else `"compliant"` if every applicable row is `COMPLIANT`; else `"in_progress"` (including the
+      all-`NOT_STARTED` case).
+    - `overall_approval_state`: see `_aggregate_approval_state`; kept separate from the compliance state (§20).
 
     Args:
-        pcrs: Every `ProjectComplianceRequirement` row for one
-            `ProjectCompliance` assignment.
-        applicability: This assignment's resolved applicability map (see
-            `resolve_applicability_for_version`), keyed by `requirement_id`
-            — must contain an entry for every row in `pcrs`.
+        pcrs: Every `ProjectComplianceRequirement` row of one `ProjectCompliance`.
+        applicability: The assignment's resolved applicability map (`resolve_applicability_for_version`), keyed by
+            `requirement_id`, with an entry for every row in `pcrs`.
 
     Returns:
         The computed summary.
@@ -877,10 +750,8 @@ def build_status_out(db: Session, project_compliance: ProjectCompliance) -> Proj
 
 # --- Approval / sign-off workflow -----------------------------------------
 
-#: `approval_state` values a material change (an applicability change, or a
-#: change to supporting evidence) downgrades to `REQUIRES_REASSESSMENT` —
-#: see `invalidate_approval_if_in_flight`'s own docstring for why this is
-#: exactly `{PENDING_APPROVAL, APPROVED}` and no other member.
+#: `approval_state` values a material change (an applicability change or a change to supporting evidence) downgrades to
+#: `REQUIRES_REASSESSMENT`: exactly `{PENDING_APPROVAL, APPROVED}` (see `invalidate_approval_if_in_flight`).
 _IN_FLIGHT_APPROVAL_STATES = (ComplianceApprovalState.PENDING_APPROVAL, ComplianceApprovalState.APPROVED)
 
 
@@ -980,17 +851,8 @@ def find_pcrs_linked_to_evidence(db: Session, *, evidence_id: uuid.UUID) -> list
 
 # --- Evidence ------------------------------------------------------------
 
-#: Days before `ComplianceEvidence.expiry_date` that it is reported
-#: `EXPIRING_SOON` rather than `VALID` (§14: "The system should provide
-#: appropriate warnings/notifications when evidence is approaching
-#: expiry"). A plain constant, not a per-project/per-org configurable
-#: setting: §14 names no specific lead time, and the scheduled
-#: notification sweeps (`scheduler.py`) are where this module's actual warning/
-#: notification delivery is built — if they need this to be
-#: configurable (mirroring `Project.review_reminder_lead_days_default`'s
-#: own precedent for an analogous "how many days before X is this
-#: worth flagging" setting), it can promote this constant to a column
-#: then, once there is a real notification consumer to configure for.
+#: Days before `ComplianceEvidence.expiry_date` that evidence is reported `EXPIRING_SOON` rather than `VALID` (§14). A
+#: constant because §14 names no lead time; it can become a setting if the notification sweeps (`scheduler.py`) need one.
 EVIDENCE_EXPIRY_WARNING_DAYS = 30
 
 
@@ -1128,12 +990,8 @@ def resolve_evidence_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
 
 # --- Scheduled reviews ---------------------------------------------------
 
-#: Days before `ComplianceReview.next_due_date` that a still-`SCHEDULED`
-#: review is reported `DUE` rather than `UPCOMING` (§17/§28's "identify
-#: upcoming and overdue compliance reviews"). A plain constant, like
-#: `EVIDENCE_EXPIRY_WARNING_DAYS` above, but a shorter window: a review
-#: (an activity someone must actually schedule time to perform) warrants a
-#: shorter advance flag than a certificate's own expiry.
+#: Days before `ComplianceReview.next_due_date` that a `SCHEDULED` review is reported `DUE` rather than `UPCOMING`
+#: (§17, §28). Shorter than `EVIDENCE_EXPIRY_WARNING_DAYS`: a review is an activity that needs time scheduled.
 COMPLIANCE_REVIEW_DUE_WARNING_DAYS = 14
 
 
@@ -1510,13 +1368,10 @@ def validate_fallback_group_member_removal(
 
 
 def validate_fallback_group_deletion(db: Session, org_group_id: uuid.UUID) -> str | None:
-    """This module's `validate_org_group_deletion` hook body (2026-10-05):
-    blocks deleting the organisation's designated fallback compliance-
-    managers group while any active standard has no explicit
-    `standards_manager` of its own, since deleting it (the setting's foreign
-    key is `ON DELETE SET NULL`) would silently leave those standards with
-    no manager floor at all. The whole-group counterpart of
-    `validate_fallback_group_member_removal`.
+    """This module's `validate_org_group_deletion` hook body: blocks deleting the organisation's fallback
+    compliance-managers group while any active standard has no explicit `standards_manager`, because the setting's
+    foreign key is `ON DELETE SET NULL` and deletion would leave those standards with no manager floor. The whole-group
+    counterpart of `validate_fallback_group_member_removal`.
 
     Args:
         db: Database session (read-only use).
@@ -1686,74 +1541,31 @@ def diff_standard_versions(
     old_version: ComplianceStandardVersion,
     new_version: ComplianceStandardVersion,
 ) -> StandardVersionDiff:
-    """§27's "what changed between standard versions" — the exact,
-    documented diff, computed between any
-    two versions of the *same* standard, not necessarily directly adjacent
-    ones (e.g. diffing v1 against v3 when v3 was itself cloned from v2, not
-    v1 — `router.py::_clone_requirement_tree` always clones from exactly
-    one immediately-prior version, so resolving "does this v3 requirement
-    trace back to a specific v1 requirement" means walking v3 -> v2 -> v1
-    hop by hop via `ComplianceRequirement.cloned_from_requirement_id`, not
-    a single lookup). Every requirement ever created under `standard_id`
-    (across every version) is loaded once so that walk has everything it
-    might need to traverse, however many versions apart the two given
-    versions are.
+    """§27's "what changed between standard versions": the diff between any two versions of the same standard, not
+    necessarily adjacent. `router._clone_requirement_tree` clones from the immediately prior version, so tracing a v3
+    requirement to v1 walks `ComplianceRequirement.cloned_from_requirement_id` hop by hop; every requirement of
+    `standard_id` is loaded once for that walk.
 
-    Categories (§27's own five, plus one internal map used only by
-    `migrate_project_compliance`, not part of the public diff result):
-    - A new-version requirement resolves an **old-version ancestor** by
-      walking its own `cloned_from_requirement_id` chain until it either
-      reaches a requirement belonging to `old_version` (a match) or runs
-      out of chain entirely (no ancestor in `old_version` at all).
-    - **added**: no old-version ancestor, and no explicit "replaces"
-      mapping either (see `replaced` below).
-    - **removed**: an old-version requirement that no new-version
-      requirement's lineage (or explicit "replaces" mapping) resolves back
-      to.
-    - **modified**: has an old-version ancestor, but `_changed_content_
-      fields` finds at least one of `reference`/`name`/`description`/
-      `reasoning` differs from it.
-    - **replaced**: no old-version ancestor via lineage, but an explicit,
-      non-archived `ComplianceRequirementMapping` links it (in either
-      direction) to a specific, not-yet-matched `old_version` requirement
-      (`_find_replacement_mapping`) — see `models.py`'s cross-standard mapping design
-      decisions for why marking a same-standard, cross-version "this replaces that"
-      link reuses the general-purpose cross-standard mapping table rather
-      than a second, parallel mechanism. Each entry also carries the
-      mapping's own relationship type's `implies_equivalence` flag
-      (`ReplacedRequirementOut.implies_equivalence`) — whether this
-      specific pair is even eligible to be offered for migration carry-
-      forward; see `migrate_project_compliance`'s own docstring for the
-      second, per-migration gate that must *also* be satisfied before a
-      `replaced` pair's assessment is actually copied.
-    - **re_mapped**: for every lineage-matched pair (`modified` *or*
-      unmodified alike), the old requirement's own non-archived mapping
-      target ids (from *either* side of a `ComplianceRequirementMapping`)
-      differ from the new requirement's — reported only when the *old*
-      side actually had at least one mapping (nothing to lose if it had
-      none). Mapping links are never carried forward by cloning
-      (`_clone_requirement_tree` never touches `ComplianceRequirementMapping`
-      at all) — deliberately: a cross-standard relationship asserted
-      against one specific version's wording may no longer hold once that
-      wording changes, so silently re-pointing it at the new version's
-      requirement would assert something nobody has actually re-confirmed.
-      `re_mapped` is exactly how a Compliance Manager discovers which
-      requirements need their mappings re-established after a new version
-      is published.
-    - `unmodified_lineage_map` (`new_requirement_id -> old_requirement_id`):
-      every lineage-matched pair whose content is identical — i.e. every
-      pair *not* in `modified` — consumed by `migrate_project_compliance`
-      to decide which requirements' project-specific assessments are safe
-      to carry forward without a human re-confirming them. Not part of
-      `StandardVersionDiffOut`'s public schema (an "unchanged" bucket isn't
-      one of §27's five named categories to report).
+    A new-version requirement's old-version ancestor is found by walking its `cloned_from_requirement_id` chain until a
+    requirement of `old_version` is reached (a match) or the chain ends. Categories:
+    - added: no ancestor and no explicit "replaces" mapping.
+    - removed: an old-version requirement no new requirement's lineage or "replaces" mapping resolves to.
+    - modified: has an ancestor, but `_changed_content_fields` finds a difference in `reference`, `name`, `description`
+      or `reasoning`.
+    - replaced: no ancestor, but a non-archived `ComplianceRequirementMapping` (either direction) links it to a not yet
+      matched old-version requirement (`_find_replacement_mapping`; a same-standard, cross-version link reuses the
+      mapping table). Each entry carries the relationship type's `implies_equivalence`
+      (`ReplacedRequirementOut.implies_equivalence`), the first gate for carry-forward in `migrate_project_compliance`.
+    - re_mapped: for every lineage-matched pair, the old requirement's non-archived mapping targets (either side) differ
+      from the new one's; reported only when the old side had a mapping. Cloning never copies mappings, because a
+      relationship asserted against one wording may not hold for the next, so this is how a Compliance Manager finds
+      mappings to re-establish.
+    - `unmodified_lineage_map` (`new_requirement_id -> old_requirement_id`): lineage-matched pairs with identical
+      content, consumed by `migrate_project_compliance`; not part of `StandardVersionDiffOut`.
 
     Args:
         db: An active session.
-        standard_id: The standard both versions belong to — the caller
-            (e.g. `router.py::get_standard_version_diff`) is trusted to
-            have already verified `old_version`/`new_version` both belong
-            to it.
+        standard_id: The standard both versions belong to (verified by the caller).
         old_version: The earlier (lower `version_number`) version.
         new_version: The later (higher `version_number`) version.
 
@@ -1983,101 +1795,38 @@ def migrate_project_compliance(
     actor_id: uuid.UUID,
     confirmed_replacement_requirement_ids: frozenset[uuid.UUID] = frozenset(),
 ) -> ProjectComplianceMigrationOutcome:
-    """§27's explicit, user-triggered version-migration action. Creates a
-    **new** `ProjectCompliance` row rather than mutating the existing one
-    in place — `models.py`'s project assessment design decisions and §27 itself both require
-    that "Existing Project Compliance assignments must remain associated
-    with their original version," not just by default. Does not archive
-    the old assignment, and does not log or notify anything — the caller
-    (`project_router.py::migrate_project_compliance_version`) does both
-    once it has this function's result, mirroring `complete_review`'s own
-    "mutate + return what happened, caller logs/notifies" split.
+    """§27's user-triggered version migration. Creates a new `ProjectCompliance` rather than mutating the old one, because
+    existing assignments must stay associated with their original version. It does not archive the old assignment and
+    does not log or notify: the caller (`project_router.migrate_project_compliance_version`) does, as for
+    `complete_review`.
 
-    Materialises the new assignment's full requirement/required-action
-    assessment row set exactly like a brand-new assignment does
-    (`materialize_assessment_rows`, reused verbatim), then uses
-    `diff_standard_versions`'s `unmodified_lineage_map` to decide, per new
-    requirement, whether its project-specific assessment can be carried
-    forward from the old assignment's own row:
+    The new assignment's rows are materialised as for a new assignment (`materialize_assessment_rows`), then
+    `diff_standard_versions`'s `unmodified_lineage_map` decides per new requirement whether the old assignment's
+    assessment is carried forward:
+    - Carried forward (content-identical lineage match to a requirement the old assignment has a row for):
+      `explicit_applicability`, `justification`, `notes`, `compliance_status`, `assessed_at`, `assessed_by`,
+      `applicability_set_at`, `applicability_set_by` and `approval_state` are copied, keeping the real provenance of the
+      assessment. `approval_decided_at`, `approval_decided_by` and `decision_note` are not copied: they describe a
+      sign-off against the old row, and the new row needs a fresh decision. `invalidate_approval_if_in_flight` is then
+      applied to the copied state, so `PENDING_APPROVAL` and `APPROVED` become `REQUIRES_REASSESSMENT` (§27); other
+      states stay as copied.
+    - Left at materialised defaults: every `added` or `modified` requirement and every `replaced` one except the case
+      below, because nobody has assessed them against the new wording.
+    - `replaced`, confirmed: copied exactly like an unchanged match, but only when both (1) the mapping's relationship
+      type has `implies_equivalence=True` and (2) the new requirement's id is in `confirmed_replacement_requirement_ids`
+      (a per-migration decision). Its `requires_reassessment` is always `True`, because the wording changed. A pair
+      failing either gate is treated as `added`, so migration never silently changes historical assessments (§27).
 
-    - **Carried forward** (content-identical lineage match to an old
-      requirement the old assignment actually has an assessment row for):
-      `explicit_applicability`/`justification`/`notes`/`compliance_status`/
-      `assessed_at`/`assessed_by`/`applicability_set_at`/`applicability_
-      set_by`/`approval_state` are copied onto the new row verbatim,
-      preserving the real provenance of *when*/*who* actually performed
-      that assessment (attributing it to the user running the migration
-      instead would misrepresent history). `approval_decided_at`/
-      `approval_decided_by`/`decision_note` are deliberately **not**
-      copied — those describe one specific human sign-off decision against
-      the *old* row's own id, which stays in that row's own (untouched)
-      audit trail; the new row needs a fresh decision if/when it reaches
-      `PENDING_APPROVAL` again. `invalidate_approval_if_in_flight` (reused verbatim — exactly the "future caller" its own docstring
-      already anticipated for "a standard version change") is then applied
-      to the *copied* value: a carried-forward `PENDING_APPROVAL`/
-      `APPROVED` state downgrades to `REQUIRES_REASSESSMENT` (§27:
-      "identify whether reassessment/reapproval is required"); every other
-      carried-forward state (`NOT_ASSESSED`/`ASSESSED`/`REJECTED`) is left
-      exactly as copied, since none of those represent a decision
-      migration could invalidate.
-    - **Left at materialised defaults** (`NOT_STARTED`/`None` explicit
-      applicability/`NOT_ASSESSED` approval — untouched): every requirement
-      that is `added` or `modified` per the diff, and every `replaced`
-      requirement *except* the narrow case below. §27 only asks that a
-      *changed* requirement's impact on an *approved* assessment be
-      identified — it does not ask this function to guess at a new/changed
-      requirement's compliance state, which nobody has actually assessed
-      against its new wording yet.
-    - **`replaced`, confirmed carry-forward** (this function's own second
-      gate, added after direct feedback that always treating `replaced`
-      like `added` was too blunt when a Compliance Manager has already
-      judged two requirements genuinely equivalent — e.g. an old "IPX6
-      water ingress" requirement explicitly linked to a new "IP67 water
-      ingress" requirement): a `replaced` pair's assessment is copied
-      *exactly like* a content-identical (`unchanged`) lineage match —
-      same field list, same `invalidate_approval_if_in_flight` call on the
-      copied `approval_state` — but **only** when *both*: (1) the mapping's
-      own relationship type has `implies_equivalence=True` (an org-level
-      Compliance Manager decision — see `models.py`'s cross-standard mapping design decisions on
-      `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`),
-      and (2) the new requirement's id is present in this call's own
-      `confirmed_replacement_requirement_ids` (a separate, per-migration
-      human decision the caller has already validated against the diff —
-      see `project_router.py::migrate_project_compliance_version`). Unlike
-      an `unchanged`-carried row, a `replaced`-carried row's
-      `requires_reassessment` is reported as `True` *unconditionally*, even
-      if `approval_state` itself didn't need downgrading (e.g. it was only
-      `ASSESSED`, never `APPROVED`) — the underlying wording genuinely
-      changed, even if a human has judged the change immaterial, so a
-      reviewer should always look again. A `replaced` pair failing either
-      gate falls back to the same "left at materialised defaults" treatment
-      as `added` — carrying an assessment forward on the strength of an
-      unconfirmed or weak-relationship-type judgement call would risk
-      exactly the "migration must not silently change historical
-      compliance assessments" failure mode §27 warns against, one step
-      removed.
-
-    Does not commit — caller commits as part of its own single transaction.
+    Does not commit; the caller commits in its own transaction.
 
     Args:
         db: An active session.
-        old_project_compliance: The assignment being migrated *from*. Not
-            mutated by this function — archiving it is the caller's job.
-        new_version: The `ComplianceStandardVersion` being migrated *to* —
-            the caller has already verified it is `PUBLISHED`, belongs to
-            the same standard, and has a higher `version_number`.
-        actor_id: The user performing the migration (`assigned_by` on the
-            new row).
-        confirmed_replacement_requirement_ids: New-version requirement ids
-            the caller has already validated are both part of this
-            migration's `replaced` diff set *and* linked by a mapping whose
-            relationship type has `implies_equivalence=True` (`project_
-            router.py` does this validation and 400s before ever calling
-            this function — this function trusts its caller and applies
-            the set as given, re-deriving eligibility from its own freshly
-            computed diff regardless, so an id that turns out *not* to
-            satisfy both gates is simply ignored rather than trusted
-            blindly).
+        old_project_compliance: The assignment migrated from; not mutated (archiving it is the caller's job).
+        new_version: The `PUBLISHED`, higher-numbered version of the same standard migrated to (verified by the caller).
+        actor_id: The user performing the migration (`assigned_by` on the new row).
+        confirmed_replacement_requirement_ids: New-version requirement ids the caller validated as `replaced` and linked
+            by an `implies_equivalence` mapping. Eligibility is re-derived from the fresh diff, so an id that fails
+            either gate is ignored.
 
     Returns:
         The `ProjectComplianceMigrationOutcome`.
@@ -2181,12 +1930,8 @@ def migrate_project_compliance(
                     requirement=requirement,
                     change="replaced",
                     carried_forward=confirmed_and_eligible,
-                    # Always True for a `replaced` pair, carried forward or
-                    # not — unlike `unchanged`, where it's conditional on
-                    # whether `approval_state` needed downgrading, the
-                    # underlying wording did change here even when a human
-                    # has judged the change immaterial, so a reviewer
-                    # should always be pointed at it.
+                    # Always True for `replaced`, carried forward or not: the wording changed even when a person
+                    # judged the change immaterial, so a reviewer is pointed at it.
                     requires_reassessment=True,
                 )
             )
@@ -2247,26 +1992,17 @@ def build_migration_result_out(
 
 # --- cross-assignment listings shared between project and org scope -----
 #
-# Each function below computes one project's slice of a cross-assignment
-# listing — extracted here (rather than left inline in `project_router.py`)
-# so `router.py`'s org-wide aggregation endpoints can call the
-# exact same per-project computation once per project in the organisation,
-# rather than re-implementing it. `list_non_compliant_requirements_for_
-# project`/`list_pending_approvals_for_project` hold the loop bodies that
-# used to be inline in `project_router.py::list_non_compliant_requirements`/
-# `list_pending_approvals`. `list_outstanding_required_actions_for_project`/
-# `list_recent_compliance_activity` are the org-wide additions.
+# Each function computes one project's slice of a cross-assignment listing, so the organisation-wide aggregation
+# endpoints in `router` call the same per-project computation as `project_router`. `list_non_compliant_requirements_for_
+# project` and `list_pending_approvals_for_project` back the project listings; `list_outstanding_required_actions_for_
+# project` and `list_recent_compliance_activity` are organisation-wide.
 
 
 class ComplianceVersionCache:
-    """Per-request cache of the assignment data compliance listings read:
-    active assignments per project, standard versions, their standards,
-    requirement lists, required actions and assessment rows. Org-wide
-    listings call `preload_organization` once, loading everything in a
-    handful of queries, then walk every project from memory (2026-10-05:
-    they made ~5 queries per assignment and one per requirement row —
-    hundreds per call for an org with many projects). Without a preload,
-    each accessor queries on first use. Read-only, within one request.
+    """Per-request cache of the assignment data compliance listings read: active assignments per project, standard
+    versions, their standards, requirement lists, required actions and assessment rows. Organisation-wide listings call
+    `preload_organization` once (a handful of queries) and walk every project from memory; without a preload each
+    accessor queries on first use. Read-only, within one request.
 
     Args:
         db: The request's session.
@@ -2615,14 +2351,9 @@ def list_reviews_due_for_project(
     return [review for review in reviews if compute_review_schedule_state(review) in wanted_states]
 
 
-#: `AuditEvent.action` values logged against a `project_compliance_
-#: requirement` entity that `list_recent_compliance_activity` surfaces —
-#: every action `project_router.py` logs against a `ProjectComplianceRequirement`
-#: row (§23's "Recently changed compliance assessments"). Kept as an
-#: explicit allowlist (not "every action for this entity_type") so a future,
-#: unrelated `project_compliance_requirement` audit action doesn't silently
-#: start appearing in this specific dashboard widget without a deliberate
-#: decision to include it.
+#: `AuditEvent.action` values against a `project_compliance_requirement` entity that `list_recent_compliance_activity`
+#: surfaces (§23 "Recently changed compliance assessments"): an explicit allowlist, so a later unrelated audit action does
+#: not appear in this widget without a decision.
 _RECENT_ACTIVITY_ACTIONS = (
     "assessed",
     "applicability_changed",

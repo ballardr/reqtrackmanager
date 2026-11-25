@@ -1,46 +1,25 @@
 /**
  * Module: modules/compliance/StandardMembersSection
  *
- * The "Members" section of a standard's workspace — this standard's own dedicated working group:
- * `standards_manager`/`standards_contributor` role grants, direct and
- * scoped to just this one `ComplianceStandard` row (the generalised entity-scope mechanism). Renders through the same
- * `DirectoryTable` + `MultiSelectDropdown` combination every other role
- * roster in this app already uses (`OrgAdminPage.tsx`'s Users table,
- * `ProjectMembersTable.tsx`) — this is not a bespoke roster table.
- *
- * The last remaining `standards_manager` row's checkbox is disabled (with
- * an explanatory `title`) whenever unchecking it would leave the standard
- * with no manager at all and no fallback-group/other-group coverage —
- * mirrors `OrgAdminPage.tsx`'s own "can't revoke your own org role"
- * disabled-with-title precedent. The backend re-enforces this
- * independently (`revoke_standard_member_role`/`revoke_standard_group_
- * role`'s own 400) regardless of what this component renders — this is a
- * UX hint, not the authorization boundary.
- *
- * The add-member flow (module system's generic group-based module-role grants,
- * `GroupModuleRole`) is built on
- * `UserAutocomplete` — search-as-you-type over this org's real user
- * directory (`organizationId` set, debounced server-side search) plus
- * org-group matching (`groups`/`onSelectGroup`), mirroring `OrgAdminPage.
- * tsx`'s own "manage users" add-flow wiring (`addManageUsersGroupRole` ->
- * `POST .../group-roles`) one level down — replacing the previous plain,
- * unfiltered `<select>` over `orgUsers` this human-review round flagged as
- * inconsistent with every other add-member control in the app.
- * `onSelectExternal` is deliberately left unwired — no concrete need for
- * external Standards-Contributor invites has come up yet.
- *
- * The roster itself gained a second row kind for group-based grants
- * (`ComplianceStandardGroupMember`), visually distinguished with the same
- * `Users` icon + "Organisation group" badge `UserAutocomplete` already uses for a
- * group match, rather than expanding a group to its individual members —
- * this remains a roster of this standard's own *direct* grants (user or
- * group), not every user a group happens to currently reach.
+ * The "Members" section of a standard's workspace: the standard's own working group, `standards_manager` and
+ * `standards_contributor` role grants, direct and scoped to this one `ComplianceStandard`. It uses the `DirectoryTable` +
+ * `MultiSelectDropdown` combination of the other role rosters (`OrgAdminPage.tsx`, `ProjectMembersTable.tsx`).
+ * - The last `standards_manager` checkbox is disabled (with an explanatory `title`) when unchecking it would leave no manager and
+ *   no fallback-group or other-group coverage. The backend enforces this independently (`revoke_standard_member_role` and
+ *   `revoke_standard_group_role` return 400); this is a hint, not the authorization boundary.
+ * - Add-member uses `UserAutocomplete`: debounced server-side search over the organisation's users (`organizationId` set) plus
+ *   organisation-group matching (`groups`/`onSelectGroup`), as `OrgAdminPage.tsx`'s manage-users add flow (`addManageUsersGroupRole`
+ *   -> `POST .../group-roles`). `onSelectExternal` is unwired: no external Standards-Contributor invite is supported.
+ * - The roster has a second row kind for group grants (`ComplianceStandardGroupMember`), drawn with `PrincipalBadge` (the
+ *   group icon, with the kind and member count in its tooltip). It lists the standard's direct grants (user or group), not every
+ *   user a group reaches.
  */
-import { UserPlus, Users } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { useRef, useState } from "react";
 
 import type { OrgGroup, OrgUser } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { MultiSelectDropdown } from "../../components/MultiSelectDropdown";
 import { Popover } from "../../components/Popover";
 import { Spinner } from "../../components/Spinner";
@@ -55,7 +34,6 @@ import {
   type ComplianceStandardMembers,
   type ComplianceStandardRoleKey,
 } from "./types";
-import { Badge } from "../../components/Badge";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useSortState } from "../../hooks/useTableSort";
@@ -71,10 +49,14 @@ const LAST_MANAGER_TITLE =
 
 type Row = { kind: "user"; member: ComplianceStandardMember } | { kind: "group"; group: ComplianceStandardGroupMember };
 
-/** Sortable value of each sortable column; a group's Email cell shows its member count, so that text orders it. */
+/** Sortable value of each column: a group has no email (its cell shows a dash, which sorts last) and the roles order by their joined labels. */
 const MEMBER_SORT_VALUES: Record<string, (row: Row) => SortValue> = {
   name: (row) => (row.kind === "user" ? row.member.display_name : row.group.group_name),
-  email: (row) => (row.kind === "user" ? row.member.email : `${row.group.member_count} member${row.group.member_count === 1 ? "" : "s"}`),
+  email: (row) => (row.kind === "user" ? row.member.email : null),
+  roles: (row) =>
+    STANDARD_ROLE_KEYS.filter((roleKey) => (row.kind === "user" ? row.member.role_keys : row.group.role_keys).includes(roleKey))
+      .map((roleKey) => COMPLIANCE_STANDARD_ROLE_LABEL[roleKey])
+      .join(", ") || null,
 };
 
 export function StandardMembersSection({
@@ -85,10 +67,8 @@ export function StandardMembersSection({
 }: {
   orgId: string;
   standard: ComplianceStandard;
-  /** Already loaded by the caller (`StandardWorkspacePage.tsx`) — every
-   * user in this standard's own organisation. Passed to `UserAutocomplete`
-   * only to satisfy its required prop; with `organizationId` set below,
-   * matching itself runs server-side, not against this array. */
+  /** Already loaded by the caller (`StandardWorkspacePage.tsx`): every user in the standard's organisation. Passed to
+   * `UserAutocomplete` only to satisfy its required prop; with `organizationId` set, matching runs server-side. */
   orgUsers: OrgUser[];
   /** Already loaded by the caller — every org group in this standard's own
    * organisation, matched client-side by `UserAutocomplete` the same way
@@ -163,12 +143,9 @@ export function StandardMembersSection({
   const sorting = useSortState();
   if (!data) return <Spinner />;
 
-  // Manager-floor client-side hint: every explicit `standards_manager`
-  // source counts — a direct grant, or a group grant whose group currently
-  // has at least one effective member (a group with zero members isn't
-  // real coverage, matching the backend's own floor logic). This is a UX
-  // hint only; `revoke_standard_member_role`/`revoke_standard_group_role`
-  // re-check independently and authoritatively.
+  // Manager-floor hint: every explicit `standards_manager` source counts, a direct grant or a group grant whose group has at
+  // least one effective member (an empty group is not coverage, as in the backend's floor logic). The revoke endpoints re-check
+  // authoritatively.
   const managerCount =
     data.members.filter((m) => m.role_keys.includes("standards_manager")).length +
     data.group_members.filter((g) => g.role_keys.includes("standards_manager") && g.member_count > 0).length;
@@ -187,10 +164,9 @@ export function StandardMembersSection({
         row.kind === "user" ? (
           row.member.display_name
         ) : (
-          <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
-            <Users size={14} aria-hidden="true" />
-            {row.group.group_name} <Badge>Organisation group</Badge>
-          </span>
+          <PrincipalBadge
+            principal={{ type: "org_group", id: row.group.org_group_id, label: row.group.group_name, member_count: row.group.member_count, exists: true }}
+          />
         ),
     },
     {
@@ -198,13 +174,12 @@ export function StandardMembersSection({
       label: "Email",
       sortable: true,
       render: (row) =>
-        row.kind === "user"
-          ? row.member.email
-          : `${row.group.member_count} member${row.group.member_count === 1 ? "" : "s"}`,
+        row.kind === "user" ? row.member.email : "—",
     },
     {
       key: "roles",
       label: "Roles",
+      sortable: true,
       render: (row) => {
         const name = row.kind === "user" ? row.member.display_name : row.group.group_name;
         const roleKeys = row.kind === "user" ? row.member.role_keys : row.group.role_keys;

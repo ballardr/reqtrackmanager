@@ -1,17 +1,12 @@
 """
 Module: modules.product_feedback.router
 
-Organisation-scoped Product Feedback API (the organisation's inbox), mounted at
-`/api/v1/orgs/{organization_id}/modules/product_feedback`: request CRUD, archive, versions, lifecycle
-transitions, comments and files for requests the organisation itself owns, and the triage of a request into a project
-(`move-to-project`), plus merging a duplicate into another inbox request (`merge`, `unmerge`, `merges`).
-
-RBAC: every endpoint needs the `organization_requests` sub-component enabled for the organisation (an
-organisation administrator can switch the inbox off; the endpoints then answer 404) and organisation
-membership. Any member may submit; `_shared.require_request_manage` (organisation Feedback Triager role
-or FGAC grant) is needed to edit, transition, archive or attach evidence. An organisation request's files
-are organisation shared resources (`is_org_resource=True`), so the file-owner hook is never consulted for
-them.
+Organisation-scoped API (the inbox) at `/api/v1/orgs/{organization_id}/modules/product_feedback`:
+request CRUD, archive, versions, transitions, comments, files, triage into a
+project (`move-to-project`) and merging inbox duplicates. Endpoints need the
+`organization_requests` sub-component (404 when off) and membership; any member
+may submit; edits need `_shared.require_request_manage`. Files are organisation
+shared resources, so the file-owner hook is not consulted.
 """
 
 from __future__ import annotations
@@ -59,7 +54,7 @@ from app.modules.product_feedback.service import (
     filter_requests,
     list_organization_requests,
 )
-from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, REQUEST_CHANNELS
+from app.modules.product_feedback.vocabularies import REQUEST_CHANNELS
 from app.modules.product_feedback.vocabulary_routes import register_org_vocabulary
 from app.schemas.file import FileAssetOut
 from app.schemas.scoring import ScoringSchemeOut
@@ -88,10 +83,6 @@ router.include_router(REPORT_ROUTERS.org)
 # The organisation's two classified lists are read by the inbox form and administered even with the inbox switched off,
 # so they need only the module.
 _require_module = require_org_module_enabled(PRODUCT_FEEDBACK_MODULE_KEY)
-register_org_vocabulary(
-    router, path="/external-systems", vocabulary=EXTERNAL_SYSTEMS, entity_type="external_system_definition",
-    view_dependency=_require_references_on,
-)
 register_org_vocabulary(
     router, path="/request-channels", vocabulary=REQUEST_CHANNELS, entity_type="request_channel_definition",
     view_dependency=_require_module,

@@ -1,12 +1,9 @@
 /**
  * Module: testing/StatefulAuthProvider
  *
- * Split out of storybook-helpers.tsx (a file otherwise made up entirely of
- * plain functions — fixture builders, decorator factories) purely to keep
- * that file free of a real component export, since a file mixing component
- * and non-component exports breaks Fast Refresh
- * (react-refresh/only-export-components). Not used directly by stories —
- * `withStatefulAuth` in storybook-helpers.tsx is the public entry point.
+ * Component half of the auth decorator, kept out of storybook-helpers.tsx so
+ * that file exports only functions (a mixed file breaks Fast Refresh,
+ * react-refresh/only-export-components). Stories use `withStatefulAuth` there.
  */
 import { useState, type ReactNode } from "react";
 

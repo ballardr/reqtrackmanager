@@ -7,8 +7,7 @@ counts and parameterised statement text but no bound value, and probes are not c
 merges worker files, classifies processes and only ever signals a verified worker; and the profilers stay out of
 the production image and compose file.
 
-Process-table reads use a fake `/proc` tree, so the tests run on any platform. The real tools are exercised by a
-`perf/run_profile.sh --profiling` run.
+Process-table reads use a fake `/proc` tree, so the tests run on any platform.
 """
 
 from __future__ import annotations
@@ -338,7 +337,7 @@ def test_heap_summary_attributes_live_memory_to_the_first_frame_outside_the_impo
 
 # --- the profilers stay out of production ----------------------------------------------------------------
 
-_COMPOSE = _ROOT / "docker-compose.yml"
+_COMPOSE = _ROOT / "deployments" / "full" / "docker-compose.yml"
 _PROFILE_COMPOSE = _ROOT / "docker-compose.profile.yml"
 _DOCKERFILE = _BACKEND / "Dockerfile"
 _repo_files = pytest.mark.skipif(

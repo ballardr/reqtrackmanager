@@ -3,18 +3,13 @@
  *
  * The personal-data policy for record export and import, at both tiers it is set:
  * - `server`: the deployment-wide default per sensitivity tag (everything excluded until allowed).
- * - `organization`: the organisation's own decision per tag, shown beside the server default it
- *   overrides, with a way back to following the server.
+ * - `organization`: the organisation's own decision per tag, shown beside the server default it overrides, with a
+ *   way back to following the server. An organisation row equal to the server default is saved as "follows the
+ *   server", so the pill never claims a custom value that changes nothing.
  *
- * Design decisions:
- * - One component for both scopes, so a tag reads and behaves the same at either tier; rows are the
- *   shared `ModuleSettingsList` (name, description, hint, one control).
- * - Every change saves at once and ends in a toast (style guide, feedback on every mutation). Widening
- *   the policy (a tag becoming allowed) is a Tier 1 confirm; excluding a tag is not, because it can only
- *   reduce what leaves the application.
- * - An organisation row that would equal the server default is saved as "follows the server" rather than
- *   as an override equal to it, so the pill never claims a custom value that changes nothing.
- * - Tag names come from `RECORD_SENSITIVITY_TAG_LABEL`; the backend never sends display text.
+ * One component for both scopes, with rows from the shared `ModuleSettingsList`. Every change saves at once and
+ * ends in a toast; widening the policy (a tag becoming allowed) is a Tier 1 confirm, excluding a tag is not
+ * because it only reduces what leaves the application. Tag names come from `RECORD_SENSITIVITY_TAG_LABEL`.
  *
  * Dependencies: `GET/PUT /api/v1/system/record-sensitivity-policy` and
  * `GET/PUT /api/v1/orgs/{id}/record-sensitivity-policy`.

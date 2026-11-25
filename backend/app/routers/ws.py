@@ -26,37 +26,25 @@ from app.services.rbac import _project_organization_id, is_org_active
 
 router = APIRouter(tags=["realtime"])
 
-# How often the receive loop wakes up (even with no incoming message) to
-# check whether the connection's token has expired and whether the account
-# is still active. Bounds the exposure window described in the
-# connection-lifetime docstring below without needing a full periodic
-# re-auth round-trip.
+# How often the receive loop wakes (even with no incoming message) to check whether the connection's token
+# has expired and the account is still active, bounding the exposure window described in the
+# connection-lifetime docstring below without a periodic re-auth round-trip.
 _EXPIRY_CHECK_INTERVAL_SECONDS = 60
 
 
 def _user_session_still_valid(user_id: UUID, token_version: int, organization_id: UUID | None) -> bool:
-    """Re-checks `User.is_active`, `User.token_version`, and (if the project
-    still resolves to an organisation) `Organization.is_active` in a fresh,
-    short-lived session — used by the periodic recheck below rather than
-    holding one DB session open for a connection's entire (potentially
-    hours-long) lifetime.
+    """Re-checks `User.is_active`, `User.token_version` and (if the project still resolves to an organisation)
+    `Organization.is_active` in a fresh, short-lived session, used by the periodic recheck rather than
+    holding one DB session open for a connection's whole (potentially hours-long) lifetime.
 
-    The `token_version` comparison is what makes password-change/2FA-disable
-    actually close an already-open socket, the same guarantee
-    `deps._resolve_user_from_token` already provides for every REST
-    request — a hardening-review finding: this function previously checked
-    only `is_active`, so `token_version`'s documented role as "this
-    system's primary technical incident-containment tool"
-    (access-control-policy.md) silently did not apply to WebSocket
-    connections at all, despite docs/decisions.md claiming this exact gap
-    was already closed.
+    The `token_version` comparison is what makes password-change/2FA-disable close an already-open socket, the
+    guarantee `deps._resolve_user_from_token` gives every REST request; `token_version` is this system's
+    primary technical incident-containment tool (access-control-policy.md) and must apply to WebSocket
+    connections.
 
-    The `organization_id`/`is_org_active` check was added by a later
-    hardening pass for the same reason: disabling an organisation is
-    documented to lock out access "regardless of the caller's role,
-    including the org's own admins" (`rbac._require_org_active`), and an
-    already-open socket streaming that org's project updates was a full,
-    silent exception to that guarantee until this was added.
+    The `organization_id`/`is_org_active` check applies the same rule: disabling an organisation locks out
+    access "regardless of the caller's role, including the org's own admins" (`rbac._require_org_active`), so an
+    already-open socket streaming that org's project updates must close too.
     """
     db = SessionLocal()
     try:
@@ -74,20 +62,13 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
 
     Message shape: {"type": "requirement" | "change_request", "action": str, "id": str}
 
-    Access is checked once at handshake time; token expiry, `token_version`
-    revocation (password change / 2FA disable), account deactivation, and
-    the project's organisation being disabled are then rechecked every
-    `_EXPIRY_CHECK_INTERVAL_SECONDS` (SOC 2 access-control hardening pass —
-    a deactivated/credential-revoked account's or now-disabled org's
-    already-open socket closes within one interval, matching the REST
-    API's behaviour of rejecting a stale token / `is_active=False` on
-    every request, rather than only once the token naturally expires).
-    Project *role* changes are still not rechecked mid-connection —
-    narrowing, not eliminating, the original exposure window: a role
-    downgrade/removal takes effect on the next REST call immediately, but
-    an already-open socket keeps streaming that project's updates until
-    the connection's token expires, is revoked, or the account itself is
-    deactivated/archived.
+    Access is checked once at handshake time; token expiry, `token_version` revocation (password change / 2FA
+    disable), account deactivation and the project's organisation being disabled are then rechecked every
+    `_EXPIRY_CHECK_INTERVAL_SECONDS`, so a deactivated or credential-revoked account's (or disabled org's)
+    open socket closes within one interval, as the REST API rejects a stale token or `is_active=False` on every
+    request. Project role changes are not rechecked mid-connection: a downgrade or removal takes effect on the
+    next REST call, but an open socket keeps streaming that project's updates until the connection's token
+    expires, is revoked, or the account is deactivated or archived.
     """
     claims = decode_access_token(token)
     if not claims or "sub" not in claims or claims.get("purpose") != "media":
@@ -100,21 +81,16 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
     try:
         user = db.get(User, UUID(claims["sub"]))
         if user is not None and user.token_version != token_version:
-            # Token was issued before the user's most recent password
-            # change / 2FA disable (see User.token_version) — reject
-            # exactly like deps._resolve_user_from_token does for REST,
-            # even though the signature/expiry are otherwise valid.
+            # Token issued before the user's latest password change / 2FA disable (`User.token_version`):
+            # rejected as `deps._resolve_user_from_token` does for REST, though signature and expiry are valid.
             user = None
         # No server-admin bypass (I-M-05): live project updates are "data
         # within organisations", same boundary as every REST endpoint.
         organization_id = _project_organization_id(db, project_id)
-        # A disabled organisation blocks access for everyone, including its
-        # own admins (rbac._require_org_active) — checked here too, since
-        # this handler authorizes inline rather than through one of the
-        # require_* dependency factories that check does automatically. A
-        # nonexistent project (organization_id is None) is left to fall
-        # through to the ordinary "no role" rejection below rather than
-        # being misreported as "organisation disabled".
+        # A disabled organisation blocks access for everyone, including its own admins
+        # (rbac._require_org_active); checked here because this handler authorises inline rather than through a
+        # require_* dependency factory. A nonexistent project (organization_id is None) falls through to the
+        # ordinary "no role" rejection rather than being reported as "organisation disabled".
         org_active = organization_id is None or is_org_active(db, organization_id)
         has_access = (
             user is not None

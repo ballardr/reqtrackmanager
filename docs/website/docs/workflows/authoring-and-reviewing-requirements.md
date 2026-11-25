@@ -34,15 +34,15 @@ A requirement's detail page also carries a **review date** and an assigned revie
 
 ## Approving a requirement directly
 
-A project manager can approve a Draft or Reviewed requirement from its detail page with **Approve**. A dialog asks you to confirm and lets you add an optional **Approval comment** saying what you checked. The comment is quoted under the approval in the requirement's Activity tab and kept in its version history.
+A project manager can approve a Draft or Reviewed requirement from its detail page by promoting it to **Approved** (the next step of the lifecycle track, or **Promote to Approved** in the actions menu). A dialog asks you to confirm and lets you add an optional **Approval comment** saying what you checked. The comment is quoted under the approval in the requirement's Activity tab and kept in its version history.
 
 ## Marking a requirement completed
 
-Once a requirement is approved, a project manager can mark it **Completed** from its detail page (and uncomplete it to correct a mistake) — a separate status from approval, for tracking which approved requirements have actually been delivered and verified, not just baselined.
+Once a requirement is approved, a project manager can promote it to **Completed** from its detail page (and choose **Revert completion** in the actions menu to correct a mistake) — a separate status from approval, for tracking which approved requirements have actually been delivered and verified, not just baselined.
 
 ## What happens once a requirement is locked
 
-Once a requirement reaches **Approved** or **Completed** status, its edit form disables itself with a "Locked" badge. This isn't just a UI convention — the server rejects a direct edit attempt too, even bypassing the form entirely. Further changes go through a [change request](./change-requests.md) instead. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md) for why locking exists.
+Once a requirement reaches **Approved** or **Completed** status, its edit form is disabled and the track shows a padlock on the current step. This isn't just a UI convention — the server rejects a direct edit attempt too, even bypassing the form entirely. Further changes go through a [change request](./change-requests.md) instead. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md) for why locking exists.
 
 Archiving and recreating a requirement with the same name doesn't dodge this history either — a new requirement always gets a distinct identifier, so there's no way to "become" an archived one and its version history stands unchanged.
 

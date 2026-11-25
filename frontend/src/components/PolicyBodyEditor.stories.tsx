@@ -20,12 +20,15 @@ export default meta;
 
 type Story = StoryObj<typeof PolicyBodyEditor>;
 
-/** The editable area is a named textbox, with the formatting toolbar above it. */
+/** The editable area is a named textbox; the formatting toolbar above it shows only while the field is active. */
 export const ShowsToolbarAndText: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole("textbox", { name: "Policy text" })).toHaveTextContent("Existing text.");
-    const toolbar = canvas.getByRole("toolbar", { name: "Text formatting" });
+    const box = await canvas.findByRole("textbox", { name: "Policy text" });
+    await expect(box).toHaveTextContent("Existing text.");
+    await expect(canvas.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+    await userEvent.click(box);
+    const toolbar = await canvas.findByRole("toolbar", { name: "Text formatting" });
     for (const name of ["Bold", "Italic", "Heading 1", "Bulleted list", "Numbered list", "Quotation", "Link", "Undo"]) {
       await expect(within(toolbar).getByRole("button", { name })).toBeInTheDocument();
     }
@@ -80,5 +83,17 @@ export const LinkWithNoSelectionInsertsTheAddress: Story = {
     await userEvent.type(canvas.getByRole("textbox", { name: "Web address" }), "mailto:privacy@example.org{Enter}");
     await waitFor(() => expect(lastReported(args.onChange)).toContain('"text":"mailto:privacy@example.org"'));
     await expect(lastReported(args.onChange)).toContain('"href":"mailto:privacy@example.org"');
+  },
+};
+
+/** The toolbar is a row of its own that exists only while the field is in use, so the text sits below it once shown. */
+export const TheToolbarTakesNoRoomWhileTheFieldRests: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = await canvas.findByRole("textbox", { name: "Policy text" });
+    const before = box.getBoundingClientRect().top;
+    await userEvent.click(box);
+    await canvas.findByRole("toolbar", { name: "Text formatting" });
+    await expect(box.getBoundingClientRect().top).toBeGreaterThan(before);
   },
 };

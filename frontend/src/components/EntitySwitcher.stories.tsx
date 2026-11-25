@@ -33,10 +33,8 @@ export default meta;
 
 type Story = StoryObj<typeof EntitySwitcher>;
 
-/** The loader resolves with only the current entity (or an empty list) —
- * there's nothing to switch to, so the chevron never renders at all,
- * rather than appearing and immediately disappearing once loading
- * resolves. */
+/** The loader resolves with only the current entity (or nothing): there is nothing to switch to, so the chevron
+ * never renders. */
 export const NoSiblingsRendersNothing: Story = {
   args: {
     loadOptions: resolvedLoader([{ id: "org-1", label: "Acme Corp", href: "/orgs/org-1/overview" }]),
@@ -69,10 +67,7 @@ export const SingleSibling: Story = {
   },
 };
 
-/** More than a handful of siblings — a filter input appears above the
- * list, narrowing it as the user types (`UserAutocomplete`'s own
- * lowercase/substring-filter idiom, reused here rather than the component
- * itself). */
+/** With more than a handful of siblings a filter input appears above the list, narrowing it as the user types. */
 export const ManyEntitiesWithFiltering: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -108,17 +103,9 @@ export const SelectingASiblingClosesThePopover: Story = {
   },
 };
 
-/** The trigger is borderless/transparent at rest — no separately
- * bordered chip next to the entity name — the same "icon affordance, not a
- * bolted-on `.btn`" treatment already applied once to
- * `StandardNavSection.tsx`'s disclosure toggle. `theme.css`'s
- * `.entity-switcher-trigger:hover`/`:focus-visible` rules give it a
- * background on hover/focus (not asserted here via `getComputedStyle` —
- * `:hover`/`:focus-visible` pseudo-classes aren't reliably observable
- * through `userEvent.hover`'s synthetic pointer events in this test
- * runner, the same reason no other story in this codebase snapshot-tests a
- * CSS-only hover state); the class/border assertions below are the real
- * regression guard for the chrome fix itself. */
+/** The trigger is borderless and transparent at rest, not a bordered `.btn` chip beside the entity name;
+ * `theme.css` adds a background on hover and focus. The hover rule is not asserted (pseudo-classes are not
+ * reliably observable through `userEvent.hover`); the class and border assertions guard the chrome. */
 export const ChevronChromeIsBorderless: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

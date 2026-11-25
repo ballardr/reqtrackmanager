@@ -4,52 +4,28 @@ Revision ID: 0041
 Revises: 0040
 Create Date: 2026-09-21
 
-Per the decision record (docs/decisions.md, Platform
-Foundations): builds the generic `artefact_links` table
-(`app.models.relationship.ArtefactLink`) and folds both `requirement_links`
-(`RequirementLink` — typed, requirement-to-requirement traceability) and
-`requirement_action_links` (`RequirementActionLink` — untyped
-action-to-requirement membership) into it, then drops both old tables.
+Builds the generic `artefact_links` table (`app.models.relationship.ArtefactLink`; docs/decisions.md,
+Platform Foundations), folds `requirement_links` (typed requirement-to-requirement traceability) and
+`requirement_action_links` (untyped action-to-requirement membership) into it, then drops both tables.
 
-**Column mapping** (see `ArtefactLink`'s own docstring for the full design):
+Column mapping (design in `ArtefactLink`'s docstring):
 
-- `requirement_links` row -> `source_type='requirement'`,
-  `source_id=source_requirement_id`, `target_type='requirement'`,
-  `target_id=target_requirement_id`, `link_type_id` preserved (always
-  non-null on the old table), `created_by`/`created_at`/`updated_at`
-  preserved.
-- `requirement_action_links` row -> `source_type='requirement_action'`,
-  `source_id=action_id`, `target_type='requirement'`,
-  `target_id=requirement_id`, `link_type_id=NULL` (this table never had a
-  type), `created_by=linked_by`, `created_at` preserved, `updated_at=
-  created_at` (this table had no separate `updated_at` column).
+- `requirement_links` row: `source_type='requirement'`, `source_id=source_requirement_id`,
+  `target_type='requirement'`, `target_id=target_requirement_id`; `link_type_id`, `created_by`,
+  `created_at` and `updated_at` are preserved.
+- `requirement_action_links` row: `source_type='requirement_action'`, `source_id=action_id`,
+  `target_type='requirement'`, `target_id=requirement_id`, `link_type_id=NULL`,
+  `created_by=linked_by`, `created_at` preserved, `updated_at=created_at`.
 
-**Row ids are preserved across the backfill** (`INSERT ... SELECT id, ...`,
-not a fresh `gen_random_uuid()`) — this is required, not cosmetic:
-`change_request_versions.proposed_link_id` holds a live FK reference to a
-`requirement_links.id` value for any REMOVE_LINK change request still
-pending decision at migration time, and that FK is repointed at
-`artefact_links(id)` below rather than dropped. Preserving ids is what
-keeps every such in-flight reference valid across the migration with no
-separate remapping step. `requirement_action_links.id` has no external FK
-referencing it (confirmed by a full-codebase grep before writing this
-migration), so preserving its id isn't strictly required, but is done
-anyway for consistency and because it's free.
+Row ids are preserved (`INSERT ... SELECT id, ...`): `change_request_versions.proposed_link_id` holds an
+FK to a `requirement_links.id` for each pending REMOVE_LINK change request, repointed at
+`artefact_links(id)` below, so preserved ids keep it valid without a remapping step.
 
-**Duplicate prevention**: `artefact_links` has two constraints instead of
-one 5-column unique constraint, because Postgres treats multiple `NULL`s in
-a unique constraint as distinct from one another — a single constraint
-including nullable `link_type_id` would silently stop preventing duplicate
-*untyped* (action) links, a real regression from `requirement_action_links`'
-old `UniqueConstraint(requirement_id, action_id)`. See `uq_artefact_links_typed`
-(the non-null/typed case) and `ux_artefact_links_untyped` (a partial unique
-index for the null/untyped case) below.
-
-Every identifier here is kept within Postgres's 63-byte NAMEDATALEN limit
-by explicit short names (this codebase has hit that limit before on wide
-multi-column constraints — see migration 0009's own comment and
-`RequirementLinkTypeDefinition.__table_args__`'s docstring for the
-established precedent this follows).
+Duplicate prevention uses two constraints, not one 5-column unique constraint, because Postgres treats
+NULLs as distinct and a nullable `link_type_id` would stop preventing duplicate untyped (action) links:
+`uq_artefact_links_typed` (typed case) and `ux_artefact_links_untyped` (partial unique index, untyped
+case). Identifiers use explicit short names to stay within the 63-byte NAMEDATALEN limit (see migration
+0009's comment and `RequirementLinkTypeDefinition.__table_args__`).
 """
 
 from collections.abc import Sequence
@@ -130,10 +106,8 @@ def upgrade() -> None:
 
     # --- 4. Repoint change_request_versions.proposed_link_id at the new table ---
     #
-    # Row ids were preserved above, so every existing proposed_link_id value
-    # (for any REMOVE_LINK change request still pending decision) remains
-    # valid against artefact_links with no remapping needed — only the FK's
-    # target table changes.
+    # Row ids are preserved above, so every pending REMOVE_LINK `proposed_link_id` stays valid; only the
+    # FK's target table changes.
 
     op.execute(
         "ALTER TABLE change_request_versions DROP CONSTRAINT IF EXISTS change_request_versions_proposed_link_id_fkey"

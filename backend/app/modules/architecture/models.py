@@ -14,7 +14,7 @@ The two vocabularies every architecture record is typed by, and the records:
   or by the organisation.
 - `ArchitectureConnection` — an interface between two elements; `ArchitectureConnectionRealisation` marks an inner
   connection as realising an outer one.
-- `ArchitectureFolder` — a name in a tree that organises the list of elements, connections or diagrams; navigation only.
+- `ArchitectureFolder` — a name in a tree that organises the list of elements, connections, diagrams or symbols; navigation only.
 - `ArchitectureCollection`, `ArchitectureCollectionMember`, `ArchitectureCollectionGrant` — a named set of
   elements and who it is shared with (a project, optionally with its descendants, or a group).
 - `ArchitectureDiagram` with its `ArchitectureDiagramPlacement`s, `ArchitectureDiagramNote`s,
@@ -126,8 +126,12 @@ class ArchitectureSymbol(OwnedNamedMixin, Base):
 
     Attributes:
         file_asset_id: The stored SVG, or `None` for a built-in. A copy of an inherited project row shares the file, so
-            the file is deleted only with the last row that names it. `SET NULL` is a backstop only.
-        builtin_key: The built-in drawing, or `None` for an upload. Built-in rows cannot be renamed.
+            the file is deleted only with the last row that names it. Deleting the file deletes the rows that name it
+            (`SET NULL` would break the one-source CHECK, so an organisation holding an upload could not be deleted).
+        builtin_key: The built-in drawing, or `None` for an upload. Built-in rows cannot be renamed and stay at the top level.
+        folder_id: The folder of the owner's `symbol` tree the symbol is filed in, or `None` for the top level. A project's
+            copy of an inherited row is not filed (a folder is per-owner content), and `SET NULL` is a backstop only: the
+            service moves a folder's symbols up before deleting it.
     """
 
     __tablename__ = "architecture_symbols"
@@ -139,9 +143,12 @@ class ArchitectureSymbol(OwnedNamedMixin, Base):
     )
 
     file_asset_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"), nullable=True, index=True
     )
     builtin_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     @property
     def is_builtin(self) -> bool:
@@ -336,10 +343,10 @@ class ArchitectureConnectionTypeParent(Base):
 
 
 class ArchitectureFolder(UUIDPKMixin, TimestampMixin, Base):
-    """A name in a tree that organises one list (elements, connections or diagrams): navigation only.
+    """A name in a tree that organises one list (elements, connections, diagrams or symbols): navigation only.
 
     A folder has no code, is not linkable and means nothing to the roll-up, the resolver or a report. Each kind has its
-    own tree. A project owns folders of any kind; the organisation owns element folders only (a CHECK keeps that).
+    own tree. A project owns folders of any kind; the organisation owns element and symbol folders only (a CHECK keeps that).
     A record is in one folder or none; deleting a folder moves its records and sub-folders to its parent.
 
     Attributes:
@@ -355,7 +362,7 @@ class ArchitectureFolder(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "architecture_folders"
     __table_args__ = (
         CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_folders_one_owner"),
-        CheckConstraint("organization_id IS NULL OR kind = 'element'", name="ck_architecture_folders_org_elements_only"),
+        CheckConstraint("organization_id IS NULL OR kind IN ('element', 'symbol')", name="ck_architecture_folders_org_kinds"),
         CheckConstraint("parent_id IS NULL OR parent_id <> id", name="ck_architecture_folders_not_own_parent"),
     )
 

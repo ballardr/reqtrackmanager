@@ -1,18 +1,11 @@
 /**
  * Module: components/EditHistoryButtons
  *
- * The Undo and Redo buttons of an editor with a local edit history, and the keys that do the same.
- *
- * Responsibilities:
- * - Draw both buttons, unavailable when there is no step to take or the editor cannot be edited.
- * - Install the keyboard shortcuts (`useHistoryShortcuts`) so the buttons and the keys cannot disagree.
- * - Say, in each button's tooltip, which key does the same for the person's platform and what Undo does not reach.
- *
- * Design decisions:
- * - One component for the pair, so the block diagram and state machine diagram editors (and any later editor) share one
- *   wording and one key rule.
- * - The history is the editor's unsaved drawing only. A record created at once from the editor is already stored, so the
- *   tooltip states that Undo does not remove it.
+ * The Undo and Redo buttons of an editor with a local edit history, and the keys that do the same, so the diagram
+ * editors share one wording and key rule. Both buttons are unavailable when there is no step or the editor is
+ * read-only; the shortcuts (`useHistoryShortcuts`) are installed here so buttons and keys cannot disagree. Each
+ * tooltip names the platform's key and says Undo does not reach a record already created from the editor, since the
+ * history covers only the editor's unsaved drawing.
  */
 import { Fragment } from "react";
 

@@ -1,30 +1,16 @@
 /**
  * Module: components/LinkTraceMap
  *
- * The trace map of one record's links: a read-only, layered SVG diagram with
- * upstream records on the left, the record in the centre, downstream records on
- * the right and related records below, each group on its own tinted lane. It scrolls,
- * and grows as the user opens records ("Show more"), so the depth is unlimited.
+ * The trace map of one record's links: a read-only, layered SVG with upstream records on the left, the record in
+ * the centre, downstream on the right and related below, on tinted lanes. It scrolls and grows as records are
+ * opened ("Show more"), so depth is unlimited: it reads two hops out, then one hop per expanded record.
  *
- * Responsibilities:
- * - Read the record's graph two hops out, then one hop per record the user expands,
- *   folding each read into one accumulated graph.
- * - Draw it with `layoutLinkMap` (pure) as hand-built SVG; every record is a real link
- *   to its page, in reading order, so the map is keyboard-navigable and its text
- *   alternative is the Tree tab.
- *
- * Design decisions:
- * - Layered, not force-directed, and
- *   hand-built SVG: no graph library, and none of the click-through limits of a Mermaid
- *   diagram at its required security level.
- * - Colours come from theme variables (light and dark); direction is carried by position,
- *   lane headings and arrowheads (pointing downstream), never by colour alone. The key
- *   (`LinkTraceLegend`) names every symbol.
- * - "Show more" is a labelled pill hanging off the node's bottom edge, the one place no edge
- *   attaches, with a pending state while it reads and a "No more links" note once it found none.
- *   Hovering or focusing a record highlights its own edges and dims the rest; selecting a record
- *   by click is deliberately absent, because a click on a record is navigation.
- * - API calls are injectable (`api`) so stories need no network.
+ * Drawn with the pure `layoutLinkMap` as hand-built SVG (no graph library, and none of a Mermaid diagram's
+ * click-through limits); every record is a real link in reading order, so the map is keyboard-navigable and its
+ * text alternative is the Tree tab. Colours are theme variables; direction is carried by position, lane headings
+ * and arrowheads, never colour alone (`LinkTraceLegend` is the key). "Show more" is a pill on the node's bottom
+ * edge with a pending state and a "No more links" note; hover or focus highlights a record's edges.
+ * API calls are injectable (`api`) so stories need no network.
  */
 import { Info } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
@@ -48,6 +34,7 @@ const INITIAL_DEPTH = 2;
 /** Approximate width of one 10px edge-label character, for sizing its pill. */
 const EDGE_CHAR_W = 5.4;
 function clip(text: string, width: number): string {
+  // ellipsis-ok: SVG text cannot be clamped by CellText; the labels are plain record labels.
   return text.length > width ? `${text.slice(0, width - 1)}…` : text;
 }
 
@@ -263,9 +250,9 @@ function LaneHeading({ lane, label }: { lane: MapLane; label: string }) {
 }
 
 /**
- * One link: a curve with an arrowhead pointing downstream (upstream links are drawn from the
- * focus outwards, so their arrow sits at the start; related links have none) and the relationship
- * as a small pill on it. Decorative: the Tree tab and the record links carry the same facts.
+ * One link: a curve with an arrowhead pointing downstream (upstream links are drawn from the focus outwards, so
+ * their arrow sits at the start; related links have none) and the relationship as a small pill. Decorative: the
+ * Tree tab and the record links carry the same facts.
  */
 function MapEdge({ edge, markerId, active, title }: { edge: PlacedEdge; markerId: string; active: boolean; title: string }) {
   const marker = `url(#${markerId})`;
@@ -297,8 +284,8 @@ function orderedForReading(layout: MapLayout): PlacedNode[] {
 }
 
 /**
- * One record: a link to its page, plus, while its own links are unread, a "Show more" pill on
- * its bottom edge (a pending pill while it reads, a "No more links" note once it found none).
+ * One record: a link to its page, plus, while its own links are unread, a "Show more" pill on its bottom edge
+ * (pending while it reads, a "No more links" note once it found none).
  */
 function MapNode({
   placed,

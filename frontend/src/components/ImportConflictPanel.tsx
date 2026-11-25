@@ -2,13 +2,10 @@ import type { MergeConflict } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 
 /**
- * Lets the caller resolve every name collision an org-merge preview
- * (`POST /orgs/{id}/import/preview`) reported, before committing via
- * `POST /orgs/{id}/import/merge`. A project conflict (and a module's own, such as a
- * Compliance standard) can only be skipped or imported as a renamed copy — never
- * overwritten in place, since a project carries real requirement/change-request
- * history a silent overwrite would destroy (see `services.org_export._import_projects`'s
- * docstring).
+ * Lets the caller resolve every name collision an org-merge preview (`POST /orgs/{id}/import/preview`) reported,
+ * before committing via `POST /orgs/{id}/import/merge`. A project conflict (and a module's own, such as a Compliance
+ * standard) can only be skipped or imported as a renamed copy, never overwritten: a project carries requirement and
+ * change-request history (see `services.org_export._import_projects`).
  */
 export function ImportConflictPanel({
   conflicts,

@@ -95,7 +95,7 @@ export const EditShowsAGroupOwner: Story = {
   play: async () => {
     const d = dialog();
     await expect(d.getByText("Safety Board")).toBeInTheDocument();
-    await expect(d.getByText("Organisation group · 2 members")).toBeInTheDocument();
+    await expect(d.getByText("Organisation group, 2 members")).toBeInTheDocument();
   },
 };
 

@@ -3,25 +3,24 @@ Module: services.bundle_comments
 
 Carries a record's generic comments (`services.record_comments`) in a project bundle, beside its tags and places.
 
-Responsibilities:
-- `export_comments`: for a page of records of one type, each record's comments and pins as bundle rows, read in a
-  fixed number of statements.
-- `import_comments`: recreates one record's comments and pins on the new record (project- or organisation-owned),
-  resolving authors through the bundle's `UserResolver` and anchors through the module's portable-key callback.
+Responsibilities: `export_comments` reads each record's comments and pins for a page of one type as bundle rows
+in a fixed number of statements; `import_comments` recreates them on the new record (project- or
+organisation-owned), resolving authors through `UserResolver` and anchors through the module's portable-key
+callback.
 
 Design decisions:
-- A bundle row carries `comments` and `comment_pins`. A pin has a bundle-local `ref`; a comment names its pin by that
-  ref. An anchor travels as `{kind, code}` (the box's or line's record code), never as an id, and an import that cannot
-  resolve or validate one keeps the pin as a free marker at its saved position (a comment is never dropped for it).
-- Authors, resolvers and pin creators are `*_email` keys, so the bundle's people list and the importer's choices cover
-  them with no change. A person with no match becomes an imported person; one that cannot be resolved leaves the author
-  empty (shown as an unknown user).
-- Resolved state and original times are carried as information. Counts and bodies are bounded on import, so a crafted
-  bundle cannot make an unbounded write.
-- A project made from a template does not copy comments (review history about that project's records): the module's
-  template reset removes `comments` and `comment_pins` from the rows (`strip_comments`).
+- A row carries `comments` and `comment_pins`. A pin has a bundle-local `ref` that a comment names. An anchor
+  travels as `{kind, code}`, never an id; an import that cannot resolve or validate one keeps the pin as a free
+  marker at its saved position, so a comment is never dropped for it.
+- Authors, resolvers and pin creators are `*_email` keys, covered by the bundle's people list and the
+  importer's choices. An unmatched person becomes an imported person; an unresolvable one leaves the author
+  empty (an unknown user).
+- Resolved state and original times are carried as information. Counts and bodies are bounded on import, so a
+  crafted bundle cannot make an unbounded write.
+- A project made from a template does not copy comments (review history): the module's template reset removes
+  them (`strip_comments`).
 
-External dependencies: `models.record_comment`, `models.user`, `services.bundle_common`, `modules.registry`.
+Dependencies: `models.record_comment`, `models.user`, `services.bundle_common`, `modules.registry`.
 """
 
 from __future__ import annotations

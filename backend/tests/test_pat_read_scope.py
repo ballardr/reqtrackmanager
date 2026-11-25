@@ -67,6 +67,32 @@ def test_notifications_follow_the_token_scope(client, admin_token):
     assert [n["title"] for n in client.get("/api/v1/notifications", headers=auth_headers(pat)).json()] == ["in scope"]
 
 
+def test_a_token_cannot_read_or_mark_read_a_notification_outside_its_scope(client, admin_token):
+    _org_a, _org_b, project_a, project_b, session, pat, me = _two_orgs(client, admin_token)
+    ids: dict[str, str] = {}
+    db = SessionLocal()
+    try:
+        for project, title in ((project_a, "in scope"), (project_b, "out of scope"), (None, "account level")):
+            row = Notification(
+                user_id=uuid.UUID(me), type="mention", title=title, body="",
+                project_id=uuid.UUID(project["id"]) if project else None, created_at=datetime.now(UTC),
+            )
+            db.add(row)
+            db.flush()
+            ids[title] = str(row.id)
+        db.commit()
+    finally:
+        db.close()
+
+    for title, expected in (("in scope", 200), ("out of scope", 404), ("account level", 404)):
+        detail = client.get(f"/api/v1/notifications/{ids[title]}", headers=auth_headers(pat))
+        marked = client.post(f"/api/v1/notifications/{ids[title]}/read", headers=auth_headers(pat))
+        assert (detail.status_code, marked.status_code) == (expected, expected), title
+    # The refusal leaves the notification unread for the account's own session.
+    unread = {n["title"] for n in client.get("/api/v1/notifications?unread_only=true", headers=auth_headers(session)).json()}
+    assert unread == {"out of scope", "account level"}
+
+
 def test_a_token_that_names_a_project_reaches_only_that_project(client, admin_token):
     org_a, _org_b, project_a, _project_b, session, _pat, _ = _two_orgs(client, admin_token)
     other = create_project(client, session, org_a["id"], name="Alpha Second")

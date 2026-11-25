@@ -1,171 +1,12 @@
 """
 Module: modules.context_strategy.service
 
-Context & Strategy's business logic.
-
-Strategy (organisation & project scope):
-
-- `create_strategy` — creates a `Strategy` identity row plus its initial
-  (version 1) content snapshot, mirroring `services.requirements.
-  create_requirement`'s shape exactly.
-- `apply_new_version` — closes the current `StrategyVersion` and inserts a
-  new one, carrying forward any field left unspecified — the exact
-  `services.requirements.apply_new_version` pattern, applied here because
-  Strategy has the same full temporal
-  version-history model Requirement has, not Decision Management's lighter
-  identity-row-status-plus-audit-log approach.
-- `propose_strategy` / `submit_strategy_for_review` / `send_strategy_back_
-  to_draft` / `approve_strategy` / `activate_strategy` / `supersede_
-  strategy` / `retire_strategy` — the `StrategyStatus` transitions
-  (`enums._ALLOWED_TRANSITIONS` below), each applied via `apply_new_
-  version` (a transition is a content change like any other, per the model
-  docstring) and recorded via `services.audit.log_event`.
-- `resolve_strategy_file_project_id` — this module's `ModuleDefinition.
-  resolve_file_owner_project_id` hook, for a **project-scoped** Strategy's
-  direct/comment file attachments only. An **org-scoped** Strategy's files
-  are uploaded as organisation shared resources instead
-  (`FileAsset.is_org_resource=True`), authorized by org membership alone
-  through `routers.files.download_file`'s existing `is_org_resource`
-  branch — this hook only ever needs to resolve the project-owned case,
-  mirroring `modules.decisions.service.resolve_decision_file_project_id`'s
-  shape for the half of this module's files that *do* need it.
-
-Future State has the same shape of functions for the standalone artefact —
-`create_future_state`, `apply_future_state_new_version`,
-`archive_future_state`/`unarchive_future_state`, the seven `FutureStateStatus`
-lifecycle transitions, and `resolve_future_state_file_project_id`. Distinct
-function/constant names throughout (not a reuse of the Strategy names above)
-since every artefact type shares this one file — see each function's own
-docstring for anything that isn't a pure rename of its Strategy counterpart.
-
-Pain Points have a structurally different shape — no version table
-(`enums.PainPointStatus`'s own docstring), so `create_pain_point`/
-`update_pain_point` mutate one row directly rather than opening/closing
-`...Version` snapshots — plus the two-tier type vocabulary's own resolution
-logic (`resolve_effective_pain_point_types`,
-`get_or_create_project_pain_point_type`) and org-/project-scoped type CRUD
-(`create_org_pain_point_type`/`delete_org_pain_point_type`/
-`create_project_local_pain_point_type`/`set_project_pain_point_type_override`/
-`delete_project_pain_point_type`). The `_PP_ALLOWED_TRANSITIONS` state
-machine expresses `PainPointStatus`'s **branching** shape (`TRIAGED` has
-three legal next states), unlike `_ALLOWED_TRANSITIONS`/
-`_FS_ALLOWED_TRANSITIONS`'s linear-chain-plus-terminal-branch shape above, but
-is built from the same dict-of-frozensets pattern, not a new mechanism.
-
-Guiding Principles have `create_guiding_principle`,
-`apply_guiding_principle_new_version`, `archive_guiding_principle`/
-`unarchive_guiding_principle`, the six `GuidingPrincipleStatus` lifecycle
-transitions (`_GP_ALLOWED_TRANSITIONS` — a linear chain with no
-`UNDER_REVIEW` step, see that enum's own docstring), and
-`resolve_guiding_principle_file_project_id` — a structural mirror of
-Strategy/Future State (full version-history table, org/project scope), not
-Pain Point's version-less shape.
-
-Open Questions have `create_open_question`/`update_open_question` (no version
-table — Pain Point's shape, see `models.OpenQuestion`'s own docstring),
-`archive_open_question`/`unarchive_open_question`, and the branching
-`OpenQuestionStatus` lifecycle transitions (`investigate_open_question`/
-`mark_open_question_ready_for_decision`/`withdraw_open_question`/
-`resolve_open_question`, `_OQ_ALLOWED_TRANSITIONS` — built from the same
-dict-of-frozensets mechanism as `_PP_ALLOWED_TRANSITIONS`, with two branch
-points instead of one: both `INVESTIGATING` and `READY_FOR_DECISION` can reach
-`WITHDRAWN`), plus `resolve_open_question_file_project_id`.
-`resolve_open_question` is deliberately a plain status transition, not the
-actual "Create Decision from Open Question" workflow (§9.5) or its
-`ArtefactLink` — that workflow belongs to Decision Management, the same "ship
-the plain transition now, wire the real relationship later" posture
-`supersede_strategy`/`supersede_future_state`/`supersede_guiding_principle`
-take for their own `ArtefactLink` side effects.
-
-Cross-artefact relationships use the platform's generic `services.relationships`
-layer directly rather than a bespoke storage mechanism — structurally
-mirroring `modules.decisions.service`'s "relationships" section (a lazy
-fetch-or-create `RequirementLinkTypeDefinition` for each typed relationship
-name, `services.relationships.create_link`/`get_link_between` underneath) but
-organised around one kind-enum per *source* artefact type
-(`StrategyLinkKind`/`PainPointLinkKind`/`GuidingPrincipleLinkKind`/
-`FutureStateLinkKind`/`OpenQuestionLinkKind`) rather than Decision's
-per-target-type kind enums, since this module has five source types fanning
-out to a shared pool of targets (Requirement, each other, and — reserved, see
-below — Decision) rather than Decision's one source type fanning out to two.
-
-- `resolve_link_target_organization_id` / `_resolve_scope_organization_id`
-  — resolves any link *target* this module knows how to link to (core
-  Requirement, or any of this module's own five artefact types) to its
-  owning organisation, so `create_context_strategy_link` can enforce a
-  same-organisation boundary before creating the link — the generalised
-  form of `modules.decisions.service._project_organization_id`, needed here
-  because a source artefact may itself be org- *or* project-scoped (unlike
-  Decision, always project-scoped), so "same project" isn't always the
-  right boundary; "same organisation" is, and subsumes "same project" (a
-  project's own organisation is always the boundary a same-project check
-  would have enforced too).
-- `create_context_strategy_link` — the single generic dispatcher every
-  `create_*_link` wrapper below calls: validates same-organisation,
-  fetches-or-creates the named link type (or leaves `link_type_id` `None`
-  for an untyped "related to" association — §6.6's own
-  instruction that "the relationship type should distinguish causation/
-  rationale from generic association" is what the typed/untyped split
-  below implements), pre-checks for a duplicate, then calls `services.
-  relationships.create_link`.
-- One `create_<source>_link(db, *, <source>, kind, target_id, actor_id)`
-  wrapper per source artefact type, each resolving `target_id` against
-  whichever artefact type `kind` implies (`_STRATEGY_LINK_SPECS`/
-  `_PAIN_POINT_LINK_SPECS`/`_GUIDING_PRINCIPLE_LINK_SPECS`/`_FUTURE_STATE_
-  LINK_SPECS`/`_OPEN_QUESTION_LINK_SPECS`) and calling the dispatcher.
-- `create_strategy_supersession` / `create_future_state_supersession` /
-  `create_guiding_principle_supersession` — the deferred `ArtefactLink`
-  side effect `supersede_strategy`/`supersede_future_state`/`supersede_
-  guiding_principle`'s own docstrings promised: each creates the typed
-  `"Supersedes"` link, reusing this module's own plain status-transition
-  function underneath (unchanged, exactly as those docstrings
-  said a relationship pass could layer on top of them without changing their
-  contract) rather than duplicating the transition logic.
-
-**Decision-target relationships stay reserved, not built (Decided by:
-Agent — see `docs/decisions.md` for the full reasoning).** Source overview
-§5.6/§8.5/§9.5 name three relationship types whose target is a Decision
-Management `Decision` (Strategy -> informs -> Decision, Guiding Principle ->
-guides -> Decision, Open Question -> resolved by -> Decision). They are
-reserved because wiring them here would hit a structural problem: this module
-cannot import `app.modules.decisions.models.Decision` to validate a target
-Decision id (the Modular Feature System Boundary rule — Decision is
-module-owned, not core, unlike `Requirement`), and Decision Management would
-hit the identical problem in reverse trying to import this module's own
-models. The right place to resolve that is Decision Management (most likely by
-adding `create_decision_strategy_link`/`create_decision_guiding_principle_link`/
-`create_decision_open_question_link` to `modules.decisions.service`, mirroring
-`create_decision_requirement_link` exactly, now that Strategy/Guiding
-Principle/Open Question all exist as real, registered artefact types for it to
-target). `Decision` (`DECISION_ARTEFACT_TYPE = "decision"`,
-`modules.decisions.service`) is a real, registered artefact type, so the
-*target* itself is not hypothetical, only the wiring code is still pending, on
-Decision Management's side.
-
-**MCP tools and the `require_ai_approvals_enabled` gate** (`module.py`'s
-`mcp_tools`, 2026-09-22 write-enabled decision, `docs/decisions.md`):
-ordinary CRUD and non-decisive lifecycle transitions (create/update,
-propose/submit-for-review/send-back, plain `supersede`/`retire`/`activate`)
-are declared as normal write tools, gated only by `MCP_WRITES_ENABLED` +
-the calling account's own RBAC role — no special treatment. Five specific
-actions additionally require `app.services.rbac.require_ai_approvals_
-enabled` when reached through MCP (`get_request_channel(request) ==
-"mcp"`), per the agreed list: `approve_strategy`, `approve_
-future_state`, `activate_guiding_principle`, `retire_guiding_principle`,
-and `resolve_open_question` — project-scoped only (the gate itself needs a
-`Project` to check both its own and its organisation's `allow_ai_approvals`
-flags, so an org-scoped Strategy/Future State/Guiding Principle's own
-approve/activate/retire endpoints are not declared as MCP tools at all,
-rather than gated against a project that doesn't exist for them). Note
-Guiding Principle's own gated pair is `activate`/`retire`, **not**
-`approve` — asymmetric with Strategy/Future State's own gated `approve` —
-this is the agreed text (2026-09-22 update), not a rewording:
-Guiding Principle's lifecycle has no `UNDER_REVIEW` step (`enums.
-GuidingPrincipleStatus`'s own docstring), so `approve` there is closer to a
-review-sign-off than the "this Principle governs Decisions now" /
-"this Principle no longer applies" decisions `activate`/`retire` actually
-make — the "is this a real decision"
-line is drawn one step later for this artefact than for Strategy/Future State.
+Business logic for the five artefact types.
+- Strategy, Future State, Guiding Principle: identity row plus temporal
+  versions; each transition makes a version and an audit event.
+- Pain Point, Open Question: no version table; branching state machines.
+- Links use `services.relationships` (same-organisation boundary); Decision
+  targets are not created here (module boundary).
 """
 
 from __future__ import annotations
@@ -227,17 +68,16 @@ from app.modules.context_strategy.models import (
 )
 from app.modules.registry import LinkTypeSeed
 from app.schemas.principal import PrincipalRef
-from app.services import definition_suppression
+from app.services import approval_separation, definition_suppression
 from app.services.audit import log_event
+from app.services.lifecycles import check_move
 from app.services.link_types import ensure_org_link_type
 from app.services.rbac import lock_row_for_update
 from app.services.relationships import create_link, get_link_between
 from app.services.sequences import code_owner, generate_unique_code
 
-# This module's own artefact-type string, registered on `ModuleDefinition.
-# artefact_types` (module.py), so relationship wiring (`ArtefactLink`)
-# needs no core-file edit, following Decision Management's own precedent
-# exactly (see module.py).
+# This module's artefact-type string, registered on
+# `ModuleDefinition.artefact_types` (module.py).
 STRATEGY_ARTEFACT_TYPE = "strategy"
 STRATEGY_CODE_PREFIX = "STR"
 
@@ -290,17 +130,12 @@ def create_strategy(
     priority: StrategyPriority = StrategyPriority.MEDIUM,
     time_horizon: StrategyTimeHorizon = StrategyTimeHorizon.MEDIUM_TERM,
 ) -> Strategy:
-    """Creates a Strategy and its initial (version 1) content snapshot, in
-    `DRAFT` status. Mirrors `services.requirements.create_requirement`'s
-    shape exactly (identity row + version row, one transaction, not
-    committed here — caller commits).
+    """Creates a Strategy and its initial (version 1) content snapshot in
+    `DRAFT` status (identity row plus version row; the caller commits).
 
     Args:
-        organization_id: Always required — even a project-scoped Strategy
-            resolves to an owning organisation (`Strategy.organization_id`
-            stays `None` for that case; this parameter is only used to
-            decide which identity column to populate, not stored directly
-            unless `scope` is `ORGANIZATION`).
+        organization_id: Always required; selects the identity column when
+            `scope` is `ORGANIZATION`.
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
     """
     code_scope = code_owner(
@@ -355,6 +190,7 @@ def apply_new_version(
     rather than a separate identity-row column)."""
     now = datetime.now(UTC)
     current_version.valid_to = now
+    strategy.updated_at = now  # a new version is a change to the record: its Modified time moves
 
     new_version = StrategyVersion(
         strategy_id=strategy.id,
@@ -403,13 +239,9 @@ def unarchive_strategy(db: Session, strategy: Strategy) -> None:
 
 # --- Lifecycle transitions --------------------------------------------------
 
-# Legal `StrategyStatus` transitions (`enums.StrategyStatus`'s own
-# docstring): forward through the five "in-flight"/active states, with
-# `PROPOSED`/`UNDER_REVIEW` both able to send a Strategy back to `DRAFT`
-# (this module's "reject"-equivalent, since the lifecycle names no separate
-# rejected state), and `APPROVED`/`ACTIVE` both able to
-# reach `RETIRED` directly (a Strategy approved but never activated can
-# still be retired without passing through `ACTIVE` first).
+# Legal `StrategyStatus` transitions: forward through the in-flight and active
+# states; `PROPOSED`/`UNDER_REVIEW` can return to `DRAFT`, and
+# `APPROVED`/`ACTIVE` can reach `RETIRED` directly.
 _ALLOWED_TRANSITIONS: dict[StrategyStatus, frozenset[StrategyStatus]] = {
     StrategyStatus.DRAFT: frozenset({StrategyStatus.PROPOSED}),
     StrategyStatus.PROPOSED: frozenset({StrategyStatus.UNDER_REVIEW, StrategyStatus.DRAFT}),
@@ -420,12 +252,8 @@ _ALLOWED_TRANSITIONS: dict[StrategyStatus, frozenset[StrategyStatus]] = {
     StrategyStatus.RETIRED: frozenset(),
 }
 
-# A Strategy's content fields are locked (no direct edit; only a further
-# lifecycle transition may create a new version) once past `UNDER_REVIEW` —
-# mirrors Decision Management's "approved decisions should not normally be
-# edited in-place" rule, applied one state earlier here since Strategy has
-# no single "APPROVED" terminal-ish state the way Decision does (Strategy
-# keeps moving through ACTIVE/SUPERSEDED/RETIRED afterwards).
+# Content is locked once past `UNDER_REVIEW`: only a lifecycle transition may
+# create a new version afterwards.
 LOCKED_STATUSES = frozenset(
     {StrategyStatus.APPROVED, StrategyStatus.ACTIVE, StrategyStatus.SUPERSEDED, StrategyStatus.RETIRED}
 )
@@ -450,8 +278,10 @@ def _transition(
         ValueError: if `new_status` isn't reachable from `current_version.
             status` per `_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _ALLOWED_TRANSITIONS[current_version.status]:
-        raise ValueError(f"Cannot move a Strategy from '{current_version.status.value}' to '{new_status.value}'.")
+    check_move(
+        db, strategy.project_id, STRATEGY_ARTEFACT_TYPE, current_version.status.value, new_status.value,
+        record_id=strategy.id,
+    )
     new_version = apply_new_version(
         db, strategy, current_version, actor, status_value=new_status, change_note=comment or "",
     )
@@ -490,7 +320,10 @@ def send_strategy_back_to_draft(
 def approve_strategy(
     db: Session, strategy: Strategy, current_version: StrategyVersion, actor: User, *, comment: str | None = None
 ) -> StrategyVersion:
-    """`UNDER_REVIEW` -> `APPROVED`."""
+    """`UNDER_REVIEW` -> `APPROVED`; applies the approval separation rule first (`services.approval_separation`)."""
+    approval_separation.enforce_record_approval(
+        db, user=actor, artefact_type=STRATEGY_ARTEFACT_TYPE, record=strategy, comment=comment,
+    )
     return _transition(db, strategy, current_version, StrategyStatus.APPROVED, actor, action="approved", comment=comment)
 
 
@@ -523,19 +356,15 @@ def retire_strategy(
 
 
 def resolve_strategy_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
-    """Resolves a `FileAsset` id to the project it belongs to, if it is
-    attached to a **project-scoped** Strategy directly (`StrategyFile`) or
-    via a `StrategyComment` (`StrategyCommentFile`) — this module's own
-    `ModuleDefinition.resolve_file_owner_project_id` hook, mirroring
-    `modules.decisions.service.resolve_decision_file_project_id`'s exact
-    shape. An org-scoped Strategy's files are never resolved here — they
-    are uploaded with `FileAsset.is_org_resource=True` instead, authorized
-    by `routers.files.download_file`'s own org-membership branch before
-    this hook is ever consulted (see module docstring).
+    """Resolves a `FileAsset` id to the project of the **project-scoped**
+    Strategy it is attached to, directly (`StrategyFile`) or through a
+    `StrategyComment` (`StrategyCommentFile`): this module's
+    `ModuleDefinition.resolve_file_owner_project_id` hook. Organisation-scoped
+    files are `is_org_resource` uploads authorised by membership, never
+    resolved here.
 
     Returns:
-        The owning project's id, or `None` if `file_id` isn't attached to
-        a project-scoped Strategy or its comment.
+        The owning project's id, or `None`.
     """
     direct_link = db.scalar(select(StrategyFile).where(StrategyFile.file_id == file_id))
     if direct_link is not None:
@@ -554,10 +383,7 @@ def resolve_strategy_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
 
 # --- Future State -------------------------------------------------
 
-# This module's second artefact-type string (Future State is a
-# standalone artefact, not fields on Strategy), registered on
-# `ModuleDefinition.artefact_types` (module.py) for the same reason
-# `STRATEGY_ARTEFACT_TYPE` is.
+# The second artefact-type string, registered on `ModuleDefinition.artefact_types`.
 FUTURE_STATE_ARTEFACT_TYPE = "future_state"
 FUTURE_STATE_CODE_PREFIX = "FUT"
 
@@ -674,6 +500,7 @@ def apply_future_state_new_version(
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    future_state.updated_at = now  # a new version is a change to the record: its Modified time moves
 
     new_version = FutureStateVersion(
         future_state_id=future_state.id,
@@ -745,8 +572,10 @@ def _future_state_transition(
         ValueError: if `new_status` isn't reachable from `current_version.
             status` per `_FS_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _FS_ALLOWED_TRANSITIONS[current_version.status]:
-        raise ValueError(f"Cannot move a Future State from '{current_version.status.value}' to '{new_status.value}'.")
+    check_move(
+        db, future_state.project_id, FUTURE_STATE_ARTEFACT_TYPE, current_version.status.value, new_status.value,
+        record_id=future_state.id,
+    )
     new_version = apply_future_state_new_version(
         db, future_state, current_version, actor, status_value=new_status, change_note=comment or "",
     )
@@ -789,7 +618,10 @@ def approve_future_state(
     db: Session, future_state: FutureState, current_version: FutureStateVersion, actor: User,
     *, comment: str | None = None,
 ) -> FutureStateVersion:
-    """`UNDER_REVIEW` -> `APPROVED`."""
+    """`UNDER_REVIEW` -> `APPROVED`; applies the approval separation rule first (`services.approval_separation`)."""
+    approval_separation.enforce_record_approval(
+        db, user=actor, artefact_type=FUTURE_STATE_ARTEFACT_TYPE, record=future_state, comment=comment,
+    )
     return _future_state_transition(
         db, future_state, current_version, FutureStateStatus.APPROVED, actor, action="approved", comment=comment,
     )
@@ -859,19 +691,13 @@ def resolve_future_state_file_project_id(db: Session, file_id: uuid.UUID) -> uui
 
 # --- Pain Points ---------------------------------------------------
 
-# This module's third artefact-type string (Pain Point is project-scoped
-# only — §6 — so it never needs a `scope` discriminator the
-# way Strategy/Future State do), registered on `ModuleDefinition.
-# artefact_types` for the same reason `STRATEGY_ARTEFACT_TYPE` is.
+# The third artefact-type string, registered on `ModuleDefinition.artefact_types`;
+# Pain Point is project-scoped only.
 PAIN_POINT_ARTEFACT_TYPE = "pain_point"
 PAIN_POINT_CODE_PREFIX = "PP"
 
-# Source overview §6.2's own named defaults — seeded once per organisation
-# (`seed_default_pain_point_types`), the same "organisation may optionally
-# provide default types" convention `services.definitions.seed_link_types`
-# already follows for `RequirementLinkTypeDefinition`. Kept module-local
-# (not added to that core file's own default-content section) since these
-# are a module-owned vocabulary, not a core one.
+# §6.2 default types, seeded once per organisation
+# (`seed_default_pain_point_types`); a module-owned vocabulary, kept here.
 DEFAULT_PAIN_POINT_TYPES: tuple[str, ...] = ("Market", "User", "Operator")
 
 
@@ -929,25 +755,12 @@ def create_org_pain_point_type(
 
 
 def delete_org_pain_point_type(db: Session, pain_point_type: PainPointTypeDefinition) -> None:
-    """Deletes an organisation-scoped Pain Point type (§6.2 "Remove types
-    where no longer used").
-
-    Unlike `services.definitions.delete_definition_with_reassignment`
-    (used by `RequirementLinkTypeDefinition`/`ActionTypeDefinition`), this
-    does **not** offer single-scope reassignment — an org type may be
-    referenced (via `ProjectPainPointType.org_type_id`) by override rows
-    across *many* projects at once, and a cross-project bulk reassignment
-    has no single obviously-correct target the way a same-scope
-    reassignment does. **Decided by: Agent.** Blocks outright (`ValueError`,
-    translated to a 409 by the router) while any project still references
-    this type; the org admin must ask each such project to stop using it
-    first (no automated tooling for that — a reasonable
-    scope boundary given how rarely an in-use org type should be removed
-    outright rather than merely disabled via `is_active`).
+    """Deletes an organisation-scoped Pain Point type (§6.2). No reassignment
+    is offered: projects across the organisation may reference it, so there
+    is no single target. It is blocked while any project references it.
 
     Raises:
-        ValueError: if any `ProjectPainPointType` row still references
-            this org type.
+        ValueError: if any `ProjectPainPointType` row references this type.
     """
     in_use = db.scalar(
         select(ProjectPainPointType.id).where(ProjectPainPointType.org_type_id == pain_point_type.id).limit(1)
@@ -967,28 +780,20 @@ def delete_org_pain_point_type(db: Session, pain_point_type: PainPointTypeDefini
 
 @dataclass(frozen=True)
 class EffectivePainPointType:
-    """One row of a project's *effective* Pain Point type list
-    — the merged view `resolve_effective_pain_point_types` builds, never
-    itself a stored/materialized table.
+    """One row of a project's effective Pain Point type list, built by
+    `resolve_effective_pain_point_types` (never stored).
 
     Attributes:
-        id: Either a `PainPointTypeDefinition.id` (an org type with no
-            project override yet — `source == "org"`) or a
-            `ProjectPainPointType.id` (an org type *with* a project
-            override, `source == "project_override"`; or a fully
-            project-local type, `source == "project_local"`). Passed back
-            as `PainPointCreate.pain_point_type_id`/`PainPointUpdate.
-            pain_point_type_id`, resolved by `get_or_create_project_
-            pain_point_type` regardless of which of the three cases it is.
+        id: A `PainPointTypeDefinition.id` (`source == "org"`) or a
+            `ProjectPainPointType.id` (`"project_override"`/`"project_local"`);
+            passed back as `pain_point_type_id` and resolved by
+            `get_or_create_project_pain_point_type`.
         name: Effective display name.
-        display_order: Effective display/picker order.
-        is_enabled: Effective enabled state — a disabled type is still
-            listed (so a project admin can see and re-enable it) but
-            rejected by `create_pain_point`/`update_pain_point` if selected.
-        source: `"org"` / `"project_override"` / `"project_local"` — see
-            `id`'s own docstring.
-        definition: Effective definition — the project's own text when it
-            has one, else the organisation's; `None` when neither wrote one.
+        display_order: Effective picker order.
+        is_enabled: Effective state; a disabled type is listed but rejected
+            when selected.
+        source: `"org"`, `"project_override"` or `"project_local"`.
+        definition: The project's own text, else the organisation's, else `None`.
     """
 
     id: uuid.UUID
@@ -1079,19 +884,13 @@ def resolve_effective_pain_point_types(db: Session, project_id: uuid.UUID, organ
 def get_or_create_project_pain_point_type(
     db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID
 ) -> ProjectPainPointType:
-    """Resolves a `PainPointCreate.pain_point_type_id`/`PainPointUpdate.
-    pain_point_type_id` value (an `EffectivePainPointType.id`, per that
-    dataclass's own docstring) to a concrete `ProjectPainPointType` row,
-    creating a "no override yet" passthrough row the first time an org
-    type (with no existing override in this project) is actually selected
-    for a Pain Point — lazy materialization, not eager (`resolve_effective_
-    pain_point_types` itself never writes).
+    """Resolves a type reference (an `EffectivePainPointType.id`) to a
+    `ProjectPainPointType` row, lazily creating a passthrough row the first
+    time an organisation type with no override is selected.
 
     Raises:
-        ValueError: if `type_ref_id` doesn't resolve to any type this
-            project can use (not an existing `ProjectPainPointType` row for
-            this project, and not an active `PainPointTypeDefinition`
-            belonging to this project's own organisation).
+        ValueError: if `type_ref_id` is neither a `ProjectPainPointType` of
+            this project nor an active type of this project's organisation.
     """
     existing = db.get(ProjectPainPointType, type_ref_id)
     if existing is not None and existing.project_id == project_id:
@@ -1271,28 +1070,14 @@ def set_project_pain_point_type_override(
 
 
 def delete_project_pain_point_type(db: Session, project_pain_point_type: ProjectPainPointType) -> None:
-    """Deletes a project-scoped `ProjectPainPointType` row (§6.2 "Remove
-    types where no longer used").
-
-    For a project-local row (`org_type_id` `NULL`), this genuinely removes
-    the type. For an org-backed override row, this simply reverts the
-    project to the plain org default (the org type itself is untouched) —
-    safe to delete outright rather than needing reassignment, unlike the
-    project-local case below.
-
-    **Decided by: Agent** — no `reassign_to_id` support (unlike `services.
-    definitions.delete_definition_with_reassignment`): a Pain Point's own
-    `pain_point_type_id` is NOT NULL, so removing a project-local type
-    still in use by a Pain Point would orphan it. This blocks that
-    outright rather than adding reassignment machinery `RequirementLinkTypeDefinition`/
-    `ActionTypeDefinition` already have elsewhere, disproportionate to a
-    single change's scope (an org-backed override row is never "in use"
-    on its own — a Pain Point can still reference it, so the same check
-    applies to both cases uniformly, not only the project-local one).
+    """Deletes a project-scoped `ProjectPainPointType` row. A project-local
+    row removes the type; an org-backed override row reverts the project to
+    the organisation default. No reassignment is offered: a Pain Point's
+    `pain_point_type_id` is NOT NULL, so removal is blocked while any Pain
+    Point references the row (both cases alike).
 
     Raises:
-        ValueError: if any `PainPoint.pain_point_type_id` still references
-            this row.
+        ValueError: if any `PainPoint.pain_point_type_id` references this row.
     """
     in_use = db.scalar(select(PainPoint.id).where(PainPoint.pain_point_type_id == project_pain_point_type.id).limit(1))
     if in_use is not None:
@@ -1319,20 +1104,14 @@ def create_pain_point(
     date_identified: date | None = None,
     is_intentional: bool = False,
 ) -> PainPoint:
-    """Creates a Pain Point in `SUBMITTED` status (§6.5's broad-creation
-    model — any project member, not just a `pain_point_manager`), with the
-    project's next `PP-nnn` code.
+    """Creates a Pain Point in `SUBMITTED` status (any project member may
+    create) with the project's next `PP-nnn` code.
 
     Args:
         project: The owning project (its sequence counter is advanced).
-        pain_point_type: Already resolved via `get_or_create_project_
-            pain_point_type` — this function does not resolve it itself so
-            callers can validate `is_enabled` against the effective list
-            first (see `project_router.create_project_pain_point`).
-        date_identified: Defaults to today if not supplied — lowers the
-            friction of a quick problem report from an ordinary member
-            (§6.5), the one field on this artefact this module defaults
-            server-side rather than requiring explicitly.
+        pain_point_type: Already resolved via `get_or_create_project_pain_point_type`,
+            so callers can validate `is_enabled` first.
+        date_identified: Defaults to today if not supplied.
     """
     pain_point = PainPoint(
         project_id=project.id, pain_point_type_id=pain_point_type.id, creator_id=creator.id,
@@ -1416,11 +1195,8 @@ def unarchive_pain_point(db: Session, pain_point: PainPoint) -> None:
 
 # --- Pain Point lifecycle (branching) ----------------------------------------
 
-# Legal `PainPointStatus` transitions (`enums.PainPointStatus`'s own
-# docstring) — the branching shape §6.4 describes:
-# `Submitted -> Triaged -> {Rejected | Duplicate | Accepted -> Addressed ->
-# Closed}`. `TRIAGED` alone has three legal next states, unlike every other
-# lifecycle in this module.
+# Legal `PainPointStatus` transitions: `Submitted -> Triaged -> {Rejected |
+# Duplicate | Accepted -> Addressed -> Closed}`; only `TRIAGED` branches.
 _PP_ALLOWED_TRANSITIONS: dict[PainPointStatus, frozenset[PainPointStatus]] = {
     PainPointStatus.SUBMITTED: frozenset({PainPointStatus.TRIAGED}),
     PainPointStatus.TRIAGED: frozenset(
@@ -1433,13 +1209,9 @@ _PP_ALLOWED_TRANSITIONS: dict[PainPointStatus, frozenset[PainPointStatus]] = {
     PainPointStatus.CLOSED: frozenset(),
 }
 
-# Content is locked once a Pain Point reaches a terminal outcome —
-# `REJECTED`/`DUPLICATE`/`CLOSED` are this lifecycle's true end states.
-# `ACCEPTED`/`ADDRESSED` deliberately stay unlocked (unlike Strategy's
-# `LOCKED_STATUSES`, which locks at `APPROVED` and everything after) —
-# **Decided by: Agent** — a `pain_point_manager` may still need to
-# reassign `owner_id`/adjust `priority` while work is genuinely in
-# progress (`ACCEPTED`/`ADDRESSED`), not only before triage.
+# Content is locked at a terminal outcome (`REJECTED`/`DUPLICATE`/`CLOSED`);
+# `ACCEPTED`/`ADDRESSED` stay editable so a manager can reassign the owner or
+# adjust priority while work is in progress.
 PAIN_POINT_LOCKED_STATUSES = frozenset({PainPointStatus.REJECTED, PainPointStatus.DUPLICATE, PainPointStatus.CLOSED})
 
 
@@ -1459,8 +1231,10 @@ def _pp_transition(
         ValueError: if `new_status` isn't reachable from `pain_point.
             status` per `_PP_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _PP_ALLOWED_TRANSITIONS[pain_point.status]:
-        raise ValueError(f"Cannot move a Pain Point from '{pain_point.status.value}' to '{new_status.value}'.")
+    check_move(
+        db, pain_point.project_id, PAIN_POINT_ARTEFACT_TYPE, pain_point.status.value, new_status.value,
+        record_id=pain_point.id,
+    )
     pain_point.status = new_status
     db.flush()
     log_event(
@@ -1587,17 +1361,13 @@ def create_guiding_principle(
     owner: PrincipalRef | None = None,
 ) -> GuidingPrinciple:
     """Creates a Guiding Principle and its initial (version 1) content
-    snapshot, in `DRAFT` status — exact mirror of `create_strategy`/`create_
-    future_state`'s shape, for the Guiding Principle field set (§8.3:
-    no `type` field, no `time_horizon`/`expected_outcomes`/`constraints`/
-    `measures_of_success`).
+    snapshot, in `DRAFT` status (the `create_strategy` shape).
 
     Args:
-        organization_id: Always required, same convention as
-            `create_strategy` — only used to decide which identity column
-            to populate when `scope` is `ORGANIZATION`.
+        organization_id: Always required; selects the identity column when
+            `scope` is `ORGANIZATION`.
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
-        owner: The principal responsible (the caller has validated it), or None.
+        owner: The principal responsible (already validated), or None.
     """
     code_scope = code_owner(
         db, is_org_scope=scope == GuidingPrincipleScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
@@ -1653,6 +1423,7 @@ def apply_guiding_principle_new_version(
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    guiding_principle.updated_at = now  # a new version is a change to the record: its Modified time moves
     owner_type, owner_id = (
         _owner_columns(owner) if owner_explicitly_set else (current_version.owner_type, current_version.owner_id)
     )
@@ -1694,12 +1465,9 @@ def unarchive_guiding_principle(db: Session, guiding_principle: GuidingPrinciple
     guiding_principle.archived_by = None
 
 
-# Legal `GuidingPrincipleStatus` transitions (`enums.GuidingPrincipleStatus`'s
-# own docstring): a linear chain with no `UNDER_REVIEW` step — `PROPOSED`
-# moves directly to `APPROVED` (or back to `DRAFT`, this module's "reject"-
-# equivalent) — otherwise the same shape as `_ALLOWED_TRANSITIONS`/
-# `_FS_ALLOWED_TRANSITIONS` (`APPROVED`/`ACTIVE` both able to reach
-# `RETIRED` directly; `ACTIVE` can also reach `SUPERSEDED`).
+# Legal `GuidingPrincipleStatus` transitions: a linear chain with no
+# `UNDER_REVIEW` step; `PROPOSED` goes to `APPROVED` or back to `DRAFT`,
+# `APPROVED`/`ACTIVE` can reach `RETIRED`, `ACTIVE` can reach `SUPERSEDED`.
 _GP_ALLOWED_TRANSITIONS: dict[GuidingPrincipleStatus, frozenset[GuidingPrincipleStatus]] = {
     GuidingPrincipleStatus.DRAFT: frozenset({GuidingPrincipleStatus.PROPOSED}),
     GuidingPrincipleStatus.PROPOSED: frozenset({GuidingPrincipleStatus.APPROVED, GuidingPrincipleStatus.DRAFT}),
@@ -1709,12 +1477,8 @@ _GP_ALLOWED_TRANSITIONS: dict[GuidingPrincipleStatus, frozenset[GuidingPrinciple
     GuidingPrincipleStatus.RETIRED: frozenset(),
 }
 
-# Content is locked once past `PROPOSED` (i.e. `APPROVED` and beyond) — the
-# same "lock at the first state past the last pre-approval state" rule
-# `Strategy`/`FutureState` apply one state later (past `UNDER_REVIEW`, since
-# they have that extra state and this lifecycle doesn't — see `enums.
-# GuidingPrincipleStatus`'s own docstring for why there is no `UNDER_REVIEW`
-# here).
+# Content is locked once past `PROPOSED` (`APPROVED` and beyond); the lifecycle
+# has no `UNDER_REVIEW` state.
 GUIDING_PRINCIPLE_LOCKED_STATUSES = frozenset(
     {
         GuidingPrincipleStatus.APPROVED, GuidingPrincipleStatus.ACTIVE,
@@ -1739,10 +1503,10 @@ def _guiding_principle_transition(
         ValueError: if `new_status` isn't reachable from `current_version.
             status` per `_GP_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _GP_ALLOWED_TRANSITIONS[current_version.status]:
-        raise ValueError(
-            f"Cannot move a Guiding Principle from '{current_version.status.value}' to '{new_status.value}'."
-        )
+    check_move(
+        db, guiding_principle.project_id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, current_version.status.value,
+        new_status.value, record_id=guiding_principle.id,
+    )
     new_version = apply_guiding_principle_new_version(
         db, guiding_principle, current_version, actor, status_value=new_status, change_note=comment or "",
     )
@@ -1781,7 +1545,10 @@ def approve_guiding_principle(
     db: Session, guiding_principle: GuidingPrinciple, current_version: GuidingPrincipleVersion, actor: User,
     *, comment: str | None = None,
 ) -> GuidingPrincipleVersion:
-    """`PROPOSED` -> `APPROVED`."""
+    """`PROPOSED` -> `APPROVED`; applies the approval separation rule first (`services.approval_separation`)."""
+    approval_separation.enforce_record_approval(
+        db, user=actor, artefact_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, record=guiding_principle, comment=comment,
+    )
     return _guiding_principle_transition(
         db, guiding_principle, current_version, GuidingPrincipleStatus.APPROVED, actor, action="approved",
         comment=comment,
@@ -1858,10 +1625,8 @@ def resolve_guiding_principle_file_project_id(db: Session, file_id: uuid.UUID) -
 
 # --- Open Questions -------------------------------------------------
 
-# This module's fifth artefact-type string, registered on `ModuleDefinition.
-# artefact_types` (module.py) for the same reason `STRATEGY_ARTEFACT_TYPE`
-# is. Open Question is project-scoped only, like Pain Point (see `models.
-# OpenQuestion`'s own docstring for the scope reasoning).
+# The fifth artefact-type string, registered on `ModuleDefinition.artefact_types`;
+# Open Question is project-scoped only.
 OPEN_QUESTION_ARTEFACT_TYPE = "open_question"
 OPEN_QUESTION_CODE_PREFIX = "OQ"
 
@@ -1945,9 +1710,7 @@ def unarchive_open_question(db: Session, open_question: OpenQuestion) -> None:
 
 # --- Open Question lifecycle (branching) --------------------------------------
 
-# Legal `OpenQuestionStatus` transitions (`enums.OpenQuestionStatus`'s own
-# docstring) — the branching shape §9.3 describes, with two
-# branch points (unlike Pain Point's one): `Open -> Investigating ->
+# Legal `OpenQuestionStatus` transitions: `Open -> Investigating ->
 # {Withdrawn | Ready for Decision -> {Resolved | Withdrawn}}`.
 _OQ_ALLOWED_TRANSITIONS: dict[OpenQuestionStatus, frozenset[OpenQuestionStatus]] = {
     OpenQuestionStatus.OPEN: frozenset({OpenQuestionStatus.INVESTIGATING}),
@@ -1961,12 +1724,9 @@ _OQ_ALLOWED_TRANSITIONS: dict[OpenQuestionStatus, frozenset[OpenQuestionStatus]]
     OpenQuestionStatus.WITHDRAWN: frozenset(),
 }
 
-# Content is locked once an Open Question reaches a terminal outcome —
-# `RESOLVED`/`WITHDRAWN` are this lifecycle's true end states. `INVESTIGATING`/
-# `READY_FOR_DECISION` deliberately stay unlocked (same reasoning as Pain
-# Point's `ACCEPTED`/`ADDRESSED` — an `open_question_owner` may still need to
-# reassign `owner_id`/adjust `priority`/`due_date` while investigation is
-# genuinely in progress).
+# Content is locked at a terminal outcome (`RESOLVED`/`WITHDRAWN`);
+# `INVESTIGATING`/`READY_FOR_DECISION` stay editable so an owner can reassign
+# or adjust priority and due date while work continues.
 OPEN_QUESTION_LOCKED_STATUSES = frozenset({OpenQuestionStatus.RESOLVED, OpenQuestionStatus.WITHDRAWN})
 
 
@@ -1987,8 +1747,10 @@ def _oq_transition(
         ValueError: if `new_status` isn't reachable from `open_question.
             status` per `_OQ_ALLOWED_TRANSITIONS`.
     """
-    if new_status not in _OQ_ALLOWED_TRANSITIONS[open_question.status]:
-        raise ValueError(f"Cannot move an Open Question from '{open_question.status.value}' to '{new_status.value}'.")
+    check_move(
+        db, open_question.project_id, OPEN_QUESTION_ARTEFACT_TYPE, open_question.status.value, new_status.value,
+        record_id=open_question.id,
+    )
     open_question.status = new_status
     db.flush()
     log_event(
@@ -2059,15 +1821,8 @@ def resolve_open_question_file_project_id(db: Session, file_id: uuid.UUID) -> uu
 
 
 # --- cross-artefact relationships ----------------------------------
-#
-# See the module docstring's relationships section for the overall design. Every
-# *typed* relationship name below is created lazily, on first use, as an
-# org-shared `RequirementLinkTypeDefinition` row (mirroring `modules.
-# decisions.service._get_or_create_link_type` exactly) — no migration/
-# seeding needed. An *untyped* relationship (`forward_name=None` below)
-# creates a plain `ArtefactLink` with `link_type_id=None`, per source
-# overview §6.6's own instruction to distinguish causation/rationale
-# (typed) from generic association (untyped).
+# A typed relationship name is created lazily as an org-shared
+# `RequirementLinkTypeDefinition`; an untyped one has `link_type_id=None`.
 
 
 def _resolve_scope_organization_id(
@@ -2096,20 +1851,14 @@ def _resolve_scope_organization_id(
 
 
 def resolve_link_target_organization_id(db: Session, target_type: str, target_id: uuid.UUID) -> uuid.UUID:
-    """Resolves a relationship target's owning organisation — core
-    `Requirement`, or any of this module's own five artefact types (the
-    only target types any `*LinkKind` below ever names) — so `create_
-    context_strategy_link` can validate the target actually exists and
-    belongs to the same organisation as the link's source, before creating
-    the `ArtefactLink` row. Deliberately does not (and structurally cannot)
-    resolve a Decision id — see module docstring's "Decision-target
-    relationships stay reserved" section for why that's Decision Management's own job,
-    not a gap in this function.
+    """Resolves a relationship target's owning organisation (core
+    `Requirement` or one of this module's five types) so
+    `create_context_strategy_link` can check it exists and shares the source's
+    organisation. Decision ids are not resolved here (module boundary).
 
     Raises:
-        ValueError: if `target_id` doesn't resolve to a real row of
-            `target_type`, or `target_type` isn't one this function knows
-            how to resolve at all.
+        ValueError: if `target_id` doesn't resolve to a row of `target_type`,
+            or `target_type` is not resolvable.
     """
     if target_type == ArtefactType.REQUIREMENT.value:
         from app.models.project import Project
@@ -2168,32 +1917,28 @@ def create_context_strategy_link(
     target_type: str, target_id: uuid.UUID, forward_name: str | None, reverse_name: str | None,
     actor_id: uuid.UUID, project_id: uuid.UUID | None = None,
 ) -> ArtefactLink:
-    """The single generic relationship-creation dispatcher every `create_
-    <source>_link` wrapper below calls.
+    """The single relationship-creation dispatcher every `create_<source>_link`
+    wrapper calls.
 
     Args:
-        source_type / source_id: The link's source artefact — already
-            resolved and authorized by the caller (router layer), mirroring
-            `services.relationships.create_link`'s own contract.
-        source_organization_id: The source's own owning organisation
-            (already resolved by the caller via `_resolve_scope_
-            organization_id`) — compared against the target's, below.
+        source_type / source_id: The link's source, already resolved and
+            authorised by the caller.
+        source_organization_id: The source's owning organisation, compared
+            with the target's.
         target_type / target_id: The link's target artefact.
-        forward_name / reverse_name: The `RequirementLinkTypeDefinition`
-            name pair for a *typed* relationship, or both `None` for an
-            *untyped* "related to" association (see module docstring).
-        actor_id: The user recording this relationship.
+        forward_name / reverse_name: The `RequirementLinkTypeDefinition` name
+            pair for a typed relationship, or both `None` for an untyped
+            "related to" association.
+        actor_id: The user recording the relationship.
         project_id: The source's project (`None` for an organisation-scoped
-            source), so project and ancestor artefact-type link rules apply
-            (`services.relationships.create_link`).
+            source), so project and ancestor artefact-type link rules apply.
 
     Returns:
         The created `ArtefactLink`.
 
     Raises:
         ValueError: if source and target are the same artefact, the target
-            doesn't exist or belongs to a different organisation, or this
-            exact relationship already exists.
+            is missing or in another organisation, or the relationship exists.
     """
     if source_type == target_type and source_id == target_id:
         raise ValueError("An artefact cannot link to itself.")
@@ -2224,20 +1969,12 @@ def create_context_strategy_link(
 
 
 class StrategyLinkKind(str, enum.Enum):
-    """Which of §5.6's Strategy-sourced relationship types `create_strategy_
-    link` should create. `DRIVES_REQUIREMENT` deliberately reuses the same
-    `"Drives"` link-type name `PainPointLinkKind.DRIVES_STRATEGY` uses (see
-    `_get_or_create_cs_link_type` — keyed on `(organization_id,
-    forward_name)` alone, no per-pair type constraint), since both express
-    the same causal relationship concept one level apart in the Pain Point
-    -> Strategy -> Requirement chain. `INFORMS_DECISION`/`GUIDED_BY_
-    GUIDING_PRINCIPLE`/`REQUIRES_RESOLUTION_OF_OPEN_QUESTION` from §5.6's
-    own list are **not** all present here — `INFORMS_DECISION` is the
-    reserved Decision-target relationship (module docstring); `GUIDED_BY_
-    GUIDING_PRINCIPLE` is instead built from Guiding Principle's own side
-    (`GuidingPrincipleLinkKind.SUPPORTS_STRATEGY`, per §8.5's "Strategy ->
-    supported by -> Guiding Principle" — one relationship, built once, not
-    duplicated from both ends)."""
+    """Which Strategy-sourced relationship `create_strategy_link` creates.
+    `DRIVES_REQUIREMENT` reuses the `"Drives"` link-type name of
+    `PainPointLinkKind.DRIVES_STRATEGY`: both express the same causal concept
+    one level apart. `INFORMS_DECISION` is reserved (Decision targets are not
+    created here); "guided by Guiding Principle" is built from the Guiding
+    Principle side (`GuidingPrincipleLinkKind.SUPPORTS_STRATEGY`)."""
 
     DRIVES_REQUIREMENT = "drives_requirement"
     DEFINES_FUTURE_STATE = "defines_future_state"
@@ -2276,21 +2013,14 @@ def create_strategy_link(
 def create_strategy_supersession(
     db: Session, *, new_strategy: Strategy, old_strategy: Strategy, actor: User, comment: str | None = None,
 ) -> tuple[ArtefactLink, StrategyVersion]:
-    """Records that `new_strategy` supersedes `old_strategy`: creates the
-    typed `"Supersedes"` `ArtefactLink`, then transitions `old_strategy` to
-    `SUPERSEDED` via the existing `supersede_strategy` (unchanged). This is the
-    `ArtefactLink` side effect layered on top of that plain transition.
-    Deliberately simpler than Decision Management's `create_supersession`:
-    Strategy has no "flip only once the new one is already approved"
-    condition to satisfy (`supersede_strategy`'s own `_ALLOWED_TRANSITIONS`
-    check already requires `old_strategy` to currently be `ACTIVE`, which is
-    sufficient validation on its own).
+    """Records that `new_strategy` supersedes `old_strategy`: creates the typed
+    `"Supersedes"` `ArtefactLink`, then transitions `old_strategy` to
+    `SUPERSEDED` via `supersede_strategy` (which requires it to be `ACTIVE`).
 
     Raises:
-        ValueError: if `new_strategy`/`old_strategy` are the same row, are
-            in different organisations, this exact supersession link
-            already exists, or `old_strategy` isn't currently `ACTIVE`
-            (raised by the underlying `supersede_strategy` call).
+        ValueError: if the strategies are the same row or in different
+            organisations, the link already exists, or `old_strategy` isn't
+            currently `ACTIVE`.
     """
     if new_strategy.id == old_strategy.id:
         raise ValueError("A Strategy cannot supersede itself.")

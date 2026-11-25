@@ -1,28 +1,12 @@
 """
 Module: modules.decisions.record_tables
 
-The `RecordTableProvider` of Decision Management's one record type, the Decision: the Decisions list as a table,
-so it exports to CSV, PDF and Word and imports from the same CSV (a row with a code updates, a blank code
-creates).
-
-Responsibilities:
-- Declare the Decision columns (title, statement, type, date, decision maker, owner, the ADR text fields, tags)
-  and the status as an export-only cell.
-- Share the list filters and the create / edit logic with the endpoints (`edits`), so the effective-type and
-  principal checks, the content lock and the audit events are the ones the screen applies.
-
-Design decisions:
-- `status` is export-only: a Decision moves through propose / review / approve / reject only by the workflow
-  endpoints, which keep segregation of duties and the AI-approval gate; a created Decision starts `Draft`.
-  The type is marked approval-gated.
-- Any project member may create (the create endpoint's gate); updating needs the Decision Owner role (the edit
-  endpoint's gate), and an approved or superseded Decision refuses the edit per row, as the endpoint does.
-- A blank owner on a new row means the importer (the create endpoint's default); a blank owner on an existing
-  row is an error, because a Decision always has one.
-- The type is written by name from the project's effective types, so a child project of a parent with decision
-  types can use the parent's.
-
-Dependencies: `edits` (queries and write paths), `service` (effective types), `services.record_tables_core`.
+The `RecordTableProvider` of the Decision: the list as a table exported to CSV,
+PDF and Word and imported from the same CSV.
+- Columns: title, statement, type, date, decision maker, owner, ADR text
+  fields, document, tags; `status` is export-only (workflow keeps segregation of duties).
+- Create/update use `edits` (any member creates; the Decision Owner role updates).
+- A blank owner on a new row is the importer; the type is written by name.
 """
 
 from __future__ import annotations
@@ -72,10 +56,11 @@ DECISION_OPEN = frozenset({DecisionStatus.DRAFT, DecisionStatus.PROPOSED, Decisi
 #: groups' Decisions.
 DECISION_FILTERS = frozenset({"include_archived", "status", "type", "mine", "decision_maker_mine", "open_only", "search"})
 
-_ADR_TEXT = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints")
+_ADR_TEXT = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints", "document")
 _ADR_LABELS = {
     "context": "Context", "options_considered": "Options considered", "chosen_option": "Chosen option",
     "rationale": "Rationale", "consequences": "Consequences", "assumptions": "Assumptions", "constraints": "Constraints",
+    "document": "Document",
 }
 
 
@@ -121,7 +106,7 @@ def _decision_type_id(ctx: RecordImportContext, name: str) -> uuid.UUID:
 
 
 def _adr_column(key: str) -> RecordColumn:
-    return RecordColumn(key, _ADR_LABELS[key], lambda t, r: getattr(r, key) or "", text_parser, editable=True)
+    return RecordColumn(key, _ADR_LABELS[key], lambda t, r: getattr(r, key) or "", text_parser, editable=True, markdown=True)
 
 
 def _decision_columns(db: Session, project: Project) -> list[RecordColumn]:
@@ -130,6 +115,7 @@ def _decision_columns(db: Session, project: Project) -> list[RecordColumn]:
         RecordColumn("title", "Title", lambda t, r: r.title, text_parser, editable=True, required=True),
         RecordColumn(
             "decision_statement", "Decision statement", lambda t, r: r.decision_statement, text_parser, editable=True, required=True,
+            markdown=True,
         ),
         RecordColumn(
             "type", "Type", lambda t, r: t.type_names.get(r.decision_type_id, ""), _decision_type_id, kind="enum",

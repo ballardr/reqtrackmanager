@@ -5,7 +5,7 @@ Revises: 0158
 Create Date: 2026-11-10
 
 `file_assets.organization_id` becomes nullable: the platform logo and login background belong to no organisation, so deleting
-an organisation, its storage limit and its upload switch can no longer remove or refuse them. Existing platform files, which
+an organisation, its storage limit and its upload switch never remove or refuse them. Existing platform files, which
 were stored against whichever organisation existed first, are detached from it. Guarded so a database built from the current
 models passes.
 """

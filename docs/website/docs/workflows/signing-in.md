@@ -21,9 +21,26 @@ If you cannot remember your password, choose **Forgot your password?** below the
 
 If you belong to more than one organisation, an organisation switcher appears wherever an organisation context is needed (creating a new project, for example) — the same account, regardless of whether you signed in natively or via SSO.
 
+## Returning to the page you were on
+
+When you are sent to sign in, you arrive at that page afterwards, with its filters, instead of at your landing page. This applies to a link you followed (from an email, a notification or a colleague) and to a session that ended while you were working. It works through the password, the two-factor code, single sign-on, sign-up and an administrator-set password change.
+
+- **Ended session.** When the server refuses your sign-in token (you changed your password in another window, an administrator signed you out, or the session expired), the next action returns you to the sign-in page without a reload. Signing in again returns you to the page you were on.
+- **One use, this tab only.** The address is remembered for the one sign-in that follows and is then forgotten. It is kept for this browser tab, so a new tab starts from your landing page. **Sign out** forgets it, so the next person to sign in on a shared computer is not taken to your page.
+- **Safe addresses only.** Only a page of this application is remembered. An address on another site, and any address that carries a one-time token (a password reset, an email confirmation or an invitation), is never remembered.
+
+```mermaid
+flowchart LR
+    L["Followed link or ended session"] --> S["Sign-in page"]
+    S --> A["Password, two-factor code or single sign-on"]
+    A --> R{"Page remembered?"}
+    R -- yes --> P["The page you were on"]
+    R -- no --> D["Your landing page"]
+```
+
 ## Policies
 
-When the deployment has published a policy (a privacy policy or a data policy, for example), a **Policies** link appears in the footer of every page, signed in or not, so you can read it before you have an account (on the sign-in, sign-up and password pages as well). The footer also shows the version (application, then API once signed in, as **Version: v1.4.0/v1.4.0**) and the deployment's company name (linking to its website, after an optional prefix such as "Hosted by"), address and company identifier when the server administrator has set them under **Server Management → Server details**. That page also sets whether the footer of the signed-out pages sits below the sign-in card or at the bottom of the window, and an organisation's own sign-in page can choose differently. The page lists each published policy with its effective date and version. See [Server administration → Policies](./server-administration.md#policies) for how they are written. Once you are signed in, the page also lists, under your organisation's name, the policies your organisation has published for you; see [Administering an organisation → Policies](./administering-an-organisation.md#policies).
+A **Policies** link is always in the footer of every page, signed in or not, so you can read what the deployment has published (a privacy policy or a data policy, for example) before you have an account (on the sign-in, sign-up and password pages as well). The page also has a **Licences** group, with the product licence, the third-party components the product ships and its fonts, that anyone can read; see [Licensing](../reference/licensing.md). The footer also shows the version (application, then API once signed in, as **Version: v1.4.0/v1.4.0**) and the deployment's company name (linking to its website, after an optional prefix such as "Hosted by"), address and company identifier when the server administrator has set them under **Server Management → Server details**. That page also sets whether the footer of the signed-out pages sits below the sign-in card or at the bottom of the window, and an organisation's own sign-in page can choose differently. The page lists each published policy with its effective date and version. See [Server administration → Policies](./server-administration.md#policies) for how they are written. Once you are signed in, the page also lists, under your organisation's name, the policies your organisation has published for you; see [Administering an organisation → Policies](./administering-an-organisation.md#policies).
 
 If a policy requires your acceptance, a dialog with its text opens when you sign in and a notice stays at the top of every page until you accept. Until then you can read, search and sign out, but you cannot create or change records. Accept from the dialog or on the policy's page under **Policies**.
 

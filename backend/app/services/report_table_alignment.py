@@ -4,25 +4,20 @@ Module: services.report_table_alignment
 Tables with the same headings in one document share one set of column widths, so they read as one list.
 
 Responsibilities:
-- Measure what each column of a table needs (`column_needs`), the one measure the evaluator and the PDF both use.
-- Give every table of a group (same headings, same usable page width) the same relative widths (`align_tables`), written
-  onto each `Table` as `weights`, which every renderer already honours.
+- `column_needs`: what each column of a table needs (used by the evaluator and the PDF).
+- `align_tables`: give every table of a group (same headings, same usable page width) the same relative widths, written
+  as `Table.weights`, which every renderer honours.
 
 Design decisions:
-- The rule runs on the finished document, so a widget's table, a *Table (records)* block and an organisation-wide run's
-  per-project tables are all the same `Table` to it; it is idempotent (an aligned table is regrouped from its content), so
-  the organisation-wide run applies it again after the projects' documents are joined.
-- A table the author or the engine already sized (`widths`, `col_widths_cm`, or `weights` such as an image column's) is
-  never regrouped: the author wins. A group of one, an empty table and a one-column table are left as they are.
-- A group is also split by the usable width of the page style in force, so a table in an A3 landscape section is not
-  aligned with one on A4 portrait.
-- A module report's usual widths (`Table.usual_widths`) fix the columns they name at that width and the rest share what is
-  left by content, for a group and for a lone table alike; so a lone widget table is sensible too.
-- A layout can turn the rule off (`ReportDocument.align_tables`), which also leaves the usual widths unapplied: the tables
-  are then sized as they were before the rule existed.
-- The text is measured in the active PDF font; the other formats use only the proportions.
+- The rule runs on the finished document and is idempotent, so the organisation-wide run applies it again after joining
+  the projects' documents.
+- A table already sized (`widths`, `col_widths_cm`, or `weights`) is never regrouped (the author wins); a group of one,
+  an empty table and a one-column table are left alone. Groups also split by the page style's usable width.
+- A module report's usual widths (`Table.usual_widths`) fix the columns they name and the rest share what is left, for a
+  group or a lone table. A layout can turn alignment off (`ReportDocument.align_tables`), which also skips usual widths.
+- Text is measured in the active PDF font; other formats use only the proportions.
 
-Dependencies: `services.report_model`, `services.report_column_width`, `services.report_fonts` (text measure).
+Dependencies: `report_model`, `report_column_width`, `report_fonts`.
 """
 
 from __future__ import annotations

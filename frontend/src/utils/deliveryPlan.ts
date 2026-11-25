@@ -1,24 +1,22 @@
 /**
  * Module: utils/deliveryPlan
  *
- * Turns the three reads the delivery plan page already has (stages, component tracks, phase schedule) into one row per
- * stage or per component track: where it is, how far along, when it is expected to finish and whether it is overdue.
- *
- * Responsibilities:
- * - Progress: the phases of the workflow the holder follows that it has completed (a closed phase counts the whole
- *   workflow), so a track in "Review" of five phases reads 20 %.
- * - Expected range: the earliest expected start and latest expected end over the holder's own plan rows for phases of its
- *   workflow. Nothing is inferred: a holder with no dates has `null` for both and shows no bar.
- * - Overdue: the same rule as the overview figure (`phase_attention_counts` on the server): the current phase is not
- *   closed and its own expected end is before the viewer's day.
+ * Turns the delivery plan page's three reads (stages, component tracks, phase
+ * schedule) into one row per stage or component track: where it is, how far
+ * along, when it is expected to finish and whether it is overdue.
+ * - Progress: phases of the holder's workflow completed (a closed phase counts
+ *   the whole workflow), so "Review" of five phases reads 20 %.
+ * - Expected range: earliest expected start and latest expected end over the
+ *   holder's own plan rows; nothing is inferred (no dates gives `null`, no bar).
+ * - Overdue: the server's `phase_attention_counts` rule: the current phase is not
+ *   closed and its expected end is before the viewer's day.
  * - Timeline bounds and day arithmetic shared by the chart and the table.
- *
- * Time shapes: expected dates are calendar dates (`YYYY-MM-DD`, the planner's own day) compared with the viewer's day
- * (`localToday()`); actual start and completion are past instants in UTC, shown as the viewer's local day. Day numbers
- * here are whole days since the Unix epoch computed from the calendar fields, so no timezone shift can enter a date.
- *
- * Design decisions: computed in the browser from the existing bulk reads, so there is no second server definition of
- * "overdue" or "progress" to drift from the stage and track endpoints (Decided by: User).
+ * Time shapes: expected dates are calendar dates (`YYYY-MM-DD`) compared with
+ * `localToday()`; actual start and completion are UTC instants shown as the
+ * viewer's local day. Day numbers are whole days since the Unix epoch from the
+ * calendar fields, so no timezone shift enters a date.
+ * Design: computed in the browser from the bulk reads, so there is no second
+ * server definition of "overdue" or "progress" (Decided by: User).
  */
 import type { ComponentTrack, PhasePlan, ProjectStage, StageWorkflow, StagePhaseKind } from "../api/types";
 import { localToday } from "./localDate";

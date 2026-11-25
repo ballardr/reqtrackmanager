@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { addDefinition, chooseRecordAction, installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { chooseColumn } from "../../columnChooser";
 import { setUpOrg } from "../stakeholders/helpers";
-import { clickMenuRow } from "../../menuTree";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -35,7 +35,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
       await dialog.getByLabel("Name", { exact: true }).fill(gateway);
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Element created.")).toBeVisible();
+      await expect(page.getByText(/Element( \S+-\d+)? created\./)).toBeVisible();
       await expect(page.locator("tr", { hasText: gateway }).getByText("Active", { exact: true })).toBeVisible();
     });
 
@@ -56,8 +56,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await page.getByRole("link", { name: new RegExp(gateway) }).first().click();
       await expect(page.getByRole("heading", { name: new RegExp(gateway) })).toBeVisible();
       const ports = page.getByRole("region", { name: "Ports" });
-      await ports.getByPlaceholder("Port name").fill("HTTPS API");
-      await ports.getByRole("button", { name: "Add port" }).click();
+      await addDefinition(page, "Add port", { Name: "HTTPS API" }, ports);
       await expect(ports.locator('input[value="HTTPS API"]')).toBeVisible();
       // Reloading before the save lands aborts it, so wait for the server to answer.
       const saved = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/ports/") && r.ok());
@@ -79,7 +78,8 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await selectOptionContaining(dialog.getByLabel("Target element"), orders);
       await dialog.getByLabel("Protocol").fill("HTTPS/1.1");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByText(/Connection( \S+-\d+)? created\./)).toBeVisible();
+      await chooseColumn(page, "Protocol");
       const row = page.locator("tr", { hasText: "HTTPS/1.1" });
       await expect(row.getByText(new RegExp(`${gateway} \\(HTTPS API\\)`))).toBeVisible();
       await expect(row.getByText(new RegExp(orders))).toBeVisible();
@@ -104,13 +104,14 @@ test.describe("System Architecture: elements, connections and sharing", () => {
 
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Element Types", "System Architecture");
-      await page.getByRole("button", { name: "Add organisation defaults (1)" }).click();
+      await page.getByRole("button", { name: "List actions" }).click();
+      await page.getByRole("menuitem", { name: "Add organisation defaults (1)" }).click();
       await page.getByRole("dialog", { name: "Add organisation defaults" }).getByRole("button", { name: "Add 1 default" }).click();
       await expect(page.locator('input[value="Subsystem"]')).toBeVisible();
     });
   });
 
-  test("Change status offers the server's moves, and a parent retires only after its child", async ({ page }) => {
+  test("the lifecycle track offers the server's moves, and a parent retires only after its child", async ({ page }) => {
     const { suffix, project } = await setUpOrg(page, "ArchitectureStates", false, "System Architecture");
     const parent = `Gateway ${suffix}`;
     const child = `Orders ${suffix}`;
@@ -121,7 +122,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       let dialog = page.getByRole("dialog", { name: "New element" });
       await dialog.getByLabel("Name", { exact: true }).fill(parent);
       await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByText("Element created.")).toBeVisible();
+      await expect(page.getByText(/Element( \S+-\d+)? created\./)).toBeVisible();
       await page.getByRole("button", { name: "New element" }).click();
       dialog = page.getByRole("dialog", { name: "New element" });
       await dialog.getByLabel("Name", { exact: true }).fill(child);
@@ -132,27 +133,25 @@ test.describe("System Architecture: elements, connections and sharing", () => {
 
     await test.step("a parent cannot retire while a child is in use; retire the child first", async () => {
       const moveTo = async (item: string, toast: string) => {
-        await page.getByRole("button", { name: "Change status", exact: true }).click();
-        await clickMenuRow(page, item);
+        await chooseRecordAction(page, "Element", item);
         await expect(page.getByText(toast)).toBeVisible();
       };
       await page.getByRole("link", { name: /ELM-002/ }).click();
-      await moveTo("Move from Draft to Proposed", "Element moved to Proposed.");
-      await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
-      await moveTo("Move from Proposed to Active", "Element moved to Active.");
+      await moveTo("Promote to Proposed", "Element moved to Proposed.");
+      await expect(page.locator('[aria-current="step"]', { hasText: "Proposed" })).toBeVisible();
+      await moveTo("Promote to Active", "Element moved to Active.");
 
       await page.goBack();
       await page.getByRole("link", { name: /ELM-001/ }).click();
-      await page.getByRole("button", { name: "Change status", exact: true }).click();
-      await clickMenuRow(page, "Move from Active to Retired");
+      await chooseRecordAction(page, "Element", "Retire");
       await expect(page.getByText(/still has 1 child element\(s\) in use/)).toBeVisible();
 
       await page.goBack();
       await page.getByRole("link", { name: /ELM-002/ }).click();
-      await moveTo("Move from Active to Retired", "Element moved to Retired.");
+      await moveTo("Retire", "Element moved to Retired.");
       await page.goBack();
       await page.getByRole("link", { name: /ELM-001/ }).click();
-      await moveTo("Move from Active to Retired", "Element moved to Retired.");
+      await moveTo("Retire", "Element moved to Retired.");
     });
   });
 

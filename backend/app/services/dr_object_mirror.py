@@ -1,26 +1,20 @@
 """
 Module: services.dr_object_mirror
 
-An incremental, local mirror of the S3-compatible object store, so a backup set can hold the attachment
-bytes the database rows point at without re-downloading the whole bucket every night.
+An incremental, local mirror of the S3-compatible object store, so a backup set holds the attachment bytes
+the database rows point at without re-downloading the whole bucket nightly.
 
-Responsibilities:
-- List the bucket (paged) and download only objects that are new or changed (by size and ETag), verifying
-  each download against its size and, where the ETag is a plain MD5, its digest.
-- Keep the mirror consistent with a database dump taken just before the sync: an object deleted from the
-  store stays in the mirror through the next snapshot, then is dropped.
-- Report the mirror's size and a digest of its content for the manifest.
+Responsibilities: list the bucket (paged) and download only new or changed objects (by size and ETag),
+verifying each against its size and, where the ETag is a plain MD5, its digest; keep the mirror consistent
+with a database dump taken just before the sync; report the mirror's size and a content digest for the manifest.
 
 Design decisions:
-- The sync never deletes during a run (a failed run must not lose what an earlier one captured). An object
-  that vanished from the store is flagged `missing` and removed at the start of the *next* run: the set
-  taken in between may have a dump that still references it (deleted after the dump, before the sync), and
-  that is the only set that needs it; later dumps cannot. Earlier snapshots already hold their own copy.
-- State (size, ETag, SHA-256, missing flag) lives beside the mirror, not in it, so the snapshot holds only
-  object bytes.
-- Keys come from the application but are still treated as untrusted when mapped to a path: an absolute,
-  traversing, empty-segment or directory-marker key is refused, and errors name a key by a digest prefix,
-  never the key (storage keys are Confidential).
+- The sync never deletes during a run, so a failed run cannot lose earlier captures. An object that vanished
+  from the store is flagged `missing` and removed at the start of the next run: the set taken in between may
+  hold a dump that still references it, and only that set needs it. Earlier snapshots hold their own copy.
+- State (size, ETag, SHA-256, missing flag) lives beside the mirror, so the snapshot holds only object bytes.
+- Keys are untrusted when mapped to a path: an absolute, traversing, empty-segment or directory-marker key is
+  refused, and errors name a key by a digest prefix, never the key (storage keys are Confidential).
 
 Dependencies: a boto3 S3 client (injected), the standard library.
 """

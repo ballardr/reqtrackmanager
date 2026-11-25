@@ -335,26 +335,19 @@ def test_delete_cascades_through_everything_including_non_fk_references(client, 
 
 
 # ---------------------------------------------------------------------------
-# Hardening-pass regressions
+# Disable gate and hard delete safeguards
 # ---------------------------------------------------------------------------
 #
-# The five tests below cover a dedicated identify -> verify -> remediate
-# hardening pass run against this feature after it shipped (per CLAUDE.md's
-# requirement for security-sensitive changes): two of these are full
-# bypasses of the disable gate (file downloads, WebSocket — WebSocket's own
-# regression tests live in test_websocket_security.py instead, alongside
-# its pre-existing token_version hardening tests), one is an unhandled
-# crash + permanent storage-data-loss bug in hard delete, one is a
-# disabled-org metadata leak, and one is a delete-confirmation safety-gate
-# bypass. See docs/decisions.md's "Organisation disable and hard delete"
-# hardening-pass follow-up section for the full writeup.
+# The tests below pin the disable gate (file downloads; the WebSocket cases are
+# in test_websocket_security.py), a hard delete that must not crash or destroy
+# storage data, a disabled-org metadata leak and the delete-confirmation gate.
+# See docs/decisions.md's "Organisation disable and hard delete" entry.
 
 
 def test_org_resource_file_download_blocked_when_org_disabled(client, admin_token):
-    """A hardening-review finding: `download_file` authorized via the raw
-    `get_effective_org_roles` helper rather than one of the `require_*`
-    dependency factories, so it was never wired to `_require_org_active` —
-    a disabled org's shared-resource files remained fully downloadable."""
+    """`download_file` authorises through `_require_org_active`, so a disabled org's
+    shared-resource files are not downloadable (it uses the raw
+    `get_effective_org_roles` helper, not a `require_*` dependency factory)."""
     org, org_admin_token = create_org_admin_in(client, admin_token, "File Download Disable Org")
     upload = client.post(
         f"/api/v1/orgs/{org['id']}/resources",
@@ -396,15 +389,10 @@ def test_requirement_attachment_download_blocked_when_org_disabled(client, admin
 
 
 def test_delete_succeeds_when_org_has_a_logo_and_login_background(client, admin_token):
-    """A hardening-review finding: `Organization.logo_file_id`/
-    `login_background_file_id` are self-referential FKs to `file_assets`
-    with no `ondelete` action. Deleting an org's `FileAsset` rows without
-    first nulling those columns raised a raw, unhandled `IntegrityError`
-    partway through the cascade — so any org that ever had a logo set could
-    not be hard-deleted at all, and (worse) storage bytes for files
-    processed earlier in that same loop were already destroyed by the time
-    the crash happened, leaving orphaned rows for an org that wasn't even
-    successfully deleted."""
+    """`Organization.logo_file_id`/`login_background_file_id` are FKs to `file_assets`
+    with no `ondelete` action, so hard delete nulls them before deleting the org's
+    `FileAsset` rows. A failure partway through the cascade would otherwise block
+    deleting any org with a logo and leave storage bytes destroyed for rows that remain."""
     org, org_admin_token = create_org_admin_in(client, admin_token, "Logo Delete Org")
 
     logo_resp = client.post(
@@ -425,11 +413,10 @@ def test_delete_succeeds_when_org_has_a_logo_and_login_background(client, admin_
 
 
 def test_reviews_due_excludes_requirements_from_a_disabled_org(client, admin_token):
-    """A hardening-review finding: `/me/reviews/due` spans every project the
-    caller has a role in with no `project_id`/`organization_id` to hang a
-    `require_*` dependency off, so it was never wired to
-    `_require_org_active` — a requirement's name/code/review date from a
-    disabled org kept appearing in a reviewer's due list indefinitely."""
+    """`/me/reviews/due` spans every project the caller has a role in, with no
+    `project_id`/`organization_id` for a `require_*` dependency, so it filters through
+    `_require_org_active`: a disabled org's requirement name, code and review date never
+    appear in a reviewer's due list."""
     import datetime
 
     org, org_admin_token = create_org_admin_in(client, admin_token, "Reviews Due Disable Org")
@@ -455,10 +442,9 @@ def test_reviews_due_excludes_requirements_from_a_disabled_org(client, admin_tok
     assert all(r["project_code"] for r in due if r["requirement_id"] == requirement_id)
 
     client.post(f"/api/v1/orgs/{org['id']}/disable", headers=auth_headers(admin_token))
-    # /me/reviews/due has no org_id/project_id path param to gate behind
-    # require_org_role, so this call itself still succeeds (200) even
-    # though every org/project-content endpoint would now 403 — the bug was
-    # that the disabled org's requirement kept showing up in the result.
+    # /me/reviews/due has no org_id/project_id path parameter to gate behind
+    # require_org_role, so the call succeeds (200) while org/project-content
+    # endpoints 403; the disabled org's requirement is absent from the result.
     due_after = client.get("/api/v1/me/reviews/due", headers=auth_headers(org_admin_token))
     assert due_after.status_code == 200
     assert all(r["requirement_id"] != requirement_id for r in due_after.json())
@@ -469,10 +455,9 @@ def test_reviews_due_excludes_requirements_from_a_disabled_org(client, admin_tok
 
 
 def test_organisation_name_cannot_be_blank_or_whitespace(client, admin_token):
-    """A hardening-review finding: an org created with an empty/whitespace
-    name defeats `DELETE /orgs/{id}`'s "type the exact name to confirm"
-    safety gate entirely, since the comparison degenerates to two empty
-    strings matching with nothing typed."""
+    """An empty or whitespace organisation name is rejected: it would defeat
+    `DELETE /orgs/{id}`'s "type the exact name to confirm" gate, since the comparison
+    would match two empty strings."""
     for bad_name in ("", "   ", "\t\n"):
         resp = client.post("/api/v1/orgs", json={"name": bad_name}, headers=auth_headers(admin_token))
         assert resp.status_code == 422, f"expected {bad_name!r} to be rejected, got {resp.status_code}"
@@ -485,9 +470,8 @@ def test_organisation_name_cannot_be_blank_or_whitespace(client, admin_token):
 
 def test_delete_succeeds_with_typed_requirement_links_and_action_comments(client, admin_token):
     """`ArtefactLink` endpoints are polymorphic (no FK to the artefact), and a
-    link still pointing at one of the org's link types made deletion fail
-    (found 2026-10-05). Deleting the org now removes those links, and the
-    polymorphic comments on its actions too."""
+    link pointing at one of the org's link types must not block deletion:
+    deleting the org removes those links and the polymorphic comments on its actions."""
     org, token = create_org_admin_in(client, admin_token, "Linked Cascade Org")
     project = create_project(client, token, org["id"])
     component_id, category_id = create_component_and_category(client, token, project["id"])
@@ -521,8 +505,7 @@ def test_delete_succeeds_with_typed_requirement_links_and_action_comments(client
 
 def test_delete_succeeds_with_artefact_type_link_rules(client, admin_token):
     """A rule's entries point at the org's link types with no cascade (a deleted type must never dangle in
-    a rule), so deleting the org must remove rules and entries before the link types (found 2026-10-06 by
-    the link-rules e2e spec's org cleanup returning 500)."""
+    a rule), so deleting the org removes rules and entries before the link types."""
     org, token = create_org_admin_in(client, admin_token, "Link Rule Cascade Org")
     link_types = client.get(f"/api/v1/orgs/{org['id']}/link-types", headers=auth_headers(token)).json()
     resp = client.put(

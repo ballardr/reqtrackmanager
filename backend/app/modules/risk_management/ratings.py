@@ -1,15 +1,11 @@
 """
 Module: modules.risk_management.ratings
 
-Derives a Risk's inherent and residual rating from its scoring levels, using
-core's scoring service so the project's effective default model, rating bands
-and per-cell overrides (project -> nearest ancestor -> org -> registry default)
-all apply with no Risk-specific matrix code.
-
-A rating is derived on every read, never stored: re-weighting a level or editing
-a band or cell rating therefore re-rates every risk immediately. One
-`RatingContext` is loaded per request and reused for every risk in it, so a
-register listing costs a fixed number of queries.
+Derives a Risk's inherent and residual rating from its scoring levels using
+core's scoring service, so the project's effective model, bands and cell
+overrides apply with no Risk-specific code. Ratings are derived on every read,
+never stored; one `RatingContext` per request serves a whole register in a
+fixed number of queries.
 """
 
 from __future__ import annotations

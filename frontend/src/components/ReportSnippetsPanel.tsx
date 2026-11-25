@@ -1,19 +1,18 @@
 /**
  * Module: components/ReportSnippetsPanel
  *
- * The Report snippets section of Report setup (Org Admin → Reports, Project Admin → Report setup): the snippets
- * authors saved from the designer, as a list the scope can manage.
+ * The Report snippets section of Report setup (Org Resources → Reports, Project Admin → Report setup): the snippets
+ * saved from the designer, as a list the scope can manage.
  *
  * Responsibilities:
- * - List the saved snippets the scope can reach (name and description, category, where each comes from, how many blocks,
- *   and the page styles and variables it carries) with search; a project's list shows the ones it hides, flagged.
- * - New snippet, and Edit (details and blocks) for an own snippet, in `ReportSnippetEditorDialog`; make a copy (into the scope, or up to the organisation from a project), delete an own snippet,
- *   hide or show an inherited one in a project; "Add organisation defaults" restores the hidden ones.
- * - Follow the confirmation tiers: delete is Tier 2 (type the name); hiding is Tier 1. Every change ends in a toast.
+ * - List the reachable snippets (name, description, category, source, block count, carried page styles and variables)
+ *   with search; a project's list shows the ones it hides, flagged.
+ * - New and Edit (own snippets, in `ReportSnippetEditorDialog`), copy (into the scope, or up to the organisation), delete
+ *   an own snippet, hide or show an inherited one; "Add organisation defaults" restores the hidden ones. Delete is Tier 2,
+ *   hiding Tier 1; every change toasts.
  *
- * Design decisions: the server authorises each row (a 403 shows the load failure; the panel does not guess permissions). A
- * snippet is written in the layout editors (the dialog reuses them), whether it is made here or saved from the designer. A snippet is
- * configuration, not an artefact type, so it has no code and no link; the list is a plain table (it has no folders).
+ * Design decisions: the server authorises each row (a 403 shows the load failure). A snippet is configuration, not an
+ * artefact type, so it has no code or link; the list is a plain table without folders.
  */
 import { useCallback, useMemo, useState } from "react";
 
@@ -23,6 +22,7 @@ import { ApiError } from "../api/client";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { useTableSort } from "../hooks/useTableSort";
 import type { SortValue } from "../utils/sortRows";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
@@ -52,6 +52,7 @@ const SNIPPET_SORT_VALUES: Record<string, (row: SavedSnippet) => SortValue> = {
   category: (row) => row.category || null,
   source: (row) => LAYOUT_ORIGIN_LABEL[row.origin],
   blocks: (row) => row.blocks,
+  carries: (row) => carriedText(row, "") || null,
 };
 
 /**
@@ -150,22 +151,23 @@ export function ReportSnippetsPanel({
         </span>
       ),
     },
-    { key: "category", label: text.categoryHeader, sortable: true, render: (row) => row.category },
+    { key: "category", label: text.categoryHeader, optional: true, sortable: true, render: (row) => row.category },
     {
-      key: "source", label: text.sourceHeader, sortable: true,
+      key: "source", label: text.sourceHeader, optional: true, sortable: true,
       render: (row) => (
         <>
           {LAYOUT_ORIGIN_LABEL[row.origin]} {row.hidden && <Badge>{text.hiddenBadge}</Badge>}
         </>
       ),
     },
-    { key: "blocks", label: text.blocksHeader, sortable: true, render: (row) => row.blocks },
-    { key: "carries", label: text.carriesHeader, render: (row) => carriedText(row, text.carriesNothing) },
+    { key: "blocks", label: text.blocksHeader, optional: true, sortable: true, render: (row) => row.blocks },
+    { key: "carries", label: text.carriesHeader, optional: true, sortable: true, render: (row) => carriedText(row, text.carriesNothing) },
     {
-      key: "actions", label: <span className="sr-only">{text.actionsHeader}</span>,
+      key: "actions", label: <span className="sr-only">{text.actionsHeader}</span>, chooserLabel: text.actionsHeader,
       render: (row) => <ActionMenu triggerLabel={text.actionsFor(row.name)} items={menuFor(row)} />,
     },
   ];
+  const chosen = useOptionalColumns("report_snippets", columns);
 
   if (failed) return <p role="alert" style={{ color: "var(--color-danger)", margin: 0 }}>{text.loadFailed}</p>;
   if (rows === null) return <Spinner />;
@@ -174,6 +176,7 @@ export function ReportSnippetsPanel({
       <p className="text-muted" style={{ margin: 0 }}>{text.hint}</p>
       <div className="row">
         <button type="button" className="btn btn-primary" aria-haspopup="dialog" onClick={() => setDialog({ kind: "new" })}>{text.newButton}</button>
+        {chosen.chooser}
       </div>
       {inProject && api.restore && (
         <div className="row">
@@ -201,7 +204,7 @@ export function ReportSnippetsPanel({
         </div>
       )}
       <DirectoryTable
-        ariaLabel={text.listLabel} columns={columns} rows={table.rows} rowKey={(row) => row.id}
+        ariaLabel={text.listLabel} columns={chosen.columns} rows={table.rows} rowKey={(row) => row.id}
         sort={table.sort} onSort={table.onSort}
         emptyState={<p className="text-muted" style={{ margin: 0 }}>{rows.length > 0 ? text.noMatch : text.empty}</p>}
       />

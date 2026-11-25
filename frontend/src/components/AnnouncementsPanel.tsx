@@ -1,25 +1,27 @@
 /**
  * Module: components/AnnouncementsPanel
  *
- * Administration of announcements for one scope, shared by Server Management (the platform's messages) and
- * Organisation Admin (that organisation's). Lists each message with its severity, window, login-page flag, whether it
- * can be dismissed and its status, in two views: current (active and scheduled) and previous (ended), with a search
- * over both. An administrator can create, edit, duplicate and delete a message and send it once as a notification.
+ * Administration of announcements for one scope, shared by Server Management (platform messages) and Organisation
+ * Admin (that organisation's). Lists each message with title and status always, severity and window by default, and
+ * login-page flag, dismissibility and the send action on request (column chooser), in current (active and
+ * scheduled) and previous (ended) views with a search over both; create, edit, duplicate, delete, and send once
+ * as a notification.
  *
- * The server enforces scope and the text rules; its message is shown in the dialog. The send is a recorded,
- * one-time action, so it asks first and is replaced by a record of who it reached once done.
+ * The server enforces scope and text rules and its message is shown in the dialog. The send is a recorded,
+ * one-time action: it asks first and is replaced by a record of who it reached.
  */
 import { Bell, Copy, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { api } from "../api/client";
 import type { Announcement, AnnouncementWrite } from "../api/types";
-import { ANNOUNCEMENT_STATUS_LABEL, ANNOUNCEMENT_STATUS_TONE } from "../api/types";
+import { ANNOUNCEMENT_SEVERITY_LABEL, ANNOUNCEMENT_STATUS_LABEL, ANNOUNCEMENT_STATUS_TONE } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
-import { sortRows } from "../utils/sortRows";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
+import { instantOf, sortRows } from "../utils/sortRows";
 import { AnnouncementEditor } from "./AnnouncementEditor";
 import { AnnouncementSeverityMark } from "./AnnouncementSeverityMark";
 import { Badge } from "./Badge";
@@ -31,6 +33,7 @@ import { TextField } from "./FormFields";
 import { InlineMessage } from "./InlineMessage";
 import { cycleSort, type SortState } from "./sortState";
 import { Tabs, tabPanelProps } from "./Tabs";
+import { MarkdownView } from "./MarkdownView";
 
 type View = "current" | "previous";
 
@@ -115,25 +118,23 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
       && (needle === "" || `${item.title}\n${item.body}`.toLowerCase().includes(needle)));
   }, [items, view, search]);
 
-  if (loadError) return <InlineMessage>{loadError}</InlineMessage>;
-  if (!items) return null;
   const columns: DirectoryColumn<Announcement>[] = [
     {
       key: "title", label: text.title, sortable: true,
       render: (item) => (
         <>
           <strong>{item.title}</strong>
-          {item.body && <div className="text-muted" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.body}</div>}
+          {item.body && <MarkdownView className="text-muted" text={item.body} />}
         </>
       ),
     },
-    { key: "severity", label: text.severity, sortable: true, render: (item) => <AnnouncementSeverityMark severity={item.severity} showLabel /> },
-    { key: "window", label: text.window, sortable: true, render: (item) => windowText(item) },
-    { key: "login", label: text.loginColumn, render: (item) => (item.show_on_login ? strings.common.yes : strings.common.no) },
-    { key: "dismissible", label: text.dismissibleColumn, render: (item) => (item.dismissible ? strings.common.yes : strings.common.no) },
+    { key: "severity", label: text.severity, sortable: true, optional: true, render: (item) => <AnnouncementSeverityMark severity={item.severity} showLabel /> },
+    { key: "window", label: text.window, sortable: true, optional: true, render: (item) => windowText(item) },
+    { key: "login", label: text.loginColumn, sortable: true, optional: true, defaultHidden: true, render: (item) => (item.show_on_login ? strings.common.yes : strings.common.no) },
+    { key: "dismissible", label: text.dismissibleColumn, sortable: true, optional: true, defaultHidden: true, render: (item) => (item.dismissible ? strings.common.yes : strings.common.no) },
     { key: "status", label: text.status, sortable: true, render: (item) => <Badge tone={ANNOUNCEMENT_STATUS_TONE[item.status]}>{ANNOUNCEMENT_STATUS_LABEL[item.status]}</Badge> },
     {
-      key: "notify",
+      key: "notify", sortable: true, optional: true, defaultHidden: true,
       label: text.sendNotification,
       headerAction: <FieldHelp label={text.sendNotification} help={strings.help.announcementNotify} />,
       render: (item) =>
@@ -169,10 +170,16 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
     },
   ];
 
+  const chosen = useOptionalColumns("announcements", columns);
+
+  if (loadError) return <InlineMessage>{loadError}</InlineMessage>;
+  if (!items) return null;
+
   const audience = scope.kind === "server" ? text.audienceServer : text.audienceOrganisation;
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "flex-end" }}>
+        {chosen.chooser}
         <button className="btn btn-primary" onClick={() => { setSaveError(null); setDuplicating(null); setEditing("new"); }}>{text.newMessage}</button>
       </div>
       {items.length === 0 ? (
@@ -190,11 +197,14 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
         ) : (
         <DirectoryTable
           ariaLabel={text.heading}
-          columns={columns}
+          columns={chosen.columns}
           rows={sortRows(shown, sort, {
             title: (item) => item.title,
-            severity: (item) => item.severity,
+            severity: (item) => ANNOUNCEMENT_SEVERITY_LABEL[item.severity],
             window: (item) => item.starts_at ?? null,
+            login: (item) => (item.show_on_login ? 1 : 0),
+            dismissible: (item) => (item.dismissible ? 1 : 0),
+            notify: (item) => instantOf(item.notified_at),
             status: (item) => ANNOUNCEMENT_STATUS_LABEL[item.status],
           })}
           rowKey={(item) => item.id}

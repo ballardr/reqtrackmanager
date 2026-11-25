@@ -50,7 +50,7 @@ export function TransitionFieldGroup({
         <TextField help={ARCHITECTURE_HELP.transitionAction} label="Action" value={values.action} onChange={(value) => onChange("action", value)} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
+        <TextAreaField markdown helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
       </FormGridFull>
     </>
   );

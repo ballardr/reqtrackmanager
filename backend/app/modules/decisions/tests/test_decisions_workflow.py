@@ -344,17 +344,14 @@ def test_cannot_supersede_an_already_superseded_decision(client, admin_token):
         db.close()
 
 
-# --- 2026-09-23 hardening pass: supersession status guard + approve/reject race ----
+# --- supersession status guard and approve/reject race ----
 
 
 def test_create_supersession_rejects_a_new_decision_that_can_never_be_approved(client, admin_token):
-    """A `REJECTED`/`SUPERSEDED` Decision can never reach `APPROVED`
-    (`_ALLOWED_TRANSITIONS` has no outgoing edges for either), so recording
+    """A `REJECTED`/`SUPERSEDED` Decision can never reach `APPROVED`, so recording
     it as superseding another Decision would create a link that can never
-    resolve into the status transition its own name implies — found and
-    fixed in a 2026-09-23 hardening pass. DRAFT/PROPOSED/UNDER_REVIEW
-    remain allowed (existing `test_supersession_validation_errors`
-    coverage), since those can still reach APPROVED later."""
+    resolve into the status transition. DRAFT/PROPOSED/UNDER_REVIEW remain
+    allowed, since those can still reach APPROVED."""
     project, user_id, decision_type_id = _setup_project(client, admin_token, "Decision Supersession Guard Co")
     project_id = uuid.UUID(project["id"])
     old_id = _create_decision(project_id=project_id, decision_type_id=decision_type_id, user_id=user_id, code="DEC-001")
@@ -409,20 +406,11 @@ def test_create_supersession_rejects_a_new_decision_that_can_never_be_approved(c
 
 
 def test_concurrent_approve_and_reject_on_the_same_decision_are_serialized(client, admin_token):
-    """Two real, overlapping transactions — one approving, one rejecting
-    the same `UNDER_REVIEW` Decision — must not both succeed: without a
-    row lock, both could read status == UNDER_REVIEW before either
-    commits and both pass `_ALLOWED_TRANSITIONS`, leaving the audit trail
-    showing contradictory events. With the row-locked fetch
-    (`_get_decision_in_project_for_update`, mirroring `change_requests.
-    workflow.decide_change_request`'s identical fix), the second call's
-    status check must run against the first one's already-committed
-    result and fail cleanly instead. Locks directly at the DB layer (real
-    `SELECT ... FOR UPDATE`, real threads, real separate sessions) rather
-    than through the HTTP layer, mirroring `test_project_sequence_
-    counters.py::test_concurrent_generation_never_produces_duplicate_
-    codes`'s own established pattern for proving a lock actually
-    serializes concurrent callers."""
+    """Two real, overlapping transactions, one approving and one rejecting the
+    same `UNDER_REVIEW` Decision, must not both succeed: the row-locked fetch
+    (`_get_decision_in_project_for_update`) makes the second call check status
+    against the first one's committed result and fail cleanly. Uses real
+    `SELECT ... FOR UPDATE`, threads and separate sessions at the DB layer."""
     project, user_id, decision_type_id = _setup_project(client, admin_token, "Decision Approve Reject Race Co")
     project_id = uuid.UUID(project["id"])
     decision_id = _create_decision(

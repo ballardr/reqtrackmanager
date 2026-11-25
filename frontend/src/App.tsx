@@ -1,3 +1,4 @@
+import { useEffect, useRef, type RefObject } from "react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { Layout } from "./components/Layout";
@@ -5,6 +6,8 @@ import { Spinner } from "./components/Spinner";
 import { useAuth } from "./context/AuthContext";
 import { useFederatedModules } from "./hooks/useFederatedModules";
 import { useProjectEnabledModules } from "./hooks/useProjectEnabledModules";
+import { useUnhandledRequestFailures } from "./hooks/useUnhandledRequestFailures";
+import { rememberReturnTo } from "./utils/returnTo";
 import { buildModuleRoutes } from "./modules/buildModuleRoutes";
 import { installedModules } from "./modules/registry";
 import { ActionDetailPage } from "./pages/ActionDetailPage";
@@ -13,12 +16,14 @@ import { ChangeRequestsPage } from "./pages/ChangeRequestsPage";
 import { FavouritesPage } from "./pages/FavouritesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MyReviewsDuePage } from "./pages/MyReviewsDuePage";
+import { NotificationOpenPage } from "./pages/NotificationOpenPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OidcCompletePage } from "./pages/OidcCompletePage";
 import { OrgAdminPage } from "./pages/OrgAdminPage";
 import { OrgListPage } from "./pages/OrgListPage";
 import { OrgLoginPage } from "./pages/OrgLoginPage";
 import { OrgOverviewPage } from "./pages/OrgOverviewPage";
+import { OrgResourcesPage } from "./pages/OrgResourcesPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
 import { HelpRedirectPage } from "./pages/HelpRedirectPage";
 import { ReportRunPage } from "./pages/ReportRunPage";
@@ -46,12 +51,28 @@ import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
 
 /**
- * Sends the old Org Admin "Templates & reports" address (`/orgs/:orgId/admin/templates-reports`) to its renamed
- * group, so a bookmark or a link in older documentation still lands on the reports.
+ * Sends the Org Admin "Templates & reports" address (`/orgs/:orgId/admin/templates-reports`) to the reports
+ * group, so a bookmarked address still lands on the reports.
  */
 function OldOrgReportsRedirect() {
   const { orgId } = useParams<{ orgId: string }>();
-  return <Navigate to={`/orgs/${orgId}/admin/reports`} replace />;
+  return <Navigate to={`/orgs/${orgId}/resources/reports`} replace />;
+}
+
+/**
+ * Sends a person who is not signed in to the sign-in page.
+ *
+ * Args:
+ *     signedInBefore: Set once this tab has had a signed-in person. When it is not set the person arrived by a link,
+ *         so the address they asked for is remembered and signing in returns them to it.
+ */
+function RedirectToLogin({ signedInBefore }: { signedInBefore: RefObject<boolean> }) {
+  const location = useLocation();
+  const asked = location.pathname + location.search + location.hash;
+  useEffect(() => {
+    if (!signedInBefore.current) rememberReturnTo(asked);
+  }, [asked, signedInBefore]);
+  return <Navigate to="/login" replace />;
 }
 
 function ProtectedRoutes() {
@@ -59,28 +80,23 @@ function ProtectedRoutes() {
   const location = useLocation();
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
-  // `!loading` (see the hook's own docstring, "`ready`") defers this fetch
-  // until `AuthProvider` has actually set a real bearer token — called
-  // unconditionally here regardless, since Rules of Hooks forbids skipping
-  // it before the `loading`/`!user` early returns below, and this component
-  // is a descendant of `AuthProvider` whose own token-loading effect would
-  // otherwise still be pending the first time this one fires.
+  // `!loading` (the hook's `ready` argument) defers the fetch until `AuthProvider` has set a bearer token. The
+  // hook is called unconditionally, before the `loading`/`!user` early returns below, as the Rules of Hooks
+  // require.
   const { modules: enabledModules, loaded: modulesLoaded } = useProjectEnabledModules(projectId, !loading);
-  // Module system follow-up, 2026-09-07 (Tier C / Module Federation): a
-  // project-scoped module whose manifest is `"federated"` needs its
-  // `TierAModuleDefinition` loaded at runtime before `buildModuleRoutes`
-  // below can find it in `installedModules` — see `useFederatedModules`'s
-  // own docstring. Called unconditionally, before this component's own
-  // `loading`/`!user` early returns.
+  // Tier C (Module Federation): a project-scoped module whose manifest is `"federated"` needs its
+  // `TierAModuleDefinition` loaded at runtime before `buildModuleRoutes` can find it in `installedModules` (see
+  // `useFederatedModules`). Called unconditionally, before the `loading`/`!user` early returns.
   const federatedModuleStates = useFederatedModules(enabledModules);
-  // Same navigation-race class of bug as
-  // `modulesLoaded` below, one layer further out: `modulesLoaded` only
-  // means "the enabled-modules list itself was fetched," not "every
-  // federated module it named has finished its own async remote-entry
-  // load" — a fresh navigation straight to a Tier C module's own nav-rail
-  // link could otherwise still hit the wildcard `Navigate` below before
-  // that load resolves. Folded into the same gate rather than a second,
-  // parallel one.
+  // Whether this tab has had a signed-in person: a redirect to sign-in after that is a lapsed session or a deliberate
+  // sign-out (the 401 handler and `logout` manage the remembered page); one before it is a followed link.
+  const signedInBefore = useRef(false);
+  useEffect(() => {
+    if (user) signedInBefore.current = true;
+  }, [user]);
+  // `modulesLoaded` means the enabled-modules list was fetched, not that every federated module it names has
+  // finished its remote-entry load; without this gate a fresh navigation to a Tier C module's nav link could hit
+  // the wildcard `Navigate` first. It is folded into the same gate as `modulesLoaded`.
   const federatedModulesStillLoading = Object.values(federatedModuleStates).some((s) => s.status === "loading");
 
   if (loading) {
@@ -92,7 +108,7 @@ function ProtectedRoutes() {
   }
   // The Policies page is public: the people a privacy policy concerns most have not signed in yet.
   if (!user && /^\/policies(\/|$)/.test(location.pathname)) return <PublicPoliciesPage />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <RedirectToLogin signedInBefore={signedInBefore} />;
   // An administrator-set password is changed before anything else is shown (the server refuses every other request).
   if (user.must_change_password) return <ForcedPasswordChangePage />;
 
@@ -100,10 +116,11 @@ function ProtectedRoutes() {
     <Layout>
       <Routes>
         {buildModuleRoutes(enabledModules, projectId)}
-        <Route path="/policies/:policyId?" element={<PoliciesPage />} />
+        <Route path="/policies/*" element={<PoliciesPage />} />
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/notifications/:notificationId" element={<NotificationOpenPage />} />
         <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/org-files" element={<OrgListPage target="files" />} />
@@ -112,24 +129,19 @@ function ProtectedRoutes() {
         <Route path="/orgs/:orgId/admin/:group?/:section?" element={<OrgAdminPage />} />
         <Route path="/orgs/:orgId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/orgs/:orgId/report-packs/:packId" element={<ReportPackPage />} />
-        {/* "Organisation Overview" —
-            reuses `OrgListPage`'s single-org/multi-org auto-redirect
-            convention (`target="overview"`) as its own entry point, the
-            same way `/orgs` already does for `/orgs/:orgId/admin`. */}
+        {/* "Organisation Overview" reuses `OrgListPage`'s single-org/multi-org auto-redirect
+            (`target="overview"`) as its entry point, as `/orgs` does for `/orgs/:orgId/admin`. */}
         <Route path="/org-overview" element={<OrgListPage target="overview" />} />
         <Route path="/orgs/:orgId/overview/:group?" element={<OrgOverviewPage />} />
-        {/* Every installed module's own always-mounted top-level routes
-            (`TierAModuleDefinition.globalRoutes`)
-            — unlike `buildModuleRoutes` above (project-scoped,
-            gated on a specific project's own currently-enabled-modules
-            list), these are plain top-level routes the same as `/projects`/
-            `/orgs`, for a module surface with no single project/org to key
-            an enablement check off (Compliance's `/standards` and friends).
-            `App.tsx` never imports a specific module's page components
-            directly — each module registers its own `globalRoutes` in its
-            own `module.ts`, the same "core doesn't hardcode one module"
-            boundary `Layout.tsx`'s `globalNavItems`/`standaloneWorkspaces`
-            consumption already establishes. */}
+        {/* "Org Resources" — what the organisation owns and shares with its projects; its sections come from the
+            module registry (`orgResourceSections`). Same single-org/multi-org entry convention. */}
+        <Route path="/org-resources" element={<OrgListPage target="resources" />} />
+        <Route path="/orgs/:orgId/resources/:group?/:section?" element={<OrgResourcesPage />} />
+        {/* Every installed module's always-mounted top-level routes
+            (`TierAModuleDefinition.globalRoutes`). Unlike the project-scoped `buildModuleRoutes`, these are
+            plain top-level routes like `/projects` and `/orgs`, for a module surface with no single
+            project or org to key an enablement check off (Compliance's `/standards`). `App.tsx` never imports a
+            module's page components: each module registers its `globalRoutes` in its `module.ts`. */}
         {installedModules.flatMap((m) => m.globalRoutes ?? []).map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
@@ -153,19 +165,11 @@ function ProtectedRoutes() {
         <Route path="/search" element={<SearchPage />} />
         <Route path="/preferences/:group?" element={<PreferencesPage />} />
         <Route path="/help" element={<HelpRedirectPage />} />
-        {/* Falls through here for any path that matches none of the routes
-            above, including every route `buildModuleRoutes` above would
-            contribute once loaded. While a project-scoped path's own
-            enabled-modules fetch is still in flight, that list is
-            genuinely `[]` (the enabled-modules hook) whether or
-            not this path is actually a module's route — redirecting to
-            /projects here is only correct once we actually know, so this
-            renders a brief loading state instead and lets `<Routes>`
-            re-match on the next render once `modulesLoaded` flips true and
-            the real module route (if any) is spliced in above. See
-            `useProjectEnabledModules`'s own docstring for the navigation
-            bug this fixes (a project module's own nav-rail link used to
-            bounce straight back to /projects on a fresh navigation). */}
+        {/* Any path matching no route above, including every route `buildModuleRoutes` contributes once
+            loaded. While a project-scoped path's enabled-modules fetch is in flight the list is `[]`
+            whether or not the path is a module's route, so redirecting to /projects is correct only once it is
+            known: a brief loading state renders instead, and `<Routes>` re-matches once `modulesLoaded` is true
+            and the module route (if any) is spliced in. See `useProjectEnabledModules`. */}
         <Route
           path="*"
           element={
@@ -184,6 +188,7 @@ function ProtectedRoutes() {
 }
 
 export function App() {
+  useUnhandledRequestFailures();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

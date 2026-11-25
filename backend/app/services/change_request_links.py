@@ -1,38 +1,31 @@
 """
 Module: services.change_request_links
 
-Links proposed on a change request, validated now and merged on approval
-
+Links proposed on a change request, validated when proposed and again when merged on approval.
 
 Responsibilities:
-- Check a proposed link (`check_proposed_link`) with the same rules as creating a link
-  directly, but from a requirement that may not exist yet and attributed to the request's
-  creator: the far end is a record the actor can view, the link type is usable and not
-  hidden, the pair is allowed by the type's restriction, both ends' artefact-type rules
-  and the nesting scope, the far end's project is a related one, and (for an existing
+- Check a proposed link (`check_proposed_link`) with the rules of creating a link directly, but from a
+  requirement that may not exist yet and attributed to the request's creator: the far end is viewable by the
+  actor, the link type is usable and not hidden, the pair satisfies the type's restriction, both ends'
+  artefact-type rules and the nesting scope, the far end's project is related, and (for an existing
   requirement) the link is not a duplicate.
-- Describe a request's proposed links (`describe_links`) and what approving would merge
-  (`build_preview`): every link re-validated at read time, never trusted from creation.
-- Decide and apply the outcome on approval (`resolve_links`): merge the chosen links,
-  record `merged` / `declined` / `skipped` (with the reason) on each, and audit every
-  created link in both projects with `via: change_request`.
+- Describe proposed links (`describe_links`) and what approving would merge (`build_preview`), re-validated at
+  read time and never trusted from creation.
+- Apply the outcome on approval (`resolve_links`): merge the chosen links, record `merged` / `declined` /
+  `skipped` (with reason) on each, and audit every created link in both projects with `via: change_request`.
 
 Design decisions:
-- A problem is a value (`ProposedLinkProblem`), not an HTTP error, so one check serves
-  creation (becomes a 400), the preview (becomes a disabled row with its reason) and
-  approval (becomes a 409 with a fresh preview, or a skipped link).
-- Two actors are checked on approval: the **creator** (the link is attributed to them, so
-  they must still be allowed to create it) and the **approver** (must hold `view` on the
-  far end in its own project, so approving can never create a link to a record the
-  approver cannot read). The approver's authority to change the requirement is the
-  approval itself, so `link` / `manage` is not asked of them.
-- A far end the actor cannot see, an unrelated project and a missing record all read the
-  same ("not found"), so a probe learns nothing.
-- Approval replays an already-validated link, so creation passes `enforce_rules=False`.
+- A problem is a value (`ProposedLinkProblem`), not an HTTP error, so one check serves creation (400), the
+  preview (a disabled row with its reason) and approval (a 409 with a fresh preview, or a skipped link).
+- Approval checks two actors: the creator (the link is attributed to them, so they must still be allowed to
+  create it) and the approver (must hold `view` on the far end in its own project, so approving never links to
+  a record the approver cannot read). The approver's authority over the requirement is the approval itself, so
+  `link`/`manage` is not asked of them.
+- A far end the actor cannot see, an unrelated project and a missing record all read "not found", so a probe
+  learns nothing.
+- Approval replays a validated link, so creation passes `enforce_rules=False`.
 
-Dependencies: `services.link_authoring` (visibility, gates, audit, duplicates),
-`services.link_graph` (`ArtefactResolver`), `services.link_nesting`, `services.link_types`,
-`services.relationships`.
+Dependencies: `services.link_authoring`, `link_graph`, `link_nesting`, `link_types`, `relationships`.
 """
 
 from __future__ import annotations

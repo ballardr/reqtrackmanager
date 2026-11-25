@@ -1,10 +1,8 @@
 /**
- * Small colour-contrast helpers used to apply an admin-picked accent
- * colour safely: computing readable text-on-fill contrast for buttons, and
- * deriving a theme-appropriate variant of one brand colour for light vs.
- * dark backgrounds (one colour is picked; the two on-screen tints are
- * derived, not separately chosen) — mirrors
- * `backend/app/services/branding.py`'s equivalent Python helpers.
+ * Colour-contrast helpers for applying an admin-picked accent colour: readable
+ * text-on-fill contrast for buttons, and a theme-appropriate variant of one
+ * brand colour for light and dark backgrounds. Mirrors the Python helpers in
+ * `backend/app/services/branding.py`.
  */
 
 function hexToRgb(hex: string): [number, number, number] {

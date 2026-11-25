@@ -1,27 +1,13 @@
 /**
  * Module: components/ResourcePickerModal
  *
- * Style guide "Pattern: resource picker dialog": a
- * two-pane `Modal` — a source list on the left, the selected source's
- * files on the right, pickable and attachable to whatever opened the
- * dialog.
+ * Style guide "Pattern: resource picker dialog": a two-pane `Modal` with a source list on the left and the selected
+ * source's files on the right, pickable and attachable to whatever opened the dialog.
  *
- * Built pluggable via the `sources` prop (`ResourcePickerSource[]`, each
- * just an id/label/`loadFiles()`) rather than hardcoded to "organisation
- * shared resources" specifically, so a future source (a project's own
- * uploaded files, a report chapter's existing image pool) can be added by
- * a caller without a rewrite of this component — today only one source is
- * wired up (`RequirementDetailPage.tsx`'s Attachments card), per this
- * pass's scope, but the shape doesn't assume there's only ever one.
- *
- * Selection is multi-file (a checkbox per row) with one "Attach selected"
- * action at the end, rather than attaching on click-per-row — this matches
- * the existing shared-resource checkbox picker on `ChangeRequestsPage.tsx`
- * (proposed-attachment selection) more closely than a single-click-and-
- * close flow would, and avoids a chain of individual network round trips
- * each closing/reopening the dialog. The caller's `onAttach` receives the
- * full set of selected file ids and decides how to apply them (e.g. one
- * `POST .../files/link` call per id).
+ * Design decisions: sources are pluggable through the `sources` prop (`ResourcePickerSource[]`: id, label,
+ * `loadFiles()`), so a caller adds a source without changing this component. Selection is multi-file (a checkbox per row)
+ * with one "Attach selected" action, matching the shared-resource picker on `ChangeRequestsPage.tsx` and avoiding one
+ * round trip per file. `onAttach` receives all selected file ids and decides how to apply them.
  */
 import { FolderOpen } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -77,9 +63,7 @@ export function ResourcePickerModal({
     return () => {
       cancelled = true;
     };
-    // `activeSource` is derived from `sources`/`activeSourceId` each render;
-    // re-running whenever the resolved source object changes (i.e. whenever
-    // `activeSourceId` actually picks a different entry) is what we want.
+    // Re-runs only when the resolved source changes, i.e. when `activeSourceId` picks a different entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSourceId]);
 
@@ -130,7 +114,7 @@ export function ResourcePickerModal({
             <p className="text-muted" style={{ margin: 0 }}>{strings.resourcePicker.noFiles}</p>
           )}
           {files && files.length > 0 && (
-            <div className="stack" style={{ maxHeight: "50vh", overflowY: "auto" }}>
+            <div className="stack scroll-region" style={{ maxHeight: "50vh" }}>
               {files.map((f) => (
                 <CheckboxField helpNotNeeded key={f.id} label={f.filename} checked={selected.has(f.id)} onChange={() => toggle(f.id)} />
               ))}

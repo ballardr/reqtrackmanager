@@ -1,25 +1,16 @@
-"""Tests for 2026-08-31 (2026-08-31, docs/decisions.md):
-splitting `GET /{project_id}/effective-members`'s collapsed `kind: "direct"`
-provenance bucket into five finer-grained kinds (`direct_role`,
-`direct_group`, `direct_org_group`, `direct_project_ref`, `direct_org_wide`
-— see `services.rbac._direct_effective_project_roles_by_kind`'s docstring),
-and the endpoint's new application-level `search`/`limit`/`offset` support.
+"""Tests for the provenance kinds of `GET /{project_id}/effective-members`
+(`direct_role`, `direct_group`, `direct_org_group`, `direct_project_ref`,
+`direct_org_wide`; see `services.rbac._direct_effective_project_roles_by_kind`)
+and the endpoint's `search`/`limit`/`offset` support.
 
-The kind split is the highest-risk change: the new frontend
-Members table only offers `DELETE /{project_id}/roles/{user_id}/{role}` as a
-way to toggle a role off when its *only* source is `direct_role` — every
-other kind must never be presented as freely revocable that way, since that
-endpoint only ever deletes `UserProjectRole` rows and would otherwise 204 as
-a silent no-op while a group/org-wide-derived role stays in effect. The
-tests below pin that (a) all five kinds are distinguishable when a user
-holds the same role via every source at once, (b) different roles via
-different sources aren't cross-contaminated, (c) revoking a `direct_role`
-actually removes it, and (d) attempting to revoke a role whose only source
-is *not* `direct_role` correctly leaves it untouched (no `UserProjectRole`
-row exists to delete, so the endpoint 204s but nothing changes) — the
-backend-side half of "this must not silently no-op"; the frontend's own
-disabled+title treatment on the non-`direct_role` options is what actually
-prevents a caller from trying in the first place.
+The Members table offers `DELETE /{project_id}/roles/{user_id}/{role}` to toggle
+a role off only when its sole source is `direct_role`: that endpoint deletes
+`UserProjectRole` rows only, so for any other kind it would 204 as a no-op while
+the role stays in effect. The tests pin that (a) all five kinds are
+distinguishable when a user holds the same role via every source, (b) different
+roles via different sources are not cross-contaminated, (c) revoking a
+`direct_role` removes it, and (d) revoking a role with no `direct_role` source
+leaves it untouched.
 """
 
 from tests.conftest import auth_headers, create_org_user, create_project

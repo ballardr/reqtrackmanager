@@ -1,15 +1,13 @@
 /**
  * Module: modules/stakeholders/PersonaFormModal
  *
- * Create/edit dialog for a Persona's content fields (docs/ux-style-guide.md
- * principle 3: a full entity create/edit is a `Modal`). Shared by create and
- * edit (distinguished by whether `initial` is passed) and by the org and
- * project scopes (`scopeLabel` only changes the title).
+ * Create/edit dialog for a Persona's content fields (docs/ux-style-guide.md principle 3: a full entity create/edit is
+ * a `Modal`). Shared by create and edit (when `initial` is passed) and by the organisation and project scopes
+ * (`scopeLabel` only changes the title).
  *
- * `owner`/`champion` are not fields here — `PersonaDetailPage` assigns
- * them through `RecordPrincipalField`. `weight` is optional: blank means "no
- * weight", which scoring treats as equal weighting. `change_note` only
- * renders when editing; "Save and activate" only when creating. Every field has a visible label (principle 13).
+ * `owner` and `champion` are not fields: `PersonaDetailPage` assigns them through `RecordPrincipalField`. `weight` is
+ * optional: blank means "no weight", which scoring treats as equal weighting. `change_note` renders only when editing;
+ * "Save and activate" only when creating. Every field has a visible label (principle 13).
  */
 import { useState } from "react";
 
@@ -103,7 +101,7 @@ export function PersonaFormModal({
           />
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />

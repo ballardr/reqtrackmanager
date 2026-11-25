@@ -13,7 +13,29 @@ sidebar_position: 12
 
 ## Components and categories
 
-**Project Admin → Categories** shows the two-level tree — each category belongs to exactly one component, and its prefix only needs to be unique within that component. Both can be renamed inline (renaming never changes already-issued requirement IDs, only new ones going forward). Deleting a category requires picking another to reassign its requirements to; deleting a component requires it to have no categories left under it first.
+**Project Admin → Structure** shows the project's components and their categories as a collapsible tree, with the prefix and the number of requirements beside each row. Search by name or prefix opens the matches, and the tree remembers which components you left open.
+
+| The Structure page: components with their prefixes and requirement counts, and Requirement aliases beneath |
+| --- |
+| ![Project admin Structure page showing a collapsible list of components with category counts, prefixes and requirement counts, and an Add component button](../../static/img/screenshots/project-admin-structure.png) |
+
+| Add component: the prefix is suggested from the name and can be edited |
+| --- |
+| ![Add component side panel with the name Software Design and the suggested prefix SD](../../static/img/screenshots/structure-add-component.png) |
+
+- **Add component** (the primary button) and each component's **Add category** open a small form. The **prefix** is suggested from the name, for example `SW` for "Software" and `SWD` for "Software Design", and is yours to edit: if it is already used by a sibling the suggestion takes the next free number (`SW2`), and a name with no letters or digits suggests nothing. A prefix is unique among the project's components, and a category's prefix is unique within its component.
+- A row's actions menu edits it, moves it up or down, and deletes it. A category can also be **moved to another component**: its requirements, their aliases and other placed records move with it and sit in the new component. Codes already issued never change, and new requirements take the new component's prefix.
+- Renaming or changing a prefix never changes already-issued requirement IDs, only new ones.
+- Deleting a category that holds nothing needs only a confirmation; if requirements or other placed records are in it, the dialog asks which category to move them to. A component is deleted only after its categories are deleted or moved.
+- A requirement's form chooses its component and its category as one pair from this tree, and the Requirements list filters by the same tree (see [Components on every record](../core-features/components-on-records.md)).
+
+## Record codes
+
+**Project Admin → Settings → Record codes** sets the letters new records of each type start their code with, for this project only (`ADR-006` instead of `DEC-006`). A type with no value of its own follows the nearest parent project that sets one, then the organisation's setting (see [Administering an organisation → Record code prefixes](./administering-an-organisation.md#record-code-prefixes)), then the built-in prefix; **Use inherited value** clears the project's own. The rules are the organisation's: two to five letters, different for every record type, never a project code or the organisation code. Codes already issued never change. A project made from a template, and a project bundle export and import, carry the project's own prefixes; an import numbers its records afresh with the destination's prefix.
+
+| Project Admin → Settings → Record codes |
+| --- |
+| ![Record codes section of the project settings with a prefix field for each record type](../../static/img/screenshots/project-record-codes.png) |
 
 ## Custom fields
 
@@ -25,7 +47,7 @@ sidebar_position: 12
 
 ## Tags
 
-**Project Admin → Tags** sets whether anyone who can tag a record may coin a new tag or only the listed ones, and lets you add, rename, colour, merge, reclassify and delete the project's tags, with a usage table per kind of record. A child project follows its parent's list until it adds a tag of its own. See [Tags](../core-features/tags.md#keeping-the-list-tidy-project-admin--tags).
+**Project Admin → Tags** sets whether anyone who can tag a record may coin a new tag or only the listed ones, and lets you add, rename, colour, merge, reclassify and delete the project's tags, and shows where each tag is used by kind of record. A child project follows its parent's list until it adds a tag of its own. See [Tags](../core-features/tags.md#keeping-the-list-tidy-project-admin--tags).
 
 ## Reports
 

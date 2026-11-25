@@ -1,18 +1,21 @@
 /**
  * Module: modules/architecture/ArchitectureTypesPanel
  *
- * The settings list of one vocabulary (element types, connection types or domains) for a project or for an organisation,
- * on the shared `DefinitionList`: inline rename, reorder, add and delete, with an Edit dialog (`TypeFormModal`) for
- * the other attributes (a domain is only a name, so it has none). In a project, a row that is an organisation default is read-only there: deleting it hides it
- * in this project (after a confirmation) and `RestoreOrgDefaultsButton` shows it again; to change a default, hide it
- * and add a type of the project's own. A type in use cannot be deleted (the server answers 409), so the message tells
- * the administrator to hide it instead.
+ * The settings list of one vocabulary (element types, connection types or domains) for a project or an organisation,
+ * on the shared `DefinitionList`: inline rename, reorder, add and delete. The one Add button above the list opens
+ * `TypeFormModal` empty, the same form the Edit dialog uses (a domain is only a name, so its Add dialog is the name
+ * alone and it has no Edit dialog). In a project, an organisation default is read-only: deleting it hides it in this
+ * project (after a confirmation) and the actions menu offers "Add organisation defaults" (only while one is hidden)
+ * to show it again. A type in use cannot be deleted (the server answers 409), so the message tells the
+ * administrator to hide it instead.
  */
-import { Pencil } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Pencil, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import type { ActionMenuItem } from "../../components/ActionMenu";
+import { CellText } from "../../components/CellText";
 import { DefinitionList } from "../../components/DefinitionList";
-import { RestoreOrgDefaultsButton, type HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
+import { RestoreOrgDefaultsDialog, type HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { blockedError } from "../../utils/blockedError";
@@ -70,12 +73,20 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<TypeRow | "new" | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
 
   const scopeId = scope.kind === "project" ? scope.projectId : scope.organizationId;
   const calls = (kind === "element" ? elementTypeApi : kind === "connection" ? connectionTypeApi : domainApi) as typeof elementTypeApi;
   const symbolUrl = (id: string) => (scope.kind === "project" ? projectSymbolUrl(scopeId, id) : orgSymbolUrl(scopeId, id));
+
+  const menuItems = useMemo<ActionMenuItem[]>(
+    () => (scope.kind === "project" && hidden.length > 0
+      ? [{ key: "restore-defaults", label: `Add organisation defaults (${hidden.length})`, icon: <Plus />, onSelect: () => setRestoring(true) }]
+      : []),
+    [scope.kind, hidden.length],
+  );
 
   useEffect(() => {
     let live = true;
@@ -161,16 +172,15 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
             : calls.orgUpdate(scopeId, id, { name: values.name } as never));
           reload();
         }}
-        onAdd={async (values) => {
-          const blank = kind === "domain"
-            ? { name: values.name }
-            : kind === "element"
-              ? { name: values.name, domain_ids: [], shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, suggested_connection_type_ids: [] }
-              : { name: values.name, domain_ids: [], line_style: "solid", directional: true, default_protocol: "", color_light: null, color_dark: null, parent_ids: [] };
-          await (scope.kind === "project" ? calls.projectCreate(scopeId, blank as never) : calls.orgCreate(scopeId, blank as never));
-          showToast(`${noun[0].toUpperCase()}${noun.slice(1)} created.`);
-          reload();
-        }}
+        {...(kind === "domain"
+          ? {
+            onAdd: async (values: Record<string, string>) => {
+              await (scope.kind === "project" ? calls.projectCreate(scopeId, { name: values.name } as never) : calls.orgCreate(scopeId, { name: values.name } as never));
+              showToast(`${noun[0].toUpperCase()}${noun.slice(1)} created.`);
+              reload();
+            },
+          }
+          : { onAddRequest: () => { setFormError(null); setEditing("new"); } })}
         onDelete={async (id) => {
           const row = find(id);
           try {
@@ -196,9 +206,10 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
             }
           : null}
         addLabel={`Add ${noun}`}
+        menuItems={menuItems}
         renderExtra={(item) => (
           <span key="type-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{summaryOf(item, rows, domains)}</span>
+            <CellText className="text-muted" style={{ fontSize: "0.8rem" }}>{summaryOf(item, rows, domains)}</CellText>
             <ColourDots row={item} />
             {scope.kind === "project" && item.project_id === null && <span className="text-muted" style={{ fontSize: "0.75rem" }}>Org default</span>}
             {kind !== "domain" && !isOrgDefault(item) && (
@@ -212,24 +223,18 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
           </span>
         )}
       />
-      <div className="row" style={{ gap: "var(--space-3)" }}>
-        {kind !== "domain" && (
-          <button className="btn" onClick={() => { setFormError(null); setEditing("new"); }}>
-            {`New ${noun} with details`}
-          </button>
-        )}
-        {scope.kind === "project" && (
-          <RestoreOrgDefaultsButton
-            hidden={hidden}
-            noun={`${noun}s`}
-            onRestore={async (ids) => {
-              await calls.projectRestore(scopeId, ids);
-              showToast(ids.length === 1 ? "Organisation default added back." : `${ids.length} organisation defaults added back.`);
-              reload();
-            }}
-          />
-        )}
-      </div>
+      {restoring && (
+        <RestoreOrgDefaultsDialog
+          hidden={hidden}
+          noun={`${noun}s`}
+          onClose={() => setRestoring(false)}
+          onRestore={async (ids) => {
+            await calls.projectRestore(scopeId, ids);
+            showToast(ids.length === 1 ? "Organisation default added back." : `${ids.length} organisation defaults added back.`);
+            reload();
+          }}
+        />
+      )}
       {editing && kind !== "domain" && (
         <TypeFormModal
           kind={kind}

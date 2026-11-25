@@ -1,66 +1,25 @@
 """
 Module: modules.context_strategy._shared
 
-Internal helpers shared by the org-scoped (`router.py`) and project-scoped
-(`project_router.py`) routers, which expose an almost identical Strategy
-CRUD/lifecycle/comment/file surface differing only in which of
-`organization_id`/`project_id` scopes the call and which of this module's
-four roles (`strategy_owner`/`strategy_approver`, project-scoped;
-`org_strategy_owner`/`org_strategy_approver`, org-scoped — `module.py`)
-gates a mutation. Kept here rather than duplicated in both router files,
-the same "helper shared by more than one router, hosted once" convention
-`modules.decisions.project_router._shared` already follows for that
-module's own bucket split — applied here across the two *scope* routers
-instead of across per-concern buckets, since Decision Management has no
-org/project scope split of its own to mirror directly.
+Internal helpers shared by the organisation-scoped (`router.py`) and project-scoped (`project_router.py`) routers, which
+expose a near-identical CRUD, lifecycle, comment and file surface differing in which of `organization_id` or `project_id`
+scopes the call and which role gates a mutation (`strategy_owner` and `strategy_approver` for a project,
+`org_strategy_owner` and `org_strategy_approver` for an organisation; `module.py`). Each router file still declares its
+own routes, as `modules.compliance.router` and `project_router` do, rather than building them from a factory.
 
-Each literal router file still declares its own FastAPI routes (not built
-generically from a shared factory) — matching this codebase's existing
-precedent for every other module with both an org- and a project-scoped
-router (e.g. `modules.compliance.router`/`project_router`), rather than
-inventing a new dynamic-route-building mechanism this codebase has no
-other example of.
-
-Future State has the same shape of helpers for the standalone
-artefact, under distinct names (`future_state_to_out`,
-`get_future_state_in_scope`, `require_future_state_manage_role`,
-`require_future_state_approve_permission`) since every artefact type's
-helpers live in this one file — see each function's own docstring for
-anything that isn't a pure rename of its Strategy counterpart.
-
-Pain Points have `pain_point_to_out`, `get_pain_point_in_scope`,
-`require_pain_point_manage_role`, and `require_pain_point_decide_
-permission` — Pain Point has only **one** module role (`pain_point_manager`,
-project-scoped only; Pain Point itself has no org scope), unlike Strategy/
-Future State's owner+approver pair, so both helpers gate on the same role,
-differing only in whether a Fine-Grained Access Control permission-atom
-grant is also accepted (`require_pain_point_decide_permission` accepts one,
-for the "decide"-tier triage/reject/duplicate/accept/address/close actions,
-mirroring `require_approve_permission`; `require_pain_point_manage_role`
-does not, for type-vocabulary CRUD, mirroring `require_manage_role`).
-
-Guiding Principles have `guiding_principle_to_out`, `get_guiding_
-principle_in_scope`, `require_guiding_principle_manage_role`, and `require_
-guiding_principle_approve_permission` — back to the Strategy/Future State
-owner+approver shape (`guiding_principle_owner`/`guiding_principle_approver`
-project-scoped, `org_guiding_principle_owner`/`org_guiding_principle_
-approver` org-scoped), since Guiding Principle is org/project dual-scoped
-like Strategy/Future State, not project-scoped-only like Pain Point.
-
-Open Questions have `open_question_to_out`, `get_open_question_
-in_scope`, `require_open_question_manage_role`, and `require_open_question_
-resolve_permission` — project-scoped only, like Pain Point, but with **two**
-flat module roles rather than Pain Point's one: §9.4 names
-three distinct permission tiers (project members; "Question Owner / Project
-Manager"; "Decision Maker"), not Pain Point's §6.5 two-tier split (broad
-members; a single Pain Point Manager). `require_open_question_manage_role`
-(no Fine-Grained Access Control fallback, mirrors `require_pain_point_
-manage_role`) gates assign/prioritise/edit/"change status"-type actions via
-`open_question_owner`; `require_open_question_resolve_permission` (with an
-FGAC fallback, mirrors `require_pain_point_decide_permission`) gates only
-the `resolve` transition (§9.4's "Decision Maker: Resolve through a
-Decision") via a *separate* `open_question_resolver` role. See `module.py`'s
-own docstring for the full reasoning.
+Each artefact type has its own helpers in this file under distinct names (`strategy_to_out`, `future_state_to_out`,
+`get_future_state_in_scope`, `require_future_state_manage_role`, `require_future_state_approve_permission` and the
+`pain_point_*`, `guiding_principle_*` and `open_question_*` equivalents); their docstrings note any difference from the
+Strategy counterpart:
+- Future State and Guiding Principle have the Strategy owner and approver shape (a project role pair and an
+  organisation role pair), because they are dual-scoped.
+- Pain Point is project-scoped with one role (`pain_point_manager`). `require_pain_point_decide_permission` (the
+  triage, reject, duplicate, accept, address and close actions) also accepts a Fine-Grained Access Control permission
+  atom; `require_pain_point_manage_role` (type-vocabulary CRUD) does not.
+- Open Question is project-scoped with two roles (§9.4 names three tiers: members, "Question Owner / Project Manager",
+  "Decision Maker"). `require_open_question_manage_role` (assign, prioritise, edit, change status; no permission
+  fallback) uses `open_question_owner`; `require_open_question_resolve_permission` (the `resolve` transition, with a
+  permission fallback) uses the separate `open_question_resolver` role (see `module.py`).
 """
 
 from __future__ import annotations
@@ -125,42 +84,25 @@ MODULE_KEY = "context_strategy"
 # Resolved display data for owners, keyed by `(owner_type, owner_id)` (`services.principals.principal_labels`).
 OwnerLabels = dict[tuple[str, uuid.UUID], PrincipalOut]
 
-# Fine-Grained Access Control's unscoped `(strategy, approve_baseline)`
-# permission atom — Strategy has no sub-type dimension analogous to
-# Decision Management's Decision Type (only the org/project `scope`
-# discriminator, which is structural, not a permission sub-type), so this
-# stays the plain, unscoped constant `require_approve_permission` checks
-# directly, with no per-instance sub-type resolution needed.
+# The unscoped `(strategy, approve_baseline)` permission atom checked by `require_approve_permission`: the only scope
+# dimension (organisation or project) is structural, so there is no per-instance sub-type to resolve.
 STRATEGY_APPROVE_PERMISSION = encode_permission(STRATEGY_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
-# Future State's own unscoped `(future_state, approve_baseline)` permission
-# atom — same reasoning as `STRATEGY_APPROVE_PERMISSION` (Future State's
-# only scope dimension is structural org/project, not a permission
-# sub-type).
+# Future State's unscoped `(future_state, approve_baseline)` atom, for the same reason.
 FUTURE_STATE_APPROVE_PERMISSION = encode_permission(FUTURE_STATE_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
-# Pain Point's own unscoped `(pain_point, approve_baseline)` permission
-# atom, used for the "decide"-tier triage/reject/duplicate/accept/address/
-# close actions only (`require_pain_point_decide_permission`) — reuses the
-# `APPROVE_BASELINE` tier name for consistency with Strategy/Future State's
-# atoms even though Pain Point has no separate "approve" action of its own;
-# these are this artefact's own equivalent "finalise/decide the outcome"
-# actions.
+# Pain Point's unscoped `(pain_point, approve_baseline)` atom, for the decide-tier actions
+# (`require_pain_point_decide_permission`); it uses the `APPROVE_BASELINE` tier name as this artefact's "finalise the
+# outcome" level.
 PAIN_POINT_DECIDE_PERMISSION = encode_permission(PAIN_POINT_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
-# Guiding Principle's own unscoped `(guiding_principle, approve_baseline)`
-# permission atom — same reasoning as `STRATEGY_APPROVE_PERMISSION`/
-# `FUTURE_STATE_APPROVE_PERMISSION` (Guiding Principle's only scope
-# dimension is structural org/project, not a permission sub-type).
+# Guiding Principle's unscoped `(guiding_principle, approve_baseline)` atom, for the same reason as Strategy's.
 GUIDING_PRINCIPLE_APPROVE_PERMISSION = encode_permission(
     GUIDING_PRINCIPLE_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value
 )
 
-# Open Question's own unscoped `(open_question, approve_baseline)` permission
-# atom, used for the `resolve` transition only (`require_open_question_
-# resolve_permission`) — reuses the `APPROVE_BASELINE` tier name for
-# consistency with this module's other atoms, standing in for §9.4's
-# "Decision Maker: Resolve through a Decision" tier.
+# Open Question's unscoped `(open_question, approve_baseline)` atom, for the `resolve` transition only
+# (`require_open_question_resolve_permission`), standing in for §9.4's "Decision Maker" tier.
 OPEN_QUESTION_RESOLVE_PERMISSION = encode_permission(OPEN_QUESTION_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 _OWNER_ROLE_KEY: dict[StrategyScope, str] = {

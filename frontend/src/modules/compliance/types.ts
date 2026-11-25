@@ -1,41 +1,20 @@
 /**
  * Module: modules/compliance/types
  *
- * TypeScript mirrors of the Compliance Module's org-router Pydantic schemas
- * (backend/app/modules/compliance/schemas.py) that the org-level
- * management UI needs — standards, versions, the requirement tree, required
- * actions, the two extensible vocabularies (action types, mapping
- * relationship types), cross-standard requirement mappings, and the
- * version-diff response (§27) — plus every enum this module's UI
- * renders and its matching `*_LABEL` map.
- *
- * Kept local to this module rather than added to `frontend/src/api/types.ts`
- * — a deliberate judgment call: this codebase's existing convention puts every feature's
- * response shapes in the one central `api/types.ts` file, but Compliance is
- * the first genuine Tier A *installed module*, and keeping its own
- * response-type surface, including its own enums/labels, inside its own
- * module directory matches that mechanism's actual intent ("an installed
- * module directly imports and uses real shared components... genuinely part
- * of the app, not a lookalike" — it doesn't say its *types* must also live
- * in the core file). This module's own enums/label maps used to live in
- * `api/types.ts` per this repo's general label-map rule (CLAUDE.md, style
- * guide Principle 12), which is still the right place for a *core* enum's
- * label map — but a module's own enum is this module's own display concern,
- * not a core one, so it lives here instead, mirroring the backend's
- * identical `modules.compliance.labels` split from `app.services.labels`.
- *
- * Every `id`/`*_id` field is a `string` (UUID, serialised as JSON string,
- * same convention every other frontend type in this codebase already uses).
+ * TypeScript mirrors of the Compliance module's org-router Pydantic schemas (backend/app/modules/compliance/schemas.py): standards,
+ * versions, the requirement tree, required actions, the two extensible vocabularies (action types, mapping relationship types),
+ * requirement mappings and the version-diff response (§27), plus every enum the module's UI renders with its `*_LABEL` map.
+ * They live in this module, not in `frontend/src/api/types.ts`: Compliance is an installed module whose own enums and labels are
+ * its display concern (mirroring the backend's `modules.compliance.labels`), while core enums keep their label maps in
+ * `api/types.ts` (CLAUDE.md, style guide Principle 12).
+ * Every `id` and `*_id` field is a `string` (a UUID serialised as JSON).
  */
 
 import type { BadgeTone, OrgUser, Principal } from "../../api/types";
 import type { ProjectScopedRow } from "../../api/projectScope";
 
-/** Shared "id -> display name" lookup for the Project Compliance View's own
- * assignee/actor/owner fields — mirrors `RequirementDetailPage.tsx`'s own
- * inline `userDisplayName` helper, pulled out here since several
- * components need the same lookup over the same `orgUsers` list fetched
- * once at `ProjectCompliancePage` and threaded down. */
+/** Shared "id -> display name" lookup for the Project Compliance View's assignee, actor and owner fields, over the `orgUsers` list
+ * fetched once at `ProjectCompliancePage` (as `RequirementDetailPage.tsx`'s `userDisplayName`). */
 export function userDisplayName(orgUsers: OrgUser[], userId: string | null | undefined): string {
   if (!userId) return "Unassigned";
   return orgUsers.find((u) => u.user_id === userId)?.display_name ?? userId;
@@ -70,10 +49,8 @@ export const COMPLIANCE_APPLICABILITY_LABEL: Record<ComplianceApplicability, str
   applicable: "Applicable",
   not_applicable: "Not applicable",
 };
-// §9's hierarchical-applicability UI requirement: explicit/inherited/
-// overridden must be visually distinct, not just labelled differently —
-// see `ApplicabilityTree.tsx`'s own badge rendering, which pairs this label
-// with a colour/icon per source, not text alone.
+// §9 requires explicit, inherited and overridden applicability to be visually distinct, not only labelled differently;
+// `ApplicabilityTree.tsx`'s badge pairs this label with a colour and icon per source.
 export type ComplianceApplicabilitySource = "explicit" | "inherited" | "overridden";
 export const COMPLIANCE_APPLICABILITY_SOURCE_LABEL: Record<ComplianceApplicabilitySource, string> = {
   explicit: "Explicit",
@@ -129,11 +106,9 @@ export const COMPLIANCE_OVERALL_STATE_LABEL: Record<ComplianceOverallState, stri
   not_applicable: "Not applicable",
 };
 
-/** Three-state "Non-compliant" risk label shared by `ProjectCompliancePage`'s
- * list column and `ProjectComplianceDetail`'s badge. Never collapses "nobody has assessed this yet" into the same
- * reading as "assessed and found compliant" — a status with `not_yet_assessed`
- * true renders as "Unknown", not "No", even though `has_non_compliant` is
- * also false in that case. */
+/** Three-state "Non-compliant" risk label shared by `ProjectCompliancePage`'s list column and `ProjectComplianceDetail`'s badge.
+ * It never reads "nobody has assessed this yet" as "assessed and found compliant": a status with `not_yet_assessed` true is
+ * "Unknown", not "No", although `has_non_compliant` is also false then. */
 export type ComplianceRiskLabel = "Yes" | "Unknown" | "No";
 export function complianceRiskLabel(status: { has_non_compliant: boolean; not_yet_assessed: boolean }): ComplianceRiskLabel {
   if (status.has_non_compliant) return "Yes";
@@ -141,15 +116,8 @@ export function complianceRiskLabel(status: { has_non_compliant: boolean; not_ye
   return "No";
 }
 
-// `ComplianceStandard.applicability_default`
-// (backend `app.modules.compliance.enums.ComplianceStandardApplicabilityDefault`).
-// Kept in this module-local file rather than `frontend/src/api/types.ts`,
-// same deliberate judgment call as every other Compliance enum/label map
-// above (see this file's own module docstring) — flagged here explicitly
-// since CLAUDE.md's general label-map rule names `api/types.ts` as the
-// default location, but this module's own established self-containment
-// convention is the more specific, already-recorded rule
-// that applies to Compliance's own enums.
+// `ComplianceStandard.applicability_default` (backend `app.modules.compliance.enums.ComplianceStandardApplicabilityDefault`).
+// It lives in this module's file, like every Compliance enum, not in `frontend/src/api/types.ts`.
 export type ComplianceStandardApplicabilityDefault = "opt_in" | "applies_to_all_projects";
 export const COMPLIANCE_STANDARD_APPLICABILITY_DEFAULT_LABEL: Record<ComplianceStandardApplicabilityDefault, string> = {
   opt_in: "Opt-in (assigned per project)",
@@ -218,10 +186,8 @@ export interface ComplianceStandardMember {
   role_keys: ComplianceStandardRoleKey[];
 }
 
-// A group-based grant on a standard
-// (`GroupModuleRole`, the generic group-grant
-// mechanism), the group-grant sibling of `ComplianceStandardMember`.
-// `member_count` is resolved live by the backend, not stored.
+// A group-based grant on a standard (`GroupModuleRole`, the generic group-grant mechanism), the group sibling of
+// `ComplianceStandardMember`. `member_count` is resolved live by the backend, not stored.
 export interface ComplianceStandardGroupMember {
   org_group_id: string;
   group_name: string;
@@ -366,12 +332,9 @@ export interface StandardVersionDiff {
   re_mapped: RemappedRequirement[];
 }
 
-/** A `ComplianceRequirement` decorated with its computed tree depth and
- * children, built client-side from the backend's flat, DFS-ordered
- * `GET .../requirements` list — there is no nested-tree endpoint (see
- * `router.py::_flatten_requirements_dfs`, the algorithm `buildRequirementTree`
- * in `api.ts` mirrors). Module-local presentational shape, not a backend
- * mirror. */
+/** A `ComplianceRequirement` decorated with its computed tree depth and children, built client-side from the backend's flat,
+ * depth-first `GET .../requirements` list (no nested-tree endpoint exists; `buildRequirementTree` in `api.ts` mirrors
+ * `router.py::_flatten_requirements_dfs`). A module-local presentational shape, not a backend mirror. */
 export interface ComplianceRequirementNode extends ComplianceRequirement {
   depth: number;
   children: ComplianceRequirementNode[];
@@ -379,13 +342,8 @@ export interface ComplianceRequirementNode extends ComplianceRequirement {
 
 // --- Project Compliance View (project_router.py) -----------------------
 //
-// Mirrors of the project-scoped Pydantic schemas
-// (backend/app/modules/compliance/schemas.py) that the Project Compliance
-// View needs — assignment, per-requirement assessment/applicability,
-// required-action assessments, §20 status summaries, evidence, approvals,
-// and scheduled reviews. Kept alongside the org-router types above per this
-// file's own documented convention (module-local data shapes; enums/label
-// maps live in `api/types.ts`).
+// Mirrors of the project-scoped Pydantic schemas (backend/app/modules/compliance/schemas.py): assignment, per-requirement
+// assessment and applicability, required-action assessments, §20 status summaries, evidence, approvals and scheduled reviews.
 
 export interface ProjectCompliance {
   id: string;
@@ -440,10 +398,8 @@ export interface ComplianceRequiredActionAssessment {
 export interface ProjectComplianceStatus extends ProjectScopedRow {
   project_compliance_id: string;
   project_id: string;
-  /** See `schemas.py::ProjectComplianceStatusOut`'s own
-   * docstring for why this schema (uniquely among this module's
-   * cross-assignment schemas) is shared unmodified between project and
-   * org scope rather than getting a separate `Org*` variant. */
+  /** Shared unmodified between project and org scope, unlike this module's other cross-assignment schemas
+   * (see `schemas.py::ProjectComplianceStatusOut`). */
   project_name: string;
   standard_id: string;
   standard_reference: string;
@@ -458,12 +414,9 @@ export interface ProjectComplianceStatus extends ProjectScopedRow {
   counts_by_status: Record<string, number>;
   compliance_percentage: number;
   has_non_compliant: boolean;
-  /** True when every applicable requirement is still Not Started — i.e.
-   * this assignment has had zero assessment activity. A UI rendering a
-   * binary "non-compliant?" affordance from `has_non_compliant` alone
-   * must check this first, so "nobody has assessed this yet" is never
-   * displayed the same way as "assessed and found compliant"
-   *. */
+  /** True when every applicable requirement is still Not Started, so the assignment has had no assessment activity. A UI showing
+   * a binary "non-compliant?" from `has_non_compliant` alone must check this first, so "nobody has assessed this yet" is never
+   * shown as "assessed and found compliant". */
   not_yet_assessed: boolean;
   overall_compliance_state: ComplianceOverallState;
   overall_approval_state: ComplianceApprovalState;
@@ -535,12 +488,8 @@ export interface ComplianceEvidenceRevalidation {
   created_at: string;
 }
 
-/** Mirrors the generic `AuditEventOut` (`backend/app/schemas/audit.py`) —
- * no `actor_display_name`/`timestamp` the way `ChangeEntry` (`api/types.ts`,
- * the activity-feed shape) has, since `get_requirement_history` returns raw
- * `AuditEvent` rows rather than resolving them into an activity-feed shape;
- * a dedicated type rather than reusing `ChangeEntry` for a differently-
- * shaped response. */
+/** Mirrors the generic `AuditEventOut` (`backend/app/schemas/audit.py`). It has no `actor_display_name` or `timestamp` as
+ * `ChangeEntry` (`api/types.ts`) does, because `get_requirement_history` returns raw `AuditEvent` rows, so it is a separate type. */
 export interface ComplianceAuditEvent {
   id: string;
   entity_type: string;
@@ -578,19 +527,13 @@ export interface ComplianceReview {
   linked_evidence_ids: string[];
 }
 
-// --- Org Compliance View + Dashboard (router.py's org-wide
-// aggregation endpoints) ---------------------------------------------------------
+// --- Org Compliance View + Dashboard (router.py's org-wide aggregation endpoints) ---------------------------------------------------------
 //
-// `OutstandingRequiredAction` is used unmodified at both
-// project and org scope (it carries `project_id`/`project_name` from the
-// start — see `schemas.py::OutstandingRequiredActionOut`'s own docstring).
-// `OrgNonCompliantRequirement`/`OrgPendingApproval`/`OrgExpiringEvidence`
-// extend their pre-existing project-scoped counterparts with the same two
-// fields, mirroring the backend's `Org*Out` subclasses rather than
-// retrofitting `NonCompliantRequirement`/`PendingApproval`/`ComplianceEvidence`
-// (which the project-scoped UI already consumes unchanged). `OrgReviewDue` wraps
-// `ComplianceReview` rather than extending it flat, since one standard-level
-// review can legitimately be "due" for more than one project at once.
+// `OutstandingRequiredAction` is shared by project and org scope (it carries `project_id` and `project_name`; see
+// `schemas.py::OutstandingRequiredActionOut`). `OrgNonCompliantRequirement`, `OrgPendingApproval` and `OrgExpiringEvidence` extend
+// their project-scoped counterparts with those two fields, mirroring the backend's `Org*Out` subclasses, so the project-scoped UI
+// consumes `NonCompliantRequirement`, `PendingApproval` and `ComplianceEvidence` unchanged. `OrgReviewDue` wraps `ComplianceReview`
+// because one standard-level review can be due for more than one project at once.
 
 export interface OutstandingRequiredAction {
   project_id: string;

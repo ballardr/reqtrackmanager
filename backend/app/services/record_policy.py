@@ -4,20 +4,16 @@ Module: services.record_policy
 Resolves and changes the personal-data policy for record-table export and import.
 
 Responsibilities:
-- The effective decision per sensitivity tag: the organisation's override if set, else the server
-  default, else **excluded** (a fresh install lets no personal data leave through a file).
-- Whether a person may include or import tagged columns at all: the policy must allow the tag **and**
-  the person must hold `export_personal_data` in the project (or, for the organisation's own lists, in the organisation). Both have to say yes.
-- Setting and clearing the server default and the organisation override, with one audit event each
-  (old and new value, never any record data).
+- The effective decision per sensitivity tag: the organisation override, else the server default, else **excluded**.
+- Whether a person may include or import tagged columns: the policy must allow the tag **and** the person must hold
+  `export_personal_data` (in the project, or the organisation for its own lists).
+- Set and clear the server default and the organisation override, one audit event each (old and new value only).
 
 Design decisions:
-- One resolver (`tag_decisions`) feeds export, import and the columns listing, so no route can apply a
-  looser rule than another.
-- A denied tag reports *why* (`policy` or `permission`) so the list can say so honestly.
-- Functions leave committing to the caller.
+- One resolver (`tag_decisions`) feeds export, import and the column listing, so no route applies a looser rule.
+- A denied tag reports why (`policy` or `permission`). Functions leave committing to the caller.
 
-External dependencies: SQLAlchemy; `services.rbac` for the permission check; `services.audit`.
+Dependencies: SQLAlchemy, `services.rbac`, `services.audit`.
 """
 
 from __future__ import annotations

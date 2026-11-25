@@ -3,7 +3,8 @@
  *
  * The project's elements, the Elements tab of `SystemArchitecturePage` (`/projects/:projectId/modules/architecture?tab=elements`;
  * `chrome` is the page's tab strip). Two views over the same filtered set, switched with `Tabs`:
- * - *List*: a `DirectoryTable` (code opens the detail page) with type, owner, parent, connection count and status, plus a
+ * - *List*: a `DirectoryTable` (code opens the detail page) with type, owner, parent, connection count and status (every column but the code, name and status is
+ *   chosen with the column chooser; Parent and Connections are off until chosen), plus a
  *   `FilterPanel` (search, status, type, "Open only", scope, tags, archived).
  * - *Tree*: the elements arranged by parent, each a link to its page. An element whose parent is filtered out is shown at
  *   the top level, so every match is visible.
@@ -13,11 +14,11 @@
  * and type render through their label maps. Create uses `ElementFormModal`, the same fields as the edit form.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
+import type { ActionMenuItem } from "../../components/ActionMenu";
 import { Badge } from "../../components/Badge";
-import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
@@ -35,9 +36,12 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { useStrings } from "../../context/TerminologyContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { SortField } from "../../components/SortField";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { sortRows } from "../../utils/sortRows";
@@ -46,9 +50,9 @@ import { ELEMENT_SORT_KEYS, elementSortValues } from "./architectureSort";
 import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { buildElementTree, elementCodeRecord } from "./architectureFields";
 import { ElementFormModal } from "./ElementFormModal";
-import { InterchangeMenu } from "./InterchangeMenu";
 import { useCreateElement } from "./useCreateElement";
 import { useFolderListControls } from "./useFolderListControls";
+import { useInterchangeActions } from "./useInterchangeActions";
 import { useArchitectureReference } from "./useArchitectureReference";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureRecordStatus, isOutOfUse,
@@ -73,10 +77,17 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [sort, setSort] = useUrlSort<string>(ELEMENT_SORT_KEYS);
+  const listSort = useListSort("elements", ELEMENT_SORT_KEYS, "code");
 
   const [refreshKey, setRefreshKey] = useState(0);
   const folders = useFolderListControls({ projectId }, "element", "elements", () => setRefreshKey((k) => k + 1));
+  const navigate = useNavigate();
+  const interchange = useInterchangeActions(projectId, () => setRefreshKey((k) => k + 1));
+  const menuItems = useMemo<ActionMenuItem[]>(() => [
+    ...folders.menuItems,
+    { key: "sharing", label: "Sharing", onSelect: () => navigate(`/projects/${projectId}/modules/architecture/sharing`) },
+    ...interchange.menuItems,
+  ], [folders.menuItems, interchange.menuItems, navigate, projectId]);
   const [elements, setElements] = useState<ArchitectureElement[] | null>(null);
   const [shared, setShared] = useState<ArchitectureElement[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -108,8 +119,34 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
   const rows = useMemo(() => [...(elements ?? []), ...shared], [elements, shared]);
   const filtered = useMemo(() => rows.filter((e) => matches(e, openOnly)), [rows, matches, openOnly]);
   const parentName = (e: ArchitectureElement) => rows.find((p) => p.id === e.parent_id)?.name ?? (e.parent_id ? "—" : "");
-  const sorted = sortRows(filtered, sort, elementSortValues(parentName));
+  const sorted = sortRows(filtered, listSort.sort, elementSortValues(parentName));
   const tree = useMemo(() => buildElementTree(filtered), [filtered]);
+
+  const columns: DirectoryColumn<ArchitectureElement>[] = [
+    { key: "code", label: "Code", sortable: true, render: (e) => <ScopedRecordCode record={elementCodeRecord(e)} /> },
+    {
+      key: "name", label: "Name", sortable: true,
+      render: (e) => <>{e.name}{e.shared && <> <Badge tone="info">Shared</Badge></>}<ProjectScopeLabel row={e} /></>,
+    },
+    { key: "type", label: "Type", sortable: true, optional: true, render: (e) => e.element_type_name },
+    { key: "folder", label: "Folder", sortable: true, optional: true, render: (e) => e.folder_path ?? "—" },
+    { key: "parent", label: "Parent", sortable: true, optional: true, defaultHidden: true, render: (e) => parentName(e) || "—" },
+    { key: "owner", label: "Owner", sortable: true, optional: true, render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
+    { key: "connections", label: "Connections", sortable: true, optional: true, defaultHidden: true, render: (e) => e.connection_count },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (e) => (
+        <FilterBadge
+          tone={ARCHITECTURE_STATUS_TONE[e.status]} active={statusFilter === e.status}
+          onClick={() => setStatusFilter(statusFilter === e.status ? "" : e.status)}
+        >
+          {ARCHITECTURE_STATUS_LABEL[e.status]}
+        </FilterBadge>
+      ),
+    },
+  ];
+
+  const shown = useOptionalColumns("architecture_elements", columns);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -127,34 +164,11 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
     if (openOnly) params.set("open_only", "true");
     folders.addParams(params);
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
 
   const rowHref = (e: ArchitectureElement) => `/projects/${rowProjectId(e, projectId)}/modules/architecture/elements/${e.id}`;
-
-  const columns: DirectoryColumn<ArchitectureElement>[] = [
-    { key: "code", label: "Code", sortable: true, render: (e) => <ScopedRecordCode record={elementCodeRecord(e)} /> },
-    {
-      key: "name", label: "Name", sortable: true,
-      render: (e) => <>{e.name}{e.shared && <> <Badge tone="info">Shared</Badge></>}<ProjectScopeLabel row={e} /></>,
-    },
-    { key: "type", label: "Type", sortable: true, render: (e) => e.element_type_name },
-    { key: "folder", label: "Folder", sortable: true, render: (e) => e.folder_path ?? "—" },
-    { key: "parent", label: "Parent", sortable: true, render: (e) => parentName(e) || "—" },
-    { key: "owner", label: "Owner", sortable: true, render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
-    { key: "connections", label: "Connections", sortable: true, render: (e) => e.connection_count },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (e) => (
-        <FilterBadge
-          tone={ARCHITECTURE_STATUS_TONE[e.status]} active={statusFilter === e.status}
-          onClick={() => setStatusFilter(statusFilter === e.status ? "" : e.status)}
-        >
-          {ARCHITECTURE_STATUS_LABEL[e.status]}
-        </FilterBadge>
-      ),
-    },
-  ];
 
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && rows.some((e) => matches(e, false));
   const emptyState = (
@@ -170,13 +184,8 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={{ projectId, recordType: "architecture_element", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
-        actions={
-          <>
-            <Link className="btn" to={`/projects/${projectId}/modules/architecture/sharing`}>Sharing</Link>
-            <InterchangeMenu projectId={projectId} onImported={() => setRefreshKey((k) => k + 1)} />
-            <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New element</button>
-          </>
-        }
+        menuItems={menuItems} columnChooser={shown.chooser}
+        actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New element</button>}
         filter={
           <FilterPanel
             sectionKey="architecture.elements" total={filtered.length}
@@ -194,6 +203,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
             {folders.panel}
             <ProjectScopeFilter scope={projectScope} />
             <TagFilterField projectId={projectId} filter={tagFilter} />
+            <SortField list={listSort} columns={columns} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
@@ -209,12 +219,12 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
             <>
             {folders.bar}
             <DirectoryTable
-              ariaLabel="Elements" columns={columns} rows={sorted} rowKey={(e) => e.id}
+              ariaLabel="Elements" columns={shown.columns} rows={sorted} rowKey={(e) => e.id}
               selection={{
                 selected: folders.selected, onChange: folders.setSelected, label: (e) => `Select ${e.unique_code}`,
                 selectable: (e) => e.project_id === projectId, allLabel: "Select all elements",
               }}
-              sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
+              sort={listSort.sort} onSort={listSort.onHeaderSort}
               placements={{ projectId, artefactType: "architecture_element", rowId: (e) => e.id }}
               rowHref={rowHref} emptyState={emptyState}
             />
@@ -240,6 +250,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
       </ListPageLayout>
 
       {folders.dialog}
+      {interchange.dialog}
       {creating && (
         <ElementFormModal
           elementTypes={reference.elementTypes} connectionTypes={reference.connectionTypes} candidates={elements}

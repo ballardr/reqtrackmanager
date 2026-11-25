@@ -1,20 +1,17 @@
 """
 Module: services.report_starter_blocks
 
-Small builders for the layout blocks of the starter report layouts, shared by the core starters
-(`services.report_starters`) and by the sections modules contribute (`ModuleDefinition.report_starter_sections`).
+Small builders for the layout blocks of the starter report layouts, shared by the core starters (`report_starters`) and
+the sections modules contribute (`ModuleDefinition.report_starter_sections`).
 
 Responsibilities:
 - Name the starters (`BUSINESS_REQUIREMENTS_DOCUMENT`, `ENGINEERING_SPECIFICATION`, `REVIEW_PACKAGE`,
-  `REQUIREMENTS_BY_COMPONENT`, `WORKBOOK`) so a module's
-  section and the core assembler agree on a key.
-- Build a heading, a line of text, a table over a record type, a widget and a headed section as layout-tree dicts.
-- Give a starter table fixed column widths (`fixed_columns`): a field with a usual width (a code, a status) keeps it, so the
-  columns line up from one table to the next; the rest (titles) share what is left.
+  `REQUIREMENTS_BY_COMPONENT`, `WORKBOOK`) so module sections and the core assembler agree on a key.
+- Build a heading, text line, table over a record type, widget and headed section as layout-tree dicts; `fixed_columns`
+  gives fields with a usual width (a code, a status) that width so tables line up.
 
 Design decisions:
-- Pure dict builders with no imports, so a module can use them without a cycle through the services that load modules.
-- A builder only shapes the tree; the layout validator (`services.report_layout_tree`) is what accepts or refuses it.
+- Pure dict builders with no imports, so a module can use them without a cycle; `report_layout_tree` accepts or refuses.
 
 Dependencies: none.
 """

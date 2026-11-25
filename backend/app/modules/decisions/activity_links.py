@@ -1,19 +1,12 @@
 """
 Module: modules.decisions.activity_links
 
-Reads the two records a Decision link audit event joins, for the History page and the record Activity aside
-(`ModuleDefinition.activity_link_ends`).
-
-Responsibilities:
-- Turn a `decision_link` event's `detail` into its source and target records and the relationship's forward name.
-
-Design decisions:
-- Three shapes are logged: Decision to Requirement (`decision_id`, `requirement_id`), Decision to Decision
-  (`source_decision_id`, `target_decision_id`) and supersession (`new_decision_id`, `old_decision_id`). The
-  relationship name is the one the link is created with, from `kind`.
-- Every value is parsed defensively; an unreadable event yields no ends rather than an error.
-
-External dependencies: `modules.decisions.service` (the relationship names), `modules.registry`.
+Reads the two records a Decision link audit event joins, for the History page
+and the record Activity aside (`ModuleDefinition.activity_link_ends`).
+Three event shapes are logged: Decision to Requirement, Decision to Decision
+and supersession; the relationship name comes from `kind`. Values are parsed
+defensively: an unreadable event yields no ends. Dependencies:
+`modules.decisions.service`, `modules.registry`.
 """
 
 from __future__ import annotations

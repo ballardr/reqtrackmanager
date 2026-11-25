@@ -16,34 +16,69 @@ set -euo pipefail
 
 PROJECTS=(frontend docs/website)
 
+# The staged file list is read once; each check below asks whether any staged path matches its trigger pattern
+# (an extended regular expression), instead of running `git diff` again for every check.
+STAGED="$(git diff --cached --name-only)"
+staged_matches() {
+  grep -qE "$1" <<<"$STAGED"
+}
+
 # A Playwright version bump (either lockfile) or an image-tag edit in ci.yml
 # must keep the two in step; see scripts/check-playwright-image-sync.py.
-if git diff --cached --name-only | grep -qE '^(\.github/workflows/ci\.yml|frontend/package-lock\.json|tests/playwright/package-lock\.json)$'; then
+if staged_matches '^(\.github/workflows/ci\.yml|frontend/package-lock\.json|tests/playwright/package-lock\.json)$'; then
   python3 "$(git rev-parse --show-toplevel)/scripts/check-playwright-image-sync.py" || {
     echo "pre-commit: fix the Playwright image tag in .github/workflows/ci.yml (or the lockfile), re-stage, and retry." >&2
     exit 1
   }
 fi
 
-# A moved or renamed doc must not leave dangling references; see scripts/check_doc_links.py.
-if git diff --cached --name-only | grep -qE '\.(md|py|ts|tsx|css|ya?ml|sh|txt)$|^docs/'; then
-  python3 "$(git rev-parse --show-toplevel)/scripts/check_doc_links.py" || {
+# A moved or renamed doc must not leave dangling references; see scripts/check_doc_links.py. `--staged` scans only the
+# staged files unless the commit removes, renames or adds a plan, or changes the checker (then it scans everything);
+# CI's `docs` job always scans everything.
+if staged_matches '\.(md|py|ts|tsx|css|ya?ml|sh|txt)$|^docs/'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check_doc_links.py" --staged || {
     echo "pre-commit: fix the broken documentation reference(s) above, re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
+# A source comment must describe the code, not the conversation or its history; see scripts/check_comment_style.py.
+# `--staged` scans only the staged files (the whole repository when the checker itself is staged).
+if staged_matches '\.(py|ts|tsx|js|mjs|css|sh|ya?ml|toml|ini|caddy)$|(^|/)(Dockerfile[^/]*|Caddyfile)$'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check_comment_style.py" --staged || {
+    echo "pre-commit: rewrite the comment(s) above to describe what the code does now, re-stage, and retry." >&2
     exit 1
   }
 fi
 
 # Performance results are git-ignored; one force-added to a public repository must carry nothing identifying (perf/scrub_check.py).
 # Only tracked and staged files are checked: the directory also holds local bundles and copied-in archives that no commit publishes.
-if git diff --cached --name-only | grep -qE '^perf/results/'; then
+if staged_matches '^perf/results/'; then
   python3 "$(git rev-parse --show-toplevel)/perf/scrub_check.py" --tracked || {
     echo "pre-commit: remove the identifying content above from perf/results/, re-stage, and retry." >&2
     exit 1
   }
 fi
 
+# A shipped dependency must stay within the licence policy and the third-party inventory must match the lockfiles;
+# see scripts/check_licences.py (offline here; CI also resolves the Python requirements afresh).
+if staged_matches '^(frontend/package-lock\.json|docs/website/package-lock\.json|backend/requirements\.txt|mcp-server/requirements\.txt|converter/requirements\.txt|scripts/licence_(policy|inventory)\.|frontend/public/licences/|(.*/)?Dockerfile[^/]*$)'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check_licences.py" || {
+    echo "pre-commit: fix the licence finding(s) above, or regenerate with scripts/generate_third_party_notices.py, re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
+# The CLA signatories file must stay well formed (a bad file blocks every contributor's check); see scripts/check_cla.py.
+if staged_matches '^(\.github/cla-signatories\.json|CLA\.md)$'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check_cla.py" || {
+    echo "pre-commit: fix the CLA signatories finding(s) above, re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
 # Container health probes must use 127.0.0.1, not localhost; see scripts/check_health_probes.py.
-if git diff --cached --name-only | grep -qE '(^|/)(Dockerfile[^/]*|docker-compose[^/]*\.ya?ml)$'; then
+if staged_matches '(^|/)(Dockerfile[^/]*|docker-compose[^/]*\.ya?ml)$'; then
   python3 "$(git rev-parse --show-toplevel)/scripts/check_health_probes.py" || {
     echo "pre-commit: use 127.0.0.1 (not localhost) in the health probe(s) above, re-stage, and retry." >&2
     exit 1
@@ -51,7 +86,7 @@ if git diff --cached --name-only | grep -qE '(^|/)(Dockerfile[^/]*|docker-compos
 fi
 
 for project in "${PROJECTS[@]}"; do
-  if ! git diff --cached --name-only | grep -qE "^${project}/(package\.json|package-lock\.json)$"; then
+  if ! staged_matches "^${project}/(package\.json|package-lock\.json)$"; then
     continue
   fi
 

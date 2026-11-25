@@ -26,6 +26,10 @@ class PlacementOut(PlacementIn):
 
     component_name: str
     category_name: str | None = None
+    code: str | None = Field(
+        default=None, description="A requirement's code in this place (its own code for the primary place, an alias code for a further one)."
+    )
+    alias_id: uuid.UUID | None = Field(default=None, description="The alias row of a further place of a requirement; absent for its own place.")
 
 
 class RecordPlacementsOut(BaseModel):

@@ -4,28 +4,25 @@
  * The bulk edit grid of a record list (docs/ux-style-guide.md, "Pattern: bulk edit grid"): the list's own rows and
  * filters, with the type's editable columns as cells, so many records can be adjusted without opening each one.
  *
- * - **Data** comes from `GET .../records/{type}/grid` with the page's filters, so the grid shows exactly what the
- *   list and its export show. A cell is a shared control for its kind: a select for a closed value, a date, a number
- *   or a checkbox. Free text is not edited here (it is edited in the record's form, where it can grow).
- * - **Save** sends one request per changed row (`PATCH .../rows/{code}`) with the cells that changed and what they
- *   held when loaded, so one failing row never blocks the others and a cell someone else changed meanwhile is
- *   refused, not overwritten. A saved row is replaced by the server's answer; a failed row stays changed, with its
- *   message under it. The outcome is one toast: "N saved, M failed".
- * - **Read-only** rows and cells (a record at a terminal outcome, another project's record, a score cell on a Pain
- *   Point scored per persona) are shown as text with the reason in a tooltip, reachable by keyboard.
- * - **State**: every row says whether it can be edited ("Editable", "Partly editable" or "Read-only") in an Editing
- *   column, with the reason in a tooltip, so a locked row is never a puzzle. The record's status column is shown by default.
- * - **Toolbar**: the record count, then a Columns icon menu, an undo icon (discard changes) and Save. There is no Reload: a
- *   record changed elsewhere is caught by the version lock on save, and the page's own refresh reads the list again.
- * - **Columns**: the "Columns" control chooses what is shown beyond the code. By default the context columns, the
- *   editable columns, the status and the Editing column; any other column of the type can be added as read-only text.
- *   The choice is kept per person and record type as the keys switched away from the default, so a column added later
- *   follows the default.
- * - **Keyboard**: Tab moves between cells; Enter (Shift+Enter) moves to the same column in the next (previous) row, and so do
- *   the up and down arrows in a date or number cell; the arrows in a select change its value as usual.
+ * - **Data** comes from `GET .../records/{type}/grid` with the page's filters, so the grid shows what the list and
+ *   its export show. A cell is the shared control for its kind (select, date, number, checkbox); free text is edited
+ *   in the record's form, where it can grow.
+ * - **Save** sends one request per changed row (`PATCH .../rows/{code}`) with the changed cells and their values at
+ *   load, so one failing row never blocks the others and a cell someone else changed meanwhile is refused, not
+ *   overwritten. A saved row is replaced by the server's answer; a failed row stays changed with its message under
+ *   it. The outcome is one toast: "N saved, M failed". There is no Reload: the version lock catches a record changed
+ *   elsewhere.
+ * - **Read-only** rows and cells (a terminal record, another project's record, a score cell on a Pain Point scored
+ *   per persona) are text with the reason in a keyboard-reachable tooltip. An Editing column says "Editable",
+ *   "Partly editable" or "Read-only" for every row.
+ * - **Columns**: the "Columns" menu chooses what shows beyond the code (default: context columns, editable columns,
+ *   status, Editing); any other column of the type can be added as read-only text. The choice is kept per person and
+ *   record type as the keys switched away from the default, so a column added later follows the default.
+ * - **Keyboard**: Tab moves between cells; Enter (Shift+Enter) moves to the same column in the next (previous) row,
+ *   as do the up and down arrows in a date or number cell; arrows in a select change its value as usual.
  *
- * It knows no record type or module: columns, choices, locks and rules all come from the server. Unsaved changes
- * are kept when the page's filters change and a row stays in the list, and the browser asks before the page is closed.
+ * It knows no record type or module: columns, choices, locks and rules come from the server. Unsaved changes are
+ * kept when the page's filters change and a row stays in the list, and the browser asks before the page closes.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -351,7 +348,7 @@ function GridCellControl({
   if (column.kind === "date") return <InlineTextInput ariaLabel={ariaLabel} type="date" value={value} onChange={onChange} />;
   if (column.kind === "number") return <InlineTextInput ariaLabel={ariaLabel} type="number" value={value} onChange={onChange} />;
   if (column.kind === "enum" && column.choices) {
-    // A value the list no longer offers (a retired type) stays selectable so it is shown, not silently replaced.
+    // A value the list does not offer (a retired type) stays selectable so it is shown, not silently replaced.
     const choices = value && !column.choices.includes(value) ? [value, ...column.choices] : column.choices;
     return (
       <InlineSelect

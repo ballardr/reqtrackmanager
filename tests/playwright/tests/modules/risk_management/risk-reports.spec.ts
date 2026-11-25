@@ -11,11 +11,9 @@ import { pickReportFormat, reportDownloadButton } from "../../reportDownload";
 installCleanupHook();
 
 /**
- * Job to be done: — the
- * four Risk Management reports appear in the shared Reports page (rendered by
- * the generic viewer, no custom view), show the project's risks with display
- * labels, narrow through the generated option controls, and download as PDF and
- * CSV. Also that a project with the module off offers none of them.
+ * Job to be done: the four Risk Management reports appear in the shared Reports page (rendered by the generic
+ * viewer, no custom view), show the project's risks with display labels, narrow through the generated option
+ * controls, and download as PDF and CSV. A project with the module off offers none of them.
  *
  * Each test builds its own disposable org (see `./helpers.ts`).
  */

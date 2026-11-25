@@ -4,18 +4,10 @@ Revision ID: 0042
 Revises: 0041
 Create Date: 2026-09-21
 
-Per the decision record (docs/decisions.md, Platform
-Foundations): builds `project_sequence_counters`
-(`app.models.sequence.ProjectSequenceCounter`), the shared mechanism every
-*new* identified artefact type in the future-modules roadmap (Decision,
-Design, Risk, Pain Point, Strategy, Guiding Principle, Open Question,
-Stakeholder/Persona) will generate its unique code from, instead of adding
-its own `next_<type>_seq` column to `projects` the way
-`next_requirement_seq`/`next_action_seq` already do.
-
-`projects.next_requirement_seq`/`next_action_seq` are deliberately left
-untouched — this table is additive, for new artefact types only, per the
-decision record. No rows are backfilled; counter rows are created lazily
+Builds `project_sequence_counters` (`app.models.sequence.ProjectSequenceCounter`; docs/decisions.md,
+Platform Foundations), the shared mechanism from which each new identified artefact type generates its
+unique code, instead of its own `next_<type>_seq` column on `projects` (as `next_requirement_seq` and
+`next_action_seq` are). Those two columns are unchanged. No rows are backfilled; counter rows are created
 on first use by `services.sequences.generate_unique_code`.
 """
 

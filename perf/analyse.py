@@ -5,16 +5,15 @@ Module: perf.analyse
 Reads results bundles and reports scaling shape, budget breaches, peak memory and memory growth.
 
 Responsibilities:
-- Fit latency (p95) against requirements per project across tiers on log-log axes and label each request flat,
-  linear or superlinear (`classify`); a request that returns a fixed-size page and is not flat is a finding, and so
-  is anything superlinear.
+- Fit p95 latency against requirements per project across tiers on log-log axes and label each request flat, linear
+  or superlinear (`classify`); a fixed-size page that is not flat, or anything superlinear, is a finding.
 - Judge each request against `budgets.yaml` per tier (`budget_findings`).
-- Report peak memory per service by tier and the backend's memory slope after warm-up in the soak (`memory_*`).
-- Fit statements per request (`queries.csv`) against requirements per project: a route whose statement count grows
-  with the data is an N+1 by definition (`query_scaling`), and report each worker's private memory (`processes.csv`).
-- Judge the database: the connection peak and the backend's pool ceiling against `max_connections`, cache hit rate
-  and temp files against the memory settings, the costliest statements, and scans of large tables the planner
-  does with a filter and no index (`database_findings`, `plan_findings`).
+- Report peak memory per service and the backend's memory slope after warm-up (`memory_*`), and each worker's private
+  memory (`processes.csv`).
+- Fit statements per request (`queries.csv`) against requirements per project: growth with the data is an N+1
+  (`query_scaling`).
+- Judge the database: connection peak and pool ceiling against `max_connections`, cache hit rate, temp files, the
+  costliest statements and unindexed filtered scans of large tables (`database_findings`, `plan_findings`).
 
 Usage:
     python3 perf/analyse.py perf/results/<host-label>/<date>-<commit> [--json]

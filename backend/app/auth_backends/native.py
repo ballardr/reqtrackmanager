@@ -3,9 +3,8 @@ Module: auth_backends.native
 
 The default, always-available authentication backend: verifies an email and
 password against the locally stored bcrypt hash (C-U-17). Also enforces
-`Organization.sso_only` (a user whose every org membership requires SSO
-cannot authenticate natively even with a correct password) — previously a
-UI-only hint on the org's branded login page, not a real backend control.
+`Organization.sso_only`: a user whose every org membership requires SSO
+cannot authenticate natively even with a correct password.
 """
 
 from __future__ import annotations
@@ -27,14 +26,9 @@ RESET_REQUIRED_MESSAGE = (
     "Your password must be reset before you can sign in. Choose \"Forgot your password?\" to get a reset link."
 )
 
-# A fixed, valid bcrypt hash with no corresponding real password, verified
-# against on every not-found/wrong-backend login attempt purely to spend the
-# same amount of time bcrypt verification normally takes — otherwise that
-# code path returns near-instantly while a real user's wrong-password
-# attempt takes bcrypt's full (deliberately slow) comparison time, letting
-# an attacker enumerate valid account emails from response timing alone,
-# independent of the response body. Computed once at import time, not
-# hardcoded, so it always matches this process's actual bcrypt configuration.
+# A valid bcrypt hash with no real password, verified on every not-found/wrong-backend login attempt so
+# that path takes the same time as a wrong password for a real user; otherwise response timing would let
+# an attacker enumerate account emails. Computed at import so it matches the process's bcrypt configuration.
 _DUMMY_HASH = hash_password("not-a-real-password-used-only-for-constant-time-comparison")
 
 
@@ -54,15 +48,10 @@ class NativeAuthBackend:
         Returns:
             An AuthResult indicating success/failure and the matched user.
 
-        Every failure path up to and including the correct-password check
-        returns the same generic error message and performs a real bcrypt
-        comparison (against a dummy hash when there's no real one to check),
-        so neither the response body nor response timing reveals whether an
-        email exists, uses a different auth backend, or is
-        registered-but-deactivated. The one deliberate exception is the
-        `sso_only` rejection below: it only fires after a *correct* password
-        match, so it cannot be used to enumerate accounts — the caller has
-        already proven they know this account's real password.
+        Every failure up to and including the password check returns the same generic message after a
+        real bcrypt comparison (against a dummy hash when there is none to check), so neither the body
+        nor the timing reveals whether an email exists, uses another backend or is deactivated. The
+        `sso_only` rejection fires only after a correct password, so it cannot enumerate accounts.
         """
         user = db.scalar(select(User).where(User.email == identifier.lower()))
         if user is None or user.auth_backend != self.name or not user.password_hash:
@@ -81,12 +70,8 @@ class NativeAuthBackend:
             # Only after a correct password, like the messages around it, so it cannot be used to find accounts.
             return AuthResult(success=False, user=user, error=CONFIRMATION_REQUIRED_MESSAGE, confirmation_required=True)
         if all_orgs_sso_only(db, user.id):
-            # Deliberately a distinct, specific message rather than the
-            # generic one above: the caller already proved they know the
-            # correct password, so telling them to use SSO instead leaks
-            # nothing an attacker enumerating accounts could exploit — this
-            # is not the enumeration-sensitive wrong-password path the
-            # generic message/dummy-hash comparison above exists to protect.
+            # A specific message: the caller already proved the correct password, so this leaks nothing
+            # to an attacker enumerating accounts.
             return AuthResult(success=False, error="This account must sign in via SSO.")
         return AuthResult(success=True, user=user)
 
@@ -94,9 +79,7 @@ class NativeAuthBackend:
 def all_orgs_sso_only(db: Session, user_id: uuid.UUID) -> bool:
     """Whether every organisation `user_id` belongs to has `sso_only=True`.
 
-    Used to enforce `Organization.sso_only` at the one place it previously
-    had no real teeth (native login always succeeded regardless of the
-    flag — it only hid the native form on that org's branded login page).
+    Enforces `Organization.sso_only` for native login.
     A user with *no* org memberships (e.g. an `always_on`-signup account not
     yet assigned to any org) is never blocked by this — there is no
     SSO-only org to conflict with. A user who belongs to at least one

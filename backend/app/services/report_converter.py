@@ -1,30 +1,21 @@
 """
 Module: services.report_converter
 
-Client for the picture converter service: turns an uploaded EPS or PDF logo into a plain, sanitised SVG so a report can
-print it as a vector.
+Client for the picture converter service: turns an uploaded EPS or PDF logo into a sanitised SVG so a report can print
+it as a vector.
 
 Responsibilities:
-- `is_eps` / `is_pdf`: recognise the two formats by their bytes.
-- `eps_to_svg` / `pdf_to_svg`: send the file to the converter (`converter/`, a separate container) and pass the
-  returned SVG through `report_svg.sanitize_svg`.
+- `is_eps` / `is_pdf` recognise the formats by their bytes; `eps_to_svg` / `pdf_to_svg` send the file to the converter
+  container (`converter/`) and pass the reply through `report_svg.sanitize_svg`.
 
 Design decisions:
-- **The backend never runs a PostScript interpreter or a PDF parser.** Ghostscript has a long history of sandbox
-  bypasses and both formats are complex, so the tools live in their own container with no network beyond an internal one
-  the backend shares, no secrets, a read-only filesystem and no capabilities. A successful exploit there finds
-  nothing to read and nowhere to send it. See docs/solution-architecture.md.
-- **Converted once, at upload.** The library stores the resulting SVG, so no converter runs for a stored file, at report
-  time or for a record attachment (`sniff_image` still rejects both formats).
-- **The reply is untrusted.** The SVG goes through the same allow-list sanitiser as any SVG. A file that leaves nothing
-  drawable is refused with a reason rather than stored blank.
-- **Vector, not a bitmap.** Text becomes glyph shapes, so no font is needed at report time. A bitmap inside the file is
-  kept as an embedded raster (`report_svg`); soft masks are lost. A PDF contributes its first page.
-- **The converter is optional.** A deployment that does not run it leaves `REPORT_CONVERTER_URL` empty: EPS and PDF
-  upload is then not offered (the library listing says so, `is_configured`) and a file sent anyway is refused as "not
-  available on this server". An unreachable converter is reported the same way, never as a bad file, and the backend
-  never falls back to running the tools itself.
-- The reply is read with a size cap, with no redirects and no proxy settings, to an address the administrator set.
+- The backend never runs a PostScript interpreter or PDF parser: they live in a container with no external network, no
+  secrets, a read-only filesystem and no capabilities (docs/solution-architecture.md). The reply is untrusted and
+  sanitised like any SVG; a file that leaves nothing drawable is refused.
+- Conversion happens once, at upload; the library stores the SVG. Text becomes glyph shapes; a PDF contributes page 1.
+- The converter is optional: with `REPORT_CONVERTER_URL` empty, or an unreachable converter, the upload is refused as
+  "not available on this server", never as a bad file, and the backend never runs the tools itself.
+- The reply is read with a size cap, no redirects and no proxy settings, from the administrator's address.
 
 Dependencies: `httpx`, `app.config` (`report_converter_url`), `report_svg`; the converter service.
 """

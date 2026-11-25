@@ -146,7 +146,7 @@ def test_cannot_link_action_from_another_project(client, admin_token, org_id):
 
 
 def test_action_linked_requirements_endpoint(client, admin_token, org_id):
-    """`GET /actions/{id}/requirements` (2026-10-04) lists the action's
+    """`GET /actions/{id}/requirements` lists the action's
     linked active requirements by code, excludes archived ones, and is
     project-scoped."""
     project = create_project(client, admin_token, org_id)

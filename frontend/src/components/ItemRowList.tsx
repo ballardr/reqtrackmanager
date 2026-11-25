@@ -2,13 +2,11 @@
  * Module: components/ItemRowList
  *
  * A compact, flat list of editable items: one row per item with its name (and a muted detail), then the item's
- * actions on the right (move, settings, remove). It is the shape for "an ordered set of things, each with a few
- * rarely used settings" (the columns of a table, sheet or custom table), where the settings sit behind a gear
- * (`SettingsPopoverButton`) instead of being drawn inline for every row.
+ * actions on the right (move, settings, remove). It fits "an ordered set of things, each with a few rarely used
+ * settings" (the columns of a table or sheet), where the settings sit behind a gear (`SettingsPopoverButton`).
  *
- * Design decisions: pure presentation, as `RemovableItemList` is; the caller owns the data and the actions, so
- * the rows stay identical whatever they list. The name wraps rather than truncating so a long heading stays
- * readable, and a row with nothing to name yet shows the caller's placeholder in muted text.
+ * Pure presentation, as `RemovableItemList`: the caller owns data and actions. The name wraps rather than
+ * truncating, and a row with no name yet shows the caller's placeholder in muted text.
  */
 import type { ReactNode } from "react";
 

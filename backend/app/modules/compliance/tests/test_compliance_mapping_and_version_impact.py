@@ -1,19 +1,12 @@
-"""Tests for the Compliance Module's Cross-Standard Mapping +
-Version Impact (§19, §27): the org-scoped, extensible mapping-
-relationship-type vocabulary, the `ComplianceRequirementMapping` CRUD
-surface (visibility from both requirements, navigation, cross-org
-isolation, audit logging), the added/removed/modified/replaced/re-mapped
-version-diff endpoint (built from real cloned + then independently edited
-requirement trees, not fabricated JSON), and the explicit, user-triggered
-project version-migration action (carrying forward unmodified assessments,
-downgrading an approved carried-forward row to `requires_reassessment`, a
-modified/added requirement landing at defaults, and the old assignment
-staying archived-not-deleted with its own historical assessments
-completely untouched).
+"""Tests for the Compliance Module's cross-standard mapping and version impact (§19, §27): the organisation-scoped
+mapping-relationship-type vocabulary, the `ComplianceRequirementMapping` CRUD surface (visibility from both
+requirements, navigation, cross-organisation isolation, audit logging), the added, removed, modified, replaced and
+re-mapped version-diff endpoint (built from real cloned and edited requirement trees), and the user-triggered project
+version migration (carrying forward unmodified assessments, downgrading an approved carried-forward row to
+`requires_reassessment`, modified and added requirements landing at defaults, the old assignment archived with its
+assessments untouched).
 
-Reuses `test_compliance_standards_api.py`'s and `test_project_compliance_
-api.py`'s helpers for setup, the same way `test_compliance_evidence_api.py`/
-`test_compliance_approval_workflow.py` already do.
+Setup uses helpers from `test_compliance_standards_api.py` and `test_project_compliance_api.py`.
 """
 
 from __future__ import annotations
@@ -402,10 +395,8 @@ def test_diff_identifies_replaced_via_explicit_mapping(client, admin_token, org_
     )
     clones = _requirements_by_reference(client, admin_token, org_id, standard["id"], version2["id"])
 
-    # Delete clone A outright (so req_a has no lineage-matched successor)
-    # and author a brand-new requirement to replace it, explicitly linked
-    # back to req_a — the "same-standard, cross-version" mapping use this
-    # module's own docs describe as the "replaced" marker.
+    # Delete clone A (so req_a has no lineage-matched successor) and author a new requirement linked back to req_a: the
+    # same-standard, cross-version "replaced" marker.
     client.delete(
         f"{_base(org_id)}/standards/{standard['id']}/versions/{version2['id']}/requirements/{clones['A']['id']}",
         headers=auth_headers(admin_token),
@@ -593,10 +584,8 @@ def test_migrate_carries_forward_unmodified_and_downgrades_approved(client, admi
     assert body["modified_count"] == 1
     assert body["requires_reassessment_count"] == 3  # downgraded parent + modified child + added requirement
 
-    # `requirement_impacts` are keyed by the *new*-version requirement id
-    # (the parent/child *clones* in v2), not the old version's own
-    # requirement id — the new-version requirement is what the migrated
-    # assignment actually has a row for.
+    # `requirement_impacts` are keyed by the new-version requirement id (the clones in v2), because that is what the
+    # migrated assignment has a row for.
     impacts_by_requirement = {i["requirement_id"]: i for i in body["requirement_impacts"]}
     parent_impact = impacts_by_requirement[ctx["parent_clone"]["id"]]
     assert parent_impact["change"] == "unchanged"
@@ -756,16 +745,12 @@ def test_migrate_logs_audit_events(client, admin_token, org_id):
     assert "migrated" in new_events
 
 
-# --- Confirmed carry-forward across a `replaced` mapping (§27 follow-up) -----------
+# --- Confirmed carry-forward across a `replaced` mapping (§27) -----------------------------------------
 #
-# Direct feedback on the original implementation: always treating a
-# `replaced` requirement like `added` (nothing ever carried forward) was too
-# blunt when a Compliance Manager has already judged two requirements
-# genuinely equivalent (e.g. an old "IPX6 water ingress" requirement
-# explicitly linked to a new "IP67 water ingress" requirement). This section
-# covers the two-gate mechanism added in response: `ComplianceMappingRelationshipTypeDefinition.
-# implies_equivalence` (org-level) and `ProjectComplianceMigrationRequest.
-# confirmed_replacement_requirement_ids` (per-migration, per-requirement).
+# Always treating a `replaced` requirement like `added` would discard an assessment a Compliance Manager already judged
+# equivalent (an old "IPX6 water ingress" requirement linked to a new "IP67 water ingress" one). This section covers
+# the two gates: `ComplianceMappingRelationshipTypeDefinition.implies_equivalence` (organisation level) and
+# `ProjectComplianceMigrationRequest.confirmed_replacement_requirement_ids` (per migration and requirement).
 
 
 def _setup_migration_scenario_with_replacement(client, admin_token, org_id, *, implies_equivalence, project_name="Replacement Migration Project"):
@@ -871,10 +856,8 @@ def test_migrate_confirmed_replacement_carries_forward_when_type_allows(client, 
     impact = _requirement_impact(body, ctx["successor"]["id"])
     assert impact["change"] == "replaced"
     assert impact["carried_forward"] is True
-    # Always True for a confirmed `replaced` carry-forward, even though the
-    # copied approval_state *was* downgraded here — see `service.py::
-    # migrate_project_compliance`'s own docstring for why this differs from
-    # `unchanged`, where it's conditional.
+    # Always True for a confirmed `replaced` carry-forward even though `approval_state` was downgraded (see
+    # `service.migrate_project_compliance`; for `unchanged` it is conditional).
     assert impact["requires_reassessment"] is True
 
     new_pcrs = client.get(

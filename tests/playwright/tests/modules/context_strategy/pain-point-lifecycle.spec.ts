@@ -1,53 +1,27 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { addDefinition, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, setOrgModuleAvailability, chooseRecordMenuAction, expectCurrentStep, promoteTo, expectRecordLocked } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 const API_BASE_URL = "http://localhost:8000";
 
-/** `DefinitionList` type-vocabulary names render as editable `<input>` value
- * attributes (the rename form), not plain text nodes — Playwright has no
- * built-in `getByDisplayValue` (that's a Testing Library API this repo's
- * frontend Storybook/Vitest stories use, not the Playwright `Page`/`Locator`
- * API), so this mirrors `project-admin-action-types.spec.ts`'s own
- * `inputWithValue` helper exactly. */
+/** `DefinitionList` type-vocabulary names render as editable `<input>` value attributes (the rename form), not
+ * text nodes. Playwright has no `getByDisplayValue` (a Testing Library API), so this mirrors
+ * `project-admin-action-types.spec.ts`'s `inputWithValue` helper. */
 function inputWithValue(page: Page, value: string) {
   return page.locator(`input.input[value="${value}"]:not([placeholder])`);
 }
 
 /**
- * Job to be done: Playwright e2e coverage for Pain Point's full
- * branching lifecycle plus its two-tier type-vocabulary admin surfaces.
- * Exercises the Context & Strategy frontend's third artefact type
- * (`frontend/src/modules/context_strategy/`) against a real backend.
+ * Job to be done: e2e coverage of Pain Point's full branching lifecycle plus its two-tier type-vocabulary admin
+ * surfaces (`frontend/src/modules/context_strategy/`) against a real backend.
  *
- * Mirrors `strategy-lifecycle.spec.ts`'s/`future-state-lifecycle.spec.ts`'s
- * own structure and reasoning closely:
- *
- * - **Disposable org + admin + project, created via the API**, not shared
- *   seeded state — same reasoning as those two specs: Context & Strategy is
- *   `default_enabled=False`, so this spec must toggle it on for whichever
- *   org it runs against, and every identifier is `Date.now()`-suffixed per
- *   CLAUDE.md's "tests must not depend on state left behind by another
- *   test" rule.
- * - **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
- * (Decided by: Agent)** — matching the other lifecycle specs' identical
- * precedent and reasoning exactly (see their docstrings): a
- *   disposable org created via the API already satisfies this repo's own
- *   "prefer dynamically-named fixtures over mutating shared named seed
- *   data" rule more directly than adding unused fixed fixture data would.
- * - Pain Point is project-scoped only (§6), so unlike
- *   Strategy/Future State there is no org-scoped artefact flow to also
- * cover — but its own org-scoped Pain Point *Type* vocabulary tier
- * needs its own coverage here, since neither of those two specs'
- *   own artefacts have an equivalent two-tier configuration surface.
- * - The freshly-created organisation already has Market/User/Operator Pain
- *   Point types seeded automatically (`module.py`'s `on_org_created`
- * hook, §6.2) — `run_on_org_created_hooks` runs for
- *   every registered module regardless of enablement, so these three types
- *   exist before Context & Strategy is even toggled on for this org.
+ * Mirrors `strategy-lifecycle.spec.ts` for setup: a disposable org + admin + project created via the API,
+ * `Date.now()`-suffixed names, no `seed_e2e_dataset.py` fixtures. Pain Point is project-scoped only (§6), but
+ * its org-scoped Type vocabulary tier needs coverage here. A new organisation has Market/User/Operator types
+ * seeded (`on_org_created` hook, §6.2; `run_on_org_created_hooks` runs whatever the module's enablement).
  */
 test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", () => {
   test("walks a Pain Point through its branching lifecycle and exercises both type-vocabulary admin tiers", async ({ page }) => {
@@ -104,18 +78,16 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
       await expect(inputWithValue(page, "User")).toBeVisible();
       await expect(inputWithValue(page, "Operator")).toBeVisible();
 
-      await page.getByPlaceholder("Pain Point type name").fill(orgTypeName);
-      await page.getByRole("button", { name: "Add Pain Point type" }).click();
+      await addDefinition(page, "Add Pain Point type", { Name: orgTypeName });
       await expect(inputWithValue(page, orgTypeName)).toBeVisible();
     });
 
     await test.step("project tier: the new org type appears in this project's effective list and can be overridden locally", async () => {
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Pain Point Types", "Pain Points");
-      // Scoped to this type's own row — every untouched org default (Market/
-      // User/Operator, and this new org type before its override) shares the
-      // same "Org default" text, so a page-wide `getByText` would match more
-      // than one element (a Playwright strict-mode violation).
+      // Scoped to this type's row: every untouched org default (Market/User/Operator, and this new org type before
+      // its override) shares the "Org default" text, so a page-wide `getByText` would match several elements
+      // (a Playwright strict-mode violation).
       let orgTypeRow = inputWithValue(page, orgTypeName).locator("xpath=ancestor::div[contains(@class,'definition-grid__row')][1]");
       await expect(orgTypeRow.getByText("Org default", { exact: true })).toBeVisible();
 
@@ -144,32 +116,30 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
     await page.getByRole("button", { name: painPointTitle }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points/[^/]+$`));
     await expect(page.getByRole("heading", { name: painPointTitle })).toBeVisible();
-    await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
+    await expectCurrentStep(page, "Submitted");
 
     await test.step("walk the lifecycle: Submitted -> Triaged -> Accepted -> Addressed -> Closed", async () => {
-      await page.getByRole("button", { name: "Triage" }).click();
-      await expect(page.getByText("Triaged", { exact: true })).toBeVisible();
+      await promoteTo(page, "Triaged");
+      await expectCurrentStep(page, "Triaged");
 
-      await page.getByRole("button", { name: "Accept" }).click();
+      await promoteTo(page, "Accepted");
       const acceptDialog = page.getByRole("dialog", { name: "Accept this Pain Point?" });
       await acceptDialog.getByRole("button", { name: "Accept" }).click();
-      await expect(page.getByText("Accepted", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Accepted");
 
-      await page.getByRole("button", { name: "Address" }).click();
+      await promoteTo(page, "Addressed");
       const addressDialog = page.getByRole("dialog", { name: "Mark this Pain Point addressed?" });
       await addressDialog.getByRole("button", { name: "Address" }).click();
-      await expect(page.getByText("Addressed", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Addressed");
 
-      await page.getByRole("button", { name: "Close" }).click();
+      await promoteTo(page, "Closed");
       const closeDialog = page.getByRole("dialog", { name: "Close this Pain Point?" });
-      // `closeDialog.getByRole("button", { name: "Close" })` would be
-      // ambiguous: `Modal`'s own header dismiss ("X") button also has
-      // `aria-label="Close"`, colliding with this specific action's
-      // `confirmLabel` ("Close") — a naming coincidence unique to this
-      // action (Strategy/Future State have no lifecycle action literally
-      // named "Close"). Scoped to the confirm button's own class instead.
+      // `closeDialog.getByRole("button", { name: "Close" })` would be ambiguous: `Modal`'s header dismiss ("X")
+      // button also has `aria-label="Close"`, colliding with this action's `confirmLabel` ("Close"). The
+      // locator is scoped to the confirm button's class instead.
       await closeDialog.locator("button.btn-danger").click();
-      await expect(page.getByText("Closed", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Closed");
+      await expectRecordLocked(page);
     });
 
     // --- Back on the list, the Pain Point shows its final status.
@@ -190,16 +160,16 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
       await dialog.getByRole("button", { name: "Save" }).click();
       await page.getByRole("button", { name: duplicatePainPointTitle }).click();
 
-      await page.getByRole("button", { name: "Triage" }).click();
-      await expect(page.getByText("Triaged", { exact: true })).toBeVisible();
+      await promoteTo(page, "Triaged");
+      await expectCurrentStep(page, "Triaged");
 
-      await page.getByRole("button", { name: "Reject" }).click();
+      await chooseRecordMenuAction(page, "Reject");
       const rejectDialog = page.getByRole("dialog", { name: "Reject this Pain Point?" });
       await expect(rejectDialog.getByRole("button", { name: "Reject" })).toBeDisabled();
       await rejectDialog.getByLabel("Rejection comment").fill("Out of scope for this quarter.");
       await expect(rejectDialog.getByRole("button", { name: "Reject" })).toBeEnabled();
       await rejectDialog.getByRole("button", { name: "Reject" }).click();
-      await expect(page.getByText("Rejected", { exact: true })).toBeVisible();
+      await expectCurrentStep(page, "Rejected");
     });
   });
 });

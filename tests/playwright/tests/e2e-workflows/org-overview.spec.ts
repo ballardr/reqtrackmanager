@@ -17,28 +17,21 @@ import {
 } from "./helpers";
 
 /**
- * Job to be done: — the new
- * "Organisation Overview" nav-rail page, reachable regardless of whether
- * compliance applies to the org (unlike the "Compliance Standards"
- * tab). Covers reaching the page via `/org-overview`'s single-org/multi-org
- * auto-redirect, and the core scoping rule from `docs/decisions.md`'s
- * "Compliance module, human review follow-ups" entry: an org admin sees
- * the organisation's real totals, while a plain member with only partial
- * project access sees counts scoped to what they can actually see.
+ * Job to be done: the "Organisation Overview" nav-rail page, reachable whether or not compliance applies to the
+ * organisation. Covers reaching it via `/org-overview`'s single-org/multi-org redirect, and the scoping rule from
+ * `docs/decisions.md`'s "Compliance module, human review follow-ups" entry: an org admin sees the organisation's
+ * real totals, while a plain member with partial project access sees counts scoped to what they can see.
  *
- * Personas: a disposable Alpha member created per run with a `stakeholder`
- * role on Alpha-1 alone (removed afterwards) vs `orgAdminAlphaBeta`
- * (`org_admin` of Alpha, sees every Alpha project). The counts cover
- * active (non-archived) projects only.
+ * Personas: a disposable Alpha member created per run with a `stakeholder` role on Alpha-1 alone (removed
+ * afterwards) vs `orgAdminAlphaBeta` (`org_admin` of Alpha, sees every Alpha project). Counts cover active
+ * (non-archived) projects only.
  */
 test.describe("Organisation Overview page", () => {
   installCleanupHook();
 
   test("a single-org member with partial project access sees scoped totals; the org admin sees the real totals", async ({ page, request }) => {
-    // A disposable Alpha member with a role on Alpha-1 only (2026-10-04),
-    // not the shared stakeholderAlpha persona: other specs running in
-    // parallel temporarily grant that persona roles on their own projects,
-    // which made this exact count race them.
+    // A disposable Alpha member with a role on Alpha-1 only, not the shared stakeholderAlpha persona: parallel specs
+    // temporarily grant that persona roles on their own projects, which would race this count.
     const memberEmail = `e2e-overview-member-${Date.now()}@example.com`;
     const adminHeaders = await apiHeaders(request, PERSONAS.orgAdminAlphaBeta.email);
     const api = "http://localhost:8000/api/v1";
@@ -108,17 +101,12 @@ test.describe("Organisation Overview page", () => {
   });
 
   /**
-   * The stats header is folded into a real, always-present
-   * "Overview" `ResourceMenu` group, and `ResourceMenu` itself hides its own
-   * menu-strip chrome whenever there's nothing to switch between. A module
-   * that is enabled for the org contributes overview groups of its own, and
-   * the seeded orgs differ in which modules they have on (Gamma has
-   * Stakeholders & Personas, for example), so this runs in a disposable org
-   * whose only module is Compliance (default on) and toggles that off itself,
-   * rather than mutating a shared seed org — a failure between the toggle and
-   * the restore used to leave Compliance off for every later spec in the org.
+   * The Overview is dashboards only, so its menu chrome stays hidden while there is one dashboard. Compliance
+   * contributes no Org Resources section (its status views are tabs of the Standards page). The seeded orgs differ in
+   * which modules are on, so this runs in a disposable org whose only module is Compliance (default on) and toggles it
+   * off itself, so a failure between the toggle and the restore cannot leave Compliance off in a shared org.
    */
-  test("ResourceMenu chrome is hidden with compliance disabled, shown with it enabled", async ({ page, request }) => {
+  test("Org Resources has no Compliance section", async ({ page, request }) => {
     const suffix = Date.now();
     const adminEmail = `e2e-overview-admin-${suffix}@example.com`;
     const api = "http://localhost:8000/api/v1";
@@ -141,22 +129,25 @@ test.describe("Organisation Overview page", () => {
 
     await page.goto("/org-overview");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview$/);
-    // Scoped to `.resource-menu-nav` and matched `exact` — a bare `getByRole
-    // ("link", { name: "Overview" })` also matches `Layout.tsx`'s persistent
-    // "Organisation overview" nav-rail link (case-insensitive substring),
-    // which is unrelated to the `ResourceMenu` group chrome this asserts on.
+    // Scoped to `.resource-menu-nav`: the nav rail also has an "Organisation overview" link.
     await expect(page.locator(".resource-menu-nav")).toHaveCount(0);
     await expect(page.locator("[data-stat-entry]").first()).toBeVisible();
+
+    // With the module off, Org Resources keeps only what core owns (Reports, Tags).
+    await page.goto("/org-resources");
+    await expect(page).toHaveURL(/\/orgs\/[^/]+\/resources$/);
+    await expect(page.locator("nav.resource-menu-nav").getByRole("link", { name: "Reports", exact: true })).toBeVisible();
+    await expect(page.locator("nav.resource-menu-nav").getByRole("link", { name: "Tags", exact: true })).toBeVisible();
 
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
     await setOrgModuleAvailability(page, "Compliance", initial);
 
-    await page.goto("/org-overview");
-    await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview$/);
-    const overviewLink = page.locator(".resource-menu-nav").getByRole("link", { name: "Overview", exact: true });
-    await expect(overviewLink).toBeVisible();
-    await expect(overviewLink).toHaveAttribute("aria-current", "page");
-    await expect(page.locator("[data-stat-entry]").first()).toBeVisible();
+    // With the module on, Org Resources still has no Compliance section: the status views are tabs of the Standards page.
+    await page.goto("/org-resources");
+    await expect(page).toHaveURL(/\/orgs\/[^/]+\/resources$/);
+    await expect(page.locator(".resource-menu-nav").getByRole("link", { name: /^Compliance by standard$|^Outstanding compliance items$/ }))
+      .toHaveCount(0);
+    await expect(page.getByRole("navigation").getByRole("link", { name: "Organisation resources" })).toHaveClass(/\bactive\b/);
   });
 });

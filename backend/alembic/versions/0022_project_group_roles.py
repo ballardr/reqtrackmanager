@@ -4,46 +4,22 @@ Revision ID: 0022
 Revises: 0021
 Create Date: 2026-09-01
 
-Members/groups directory rework (docs/decisions.md): a
-`ProjectGroup` used to carry a single, required `role` column fixed at
-creation — a group's role was baked in from the start, with no way to hold
-more than one role or start with none. This migration replaces that column
-with a new `project_group_roles` table (`app.models.project.
-ProjectGroupRole`), mirroring the `org_group_project_roles` table almost
-exactly: a group can now hold zero, one, or several independently-revocable
-roles, one row per role, the same "one row per role" shape `user_project_
-roles`/`org_group_project_roles` already use — not an array/JSON column.
+A `ProjectGroup` carries a set of roles instead of one required `role` column
+(`app.models.project.ProjectGroupRole`; docs/decisions.md, members/groups directory). A group can hold
+zero, one or several independently revocable roles, one `project_group_roles` row per role, the same
+shape as `user_project_roles`/`org_group_project_roles`. The old column is backfilled and dropped in
+this one migration, so no revision holds both shapes.
 
-Follows this codebase's own established convention for retiring a
-superseded column in one pass (see 0019's `is_default` removal): backfill
-first, then drop the column in the same migration, so there is never an
-intermediate revision where both the old and new shapes coexist un-
-reconciled.
+Backfill: every `project_groups` row gets one `project_group_roles` row with its current `role`;
+`ON CONFLICT (project_group_id, role) DO NOTHING` makes a re-run safe.
 
-Backfill: for every existing `project_groups` row, insert exactly one
-`project_group_roles` row carrying that group's current `role` — no
-existing group loses its role in this transition; a group that already
-granted `project_manager` keeps that grant (now as its own row) and so on
-for every other role. `ON CONFLICT (project_group_id, role) DO NOTHING`
-guards against re-running this migration (matching 0019's own idempotency
-guard), even though a fresh table can't yet contain a duplicate on first
-run.
+Guarded by `IF EXISTS (... information_schema.columns ...)`, as in 0014/0017/0018/0019: the current
+models define no `ProjectGroup.role`, so a fresh database never has the column and the backfill is a no-op.
 
-Guarded by `IF EXISTS (... information_schema.columns ...)` the same way
-0014/0017/0018/0019 guard their own backfills: a brand-new database's
-`0001_initial.py` already runs `Base.metadata.create_all()` against the
-*current* model classes, which no longer define `ProjectGroup.role` at all,
-so a fresh database never has the column to begin with and this whole
-backfill is a no-op there — only a database migrated from before this
-revision has real `role` values to convert.
-
-Every C-U-08 ("a project must retain at least one manager") guard site that
-read `ProjectGroup.role == PROJECT_MANAGER` directly (`_ensure_project_has_
-a_manager`, `delete_project_group`, `remove_project_group_member`, plus the
-new group-role-revoke endpoint) was updated in the same PR to instead check
-whether the group currently holds a `PROJECT_MANAGER` row in this new
-table — see docs/decisions.md's identify/verify/remediate entry for this change for
-the full list and review.
+Every C-U-08 guard (a project retains at least one manager: `_ensure_project_has_a_manager`,
+`delete_project_group`, `remove_project_group_member`, the group-role-revoke endpoint) checks whether
+the group holds a `PROJECT_MANAGER` row in the new table (docs/decisions.md's identify/verify/remediate
+entry for this change).
 """
 
 from collections.abc import Sequence
@@ -98,15 +74,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Lossy for any group that ended up with more than one role (there is
-    # no way to represent "holds two roles" back in a single scalar column)
-    # — same acknowledged lossiness 0019's own downgrade documents for its
-    # is_default column. Picks the *highest-privilege* role a group holds
-    # (project_manager > project_administrator > stakeholder > member) so a
-    # downgrade never silently drops a manager grant down to a lesser role;
-    # a group left with zero roles falls back to 'member', matching how a
-    # freshly-created (newly created) group with no grants yet would have been
-    # represented under the old required-field shape.
+    # Lossy for a group with more than one role (a scalar column cannot hold two), as in 0019's downgrade.
+    # It keeps the highest-privilege role (project_manager > project_administrator > stakeholder > member)
+    # so a downgrade never lowers a manager grant; a group with no roles becomes 'member', the old
+    # required-field default.
     op.execute("ALTER TABLE project_groups ADD COLUMN IF NOT EXISTS role VARCHAR(30)")
     op.execute(
         """

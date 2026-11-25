@@ -3,32 +3,17 @@ import { expect, waitFor, within } from "storybook/test";
 
 import type { ModuleFrontendManifest } from "../api/types";
 import { useFederatedModules } from "../hooks/useFederatedModules";
-// `?raw` (a Vite-specific import-suffix convention) imports this fixture's
-// own *source text*, not its executed module — the fixture is never part
-// of this app's own static module graph (nothing else `import`s it
-// normally). The "Loaded" story below turns that text into a `Blob`/object
-// URL and dynamically `import()`s *that* — a real, separate, out-of-graph
-// module load, proving `federatedLoader.ts`'s actual runtime mechanism
-// rather than merely asserting its code compiles. See that fixture file's
-// own header comment for the full rationale.
+// `?raw` imports the fixture's source text, not its executed module, so the fixture stays outside the static module
+// graph. The "Loaded" story turns that text into a `Blob` object URL and dynamically `import()`s it, a separate
+// out-of-graph module load that exercises `federatedLoader.ts`'s runtime mechanism (see the fixture's header).
 import federatedFixtureSource from "./__fixtures__/federatedRemoteEntryFixture.js?raw";
 import { getInstalledModule } from "./registry";
 
 /**
- * Storybook coverage for the Tier C ("federated"/Module Federation) runtime
- * loader (module system follow-up, 2026-09-07) — see `federatedLoader.ts`'s
- * own docstring for the full mechanism and its documented deviation from
- * the originally-specified `@originjs/vite-plugin-federation` dependency
- * (no network access to the npm registry in this repo's own sandboxed
- * build/test environment; a hand-rolled but contract-compatible substitute
- * was built and is exercised for real here instead).
- *
- * Mirrors this codebase's existing convention for module-system
- * infrastructure with no real third-party module to exercise yet
- * (`App.stories.tsx`'s `TierARoutingHarness`, `ModuleFrame.stories.tsx`):
- * a small harness renders `useFederatedModules`'s own status output plus
- * whatever the loaded module's own route element renders, proving the full
- * loading → merged-into-`installedModules` → rendered pipeline end to end.
+ * Storybook coverage for the Tier C (Module Federation) runtime loader (`federatedLoader.ts`, whose docstring covers
+ * the mechanism and why it is a contract-compatible loader rather than a federation plugin). A harness renders
+ * `useFederatedModules`'s status output plus the loaded module's route element, as `App.stories.tsx`'s
+ * `TierARoutingHarness` and `ModuleFrame.stories.tsx` do, proving loading -> merged into `installedModules` -> rendered.
  */
 function FederatedLoaderHarness({ moduleKey, manifest }: { moduleKey: string; manifest: ModuleFrontendManifest | null }) {
   const states = useFederatedModules(manifest ? [{ module_key: moduleKey, frontend_manifest: manifest }] : []);
@@ -67,15 +52,9 @@ export const Loaded: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByTestId("loader-status")).toHaveTextContent("loaded"));
-    // Proves two things at once: (1) the real remote entry file was
-    // dynamically imported and its exposed module resolved, and (2) the
-    // element it rendered used the *host's* own `react.createElement` (via
-    // the shared scope `federatedLoader.ts` hands it) — a duplicate,
-    // isolated React copy would still render this text (React's `disable`
-    // safeguards aren't what's being tested here), so the real proof is
-    // architectural (traced in the fixture/loader source), but a failure
-    // to reach this text at all would mean the shared-scope handoff itself
-    // is broken (`sharedScope.react` was `undefined`, e.g.).
+    // Proves the remote entry was dynamically imported and its exposed module resolved. A duplicate React copy would
+    // still render this text, so the shared-scope handoff is verified by architecture (fixture and loader source);
+    // failing to reach this text means the handoff itself is broken (`sharedScope.react` undefined, for example).
     await expect(canvas.getByTestId("loaded-route")).toHaveTextContent(
       "Federated fixture module loaded, sharing the host's own React instance."
     );
@@ -112,11 +91,8 @@ export const Loading: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Asserted immediately (no `waitFor`) — the artificial 300ms delay in
-    // the fixture's own `get()` above is what makes this reliably still
-    // "loading" at first render, not a race against real network/parse
-    // timing the way asserting this on the `Loaded` story's real file
-    // would be.
+    // Asserted without `waitFor`: the fixture's artificial 300ms delay in `get()` keeps the status "loading" at first
+    // render, unlike the real file in the `Loaded` story, whose timing is not controlled.
     await expect(canvas.getByTestId("loader-status")).toHaveTextContent("loading");
     await waitFor(() => expect(canvas.getByTestId("loader-status")).toHaveTextContent("loaded"));
   },

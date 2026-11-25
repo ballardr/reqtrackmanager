@@ -1,42 +1,28 @@
 """
 Module: services.dr_verify
 
-The checks that prove a restored platform is working, run inside the restored stack's own backend
-container by the restore-test (`scripts/restore_test.py`) once the application has started on the restored
-database. They complement the restore tool's own verification, which compares the restored database with the
-manifest before it replaces anything: these find what only a running application shows (a migration the new
-image still wants to run, statistics that moved when the application started, a stored object that cannot be
-read back, a configuration that would email real people, an API that does not answer).
+The checks that prove a restored platform works, run inside the restored stack's backend container by
+the restore-test (`scripts/restore_test.py`) once the application has started on the restored database. They
+find what only a running application shows; the restore tool's own verification compares the database with
+the manifest before it replaces anything.
 
-Responsibilities:
-- `migrations`: the database is at the manifest's Alembic revision and that revision is this image's head,
-  so `alembic upgrade head` changes nothing.
-- `statistics`: every table count and business statistic equals the manifest, recomputed with the same
-  `dr_stats` code the backup used, after the application has been running.
-- `file-objects`: every file record has its object, and a random sample reads back at its recorded size.
-- `encrypted-columns`: every encrypted value decrypts with the key this stack runs with.
-- `email-disabled`: the stack cannot send mail (`EMAIL_DELIVERY=disabled`), shown by attempting a send.
-- `api-smoke`: the API answers as a real user of a project the restore holds: health, identity, the
-  organisation and project lists, a record, a project search and a project export. `login` (optional) checks
-  that a supplied account can sign in, which proves the stored password hashes verify.
-- `credential-recovery` (only after a forced credential reset): every local account is marked as needing a
-  new password; a session from before the reset is dead; the real command line (`python -m
-  app.cli.credentials issue-link`) prints a link for a server administrator while every administrator is
-  locked out; the link sets a new password exactly once; the new password then signs in.
-- Always return one machine-readable report; a check that cannot run says so instead of passing.
+Checks: `migrations` (database at the manifest revision, which is this image's head), `statistics` (table
+counts and business statistics equal the manifest, recomputed with `dr_stats`), `file-objects` (every file
+record has its object, a sample reads back at its size), `encrypted-columns` (values decrypt with this
+stack's key), `email-disabled` (a send attempt is refused), `api-smoke` (health, identity, lists, a record,
+search and export as a real user; optional `login`), and `credential-recovery` (after a forced credential
+reset: sessions are dead, the CLI issues a link, the link works exactly once, the new password signs in).
+A check that cannot run says so instead of passing; the result is one machine-readable report.
 
 Design decisions:
-- Statistics are collected before the API checks, because signing in and exporting write audit rows.
-- The API checks use a token minted for a user who manages a project that has records, rather than a
-  password: the restored database's passwords are unknown to the test, and the token still exercises token
-  validation against the restored `token_version` and the full authorisation path. `login` covers the password
-  path only when credentials are supplied.
-- A report holds check names, counts and ids only, never row content, names, addresses, tokens or secrets;
-  the search text is taken from a record and is sent in the request body and never written anywhere.
-- Every instant is UTC.
+- Statistics are collected before the API checks, which write audit rows.
+- API checks use a token minted for a project manager, because the restored passwords are unknown; it still
+  exercises `token_version` validation and authorisation. `login` covers passwords when credentials are given.
+- A report holds check names, counts and ids only; the search text comes from a record, travels in a request
+  body and is never stored. Every instant is UTC.
 
-Dependencies: SQLAlchemy, httpx (the API calls), `services.dr_stats`, `services.dr_manifest`,
-`services.dr_restore.code_revisions`, `services.email`, `security.create_access_token`.
+Dependencies: SQLAlchemy, httpx, `services.dr_stats`, `services.dr_manifest`, `services.dr_restore.code_revisions`,
+`services.email`, `security.create_access_token`.
 """
 
 from __future__ import annotations

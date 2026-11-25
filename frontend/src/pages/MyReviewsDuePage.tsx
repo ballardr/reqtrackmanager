@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { RequirementDueForReview } from "../api/types";
+import { LoadFailed } from "../components/LoadFailed";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
@@ -11,15 +12,13 @@ import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 30;
 
-/** Requirements assigned to the current user as reviewer, due/overdue,
- * across every project (C-R-09, filtered per C-R-10) — unlike its
- * project-scoped sibling `ProjectReviewsDuePage`, this spans every project
- * the reviewer has a role on, so each row shows which project it belongs
- * to. */
+/** Due or overdue requirements assigned to the current user as reviewer, across every project they
+ * have a role on (C-R-09, filtered per C-R-10); each row shows its project. */
 export function MyReviewsDuePage() {
   const strings = useStrings();
   const [items, setItems] = useState<RequirementDueForReview[] | null>(null);
   const [total, setTotal] = useState(0);
+  const [failed, setFailed] = useState(false);
 
   async function load(offset: number, append: boolean) {
     const page = await api.getPage<RequirementDueForReview>(
@@ -29,8 +28,15 @@ export function MyReviewsDuePage() {
     setTotal(page.total);
   }
 
-  useLoadOnChange(() => load(0, false), []);
+  // The first page: a refused request shows the failure with Retry instead of leaving the spinner up.
+  function loadFirstPage() {
+    setFailed(false);
+    load(0, false).catch(() => setFailed(true));
+  }
 
+  useLoadOnChange(loadFirstPage, []);
+
+  if (failed) return <LoadFailed message={strings.requestFailure.loadFailed(strings.requestFailure.reviewsDue)} onRetry={loadFirstPage} />;
   if (!items) return <Spinner />;
 
   return (

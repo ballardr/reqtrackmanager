@@ -3,15 +3,13 @@
  *
  * The person's choice of when the shared graph canvas draws a box's attach points, and the canvas prop that applies it.
  *
- * Responsibilities:
- * - Read and write one choice, "Always show attach points" (off: only near the pointer), for every canvas editor.
- * - Give the prop `GraphCanvas` takes (`attachPointVisibility`).
+ * Responsibilities: read and write one choice, "Always show attach points" (off: only near the pointer), for every canvas
+ * editor, and give the prop `GraphCanvas` takes (`attachPointVisibility`).
  *
- * Design decisions:
- * - Kept in the user's `ui_preferences` (`useUiPreference`), so it follows the person to another browser or device, unlike
- *   Snap to grid, which is local to one browser. It is a display preference only: never part of a diagram, never applied to
- *   an export and invisible to other people. An unknown stored value reads as the default.
- * - Near the pointer by default, so a drawing is not covered in dots until a person asks for them.
+ * Design decisions: kept in the user's `ui_preferences` (`useUiPreference`), so it follows the person to another browser
+ * or device (unlike Snap to grid, which is local to one browser). It is a display preference only: never part of a
+ * diagram, never applied to an export, invisible to others. An unknown stored value reads as the default, near the
+ * pointer, so a drawing is not covered in dots until a person asks for them.
  *
  * Dependencies: `useUiPreference`.
  */

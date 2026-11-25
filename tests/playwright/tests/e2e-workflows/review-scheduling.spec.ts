@@ -3,15 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: a requirement can be given a scheduled review (C-R-06),
- * the assigned reviewer sees it on both their personal due list (C-R-09,
- * filtered per C-R-10) and the project's due list, and recording an outcome
- * (C-R-07) is gated to that reviewer or a project manager and requires a
- * comment when the outcome is "failed".
+ * Job to be done: a requirement can be given a scheduled review (C-R-06), the assigned reviewer sees it on both their
+ * personal due list (C-R-09, filtered per C-R-10) and the project's due list, and recording an outcome (C-R-07) is
+ * gated to that reviewer or a project manager and requires a comment when the outcome is "failed".
  *
- * A brand-new requirement is created for this test (rather than reusing a
- * seeded one) so it's unaffected by whatever lock state other specs in this
- * suite leave Alpha-1's other requirements in.
+ * A new requirement is created for this test so it is unaffected by the lock state other specs leave Alpha-1's other
+ * requirements in.
  */
 test.describe("requirement review scheduling", () => {
   test("PM schedules a review, the reviewer sees it due and records an outcome", async ({ page }) => {
@@ -24,13 +21,9 @@ test.describe("requirement review scheduling", () => {
       await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
-      // The create form is a `Modal` portalled to the end of
-      // `document.body` — scope to it rather than an unscoped
-      // `getByRole("combobox").first()`, which would otherwise resolve to
-      // the filter sidebar's own Status select (it precedes the panel in
-      // DOM order once the form is a portal instead of an inline block).
+      // The create form is a `Modal` portalled to the end of `document.body`; the place picker shows the first component.
       const panel = page.getByRole("dialog", { name: "New Requirement" });
-      await expect(panel.getByRole("combobox").first()).toContainText("Hardware");
+      await expect(panel.getByRole("button", { name: "Component and category", exact: true })).toContainText("Hardware");
       await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await openRequirementByName(page, reqName);

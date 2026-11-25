@@ -1,28 +1,22 @@
 /**
  * Module: modules/stakeholders/StakeholderDetailPage
  *
- * A single Stakeholder's detail: fields, lifecycle, owner, Influence/Interest
- * position and engagement cadence, the Personas they represent, their needs, version
- * history, their engagement timeline with a "Log contact" quick add (project
- * route only), attachments, comments, and permanent deletion. One scope-aware
- * component serving three routes (`module.ts`): a project stakeholder and an
- * org stakeholder opened *from a project* (both `/projects/:projectId/...`),
- * and an org stakeholder opened from the org dashboard (`/orgs/:organizationId/
- * ...`). Mirrors `PersonaDetailPage`, built from the same shared parts.
+ * A single Stakeholder's detail: fields, lifecycle, owner, Influence/Interest position and engagement cadence, the
+ * Personas they represent, their needs, versions, their engagement timeline with a "Log contact" quick add (project
+ * route only), attachments, comments, and permanent deletion. One scope-aware component serves three routes
+ * (`module.ts`): a project stakeholder and an organisation stakeholder opened from a project (both
+ * `/projects/:projectId/...`), and an organisation stakeholder opened from the organisation dashboard
+ * (`/orgs/:organizationId/...`). It mirrors `PersonaDetailPage`, built from the same shared parts.
  *
- * An org stakeholder viewed inside a project is read-only here apart from
- * comments and its per-project visibility (the project API can't mutate the
- * record itself); a link leads to the org route where the owner role can edit
- * it. Hiding it from the project (`RecordVisibilityControl`) returns to the
- * list, since a hidden stakeholder is no longer reachable from the project.
+ * An organisation stakeholder viewed inside a project is read-only apart from comments and its per-project visibility
+ * (the project API cannot mutate the record); a link leads to the organisation route where the owner role can edit it.
+ * Hiding it from the project (`RecordVisibilityControl`) returns to the list, since a hidden stakeholder is not
+ * reachable from the project.
  *
- * Personal data: contact info is Confidential, so it sits behind the same
- * visibility as the record. "Delete permanently" is
- * the module's one irreversible action, so it is a tier-2 `ConfirmDialog`
- * requiring the stakeholder's exact name to be typed, and says exactly what is
- * removed. Every mutating control always renders regardless of role; the
- * backend enforces `stakeholder_owner`/`org_stakeholder_owner` and a 403
- * surfaces as a toast.
+ * Personal data: contact info is Confidential, so it sits behind the same visibility as the record. "Delete
+ * permanently" is the module's one irreversible action, so it is a tier-2 `ConfirmDialog` requiring the stakeholder's
+ * exact name and stating what is removed. Mutating controls always render whatever the role; the backend enforces
+ * `stakeholder_owner` / `org_stakeholder_owner` and a 403 surfaces as a toast.
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -48,7 +42,7 @@ import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTabl
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
-import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useLifecycleTransition, type LifecycleAction } from "../../components/useLifecycleTransition";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
@@ -56,12 +50,15 @@ import { StakeholderFormModal } from "./StakeholderFormModal";
 import { StakeholderGroupsField } from "./StakeholderGroupsField";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup, StakeholderVersion } from "./types";
 import {
-  GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
+  GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_DESCRIPTION, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
 } from "./types";
 import { levelName, useStakeholderScheme } from "./useStakeholderScheme";
 import { Badge } from "../../components/Badge";
 import { STAKEHOLDERS_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_STAKEHOLDERS_SECTION_KEY } from "./orgResourceKeys";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder activated.",
@@ -80,8 +77,10 @@ export function StakeholderDetailPage() {
   const scopedApi = projectId ? projectStakeholderApi : orgStakeholderApi;
   const groupApi = projectId ? projectStakeholderGroupApi : orgStakeholderGroupApi;
   const scopeId = projectId ?? organizationId;
-  const listPath = projectId ? `/projects/${projectId}/modules/stakeholders/people?kind=stakeholder` : "/org-overview";
-  const backLabel = projectId ? "People" : "Organisation overview";
+  const listPath = projectId
+    ? `/projects/${projectId}/modules/stakeholders/people?kind=stakeholder`
+    : organizationId ? orgResourcesPath(organizationId, ORG_STAKEHOLDERS_SECTION_KEY) : "/org-resources";
+  const backLabel = projectId ? "People" : "Stakeholders";
 
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -237,6 +236,20 @@ export function StakeholderDetailPage() {
     onConfirm: erase,
   });
 
+  const { lifecycle, menuRows, dialog: lifecycleDialog } = useLifecycleTransition({
+    noun: "Stakeholder",
+    status: stakeholder?.status ?? "draft",
+    labels: STAKEHOLDER_STATUS_LABEL,
+    descriptions: STAKEHOLDER_STATUS_DESCRIPTION,
+    hidden: !stakeholder || readOnlyInProject,
+    activateBody: "An Active stakeholder is part of the current stakeholder register. A comment is optional.",
+    retireBody: "A Retired stakeholder is no longer part of the current register, but keeps its history and can be reactivated. A comment is optional.",
+    onTransition: async (action, comment) => {
+      if (!scopeId || !stakeholder) return;
+      await run(() => scopedApi[action](scopeId, stakeholder.id, comment), TRANSITION_DONE[action]);
+    },
+  });
+
   const codeOwner = useRecordOwnerCode(stakeholder ?? {});
   if (!scopeId || !stakeholderId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -272,23 +285,13 @@ export function StakeholderDetailPage() {
         version={stakeholder.version_number}
         subtitle={[stakeholder.stakeholder_type_name, stakeholder.role, stakeholder.organisation_group].filter(Boolean).join(" · ") || "No type or role set"}
         onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
-        actions={[archive.item, eraseAction.item]}
-        transitions={
-          readOnlyInProject ? undefined : (
-            <RecordLifecycleControls
-              noun="Stakeholder"
-              status={stakeholder.status}
-              activateBody="An Active stakeholder is part of the current stakeholder register. A comment is optional."
-              retireBody="A Retired stakeholder is no longer part of the current register, but keeps its history and can be reactivated. A comment is optional."
-              onTransition={(action, comment) => run(() => scopedApi[action](scopeId, stakeholder.id, comment), TRANSITION_DONE[action])}
-            />
-          )
-        }
+        actions={[...menuRows, archive.item, eraseAction.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
+      {lifecycleDialog}
       {eraseAction.dialog}
 
-      <div className="stack">
         {readOnlyInProject && (
           <p className="text-muted" style={{ margin: 0 }}>
             This is an organisation-wide Stakeholder shared by every project. Edit it from the{" "}
@@ -304,14 +307,14 @@ export function StakeholderDetailPage() {
         )}
 
         <DetailCard>
-          {stakeholder.description && <RecordField label="Description" value={stakeholder.description} />}
-          {stakeholder.interests && <RecordField label="Interests" value={stakeholder.interests} />}
-          {stakeholder.responsibilities && <RecordField label="Responsibilities" value={stakeholder.responsibilities} />}
-          {stakeholder.goals_needs && <RecordField label="Goals and needs" value={stakeholder.goals_needs} />}
-          {stakeholder.priorities && <RecordField label="Priorities" value={stakeholder.priorities} />}
-          {stakeholder.constraints && <RecordField label="Constraints" value={stakeholder.constraints} />}
-          {stakeholder.workflows_scenarios && <RecordField label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
-          {stakeholder.contact_info && <RecordField label="Contact / reference information" value={stakeholder.contact_info} />}
+          {stakeholder.description && <RecordField markdown label="Description" value={stakeholder.description} />}
+          {stakeholder.interests && <RecordField markdown label="Interests" value={stakeholder.interests} />}
+          {stakeholder.responsibilities && <RecordField markdown label="Responsibilities" value={stakeholder.responsibilities} />}
+          {stakeholder.goals_needs && <RecordField markdown label="Goals and needs" value={stakeholder.goals_needs} />}
+          {stakeholder.priorities && <RecordField markdown label="Priorities" value={stakeholder.priorities} />}
+          {stakeholder.constraints && <RecordField markdown label="Constraints" value={stakeholder.constraints} />}
+          {stakeholder.workflows_scenarios && <RecordField markdown label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
+          {stakeholder.contact_info && <RecordField markdown label="Contact / reference information" value={stakeholder.contact_info} />}
 
           <RecordFieldGroup help={STAKEHOLDERS_HELP.stakeholderInfluenceInterest} label="Influence and interest">
             <span data-testid="grid-position">
@@ -327,7 +330,7 @@ export function StakeholderDetailPage() {
                 ` (suggested by their position: ${TARGET_CADENCE_LABEL[hint.suggested_cadence]})`}
             </span>
             {stakeholder.availability_constraints && (
-              <span className="text-muted">Their availability: {stakeholder.availability_constraints}</span>
+              <span className="text-muted">Their availability: {markdownPlainText(stakeholder.availability_constraints)}</span>
             )}
             {projectId && <span data-testid="last-engaged">Last engaged: {stakeholder.last_engaged ?? "Never"}</span>}
           </RecordFieldGroup>
@@ -358,6 +361,7 @@ export function StakeholderDetailPage() {
 
           <RepresentationPanel
             heading="Represents these Personas"
+            kind="persona"
             emptyText="This Stakeholder does not represent any Persona yet."
             load={() => scopedApi.listPersonas(scopeId, stakeholder.id)}
             linkFor={(persona) =>
@@ -406,7 +410,6 @@ export function StakeholderDetailPage() {
           attachmentsReadOnly={readOnlyInProject}
           attachmentsHint="Attachments to an organisation Stakeholder are managed from the organisation view."
         />
-      </div>
 
       {editing && (
         <StakeholderFormModal

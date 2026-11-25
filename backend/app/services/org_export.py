@@ -1,95 +1,31 @@
 """
 Module: services.org_export
 
-Exports an entire organisation — its settings, members/groups, report
-templates, org-owned files (logo, login background), every one of its
-projects (full structure and history, reusing `services.project_export`),
-and every registered module's own org-level bundle content (`app.modules.
-registry.get_all_module_org_bundle_hooks` — e.g. the Compliance module's
-standards/versions/requirements/vocabularies/mappings, folded in generically
-rather than this file importing any specific module directly) — as a single
-self-describing zip bundle, and imports such a bundle back in one of two
-ways:
+Exports a whole organisation as one self-describing zip bundle (settings, members, groups, service users
+(configuration only), the report look, org-owned files, every project via `services.project_export`, and
+each registered module's org-level content) and imports a bundle back in one of two ways:
 
-A module's own org-level bundle content is exported/imported entirely by
-that module's own `ModuleOrgBundleHooks` (`app.modules.registry`) — this
-file never constructs a module's own entity types, only calls its declared
-`export`/`import_`/`compute_merge_conflicts`/`summarize_merge` hooks and
-folds their results (a `dict` merged via `**` into `org_json`; conflict
-dicts extended onto this file's own `conflicts` list; summary counts merged
-into the returned/audit-logged summary) alongside the core sections this
-file still owns directly (settings, members, groups, the report look,
-projects). See `app.modules.compliance.export`'s own module docstring for
-why Compliance's own content belongs at the *organisation* level in a
-bundle, not per-project (§31's "A Compliance Standard is not a Project"),
-and how a project's own compliance *assessment* travels with `services.
-project_export`'s bundle instead via that module's `ModuleProjectBundleHooks`.
+- `import_org_bundle`: creates a brand-new organisation (backup, offboarding, cross-instance migration).
+- `merge_org_bundle`: adds the bundle's users, groups, projects and layouts to an existing organisation the
+  caller administers; the organisation's own profile (branding, report look, SMTP, SSO/OIDC, logo,
+  default template) is never touched. A separate path so an existing tenant is never overwritten.
 
-- `import_org_bundle`: creates a brand-new organisation. For backup,
-  offboarding, and cross-instance migration (as opposed to
-  `services.project_export`, which moves a single project).
-- `merge_org_bundle`: imports the bundle's users, groups, projects and
-  layouts into an *existing* organisation the caller already
-  administers — never the organisation's own profile (branding, report look, SMTP,
-  SSO/OIDC, logo, default template). See `merge_org_bundle`'s own
-  docstring for why this is a deliberately narrower, separate path rather
-  than a flag on `import_org_bundle`.
+Design decisions:
+- A module's org-level content travels through its `ModuleOrgBundleHooks` (`app.modules.registry`); this
+  file only calls the hooks and folds their sections, conflicts and summary counts, never a module's types.
+- Both import paths share the parse and per-kind import helpers (`_parse_org_bundle`, `_import_members`,
+  `_import_org_groups`, `_import_report_look`, `_import_projects`); a new organisation has no conflicts.
 
-Both import paths share the bundle-parsing and per-entity-kind import logic
-below (`_parse_org_bundle`, `_import_members`, `_import_org_groups`,
-`_import_report_look`, `_import_projects`) rather than duplicating it —
-`import_org_bundle` always calls them with "no conflicts possible" arguments
-(a freshly created organisation has nothing to collide with), while
-`merge_org_bundle` passes real conflict resolutions into the same helpers.
-
-Security decisions (see `docs/decisions.md` and
-`docs/soc2/policies/data-classification-and-confidentiality-policy.md`):
-
-- `Organization.smtp_password`/`oidc_client_secret` are Restricted-classified
-  secrets and are never exported, per that policy's rule 2 ("Restricted
-  data is never returned in API responses or logs"). Non-secret SMTP/OIDC
-  *configuration* (host, client id, issuer URL) is exported for reference,
-  but the secrets themselves must be re-entered manually after import.
-- The imported organisation's `sso_enabled`/`sso_only` are always forced to
-  `False` regardless of the source bundle's values, precisely because the
-  OIDC secret above is never carried over — importing `sso_only=True`
-  verbatim with no working secret configured would leave the freshly
-  imported org's login page completely unusable (no working SSO, and the
-  native login form hidden) except via the narrow server-admin
-  join-as-admin carve-out. The source values are still included in the
-  export for the operator's reference when manually reconfiguring SSO.
-  `merge_org_bundle` never touches these fields at all (see its own
-  docstring) — this bullet applies to `import_org_bundle` only.
-- `members`/`org_groups` grant real access on import (org roles, org group
-  membership) in both `import_org_bundle` and `merge_org_bundle` — unlike a
-  project bundle's `ProjectGroupMember` rows (see `services.project_export`'s
-  module docstring). For `import_org_bundle` this is safe because an org
-  import always creates a brand-new organisation from scratch; there is no
-  existing tenant boundary being crossed by populating its own initial
-  membership, the same way `services.bootstrap` creates the very first
-  server-admin org membership on deployment. For `merge_org_bundle` an
-  existing tenant boundary *is* being crossed, which is exactly why that
-  path is gated behind the target organisation's own `org_admin` (never a
-  server-admin bypass) and is purely additive — see its docstring. An
-  unmatched member email is invited (`services.invites.
-  create_pending_invite`) rather than granted their original org role
-  directly — invite acceptance only ever grants base membership, so a
-  warning notes any such member's original role (e.g. `org_admin`) needs a
-  manual re-grant once they sign up. An existing account with `User.
-  is_banned` set is matched but granted neither an org role nor org group
-  membership (skipped with a warning instead) — a bundle is
-  caller-controlled data, not a trusted grant request, and must not become
-  a way around the same ban `assign_org_role`/`assign_project_role_by_email`
-  already enforce; this applies to `import_org_bundle` too; a banned
-  account should not quietly regain access via a brand-new organisation
-  either.
-- `is_active`/`disabled_at`/`disabled_by` are never imported — a freshly
-  imported organisation always starts active, regardless of whether the
-  source was disabled at export time.
-- `slug` is never imported (left null) — it's globally unique across the
-  whole deployment, and blindly reusing the source's slug risks a
-  collision on a second import of the same bundle, or with an unrelated
-  organisation that happens to already use it.
+Security decisions (`docs/decisions.md`, data-classification policy):
+- `smtp_password` and `oidc_client_secret` are Restricted and never exported; non-secret SMTP/OIDC
+  configuration is exported for reference and the secrets are re-entered after import.
+- `sso_enabled`/`sso_only` are forced to `False` on `import_org_bundle`, since the secret is not carried over
+  and `sso_only` would leave the login page unusable.
+- Members and org groups grant real access on import. Safe for a new organisation; for a merge the caller
+  must be an `org_admin` of the target (never a server-admin bypass) and the merge is additive. An unmatched
+  email is invited (acceptance grants base membership only, so a warning notes the original role). A banned
+  account is skipped with a warning: a bundle is untrusted data and must not bypass `assign_org_role`'s ban check.
+- `is_active`/`disabled_at`/`disabled_by` are never imported, and `slug` is never imported (it is globally unique).
 """
 
 from __future__ import annotations
@@ -106,13 +42,24 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.code_rules import DEFAULT_POLICY, CodePolicy, policy_error
 from app.models.enums import OrgRole
 from app.models.file import FileAsset
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
-from app.services import announcements, nav_labels, org_dashboards, org_policies, overview_widgets
+from app.services import (
+    announcements,
+    approval_separation,
+    code_prefixes,
+    lifecycles,
+    nav_labels,
+    org_dashboards,
+    org_policies,
+    overview_widgets,
+    service_users,
+)
 from app.services.audit import log_event
 from app.services.branding import FOOTER_POSITIONS
 from app.services.bundle_common import (
@@ -128,6 +75,7 @@ from app.services.bundle_common import (
 )
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
+from app.services.external_references import EXTERNAL_SYSTEMS
 from app.services.files import read_file, resolve_bundle_files
 from app.services.imported_people import people_section
 from app.services.invites import create_pending_invite
@@ -147,17 +95,16 @@ from app.services.report_layout_bundle import export_org_layouts, import_org_lay
 from app.services.report_pack_bundle import export_org_packs, import_org_packs
 from app.services.report_placement_bundle import export_org_placements, import_org_placements
 from app.services.report_snippet_bundle import export_org_snippets, import_org_snippets
+from app.services.requirement_aliases import MODES as ALIAS_MODES
 from app.services.scoring import seed_missing_scoring_levels
 from app.services.stage_workflow_bundle import export_org_stage_workflows, import_org_stage_workflows
+from app.services.vocabulary_bundle import export_org_list, import_org_list
 
 ORG_BUNDLE_KIND = "org-export"
 ORG_BUNDLE_FORMAT_VERSION = 1
 
-# Valid `resolutions` values `merge_org_bundle` accepts for each core
-# conflict kind `detect_merge_conflicts` can report — see both functions'
-# docstrings. A registered module's own conflict kinds (e.g. Compliance's
-# `"compliance_standard"`) declare their own valid values via `ModuleOrgBundleHooks.
-# merge_resolution_choices` instead, merged in at the two call sites below.
+# Valid `resolutions` values `merge_org_bundle` accepts for each core conflict kind `detect_merge_conflicts`
+# reports. A module's own conflict kinds declare theirs via `ModuleOrgBundleHooks.merge_resolution_choices`.
 _PROJECT_RESOLUTIONS = {"skip", "import_as_copy"}
 
 
@@ -216,6 +163,12 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **announcements.export_org(db, org.id),
         **org_dashboards.export_org(db, org.id),
         **org_policies.export_org(db, org.id),
+        "code_prefixes": code_prefixes.export_overrides(db, org),
+        **lifecycles.export_org(db, org, project_ref_by_id),
+        **approval_separation.export_org(db, org, project_ref_by_id),
+        # Configuration only: never a token, a hash or an address (`services.service_users.export_org`).
+        "service_users": service_users.export_org(db, org),
+        "external_systems": export_org_list(db, org, EXTERNAL_SYSTEMS),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -223,7 +176,10 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
             module_bundle_json.update(hooks.export_files(db, org, file_assets_by_id))
 
     member_rows = list(
-        db.execute(select(UserOrgRole.role, User).join(User, User.id == UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id))
+        db.execute(
+            select(UserOrgRole.role, User).join(User, User.id == UserOrgRole.user_id)
+            .where(UserOrgRole.organization_id == org.id, User.is_service_account.is_(False))
+        )
         .all()
     )
     members_json = [
@@ -236,14 +192,13 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         members = list(
             db.execute(
                 select(User.email).join(OrgGroupMember, OrgGroupMember.user_id == User.id).where(
-                    OrgGroupMember.org_group_id == g.id, OrgGroupMember.user_id.is_not(None)
+                    OrgGroupMember.org_group_id == g.id, OrgGroupMember.user_id.is_not(None),
+                    User.is_service_account.is_(False),
                 )
             ).scalars()
         )
-        # Nested org groups (`OrgGroupMember.member_org_group_id`) — the
-        # groups directly nested inside this one, by name (re-linked on
-        # import in a second pass, since a group can reference another one
-        # appearing later in this same list — see `_import_org_groups`).
+        # Groups directly nested inside this one, by name (re-linked on import in a second pass,
+        # since a group can reference one later in the list; see `_import_org_groups`).
         nested_group_names = list(
             db.execute(
                 select(OrgGroup.name)
@@ -273,6 +228,9 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         "smtp_host": org.smtp_host, "smtp_port": org.smtp_port, "smtp_username": org.smtp_username,
         "smtp_use_tls": org.smtp_use_tls,
         "allow_imported_approval_state": org.allow_imported_approval_state,
+        # How project codes are formed and shown; the codes themselves are numbered afresh on import.
+        "project_code_policy": org.project_code_policy, "enforce_code_everywhere": org.enforce_code_everywhere,
+        "requirement_aliases": org.requirement_aliases,
         # Reference only — never re-applied on import (see module docstring).
         "source_sso_enabled": org.sso_enabled, "source_sso_only": org.sso_only,
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
@@ -374,18 +332,12 @@ def _import_members(
             email_cache[normalized] = db.scalar(select(User).where(User.email == normalized))
         return email_cache[normalized]
 
-    # Whoever ends up as the org's first real org_admin (matched by email to
-    # an existing account) — not `current_user`, the admin performing this
-    # bulk import — is who project-level fallbacks below should attribute
-    # to. Project group *membership* is never recreated on import (see
-    # services.project_export's module docstring), so every project's
-    # "guarantee at least one manager" safety net fires on every import;
-    # attributing that (and every other unresolved-reference fallback) to
-    # the operator running the import would leave them as a standing
-    # manager of every project in an org they otherwise have no
-    # relationship to. Falls back to `current_user` only if no org_admin
-    # member could be matched at all (e.g. every member needed an invite) —
-    # or, for a merge, always (see `reassign_acting_user` above).
+    # Project-level fallbacks attribute to the org's first matched org_admin, not the importing operator:
+    # project group membership is never recreated (see services.project_export), so every project's
+    # "at least one manager" fallback fires, and attributing it to the operator would leave them managing
+    # every project of an organisation they have no relationship to. `current_user` is used only when no
+    # org_admin could be matched (e.g. every member needed an invite), and always for a merge
+    # (see `reassign_acting_user` above).
     acting_user = current_user
     for m in data.get("members", []):
         existing = find_user(m["email"])
@@ -399,12 +351,8 @@ def _import_members(
                     warnings.add(f"Member '{m['email']}' was not added: {refusal}")
                     continue
             if existing.is_banned:
-                # Same invariant `assign_org_role`/`assign_project_role_by_email`
-                # enforce (see `User.is_banned`'s docstring: a ban "survives"
-                # a different org's admin trying to let the account back in).
-                # A bundle is attacker-controllable data, not a trusted grant
-                # request, so it must not become another unguarded way to
-                # hand a banned account a role.
+                # Same invariant as `assign_org_role`/`assign_project_role_by_email` (see `User.is_banned`):
+                # a bundle is untrusted data and must not grant a banned account a role.
                 warnings.add(
                     f"Member '{m['email']}' has been banned by a server admin and was not granted the "
                     f"'{m['org_role']}' role."
@@ -469,14 +417,9 @@ def _import_org_groups(
         group = existing_by_name.get(g["name"].strip().lower()) if merge_by_name else None
         existing_member_ids: set[UUID] = set()
         if group is None:
-            # `idp_synced_group_name` is unique per org (partial index) —
-            # on a merge into an existing org, a bundle group claiming a
-            # name another group there already owns is skipped with a
-            # warning (same pattern this function already uses for a
-            # banned member or a cycle-forming nested edge) rather than
-            # letting the INSERT below fail on the constraint. On a
-            # fresh-org import (`merge_by_name=False`) this can never
-            # conflict, since the target org has no groups yet.
+            # `idp_synced_group_name` is unique per org (partial index): on a merge, a name another group
+            # already owns is skipped with a warning instead of failing the INSERT. A fresh-organisation
+            # import cannot conflict.
             idp_synced_group_name = g.get("idp_synced_group_name")
             if idp_synced_group_name and idp_synced_group_name in existing_idp_synced_names:
                 warnings.add(
@@ -490,12 +433,7 @@ def _import_org_groups(
                 try:
                     granted_org_role = OrgRole(granted_org_role_raw)
                 except ValueError:
-                    # A malformed or adversarial bundle (a hand-crafted zip,
-                    # not one this app's own export could ever produce) —
-                    # skipped with a warning, the same as every other
-                    # untrusted-bundle-content case in this function, rather
-                    # than letting an invalid value raise past this point
-                    # and 500 the whole import.
+                    # A malformed or hand-crafted bundle: warn and skip instead of failing the whole import.
                     warnings.add(
                         f"Group '{g['name']}' was imported without its granted role — "
                         f"'{granted_org_role_raw}' isn't a recognised organisation role."
@@ -558,6 +496,20 @@ def _warn_legacy_report_content(data: dict[str, Any], warnings: BundleImportWarn
     )
     if legacy:
         warnings.add("Report introductions, chapters and appendices in this bundle were not imported: report content has been removed.")
+
+
+def _imported_code_policy(stored: Any, warnings: BundleImportWarnings) -> dict[str, str | int | bool]:
+    """The bundle's project code policy, or the default (with a warning) when it is missing or not a usable policy."""
+    if not isinstance(stored, dict):
+        return DEFAULT_POLICY.as_dict()
+    try:
+        policy = CodePolicy.from_mapping(stored)
+    except (TypeError, ValueError):
+        policy = None
+    if policy is None or policy_error(policy) is not None:
+        warnings.add("The project code policy in this bundle is not valid, so the default policy was used.")
+        return DEFAULT_POLICY.as_dict()
+    return policy.as_dict()
 
 
 def _hex_or_none(value: Any) -> str | None:
@@ -688,6 +640,9 @@ def import_org_bundle(
         smtp_host=data.get("smtp_host"), smtp_port=data.get("smtp_port"), smtp_username=data.get("smtp_username"),
         smtp_use_tls=data.get("smtp_use_tls", True),
         allow_imported_approval_state=data.get("allow_imported_approval_state", True),
+        project_code_policy=_imported_code_policy(data.get("project_code_policy"), warnings),
+        enforce_code_everywhere=bool(data.get("enforce_code_everywhere", False)),
+        requirement_aliases=data.get("requirement_aliases") if data.get("requirement_aliases") in ALIAS_MODES else "allowed",
         # Deliberately not carried over from the bundle — see module docstring.
         sso_enabled=False, sso_only=False,
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),
@@ -709,13 +664,8 @@ def import_org_bundle(
     org.overview_widgets = overview_widgets.import_layout(data, warnings)
     announcements.import_org(db, org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
-    # Default project statuses/link types, same as any other new
-    # organisation (`routers/orgs.py::create_organization`) — a bundle
-    # doesn't currently carry its source organisation's status/link-type
-    # customisations across, so the new organisation simply starts with the
-    # standard defaults. `_import_projects` (below, via
-    # `new_project_from_bundle_data`) needs at least a default status to
-    # exist before it creates this org's first imported project.
+    # Default project statuses and link types, as for any new organisation; the bundle carries no
+    # customisations of them. `_import_projects` needs a default status before it creates the first project.
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
     # The bundle's workflows (a customised Standard included); the default only when it carried none.
@@ -748,13 +698,18 @@ def import_org_bundle(
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
     users = UserResolver(db, acting_user, warnings, organization_id=org.id, data=data)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
+    service_users.import_org(db, org, data.get("service_users") or [], current_user.id, warnings.add)
     org_dashboards.import_org(db, org.id, data, acting_user, warnings)
     org_policies.import_org(db, org.id, data, acting_user, warnings)
+    code_prefixes.import_overrides(db, org, data.get("code_prefixes"), acting_user.id, warnings.add)
+    import_org_list(db, org, EXTERNAL_SYSTEMS, data.get("external_systems") or [])
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.import_files is not None:
             hooks.import_files(db, org, data, file_bytes_by_ref, acting_user, warnings)
         hooks.import_(db, org, data, users, warnings, None)
     project_id_by_ref = _import_projects(db, org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=None)
+    lifecycles.import_org(db, org, data, project_id_by_ref, acting_user.id, warnings.add)
+    approval_separation.import_org(db, org, data, project_id_by_ref, acting_user.id, warnings.add)
 
     template_ref = data.get("default_template_project_ref")
     if template_ref and template_ref in project_id_by_ref:
@@ -827,12 +782,9 @@ def merge_org_bundle(
     `target_org`'s own profile — branding, SMTP, SSO/OIDC config, logo,
     login background, default template project, `slug`, `is_active`,
     `pat_max_lifetime_days` — is never read from the bundle or modified.
-    Those fields carry real security/tenancy meaning for an organisation
-    that's already configured and in active use, unlike a fresh import
-    where they start from nothing; silently overwriting an admin's live
-    SSO/SMTP configuration or branding as a side effect of importing some
-    projects would be a surprising, security-relevant regression this
-    feature has no need to risk. This is also why this path requires the
+    Those fields carry security and tenancy meaning for a configured organisation in
+    use; overwriting a live SSO/SMTP configuration or branding as a side effect of importing projects
+    would be a security-relevant surprise. This is also why this path requires the
     caller to be an `org_admin` of `target_org` itself (see
     `routers/orgs.py`'s endpoint), never a server-admin bypass — an
     existing tenant boundary is being crossed here, unlike
@@ -891,6 +843,7 @@ def merge_org_bundle(
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
     users = UserResolver(db, acting_user, warnings, organization_id=target_org.id, data=data)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
+    service_users.import_org(db, target_org, data.get("service_users") or [], current_user.id, warnings.add)
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_snippets(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
@@ -904,7 +857,14 @@ def merge_org_bundle(
     announcements.import_org(db, target_org.id, data, current_user, warnings)
     org_dashboards.import_org(db, target_org.id, data, current_user, warnings)
     org_policies.import_org(db, target_org.id, data, current_user, warnings)
+    # A merge keeps the organisation's own prefixes and adds only the types it has not set.
+    own_prefixes = {entry["artefact_type"] for entry in code_prefixes.export_overrides(db, target_org)}
+    code_prefixes.import_overrides(
+        db, target_org, [e for e in data.get("code_prefixes") or [] if e.get("artefact_type") not in own_prefixes],
+        current_user.id, warnings.add,
+    )
     _warn_legacy_report_content(data, warnings)
+    import_org_list(db, target_org, EXTERNAL_SYSTEMS, data.get("external_systems") or [])
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.import_files is not None:
             hooks.import_files(db, target_org, data, file_bytes_by_ref, acting_user, warnings)
@@ -912,6 +872,8 @@ def merge_org_bundle(
     project_id_by_ref = _import_projects(
         db, target_org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=resolutions,
     )
+    lifecycles.import_org(db, target_org, data, project_id_by_ref, acting_user.id, warnings.add, keep_existing=True)
+    approval_separation.import_org(db, target_org, data, project_id_by_ref, acting_user.id, warnings.add)
 
     project_conflicts = [c for c in conflicts if c["kind"] == "project"]
     summary = {
@@ -926,15 +888,9 @@ def merge_org_bundle(
         organization_id=target_org.id,
         detail={
             "warning_count": len(warnings.messages), **summary,
-            # Provenance of the merged-in data — unlike `import_org_bundle`
-            # (which only ever creates a brand-new organisation from a
-            # bundle), this action writes into an org's real, live data, so
-            # "who did this" alone isn't enough for an incident review to
-            # trace *where the data came from* without this. `manifest`'s
-            # fields are the bundle's own self-reported metadata (written
-            # by `build_org_bundle` at export time), not independently
-            # verified — same trust level as the rest of the bundle's
-            # contents, which the target org_admin already chose to import.
+            # Provenance of the merged-in data: a merge writes into a live organisation, so an incident
+            # review needs where the data came from. The manifest fields are self-reported by the bundle
+            # and not verified.
             "source_org_name": manifest.get("org_name"),
             "source_exported_by_email": manifest.get("exported_by_email"),
             "source_exported_at": manifest.get("exported_at"),

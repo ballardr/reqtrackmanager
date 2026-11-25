@@ -1,30 +1,15 @@
 /**
  * Module: modules/compliance/StandardApplicabilityPanel
  *
- * The "applies to all projects by default, except..." UI —
- * Compliance-Manager-only, rendered inside `StandardWorkspacePage.tsx`'s
- * Overview section. This is
- * deliberately the *secondary*, org-wide-mandate surface: the *default,
- * primary* way a project acquires a standard is `ProjectCompliancePage.
- * tsx`'s own "Assign standard" flow (now calling `createProjectCompliance
- * AsProjectManager`, working for a plain Project Manager), unaffected by
- * anything on this panel.
- *
- * Two pieces:
- * - A `ToggleSwitch` for `ComplianceStandard.applicability_default` — the
- *   same control shape `MappingTypesPanel.tsx` already uses for
- *   `implies_equivalence` (docs/ux-style-guide.md's "one-component-per-
- *   pattern" principle: no bespoke toggle reimplementation).
- * - An excluded-projects list, using `DirectoryTable` per the style
- *   guide's directory pattern (small, caller-owned rows — no search/
- *   pagination props passed, since an org's exclusion list is expected to
- *   stay small; `DirectoryTable` itself has no minimum-scale requirement,
- *   see that component's own docstring), plus a Modal-based "Exclude a
- *   project" flow requiring a mandatory reason — mirroring `EvidencePanel.
- *   tsx`'s `RevalidateModal`'s own "reason textarea, Cancel/Confirm, no
- *   ConfirmDialog" shape for a *justification*-carrying action (not a
- *   plain irreversible-delete, which is what `ConfirmDialog`/its two
- *   confirmation tiers are for).
+ * The "applies to all projects by default, except..." UI, Compliance-Manager-only, rendered in `StandardWorkspacePage.tsx`'s
+ * Overview section. It is the secondary, org-wide-mandate surface: a project normally acquires a standard through
+ * `ProjectCompliancePage.tsx`'s "Assign standard" flow (`createProjectComplianceAsProjectManager`, available to a plain Project
+ * Manager), which this panel does not affect.
+ * - A `ToggleSwitch` for `ComplianceStandard.applicability_default`, the control `MappingTypesPanel.tsx` uses for
+ *   `implies_equivalence` (one component per pattern).
+ * - An excluded-projects `DirectoryTable` (small caller-owned rows, with no search or pagination because an exclusion list stays
+ *   small), plus a Modal "Exclude a project" flow requiring a reason, in the shape of `EvidencePanel.tsx`'s `RevalidateModal`
+ *   (reason textarea, Cancel and Confirm) for a justification-carrying action, not the `ConfirmDialog` tiers of an irreversible delete.
  */
 import { useState } from "react";
 
@@ -44,6 +29,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useTableSort } from "../../hooks/useTableSort";
 import { useStrings } from "../../context/TerminologyContext";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 const NO_EXCLUSIONS: ComplianceStandardDefaultExclusion[] = [];
 
@@ -116,7 +102,7 @@ export function StandardApplicabilityPanel({
 
   const columns: DirectoryColumn<ComplianceStandardDefaultExclusion>[] = [
     { key: "project", label: "Project", sortable: true, render: (row) => projectName(row.project_id) },
-    { key: "reason", label: "Reason", sortable: true, render: (row) => row.reason },
+    { key: "reason", label: "Reason", sortable: true, render: (row) => markdownPlainText(row.reason) },
     { key: "excluded_by", label: "Excluded by", sortable: true, render: (row) => userDisplayName(orgUsers, row.excluded_by) },
     {
       key: "actions",
@@ -213,7 +199,7 @@ function ExcludeProjectModal({
             placeholder="Select a project…"
           />
         )}
-        <TextAreaField helpNotNeeded required label="Reason" value={reason} onChange={setReason} rows={2} />
+        <TextAreaField markdown="simple" helpNotNeeded required label="Reason" value={reason} onChange={setReason} />
         <FormActions
           onCancel={onCancel}
           onSave={() => onSave({ project_id: projectId, reason })}

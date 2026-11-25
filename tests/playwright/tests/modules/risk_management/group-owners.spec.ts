@@ -7,11 +7,9 @@ import { API_BASE_URL, createRisk, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: users and groups on parity, Risk Management's owner
- * — a Risk can be owned by an
- * organisation group or a project group, the register and the Risk page name a
- * group owner with its kind, and deleting a group that still owns a Risk lets
- * the admin hand it to someone else.
+ * Job to be done: users and groups on parity for Risk Management's owner. A Risk can be owned by an
+ * organisation group or a project group, the register and the Risk page name a group owner with its kind, and
+ * deleting a group that still owns a Risk lets the admin hand it to someone else.
  *
  * Disposable org, admin and project via `setUpOrg` (Risk Management switched
  * on); the groups and one Risk are created through the API, the owner choice
@@ -39,7 +37,7 @@ test.describe("Risk Management: groups as owners", () => {
     await dialog.getByRole("option", { name: new RegExp(boardName) }).click();
     await expect(dialog.getByText(/^Organisation group/)).toBeVisible();
     await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Risk created.")).toBeVisible();
+    await expect(page.getByText(/Risk( \S+-\d+)? created\./)).toBeVisible();
 
     // --- The register names each group with its kind, rather than a person's name.
     const boardRow = page.locator("tr", { hasText: title });

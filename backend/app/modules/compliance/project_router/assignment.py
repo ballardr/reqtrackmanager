@@ -90,25 +90,14 @@ def create_project_compliance_self_service(
     project_id: UUID, payload: ProjectComplianceCreate,
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
 ):
-    """The **default, primary** way a project acquires a standard:
-    a `compliance_officer` grant or `ProjectRole.PROJECT_MANAGER` (this
-    router's own established `_require_officer` composition, unchanged) may
-    assign any `PUBLISHED` version of any non-archived standard in their
-    project's own organisation, without needing a Compliance Manager to act
-    on their behalf first. Payload/response shape is identical to the org
-    router's own `create_project_compliance` — the two endpoints differ only in *who* may call them and
-    *which router* they live on, matching this repo's existing "assignment
-    lives wherever the RBAC boundary for that action already lives" split
-    (`project_router.py`'s own module docstring).
+    """The primary way a project acquires a standard: a `compliance_officer` or `ProjectRole.PROJECT_MANAGER` may assign
+    any `PUBLISHED` version of any non-archived standard of the project's organisation without a Compliance Manager.
+    Payload and response match the organisation router's `create_project_compliance`; the endpoints differ in who may
+    call them.
 
-    A Project Manager may **not** use this endpoint to change a standard's
-    own `applicability_default`/exclusion-list setting (§3) — that stays
-    Compliance-Manager/org-admin territory on `router.py`. This endpoint
-    only ever creates a `ProjectCompliance` row for *this* project, the
-    exact same boundary already drawn between "who curates the
-    org-wide catalogue" and "who runs day-to-day assessment" — making PM-
-    initiated assignment the default path shifts *which project links
-    exist*, not *who governs the standard itself*."""
+    A Project Manager cannot use it to change a standard's `applicability_default` or exclusion list (§3), which stay
+    Compliance Manager and organisation admin territory in `router`: it only creates a `ProjectCompliance` for this
+    project, so it changes which projects link to a standard, not who governs the standard."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
@@ -169,39 +158,19 @@ def migrate_project_compliance_version(
     project_id: UUID, project_compliance_id: UUID, payload: ProjectComplianceMigrationRequest,
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
 ):
-    """§27's explicit, user-triggered version-migration action — adopts a
-    newer, published version of the standard this assignment already
-    tracks. Gated the same as every other mutating endpoint on this router
-    (`compliance_officer` or `PROJECT_MANAGER`), *not* `compliance_manager`
-    like the org router's own initial-assignment endpoint
-    (`router.py::create_project_compliance`) — a deliberate distinction:
-    choosing *which standard* a project tracks is a Compliance Manager
-    decision (§26), but rolling an *already-tracked* standard forward to a
-    newer version is project-level maintenance of an existing assignment,
-    the same class of action as everything else this router already gates
-    at the officer/PROJECT_MANAGER level.
+    """§27's user-triggered version migration: adopts a newer published version of the standard this assignment tracks.
+    Gated like every mutating endpoint here (`compliance_officer` or `PROJECT_MANAGER`), not `compliance_manager` as the
+    initial assignment is: choosing which standard a project tracks is a Compliance Manager decision (§26), rolling an
+    already-tracked standard forward is project-level maintenance.
 
-    Never mutates the existing assignment's own `standard_version_id`
-    (§27's "Existing Project Compliance assignments must remain associated
-    with their original version" — the pinned-forever design) —
-    creates a new `ProjectCompliance` row instead (`service.migrate_
-    project_compliance`) and archives the old one here, so the old row's
-    own `ProjectComplianceRequirement` history is retained completely
-    untouched. See that function's own docstring for exactly which
-    requirements' assessments are carried forward vs. left to reassess,
-    and why.
+    The existing assignment's `standard_version_id` never changes (§27: existing assignments stay associated with their
+    original version): `service.migrate_project_compliance` creates a new `ProjectCompliance` (see it for which
+    assessments are carried forward) and this endpoint archives the old one, keeping its history untouched.
 
-    `payload.confirmed_replacement_requirement_ids` is the officer's own
-    per-migration opt-in to carry an assessment forward across a
-    `replaced` version-diff pair (§27; `models.py`'s cross-standard mapping design decisions on
-    `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`).
-    Validated against a freshly computed diff *before* calling `service.
-    migrate_project_compliance` — every id must name a new-version
-    requirement that is actually part of this migration's `replaced` set
-    *and* whose mapping's relationship type has `implies_equivalence=True`,
-    or this 400s outright rather than silently ignoring a stale/invalid
-    confirmation (this module's usual "never silent" convention, applied
-    here to a client-supplied id list rather than a single path parameter)."""
+    `payload.confirmed_replacement_requirement_ids` is the officer's per-migration opt-in to carry an assessment forward
+    across a `replaced` pair (§27). It is validated against a fresh diff before migrating: every id must name a
+    new-version requirement in this migration's `replaced` set whose mapping's relationship type has
+    `implies_equivalence=True`, or the request fails with 400 rather than ignoring a stale confirmation."""
     old_project_compliance = _get_project_compliance_or_404(db, project_id, project_compliance_id)
     if old_project_compliance.is_archived:
         raise HTTPException(
@@ -387,23 +356,14 @@ def get_project_compliance_report(
     requirement_id: UUID | None = Query(None),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Generates this project's compliance report in `format` — PDF, Word, OpenDocument
-    text, HTML, CSV, Excel or OpenDocument spreadsheet (§29) — merged from two separate `/reports/pdf`/`/reports/csv` GETs on
-    2026-09-22 (see docs/decisions.md) since they only differed in output
-    format, not the data collected. PDF: every requirement's assessment
-    across its assigned standards, plus evidence/review/cross-standard-
-    mapping appendices. CSV: a flat export, one row per requirement per
-    assigned standard. View-gated like every other read endpoint on this
-    router (§26: "Other Project Users: Read access according to existing
-    project permissions") — a report never surfaces anything this same
-    caller couldn't already read via the JSON endpoints it's built from
-    (see `app.modules.compliance.reports`'s own module docstring).
+    """Generates this project's compliance report in `format` (PDF, Word, OpenDocument text, HTML, CSV, Excel or
+    OpenDocument spreadsheet; §29). The PDF has every requirement's assessment across the assigned standards plus
+    evidence, review and cross-standard-mapping appendices; the CSV is a flat export, one row per requirement per
+    assigned standard. View-gated like every read here (§26): a report discloses nothing the caller cannot read through
+    the JSON endpoints (see `app.modules.compliance.reports`).
 
-    `standard_id`/`standard_version_id`/`requirement_id` are
-    optional scoping filters — see `collect_project_compliance_report`'s own
-    docstring — passed by `OutstandingPanel.tsx`'s Export trigger to match
-    whatever that panel's own Standard/Standard version/Sub-section filters
-    currently show."""
+    `standard_id`, `standard_version_id` and `requirement_id` are optional scoping filters (see
+    `collect_project_compliance_report`) passed by `OutstandingPanel.tsx`'s Export trigger."""
     project = project_or_404(db, project_id)
     data = collect_project_compliance_report(
         db, project, include_archived=include_archived,

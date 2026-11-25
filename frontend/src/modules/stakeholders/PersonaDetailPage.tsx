@@ -1,35 +1,26 @@
 /**
  * Module: modules/stakeholders/PersonaDetailPage
  *
- * A single Persona's detail: fields, lifecycle, owner/champion, version
- * history, attachments, comments, and — on the project route — this project's
- * weight override. One scope-aware component serving three routes
- * (`module.ts`): a project persona and an org persona opened *from a
- * project* (both `/projects/:projectId/...`), and an org persona opened from
- * the org dashboard (`/orgs/:organizationId/...`).
+ * A single Persona's detail: fields, lifecycle, owner and champion, versions, attachments, comments and, on the project
+ * route, this project's weight override. One scope-aware component serves three routes (`module.ts`): a project
+ * persona and an organisation persona opened from a project (both `/projects/:projectId/...`), and an organisation
+ * persona opened from the organisation dashboard (`/orgs/:organizationId/...`).
  *
- * An org persona viewed inside a project is read-only here apart from the
- * weight override, its per-project visibility and comments (the project API
- * can't mutate the record itself); a link leads to the org route where the
- * owner role can edit it. Hiding it from the project (`RecordVisibilityControl`)
- * returns to the list, since a hidden persona is no longer reachable from the
- * project.
+ * An organisation persona viewed inside a project is read-only apart from the weight override, its per-project
+ * visibility and comments (the project API cannot mutate the record); a link leads to the organisation route where the
+ * owner role can edit it. Hiding it from the project (`RecordVisibilityControl`) returns to the list, since a hidden
+ * persona is not reachable from the project.
  *
- * Weight: the project route shows the *effective* weight with an
- * `OverridePill` naming the tier it came from ("Set on this project" /
- * "Inherited from parent project" / …) and a one-click "Use inherited value"
- * way back (docs/ux-style-guide.md principle 2 and "Pattern: scoring and
- * inherited settings"); the org route shows only the persona's own weight.
+ * Weight: the project route shows the effective weight with an `OverridePill` naming its tier ("Set on this project" /
+ * "Inherited from parent project" / ...) and a one-click "Use inherited value" (docs/ux-style-guide.md principle 2 and
+ * "Pattern: scoring and inherited settings"); the organisation route shows only the persona's own weight.
  *
- * Personas have no approval gate, so lifecycle is Activate / Retire /
- * Reactivate, each behind a tier-1 `ConfirmDialog` with an optional comment
- * (`RecordLifecycleControls`). Every mutating control always renders
- * regardless of role; the backend enforces `persona_owner`/
- * `org_persona_owner` and a 403 surfaces as a toast. Owner and champion use
- * `RecordPrincipalField` (a user or a group; a project group only on a project persona); assigning sends a partial update carrying only that
- * field. Attachments and comments are `RecordDiscussion`, version history is
- * `VersionHistoryTable`, and the Stakeholders that represent this persona are
- * `RepresentedByPanel`.
+ * Personas have no approval gate, so lifecycle is Activate / Retire / Reactivate, each behind a tier-1 `ConfirmDialog`
+ * with an optional comment (`useLifecycleTransition`). Mutating controls always render whatever the role; the backend
+ * enforces `persona_owner` / `org_persona_owner` and a 403 surfaces as a toast. Owner and champion use
+ * `RecordPrincipalField` (a user or a group; a project group only on a project persona) and assigning sends a partial
+ * update with only that field. Attachments and comments are `RecordDiscussion`, versions are `VersionHistoryTable` and
+ * the Stakeholders representing this persona are `RepresentedByPanel`.
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -54,15 +45,17 @@ import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTabl
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
-import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useLifecycleTransition, type LifecycleAction } from "../../components/useLifecycleTransition";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Persona, PersonaFieldValues, PersonaVersion } from "./types";
-import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA_WEIGHT_SOURCE_LABEL } from "./types";
+import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_DESCRIPTION, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA_WEIGHT_SOURCE_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
 import { STAKEHOLDERS_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_PERSONAS_SECTION_KEY } from "./orgResourceKeys";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Persona activated.",
@@ -80,8 +73,10 @@ export function PersonaDetailPage() {
   const { showToast } = useToast();
   const scopedApi = projectId ? projectPersonaApi : orgPersonaApi;
   const scopeId = projectId ?? organizationId;
-  const backLink = projectId ? `/projects/${projectId}/modules/stakeholders/people?kind=persona` : "/org-overview";
-  const backLabel = projectId ? "People" : "Organisation overview";
+  const backLink = projectId
+    ? `/projects/${projectId}/modules/stakeholders/people?kind=persona`
+    : organizationId ? orgResourcesPath(organizationId, ORG_PERSONAS_SECTION_KEY) : "/org-resources";
+  const backLabel = projectId ? "People" : "Personas";
 
   const [persona, setPersona] = useState<Persona | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -191,6 +186,20 @@ export function PersonaDetailPage() {
     },
   });
 
+  const { lifecycle, menuRows, dialog: lifecycleDialog } = useLifecycleTransition({
+    noun: "Persona",
+    status: persona?.status ?? "draft",
+    labels: PERSONA_STATUS_LABEL,
+    descriptions: PERSONA_STATUS_DESCRIPTION,
+    hidden: !persona || readOnlyInProject,
+    activateBody: "An Active persona is offered as a target when scoring. A comment is optional.",
+    retireBody: "A Retired persona is no longer offered when scoring, but keeps its history and can be reactivated. A comment is optional.",
+    onTransition: async (action, comment) => {
+      if (!scopeId || !persona) return;
+      await run(() => scopedApi[action](scopeId, persona.id, comment), TRANSITION_DONE[action]);
+    },
+  });
+
   const codeOwner = useRecordOwnerCode(persona ?? {});
   if (!scopeId || !personaId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -229,22 +238,12 @@ export function PersonaDetailPage() {
         version={persona.version_number}
         subtitle={[persona.persona_type_name, persona.role_title].filter(Boolean).join(" · ") || "No type or role set"}
         onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={
-          readOnlyInProject ? undefined : (
-            <RecordLifecycleControls
-              noun="Persona"
-              status={persona.status}
-              activateBody="An Active persona is offered as a target when scoring. A comment is optional."
-              retireBody="A Retired persona is no longer offered when scoring, but keeps its history and can be reactivated. A comment is optional."
-              onTransition={(action, comment) => run(() => scopedApi[action](scopeId, persona.id, comment), TRANSITION_DONE[action])}
-            />
-          )
-        }
+        actions={[...menuRows, archive.item]}
+        lifecycle={lifecycle}
       />
       {archive.dialog}
+      {lifecycleDialog}
 
-      <div className="stack">
         {readOnlyInProject && (
           <p className="text-muted" style={{ margin: 0 }}>
             This is an organisation-wide Persona shared by every project. Edit it from the{" "}
@@ -261,14 +260,14 @@ export function PersonaDetailPage() {
         )}
 
         <DetailCard>
-          {persona.description && <RecordField label="Description" value={persona.description} />}
-          {persona.goals && <RecordField label="Goals" value={persona.goals} />}
-          {persona.needs && <RecordField label="Needs" value={persona.needs} />}
-          {persona.behaviours && <RecordField label="Behaviours" value={persona.behaviours} />}
-          {persona.context_environment && <RecordField label="Context / environment" value={persona.context_environment} />}
-          {persona.skills_proficiency && <RecordField label="Skills / proficiency" value={persona.skills_proficiency} />}
-          {persona.frequency_of_use && <RecordField label="Frequency of use" value={persona.frequency_of_use} />}
-          {persona.constraints && <RecordField label="Constraints" value={persona.constraints} />}
+          {persona.description && <RecordField markdown label="Description" value={persona.description} />}
+          {persona.goals && <RecordField markdown label="Goals" value={persona.goals} />}
+          {persona.needs && <RecordField markdown label="Needs" value={persona.needs} />}
+          {persona.behaviours && <RecordField markdown label="Behaviours" value={persona.behaviours} />}
+          {persona.context_environment && <RecordField markdown label="Context / environment" value={persona.context_environment} />}
+          {persona.skills_proficiency && <RecordField markdown label="Skills / proficiency" value={persona.skills_proficiency} />}
+          {persona.frequency_of_use && <RecordField markdown label="Frequency of use" value={persona.frequency_of_use} />}
+          {persona.constraints && <RecordField markdown label="Constraints" value={persona.constraints} />}
 
           <RecordFieldGroup help={STAKEHOLDERS_HELP.personaImportanceWeight} label="Importance weight" gap="0.35rem">
             {projectId ? (
@@ -336,6 +335,7 @@ export function PersonaDetailPage() {
 
           <RepresentationPanel
             heading="Represented by"
+            kind="stakeholder"
             emptyText="No Stakeholder represents this Persona yet."
             load={() => scopedApi.listStakeholders(scopeId, persona.id)}
             linkFor={(stakeholder) => `${projectId ? "/projects" : "/orgs"}/${scopeId}/modules/stakeholders/stakeholders/${stakeholder.id}`}
@@ -369,7 +369,6 @@ export function PersonaDetailPage() {
           attachmentsReadOnly={readOnlyInProject}
           attachmentsHint="Attachments to an organisation Persona are managed from the organisation view."
         />
-      </div>
 
       {editing && (
         <PersonaFormModal

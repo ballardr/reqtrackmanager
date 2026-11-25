@@ -38,144 +38,80 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             template when creating a new project in this organisation
             (C-E-04). Uses `use_alter` for the same reason (`projects`
             references `organizations`).
-        smtp_*: Per-organisation SMTP override for outgoing notification
-            email. Storage-only: like `AuthBackend` (C-U-06/07), this is a
-            seam for a future per-org mail relay, not itself wired into
-            `services/email.py`, which still sends through the
-            deployment-wide SMTP_HOST configured in `config.py`. Documented
-            in docs/decisions.md rather than silently half-built.
-            `smtp_password` is encrypted at rest at the application layer
-            (`EncryptedString`, SOC 2 hardening pass) — same treatment as
-            `oidc_client_secret`, since it's a genuine credential even
-            though the feature it belongs to isn't wired in yet.
+        smtp_*: Per-organisation SMTP override for outgoing notification email. Storage-only: like
+            `AuthBackend` (C-U-06/07), a seam for a per-org mail relay that `services/email.py` does not
+            use; it sends through the deployment-wide SMTP_HOST in `config.py` (docs/decisions.md).
+            `smtp_password` is encrypted at rest (`EncryptedString`), as `oidc_client_secret`, because it
+            is a credential.
         slug: URL-safe identifier used to resolve this organisation's
             branded login page at `/login/{slug}` (E-P-03).
         sso_enabled / sso_only: Whether this organisation's login page offers
             an OIDC "Sign in with SSO" button, and whether the native
             email/password form is hidden entirely when it does.
-        oidc_issuer_url / oidc_client_id / oidc_client_secret: Per-org OIDC
-            provider configuration. `oidc_client_secret` is encrypted at
-            rest at the application layer (`EncryptedString`, SOC 2
-            hardening pass) — previously plaintext, see
-            docs/enterprise-integration.md's history of that follow-up.
+        oidc_issuer_url / oidc_client_id / oidc_client_secret: Per-org OIDC provider configuration.
+            `oidc_client_secret` is encrypted at rest (`EncryptedString`).
         login_background_file_id: Optional uploaded background image for
             this organisation's login page (E-P-03), same upload pattern as
             `logo_file_id`.
-        oidc_required_group: Optional access gate, distinct from
-            `OrgGroup.granted_org_role`. When set, a successfully-
-            authenticated SSO user whose IdP `groups`/`roles` claim doesn't
-            contain this exact value is refused a session entirely
-            (`oidc_provisioning.meets_required_group`) — "in the org" and
-            "let in at all" are deliberately separate checks, so an admin
-            can gate access to a specific provisioning group without that
-            group needing to also be a role-granting one.
-        pat_max_lifetime_days: Optional cap, set by this org's own admin, on
-            how long a Personal Access Token scoped to this org may live.
-            `None` means "use the deployment-wide default"
-            (`settings.pat_default_max_lifetime_days`). Enforced dynamically
-            at PAT auth time, not just at creation — see
-            `models.pat.PersonalAccessToken`'s docstring.
+        oidc_required_group: Optional access gate, distinct from `OrgGroup.granted_org_role`. When set, an
+            authenticated SSO user whose IdP `groups`/`roles` claim lacks this exact value is refused a
+            session (`oidc_provisioning.meets_required_group`). Access gating and role granting are separate
+            checks, so the gating group need not grant a role.
+        pat_max_lifetime_days: Optional cap, set by this org's admin, on the lifetime of a Personal Access
+            Token scoped to this org. `None` uses `settings.pat_default_max_lifetime_days`. Enforced at PAT
+            authentication, not only at creation (see `models.pat.PersonalAccessToken`).
         file_uploads_enabled / storage_quota_bytes / storage_warned: The operator's storage rules for this tenant
             (see the column comment below).
-        is_active: Whether this organisation's content is currently
-            reachable at all (e.g. suspended for non-payment). Reversible,
-            unlike deletion: no data is touched, just gated. Deliberately
-            stronger than any per-user role — while disabled, even this
-            org's own admins are locked out of every org/project-scoped
-            request (`services/rbac.py`'s `_require_org_active`), not just
-            ordinary members. Only a server admin can toggle it
-            (`POST /orgs/{id}/disable` / `/enable`), and toggling doesn't
-            itself require org membership (I-M-05's tenancy-management
-            carve-out) — a suspended org's own admin, by definition, is
-            exactly the caller this needs to work without.
-        disabled_at / disabled_by: Set when `is_active` transitions to
-            False, mirroring the `Project.archived_at`/`archived_by`
-            pattern; cleared on re-enable.
-        accent_color_hex: Optional per-org override of the app's UI accent
-            colour (nav highlight, primary buttons, links). `None` means
-            "use the platform default" (`ServerSettings.accent_color_hex`).
-            Applied identically in light and dark theme — one colour, not
-            two — with contrast text computed automatically rather than
-            also being admin-picked (`services/branding.py::contrast_text`).
-        header_title: Optional per-org override of the app-shell wordmark
-            text shown next to the logo. `None` falls back to the built-in
-            product name. Whether an org's branding (this + `logo_file_id`)
-            actually renders on a given page depends on whether that page
-            is scoped to this specific org — see
-            `frontend/src/hooks/useBranding.ts` for the resolution rules.
-        require_2fa: When set, every org/project-scoped request against this
-            organisation from a user without `User.is_2fa_enabled` is
-            blocked (`services/rbac.py::_require_org_2fa`), mirroring
-            `is_active`'s "even this org's own admins" bluntness — with one
-            deliberate difference: unlike a disabled org, the way out is
-            self-service. `/auth/2fa/enroll`/`confirm` aren't org-scoped, so
-            a blocked user can still enroll and immediately regain access,
-            without needing an admin to intervene.
-        allow_self_signup: Whether this org is one of the organisations a
-            public signup under `ServerSettings.signup_mode ==
-            ORG_SPECIFIED` can join, via a domain match against
-            `auto_accept_email_domain` (`routers/auth.py::signup`).
-            Deliberately mutually exclusive with `sso_only` — validated in
-            `update_advanced_settings` — since self-signup is anonymous and
-            un-gated by an admin, unlike every other native-account-creation
-            path (`create_org_user`, an admin-sent invite), so it must never
-            be allowed to hand out a native password credential to an org
-            whose members are supposed to authenticate via SSO only.
-        auto_accept_email_domain: The single email domain (e.g. "acme.com")
-            this org auto-accepts. Serves two independent consumers: (1)
-            `ORG_SPECIFIED`-mode self-signup above, and (2) the domain check
-            for `external_user_policy == ORG_DOMAIN_ONLY` below — one field,
-            documented as doing double duty rather than two separate
-            near-identical settings.
-        external_user_policy: Governs whether/how a project admin may add
-            someone to a project by email who isn't already an org member
-            (`ExternalUserPolicy`; see its docstring in `models/enums.py`).
-            Defaults to DISABLED — an org must opt in to external users.
-        allow_relaxed_child_project_creation: Whether a user who manages a
-            project (but holds no org-level `ORG_ADMIN`/`PROJECT_CREATOR`
-            role) may create a child project under it
-            (`routers.projects.create_project`'s relaxed authorization
-            path — see `Project.parent_required`). Defaults to `True`,
-            matching the workflow a project's own "Add sub-project" entry
-            point is meant to support; an org admin who wants the stricter
-            "all project creation needs `ORG_ADMIN`/`PROJECT_CREATOR`"
-            behaviour, including for children, can turn this off.
-        email_footer_company_name / email_footer_website /
-            email_footer_address: Optional per-org override of the
-            outgoing HTML email footer's legal/company identity (name,
-            website, postal address). `None` for any of the three falls
-            back to that same field on `ServerSettings` independently —
-            identical "org overrides, null means use the platform default"
-            semantics to `accent_color_hex`/`header_title` above, resolved
-            by `services/email_branding.py::resolve_email_branding`.
-        force_require_change_request_for_approved_links: Platform review
-            2026-09. When set, every project in this organisation
-            behaves as though its own
-            `Project.require_change_request_for_approved_links` were true
-            — adding/removing a traceability link on an already-approved
-            requirement requires a change request — *except* a project
-            individually marked `Project.exempt_from_org_link_lock`, the
-            one narrow, per-project escape hatch from this org-wide policy.
-            See `services.requirements.requires_change_request_for_links`
-            for the full resolution and `Project.
-            require_change_request_for_approved_links`'s own docstring for
-            the project-level half of this feature. Defaults to `False`,
-            matching this org model's existing `allow_relaxed_child_
-            project_creation`-style precedent for an opt-in, non-retroactive
-            policy toggle. Readable by any member of this organisation (on
-            `OrganizationOut`, not gated behind `OrgAdvancedSettingsOut`
-            like most other org policy toggles) since a project manager who
-            isn't an org admin still needs to know whether this force is
-            active in order to render their own project's settings
-            correctly — see docs/decisions.md.
-        project_customisation_locks: Keys (from `services.link_types.
-            PROJECT_CUSTOMISATION_LOCK_KEYS`, initially just `"link_types"`)
-            of the vocabularies projects may *not* customise in this
-            organisation, so every project sees the org's own set. Empty
-            (the default) means projects may customise everything. A list of
-            keys rather than a boolean per vocabulary so a later vocabulary
-            needs no new column; locking hides project-level rows, never
-            deletes them.
+        is_active: Whether this organisation's content is reachable at all (for example suspended for
+            non-payment). Reversible, unlike deletion: no data is touched. Stronger than any per-user
+            role: while disabled, even the org's admins are locked out of every org/project-scoped request
+            (`services/rbac.py`'s `_require_org_active`). Only a server admin toggles it
+            (`POST /orgs/{id}/disable` / `/enable`), without needing org membership (I-M-05's
+            tenancy-management carve-out), since a suspended org's admin is the caller that must not be
+            required.
+        disabled_at / disabled_by: Set when `is_active` becomes False, as `Project.archived_at`/`archived_by`;
+            cleared on re-enable.
+        accent_color_hex: Optional per-org override of the UI accent colour (nav highlight, primary buttons,
+            links); `None` uses `ServerSettings.accent_color_hex`. One colour for light and dark theme, with
+            contrast text computed (`services/branding.py::contrast_text`).
+        header_title: Optional per-org override of the app-shell wordmark next to the logo; `None` uses the
+            product name. Whether this and `logo_file_id` render on a page depends on whether the page is
+            scoped to this org (see `frontend/src/hooks/useBranding.ts`).
+        require_2fa: When set, every org/project-scoped request against this organisation from a user
+            without `User.is_2fa_enabled` is blocked (`services/rbac.py::_require_org_2fa`), including the
+            org's admins. Unlike a disabled org the way out is self-service: `/auth/2fa/enroll`/`confirm` are
+            not org-scoped, so a blocked user can enrol and regain access.
+        allow_self_signup: Whether this org is one that public signup under `ServerSettings.signup_mode ==
+            ORG_SPECIFIED` can join, by domain match against `auto_accept_email_domain`
+            (`routers/auth.py::signup`). Mutually exclusive with `sso_only` (validated in
+            `update_advanced_settings`): self-signup is anonymous and not gated by an admin, so it must not
+            hand a native password credential to an org whose members authenticate by SSO only.
+        auto_accept_email_domain: The single email domain (for example "acme.com") this org auto-accepts,
+            used by `ORG_SPECIFIED` self-signup and by the domain check for
+            `external_user_policy == ORG_DOMAIN_ONLY`.
+        external_user_policy: Whether and how a project admin may add someone by email who is not already
+            an org member (`ExternalUserPolicy`, `models/enums.py`). Default DISABLED.
+        allow_relaxed_child_project_creation: Whether a user who manages a project (without org-level
+            `ORG_ADMIN`/`PROJECT_CREATOR`) may create a child project under it
+            (`routers.projects.create_project`'s relaxed path; see `Project.parent_required`). Default
+            `True`, as the "Add sub-project" entry point expects; an org admin can turn it off to require
+            `ORG_ADMIN`/`PROJECT_CREATOR` for children too.
+        email_footer_company_name / email_footer_website / email_footer_address: Optional per-org override of
+            the HTML email footer's company identity. `None` for any falls back to the same `ServerSettings`
+            field independently (as `accent_color_hex`/`header_title`), resolved by
+            `services/email_branding.py::resolve_email_branding`.
+        force_require_change_request_for_approved_links: When set, every project in the organisation behaves
+            as though its `Project.require_change_request_for_approved_links` were true (adding or removing
+            a traceability link on an approved requirement needs a change request), except a project marked
+            `Project.exempt_from_org_link_lock`. See `services.requirements.requires_change_request_for_links`
+            and `Project.require_change_request_for_approved_links`. Default `False`, an opt-in
+            non-retroactive toggle like `allow_relaxed_child_project_creation`. Readable by any member (on
+            `OrganizationOut`, not `OrgAdvancedSettingsOut`) because a project manager who is not an org
+            admin needs it to render the project's settings (docs/decisions.md).
+        project_customisation_locks: Keys (from `services.link_types.PROJECT_CUSTOMISATION_LOCK_KEYS`,
+            currently `"link_types"`) of the vocabularies projects may not customise, so every project sees
+            the org's own set. Empty (default) means projects may customise everything. A key list rather
+            than a column per vocabulary; locking hides project-level rows and never deletes them.
         code: Short upper-case code (letters and digits, no hyphen) that qualifies
             organisation-scoped record codes (`ACME-PER-001`). Never equal to a
             project code in this organisation. Defaults to the name's initials.
@@ -187,6 +123,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             code even inside its own project, overriding each user's preference.
         tag_mode: `"free"` or `"restricted"`: whether organisation-owned records may take a tag
             nobody listed in the organisation's tag vocabulary.
+        requirement_aliases: `"allowed"` or `"disabled"`: whether a requirement may be placed in further components
+            (`services.requirement_aliases`); a project may override it.
         nav_label_overrides: The organisation's default navigation names by stable navigation key
             (`services.nav_labels`); a project's own or inherited name takes precedence.
         overview_widgets: The organisation's default project overview layout (`services.overview_widgets`); SQL NULL
@@ -206,6 +144,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     )
     enforce_code_everywhere: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     tag_mode: Mapped[str] = mapped_column(String(12), default="free", server_default=text("'free'"))
+    requirement_aliases: Mapped[str] = mapped_column(String(10), default="allowed", server_default=text("'allowed'"))
     nav_label_overrides: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     overview_widgets: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -245,14 +184,10 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     oidc_client_secret: Mapped[str | None] = mapped_column(EncryptedString(1000), nullable=True)
     oidc_required_group: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    # SCIM 2.0 inbound provisioning (routers/scim.py) — a per-org bearer
-    # token, hashed the same way as a Personal Access Token (security.hash_pat;
-    # a fast SHA-256 lookup hash is appropriate here for the same reason it
-    # is for PATs — the secret itself is already high-entropy random, not a
-    # human password). `scim_token_prefix` is safe to display in plaintext
-    # (mirrors PersonalAccessToken.token_prefix) so an admin can confirm
-    # which token is configured without re-exposing the secret. SCIM is
-    # considered enabled for this org whenever `scim_token_hash` is set.
+    # SCIM 2.0 inbound provisioning (routers/scim.py): a per-org bearer token hashed as a Personal Access
+    # Token is (security.hash_pat; a fast SHA-256 lookup hash suits a high-entropy random secret).
+    # `scim_token_prefix` is displayable, as PersonalAccessToken.token_prefix, so an admin can identify the
+    # configured token. SCIM is enabled whenever `scim_token_hash` is set.
     scim_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     scim_token_prefix: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
@@ -301,109 +236,69 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
 
     force_require_change_request_for_approved_links: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Whether an AI assistant acting through the MCP server (mcp-server/) may
-    # perform an approval-type action (approve a requirement, decide a
-    # change request, complete a requirement) in this organisation's
-    # projects. Consulted only for MCP-originated calls (see
-    # app.deps.get_request_channel) — a plain UI/API call is never affected
-    # by this flag. Both this AND the project's own `allow_ai_approvals`
-    # must be true (see Project.allow_ai_approvals); there is no org-wide
-    # "force" the way link-change-request policy has, since this is a
-    # narrowing gate, not a policy every project should inherit by default.
-    # Off by default: enabling it requires an org admin to explicitly
-    # acknowledge (in the UI) that an AI-made approval is not necessarily a
-    # deliberate, in-the-moment human decision. See docs/decisions.md's "AI
-    # approval via MCP" entry.
+    # Whether an AI assistant acting through the MCP server (mcp-server/) may perform an approval-type
+    # action (approve a requirement, decide a change request, complete a requirement) in this organisation's
+    # projects. Consulted only for MCP-originated calls (`app.deps.get_request_channel`). It and the
+    # project's `allow_ai_approvals` must both be true; there is no org-wide force, as this is a narrowing
+    # gate. Off by default: enabling needs an org admin to acknowledge that an AI-made approval is not
+    # necessarily a deliberate human decision (docs/decisions.md, "AI approval via MCP").
     allow_ai_approvals: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Whether this organisation's identity provider may create a new account for an address nobody has registered. Off
-    # keeps sign-in to accounts that already exist (an invitation, SCIM or an administrator creates them first), so a
-    # tenant's provider cannot take an address another person would have registered. On by default: no change on upgrade.
+    # Whether this organisation's identity provider may create an account for an unregistered address. Off
+    # keeps sign-in to existing accounts (created by an invitation, SCIM or an administrator), so a tenant's
+    # provider cannot take an address another person would have registered. On by default.
     oidc_allow_account_creation: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
-    # Whether a project bundle imported into this organisation may keep the approval state it carries (approved,
-    # decided or voted records). On by default so a restore or a move reproduces the project; off returns every
-    # imported record to a fresh draft (`services.bundle_approval_state`). Either way, imported approvers must be
-    # members of this organisation and the import is audited with the number of records that arrived approved.
+    # Whether an imported project bundle keeps the approval state it carries (approved, decided or voted
+    # records). On by default so a restore or move reproduces the project; off returns every imported record
+    # to a draft (`services.bundle_approval_state`). Either way, imported approvers must be members of this
+    # organisation and the import is audited with the count of records that arrived approved.
     allow_imported_approval_state: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
-    # Whether the organisation's own policies may contain links (`services.org_policies`). Off by default: the page is
-    # members-only, so the phishing concern of an organisation message does not apply, but a link on a page every
-    # member trusts is still a choice the organisation makes.
+    # Whether the organisation's own policies may contain links (`services.org_policies`). Off by default: a
+    # link on a page every member trusts is a choice the organisation makes.
     allow_policy_links: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
-    # Storage rules the platform operator sets for this tenant (`services.storage_usage`, `services.files`). They are the
-    # operator's policy, not the organisation's content, so they are not in the organisation bundle.
-    # `file_uploads_enabled` off stops new files for this organisation only; `storage_quota_bytes` null means "use the
-    # server default limit" (itself null for no limit); `storage_warned` records that the 90% notice was sent for the
-    # current crossing, so it is sent once and again only after usage has fallen below the threshold.
+    # Storage rules the platform operator sets for this tenant (`services.storage_usage`, `services.files`);
+    # operator policy, not organisation content, so not in the organisation bundle. `file_uploads_enabled`
+    # off stops new files for this organisation; null `storage_quota_bytes` uses the server default limit
+    # (null for none); `storage_warned` records that the 90% notice was sent for the current crossing, so
+    # it is sent once and again only after usage falls below the threshold.
     file_uploads_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     storage_quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     storage_warned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
 
 class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
-    """Platform-wide defaults for UI branding, lazily created as a single
-    row (`services/branding.py::get_server_settings`) if no row exists yet.
+    """Platform-wide defaults for UI branding, created on demand as a single row
+    (`services/branding.py::get_server_settings`).
 
-    True singleton semantics are enforced at the DB level via
-    `singleton_guard` (added in migration 0020, 2026-08-31
-    — found incidentally during verification, not part of the
-    work then in progress): earlier revisions relied purely on application-level
-    "read then insert if absent" logic with no DB constraint backing it,
-    which is a classic TOCTOU race — two concurrent requests can both
-    observe "no row yet" and both insert, leaving two real rows with
-    independently-mutable, silently-diverging values (confirmed to happen
-    in practice under concurrent load, not just theoretically: found via a
-    live database with two genuinely different `server_settings` rows,
-    which explained several previously-unexplained flaky Playwright
-    failures around `signup_mode` specifically — `db.scalar(select(
-    ServerSettings))`'s "first row" is not deterministic once more than one
-    exists). `singleton_guard` is always `True`, `UNIQUE`, `NOT NULL` — a
-    second `INSERT` racing the first now fails with an `IntegrityError`
-    instead of silently succeeding as a duplicate, which
-    `get_server_settings` catches and re-reads from instead of re-raising.
+    The singleton is enforced in the database through `singleton_guard` (always `True`, `UNIQUE`,
+    `NOT NULL`). Application-level "read then insert if absent" is a TOCTOU race: two concurrent requests
+    can both insert, leaving two rows with diverging values, and `db.scalar(select(ServerSettings))` (no
+    `ORDER BY`) then returns a non-deterministic row. A racing second `INSERT` fails with an
+    `IntegrityError`, which `get_server_settings` catches and re-reads.
 
-    Falls back to for any org that hasn't set its own `accent_color_hex`/
-    `header_title`/logo, and for pages that aren't scoped to a specific
-    organisation at all (see `frontend/src/hooks/useBranding.ts`).
+    It supplies the value for any org that has not set its own `accent_color_hex`/`header_title`/logo, and
+    for pages not scoped to an organisation (see `frontend/src/hooks/useBranding.ts`).
 
     Attributes:
-        accent_color_hex: Platform default UI accent colour. Defaults to a
-            neutral graphite (#475569) rather than a "branded" blue, per an
-            explicit product decision to read as a serious business tool
-            rather than draw attention to the chrome.
-        default_logo_file_id: Optional platform-wide default logo, shown
-            instead of an org's own logo on pages with no resolvable org
-            context. Same upload mechanism as `Organization.logo_file_id`.
-        default_header_title: Optional platform-wide default wordmark text.
-            `None` falls back to the built-in product name, same as an
-            org's own `header_title`.
-        default_login_background_file_id: Optional platform-wide default
-            login-page background image, shown on the plain `/login` page
-            (no single org context to brand it) — same upload pattern as
-            `Organization.login_background_file_id`, which only applies to
-            that org's own branded `/login/{slug}` page.
-        org_label_singular / org_label_plural: Optional deployment-wide
-            override of the word "organisation"/"Organisations" shown
-            throughout the UI (e.g. "Tenant"/"Tenants",
-            "Business Group"/"Business Groups"). `None` for either falls
-            back to the built-in English word — same "null means platform
-            default" convention as `default_header_title`. Deliberately
-            deployment-wide only, unlike `accent_color_hex`/`header_title`:
-            there is no per-organisation override, since the word used to
-            refer to organisations in general isn't a property of any one
-            organisation.
-        signup_mode: Server-wide public self-signup availability
-            (`SignupMode`; see its docstring in `models/enums.py`). Defaults
-            to DISABLED — public signup is opt-in at the deployment level.
-        email_footer_company_name / email_footer_website /
-            email_footer_address: Platform-wide default legal/company
-            identity shown in the outgoing HTML email footer (name,
-            website, postal address) — used whenever an org hasn't set its
-            own `Organization.email_footer_*` override, and always for
-            emails with no single org context (the daily digest, system
-            test email, disk-usage alert — see
-            `services/email_branding.py`). `email_footer_company_name`
-            falls back to the built-in product name if left unset, same as
-            `default_header_title`; the website/address have no built-in
-            fallback and are simply omitted from the footer when unset.
+        accent_color_hex: Platform default UI accent colour, a neutral graphite (#475569) so the product reads
+            as a business tool without a branded colour.
+        default_logo_file_id: Optional platform-wide logo, shown instead of an org's logo on pages with no
+            org context. Same upload mechanism as `Organization.logo_file_id`.
+        default_header_title: Optional platform-wide wordmark text; `None` uses the product name, as an
+            org's `header_title`.
+        default_login_background_file_id: Optional platform-wide background for the plain `/login` page
+            (no org context); `Organization.login_background_file_id` applies only to that org's
+            `/login/{slug}` page.
+        org_label_singular / org_label_plural: Optional deployment-wide override of the word
+            "organisation"/"Organisations" in the UI (for example "Tenant"/"Tenants"); `None` uses the
+            built-in word. Deployment-wide only, because the general word for organisations is not a
+            property of one organisation.
+        signup_mode: Server-wide public self-signup availability (`SignupMode`, `models/enums.py`). Default
+            DISABLED.
+        email_footer_company_name / email_footer_website / email_footer_address: Platform default company
+            identity in the HTML email footer, used when an org has no `Organization.email_footer_*`
+            override and always for emails with no org context (daily digest, system test email, disk-usage
+            alert; see `services/email_branding.py`). `email_footer_company_name` falls back to the product
+            name; the website and address have no fallback and are omitted when unset.
         footer_prefix: Short text shown before the platform company name in the page footer and the email footer
             ("Hosted by", "Managed by"), so a person using the deployment for another organisation is not led to think
             the operator is their own company. Shown only with a platform company name, and in an email only when the
@@ -411,13 +306,9 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
         company_id_label / company_id: The company's registration identifier (label such as "ABN", and the number),
             shown after the address in the page footer and the email footer under the same rule as `footer_prefix`.
             The identifier shows only when it is set; a label without one is ignored.
-        singleton_guard: Always `True` — see class docstring. Not read or
-            written by any application code; its only job is being the
-            target of a `UNIQUE` constraint.
-        default_module_entitlement_policy: Deployment-wide default module
-            entitlement (`ModuleEntitlementPolicy`; see its docstring in
-            `models/enums.py`), used by the entitlement resolution
-            when an organisation has no explicit override row.
+        singleton_guard: Always `True` (see the class docstring); no application code reads or writes it.
+        default_module_entitlement_policy: Deployment-wide default module entitlement
+            (`ModuleEntitlementPolicy`, `models/enums.py`), used when an organisation has no override row.
         file_uploads_enabled: Whether the deployment accepts new user files
             at all (`services/files.py::assert_uploads_allowed`). Off stops
             new files only; existing files stay readable and deletable.
@@ -457,14 +348,10 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     company_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     org_label_singular: Mapped[str | None] = mapped_column(String(50), nullable=True)
     org_label_plural: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    # Module system: the deployment-
-    # wide default an organisation's module entitlement falls back to when
-    # no `organization_module_entitlements` override row exists for it —
-    # same "override falls back to platform default" shape as
-    # accent_color_hex/header_title above, just resolved by the
-    # entitlement service rather than `services/branding.py`. OPEN suits a
-    # self-hosted/open-source deployment with no licensing tiers; CLOSED
-    # suits a future commercial/SaaS posture of the same codebase.
+    # The default an organisation's module entitlement falls back to without an
+    # `organization_module_entitlements` row, resolved by the entitlement service rather than
+    # `services/branding.py`. OPEN suits a self-hosted deployment with no licensing tiers; CLOSED a
+    # commercial or SaaS posture.
     default_module_entitlement_policy: Mapped[ModuleEntitlementPolicy] = mapped_column(
         str_enum(ModuleEntitlementPolicy), default=ModuleEntitlementPolicy.OPEN
     )
@@ -473,24 +360,18 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
 
 
 class PendingInvite(UUIDPKMixin, TimestampMixin, Base):
-    """An email-based invite into an organisation and, optionally, one of
-    its projects — created when a project admin adds a user by email who
-    has no existing account anywhere (`routers/projects.py`'s by-email
-    add-user flow), and `Organization.external_user_policy` permits it.
+    """An email-based invite into an organisation and, optionally, one of its projects, created when a
+    project admin adds a user by email who has no account (`routers/projects.py`'s by-email add-user flow)
+    and `Organization.external_user_policy` permits it.
 
-    Only ever created for organisations with `sso_only=False`. For an
-    `sso_only` org there is no working native-signup path to redeem a
-    token against (native login is blocked outright for an account whose
-    only org requires SSO — `auth_backends.native.all_orgs_sso_only`), so
-    that flow instead provisions the `User` and role rows immediately,
-    skipping this table entirely — see `docs/decisions.md`'s "Self-signup,
-    invites, and SSO" entry.
+    Created only for organisations with `sso_only=False`. An `sso_only` org has no native-signup path to
+    redeem a token (`auth_backends.native.all_orgs_sso_only` blocks native login), so that flow provisions
+    the `User` and role rows immediately and skips this table (docs/decisions.md, "Self-signup, invites,
+    and SSO").
 
-    Consumed identically from two call sites via
-    `services/invites.py::consume_pending_invites` — native signup
-    (`routers/auth.py::signup`) and OIDC first-login
-    (`routers/auth_oidc.py`), since an invitee to a non-`sso_only` org may
-    reach either path first.
+    Consumed through `services/invites.py::consume_pending_invites` from native signup
+    (`routers/auth.py::signup`) and OIDC first login (`routers/auth_oidc.py`), as an invitee may reach
+    either first.
 
     Attributes:
         email: Lowercased invitee address; matched against a signing-up or
@@ -564,10 +445,8 @@ class OrgGroup(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "org_groups"
     __table_args__ = (
-        # Partial unique index (only enforced when set) — two groups in the
-        # same org can't both claim to be the sync target for the same IdP
-        # group name. `text()` since the column isn't defined as a usable
-        # Python name yet at this point in the class body.
+        # Partial unique index (enforced only when set): two groups in one org cannot both be the sync
+        # target for the same IdP group name. `text()` because the column is not yet a Python name here.
         Index(
             "uq_org_group_idp_synced_group_name", "organization_id", "idp_synced_group_name",
             unique=True, postgresql_where=text("idp_synced_group_name IS NOT NULL"),
@@ -578,25 +457,15 @@ class OrgGroup(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
     name: Mapped[str] = mapped_column(String(255))
-    # When set, this group's *user* membership (never its nested-group
-    # edges — those are structural, admin-managed relationships) is fully
-    # IdP-managed: `services.oidc_provisioning.sync_org_groups_from_claims`
-    # grants/revokes membership on every login based on whether this exact
-    # name appears in the IdP's groups/roles claim, scoped strictly to
-    # every `OrgGroup` in the org with this field set (never touches a
-    # group with it unset) — same vocabulary-scoping pattern as
-    # `sync_org_roles_from_claims`'s `sso_managed_roles`. Unique per org
-    # (partial index — see migration 0011), so two groups can't both claim
-    # to be the sync target for the same IdP group name.
+    # When set, this group's user membership (not its admin-managed nested-group edges) is IdP-managed:
+    # `services.oidc_provisioning.sync_org_groups_from_claims` grants or revokes it at every login by
+    # whether this exact name is in the IdP's groups/roles claim, touching only groups with this field set
+    # (as `sync_org_roles_from_claims`'s `sso_managed_roles`). Unique per org (partial index).
     idp_synced_group_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # When set, alongside `idp_synced_group_name`: a user whose IdP groups/
-    # roles claim matches this group's sync name is granted this `OrgRole`
-    # at SSO login, synced down (revoked) again once the claim no longer
-    # matches — `services.oidc_provisioning.sync_org_roles_from_claims`.
-    # Replaces the previous flat, ungrouped `Organization.sso_group_mappings`
-    #. Meaningless without `idp_synced_group_name` also set —
-    # enforced at the router layer, not a DB constraint, matching this
-    # model's existing convention of validating IdP-sync fields there.
+    # With `idp_synced_group_name`: a user whose IdP groups/roles claim matches the sync name is granted this
+    # `OrgRole` at SSO login and loses it when the claim stops matching
+    # (`services.oidc_provisioning.sync_org_roles_from_claims`). Meaningless without
+    # `idp_synced_group_name`; the router enforces that, as for the other IdP-sync fields.
     granted_org_role: Mapped[OrgRole | None] = mapped_column(str_enum(OrgRole), nullable=True)
 
 

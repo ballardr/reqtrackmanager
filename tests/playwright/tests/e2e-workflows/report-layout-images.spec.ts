@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { closeDesignerPreview, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectOrgAdminGroup, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
+import { closeDesignerPreview, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
 import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
@@ -374,8 +374,7 @@ test.describe("Report layout images", () => {
   test("an organisation layout draws an organisation picture for every project", async ({ page, request }) => {
     const { org, project, suffix } = await setup(page, request);
     const name = `E2E org picture ${suffix}`;
-    await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Reports");
+    await page.goto(`/orgs/${org.id}/resources/reports`);
     await ensureExpanded(page, "Report layouts");
     await newLayout(page, name);
     const fileName = `wordmark-${suffix}.png`;

@@ -5,7 +5,7 @@
  * (`/projects/:projectId/modules/compliance/evidence/:evidenceId`, `module.ts`; the same path
  * `artefactPaths` gives search and the Links panel). Evidence carries file attachments and a Links
  * panel, so it is a page rather than a `SidePanel` (docs/ux-style-guide.md "Pattern: entity detail
- * panel"): header with Edit, Revalidate and Archive, the evidence's fields, §15's append-only
+ * panel"): header with Edit and an actions menu (Revalidate, Archive), the evidence's fields, §15's append-only
  * revalidation history, its files, and the shared Links, Activity and tags.
  *
  * Fetches its own data. Edit and Revalidate are `Modal` layers (`EvidenceFormModals.tsx`); every
@@ -36,6 +36,8 @@ import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import * as complianceApi from "./api";
 import { EvidenceFormModal, RevalidateModal } from "./EvidenceFormModals";
 import { projectCompliancePath } from "./paths";
+import { MarkdownView } from "../../components/MarkdownView";
+import { markdownPlainText } from "../../utils/markdownPlain";
 import {
   COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL, COMPLIANCE_EVIDENCE_VALIDITY_STATE_TONE,
   type ComplianceEvidence, type ComplianceEvidenceRevalidation,
@@ -94,8 +96,16 @@ export function EvidenceDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (evidence === null || project === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await complianceApi.uploadEvidenceAttachment(projectId, evidence.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: uploadAttachment }}
       activity={<RecordActivity projectId={projectId} artefactType="compliance_evidence" artefactId={evidence.id} refreshToken={recordActivityKey(evidence)} />}
       aside={<ArtefactLinksPanel projectId={projectId} artefactType="compliance_evidence" artefactId={evidence.id} />}
     >
@@ -115,25 +125,23 @@ export function EvidenceDetailPage() {
         }
         subtitle={evidence.expiry_date ? `Expires ${evidence.expiry_date}` : undefined}
         onEdit={evidence.is_archived ? undefined : () => setEditing(true)}
-        actions={[archive.item]}
-        transitions={<button className="btn" onClick={() => setRevalidating(true)}>Revalidate</button>}
+        actions={[{ label: "Revalidate", onSelect: () => setRevalidating(true) }, archive.item]}
       />
       {archive.dialog}
-      <div className="stack">
         <DetailCard>
-          <p style={{ margin: 0 }}>{evidence.description || <span className="text-muted">No description.</span>}</p>
+          {evidence.description ? <MarkdownView text={evidence.description} /> : <p style={{ margin: 0 }}><span className="text-muted">No description.</span></p>}
           {evidence.issuing_organisation && <RecordField label="Issuing organisation" value={evidence.issuing_organisation} />}
           {evidence.issued_date && <RecordField label="Issued" value={evidence.issued_date} />}
-          {evidence.notes && <RecordField label="Notes" value={evidence.notes} />}
+          {evidence.notes && <RecordField markdown label="Notes" value={evidence.notes} />}
         </DetailCard>
 
         {revalidations.length > 0 && (
-          <DetailCard heading="Revalidation history">
+          <DetailCard heading="Revalidation history" rank="supporting">
             <ul style={{ listStyle: "none", margin: 0, padding: 0, fontSize: "0.85rem" }}>
               {revalidations.map((r) => (
                 <li key={r.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                   {new Date(r.revalidated_at).toLocaleDateString()}: {r.previous_expiry_date ?? "no expiry"} → {r.new_expiry_date ?? "no expiry"}
-                  {r.justification && ` — ${r.justification}`}
+                  {r.justification && ` — ${markdownPlainText(r.justification)}`}
                 </li>
               ))}
             </ul>
@@ -142,6 +150,7 @@ export function EvidenceDetailPage() {
 
         <DetailCard
           heading="Files"
+          rank="supporting"
           action={
             <button className="btn" onClick={() => setShowResourcePicker(true)}>
               <FolderOpen /> Link from shared resources
@@ -150,17 +159,13 @@ export function EvidenceDetailPage() {
         >
           <FileAttachmentList
             files={files}
-            onUpload={async (file) => {
-              const asset = await complianceApi.uploadEvidenceAttachment(projectId, evidence.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await complianceApi.unlinkEvidenceFile(projectId, evidence.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
         </DetailCard>
-      </div>
 
       {showResourcePicker && (
         <ResourcePickerModal

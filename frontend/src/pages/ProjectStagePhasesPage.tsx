@@ -1,31 +1,23 @@
 /**
  * Module: pages/ProjectStagePhasesPage
  *
- * Delivery status: where the people who work in a project see each stage and each component's track through the stages,
- * how far along it is, when it is expected to finish and whether it is overdue, and keep its state up to date in place,
- * without a visit to project administration (a settings page a track's owner may not be able to use).
- *
- * Responsibilities:
- * - Show the stages with their current phase, owner, progress and expected range, as a table or a timeline
- *   (`StagePlanTable`); a project manager moves a stage and sets its dates here.
- * - When component phases are on (and only then), show a second section with every component's track the same way (`ComponentTracksList`), with a phase picker
- *   enabled only for the tracks the person may move (a project manager, or the track's owner) and, for a manager, the
- *   expected range of the track's current phase.
- * - Remember the table or timeline choice per person (`useUiPreference`).
- *
- * Design decisions: composed in the browser from the existing bulk reads (stages, component tracks, phase plans), so there
- * is one server definition of who may move what and no second one of progress or overdue (`utils/deliveryPlan`); the
- * server decides who may move a track (`can_move`) and set a date, this page only reflects it.
+ * Delivery status: each stage and each component's track through the stages, its progress, expected finish and overdue state, kept up to
+ * date in place without project administration. Shows stages with phase, owner, progress and range as a table or timeline
+ * (`StagePlanTable`; a manager moves a stage and sets dates) and, when component phases are on, every component's track
+ * (`ComponentTracksList`; a manager or the track's owner moves it). The view is remembered per person (`useUiPreference`); a link to Project
+ * Admin's stages shows only to someone who may change them. Composed in the browser from the bulk reads, so the server alone defines who may
+ * move what (`can_move`) and progress and overdue have one definition (`utils/deliveryPlan`).
  */
-import { ChartGantt, Table2 } from "lucide-react";
+import { ChartGantt, Settings, Table2 } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Component, ComponentPhases, PhasePlans, ProjectStage, StageWorkflow } from "../api/types";
 import { ComponentTracksList } from "../components/ComponentTracksList";
 import { Spinner } from "../components/Spinner";
 import { StagePlanTable } from "../components/StagePlanTable";
+import { Tooltip } from "../components/Tooltip";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -87,6 +79,13 @@ export function ProjectStagePhasesPage() {
         <div className="row" role="group" aria-label={strings.deliveryPlan.viewAria} style={{ gap: "var(--space-1)" }}>
           {viewButton("table", strings.deliveryPlan.viewTable, <Table2 />)}
           {viewButton("timeline", strings.deliveryPlan.viewTimeline, <ChartGantt />)}
+          {canManage && (
+            <Tooltip label={t.settingsLink}>
+              <Link to={`/projects/${projectId}/admin/stagesPhases`} className="btn btn-icon" aria-label={t.settingsLink}>
+                <Settings />
+              </Link>
+            </Tooltip>
+          )}
         </div>
       </div>
       <section className="card stack">

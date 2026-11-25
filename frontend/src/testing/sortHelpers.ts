@@ -6,12 +6,20 @@
  */
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
-/** The text of each body row's cell under the column header `header`, in the order the rows are shown. */
+/** The text of each body row's cell under the column header `header`, in the order the rows are shown (hidden accessible-only text left out). */
 export function columnTexts(table: HTMLElement, header: string): string[] {
   const headers = within(table).getAllByRole("columnheader");
   const index = headers.findIndex((th) => (th.textContent ?? "").trim() === header);
   if (index < 0) throw new Error(`No column header "${header}"`);
-  return within(table).getAllByRole("row").slice(1).map((row) => (row.querySelectorAll("td")[index]?.textContent ?? "").trim());
+  return within(table).getAllByRole("row").slice(1).map((row) => visibleText(row.querySelectorAll("td")[index]));
+}
+
+/** A cell's text without its visually hidden (`.sr-only`) parts. */
+function visibleText(cell: Element | undefined): string {
+  if (!cell) return "";
+  const copy = cell.cloneNode(true) as Element;
+  copy.querySelectorAll(".sr-only").forEach((node) => node.remove());
+  return (copy.textContent ?? "").trim();
 }
 
 /**

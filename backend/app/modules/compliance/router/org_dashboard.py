@@ -1,17 +1,11 @@
 """
 Module: modules.compliance.router.org_dashboard
 
-This organisation's project-compliance assignments and the org-wide
-rollup GETs built on top of them: assign a standard to a project
-(`create_project_compliance`) and archive/unarchive that assignment,
-list every project-compliance row org-wide, and the non-compliant-
-requirements/pending-approvals/outstanding-required-actions/expiring-
-evidence/reviews-due/recent-activity/report rollups across every
-project. Kept as one bucket rather than splitting the rollup GETs out
-on their own, since every one of them shares this file's
-`_get_project_or_404`/`_get_project_compliance_or_404`/`_org_projects`
-helpers and the same `ProjectCompliance` resource the assignment
-mutations manage.
+The organisation's project-compliance assignments and the organisation-wide rollup reads built on them: assign a
+standard to a project (`create_project_compliance`), archive and unarchive an assignment, list every project-compliance
+row, and the non-compliant requirements, pending approvals, outstanding required actions, expiring evidence, reviews
+due, recent activity and report rollups across projects. They are one bucket because they share `_get_project_or_404`,
+`_get_project_compliance_or_404` and `_org_projects` and the `ProjectCompliance` resource the assignment mutations manage.
 """
 
 from datetime import UTC, datetime
@@ -87,22 +81,13 @@ def create_project_compliance(
     organization_id: UUID, project_id: UUID, payload: ProjectComplianceCreate,
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
-    """Assigns a compliance standard version to a project (§7) — a
-    Compliance Manager decision (module.py's own role description; §26
-    doesn't list this as a Project Manager/Compliance Officer capability).
-    Only a `PUBLISHED` version may be assigned (409 otherwise) — see
-    `models.py`'s own docstring for why. Materialises the full per-
-    requirement/per-required-action assessment row set for this
-    assignment in the same transaction (`service.materialize_assessment_
-    rows`) — see that function's own docstring for why this happens once,
-    upfront, rather than lazily.
+    """Assigns a compliance standard version to a project (§7): a Compliance Manager decision (§26 does not list it for
+    Project Managers or Compliance Officers). Only a `PUBLISHED` version may be assigned (409 otherwise). The full
+    per-requirement and per-required-action assessment rows are materialised in the same transaction
+    (`service.materialize_assessment_rows`).
 
-    This is the *secondary*, administrative assignment
-    path (a Compliance Manager assigning on a project's behalf, or in
-    bulk) — the default, primary path is `project_router.py::create_
-    project_compliance_self_service`, usable by a plain Project Manager.
-    This endpoint's own payload/response/behaviour are otherwise
-    unchanged."""
+    This is the administrative path (a Compliance Manager assigning on a project's behalf, or in bulk); the primary path
+    is `project_router.create_project_compliance_self_service`, usable by a Project Manager."""
     _get_project_or_404(db, organization_id, project_id)
     _, version = _get_version_or_404(db, organization_id, payload.standard_id, payload.standard_version_id)
     if version.status != ComplianceStandardVersionStatus.PUBLISHED:
@@ -166,20 +151,11 @@ def list_all_project_compliance(
     return [build_status_out(db, pc) for pc in assignments]
 
 
-# per-project analogue) are `_require_manage`-gated like `list_all_project_
-# compliance` itself, not `_require_view` — §26 lists "View compliance
-# across projects" specifically under Compliance Manager, not under any
-# project role or general org membership, and §22's own looser-sounding
-# "Compliance Managers and authorised users" text does not override §26's
-# own dedicated Security and Permissions section, which is this module's
-# authoritative RBAC source (confirmed by reading both sections; see
-# notes for the full reasoning).
-# Each iterates every project in the organisation (not only ones with an
-# active assignment — the shared per-project service function already
-# returns an empty list for a project with none) and calls the exact same
-# per-project computation `project_router.py`'s own sibling endpoint uses,
-# so none of this module's cross-assignment business logic is duplicated
-# between scopes.
+# The organisation-wide listings below are `_require_manage`-gated like `list_all_project_compliance`, not
+# `_require_view`: §26 lists "View compliance across projects" under Compliance Manager, and §22's looser "Compliance
+# Managers and authorised users" does not override §26, the module's authoritative RBAC section. Each iterates every
+# project of the organisation (a project with no assignment returns an empty list) and calls the same per-project
+# computation as `project_router`, so no business logic is duplicated between scopes.
 
 
 def _org_projects(db: Session, organization_id: UUID) -> list[Project]:
@@ -267,22 +243,12 @@ def list_org_reviews_due(
     organization_id: UUID, include_upcoming: bool = Query(False),
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
-    """Scheduled compliance reviews across every project in this
-    organisation (§22's "identifying projects with overdue compliance
-    reviews", `include_upcoming=False` — the default, and this endpoint's
-    only mode until §23's dashboard needed more). §23's own "Upcoming
-    compliance deadlines/reviews" widget passes `include_upcoming=true` to
-    also get reviews not yet due, since a deadline that's merely upcoming
-    (not yet due or overdue) is exactly what that widget needs to show and
-    the plain `reviews-due` semantics deliberately exclude — see `service.
-    py::list_reviews_due_for_project`'s own docstring for the full
-    parameter rationale. Returns one `OrgReviewDueOut` per (project,
-    review) pair — a single standard-level review due for three assigned
-    projects appears three times, tagged with each project it's due for,
-    since it is a materially different fact (an outstanding item on three
-    separate projects' own compliance record) at this org-wide, per-project
-    scope, in contrast to `recent-activity`'s below, which is deliberately
-    per-audit-event rather than per-project."""
+    """Scheduled compliance reviews across every project of the organisation (§22 "identifying projects with overdue
+    compliance reviews"). With `include_upcoming=False` (the default) only due and overdue reviews are returned;
+    `include_upcoming=true` also returns reviews not yet due, for §23's "Upcoming compliance deadlines/reviews" widget
+    (see `service.list_reviews_due_for_project`). Returns one `OrgReviewDueOut` per (project, review) pair: a
+    standard-level review due for three assigned projects appears three times, because it is an outstanding item on
+    each project's record (unlike `recent-activity`, which is per audit event)."""
     results: list[OrgReviewDueOut] = []
     cache = ComplianceVersionCache(db)
     cache.preload_organization(organization_id)
@@ -312,24 +278,14 @@ def get_org_compliance_report(
     requirement_id: UUID | None = Query(None),
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
-    """Generates the organisation-wide compliance roll-up (§29's
-    "organisation-level reporting") in `format` (PDF, Word, OpenDocument text, HTML, CSV, Excel or OpenDocument spreadsheet) — merged from
-    two separate `/reports/pdf`/`/reports/csv` GETs on 2026-09-22 (see
-    docs/decisions.md) since they only differed in output format, not the
-    data collected. PDF: one row per project/assigned-standard-version
-    pair, plus cross-project non-compliant/pending-approval/expiring-
-    evidence appendices. CSV: the same rows as a flat export. Manage-gated
-    like every other org-wide aggregation on this router (§26:
-    "View compliance across projects" is a Compliance Manager capability,
-    not general org membership) — see this router's comments
-    for the full reasoning, which applies identically to a report as to the
-    live dashboard listings it's built from.
+    """Generates the organisation-wide compliance roll-up (§29) in `format` (PDF, Word, OpenDocument text, HTML, CSV,
+    Excel or OpenDocument spreadsheet). The PDF has one row per project and assigned standard version plus
+    cross-project non-compliant, pending-approval and expiring-evidence appendices; the CSV has the same rows flat.
+    Manage-gated like every organisation-wide aggregation (§26).
 
-    `project_id`/`standard_id`/`standard_version_id`/`requirement_id`
- are optional scoping filters — see `collect_org_compliance_
-    report`'s own docstring — passed by `OrgComplianceStandardsPanel.tsx`'s
-    and `OrgComplianceOutstandingPanel.tsx`'s own Export triggers to match
-    whichever of their filters is currently applied."""
+    `project_id`, `standard_id`, `standard_version_id` and `requirement_id` are optional scoping filters (see
+    `collect_org_compliance_report`) passed by the Export triggers of `OrgComplianceStandardsPanel.tsx` and
+    `OrgComplianceOutstandingPanel.tsx`."""
     org = db.get(Organization, organization_id)
     assert org is not None  # the route's manage gate has loaded it
     data = collect_org_compliance_report(
@@ -351,10 +307,8 @@ def archive_project_compliance(
     organization_id: UUID, project_id: UUID, project_compliance_id: UUID,
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
-    """Soft-archives a project's assignment to a standard — used when a
-    project no longer needs to track compliance against it. Never a hard
-    delete: the `ProjectComplianceRequirement` rows underneath carry real
-    assessment/audit history (§16) that must survive this."""
+    """Soft-archives a project's assignment to a standard, for when the project stops tracking compliance against it.
+    Never a hard delete: the `ProjectComplianceRequirement` rows beneath carry assessment and audit history (§16)."""
     project_compliance = _get_project_compliance_or_404(db, organization_id, project_id, project_compliance_id)
     project_compliance.is_archived = True
     project_compliance.archived_at = datetime.now(UTC)

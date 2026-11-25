@@ -1,10 +1,11 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
-import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
+import { columnTexts, expectHeaderSorts } from "../../testing/sortHelpers";
+import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { PeoplePage } from "./PeoplePage";
 import type { EffectivePersonaType, Persona, Stakeholder, StakeholderGroup } from "./types";
@@ -79,7 +80,7 @@ const withPeopleRoute: Decorator = (Story, context) => {
 const meta: Meta<typeof PeoplePage> = {
   title: "Modules/Stakeholders/PeoplePage",
   component: PeoplePage,
-  decorators: [withPeopleRoute, withToast()],
+  decorators: [withPeopleRoute, withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
 };
 export default meta;
 
@@ -105,6 +106,10 @@ export const ListsEveryKindTogether: Story = {
     for (const kind of ["Persona", "Stakeholder", "Stakeholder Group"]) {
       await expect(table.getAllByText(kind).length).toBeGreaterThan(0);
     }
+    // Scope is an optional column, off by default; once chosen it reads through its label map.
+    await expect(table.queryByRole("columnheader", { name: "Scope" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Scope" }));
     await expect(table.getByText("Organisation")).toBeInTheDocument();
     await expect(table.getByText("Draft")).toBeInTheDocument();
     await expect(canvas.queryByText("organization")).not.toBeInTheDocument();
@@ -179,6 +184,39 @@ export const StakeholdersOnlyKeepsGroupFilteringAndLastEngaged: Story = {
     }
     await expect(table.getByText("2026-04-02")).toBeInTheDocument();
     await expect(canvas.getByLabelText("Group by")).toBeInTheDocument();
+  },
+};
+
+/** The Groups column orders stakeholders by their group names (none last), and the Group by column by the branch under the chosen top-level group. */
+export const GroupColumnsSortStakeholders: Story = {
+  parameters: { kind: "stakeholder" },
+  beforeEach: () => {
+    const client = buildStakeholderGroup({ id: "group-client", name: "Client", scope: "project", organization_id: null, project_id: "project-1", unique_code: "SGP-001" });
+    const acme = buildStakeholderGroup({ id: "group-acme", name: "Acme", scope: "project", organization_id: null, project_id: "project-1", unique_code: "SGP-002", parent_group_id: "group-client" });
+    const beta = buildStakeholderGroup({ id: "group-beta", name: "Beta", scope: "project", organization_id: null, project_id: "project-1", unique_code: "SGP-003", parent_group_id: "group-client" });
+    const ref = (group: StakeholderGroup) => ({
+      id: group.id, name: group.name, scope: group.scope, parent_group_id: group.parent_group_id, unique_code: group.unique_code, organization_id: null,
+    });
+    mockApis({
+      groups: [client, acme, beta],
+      stakeholders: [
+        buildStakeholder({ id: "s-zed", unique_code: "STK-001", name: "Zed", groups: [ref(beta)] }),
+        buildStakeholder({ id: "s-amy", unique_code: "STK-002", name: "Amy", groups: [ref(acme)] }),
+        buildStakeholder({ id: "s-mia", unique_code: "STK-003", name: "Mia", groups: [] }),
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Stakeholders" });
+    await waitFor(() => expect(columnTexts(table, "Name")).toEqual(["Zed", "Amy", "Mia"]));
+    await userEvent.click(within(table).getByRole("button", { name: "Groups" }));
+    await waitFor(() => expect(columnTexts(table, "Name")).toEqual(["Amy", "Zed", "Mia"]));
+    await userEvent.click(within(table).getByRole("button", { name: "Groups" }));
+    await waitFor(() => expect(columnTexts(table, "Name")).toEqual(["Mia", "Zed", "Amy"]));
+
+    await userEvent.selectOptions(canvas.getByLabelText("Group by"), "Client");
+    await expectHeaderSorts(table, "Client", ["Acme", "Beta", "—"], ["—", "Beta", "Acme"]);
   },
 };
 
@@ -395,7 +433,7 @@ export const PersonasOnlyOffersTheirOwnExportWithTheFilters: Story = {
     await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Status"), "draft");
     await chooseExport(canvas, "CSV");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/persona/export?status=draft`));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/persona/export?status=draft&sort=code&order=asc`));
   },
 };
 
@@ -414,7 +452,7 @@ export const SeveralKindsOfferAnExportEach: Story = {
     }
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV", "Stakeholders");
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder/export`));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder/export?sort=code&order=asc`));
   },
 };
 

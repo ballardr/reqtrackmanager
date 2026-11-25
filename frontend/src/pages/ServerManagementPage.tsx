@@ -8,6 +8,7 @@ import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { AddUserMenu } from "../components/AddUserMenu";
 import { Badge } from "../components/Badge";
+import { ServiceBadge } from "../components/ServiceBadge";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
@@ -34,6 +35,7 @@ import { ServerModulesTab } from "./ServerModulesTab";
 import { ServerReportFontsTab } from "./ServerReportFontsTab";
 import { FileUploadsTab, PlatformBrandingTab, ServerDetailsTab, SignupModeTab, TestEmailTab } from "./ServerSettingsGroups";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { useServerAccess } from "../hooks/useServerAccess";
 
 const strings = t();
@@ -59,7 +61,7 @@ type AccessReviewConfirmKind =
 /** Sortable columns of the Access Review `DirectoryTable` — mirrors `list_org_users`'s own
  * `sort`/`order` contract; `created_at` is the one addition `/system/users`
  * needed beyond that (Org Users has no "Created" column). */
-type SystemUserSortKey = "display_name" | "email" | "last_login_at" | "created_at";
+type SystemUserSortKey = "display_name" | "email" | "last_login_at" | "created_at" | "organizations" | "groups" | "status";
 
 function AccessReviewTab() {
   const [users, setUsers] = useState<SystemUser[] | null>(null);
@@ -83,13 +85,9 @@ function AccessReviewTab() {
   // Password reset: one person's emailed link (Tier 1 dialog) and the wide "force a credential reset" dialog.
   const [resetLinkUser, setResetLinkUser] = useState<SystemUser | null>(null);
   const [forceResetOpen, setForceResetOpen] = useState(false);
-  // The full groups list and the server-
-  // roles toggles both moved off the row (an unbounded joined string and an
-  // always-visible dropdown respectively) into modals opened from the row's
-  // `ActionMenu`. Tracked by id, not the `SystemUser` object itself, so the
-  // modal re-derives its content from the current `users` state below —
-  // otherwise a role toggle inside the modal would keep showing the
-  // pre-toggle checked state after `reload()` refreshes `users`.
+  // The full groups list and the server-roles toggles live in modals opened
+  // from the row's `ActionMenu`. Tracked by id, not the `SystemUser`, so the
+  // modal re-derives its content from the current `users` after `reload()`.
   const [viewGroupsUserId, setViewGroupsUserId] = useState<string | null>(null);
   const [assignRolesUserId, setAssignRolesUserId] = useState<string | null>(null);
   // Per-row "show all N" expansion for the Organisations column (mirrors
@@ -111,8 +109,7 @@ function AccessReviewTab() {
   }
 
   // Applies only the newest load's response: switching the view and then
-  // re-typing a search fires two loads, and the older one could land last
-  // (found 2026-10-05).
+  // re-typing a search fires two loads, and the older one could land last.
   const beginLoad = useRequestSequence();
 
   async function loadUsers(offset: number, append: boolean) {
@@ -124,14 +121,9 @@ function AccessReviewTab() {
   }
 
   async function reload() {
-    // Deliberately doesn't reset `users` to `null` first (unlike the old
-    // implementation): the search box now lives inside the
-    // same `.side-grid`/`FilterPanel` this list renders, so nulling `users`
-    // on every keystroke would unmount the input mid-type (and drop focus)
-    // rather than just refresh the rows — same reasoning Org Admin's Users
-    // table's `loadUsers` already follows (`null` is only ever the initial,
-    // pre-first-fetch state, shown once via the `!users` Spinner guard
-    // below). Rows simply stay as-is until the new page resolves.
+    // Does not reset `users` to `null` first: the search box lives inside the
+    // `FilterPanel` this list renders, so nulling on every keystroke would
+    // unmount it and drop focus. `null` is only the pre-first-fetch state.
     await loadUsers(0, false);
   }
 
@@ -302,25 +294,23 @@ function AccessReviewTab() {
     },
   };
 
-  // Rebuilt on the shared `DirectoryTable` inside the standard
-  // `.side-grid` + `FilterPanel` layout every other directory in this app
-  // now uses — replacing the old bare `<table>` + inline filter-control row
-  // (docs/decisions.md).
-  // `view`/`includeDeactivated` behave identically to before, just hosted
-  // as a `FilterField`/`FilterCheckbox`; `search` and column-header sorting
-  // are new (see `list_system_users`'s own docstring for the backend side).
+  // Shared `DirectoryTable` inside the standard `.side-grid` + `FilterPanel`
+  // layout (docs/decisions.md); see `list_system_users` for the backend side.
   const usersColumns: DirectoryColumn<SystemUser>[] = [
     { key: "email", label: strings.system.email, sortable: true, render: (u) => u.email },
-    { key: "display_name", label: strings.system.name, sortable: true, render: (u) => u.display_name },
     {
-      // Comma-joined names have no natural order — not sortable, per style
-      // guide "Pattern: sortable column header".
-      // Joining every org name unconditionally became unreadable
-      // for a user in many orgs — per the user's own ask, orgs stay inline
-      // (typically far fewer than groups) but gain a "show all N" toggle
-      // past 2, mirroring Org Admin's "View access" panel role-expansion
-      // pattern rather than moving to a modal like Groups below.
-      key: "organizations", label: strings.system.organizations(orgLabelPlural),
+      key: "display_name", label: strings.system.name, sortable: true,
+      render: (u) => (
+        <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
+          <span>{u.display_name}</span>
+          {u.is_service_account && <ServiceBadge />}
+        </span>
+      ),
+    },
+    {
+      // Sorted by the joined names (the count while names are hidden). Orgs stay inline (typically few)
+      // with a "show all N" toggle past 2, as Org Admin's "View access" panel does.
+      key: "organizations", label: strings.system.organizations(orgLabelPlural), sortable: true, optional: true,
       render: (u) => {
         if (u.organization_names.length === 0) {
           return u.organization_count > 0
@@ -345,12 +335,9 @@ function AccessReviewTab() {
       },
     },
     {
-      // Groups have no cap the way orgs
-      // effectively do, so instead of an inline "show all" toggle (which
-      // could still push the row very wide) the full list moved to a
-      // modal off this row's `ActionMenu` ("View groups") — this column
-      // now shows only a short summary.
-      key: "groups", label: strings.system.groups,
+      // Groups are uncapped, so the full list is in a modal off the row's
+      // `ActionMenu` ("View groups"); this column shows a short summary.
+      key: "groups", label: strings.system.groups, sortable: true, optional: true,
       render: (u) => {
         if (u.group_names.length === 0) return "—";
         const shown = u.group_names.slice(0, 2).join(", ");
@@ -358,7 +345,7 @@ function AccessReviewTab() {
       },
     },
     {
-      key: "status", label: strings.system.status,
+      key: "status", label: strings.system.status, sortable: true,
       render: (u) =>
         u.is_banned ? (
           <Badge tone="danger">{strings.system.bannedBadge}</Badge>
@@ -369,28 +356,19 @@ function AccessReviewTab() {
         ),
     },
     {
-      key: "last_login_at", label: strings.system.lastLogin, sortable: true,
+      key: "last_login_at", label: strings.system.lastLogin, sortable: true, optional: true,
       render: (u) => (u.last_login_at ? new Date(u.last_login_at).toLocaleString() : strings.system.never),
     },
     {
-      key: "created_at", label: strings.system.created, sortable: true,
+      key: "created_at", label: strings.system.created, sortable: true, optional: true, defaultHidden: true,
       render: (u) => new Date(u.created_at).toLocaleDateString(),
     },
     {
-      // Consolidated behind one `ActionMenu` (style guide "Pattern: action
-      // menu"). The menu itself now
-      // renders for every row, not just org-less ones — "Assign server
-      // roles" (moved here from the old always-visible "Server roles"
-      // `MultiSelectDropdown` column) and "View
-      // groups" apply regardless of org membership (I-M-08: a server admin
-      // can hold an organisation of their own). Deactivate/reactivate and
-      // ban/unban stay scoped to org-less accounts only — that gate was
-      // protecting those two specific actions, not the menu as a whole, so
-      // it moves to the item list rather than being removed outright. The
-      // old standalone "Server admin" badge stays dropped: the row's other
-      // visible state already shows the same fact, so a separate badge
-      // would just duplicate it. Banned/deactivated badges stay outside the
-      // menu, visible at a glance.
+      // One `ActionMenu` (style guide "Pattern: action menu") renders for every
+      // row: "Assign server roles" and "View groups" apply regardless of org
+      // membership (I-M-08). Deactivate/reactivate and ban/unban stay limited to
+      // org-less accounts, gated in the item list. Banned/deactivated badges
+      // stay outside the menu.
       key: "actions", label: "",
       render: (u) => (
         <div className="row" style={{ gap: "var(--space-2)", justifyContent: "flex-end" }}>
@@ -420,6 +398,8 @@ function AccessReviewTab() {
     },
   ];
 
+  const shown = useOptionalColumns("server_users", usersColumns);
+
   const viewGroupsUser = users?.find((u) => u.user_id === viewGroupsUserId) ?? null;
   const assignRolesUser = users?.find((u) => u.user_id === assignRolesUserId) ?? null;
 
@@ -429,6 +409,7 @@ function AccessReviewTab() {
         sectionKey="serverManagement.users" title={strings.system.users} help={strings.system.usersHint(orgLabel)} collapsible={false}
       >
         <div className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap", gap: "var(--space-3)" }}>
+          {shown.chooser}
           <button className="btn" onClick={() => setForceResetOpen(true)}>{strings.passwordReset.forceOpen}</button>
           <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
         </div>
@@ -436,13 +417,9 @@ function AccessReviewTab() {
         {!users ? (
           <Spinner />
         ) : (
-          // `FilterPanel` renders as a full-width bar ABOVE the table
-          // (`layout="top"`), not the standard `.side-grid` side layout —
-          // this table is wide (columns include email, name, role, project
-          // access, actions), and a 240px side sidebar visibly crowded it
-          // (follow-up UX fix; see docs/decisions.md and
-          // docs/ux-style-guide.md's "Pattern: filter panel placement —
-          // side vs. top").
+          // The `FilterPanel` is a full-width bar above the table
+          // (`layout="top"`): the wide table is crowded by a 240px side panel
+          // (docs/ux-style-guide.md "Pattern: filter panel placement").
           <div className="stack">
             <FilterPanel
               layout="top"
@@ -465,7 +442,7 @@ function AccessReviewTab() {
             </FilterPanel>
             <DirectoryTable
               ariaLabel={strings.system.users}
-              columns={usersColumns}
+              columns={shown.columns}
               rows={users}
               rowKey={(u) => u.user_id}
               sort={sort}
@@ -528,12 +505,8 @@ function AccessReviewTab() {
         </Modal>
       )}
       {assignRolesUser && (
-        // Checkboxes rendered directly rather than via `MultiSelectDropdown`
-        // (which OrgAdminPage's own Roles column uses inline in a table
-        // cell): this modal is already the "opened" state, so a second,
-        // nested disclosure control (a dropdown-in-a-modal) would just add
-        // an extra click with no benefit — see docs/decisions.md, Platform
-        // review 2026-09.
+        // Checkboxes render directly, not via `MultiSelectDropdown`: the modal
+        // is already the opened state, so a nested dropdown adds only a click.
         <Modal
           title={strings.system.assignServerRolesModalTitle(assignRolesUser.display_name)}
           onClose={() => setAssignRolesUserId(null)}
@@ -585,18 +558,11 @@ function AccessReviewTab() {
 }
 
 /**
- * The 4 resource-menu groups Server Admin's previous 4-tab bar was
- * converted into. Each key is also the route segment under
- * `/server/management/:group?` (App.tsx), so a group selection is a real
- * navigation, not client-only state. An unrecognised or absent `:group`
- * (including the bare `/server/management` used by every existing link
- * into this page) falls back to "accessReview".
- *
- * Converted from `Tabs` to `ResourceMenu` for cross-page consistency with
- * the other admin-tier pages (Org Admin, Project Admin, Preferences) —
- * a deliberate reversal of the original per-page ≤5-groups Tabs-vs-
- * ResourceMenu call, since this page never exceeded 5 tabs on its own.
- * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
+ * The resource-menu groups of Server Admin. Each key is the route segment under
+ * `/server/management/:group?` (App.tsx), so a selection is a real navigation.
+ * An unrecognised or absent `:group` falls back to "accessReview". A
+ * `ResourceMenu` (not `Tabs`) keeps this page consistent with the other
+ * admin-tier pages; see `docs/ux-style-guide.md` Principle 1.
  */
 type ServerManagementGroupKey = "accessReview" | "signup" | "branding" | "details" | "reportFonts" | "files" | "policies" | "personalDataExport" | "email" | "messages" | "modules";
 
@@ -604,19 +570,16 @@ const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview"
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
- * defaults, and the public sign-up mode — previously two separate nav
- * entries, now consolidated here since all are the same kind of
- * "deployment-wide, not any one organisation's" setting.
- * `/server/organisations` (every org on the deployment, with create/
- * disable/delete) stays a separate page — its own row-per-org table
- * doesn't fit alongside these groups.
+ * defaults and the public sign-up mode, all deployment-wide settings.
+ * `/server/organisations` (every org on the deployment) is a separate page: its
+ * row-per-org table does not fit alongside these groups.
  */
 export function ServerManagementPage() {
   const { group: groupParam } = useParams<{ group?: string }>();
   const access = useServerAccess();
 
-  // "Data policy" is now the published document; the export rule this group held was renamed, so an older address
-  // or bookmark lands on the renamed group.
+  // `dataPolicy` is an alias of the `personalDataExport` group (the "Data
+  // policy" name is the published document).
   if (groupParam === "dataPolicy") return <Navigate to="/server/management/personalDataExport" replace />;
 
   const requestedGroup: ServerManagementGroupKey = SERVER_MANAGEMENT_GROUP_KEYS.includes(

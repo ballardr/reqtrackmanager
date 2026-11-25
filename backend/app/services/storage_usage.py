@@ -4,17 +4,13 @@ Module: services.storage_usage
 Measures how much file storage an organisation uses and applies the operator's rules for it.
 
 Responsibilities:
-- `used_bytes` / `file_count`: the one definition of usage (stored files plus stored report-run outputs), shared by the
-  upload gate, the organisation usage table and the server administration view, so a limit and the figure shown against
-  it cannot disagree.
-- `effective_quota`: the organisation's own limit, else the server default, else none.
-- `refusal`: the single decision "may this organisation store `incoming` more bytes?" used by `services.files`.
-- `note_upload`: sends the 90% notice once per crossing.
+- `used_bytes` / `file_count`: the one definition of usage (stored files plus report-run outputs) shared by the upload
+  gate, the usage table and server administration; `effective_quota` (organisation limit, else server default, else
+  none); `refusal` (may this organisation store `incoming` more bytes); `note_upload` (the 90% notice once per crossing).
 
-Design decisions: usage is an aggregate over an indexed column, read only when a limit applies (an organisation with no
-limit pays nothing) and never a stored counter that can drift; the check locks the organisation row for the transaction
-so two concurrent uploads cannot both pass on the same remaining space; lowering a limit below usage only blocks new
-files. External dependencies: SQLAlchemy models `FileAsset`, `GeneratedReport`, `Organization`, `ServerSettings`.
+Design decisions: usage is an aggregate over an indexed column read only when a limit applies, never a drifting stored
+counter; the check locks the organisation row so concurrent uploads cannot both pass; lowering a limit below usage only
+blocks new files. Dependencies: `FileAsset`, `GeneratedReport`, `Organization`, `ServerSettings`.
 """
 
 from __future__ import annotations

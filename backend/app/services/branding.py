@@ -7,12 +7,9 @@ from producing unreadable button/badge text.
 
 `ServerSettings` is a lazily-created singleton row — `get_server_settings()`
 is the only way anything in this app should read or create it, so "there
-might be zero rows" only ever needs handling here. True singleton-ness is
-now enforced at the DB level (`ServerSettings.singleton_guard`, migration
-0020, 2026-08-31) after live evidence showed the earlier
-purely-application-level "read then insert if absent" check really did let
-two concurrent requests both create a row in practice — see that migration
-and the model's own docstring for the full incident.
+might be zero rows" only ever needs handling here. Singleton-ness is
+enforced by the database (`ServerSettings.singleton_guard`), because a
+read-then-insert check lets two concurrent requests both create a row.
 """
 
 from __future__ import annotations
@@ -112,11 +109,7 @@ def get_server_settings(db: Session) -> ServerSettings:
             db.rollback()
             settings = db.scalar(select(ServerSettings))
             if settings is None:
-                # The row that made us lose the race should be visible to
-                # a fresh read immediately after the other transaction
-                # committed — a still-missing row here means something
-                # other than the expected singleton race, so surface it
-                # rather than looping/guessing.
+                # The winning row is visible after its commit; a missing row means a failure other than the singleton race.
                 raise
         else:
             db.refresh(settings)

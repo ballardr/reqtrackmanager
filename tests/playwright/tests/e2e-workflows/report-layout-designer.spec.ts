@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, closeDesignerPreview, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion, openDesignerTextView, designerPreviewPanel } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, closeDesignerPreview, PASSWORD, searchReportSetup, selectProjectAdminGroup, saveNewVersion, openDesignerTextView, designerPreviewPanel } from "./helpers";
 import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
@@ -763,8 +763,7 @@ test.describe("Report layout designer", () => {
     const { org, requirements, suffix } = await setup(page, request);
     const name = `E2E org designed ${suffix}`;
 
-    await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Reports");
+    await page.goto(`/orgs/${org.id}/resources/reports`);
     await ensureExpanded(page, "Report layouts");
     await page.getByRole("button", { name: "New", exact: true }).click();
     await clickMenuRow(page, "New layout");

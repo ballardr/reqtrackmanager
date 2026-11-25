@@ -4,13 +4,10 @@ Revision ID: 0056
 Revises: 0055
 Create Date: 2026-10-04
 
-Adds `organization_module_subcomponent_defaults.default_project_enabled`,
-giving sub-components the same two org-level levers whole modules got in
-0055: `enabled` becomes a hard floor (Off reaches every project), and
-`default_project_enabled` is the value copied into a project at creation
-(Decided by: User, 2026-10-04 — see `docs/decisions.md`).
-
-Backfilled to each row's current `enabled`, so no effective state changes.
+Adds `organization_module_subcomponent_defaults.default_project_enabled`, giving sub-components the same
+two org-level levers whole modules have (0055): `enabled` is a hard floor (Off reaches every project) and
+`default_project_enabled` is the value copied into a project at creation (**Decided by: User**;
+docs/decisions.md). Backfilled to each row's `enabled`, so no effective state changes.
 """
 
 from collections.abc import Sequence

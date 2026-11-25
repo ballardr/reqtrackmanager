@@ -1,13 +1,11 @@
-"""Tests for the bulk edit grid over Context & Strategy's record tables: `GET .../records/{type}/grid` lists a
-list's rows with the cells and the columns the grid may edit, and `PATCH .../records/{type}/rows/{code}` saves the
-changed cells of one record through the type's own update path.
+"""
+Tests for the bulk edit grid over the record tables: `GET .../records/{type}/grid`
+lists rows, cells and editable columns; `PATCH .../records/{type}/rows/{code}`
+saves one record's changed cells through the type's own update path.
 
-First use is a Pain Point's scoring criteria (its General levels): the grid reads and writes them through the
-same function the scores endpoint uses, refuses a cell someone else changed since it was loaded, keeps the
-persona rows when a General cell is saved, locks a Pain Point at a terminal outcome, and keeps the manager tier
-that scoring has.
-
-Each test builds its own organisation, so none depends on state left by another test.
+Pain Point scoring criteria (General levels) go through the scores endpoint's
+function, refuse a cell changed since loading, keep persona rows, lock at a
+terminal outcome and keep the manager tier. Each test builds its own organisation.
 """
 
 from __future__ import annotations

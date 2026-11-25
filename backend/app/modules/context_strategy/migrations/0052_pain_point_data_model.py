@@ -4,34 +4,21 @@ Revision ID: 0052
 Revises: 0051
 Create Date: 2026-09-28
 
-Adds the six tables backing Context & Strategy's Pain Point data model,
-a structurally different shape from migrations 0048/0051's identity+version
-pairs (see `models.py`'s own docstring for the full reasoning):
+Adds the six tables of the Pain Point data model, a different shape from the identity-plus-version pairs of migrations
+0048 and 0051 (see `models.py`):
 
-- `pain_point_type_definitions` (org-scoped base type vocabulary,
-  part of the two-tier design — same shape as `requirement_link_type_definitions`).
-- `project_pain_point_types` (project-scoped: either a local override of
-  one org type, via `org_type_id`, or a fully project-local type when
-  `org_type_id` is NULL — enforced by a CHECK constraint that a NULL
-  `org_type_id` row must carry its own `name_override`).
-- `pain_points` (the artefact itself — project-scoped only, no version
-  table; `pain_point_type_id` is a NOT NULL FK to `project_pain_point_types`,
-  never directly to `pain_point_type_definitions`).
-- `pain_point_comments` / `pain_point_comment_files` / `pain_point_files`
-  — this module's own module-local comment-thread and attachment tables,
-  mirroring `strategy_comments`/`strategy_comment_files`/`strategy_files`.
+- `pain_point_type_definitions`: the organisation-scoped base type vocabulary (the shape of
+  `requirement_link_type_definitions`).
+- `project_pain_point_types`: a project-scoped local override of one organisation type (`org_type_id`) or a project-local
+  type (`org_type_id` NULL; a CHECK requires its own `name_override`).
+- `pain_points`: the artefact (project-scoped, no version table); `pain_point_type_id` is a NOT NULL FK to
+  `project_pain_point_types`, never to `pain_point_type_definitions`.
+- `pain_point_comments`, `pain_point_comment_files` and `pain_point_files`: the module-local comment and attachment
+  tables.
 
-No backfill needed — this is a brand-new artefact type with no
-pre-existing rows anywhere. `pain_point_type_definitions`' Market/User/
-Operator defaults (§6.2) are seeded per-organisation at
-organisation-creation time (`app.modules.context_strategy.service.
-seed_default_pain_point_types`, via `ModuleDefinition.on_org_created`),
-not backfilled here for already-existing organisations — this module is
-`default_enabled=False`, so an org only sees Pain Points at all once it
-explicitly enables the module, at which point the frontend onboarding
-is the natural point to offer seeding existing
-orgs' defaults, matching how Strategy/Future State needed no
-backfill of their own either.
+A new artefact type, so no backfill. The Market, User and Operator default types (§6.2) are seeded per organisation at
+creation (`service.seed_default_pain_point_types`, through `ModuleDefinition.on_org_created`), not backfilled, because the
+module is `default_enabled=False`.
 """
 
 from collections.abc import Sequence

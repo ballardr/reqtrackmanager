@@ -1,20 +1,16 @@
 /**
  * Module: modules/stakeholders/EngagementDetailPage
  *
- * A single Engagement (`/projects/:projectId/modules/stakeholders/engagements/
- * :engagementId`): what happened (channel, date, purpose, summary, notes), who
- * was involved (facilitators, Stakeholder participants, groups it was aimed at,
- * Personas covered), what it produced (Pain Points, Needs and Open Questions it
- * raised or answered) and, when the project has the research extras on, its
- * session prompts, anonymous participants and findings. Attachments and comments
- * are the shared `RecordDiscussion`.
+ * A single Engagement (`/projects/:projectId/modules/stakeholders/engagements/:engagementId`): what happened (channel,
+ * date, purpose, summary, notes), who was involved (facilitators, Stakeholder participants, groups it was aimed at,
+ * Personas covered), what it produced (Pain Points, Needs and Open Questions it raised or answered) and, when the
+ * project has the research extras on, its session prompts, anonymous participants and findings. Attachments and
+ * comments are the shared `RecordDiscussion`.
  *
- * An engagement is project-scoped, edited in place and has no lifecycle or
- * version history; the one irreversible action is "Delete permanently", a tier-2 `ConfirmDialog` that requires typing the exact title
- * and says what goes with it. Every mutating control always renders regardless of
- * role; the backend enforces `engagement_owner` and a 403 surfaces as a toast.
- * The retain-until date only flags the engagement as due for review; nothing is
- * deleted automatically.
+ * An engagement is project-scoped, edited in place, with no lifecycle or version history; the one irreversible action
+ * is "Delete permanently", a tier-2 `ConfirmDialog` that requires typing the exact title and says what goes with it.
+ * Mutating controls always render whatever the role; the backend enforces `engagement_owner` and a 403 surfaces as a
+ * toast. The retain-until date only flags the engagement as due for review; nothing is deleted automatically.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -119,11 +115,18 @@ export function EngagementDetailPage() {
     }
   }
 
-  async function openEdit() {
-    if (!projectId || !engagementId) return;
-    setRecordedParticipants(await loadParticipantEntries(projectId, engagementId, researchExtras === true).catch(() => null));
-    setEditing(true);
-  }
+  // Edit waits until the research extras are known, so the form always holds the anonymous participants when there are any.
+  const [editRequested, setEditRequested] = useState(false);
+  useEffect(() => {
+    if (!editRequested || researchExtras === null || !projectId || !engagementId) return;
+    void loadParticipantEntries(projectId, engagementId, researchExtras)
+      .catch(() => null)
+      .then((entries) => {
+        setRecordedParticipants(entries);
+        setEditRequested(false);
+        setEditing(true);
+      });
+  }, [editRequested, researchExtras, projectId, engagementId]);
 
   async function saveEdit(values: EngagementCreateValues) {
     if (!projectId || !engagement) return;
@@ -200,7 +203,7 @@ export function EngagementDetailPage() {
           </>
         }
         subtitle={engagement.engagement_date}
-        onEdit={() => void openEdit()}
+        onEdit={() => setEditRequested(true)}
         actions={[
           {
             key: "toggle-codes", label: showCodes ? "Hide codes" : "Show codes",
@@ -212,11 +215,10 @@ export function EngagementDetailPage() {
       />
       {eraseAction.dialog}
 
-      <div className="stack">
         <DetailCard>
-          {engagement.purpose && <RecordField label="Purpose" value={engagement.purpose} />}
-          {engagement.summary && <RecordField label="Summary" value={engagement.summary} />}
-          {engagement.notes && <RecordField label="Notes" value={engagement.notes} />}
+          {engagement.purpose && <RecordField markdown label="Purpose" value={engagement.purpose} />}
+          {engagement.summary && <RecordField markdown label="Summary" value={engagement.summary} />}
+          {engagement.notes && <RecordField markdown label="Notes" value={engagement.notes} />}
 
           <FormGrid>
             <PrincipalListField
@@ -244,6 +246,7 @@ export function EngagementDetailPage() {
 
             <RepresentationPanel
               heading="Personas covered"
+              kind="persona"
               showCodes={showCodes}
               onChanged={linksChanged}
               reloadKey={linksKey}
@@ -300,7 +303,6 @@ export function EngagementDetailPage() {
           currentUserId={user?.id}
           attachmentsReadOnly={false}
         />
-      </div>
 
       {editing && (
         <EngagementFormModal

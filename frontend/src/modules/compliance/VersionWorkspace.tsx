@@ -1,34 +1,16 @@
 /**
  * Module: modules/compliance/VersionWorkspace
  *
- * The drill-down view for one `ComplianceStandardVersion` — status,
- * publish/retire actions (§4's lifecycle), a "Compare versions" entry point
- * into `VersionDiffModal` (§27), and the version's own requirement tree
- * (`RequirementTree.tsx`, §5/§6). Rendered full-width in place of the
- * Standards tab's list (not a `SidePanel`, whose 420px max-width is too
- * narrow for a usable tree editor — see this component's own "why not a
- * SidePanel" note notes) —
- * a "drill into the content column, keep a Back control" shape, the same
- * one `RequirementsPage`'s own detail view already uses elsewhere in this
- * app for a similarly content-heavy child view.
- *
- * An always-editable "Version summary" field (distinct from
- * `change_note`, which describes what changed *relative to the previous
- * version*, not this version's own current standing) — editable
- * regardless of the version's own status, unlike everything else here,
- * which is `isDraft`-gated. The backend enforces the stage-dependent RBAC
- * (`standards_contributor` while `DRAFT`, `standards_manager`-or-override
- * once published/retired) — this component doesn't attempt to compute that
- * client-side, matching this module's own established convention of
- * always showing an action and surfacing a 403 via toast rather than
- * pre-computing permissions in the UI (see e.g. Publish/Retire above,
- * unconditionally shown regardless of the caller's actual role).
- *
- * The entity quick-switch chevron (`EntitySwitcher`) sits next to the version heading, so a user already
- * viewing one version can jump straight to a sibling without returning to
- * the flat "Versions" list first. Its sibling list is simply this
- * component's own `versions` prop — no new fetch, since `StandardNavSection`
- * /`StandardVersionsSection` already load it for the same standard.
+ * The drill-down view for one `ComplianceStandardVersion`: status, publish and retire (§4's lifecycle), a "Compare versions"
+ * entry into `VersionDiffModal` (§27) and the version's requirement tree (`RequirementTree.tsx`, §5/§6). It renders full width
+ * in place of the Standards tab's list, not in a `SidePanel` (420px is too narrow for a tree editor), as `RequirementsPage`'s
+ * detail view does for a content-heavy child.
+ * - An always-editable "Version summary" field, distinct from `change_note` (what changed relative to the previous version),
+ *   editable whatever the status, unlike the `isDraft`-gated rest. The backend enforces the stage-dependent roles
+ *   (`standards_contributor` while `DRAFT`, `standards_manager` or override once published or retired); the component shows every
+ *   action and surfaces a 403 as a toast.
+ * - The `EntitySwitcher` chevron beside the version heading jumps to a sibling version; its list is the `versions` prop that
+ *   `StandardNavSection` and `StandardVersionsSection` already load.
  */
 import { useState } from "react";
 
@@ -157,7 +139,7 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
       )}
 
       <div className="card stack" style={{ gap: "var(--space-2)" }}>
-        <TextAreaField helpNotNeeded
+        <TextAreaField markdown helpNotNeeded
           label="Version summary"
           value={summary}
           onChange={setSummary}

@@ -3,6 +3,7 @@ import { expect, fn, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { requiredCaptions } from "../../testing/requiredMarkers";
+import { openAddDialog } from "../../testing/storybook-helpers";
 import { buildElement, CONNECTION_TYPES, ELEMENT_TYPES, ORG_ID, ORG_USERS, PROJECT_ID, SYMBOLS } from "./architectureFixtures";
 import { ElementFormModal } from "./ElementFormModal";
 
@@ -63,8 +64,9 @@ export const SaveAndActivateSendsThePortsAndTheFlag: Story = {
   play: async ({ args }) => {
     const d = dialog();
     await userEvent.type(d.getByLabelText("Name"), "Scheduler");
-    await userEvent.type(d.getByLabelText("Port name"), "Jobs");
-    await userEvent.click(d.getByRole("button", { name: "Add port" }));
+    const add = await openAddDialog(d, "Add port");
+    await userEvent.type(add.getByRole("textbox", { name: "Name" }), "Jobs");
+    await userEvent.click(add.getByRole("button", { name: "Add" }));
     await userEvent.selectOptions(await d.findByLabelText("Direction of Jobs"), "in");
     await userEvent.click(d.getByRole("button", { name: "Save and activate" }));
     await expect(args.onSave).toHaveBeenCalledWith(

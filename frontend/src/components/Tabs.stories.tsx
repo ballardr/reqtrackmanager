@@ -7,11 +7,8 @@ import { Tabs, tabPanelProps } from "./Tabs";
 type TabKey = "overview" | "stages" | "reports";
 
 function Interactive() {
-  // A fresh id per mounted instance, not a hardcoded string — Storybook
-  // may keep more than one story's DOM around at once, and a shared
-  // literal idPrefix would let document.getElementById (used for the
-  // arrow-key focus move) resolve to a different story's element instead
-  // of this one's.
+  // A fresh id per mounted instance: Storybook may keep several stories' DOM at once, and a shared literal idPrefix would
+  // let `document.getElementById` (the arrow-key focus move) resolve to another story's element.
   const idPrefix = useId();
   const [active, setActive] = useState<TabKey>("overview");
   const tabs = [

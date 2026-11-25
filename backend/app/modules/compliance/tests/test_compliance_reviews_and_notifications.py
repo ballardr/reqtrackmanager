@@ -106,10 +106,8 @@ def test_update_only_while_scheduled_and_resets_reminder_stamps(client, admin_to
         headers=auth_headers(admin_token),
     ).json()
 
-    # Push the sweep's overdue stamp onto this review, then confirm PATCHing
-    # a new next_due_date clears it (a rescheduled review gets a fresh
-    # reminder cycle rather than silently inheriting the old "already
-    # notified" state).
+    # Push the sweep's overdue stamp onto this review, then confirm that PATCHing a new next_due_date clears it, so a
+    # rescheduled review gets a fresh reminder cycle.
     _run_sweep(send_review_due_notifications)
 
     updated = client.patch(
@@ -420,13 +418,9 @@ def test_reviews_due_listing_spans_project_and_standard_level(client, admin_toke
     ids = {r["id"] for r in rows}
     assert ids == {due_project_review["id"], due_standard_review["id"]}
 
-    # `standard_id`/`standard_reference`/`standard_name` are
-    # resolved for *both* kinds of review — a project-level one (through its
-    # assignment's own standard version) and a standard-level one (directly)
-    # — so a review can be filtered/grouped by standard regardless of which
-    # way it's scoped. `standard_version_id`/`version_label` are only set
-    # for the project-level one, since a standard-level review isn't tied
-    # to one specific version.
+    # `standard_id`, `standard_reference` and `standard_name` are resolved for both kinds of review (a project-level one
+    # through its assignment's version, a standard-level one directly); `standard_version_id` and `version_label` are
+    # set only for the project-level one.
     by_id = {r["id"]: r for r in rows}
     project_row = by_id[due_project_review["id"]]
     assert project_row["standard_id"] == standard["id"]

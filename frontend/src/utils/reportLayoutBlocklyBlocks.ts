@@ -1,20 +1,18 @@
 /**
  * Module: utils/reportLayoutBlocklyBlocks
  *
- * Everything the block editor needs from Blockly itself: the block types generated from the server's block
- * schemas and the theme drawn from the app's colour tokens.
- *
- * Responsibilities:
- * - Register one Blockly block type per layout block type (`BlockType`): a label, a read-only summary of its key
- *   facts, and a statement input per child list. A module's block type therefore needs no code here.
- * - Register the fixed root block and the stand-in for a block type the catalogue does not describe.
- * - Build a Blockly theme from the CSS colour tokens, so the editor follows the light and dark themes.
+ * Everything the block editor needs from Blockly itself: the block types
+ * generated from the server's block schemas and the theme drawn from the app's
+ * colour tokens.
+ * - Register one Blockly block type per layout `BlockType`: a label, a read-only
+ *   summary and a statement input per child list, so a module's block type needs
+ *   no code here; also the fixed root block and the stand-in for an undescribed type.
+ * - Build a Blockly theme from the CSS colour tokens (light and dark).
  * - Make a pointer drag move only the grabbed block (`installSingleBlockDrag`).
- *
- * Design decisions: the whole of Blockly is imported here and nowhere else, and this module is only loaded by the
- * lazily loaded editor, so the library stays out of the main bundle. Block colours come from a small fixed set
- * (structure, data, content) rather than per-type colours, with a light and a dark value each, mirroring how a
- * module registers its own accent colour instead of a core map growing an entry.
+ * Design: all of Blockly is imported here and only by the lazily loaded editor,
+ * keeping it out of the main bundle. Block colours come from a small fixed set
+ * (structure, data, content) with a light and a dark value each, not per-type
+ * colours, as a module registers its own accent colour instead of a core map.
  */
 import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";

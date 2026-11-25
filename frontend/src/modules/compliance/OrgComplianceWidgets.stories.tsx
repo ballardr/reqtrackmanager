@@ -154,24 +154,24 @@ export const SummaryRendersOneEqualSizeGrid: Story = {
   },
 };
 
-/** Each headline tile links to the pre-filtered Compliance section it summarises, with no embedded project list. */
+/** Each headline tile links to the pre-filtered By standard or Outstanding tab it summarises, with no embedded project list. */
 export const SummaryTilesLinkToFilteredViews: Story = {
   beforeEach: mockApis,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const nonCompliantTile = await waitFor(() => canvas.getByRole("link", { name: /Non-compliant projects/ }));
     await expect(nonCompliantTile).toHaveAttribute(
-      "href", `/orgs/${ORG_ID}/overview/compliance-by-standard?groupBy=project&state=non_compliant`,
+      "href", `/standards/by-standard?org=${ORG_ID}&groupBy=project&state=non_compliant`,
     );
     await expect(within(nonCompliantTile).queryByRole("link", { name: "Beta Tunnel" })).not.toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: /Projects with outstanding actions/ })).toHaveAttribute(
-      "href", `/orgs/${ORG_ID}/overview/compliance-outstanding?category=actions`,
+      "href", `/standards/outstanding?org=${ORG_ID}&category=actions`,
     );
     await expect(canvas.getByRole("link", { name: /Projects with expired evidence/ })).toHaveAttribute(
-      "href", `/orgs/${ORG_ID}/overview/compliance-outstanding?category=evidence&validity=expired`,
+      "href", `/standards/outstanding?org=${ORG_ID}&category=evidence&validity=expired`,
     );
     await expect(canvas.getByRole("link", { name: /Assessments awaiting approval/ })).toHaveAttribute(
-      "href", `/orgs/${ORG_ID}/overview/compliance-outstanding?category=pending`,
+      "href", `/standards/outstanding?org=${ORG_ID}&category=pending`,
     );
   },
 };

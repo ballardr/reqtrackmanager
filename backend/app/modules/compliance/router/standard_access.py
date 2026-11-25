@@ -1,15 +1,10 @@
 """
 Module: modules.compliance.router.standard_access
 
-Standard-scoped RBAC: a standard's own member list, and
-direct/group `standards_manager`/`standards_contributor` role grant and
-revoke (with the "last Standards Manager" floor check, covered by a
-direct/group grant or the org's fallback group). Kept in its own
-bucket, deliberately not folded into `standards.py`, because this is a
-role-grant surface (RBAC-adjacent), the same category the compliance
-module's MCP write-tool declarations (`module.py`) exclude on
-principle — see that file's "2026-09-22 reversal" docstring section,
-point 2.
+Standard-scoped RBAC: a standard's member list and the direct and group grant and revoke of the `standards_manager` and
+`standards_contributor` roles, with the "last Standards Manager" floor check (covered by a direct or group grant or the
+organisation's fallback group). It is its own bucket, not part of `standards.py`, because it is a role-grant surface,
+which the module's MCP write tools exclude (see `module.py`).
 """
 
 from uuid import UUID
@@ -152,7 +147,7 @@ def assign_standard_member_role(
             db, target, notification_type=NotificationType.PERMISSION_GRANTED,
             title="Compliance standard permission granted",
             body=f"You were granted the '{payload.role_key}' role on '{standard.name}'.",
-            actor_id=current_user.id,
+            entity_type="compliance_standard", entity_id=str(standard.id), actor_id=current_user.id,
         )
         db.commit()
 

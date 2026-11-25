@@ -1,27 +1,12 @@
 """
 Module: modules.risk_management.scoring
 
-Risk Management's registration into core's generic scoring-matrix mechanism:
-the `risk` scheme with Likelihood, Consequence
-and Detectability axes and two models, Likelihood × Consequence (the default)
-and Likelihood × Consequence × Detectability (FMEA-style).
-
-Design decisions (all **Decided by: Agent** except the reuse itself, which is
-**Decided by: User**):
-- Detectability weights run the FMEA way: a *higher* weight means the problem
-  is *harder* to detect, so a higher product is always a worse risk.
-- The top Consequence level is "Catastrophic", the top Likelihood level
-  "Almost certain".
-- Default bands are per model, because a three-axis product sits lower on the
-  normalised scale than a two-axis one. The two-axis thresholds reproduce the
-  common 5x5 reading (product 1-4 Low, 5-9 Medium, 10-16 High, 20+ Critical);
-  a matrix that is not monotonic in the product is expressed with core's
-  per-cell rating override, not here.
-- Org-level configuration is gated by the `risk_type_admin` role (plus org
-  admins), the same people who manage the Risk type vocabulary.
-- `count_level_usage`/`reassign_level_usage` act on *current* risk versions
-  only, so deleting an in-use level forces a reassignment while history keeps
-  its (then null) reference.
+Registers the `risk` scheme into core's scoring-matrix mechanism: Likelihood,
+Consequence and Detectability axes; models Likelihood x Consequence (default)
+and the FMEA-style three-axis product. Higher Detectability weight means harder
+to detect. Default bands are per model (two-axis thresholds reproduce the usual
+5x5 reading). Configuration needs `risk_type_admin`; level-usage hooks act on
+current versions only.
 """
 
 from __future__ import annotations

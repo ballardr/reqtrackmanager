@@ -1,21 +1,14 @@
 """
 Module: models.encrypted_type
 
-A SQLAlchemy column type that transparently encrypts values before they're
-written to the database and decrypts them on read, for columns that store
-genuine secrets — SSO client secrets, TOTP secrets, per-org SMTP passwords —
-rather than data that only needs least-privilege *access* control. These
-values were previously stored as plain `String` columns, relying entirely on
-infrastructure-level disk encryption (SOC 2 encryption-and-key-management
-hardening pass); this closes that gap at the application layer, so the
-values are unreadable even to someone with direct database access but no
-`APP_SECRET_ENCRYPTION_KEY`.
+A SQLAlchemy column type that encrypts values before they are written and decrypts them on read, for
+columns holding genuine secrets (SSO client secrets, TOTP secrets, per-org SMTP passwords) rather than
+data that needs only access control. Values are unreadable to someone with direct database access but
+without `APP_SECRET_ENCRYPTION_KEY` (SOC 2 encryption and key management policy).
 
-Uses Fernet (symmetric, authenticated encryption — AES-128-CBC + HMAC,
-built on `cryptography`, a direct dependency in requirements.txt), keyed from `Settings.app_secret_encryption_key`
-via SHA-256 key derivation (turns an arbitrary-length configured secret into
-Fernet's required 32-byte key, the same way `jwt_secret` is an arbitrary
-string rather than a pre-formatted key).
+Uses Fernet (symmetric authenticated encryption, AES-128-CBC + HMAC, from `cryptography`), keyed from
+`Settings.app_secret_encryption_key` through SHA-256 key derivation, which turns an arbitrary-length
+secret into Fernet's 32-byte key.
 """
 
 from __future__ import annotations
@@ -102,11 +95,10 @@ class EncryptedString(TypeDecorator):
         try:
             return _fernet().decrypt(value.encode()).decode()
         except InvalidToken:
-            # A value written before encryption was enabled, or under a key that is no longer configured.
-            # Surfacing None (rather than raising) matches how every caller already treats an absent secret
-            # ("not configured") instead of crashing the request that happens to read this row. It is counted and
-            # logged, because the consequence is real: a person's second factor cannot be verified and a
-            # single sign-on secret reads as empty until the right key is restored.
+            # A value written before encryption was enabled, or under a key no longer configured. None (not
+            # an exception) matches how callers treat an absent secret ("not configured"), so a read does
+            # not crash the request. It is counted and logged because a second factor cannot be verified
+            # and a single sign-on secret reads as empty until the right key is restored.
             _note_decrypt_failure()
             return None
 

@@ -2,7 +2,7 @@
 
 ReqTrackManager ships a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server — `mcp-server/` — that exposes requirements, change requests, notifications, and review schedules as tools an AI assistant can call directly, instead of a person copy-pasting content into a chat window. It runs as its own container, talks to the same REST API everything else uses, and is meant to be reachable by both local developer tools (Claude Code, VS Code Copilot Chat) and remote/hosted ones (Microsoft Copilot Studio) — see [Deploying it for remote clients](#deploying-it-for-remote-clients-copilot-studio-etc) below.
 
-Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, defaulting to `true` on both the bundled dev/test stack and the production `docker-compose.yml` at the repo root; set it to `false` to opt a deployment back into read-only-only — additionally lets an AI assistant *author* requirement content (create new requirements and edit unlocked ones) and, separately, perform an approval-type action once an org admin and a project manager/administrator have each explicitly enabled that for their own organisation/project. See [Write mode](#write-mode) below, and [docs/decisions.md](decisions.md)'s "MCP server write mode" and "AI approval via MCP" entries for the full design rationale, including why this is this project's deliberately-preferred way to let AI act on the system at all (rather than building a bespoke AI backend/model into the product itself).
+Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, defaulting to `true` on both the bundled dev/test stack and the production `deployments/full/docker-compose.yml`; set it to `false` to opt a deployment back into read-only-only — additionally lets an AI assistant *author* requirement content (create new requirements and edit unlocked ones) and, separately, perform an approval-type action once an org admin and a project manager/administrator have each explicitly enabled that for their own organisation/project. See [Write mode](#write-mode) below, and [docs/decisions.md](decisions.md)'s "MCP server write mode" and "AI approval via MCP" entries for the full design rationale, including why this is this project's deliberately-preferred way to let AI act on the system at all (rather than building a bespoke AI backend/model into the product itself).
 
 ## What it can do
 
@@ -38,9 +38,12 @@ Twenty-two read tools, always available:
 | `list_link_candidate_projects` | The projects a link from this project may reach: itself, parent projects and child projects the caller can open (siblings and unrelated projects never appear) |
 | `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
 | `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
+| `list_components` / `list_categories` / `list_stages` | The project's components, categories (optionally one component's) and stages in display order, with the ids that `create_requirement` and `list_requirements` take; an empty `list_components` means the project has no structure yet |
 | `list_tags` | The project's tag vocabulary with usage counts, and whether new tags are free or limited to the list |
 | `get_artefact_tags` | The tags on one record of any type, whether the caller may change them, and the tags to choose from |
 | `find_artefacts_by_tag` | Records of every type that carry some tags (any or all), limited to those the caller can open |
+| `get_artefact_external_references` | One record's external references (system, key, link, note, role), whether the caller may change them, and the systems to choose from |
+| `find_artefacts_by_external_reference` | The records of every type that carry an outside key (exact, optionally in one system or type), limited to those the caller can open |
 | `search_records` | Records of every type (and projects) found by text: code, title and tags by default, more fields on request; scoped to all projects, one project or a module's unit such as a Compliance standard. Only what the caller can open; the first 500 matches |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail, including the links it proposes (`proposed_links`) |
@@ -53,16 +56,20 @@ Twenty-two read tools, always available:
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Plus seven write tools, only when [write mode](#write-mode) is enabled:
+Plus these write tools, only when [write mode](#write-mode) is enabled:
 
 | Tool | Purpose |
 | --- | --- |
-| `create_requirement` | Creates a new requirement (always starts in "draft") |
-| `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+| `create_requirement` | Creates a new requirement (always starts in "draft"); `additional_places` also places it in further components, each with an alias code |
+| `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status`; `additional_places` replaces its further places when given |
+| `remove_requirement_alias` / `promote_requirement_alias` / `make_requirement_alias_independent` | Act on one further place of a requirement: retire its code (never reused, still resolves), swap it with the own place, or turn it into a new draft requirement that takes the alias code |
+| `create_component` / `update_component` / `move_component` / `delete_component` | Structures a project: adds, renames or re-prefixes, reorders (`up` or `down`) and deletes a component. Delete only when it has no categories and no placed records (409 otherwise). Needs the project manager role; the prefix is unique and forms the requirement code, and is optional on create (the server suggests one from the name, as the screen does) |
+| `create_category` / `update_category` / `move_category` / `move_category_to_component` / `delete_category` | The same for a category under one component. `move_category_to_component` moves a category (with its requirements) under another component; existing codes do not change and later ones take the new component's prefix. `delete_category` takes no replacement: it succeeds only when no requirement and no placed record is in the category, checked by the server in the same step (409 with the counts otherwise), so move requirements first with `update_requirement` |
 | `create_artefact_link` | Links an artefact to another record of the same project, or of a parent or child project (`other_project_id`), from either end — subject to the organisation's link restrictions, each link type's nesting scope and the caller's own permissions |
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
 | `add_artefact_tag` / `remove_artefact_tag` | Adds or removes one tag on a record, keeping the others |
+| `add_artefact_external_reference` / `update_artefact_external_reference` / `remove_artefact_external_reference` | Adds, changes or removes one external reference on a record (a reference is not record content, so an approved requirement takes it) |
 | `create_report_layout` / `save_report_layout_version` / `update_report_layout` / `delete_report_layout` | Author custom report layouts for a project or organisation (needs the layout-management permission; a save names the version it started from and is refused if someone saved since; delete is irreversible and also deletes the introduction, chapters and appendices written for the layout) |
 | `run_report_pack` | Queues a report pack to be produced in the background as one zip, as the caller (every report keeps its own access gate); the requester is notified and downloads it in the app. Subject to the per-user limit on background runs |
 | `copy_reports` | Copies report layouts, packs, folders and module-report settings from one project to another of the same organisation (needs the layout-management right in both). Previews by default (`dry_run`); never replaces, a taken name is renamed `Name (copy)` or skipped |
@@ -79,7 +86,7 @@ A backend module can also contribute its own tools here, prefixed with that modu
 
 ## Write mode
 
-On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `docker-compose.yml` at the repo root both default it to `true`. When it's off, none of the seven write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
+On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `deployments/full/docker-compose.yml` both default it to `true`. When it's off, none of the write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
 
 **`create_requirement`/`update_requirement`: requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through either tool, regardless of what the calling account's own role could do directly via the API. Attempting to edit an already-approved (locked) requirement is rejected with a clear error telling the caller a change request is needed instead.
 
@@ -195,6 +202,8 @@ Concretely, this means:
 
 A token is shown exactly once, at creation — copy it immediately. You (or an org/server admin, for incident response) can revoke it at any time from the same Preferences page; revocation takes effect on the token's very next use, not after some delay.
 
+**For an unattended agent — a service user's token.** A token created under a person's account stops working when that person leaves, and everything the agent does is recorded under their name. An organisation administrator can instead create a **service user** (organisation settings → People → Service users: no password, no sign-in, tied to that organisation) and issue its token there. Paste the `rtm_pat_...` value exactly as above; no `mcp-server` change is needed. The service user needs roles on the projects the agent works with (granted like any member's), its token is limited to its own organisation and can be narrowed to projects, and the agent's actions are recorded under the service user's name. See [decisions.md](decisions.md)'s "Phase 21: service users" section.
+
 **The quick way — the server's own `/login` page**, if you just need something working right now. Visit `http://localhost:8100/login` (or wherever `mcp-server` is deployed) in a browser. It's a plain HTML sign-in form served by `mcp-server` itself — no separate service, nothing to install. Enter your ReqTrackManager email and password (and a TOTP code afterward, if your account has 2FA enabled); the page relays those credentials to the backend's own `POST /api/v1/auth/login` (and `/api/v1/auth/2fa/verify` for the 2FA step) on your behalf, one time, then uses the session that sign-in produced to create a **personal access token** for all of your organisations, discards the session, and shows you that token (with its expiry date) plus ready-to-paste config snippets for Claude Code and VS Code. The session token itself is never shown: it could change your password and two-factor settings, which an MCP client never needs. If your account belongs to no organisation, or your organisation does not allow tokens, the page says so and shows no token.
 
 A few things worth knowing about this page:
@@ -222,7 +231,7 @@ Consider creating a dedicated account for AI-assistant use rather than reusing a
 Part of both Compose stacks already — no extra step beyond the normal `docker compose up`:
 
 ```bash
-cd tests/container && docker compose up -d --build   # dev/test; also available in the root docker-compose.yml
+cd tests/container && docker compose up -d --build   # dev/test; also available in the root deployments/full/docker-compose.yml
 ```
 
 It listens on `:8100`, with the MCP endpoint at `http://localhost:8100/mcp` and a plain liveness check at `http://localhost:8100/health`. `REQTRACK_API_URL` (default `http://backend:8000`, the Compose-internal address) points it at the backend.

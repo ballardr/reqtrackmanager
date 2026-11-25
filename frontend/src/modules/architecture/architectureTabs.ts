@@ -2,16 +2,12 @@
  * Module: modules/architecture/architectureTabs
  *
  * The tabs of the System Architecture page (`SystemArchitecturePage`) and the addresses that open them.
- *
- * Responsibilities:
  * - `ARCHITECTURE_TABS`: each tab's key, label and the module sub-component that must be enabled to show it.
- * - `architectureTabPath`: the one place that builds a tab's address, used by links, redirects and `module.ts`.
- * - `ArchitectureListChrome`: what the page hands the list it shows (the tab strip and its panel attributes), so
- *   each list is still an ordinary `ListPageLayout` page that works without the shell (stories, a future embed).
- *
- * Design decisions:
- * - The tab is a query parameter on one route, so every tab's own filters stay in the address beside it and the
- *   shared list-position and back-link mechanisms keep working per tab.
+ * - `architectureTabPath`: the one place that builds a tab's address (links, redirects and `module.ts`).
+ * - `ArchitectureListChrome`: what the page hands the list it shows (the tab strip and its panel attributes), so each list
+ *   is still an ordinary `ListPageLayout` page that works without the shell (stories).
+ * The tab is a query parameter on one route, so each tab's filters stay in the address and the shared list-position and
+ * back-link mechanisms keep working per tab.
  */
 import type { HTMLAttributes, ReactNode } from "react";
 

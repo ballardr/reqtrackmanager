@@ -58,6 +58,10 @@ Granting an existing role — fixed, module, or custom — to a user or an organ
 
 `manage_org_report_layouts` and `manage_project_report_layouts` are permission atoms in the same list. They let their holder create, edit, version and delete custom report layouts for the organisation, or for one project (and, in a project, hide a layout it inherits and restore it). They are separate so that trusting someone with a project's layouts does not let them change the ones every project inherits. Organisation admins hold both; project administrators and managers hold the project one in their own project. Running a layout needs neither.
 
+## The lifecycle permissions
+
+`manage_org_lifecycles` and `manage_project_lifecycles` are permission atoms in the same list. They let their holder require lifecycle states and exempt projects (organisation), or choose which optional states a project uses (project); see [Lifecycles](lifecycles.md). They are separate so a project can be trusted with its own process without being able to change what every project in the organisation must keep. Organisation admins hold both, and project administrators hold the project one in their project.
+
 `publish_organization_templates` is another permission atom in the list. It lets its holder make a project both a template and visible to the whole organisation; a project manager can set either alone but not both. Organisation admins hold it, and it can be given to others through a custom role.
 
 ## The shared resource permission

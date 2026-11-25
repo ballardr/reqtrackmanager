@@ -1,17 +1,15 @@
 /**
  * Module: components/RemovableItemList
  *
- * A wrapped row of compact items, each with a small "x" that asks to remove it: the one shape
- * for "these records are linked here" lists (participants, covered Personas, audiences, outcomes)
- * that used to be a bulleted list with a text "Remove" button on every line. Chips take a
- * fraction of the height. The "x" only *asks*: the caller opens its tier-1 confirm
- * (docs/ux-style-guide.md "confirmation, in two tiers") and does the removal. A long list is
- * capped by `CappedList`.
+ * A wrapped row of compact items, each with a small "x" that asks to remove it: the one shape for "these records
+ * are linked here" lists (participants, covered Personas, audiences, outcomes). Chips take a fraction of the height
+ * of a bulleted list. The "x" only *asks*: the caller opens its tier-1 confirm (docs/ux-style-guide.md
+ * "confirmation, in two tiers") and does the removal. A long list is capped by `CappedList`.
  */
-import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { CappedList } from "./CappedList";
+import { ClearButton } from "./ClearButton";
 
 export interface RemovableItem {
   id: string;
@@ -51,9 +49,7 @@ export function RemovableItemList({
             <li key={item.id} className="removable-item">
               {item.content}
               {onRemove && item.removable !== false && (
-                <button type="button" className="removable-item__remove" aria-label={item.removeLabel} title={item.removeLabel} onClick={() => onRemove(item.id)}>
-                  <X size={12} aria-hidden="true" />
-                </button>
+                <ClearButton label={item.removeLabel} onClick={() => onRemove(item.id)} />
               )}
             </li>
           ))}

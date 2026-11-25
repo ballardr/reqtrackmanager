@@ -2,8 +2,7 @@
  * Module: context/NavLabelValue
  *
  * The navigation-name context object and the hooks that read it, kept apart from the provider component
- * (`NavLabelContext.tsx`) so that file exports only a component. Names are keyed by the route each
- * navigation entry opens (see the provider for why).
+ * (`NavLabelContext.tsx`) so that file exports only a component. Names are keyed by the route each navigation entry opens.
  */
 import { createContext, useCallback, useContext } from "react";
 import { useLocation } from "react-router-dom";

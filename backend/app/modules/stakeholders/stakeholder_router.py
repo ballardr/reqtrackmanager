@@ -1,20 +1,15 @@
 """
 Module: modules.stakeholders.stakeholder_router
 
-Org-scoped Stakeholder API, mounted at
-`/api/v1/orgs/{organization_id}/modules/stakeholders`, alongside `router.py`'s
-Persona routes: organisation-scoped Stakeholder CRUD/lifecycle/comments/files,
-the org Stakeholder type vocabulary, "create from org user", the Influence ×
-Interest cadence hint, hard delete (erasure) and the "represents Persona" links.
+Org-scoped Stakeholder API, mounted at `/api/v1/orgs/{organization_id}/modules/stakeholders` alongside
+`router.py`: Stakeholder CRUD/lifecycle/comments/files, the org type vocabulary, "create from org user",
+the Influence × Interest cadence hint, hard delete (erasure) and the "represents Persona" links.
 
-RBAC mirrors the Persona router: reads are gated by
-`require_org_subcomponent_enabled("stakeholders", "stakeholder")`; mutations
-additionally need `_stakeholder_shared.require_stakeholder_manage`, and type
-CRUD `require_stakeholder_type_admin`. An org stakeholder's files are org
-shared resources, so the file-owner hook is never consulted for them. An org
-stakeholder only represents org-scoped personas, and the persona-side reverse
-list shows only org-scoped stakeholders, so org-level views never expose a
-project's own records.
+RBAC: reads need `require_org_subcomponent_enabled("stakeholders", "stakeholder")`; mutations also need
+`_stakeholder_shared.require_stakeholder_manage`, and type CRUD `require_stakeholder_type_admin`. An org
+stakeholder's files are org shared resources, so the file-owner hook is never consulted. An org
+stakeholder represents only org-scoped personas and the persona-side reverse list shows only org-scoped
+stakeholders, so org-level views never expose a project's own records.
 """
 
 from __future__ import annotations

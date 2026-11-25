@@ -75,7 +75,7 @@ export const GroupAssigneeIsShownAndSavedAsAPrincipal: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("QA Team")).toBeInTheDocument());
-    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/actions/${ACTION_ID}`,
@@ -170,10 +170,7 @@ export const ArchivedActionIsReadOnly: Story = {
   },
 };
 
-/** Clicking Restore calls the new `/unarchive` endpoint directly — no
- * `ConfirmDialog`, unlike Archive above (mirrors `ProjectAdminPage.tsx`'s
- * existing unarchive button, which also fires immediately) — and shows a
- * success toast. */
+/** Clicking Restore calls the `/unarchive` endpoint directly, with no `ConfirmDialog` (unlike Archive above, as `ProjectAdminPage.tsx`'s unarchive button), and shows a success toast. */
 export const RestoreActionShowsToast: Story = {
   beforeEach: () => {
     mockActionDetailApis(

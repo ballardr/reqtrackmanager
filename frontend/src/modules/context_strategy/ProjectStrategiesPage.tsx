@@ -1,18 +1,9 @@
 /**
  * Module: modules/context_strategy/ProjectStrategiesPage
  *
- * The Context & Strategy module's project-scoped Strategy list route,
- * mounted at
- * `/projects/:projectId/modules/context_strategy/strategies` (`module.ts`,
- * reached via this module's nav-rail entry — one of the five
- * separate top-level entries). Mirrors `modules/decisions/ProjectDecisionsPage.tsx`'s
- * `DirectoryTable` + `FilterPanel` + "New X" `Modal` shape, minus the
- * quick-view `SidePanel` tier: a row click navigates straight to
- * `StrategyDetailPage.tsx` (**Decided by: Agent** — Strategy has no
- * equivalent of Decision's `unique_code` identity shown as a clickable
- * table cell driving a *separate* quick-view panel; a direct navigation is
- * the simpler, equally style-guide-compliant choice here, and avoids
- * building a `StrategyQuickViewPanel` nobody asked for).
+ * The project-scoped Strategy list route, mounted at `/projects/:projectId/modules/context_strategy/strategies`
+ * (`module.ts`, one of the five top-level nav-rail entries): a `DirectoryTable`, `FilterPanel` and "New X" `Modal`.
+ * A row click navigates straight to `StrategyDetailPage.tsx`.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -23,10 +14,9 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
-import { cycleSort } from "../../components/sortState";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { toErrorMessage } from "../../context/ToastContext";
 import { STRATEGY_SORT_KEYS, STRATEGY_SORT_VALUES } from "./contextStrategySort";
 import { projectStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
@@ -35,8 +25,12 @@ import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } 
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { useCreatedToast } from "../../hooks/useCreatedToast";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { addSortParams, useListSort } from "../../hooks/useListSort";
+import { useOptionalColumns } from "../../hooks/useOptionalColumns";
+import { SortField } from "../../components/SortField";
 import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
@@ -52,9 +46,9 @@ export function ProjectStrategiesPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "strategy");
   const commitTags = useCommitTags(projectId ?? "", "strategy");
+  const announceCreated = useCreatedToast(projectId ?? "", "strategy");
   const [project, setProject] = useState<Project | null>(null);
   const [strategies, setStrategies] = useState<Strategy[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,7 +58,7 @@ export function ProjectStrategiesPage() {
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(STRATEGY_STATUS_LABEL) as StrategyStatus[]);
   const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(STRATEGY_PRIORITY_LABEL) as StrategyPriority[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
-  const [sort, setSort] = useUrlSort<string>(STRATEGY_SORT_KEYS);
+  const listSort = useListSort("strategies", STRATEGY_SORT_KEYS, "code");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -96,8 +90,22 @@ export function ProjectStrategiesPage() {
     if (search) params.set("search", search);
     if (includeArchived) params.set("include_archived", "true");
     addSharedListFilters(params, tagFilter, projectScope);
+    addSortParams(params, listSort.sort);
     return params;
   }
+
+  const columns: DirectoryColumn<Strategy>[] = [
+    { key: "title", label: "Title", sortable: true, render: (s) => <>{s.title}<ProjectScopeLabel row={s} /></> },
+    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
+    { key: "priority", label: "Priority", sortable: true, optional: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
+    {
+      key: "status", label: "Status", sortable: true,
+      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
+    },
+    { key: "version", label: "Version", sortable: true, optional: true, defaultHidden: true, render: (s) => `v${s.version_number}` },
+  ];
+
+  const shown = useOptionalColumns("context_strategies", columns);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -110,21 +118,11 @@ export function ProjectStrategiesPage() {
     return true;
   });
 
-  const columns: DirectoryColumn<Strategy>[] = [
-    { key: "title", label: "Title", sortable: true, render: (s) => <>{s.title}<ProjectScopeLabel row={s} /></> },
-    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
-    { key: "priority", label: "Priority", sortable: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
-    {
-      key: "status", label: "Status", sortable: true,
-      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
-    },
-    { key: "version", label: "Version", sortable: true, render: (s) => `v${s.version_number}` },
-  ];
-
   return (
     <div className="container stack">
       <ListPageLayout
         title="Strategy"
+        columnChooser={shown.chooser}
         records={{ projectId, recordType: "strategy", filters: filterParams().toString(), onImported: reloadStrategies }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
@@ -152,16 +150,17 @@ export function ProjectStrategiesPage() {
             />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <SortField list={listSort} columns={columns} codeKey="code" titleKey="title" />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
       >
         <DirectoryTable
           ariaLabel="Strategies"
-          columns={columns}
-          rows={sortRows(filtered, sort, STRATEGY_SORT_VALUES)}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
+          columns={shown.columns}
+          rows={sortRows(filtered, listSort.sort, STRATEGY_SORT_VALUES)}
+          sort={listSort.sort}
+          onSort={listSort.onHeaderSort}
           rowKey={(s) => s.id}
           placements={{ projectId, artefactType: "strategy", rowId: (s) => s.id }}
           onRowClick={(s) => navigate(`/projects/${rowProjectId(s, projectId)}/modules/context_strategy/strategies/${s.id}`)}
@@ -179,7 +178,7 @@ export function ProjectStrategiesPage() {
             setCreateError(null);
             try {
               const created = await projectStrategyApi.create(projectId, values);
-              showToast("Strategy created.");
+              announceCreated("Strategy", created);
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
               await commitTags(created.id, tags);

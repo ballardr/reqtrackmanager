@@ -1,29 +1,20 @@
 import { expect, test } from "@playwright/test";
 
-import { clickAndAwaitSave, deleteOrgOnCleanup, installCleanupHook, selectPreferencesGroup, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { addStructureCategory, addStructureComponent, structureRow, deleteOrgOnCleanup, installCleanupHook, selectPreferencesGroup, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 /**
- * End-to-end coverage for the Pelion (v2) feature set, on top of the Ossa
- * (v1) golden path already covered by golden-path.spec.ts: a project
- * custom field definition and its value on a requirement, a file
- * attachment upload, an in-app notification (password change), favouriting
- * a project, and creating a new project from a template.
+ * End-to-end coverage for the Pelion (v2) feature set, on top of the Ossa (v1) golden path covered by
+ * golden-path.spec.ts: a project custom field definition and its value on a requirement, a file attachment
+ * upload, an in-app notification (password change), favouriting a project, and creating a new project from a
+ * template.
  *
- * The password-change step runs against a disposable org-admin persona this
- * spec creates for itself, not the real bootstrap admin@example.com — a
- * change this test's own diff had to make (see docs/decisions.md), since an
- * earlier version changed that shared account's actual password mid-test.
- * Its try/finally revert had a real gap (the redirect-to-/login wait
- * between the forward change and the try block wasn't covered — a flake
- * there left the change committed with no revert ever attempted), and even
- * a gap-free try/finally would still leave the same account's password
- * hostage to a browser crash or worker kill. `admin@example.com` is only
- * ever used here, read-only, to bootstrap this spec's own throwaway
- * org/persona via direct API calls — never to log in through the UI form,
- * so this spec can never itself change that account's real password.
+ * The password-change step runs against a disposable org-admin persona this spec creates, not the bootstrap
+ * admin@example.com: a try/finally revert cannot protect a shared account's password against a browser crash
+ * or worker kill. `admin@example.com` is used here only, read-only, to bootstrap the throwaway org and persona
+ * through direct API calls, never to log in through the UI form.
  */
 
 const SERVER_ADMIN_EMAIL = "admin@example.com";
@@ -64,44 +55,24 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByLabel("Email").fill(orgAdminEmail);
     await page.getByLabel("Password").fill(orgAdminPassword);
     await page.getByRole("button", { name: "Sign in" }).click();
-    // Post-login landing depends on the admin's landing_preference (U-U-03:
-    // "auto" goes straight to the sole accessible project instead of the
-    // overview list once there's exactly one) — navigate explicitly rather
-    // than asserting a specific destination, since that's not what this
-    // spec is testing.
+    // The post-login landing depends on the admin's landing_preference (U-U-03: "auto" goes straight to the
+    // sole accessible project), so the spec navigates explicitly rather than asserting a destination.
     await page.waitForURL(/\/projects(\/|$)/);
     await page.goto("/projects");
-    // ProjectListPage's own org list (which the "New project" form's org
-    // picker depends on — see the next step) loads asynchronously after
-    // mount, separately from the "Name"/"Summary" inputs that render
-    // unconditionally and immediately once the form opens. Waiting for the
-    // Name input alone doesn't wait for that org fetch, so clicking "New
-    // project" too soon after this navigation can see zero orgs loaded yet
-    // (the picker correctly absent at that instant) even though a picker
-    // will exist moments later — settle network activity first.
+    // ProjectListPage's org list (behind the org picker) loads after mount, separately from the "Name"/"Summary"
+    // inputs, so clicking "New project" too soon can see zero orgs; settle network activity first.
     await page.waitForLoadState("networkidle");
   });
 
   await test.step("create the project that will become a template", async () => {
-    // "New project" opens a Modal (style guide "Pattern: modal dialog for
-    // entity create/rename") — scoped to it rather than the old bare-".card"
-    // xpath-ancestor climb, and its Name/Summary fields are real <label>s
-    // now, not placeholder-only.
+    // "New project" opens a Modal (style guide "Pattern: modal dialog for entity create/rename"); the fields
+    // are scoped to it and found by their `<label>`s.
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     await newProjectDialog.getByLabel("Name", { exact: true }).waitFor();
-    // The org picker only renders at all when the caller belongs to more
-    // than one organisation (see ProjectListPage.tsx) — select explicitly
-    // only if a picker is actually present, so this still works whether the
-    // bootstrap admin belongs to exactly one org or several (e.g. seeded
-    // orgs the admin API-created directly, which grants the creator
-    // membership). Explicit selection matters as soon as a picker exists:
-    // ProjectListPage defaults `newOrgId` to whichever org happens to sort
-    // first, not specifically "Default Organization", so leaving the
-    // picker untouched when it's present could create this template
-    // project under the wrong org and silently break the "create from
-    // template" step below (which only offers templates belonging to
-    // whichever org it explicitly selects).
+    // The org picker renders only for a caller in more than one organisation, so it is selected only when present.
+    // `newOrgId` defaults to whichever org sorts first, so an untouched picker could create the template project
+    // under the wrong org and break the "create from template" step, which offers only the selected org's templates.
     const orgPicker = newProjectDialog.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
@@ -116,67 +87,19 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   await test.step("add component, category, and a custom field, then mark as template", async () => {
     await page.getByText("Project Admin").click();
 
-    // Categories now lives inside the merged "Structure" tab (2026-08 UX
-    // audit roadmap: Project Admin's 8 tabs -> 5), alongside a "Project
-    // stages" section that also has its own "Name"-placeholder "add stage"
-    // field — scope to "Components & categories" specifically.
+    // Categories sits in the merged "Structure" tab beside a "Project stages" section with its own
+    // "Name"-placeholder field, so the query is scoped to "Components & categories".
     await selectProjectAdminGroup(page, "Structure");
-    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
-    await componentsSection.getByPlaceholder("Name").first().fill("Software");
-    await componentsSection.getByPlaceholder("Prefix").first().fill("SW");
-    await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-    // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
-    // concurrently, then two more awaited *sequentially* afterwards (org
-    // users, report templates) — unrelated to the categories tab, but
-    // still part of the same component's state, so each one still
-    // triggers a re-render ~150-300ms after "Software" itself first
-    // becomes visible (confirmed via a MutationObserver against the real
-    // running app), enough to reset whatever's mid-typed into the
-    // newly-created component's own "add category" form. Wait for the
-    // network to go idle to ride past that settling window before
-    // touching the form.
-    await page.waitForLoadState("networkidle");
+    await addStructureComponent(page, "Software", "SW");
+    await addStructureCategory(page, "Software", "Performance", "PERF");
+    await expect(structureRow(page, "Performance")).toBeVisible();
 
-    // The component/category rename UI (each name/prefix rendered as an
-    // always-editable input) also means a page-wide getByPlaceholder("Name")
-    // is ambiguous once both "Software"'s own "add category" form and the
-    // standalone "add component" form exist — scope explicitly to
-    // "Software"'s own container (input -> row -> row -> the component's
-    // own stack div, three levels up) so this can't cross-hit the wrong
-    // form.
-    // `:not([placeholder])`: see golden-path.spec.ts's identical guard —
-    // the "add component" row's own Name field transiently shares this
-    // value right after creating "Software", which would otherwise let
-    // the xpath ancestor climb escape up to the shared "Structure" tab
-    // panel and pick up Stages' own "Name" field too.
-    const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
-    await softwareRow.getByPlaceholder("Name").fill("Performance");
-    await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-    // The comment above describes *two* waves in this same reload()
-    // cascade — 7 requests concurrently, then 2 more awaited sequentially
-    // afterwards — and the first `waitForLoadState("networkidle")` above
-    // can resolve during the brief gap between those waves, not only after
-    // both. A real run caught this exact gap: "Prefix" (filled last)
-    // survived, but "Name" (filled first) had been silently reset back to
-    // empty by the second wave's re-render, leaving "New category"
-    // permanently disabled. Wait for the network to settle a second time,
-    // and only re-fill whichever field actually got wiped, rather than
-    // assuming which one (if either) was hit.
-    await page.waitForLoadState("networkidle");
-    if ((await softwareRow.getByPlaceholder("Name").inputValue()) !== "Performance") {
-      await softwareRow.getByPlaceholder("Name").fill("Performance");
-    }
-    if ((await softwareRow.getByPlaceholder("Prefix").inputValue()) !== "PERF") {
-      await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-    }
-    await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
-    await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
-
-    // Custom fields now lives inside the merged "Fields & actions" group.
+    // Custom fields sit in the merged "Fields & actions" group.
     await selectProjectAdminGroup(page, "Fields & actions");
-    await page.getByPlaceholder("Field name").fill("Priority");
     await page.getByRole("button", { name: "New field" }).click();
+    const fieldDialog = page.getByRole("dialog", { name: "New field" });
+    await fieldDialog.getByLabel("Field name", { exact: true }).fill("Priority");
+    await fieldDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
 
     await selectProjectAdminGroup(page, "Project settings");
@@ -190,17 +113,15 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByPlaceholder("Name", { exact: true }).fill("Ship the widget");
     await page.getByLabel("Priority").fill("High");
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByText("SW-PERF-001")).toBeVisible();
+    await expect(page.getByText(/^(\S+-)?SW-PERF-001$/)).toBeVisible();
 
     await page.getByText("Ship the widget").click();
     await expect(page.getByLabel("Priority")).toHaveValue("High");
   });
 
   await test.step("upload a file attachment to the requirement", async () => {
-    // Scoped to the requirement's own "Attachments" card: the comment
-    // thread's compose box (CommentThread.tsx) now also renders its own
-    // always-present file input for staging a comment attachment, so a
-    // page-wide input[type="file"] is ambiguous between the two.
+    // Scoped to the requirement's "Attachments" card: the comment thread's compose box (CommentThread.tsx) has
+    // its own always-present file input for staging a comment attachment, so a page-wide input[type="file"] is ambiguous.
     const attachmentsCard = page.locator(".card", { has: page.getByRole("heading", { name: "Attachments" }) });
     await attachmentsCard.locator('input[type="file"]').setInputFiles({
       name: "notes.txt",
@@ -211,21 +132,9 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   });
 
   await test.step("change password triggers an in-app notification, then revert it", async () => {
-    // Changing the password bumps User.token_version, which deliberately
-    // invalidates the session's own current token (a stolen token must not
-    // keep working after the legitimate user "locks out" that session by
-    // changing credentials) — the frontend responds by logging the user out
-    // and redirecting to /login. This account is this spec's own disposable
-    // persona (not the real bootstrap admin@example.com — see this file's
-    // header comment for why), so a stuck temp password here only strands a
-    // throwaway login, not the one this repo's developers use daily.
-    // Wrapped in try/finally regardless, starting *before* the forward
-    // change itself (not just around the re-login+notification-check that
-    // follows it): once `changeResponse.ok()` is true the mutation has
-    // already committed server-side, so a failure anywhere after that —
-    // including the very next `waitForURL` — must still trigger the revert.
-    // An earlier version of this test drew the try boundary after that
-    // waitForURL, missing exactly that window.
+    // Changing the password bumps User.token_version, invalidating the current token, so the frontend logs out and
+    // redirects to /login. The try/finally starts before the forward change: once `changeResponse.ok()` is true
+    // the mutation is committed, so a failure anywhere after it (including `waitForURL`) must still revert.
     try {
       await page.getByTitle("Preferences").click();
       await selectPreferencesGroup(page, "Security");
@@ -249,10 +158,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       await expect(page.getByText("Your password was changed").first()).toBeVisible();
       await page.getByTitle("Notifications").click();
     } finally {
-      // Revert through the UI, same as the forward change above. This also
-      // invalidates the TEMP_PASSWORD session, so log back in with the
-      // original password afterwards to leave this persona usable for the
-      // rest of this spec.
+      // Revert through the UI, as the forward change did. This invalidates the TEMP_PASSWORD session, so log back
+      // in with the original password afterwards to leave this persona usable for the rest of this spec.
       await page.getByTitle("Preferences").click();
       await selectPreferencesGroup(page, "Security");
       await page.getByLabel("Current password").fill(TEMP_PASSWORD);
@@ -287,10 +194,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       }
     }
 
-    // A role-scoped locator, not getByText: after the password-change step's
-    // re-login, the admin may already land on the /projects overview (whose
-    // <h1> also reads "Projects"), which would make a plain text match
-    // ambiguous between that heading and this nav link.
+    // A role-scoped locator, not getByText: after the password-change step's re-login the admin may land on the
+    // /projects overview, whose <h1> also reads "Projects", making a plain text match ambiguous with this nav link.
     await page.getByRole("link", { name: "Projects", exact: true }).click();
     await expect(page).toHaveURL(/\/projects$/);
     // Same reasoning as the login step's wait above — settle this fresh
@@ -312,11 +217,9 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     await newProjectDialog.getByLabel("Name", { exact: true }).waitFor();
-    // The template dropdown only lists templates belonging to the
-    // currently-selected org — must explicitly select the same org the
-    // template project above was created under (see the identical picker
-    // in the "create the project that will become a template" step above
-    // for the full reasoning on why this can't be left implicit).
+    // The template dropdown lists only templates of the selected org, so the same org the template project was
+    // created under must be selected (see the org picker in the "create the project that will become a template"
+    // step above).
     const orgPicker = newProjectDialog.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
@@ -331,7 +234,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
 
     await page.getByText("Project Admin").click();
     await selectProjectAdminGroup(page, "Structure");
-    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
+    await expect(structureRow(page, "Software")).toBeVisible();
     await selectProjectAdminGroup(page, "Fields & actions");
     await expect(page.getByText("Priority").first()).toBeVisible();
   });

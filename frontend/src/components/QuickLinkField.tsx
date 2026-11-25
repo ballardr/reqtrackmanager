@@ -1,25 +1,20 @@
 /**
  * Module: components/QuickLinkField
  *
- * The "Link to" field of a create form: one search box that finds records to link the new
- * record to, so the relationship is made in the same trip as the record instead of through the
- * Links panel afterwards. Chosen records appear as rows with the relationship preselected and
- * changeable, and a remove control.
+ * The "Link to" field of a create form: one search box that finds records to link the new record to, so the
+ * relationship is made in the same request as the record. Chosen records appear as rows with the relationship
+ * preselected and changeable, and a remove control.
  *
- * Responsibilities:
- * - Search with the Links panel's finder (`api.candidates` / `api.options`), asked about the
- *   record being created through `DRAFT_ARTEFACT_ID`, so the server applies the same rules
- *   (visibility, enabled modules, link-type restrictions, the caller's link authority).
- * - Hand the chosen links to the form (`onChange`); the form creates them with
- *   `useCommitQuickLinks` once the record exists. Nothing is written here.
- * - Render nothing when the caller cannot link this type or no link type reaches another record
- *   type, so a form never offers a field that would be refused.
- *
- * Design decisions:
- * - Same-project records only. Linking to an ancestor or descendant project stays in the Links
- *   panel's dialog, which has the project selector this compact field deliberately omits.
- * - `preferredType` lists that type's records as soon as the box is focused and sorts its matches
- *   first (a pain point offers personas), but typing still searches every linkable type.
+ * - Searches with the Links panel's finder (`api.candidates` / `api.options`), asked about the record being created
+ *   through `DRAFT_ARTEFACT_ID`, so the server applies the same rules (visibility, enabled modules, link-type
+ *   restrictions, the caller's link authority).
+ * - Hands the chosen links to the form (`onChange`), which creates them with `useCommitQuickLinks` once the record
+ *   exists; nothing is written here. It renders nothing when the caller cannot link this type or no link type
+ *   reaches another record type, so a form never offers a field the server would refuse.
+ * - Same-project records only: linking to an ancestor or descendant project stays in the Links panel's dialog,
+ *   which has the project selector this compact field omits.
+ * - `preferredType` lists that type's records as soon as the box is focused and sorts its matches first (a pain
+ *   point offers personas); typing still searches every linkable type.
  *
  * Dependencies: `api/artefactLinks` (finder and `DRAFT_ARTEFACT_ID`), `components/linkOptions`.
  */
@@ -228,10 +223,10 @@ export function QuickLinkField({
             id={listboxId}
             role="listbox"
             aria-label={strings.artefactLinks.quick.listLabel}
-            className="card stack"
+            className="card stack scroll-region"
             style={{
               position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: "var(--space-1)",
-              padding: "var(--space-1)", gap: "0.15rem", maxHeight: 260, overflowY: "auto",
+              padding: "var(--space-1)", gap: "0.15rem", maxHeight: 260,
             }}
           >
             {matches.length === 0 && <span className="text-muted" style={{ padding: "var(--space-2) var(--space-3)" }}>{strings.artefactLinks.quick.noMatches}</span>}

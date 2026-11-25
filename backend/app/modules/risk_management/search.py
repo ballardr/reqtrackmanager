@@ -1,18 +1,10 @@
 """
 Module: modules.risk_management.search
 
-The `ArtefactSearchProvider` for the `risk` artefact type, so the global search finds
-risks by code, title, tags and the risk's descriptive text.
-
-Responsibilities:
-- Declare the columns the search reads (from the risk's current version) and the free-text
-  fields it may match.
-
-Design decisions:
-- Opt-in fields: the statement, cause, event, consequence and acceptance criteria only.
-  Review notes and treatment text are not matched.
-
-Dependencies: this module's models and labels; `services.search_core` (builders).
+The `ArtefactSearchProvider` for `risk`: the columns the search reads (from the
+current version) and the opt-in text fields (statement, cause, event,
+consequence, acceptance criteria; not review notes or treatment text).
+Dependencies: this module's models and labels; `services.search_core`.
 """
 
 from __future__ import annotations
@@ -27,11 +19,11 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         Risk, RiskVersion, "risk_id", title=RiskVersion.title, status_labels=RISK_STATUS_LABEL,
         comments=comments_of(RiskComment, RiskComment.risk_id),
         fields=(
-            SearchField("statement", "Statement", RiskVersion.statement),
-            SearchField("cause", "Cause", RiskVersion.cause),
-            SearchField("risk_event", "Risk event", RiskVersion.risk_event),
-            SearchField("consequence", "Consequence", RiskVersion.consequence),
-            SearchField("acceptance_criteria", "Acceptance criteria", RiskVersion.acceptance_criteria),
+            SearchField("statement", "Statement", RiskVersion.statement, markdown=True),
+            SearchField("cause", "Cause", RiskVersion.cause, markdown=True),
+            SearchField("risk_event", "Risk event", RiskVersion.risk_event, markdown=True),
+            SearchField("consequence", "Consequence", RiskVersion.consequence, markdown=True),
+            SearchField("acceptance_criteria", "Acceptance criteria", RiskVersion.acceptance_criteria, markdown=True),
         ),
     ),
 }

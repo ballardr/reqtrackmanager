@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { ItemRowList } from "./ItemRowList";
 
 /** A flat list of editable items: a name with a muted detail, and the row's own controls on the right. */
@@ -29,5 +31,28 @@ export const RowsShowTheirNameDetailAndActions: Story = {
     // A row with no name yet says what is missing instead of rendering blank.
     await expect(within(list).getByText("Choose a field")).toBeInTheDocument();
     await expect(within(list).getByRole("button", { name: "Edit Requirement" })).toBeVisible();
+  },
+};
+
+/** A long name, an unbroken word and a long detail in several rows: the Edit button stays at the end of its own row. */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      width={560}
+      render={(long) => (
+        <ItemRowList
+          label="Long text columns"
+          emptyName="Choose a field"
+          items={[
+            { id: "1", name: stressText(long, "Code"), actions: <button type="button" className="btn btn-sm">Edit one</button> },
+            { id: "2", name: stressText(long, "Requirement", "word"), detail: stressText(long, "title", "summary"), actions: <button type="button" className="btn btn-sm">Edit two</button> },
+            { id: "3", name: "Status", detail: stressText(long, "status", "word"), actions: <button type="button" className="btn btn-sm">Edit three</button> },
+          ]}
+        />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
   },
 };

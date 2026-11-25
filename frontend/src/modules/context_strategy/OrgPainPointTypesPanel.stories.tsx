@@ -2,17 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { OrgPainPointTypesPanel } from "./OrgPainPointTypesPanel";
 import type { PainPointTypeDefinition } from "./types";
 
 const ORG_ID = "org-1";
 
-/**
- * Mirrors `modules/compliance/MappingTypesPanel.stories.tsx`'s own harness
- * shape (a stateful in-memory list behind mocked `api.*` calls) — this
- * panel, like that one, owns its own fetch/reload state entirely.
- */
+/** A stateful in-memory list behind mocked `api.*` calls, as in `modules/compliance/MappingTypesPanel.stories.tsx`: the panel owns its fetch and reload state. */
 function mockOrgTypeApis(initial: PainPointTypeDefinition[]) {
   let items = initial;
   spyOn(api, "get").mockImplementation(async () => items);
@@ -82,9 +78,9 @@ export const AddType: Story = {
   beforeEach: () => mockOrgTypeApis([{ id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true, definition: null }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByPlaceholderText("Pain Point type name"));
-    await userEvent.type(canvas.getByPlaceholderText("Pain Point type name"), "Regulatory");
-    await userEvent.click(canvas.getByRole("button", { name: "Add Pain Point type" }));
+    const dialog = await openAddDialog(canvas, "Add Pain Point type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Regulatory");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/context_strategy/pain-point-types`, { name: "Regulatory", definition: null }
@@ -98,10 +94,10 @@ export const AddTypeWithDefinition: Story = {
   beforeEach: () => mockOrgTypeApis([{ id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true, definition: null }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByPlaceholderText("Pain Point type name"));
-    await userEvent.type(canvas.getByPlaceholderText("Pain Point type name"), "Regulatory");
-    await userEvent.type(canvas.getByRole("textbox", { name: "Pain Point type definition (what belongs under it)" }), "Legal duties we must meet.");
-    await userEvent.click(canvas.getByRole("button", { name: "Add Pain Point type" }));
+    const dialog = await openAddDialog(canvas, "Add Pain Point type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Regulatory");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Definition (what belongs under it)" }), "Legal duties we must meet.");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/context_strategy/pain-point-types`,

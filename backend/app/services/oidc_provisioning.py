@@ -130,13 +130,13 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organ
         raise ValueError("OIDC claims did not include an email address; cannot provision a new user.")
 
     existing_by_email = db.scalar(select(User).where(User.email == email))
+    if existing_by_email is not None and existing_by_email.is_service_account:
+        # A service user's address receives notifications only. Matching it by a verified email would hand its roles
+        # to whoever signs in with that address, so it is never adopted and never linked.
+        raise ValueError(f"{email} is already registered; refusing to link it.")
     if existing_by_email is not None:
         if not email_verified:
-            # Refuse outright rather than falling through to "provision a
-            # new user" below: a second User row with this same email is
-            # impossible anyway (unique constraint), and silently linking
-            # to the existing account without a verified-email assertion is
-            # exactly the account-takeover this check exists to prevent.
+            # Refuse outright: linking to the existing account without a verified-email assertion is account takeover.
             raise ValueError(
                 f"{email} is already registered and this identity provider did not assert a verified email; "
                 "refusing to link automatically."
@@ -224,11 +224,8 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
     if not role_granting_groups:
         return
 
-    # Every OrgRole this org's role-granting groups could ever grant — the
-    # only roles this function is allowed to touch in either direction. A
-    # role held outside this vocabulary (e.g. one an admin granted
-    # manually, with no corresponding role-granting group) is never added
-    # *or* removed here, no matter what the IdP currently asserts.
+    # Every OrgRole this org's role-granting groups could grant: the only roles this function adds or removes.
+    # A role outside this vocabulary (e.g. granted manually by an admin) is never touched.
     sso_managed_roles = {g.granted_org_role for g in role_granting_groups}
 
     existing_roles = set(
@@ -238,30 +235,17 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
     )
 
     if not idp_groups:
-        # The IdP asserted no groups/roles claim at all this login. This is
-        # deliberately treated as "unknown," not "empty" — a provider that
-        # simply doesn't include this claim (a config gap, not a genuine
-        # group-membership change) would otherwise cause every SSO-managed
-        # role at this org to be revoked on the very next login, a much
-        # larger and more surprising blast radius than a hardening pass
-        # should introduce without an explicit, deliberate opt-in. Existing
-        # roles are left untouched in this case; nothing new is granted
-        # either, matching the original (grant-only) behaviour.
+        # No groups claim at all means "unknown", not "empty": a provider that omits the claim (a
+        # configuration gap) must not cause every SSO-managed role to be revoked at the next sign-in.
+        # Existing roles are left untouched and nothing is granted.
         return
 
     mapped_roles = {g.granted_org_role for g in role_granting_groups if g.idp_synced_group_name in idp_groups}
     for role in mapped_roles - existing_roles:
         db.add(UserOrgRole(user_id=user.id, organization_id=org.id, role=role))
 
-    # Sync down: revoke any SSO-managed role the user currently holds whose
-    # matching IdP group claim is no longer present. Hardening-review
-    # finding — the original version only ever granted, never revoked, so
-    # once granted via a group claim, a role persisted even after the
-    # person was removed from that IdP group, contradicting the timely-
-    # deprovisioning expectation this project's own access-control policy
-    # documents for every other provisioning path (CC6.2/CC6.3). Still
-    # scoped strictly to `sso_managed_roles`, so this can only ever revoke
-    # a role the mapping vocabulary itself covers.
+    # Revoke any SSO-managed role whose IdP group claim is no longer present, so deprovisioning is timely
+    # (access-control policy, CC6.2/CC6.3). Scoped to `sso_managed_roles`, so only mapped roles are revoked.
     roles_to_revoke = (existing_roles & sso_managed_roles) - mapped_roles
     if roles_to_revoke:
         db.execute(

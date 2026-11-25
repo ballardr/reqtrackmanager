@@ -43,6 +43,7 @@ from app.modules.architecture.report_support import (
     element_text,
     find_element,
     live_connections,
+    ordered_element_ids,
     project_elements,
 )
 from app.modules.architecture.service import (
@@ -161,13 +162,15 @@ def collect_interface_list(db: Session, req: ReportContext) -> ReportResult:
     return result
 
 
-def _tree_order(elements: dict[uuid.UUID, ArchitectureElement], root_ids: list[uuid.UUID]) -> list[tuple[int, ArchitectureElement]]:
-    """Depth-first `(level, element)` pairs from `root_ids`, children by code (cycle-safe)."""
+def _tree_order(
+    req: ReportContext, elements: dict[uuid.UUID, ArchitectureElement], root_ids: list[uuid.UUID],
+) -> list[tuple[int, ArchitectureElement]]:
+    """Depth-first `(level, element)` pairs from `root_ids`, children in the report's record order (cycle-safe)."""
     children: dict[uuid.UUID | None, list[ArchitectureElement]] = {}
     for e in elements.values():
         children.setdefault(e.parent_id, []).append(e)
-    for kids in children.values():
-        kids.sort(key=lambda e: e.unique_code)
+    for parent_id, kids in children.items():
+        children[parent_id] = req.order_records(kids, code=lambda e: e.unique_code, title=lambda e: e.name)
     out: list[tuple[int, ArchitectureElement]] = []
     seen: set[uuid.UUID] = set()
 
@@ -205,8 +208,8 @@ def collect_element_breakdown(db: Session, req: ReportContext) -> ReportResult:
             roots = [focus.id] if focus is not None else []
         else:
             roots = [e.id for e in elements.values() if e.parent_id is None or e.parent_id not in elements]
-            roots.sort(key=lambda i: elements[i].unique_code)
-        ordered = _tree_order(elements, roots)
+            roots = ordered_element_ids(req, roots, elements)
+        ordered = _tree_order(req, elements, roots)
         labels = principal_labels(db, [(e.owner_type, e.owner_id) for _, e in ordered if e.owner_type and e.owner_id])
         names = _type_names(db, elements)
         child_count: dict[uuid.UUID, int] = {}

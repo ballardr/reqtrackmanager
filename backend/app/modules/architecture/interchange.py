@@ -1,40 +1,33 @@
 """
 Module: modules.architecture.interchange
 
-JSON interchange for a project's architecture: one self-describing, versioned file holding the project's element and
-connection types, folders, elements (ports, tags, places), connections (realisations), diagrams (boxes, notes, anchors,
-toggles and their rules, boundary boxes, symbol references) and state machine diagrams with their states and transitions.
+JSON interchange for a project's architecture: one self-describing, versioned file holding the element and connection
+types, folders, elements (ports, tags, places), connections (realisations), diagrams (boxes, notes, anchors, toggles and
+their rules, boundary boxes, symbol references) and state machine diagrams.
 
-Responsibilities:
-- `export_document`: the file for a project, as the caller may read it.
-- `validate_document`: refuses a file that is too large, too deep, of an unknown major version or of the wrong shape,
-  before anything is written.
-- `preview_import` / `apply_import`: the same import, the first rolled back, returning what was (or would be) created and
-  what could not be resolved.
+Responsibilities: `export_document` (the file as the caller may read it); `validate_document` (refuses a file that is too
+large, too deep, of an unknown major version or of the wrong shape before anything is written); `preview_import` /
+`apply_import` (the same import, the first rolled back).
 
-Design decisions (all Decided by: Agent unless stated):
-- **One section, two envelopes.** The file is the module's project bundle section (`export.export_project_data` and
-  `import_project_data`) inside a version envelope, so the portable keys, the cross-references, the numbering afresh and
-  the round trip are the bundle's, with one place to maintain. A record keeps its code as information only; an import
-  numbers records afresh and codes key the references inside the file.
-- **What the file leaves out, and why.** Comments and their pins, the person behind each record's creator and archiver
-  (`*_email` keys), an element's owner, requirement links, collections, allocation dismissals and uploaded symbol files
-  are not written: a shareable file must not carry discussion, personal data (the record exports hold an owner column to
-  the organisation's personal-data policy, which a file any member can download would bypass), grants, or records the file
-  does not hold. A reference to a symbol travels by tier and name, and an import that cannot match it reports it.
-- **Visibility is applied on export.** A connection end or state machine element another owner shares is written as an
-  external reference only when the caller may read it; otherwise the reference is emptied, so the file does not disclose a
-  code the caller cannot see. An import drops a connection whose end cannot be resolved and reports it.
-- **A record type that is switched off is not written or read.** A project that switches Connections, Diagrams or State
-  machine diagrams off (`service.enabled_record_types`) gets a file without those sections, and an import leaves them out
-  with a warning, the same as the routes of those types answer "not found".
-- **Import writes through the bundle path** inside one transaction, so a failure leaves nothing behind; it creates
-  vocabulary rows when a type is missing, so it needs the Architect and the Architecture Admin roles (the router checks).
-- **Preview is the import, rolled back.** It shows what an apply would do from the same code, so the two cannot differ.
-- **Limits.** 10 MiB, 20 000 entries in one list, nesting of 40 levels; a file beyond them is rejected whole. The version
-  is `major.minor`; a different major is refused, a higher minor of the same major is read (unknown keys are ignored).
+Design decisions:
+- The file is the module's project bundle section (`export.export_project_data` / `import_project_data`) inside a
+  version envelope, so portable keys, cross-references, fresh numbering and the round trip are the bundle's. A code is
+  information only; codes key references inside the file.
+- Not written: comments and pins, the person behind each creator and archiver, an element's owner, requirement links,
+  collections, allocation dismissals and uploaded symbol files. A shareable file must not carry discussion, personal data
+  (which would bypass the organisation's personal-data policy on record exports), grants or records it does not hold. A
+  symbol reference travels by tier and name; an import that cannot match it reports it.
+- Visibility is applied on export: an end or state machine element another owner shares is written as an external
+  reference only when the caller may read it, so the file discloses no code the caller cannot see. An import drops a
+  connection whose end cannot be resolved and reports it.
+- A record type switched off (`service.enabled_record_types`) is neither written nor read; an import warns.
+- Import writes through the bundle path in one transaction and creates vocabulary rows for a missing type, so it needs
+  the Architect and Architecture Admin roles (the router checks). Preview is the import rolled back, so the two cannot
+  differ.
+- Limits: 10 MiB, 20 000 entries in one list, nesting of 40 levels; a file beyond them is rejected whole. The version is
+  `major.minor`: a different major is refused, a higher minor of the same major is read (unknown keys are ignored).
 
-Dependencies: `export` (the bundle section), `visibility`, `app.services.bundle_common`, this module's models.
+Dependencies: `export`, `visibility`, `app.services.bundle_common`, this module's models.
 """
 
 from __future__ import annotations

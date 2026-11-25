@@ -24,7 +24,7 @@ The side panel holds the request's **Links** and **Activity**.
 | A request page |
 | --- |
 | Status actions at the top; details, external references, scoring and demand (each requester's weight and where it comes from) below |
-| ![Request page for ENH-001 showing the Accepted status with Return to review, Mark delivered and Decline buttons, then the Details, External references, Scoring and Demand sections, with each requester's weight source under its weight](../../../static/img/screenshots/feedback-request-detail-full.png) |
+| ![Request page for ENH-001 showing the lifecycle track at Accepted, then the Details, External references, Scoring and Demand sections, with each requester's weight source under its weight](../../../static/img/screenshots/feedback-request-detail-full.png) |
 
 **Arrange sections…** (on the page's menu) sets your own order for these sections. A project administrator can set a default order for the project; your own choice wins, and any section the order does not mention follows in the standard order.
 
@@ -70,12 +70,12 @@ Triagers also get a **Grid** view for editing several requests at once, so you c
 
 ## The organisation inbox
 
-An organisation's own requests are on **Organisation overview → Request inbox**. It is for asks that arrive with no project yet. Inbox requests are triaged like any other, but cannot be linked to other records or have requesters, so they have no demand figure. Its list has the same Status, Scoring and Criteria not rated filters and the same columns as a project's, without the Pain Points and project-scope controls.
+An organisation's own requests are on **Organisation resources → Request inbox**. It is for asks that arrive with no project yet. Inbox requests are triaged like any other, but cannot be linked to other records or have requesters, so they have no demand figure. Its list has the same Status, Scoring and Criteria not rated filters and the same columns as a project's, without the Pain Points and project-scope controls.
 
 | The organisation inbox |
 | --- |
 | Two requests awaiting triage, scored under the organisation's models only |
-| ![Request inbox on the Organisation overview showing two New requests, SR-ENH-001 and SR-ENH-002, with Not scored badges and a filter panel](../../../static/img/screenshots/feedback-org-inbox.png) |
+| ![Request inbox on Organisation resources showing two New requests, SR-ENH-001 and SR-ENH-002, with Not scored badges and a filter panel](../../../static/img/screenshots/feedback-org-inbox.png) |
 
 An organisation administrator can switch the inbox off (the **Organisation-level request inbox** sub-component) without affecting any project. A triager moves a request into a project with **Move to a project…** on its menu: the request keeps its history and gets the project's next `ENH-nnn` code, its tags move to the project's tag list and its files become the project's. This is one-way, and is refused for a request that already has links or is part of a merge.
 

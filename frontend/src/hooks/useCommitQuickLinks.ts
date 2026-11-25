@@ -2,9 +2,8 @@
  * Module: hooks/useCommitQuickLinks
  *
  * Creates the links a create form collected with `QuickLinkField`, once the record exists.
- * The record is already saved by then, so a refused link set never undoes it: the user is told
- * what failed and where to add the links by hand (the new record's Links panel), because making
- * every create endpoint transactional with its links would mean changing all of them.
+ * The record is already saved, so a refused link set never undoes it: the user is told what failed
+ * and where to add the links manually (the new record's Links panel).
  */
 import { useCallback } from "react";
 

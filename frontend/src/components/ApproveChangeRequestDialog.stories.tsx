@@ -31,9 +31,8 @@ function mockPreview(rows: ProposedLinkPreviewRow[]) {
 }
 
 /**
- * The approver's dialog for a change request that proposes links
- *: every valid link ticked by default,
- * an invalid one disabled with its reason, and a primary button that says what approving will do.
+ * The approver's dialog for a change request that proposes links: every valid link ticked by default, an invalid
+ * one disabled with its reason, and a primary button that says what approving will do.
  */
 const meta: Meta<typeof ApproveChangeRequestDialog> = {
   title: "Components/ApproveChangeRequestDialog",

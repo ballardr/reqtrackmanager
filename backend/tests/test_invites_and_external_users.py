@@ -1,14 +1,12 @@
 """Tests for the "add a project user by email" flow
-(`assign_project_role_by_email`), gated by `Organization.
-external_user_policy`, and its two provisioning paths: a `PendingInvite`
-redeemed at native signup for a regular org, and immediate provisioning
-(`services.invites.provision_sso_invite`) for an `sso_only` org — see
-`services/invites.py` and docs/decisions.md's "Self-signup, invites, and
-SSO" entry.
+(`assign_project_role_by_email`), gated by `Organization.external_user_policy`,
+and its two provisioning paths: a `PendingInvite` redeemed at native signup for
+a regular org, and immediate provisioning (`services.invites.provision_sso_invite`)
+for an `sso_only` org (see `services/invites.py` and docs/decisions.md's
+"Self-signup, invites, and SSO" entry).
 
-Also covers "resend a pending invite" (docs/decisions.md): listing
-a project's pending invites (`GET .../pending-invites`) and resending one
-(`POST .../pending-invites/{id}/resend`)."""
+Also covers listing a project's pending invites (`GET .../pending-invites`) and
+resending one (`POST .../pending-invites/{id}/resend`)."""
 
 import time
 from datetime import UTC, datetime, timedelta
@@ -740,14 +738,11 @@ def test_outside_domain_users_lists_matching_non_members_only(client, admin_toke
     assert emails == {"match@listdomain.example.com"}
 
 
-# --- _looks_like_email: unit coverage for the ReDoS fix ---------------------
+# --- _looks_like_email: unit coverage for ReDoS resistance ---------------------
 #
-# The endpoint-level tests above already exercise this indirectly through
-# `/users/search?q=...`; these pin the specific security property fixed
-# here (CodeQL py/polynomial-redos): the same match/no-match semantics as
-# the original `^[^@\s]+@[^@\s]+\.[^@\s]+$` regex, and that a long
-# adversarial `q` (this endpoint has no length limit of its own) is
-# rejected in time genuinely independent of input length.
+# These pin the match/no-match semantics of `^[^@\s]+@[^@\s]+\.[^@\s]+$` and that a
+# long adversarial `q` (the endpoint has no length limit) is rejected in time
+# independent of input length (CodeQL py/polynomial-redos).
 
 def test_looks_like_email_matches_the_original_regexs_semantics():
     assert _looks_like_email("user@example.com") is True
@@ -764,10 +759,9 @@ def test_looks_like_email_matches_the_original_regexs_semantics():
 
 
 def test_looks_like_email_is_not_vulnerable_to_polynomial_redos():
-    # `!@!.` followed by many `!.` repetitions is the exact shape CodeQL
-    # flagged as slow against the original regex (many candidate positions
-    # for the required `.` before the final segment). Not a valid email
-    # either way — the property under test is how fast it's rejected.
+    # `!@!.` followed by many `!.` repetitions gives a regex many candidate
+    # positions for the required `.`. Not a valid email either way; the
+    # property under test is how fast it is rejected.
     attack = "!@!." + "!." * 500_000
     start = time.monotonic()
     result = _looks_like_email(attack)

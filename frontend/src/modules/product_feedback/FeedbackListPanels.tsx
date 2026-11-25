@@ -1,44 +1,15 @@
 /**
  * Module: modules/product_feedback/FeedbackListPanels
  *
- * The admin screens of the module's two classified lists — the external systems a request's references can name and the
- * channels a requester can have asked through — as thin wrappers over the shared `OrgTypeVocabularyPanel` and
- * `ProjectTypeVocabularyPanel` (rename, reorder, disable, add; a project hides an organisation default and can add it
- * back). Registered on `orgAdminSections` / `projectAdminSections`. Changing the organisation's lists needs the Feedback
- * List Admin role; a project's needs the Feedback Triager role (the server decides, these panels render their controls).
+ * The admin screens of the module's classified list — the channels a requester can have asked through — as thin
+ * wrappers over the shared `OrgTypeVocabularyPanel` and `ProjectTypeVocabularyPanel` (rename, reorder, disable, add; a
+ * project hides an organisation default and can add it back). Registered on `orgAdminSections` /
+ * `projectAdminSections`. Changing the organisation's list needs the Feedback List Admin role; a project's needs the
+ * Feedback Triager role (the server decides, these panels render their controls). The external systems a request's
+ * references can name are shared with every record type and administered in core settings (`ExternalSystemsPanels`).
  */
 import { OrgTypeVocabularyPanel, ProjectTypeVocabularyPanel } from "../../components/TypeVocabularyPanels";
-import { channelTypes, systemTypes } from "./api";
-
-export function OrgExternalSystemsPanel({ orgId }: { orgId: string }) {
-  return (
-    <OrgTypeVocabularyPanel
-      orgId={orgId} noun="External system" api={systemTypes.org}
-      inUseMessage="This system is still used by a reference. Disable it instead of deleting it."
-      description={
-        <>
-          The outside tools a request can point into — Jira, ServiceNow and the rest are seeded for a new organisation.
-          Every project sees this list; a project may add its own or hide the ones it does not use.
-        </>
-      }
-    />
-  );
-}
-
-export function ProjectExternalSystemsPanel({ projectId }: { projectId: string }) {
-  return (
-    <ProjectTypeVocabularyPanel
-      projectId={projectId} noun="External system" api={systemTypes.project}
-      description={
-        <>
-          The external systems this project's requests can reference: the organisation's list plus any added for this
-          project. A sub-project with no changes of its own shows its parent project's list; changing it here makes it
-          its own. Hiding one only affects this project, and references already using it are kept.
-        </>
-      }
-    />
-  );
-}
+import { channelTypes } from "./api";
 
 export function OrgRequestChannelsPanel({ orgId }: { orgId: string }) {
   return (

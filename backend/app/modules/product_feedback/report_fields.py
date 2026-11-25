@@ -1,17 +1,10 @@
 """
 Module: modules.product_feedback.report_fields
 
-The `ReportFieldProvider` for the `enhancement_request` artefact type, so custom report layouts can print and
-group requests.
-
-Responsibilities:
-- Declare the request fields a layout may use: the description (from the search declaration) and the owner,
-  read from the current version.
-
-Design decisions:
-- The owner is a principal (a user or a group), shown by name.
-
-Dependencies: this module's models; `services.report_fields` (builders).
+The `ReportFieldProvider` for `enhancement_request`, so custom report layouts
+can print and group requests: the description (from the search declaration) and
+the owner, a principal shown by name, read from the current version.
+Dependencies: this module's models; `services.report_fields`.
 """
 
 from __future__ import annotations
@@ -25,6 +18,7 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     "enhancement_request": from_search(
         SEARCH_PROVIDERS["enhancement_request"],
         principal_field("owner", "Owner", EnhancementRequestVersion.owner_type, EnhancementRequestVersion.owner_id),
+        math_fields=("description",),
         core_fields=("description", "owner"),
     ),
 }

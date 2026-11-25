@@ -1,31 +1,27 @@
 /**
  * Module: components/CommentThreadView
  *
- * The body of a pinned comment thread (the marker's pop-over, and the Comments list's expanded thread): the comments in
- * order, a reply box, Resolve or Reopen, editing and deleting one's own comment, and deleting the whole thread.
+ * The body of a pinned comment thread (the marker's pop-over and the Comments list's expanded thread): comments in
+ * order, a reply box, Resolve or Reopen, editing and deleting one's own comment, and deleting the thread.
  *
- * Responsibilities:
- * - Render one thread from plain data (`RecordComment[]`, `RecordCommentPin`) and report each action through callbacks; it
- *   stores nothing and calls no API, so a story or a page supplies the behaviour.
- * - Offer an action only where the server says it is allowed (`can_edit`, `can_delete`, the pin's `can_delete`).
- *
- * Design decisions:
- * - Deleting a comment or a thread goes through the shared two-tier `ConfirmDialog` (tier one: recoverable only by
- *   writing it again), as every destructive action does.
- * - Text is rendered as text, never markup. Resolve and Reopen are open to anyone who can comment, as on the server.
- * - Actions are small icon buttons, each with an `aria-label` and a tooltip of the same text, so they do not crowd a
- *   pop-over. A comment's Edit and Delete appear on row hover or focus (`ItemRow revealActions`); the thread's own
- *   Resolve and Delete stay visible beside Reply. Save and Cancel keep their text: they commit or discard an edit.
+ * - Renders one thread from plain data (`RecordComment[]`, `RecordCommentPin`) and reports each action through
+ *   callbacks; it stores nothing and calls no API. An action is offered only where the server allows it
+ *   (`can_edit`, `can_delete`, the pin's `can_delete`); Resolve and Reopen are open to anyone who can comment.
+ * - Deleting goes through the two-tier `ConfirmDialog` (tier one). Text is rendered as text, never markup.
+ * - Actions are small icon buttons with an `aria-label` and a same-text tooltip; a comment's Edit and Delete show
+ *   on row hover or focus (`ItemRow revealActions`), the thread's Resolve and Delete stay beside Reply. Save and
+ *   Cancel keep their text.
  */
 import { Check, Pencil, Trash2, Undo2 } from "lucide-react";
 import { useState } from "react";
 
 import type { RecordComment, RecordCommentPin } from "../api/recordComments";
 import { useStrings } from "../context/TerminologyContext";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { IconAction } from "./IconAction";
 import { ItemRow } from "./ItemRow";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { MarkdownView } from "./MarkdownView";
 
 /**
  * @param pin The thread's pin (its resolved state and what the viewer may do with it).
@@ -115,7 +111,7 @@ export function CommentThreadView({
           </ItemRow>
           {editing?.id === c.id ? (
             <div className="stack" style={{ gap: "var(--space-1)" }}>
-              <AutoGrowTextarea rows={2} value={editing.body} onChange={(body) => setEditing({ id: c.id, body })} aria-label={text.edit} />
+              <MarkdownEditor simple toolbar={false} value={editing.body} onChange={(body) => setEditing({ id: c.id, body })} ariaLabel={text.edit} />
               <div className="row">
                 <button type="button" className="btn btn-sm btn-primary" disabled={busy || !editing.body.trim()} onClick={() => void saveEdit()}>
                   {text.save}
@@ -124,7 +120,7 @@ export function CommentThreadView({
               </div>
             </div>
           ) : (
-            <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{c.body}</div>
+            <MarkdownView text={c.body} />
           )}
         </div>
         );
@@ -132,7 +128,10 @@ export function CommentThreadView({
       {error && <p role="alert" style={{ color: "var(--color-danger)", margin: 0 }}>{error}</p>}
       {canReply && onReply && (
         <div className="stack" style={{ gap: "var(--space-1)" }}>
-          <AutoGrowTextarea rows={2} value={reply} onChange={setReply} placeholder={text.replyPlaceholder} aria-label={text.reply} />
+          <MarkdownEditor
+            simple toolbar={false} value={reply} onChange={setReply} ariaLabel={text.reply}
+            textareaProps={{ placeholder: text.replyPlaceholder }}
+          />
           <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
             <button type="button" className="btn btn-sm btn-primary" disabled={busy || !reply.trim()} onClick={() => void post()}>
               {text.reply}

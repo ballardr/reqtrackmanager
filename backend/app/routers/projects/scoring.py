@@ -1,15 +1,14 @@
 """
 Module: routers.projects.scoring
 
-Project-level endpoints of the generic scoring-matrix mechanism: read a scheme's effective configuration for a project (levels
-are the org's; default model and bands resolve project → nearest ancestor
-→ org → system), and set or clear the project's own default-model, band and
-per-cell rating overrides, plus the project's set of enabled models and its thresholds for a derived axis.
+Project-level endpoints of the generic scoring-matrix mechanism: read a scheme's effective configuration for
+a project (levels are the org's; default model and bands resolve project, nearest ancestor, org, system), and
+set or clear the project's own default-model, band and per-cell rating overrides, plus its set of enabled
+models and its thresholds for a derived axis.
 
-Reads need project view-or-manage; writes need project-settings management
-(project managers/administrators, org admins). Every route 404s unless the
-scheme's module is enabled for the project. Writes are audit-logged by
-`services.scoring`.
+Reads need project view-or-manage; writes need project-settings management (project managers and
+administrators, org admins). Every route 404s unless the scheme's module is enabled for the project. Writes
+are audit-logged by `services.scoring`.
 """
 
 from __future__ import annotations

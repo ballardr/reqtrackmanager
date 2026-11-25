@@ -1,18 +1,12 @@
 import { LogoBand } from "./LogoBand";
 
 /**
- * Logo and title on one band shown above a login form (U-C-02-adjacent — the
- * pre-auth equivalent of `Layout.tsx`'s header-bar branding lockup, but a
- * different visual treatment: a centered stacked block on an auth card
- * rather than a small inline horizontal one in a nav bar). Shared between
- * `OrgLoginPage` (org-specific branding) and `LoginPage` (platform-default
- * branding) so the same block isn't duplicated a third time.
+ * Logo and title on one band above a login form: the pre-auth equivalent of `Layout.tsx`'s header branding, drawn
+ * as a centred stacked block on an auth card. Shared by `OrgLoginPage` (organisation branding) and `LoginPage`
+ * (platform branding).
  *
- * Mirrors `Layout.tsx`'s fallback: an org/platform-uploaded logo takes
- * priority, falling back to the built-in logo mark rather than rendering
- * nothing — a login page with no logo at all (the previous behaviour when
- * `logoFileId` was null, i.e. the default/unset-branding case) reads as
- * broken, not "no branding configured".
+ * An uploaded logo takes priority and falls back to the built-in logo mark, because a login page with no logo
+ * reads as broken, not as "no branding configured".
  *
  * @param logoFileId The logo file, or null for the built-in mark.
  * @param title The name drawn on the band under the logo (the page's heading).

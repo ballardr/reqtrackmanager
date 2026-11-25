@@ -762,15 +762,20 @@ def test_decision_in_the_parent_cannot_address_a_pain_point_below_it_but_the_rev
 
 # --- the reader audit, kept as a guard -----------------------------------------------------------
 
-# Files reviewed for how they treat cross-level links (docs/decisions.md): each either asks
-# for them deliberately (the graph, usage counts, deletion, the export count) or filters them out.
-# A new file that queries `ArtefactLink` directly, or asks `services.relationships` for cross-level
-# links, must be reviewed against the "another project's artefact" rule and added here.
+# Files reviewed for how they treat cross-level links (docs/decisions.md): each asks for them
+# deliberately (the graph, usage counts, deletion, the export count) or filters them out. A new
+# file that queries `ArtefactLink` directly, or asks `services.relationships` for cross-level
+# links, is reviewed against the "another project's artefact" rule and added here.
 _REVIEWED_LINK_READERS = {
     "services/bundle_links.py": "same-project links only (source_project_id is null); a cross-level link is not exported",
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
     "services/templates.py": "copies same-project requirement-to-requirement links only (source_project_id is null)",
+    "services/requirement_aliases.py": (
+        "make independent deliberately reads cross-level links too: each is recreated through `create_link_for_artefact`, so "
+        "the same scope, lock and visibility rules apply to the other end; a far record the reader may not view is named "
+        "only as \"a record outside this project\" in the skipped list"
+    ),
     "modules/architecture/records.py": (
         "deliberately includes cross-level links: an element another project's record links to cannot be deleted"
     ),

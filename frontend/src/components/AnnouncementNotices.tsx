@@ -1,12 +1,12 @@
 /**
  * Module: components/AnnouncementNotices
  *
- * The list of active announcements as a reader sees it: on the login pages (no sign-in yet) and as the banner
- * above the signed-in page. One component for both so the two cannot drift.
+ * The active announcements as a reader sees them: on the login pages and as the banner above the signed-in page,
+ * one component for both.
  *
- * Responsibilities: show each notice's title and message as plain text (never HTML, markup or links: the login
- * page is the most exposed place to put text, and an organisation administrator writes some of it), mark its
- * severity by colour, icon and text, and optionally offer Dismiss (never for a message that is not dismissible). A critical notice is announced to assistive technology as an alert.
+ * Title and message are plain text, never HTML, markup or links (the login page is the most exposed place for
+ * text, and an organisation administrator writes some of it). Severity is marked by colour, icon and text. Dismiss
+ * is optional and never offered for a non-dismissible message. A critical notice is announced as an alert.
  */
 import { X } from "lucide-react";
 
@@ -14,6 +14,7 @@ import type { AnnouncementNotice } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { AnnouncementSeverityMark } from "./AnnouncementSeverityMark";
 import { Badge } from "./Badge";
+import { MarkdownView } from "./MarkdownView";
 
 /**
  * @param notices The active notices, most severe first.
@@ -45,7 +46,7 @@ export function AnnouncementNotices({
                 {showScope && <Badge>{notice.scope === "server" ? strings.scopeServer : strings.scopeOrganisation}</Badge>}
                 <strong>{notice.title}</strong>
               </div>
-              {notice.body && <p className="announcement__body">{notice.body}</p>}
+              {notice.body && <MarkdownView className="announcement__body" text={notice.body} />}
             </div>
             {onDismiss && notice.dismissible && (
               <button

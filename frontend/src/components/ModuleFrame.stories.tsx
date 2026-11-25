@@ -5,22 +5,17 @@ import { api } from "../api/client";
 import { buildUser, withAuth, withToast } from "../testing/storybook-helpers";
 import { ModuleFrame } from "./ModuleFrame";
 
-// A genuinely cross-origin frameUrl would make the browser navigate the
-// rendered <iframe> there for real mid-test, tainting `contentWindow` into
-// an inaccessible cross-origin proxy that a later `spyOn`/`mockRestore`
-// can't redefine `postMessage` on (a real `SecurityError`, not a test bug)
-// — same-origin keeps `contentWindow` genuinely accessible for the whole
-// test, while every assertion below only cares about the `origin` *string*
-// on each message, which is exercised identically either way.
+// A cross-origin frameUrl would make the browser navigate the rendered <iframe> there mid-test, turning
+// `contentWindow` into an inaccessible cross-origin proxy on which `spyOn`/`mockRestore` cannot redefine
+// `postMessage` (a `SecurityError`). Same-origin keeps it accessible; the assertions only read the `origin` string
+// of each message.
 const FRAME_ORIGIN = window.location.origin;
 const FRAME_URL = `${FRAME_ORIGIN}/module-frame-test-fixture`;
 
 /**
- * Storybook coverage for the Tier B Host UI Bridge: no real remote module exists yet to point this at (this
- * builds the mechanism only), so every story here drives the bridge directly —
- * dispatching a synthetic `MessageEvent` with `source` set to the rendered
- * iframe's own `contentWindow` and `origin` set to `FRAME_ORIGIN` — exactly
- * the shape a real cross-origin module's own script would send.
+ * Storybook coverage for the Tier B Host UI Bridge. Each story drives the bridge directly by dispatching a
+ * synthetic `MessageEvent` with `source` set to the rendered iframe's `contentWindow` and `origin` set to
+ * `FRAME_ORIGIN`, the shape a real cross-origin module sends.
  */
 const meta: Meta<typeof ModuleFrame> = {
   title: "Components/ModuleFrame",
@@ -108,10 +103,9 @@ export const IgnoresMessagesFromAnUntrustedOrigin: Story = {
   },
 };
 
-/** `{type: "confirm", requireTypedText}` renders the host's real Tier 2
- * `ConfirmDialog` (typed-confirmation required before Confirm enables);
- * confirming replies `{type: "confirm_result", confirmed: true}` back to
- * the iframe's own origin, echoing the same `id` the module sent. */
+/** `{type: "confirm", requireTypedText}` renders the host's Tier 2 `ConfirmDialog` (typed confirmation required
+ * before Confirm enables); confirming replies `{type: "confirm_result", confirmed: true}` to the iframe's origin,
+ * echoing the `id` the module sent. */
 export const ConfirmRoundTripTierTwo: Story = {
   play: async ({ canvasElement }) => {
     const iframe = getIframe(canvasElement);

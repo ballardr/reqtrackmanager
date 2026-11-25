@@ -6,15 +6,12 @@ Every starter that prints tables with the same headings prints them lined up, in
 Responsibilities:
 - Run each document starter on a project holding open questions (some overdue), requirements, a pain point and a
   decision, in the preview (HTML), Word and OpenDocument formats, and check that tables with identical headings
-  share one set of column widths (`services.report_table_alignment`).
-- Run the same starters on a merged project tree and on an organisation-wide run, which print a pair per project.
+  share one set of column widths (`services.report_table_alignment`); also on a merged project tree and an
+  organisation-wide run (a pair per project).
 - Pin the Review Package's Open Questions pair, the one adjacent same-heading pair among the starters.
 
-Design decisions:
-- The checks are generic (group by heading list, compare widths), not a list of known pairs, so a starter or module
-  report added later is covered by the same test without an edit here.
-- A group is only compared when its tables share a usable page width, as the rule itself does; the starters use a
-  single page style, so every same-heading table is one group.
+Design: the checks are generic (group by heading list, compare widths), so a later starter or module report is
+covered without an edit. A group is compared only when its tables share a usable page width, as the rule does.
 """
 
 from __future__ import annotations

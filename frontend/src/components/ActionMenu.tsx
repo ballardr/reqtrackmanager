@@ -1,39 +1,27 @@
 /**
  * Module: components/ActionMenu
  *
- * A small kebab ("more actions") trigger that reveals a short menu of
- * related, non-primary actions — the "one door" shape style guide
- * Principle 11 already applies to grouped downloads, extended here to any
- * pair (or small group) of secondary actions that would otherwise sit on
- * screen together as separate, permanently-visible buttons competing for
- * the same row. See `docs/ux-style-guide.md`'s "Pattern: action menu".
+ * A small kebab ("more actions") trigger that reveals a short menu of related, non-primary actions: the "one
+ * door" shape of style guide Principle 11, for secondary actions that would otherwise sit on screen as separate
+ * buttons competing for the same row. See `docs/ux-style-guide.md`'s "Pattern: action menu".
  *
- * Design/implementation notes:
- * - Reuses `Popover` as the anchored, positioned, focus-trapped/restored
- *   container (`dialogA11y.ts`) rather than reinventing anchoring —
- *   the same reuse `SplitButtonTrigger` already makes for its own revealed
- *   alternatives list. The popover closes on a click outside it (including
- *   one on a diagram canvas), on Escape and on Tab.
- * - Record detail pages put this menu in `RecordHeader`, where it holds the
- *   record's object actions even when there is only one (style guide "Pattern:
- *   record header and object actions"); the usual two-or-more floor is waived
- *   there so the position never changes with permissions.
- * - `role="menu"` on the menu container and `role="menuitem"` on each row;
- *   `Popover`'s root keeps its `role="dialog"`/`aria-label`, so this nests a real
- *   ARIA menu inside it rather than changing `Popover` itself, which other
- *   callers (that aren't menus at all) shouldn't inherit menu semantics from.
- * - A row is a plain text row (class `menu-item`), not a `btn`: no border or fill
- *   at rest, a tint on hover and focus, danger as coloured text.
- * - A menu with more than one level is a tree, not a flat list and not a side
- *   flyout: an item carrying `children`, or a run of more than one item with
- *   the same `group`, is a parent row (chevron, `aria-expanded`) that expands in
- *   place, its rows in a labelled `role="group"` indented under a guide line, to
- *   three levels. A group holding one item stays a heading over that item; a
- *   menu with neither stays flat. The first parent starts open.
- * - Keys (every menu): Up/Down/Home/End move through the visible rows; Right on a
- *   parent opens it and moves to its first row; Left closes an open parent, or the
- *   level the focus is in, and returns to its parent; Escape closes the level the
- *   focus is in (not the menu), and the menu itself when the focus is not in a level; Enter, Space and a click open or close a parent; Tab closes the menu.
+ * Design notes:
+ * - `Popover` is the anchored, focus-trapped container (`dialogA11y.ts`), as in `SplitButtonTrigger`. It closes
+ *   on a click outside (including a diagram canvas), on Escape and on Tab.
+ * - `RecordHeader` uses this menu for the record's object actions even when there is only one (style guide
+ *   "Pattern: record header and object actions"), so the position never changes with permissions.
+ * - `role="menu"` on the menu container and `role="menuitem"` on each row, nested inside `Popover`'s
+ *   `role="dialog"`, so other `Popover` callers do not inherit menu semantics.
+ * - A row is a plain text row (class `menu-item`), not a `btn`: no border or fill at rest, a tint on hover and
+ *   focus, danger as coloured text.
+ * - A menu with more than one level is a tree, not a flat list or a side flyout: an item with `children`, or a
+ *   run of more than one item with the same `group`, is a parent row (chevron, `aria-expanded`) that expands in
+ *   place, its rows in a labelled `role="group"` under a guide line, to three levels. A group holding one item
+ *   stays a heading; a menu with neither stays flat. The first parent starts open.
+ * - Keys: Up/Down/Home/End move through the visible rows; Right on a parent opens it and moves to its first
+ *   row; Left closes an open parent, or the level the focus is in, and returns to its parent; Escape closes the
+ *   level the focus is in, or the menu when the focus is not in a level; Enter, Space and a click open or close
+ *   a parent; Tab closes the menu.
  */
 import type { ReactNode } from "react";
 import { ChevronRight, MoreVertical } from "lucide-react";
@@ -41,6 +29,7 @@ import { Fragment, useEffect, useId, useRef, useState } from "react";
 import type { DragEvent, KeyboardEvent } from "react";
 
 import { Popover } from "./Popover";
+import { Tooltip } from "./Tooltip";
 
 export interface ActionMenuItem {
   /** Visible label and accessible name for this menu item. */
@@ -85,17 +74,12 @@ const itemKeyOf = (item: ActionMenuItem, index: number): string =>
   item.key ?? (typeof item.label === "string" ? item.label : String(index));
 
 /**
- * Renders a `MoreVertical` kebab button; clicking it opens a `Popover`
- * (anchored to the kebab) containing `items` as `role="menuitem"` buttons.
- * Selecting an item closes the menu and then calls its own `onSelect` —
- * callers don't need to close the menu themselves.
+ * Renders a `MoreVertical` kebab button; clicking it opens a `Popover` (anchored to the kebab) containing `items`
+ * as `role="menuitem"` rows. Selecting an item closes the menu and then calls its `onSelect`.
  *
- * @param triggerLabel - Accessible name (`aria-label`/`title`) for the
- *   kebab trigger itself, and the menu's own `aria-label`/`Popover` title.
- *   Should name what the menu acts on (e.g. `` `${org.name} actions` ``),
- *   not a bare "More actions" — Principle 8 (every interactive control has
- *   a real name), especially relevant if more than one `ActionMenu` can
- *   ever appear on the same page.
+ * @param triggerLabel - Accessible name (`aria-label`/`title`) for the kebab trigger, and the menu's
+ *   `aria-label`/`Popover` title. Names what the menu acts on (e.g. `` `${org.name} actions` ``), not a bare
+ *   "More actions" (Principle 8), since several menus can appear on one page.
  * @param items - The menu's rows, in display order.
  * @param disabled - Disables the trigger itself (e.g. while one of the
  *   menu's own actions, such as an export, is already in flight).
@@ -129,20 +113,21 @@ export function ActionMenu({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`btn${size === "sm" ? " btn-sm" : ""}${triggerText ? "" : " btn-icon"}`}
-        aria-label={triggerLabel}
-        title={triggerLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-      >
-        {icon ?? <MoreVertical />}
-        {triggerText && <span style={{ marginLeft: "var(--space-1)" }}>{triggerText}</span>}
-      </button>
+      <Tooltip label={triggerLabel} disabled={open || !!triggerText}>
+        <button
+          ref={triggerRef}
+          type="button"
+          className={`btn${size === "sm" ? " btn-sm" : ""}${triggerText ? "" : " btn-icon"}`}
+          aria-label={triggerLabel}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {icon ?? <MoreVertical />}
+          {triggerText && <span style={{ marginLeft: "var(--space-1)" }}>{triggerText}</span>}
+        </button>
+      </Tooltip>
       {open && (
         <Popover anchorRef={triggerRef} fit menu title={triggerLabel} onClose={() => setOpen(false)}>
           <ActionMenuList label={triggerLabel} items={items} footer={footer} onSelect={() => setOpen(false)} />
@@ -318,8 +303,8 @@ function MenuRows({
     <>
       {nodes.map((node) => {
         // Keyed by label, not index: a caller's item list can change while the menu is open (Org Admin adds
-        // "Rename" once its settings load), and an index key made React hand one item's button — and click
-        // handler — to another, so clicking "Export" opened Rename (found 2026-10-04 via the e2e suite).
+        // "Rename" once its settings load), and an index key would hand one item's button and click handler
+        // to another.
         if (node.kind === "heading") return <span key={node.key} role="presentation" className="menu-group-label">{node.label}</span>;
         if (node.kind === "leaf") {
           const { item } = node;

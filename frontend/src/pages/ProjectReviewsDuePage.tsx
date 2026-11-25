@@ -10,6 +10,7 @@ import { principalText } from "../api/types";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
+import { LoadFailed } from "../components/LoadFailed";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
@@ -22,6 +23,9 @@ export function ProjectReviewsDuePage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [items, setItems] = useState<RequirementDueForReview[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
+  // A refused read shows the failure with Retry (`attempt` makes the same filters load again).
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   // Filters live in the URL so the list comes back as it was left after a visit to a requirement.
   const [componentId, setComponentId] = useUrlText("component");
   // "<type>:<id>" of the chosen reviewer (a user or a group), or "".
@@ -45,8 +49,14 @@ export function ProjectReviewsDuePage() {
     if (mineOnly) params.set("reviewer_mine", "true");
     api
       .get<RequirementDueForReview[]>(`/api/v1/projects/${projectId}/requirements/reviews/due?${params.toString()}`)
-      .then(setItems);
-  }, [projectId, componentId, reviewerKey, mineOnly]);
+      .then(
+        (rows) => {
+          setFailed(false);
+          setItems(rows);
+        },
+        () => setFailed(true),
+      );
+  }, [projectId, componentId, reviewerKey, mineOnly, attempt]);
 
   const reviewers = Array.from(
     new Map(
@@ -54,6 +64,17 @@ export function ProjectReviewsDuePage() {
     ).entries()
   );
 
+  if (failed) {
+    return (
+      <LoadFailed
+        message={strings.requestFailure.loadFailed(strings.requestFailure.reviewsDue)}
+        onRetry={() => {
+          setFailed(false);
+          setAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
   if (!items) return <Spinner />;
 
   return (

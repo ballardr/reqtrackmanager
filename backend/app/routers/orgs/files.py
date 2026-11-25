@@ -4,20 +4,21 @@ Module: routers.orgs.files
 The organisation's Files page: the files of every project the caller may open, in one filterable list.
 
 Responsibilities:
-- `POST /orgs/{id}/files/search`: the list with its filters (file name, source, file type, uploader, upload window,
-  project, archived projects), paged, with `X-Total-Count` and `X-Projects-Truncated` headers.
-- `GET /orgs/{id}/files/uploaders` and `GET /orgs/{id}/files/projects`: the choices of the "Uploaded by" and
+- `POST /orgs/{id}/files/search`: the list with its filters (file name, source, file type, uploader, upload
+  window, project, archived projects), paged, with `X-Total-Count` and `X-Projects-Truncated` headers.
+- `GET /orgs/{id}/files/uploaders` and `GET /orgs/{id}/files/projects`: choices of the "Uploaded by" and
   "Project" filters.
 
 Design decisions:
-- Never a blanket organisation read: the projects covered come from `services.project_files.organization_file_projects`
-  (a genuine role and a reachable credential, the project Files page's own test), and a project id the caller sends that is outside that
-  set is ignored. Any organisation member may open the page; what it lists depends only on their projects.
-- The file name typed in the search travels in the POST body, is used only as a bound pattern and is never logged,
-  audited or traced; the endpoints are reads and write no audit event.
-- One pass over the projects' joins (`file_rows`), so the number of statements does not grow with the project count.
+- Never a blanket organisation read: the projects covered come from
+  `services.project_files.organization_file_projects` (a genuine role and a reachable credential), and a
+  project id outside that set is ignored. Any organisation member may open the page; what it lists depends
+  only on their projects.
+- The typed file name travels in the POST body, is used only as a bound pattern and is never logged, audited
+  or traced; the endpoints are reads and write no audit event.
+- One pass over the projects' joins (`file_rows`), so statements do not grow with the project count.
 
-Dependencies: `services.project_files`, `services.rbac` (the organisation membership gate), `schemas.file`.
+Dependencies: `services.project_files`, `services.rbac`, `schemas.file`.
 """
 
 from __future__ import annotations

@@ -1,20 +1,17 @@
 """
 Module: modules.stakeholders.relationship_export
 
-The §10.5 relationships part of this module's project bundle export/import;
-`module.py` composes it with the Persona, Stakeholder and Need halves.
+The §10.5 relationships part of this module's project bundle export/import; `module.py` composes it
+with the Persona, Stakeholder and Need halves.
 
 Design decisions:
-- Only a holder's relationships to records *of this project* travel, so a
-  shared org-level Stakeholder/Persona exports just this project's links.
-- Cross-references use portable keys, never database ids: the holder is its
-  name and scope, a Requirement is its unique code, and any other target (Pain
-  Point, Decision — which this module cannot import) is the label its owning
-  module's summary provider gives it. A label that matches no record, or more
-  than one, is skipped with a warning rather than guessed at or failing the import.
-- Runs last among this module's import steps: Stakeholders and Personas must
-  exist, and the core import creates Requirements, then other modules' hooks
-  (registered before this one) recreate Pain Points and Decisions.
+- Only a holder's relationships to records of this project travel, so a shared org-level
+  Stakeholder/Persona exports just this project's links.
+- Cross-references use portable keys: the holder's name and scope, a Requirement's unique code, and for
+  any other target the label its owning module's summary provider gives it. A label matching no record,
+  or more than one, is skipped with a warning.
+- Runs last among this module's import steps, after Stakeholders, Personas, Requirements and the other
+  modules' hooks have created their records.
 """
 
 from __future__ import annotations

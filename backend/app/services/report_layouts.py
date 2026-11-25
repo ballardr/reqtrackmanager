@@ -4,26 +4,21 @@ Module: services.report_layouts
 Storing and versioning custom report layouts.
 
 Responsibilities:
-- Create a layout with its first version, save further versions, rename or re-describe it, delete it.
-- Read the current version, one version, or the version history.
-- Keep the layout's shared draft (`ReportLayoutDraft`): write it on autosave, discard it, publish it as the next version.
-- Validate every tree before it is stored (`report_layout_tree.assert_valid`) and write one audit
-  event per change.
+- Create (with a first version), save further versions, rename or re-describe, delete; read the current version, one
+  version or the history.
+- Keep the shared draft (`ReportLayoutDraft`): write on autosave, discard, publish as the next version.
+- Validate every tree before storing it (`report_layout_tree.assert_valid`); one audit event per change.
 
 Design decisions:
-- **Editing never changes a stored version.** A save appends a version; a run pins one by number, so
-  provenance stays true (`ReportLayoutVersion` refuses updates).
-- **Optimistic concurrency.** A save names the version it was based on; if the layout moved on, it is
-  refused (`LayoutConflictError`) instead of silently overwriting a colleague's change. The layout row
-  is locked while the next number is chosen, so two saves cannot take the same version.
-- A save whose tree hashes the same as the current version stores nothing and returns the current one.
-- **A draft is not a version.** It is one mutable row per layout the designer rewrites on autosave; it may be invalid (it is
-  checked when published, as a save is), carries a `revision` so a concurrent writer is refused (`DraftConflictError`), and is
-  never read by a run, copy or bundle. Writing it is not audited event by event (high-frequency working state that changes no
-  run or output); discarding and publishing it are. A draft equal to the saved version is removed rather than stored.
-- The audit event carries ids, the version number, the tree hash and counts, never the layout's text.
-- Permission to manage layouts is decided by the caller (the endpoint); this module trusts it and
-  only checks that a project belongs to the organisation named.
+- A stored version is never changed: a save appends one and a run pins one by number (`ReportLayoutVersion` refuses
+  updates). A tree hashing equal to the current version stores nothing.
+- Optimistic concurrency: a save names its base version and is refused (`LayoutConflictError`) if the layout moved on;
+  the layout row is locked while the next number is chosen.
+- A draft is one mutable row per layout, possibly invalid (checked on publish), with a `revision` so a concurrent writer
+  is refused (`DraftConflictError`); no run, copy or bundle reads it. Writing it is not audited (high-frequency working
+  state); discarding and publishing are. A draft equal to the saved version is removed.
+- The audit event carries ids, version number, tree hash and counts, never layout text.
+- The endpoint decides permission; this module only checks the project belongs to the organisation.
 
 Dependencies: `models.report_layout`, `services.report_layout_tree`, `services.audit`.
 """

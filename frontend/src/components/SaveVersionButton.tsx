@@ -2,21 +2,21 @@
  * Module: components/SaveVersionButton
  *
  * The primary "Save new version" button of an editor that keeps versions (the report layout designer and the report
- * pack editor). Pressing it opens a `Popover` asking for an optional note on the change, rather than leaving a note
- * field on the page; saving from the popover closes it.
+ * pack editor). It opens a `Popover` asking for an optional note on the change; saving from the popover closes it.
  *
- * Responsibilities: own the note while the popover is open, call `onSave(note)` and close the popover when it
- * reports success (a refusal, such as a version conflict, keeps it open with the note intact); disable the button
- * while the editor cannot save. The caller does the save and shows its own errors.
+ * Responsibilities: own the note while the popover is open, call `onSave(note)` and close on success (a refusal such as a
+ * version conflict keeps it open with the note intact); disable the button while the editor cannot save. The caller
+ * saves and shows its own errors.
  *
- * Design decisions: one optional field fits a popover (style guide, "Pattern: compact forms and add-on-demand"); the
- * note is never required, so Enter in the field saves.
+ * Design decision: one optional field fits a popover (style guide, "Pattern: compact forms and add-on-demand"); the note
+ * is never required, so Enter in the field saves.
  */
 import { useRef, useState } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import { TextField } from "./FormFields";
 import { Popover } from "./Popover";
+import { Tooltip } from "./Tooltip";
 
 /**
  * @param disabled Whether the editor has nothing valid to save.
@@ -41,9 +41,11 @@ export function SaveVersionButton({
 
   return (
     <>
-      <button ref={anchor} type="button" className="btn btn-primary" disabled={disabled || saving} title={title} aria-haspopup="dialog" onClick={() => setOpen(true)}>
-        {text.button}
-      </button>
+      <Tooltip label={title ?? ""} wrap disabled={open || !title}>
+        <button ref={anchor} type="button" className="btn btn-primary" disabled={disabled || saving} aria-haspopup="dialog" onClick={() => setOpen(true)}>
+          {text.button}
+        </button>
+      </Tooltip>
       {open && (
         <Popover anchorRef={anchor} title={text.title} onClose={() => setOpen(false)}>
           <form

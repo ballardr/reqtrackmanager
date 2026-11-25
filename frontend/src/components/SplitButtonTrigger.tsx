@@ -1,37 +1,17 @@
 /**
  * Module: components/SplitButtonTrigger
  *
- * A true split button: clicking the main control performs the one common
- * action immediately; a small adjacent chevron reveals a menu of less-common
- * alternatives, without the common case ever stopping at a menu first. See
- * `docs/ux-style-guide.md`'s "Pattern: split-button trigger" and "The 'New Requirement' trigger
- * doesn't match the requested split-button interaction" — this replaces
- * `RequirementsPage.tsx`'s previous shape, where the *whole* button opened a
- * `Popover` offering "Add one"/"Import from CSV", making every click
- * (including the common "add one" case) stop at a menu first.
+ * A split button: clicking the main control performs the one common action immediately; a small adjacent chevron
+ * reveals a menu of less-common alternatives, so the common case never stops at a menu. See
+ * `docs/ux-style-guide.md`, "Pattern: split-button trigger". Generic over any primary action with one dominant case
+ * plus a few alternatives.
  *
- * Design/implementation notes:
+ * Design decisions:
  * - The alternatives are the shared `ActionMenuList` (text rows, never buttons) in a `Popover`, which supplies the
- *   positioning and
- *   outside-click/Escape-close logic (anchored to the chevron, not the main
- *   button, so the menu opens beside the control that revealed it) — per
- *   the style guide's own instruction to build this "sharing `Popover`'s
- *   existing positioning/outside-click-close logic," not a second
- *   implementation of the same behaviour.
- * - The style guide describes the reveal affordance as "a chevron, or
- *   hovering the control" — this component uses click-to-reveal on the
- *   chevron specifically, not hover. Judgment call, recorded in
- *   `docs/decisions.md`: hover has no equivalent on a touchscreen (this
- *   app's own mobile-viewport support, U-P-02, rules it out as the *only*
- *   path to the alternative action) and every other disclosure affordance
- *   in the app already opens on click (`CollapsibleSection`, `Popover`
- *   itself) — click-to-reveal keeps this component consistent with that
- *   existing convention and reliably testable, rather than introducing the
- *   app's first hover-triggered interactive menu.
- * - Not specific to "New Requirement": generic over any primary action with
- *   one dominant case plus a small number of alternatives, per the style
- *   guide's own note that the same shape applies "anywhere else a primary
- *   action currently forces a menu stop for its own most common case."
+ *   positioning and outside-click/Escape closing; it is anchored to the chevron so the menu opens beside the control
+ *   that revealed it.
+ * - The chevron reveals on click, not hover: hover has no touchscreen
+ *   equivalent, and every other disclosure in the app (`CollapsibleSection`, `Popover`) opens on click.
  */
 import { ChevronDown } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";

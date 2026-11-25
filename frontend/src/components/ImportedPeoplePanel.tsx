@@ -1,15 +1,13 @@
 /**
  * Module: components/ImportedPeoplePanel
  *
- * The organisation administrator's list of imported people: the stand-ins a bundle import created for people who are
- * not members (`PrincipalBadge` marks them "Imported" wherever they appear).
+ * The organisation administrator's list of imported people: the stand-ins a bundle import created for people who
+ * are not members (`PrincipalBadge` marks them "Imported"). It lists whether anything still refers to each and
+ * whether it is due for removal, anonymises one, removes an unused one and sets the retention age deciding which
+ * are due. It owns its fetch and mutations.
  *
- * Responsibilities: list them with whether anything still refers to them and whether they are due for removal,
- * anonymise one, remove an unused one, and set the retention age that decides which are listed as due. It owns its
- * own fetch and mutations; the page only places it.
- *
- * Design: nothing is removed automatically. Removal is offered only for an unused person (the server refuses
- * otherwise), and each action confirms first (style guide confirmation tiers).
+ * Nothing is removed automatically; removal is offered only for an unused person (the server refuses otherwise)
+ * and each action confirms first (style guide confirmation tiers).
  */
 import { useState } from "react";
 

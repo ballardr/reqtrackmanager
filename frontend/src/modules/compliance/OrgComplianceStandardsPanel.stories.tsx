@@ -2,11 +2,14 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import type { Organization } from "../../api/types";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
 import type { ProjectComplianceStatus } from "./types";
 
 const ORG_ID = "org-1";
+const ORG = { id: ORG_ID, name: "Acme" } as Organization;
+const OTHER_ORG = { id: "org-2", name: "Globex" } as Organization;
 
 const STATUS_ROWS: ProjectComplianceStatus[] = [
   {
@@ -42,13 +45,13 @@ function mockApis(rows: ProjectComplianceStatus[]) {
   });
 }
 
-const DEFAULT_PATH = "/orgs/org-1/overview/compliance-by-standard";
+const DEFAULT_PATH = "/standards/by-standard?org=org-1";
 
 const meta: Meta<typeof OrgComplianceStandardsPanel> = {
   title: "Modules/Compliance/OrgComplianceStandardsPanel",
   component: OrgComplianceStandardsPanel,
   decorators: [withToast()],
-  args: { orgId: ORG_ID },
+  args: { frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined, orgs: [ORG], showOrg: false } },
 };
 export default meta;
 
@@ -78,6 +81,33 @@ export const GroupedByStandard: Story = {
   },
 };
 
+/** Reading two organisations joins their assignments, and each standard row states its organisation. */
+export const EveryOrganisationAtOnce: Story = {
+  args: { frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined, orgs: [ORG, OTHER_ORG], showOrg: true } },
+  decorators: [withRouter("/standards/by-standard")],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith(`/api/v1/orgs/${ORG_ID}/`) && path.includes("/project-compliance")) return [STATUS_ROWS[0]];
+      if (path.startsWith("/api/v1/orgs/org-2/") && path.includes("/project-compliance")) {
+        return [{ ...STATUS_ROWS[0], project_compliance_id: "pc-9", standard_id: "std-9", standard_reference: "SOC-2", standard_name: "SOC 2", project_id: "proj-9", project_name: "Globex Plant" }];
+      }
+      throw new Error(`unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = within(await canvas.findByRole("table"));
+    await expect(table.getByText(/ISO-27001 — ISO 27001/)).toBeInTheDocument();
+    await expect(table.getByText(/SOC-2 — SOC 2/)).toBeInTheDocument();
+    // The organisation is a column of its own, not text inside the standard's button.
+    await expect(table.getByRole("columnheader", { name: "Organisation" })).toBeInTheDocument();
+    await expect(table.getByRole("cell", { name: "Acme" })).toBeInTheDocument();
+    await expect(table.getByRole("cell", { name: "Globex" })).toBeInTheDocument();
+    // A report is generated for one organisation, so no Export is offered while several are read.
+    await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+  },
+};
+
 /** A standard assigned to projects on two different versions
  * groups its expanded row as Standard -> Version -> Project, each version
  * listing only the projects actually on it. */
@@ -101,10 +131,8 @@ export const GroupedByStandardWithMultipleVersions: Story = {
     const table = within(canvas.getByRole("table"));
     await userEvent.click(canvas.getByRole("button", { name: /Expand projects for ISO-27001/ }));
 
-    // More than one version behind the standard — each is its own
-    // collapsible sub-group, collapsed by default (unlike the single-
-    // version case in `GroupedByStandard` above, which has no toggle at
-    // all and is pre-expanded).
+    // With more than one version behind the standard, each is a collapsible sub-group, collapsed by default (the single-version
+    // case in `GroupedByStandard` has no toggle and is pre-expanded).
     const v1Toggle = table.getByRole("button", { name: /Expand projects for v1.0/ });
     const v2Toggle = table.getByRole("button", { name: /Expand projects for v2.0/ });
     await expect(v1Toggle).toBeInTheDocument();
@@ -141,12 +169,10 @@ export const FilterByProject: Story = {
   },
 };
 
-/** The "Group by" pivot, and its URL-driven initial state
- * (`?groupBy=project&state=non_compliant`) so `OrgComplianceWidgets.tsx`'s
- * "Non-compliant projects" tile can link straight into a pre-filtered,
- * project-pivoted view. */
+/** The "Group by" pivot and its URL-driven initial state (`?groupBy=project&state=non_compliant`), so `OrgComplianceWidgets.tsx`'s
+ * "Non-compliant projects" tile can link into a pre-filtered, project-pivoted view. */
 export const GroupedByProjectViaUrl: Story = {
-  decorators: [withRouter(`${DEFAULT_PATH}?groupBy=project&state=non_compliant`)],
+  decorators: [withRouter(`${DEFAULT_PATH}&groupBy=project&state=non_compliant`)],
   beforeEach: () => mockApis(STATUS_ROWS),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -200,3 +226,33 @@ export const NoAssignments: Story = {
 
 export const LightTheme: Story = { ...GroupedByStandard };
 export const DarkTheme: Story = { ...GroupedByStandard, globals: { theme: "dark" } };
+
+/** A standard name that wraps over several lines never moves the organisation: its cells share one left edge. */
+export const OrganisationColumnAlignsWithLongNames: Story = {
+  args: { frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined, orgs: [ORG, OTHER_ORG], showOrg: true } },
+  decorators: [withRouter("/standards/by-standard")],
+  beforeEach: () => {
+    const longName = "Information security management systems requirements for the operation of a very large and widely distributed organisation ".repeat(3);
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith(`/api/v1/orgs/${ORG_ID}/`) && path.includes("/project-compliance")) {
+        return [{ ...STATUS_ROWS[0], standard_name: longName }];
+      }
+      if (path.startsWith("/api/v1/orgs/org-2/") && path.includes("/project-compliance")) {
+        return [{ ...STATUS_ROWS[0], project_compliance_id: "pc-9", standard_id: "std-9", standard_reference: "SOC-2", standard_name: "SOC 2", project_id: "proj-9" }];
+      }
+      throw new Error(`unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = within(await canvas.findByRole("table"));
+    const acme = table.getByRole("cell", { name: "Acme" });
+    const globex = table.getByRole("cell", { name: "Globex" });
+    await expect(Math.round(acme.getBoundingClientRect().left)).toBe(Math.round(globex.getBoundingClientRect().left));
+    // The expanded row spans every column, including Organisation.
+    await userEvent.click(table.getByRole("button", { name: /Expand projects for ISO-27001/ }));
+    const header = table.getAllByRole("columnheader");
+    const spanning = canvasElement.querySelector("td[colspan]") as HTMLElement;
+    await expect(Number(spanning.getAttribute("colspan"))).toBe(header.length);
+  },
+};

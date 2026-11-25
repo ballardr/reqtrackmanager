@@ -1,33 +1,20 @@
 /**
  * Module: modules/architecture/stateMachineModel
  *
- * The state machine diagram editor's state as plain functions, with no React: the drawing being edited (each state's box
- * and nesting, each transition's attach points), the merge of a freshly read model into it, the edits a person makes and
- * the mapping to the shared canvas's nodes and lines.
- *
- * Responsibilities:
- * - `StateMachineLayout`: the part of the diagram a Save stores (`PUT .../layout`). Everything else a state or transition
- *   carries (name, kind, actions, event, guard) is read from the server's model and written at once by its own form, so
- *   it is never "unsaved".
- * - Edits return a new layout: move, resize, nest a state inside another (the child is moved into the frame and the frame
- *   grows to hold it, up the chain), fix a transition's attach points.
- * - `mergeModel`: geometry comes from the local layout, membership and display data from the model, so a reload after a
- *   state was added or removed never discards unsaved work.
- * - `canvasNodes` / `canvasEdges`: UML state machine notation on the shared canvas (a marker for an initial state, a final
- *   state and a choice, a rounded box for a state with its entry, exit and do lines, a container for a state that holds
- *   others, a loop for a transition to the same state).
- *
- * Design decisions:
- * - Canvas ids are the state and transition ids; there are no notes or boundary boxes here, so no prefixes.
- * - Only an ordinary state may hold others (a marker is a shape with no inside); the checks the server runs (one initial
- *   state per level, no depth beyond 12) are not repeated here.
- * - The shapes' sizes come from `stateShapes`, the table the server's drawing is tested against. A marker with a label is drawn
- *   as large as its label needs (`markerFrame`, `symbolLabelLayout`: whole words), centred on its stored box, and the label is drawn inside it.
- *   A label placed outside the symbol leaves the symbol at its stored box and is drawn beside it (`besideLabel`); the canvas node
- *   is the symbol, so lines meet the symbol, and `markerAttachPoints` keeps an open line end off the side the text is on.
- * - A marker's drawn frame can differ from its stored box (a label inside grows it around the box's centre), so a move reported
- *   by the canvas as the frame's new corner is turned back into the stored box (`markerOffsets`), and the symbol stays where it
- *   was dropped.
+ * The state machine diagram editor's state as plain functions, with no React: the drawing being edited, the merge of a freshly
+ * read model into it, the edits a person makes and the mapping to the shared canvas's nodes and lines.
+ * - `StateMachineLayout`: the part a Save stores (`PUT .../layout`): each state's box and nesting and each transition's attach
+ *   points. Name, kind, actions, event and guard are read from the server's model and written at once by their own form.
+ * - Edits return a new layout: move, resize, nest a state (the child moves into the frame and the frame grows to hold it, up
+ *   the chain), fix attach points. `mergeModel` takes geometry from the local layout and membership and display data from the
+ *   model, so a reload never discards unsaved work.
+ * - `canvasNodes` / `canvasEdges`: UML notation on the shared canvas (markers for an initial state, a final state and a
+ *   choice, a rounded box with entry, exit and do lines, a container for a state that holds others, a loop for a self transition).
+ * - Canvas ids are the state and transition ids. Only an ordinary state may hold others; the server's checks (one initial state
+ *   per level, depth at most 12) are not repeated. Sizes come from `stateShapes`. A marker's label grows its drawn frame around
+ *   the stored box's centre (`markerFrame`), so a move reported as the frame's corner is turned back into the stored box
+ *   (`markerOffsets`); a label outside the symbol is drawn beside it (`besideLabel`) and `markerAttachPoints` keeps an open
+ *   line end off that side.
  */
 import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode } from "../../components/GraphCanvas";
 import { effectiveShape } from "../../components/graphLinePath";
@@ -107,8 +94,8 @@ export function layoutFromModel(model: StateMachineModel): StateMachineLayout {
 
 /**
  * Merges a freshly read model into the layout being edited: a state or transition still present keeps its local geometry,
- * nesting and attach points; a new one takes the server's; one the server no longer has is dropped. The notes stay as edited
- * (they change only by a save), except that a leader to a state or transition the server no longer has is dropped with it.
+ * nesting and attach points; a new one takes the server's; one the server does not return is dropped. Notes stay as edited
+ * (a save changes them), except that a leader to a state or transition the server does not return is dropped with it.
  */
 export function mergeModel(local: StateMachineLayout, model: StateMachineModel): StateMachineLayout {
   const fresh = layoutFromModel(model);

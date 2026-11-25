@@ -1,12 +1,9 @@
 /**
  * Module: components/ImportWarnings
  *
- * The list of warnings an import returned (a project, organisation or bundle import that succeeded with
- * skipped or adjusted content). One component so every import result reads the same and takes its colour from
- * the theme's warning token, not a per-page literal.
- *
- * Responsibilities: draw the warnings as a titled card (or, inside a card that already has a heading, as the
- * bare coloured list) and say nothing when there are none.
+ * The list of warnings an import returned (a succeeded import with skipped or adjusted content), so every import
+ * result reads the same and takes its colour from the theme's warning token. Drawn as a titled card (or, inside a
+ * card with its own heading, the bare coloured list); nothing when there are none.
  */
 
 /**

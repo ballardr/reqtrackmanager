@@ -1,10 +1,9 @@
 /**
  * Module: components/AuthCard
  *
- * The centred card every signed-out form page sits in (sign up, forgot password, reset password): a narrow
- * container with the card inside, rendered as a `<form>` when it has a submit handler so Enter submits. One
- * component so these pages keep the same width, spacing and form semantics (docs/ux-style-guide.md, one
- * component per pattern). The page shell and footer placement come from `SignedOutPage`.
+ * The centred card every signed-out form page sits in (sign up, forgot password, reset password): rendered as a
+ * `<form>` when it has a submit handler so Enter submits, one component for one width, spacing and semantics. The
+ * page shell and footer come from `SignedOutPage`.
  */
 import type { FormEvent, ReactNode } from "react";
 

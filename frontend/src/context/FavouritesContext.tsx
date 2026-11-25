@@ -1,27 +1,13 @@
 /**
  * Module: context/FavouritesContext
  *
- * Tracks whether the current user has any active favourited project, for
- * `Layout.tsx`'s nav-rail "Favourites" entry (`hasFavourites`). Previously
- * this lived as local state in `LayoutShell`, recomputed only on mount and
- * again on landing at `/projects` or `/favourites` — "the only two places
- * a favourite can be toggled" at the time the comment was written. That's
- * no longer true generally (any future favourite-star elsewhere would go
- * stale) and was already a real gap for a session that never revisits
- * either route after the first toggle. See
- * "Favourites: no filter, nav-rail lag, no view toggle" and
- * docs/ux-style-guide.md's "Pattern: role display" sibling section for
- * the general shape of this kind of fix.
+ * Tracks whether the current user has any active favourited project, for `Layout.tsx`'s nav-rail "Favourites" entry
+ * (`hasFavourites`), so the rail does not go stale when a favourite is toggled anywhere in a session.
  *
- * `FavouritesProvider` wraps the app inside `Layout` (alongside
- * `TerminologyProvider`/`BrandingProvider`) so both the nav rail and every
- * page rendered as `children` share the same `hasFavourites` value. Any
- * component that toggles a project's favourite status calls
- * `refreshFavourites()` (via `useFavourites()`) immediately after the
- * mutating API call succeeds — `ProjectListPage.tsx` and
- * `FavouritesPage.tsx` today — so the rail updates the moment a toggle
- * happens anywhere, without adding more special-cased routes to a
- * recompute-on-navigate list.
+ * `FavouritesProvider` wraps the app inside `Layout` (beside `TerminologyProvider` and `BrandingProvider`) so the nav rail
+ * and every page rendered as `children` share one `hasFavourites` value. Any component that toggles a project's
+ * favourite status (`ProjectListPage.tsx`, `FavouritesPage.tsx`) calls `refreshFavourites()` (via `useFavourites()`)
+ * after the mutating API call succeeds, so the rail updates at once without a recompute-on-navigate route list.
  */
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 

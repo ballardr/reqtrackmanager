@@ -388,6 +388,8 @@ class ModuleDefinition:
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     demand_party_providers: dict[str, Callable[[Session, UUID, Sequence[UUID]], dict[UUID, list[DemandParty]]]] = {}  # who a record stands for (§4e2)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
+    default_code_prefixes: dict[str, str] = {}  # {artefact type: built-in PREFIX of its record codes} (§4l12)
+    no_code_prefix: dict[str, str] = {}  # artefact types with no PREFIX-nnn code, with the reason (§4l12)
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
     activity_action_kinds: dict[str, str] = {}  # {audit action: kind} for the project History page's Change filter (§4l7)
@@ -1006,9 +1008,25 @@ flowchart LR
   to core's closed enum. `services.notifications.notify` accepts either form and
   raises `ValueError` for an unregistered key. The preferences API returns
   `label` for module types; core types are labelled by the frontend string table.
-  To make a notification clickable, send the record's registered artefact type as
-  `entity_type` and its id as `entity_id`: the frontend's `getNotificationLink`
-  opens it through the owning module's `artefactPaths`, with no core change.
+  To make a notification open something, declare **target kinds** for the type
+  (`NotificationTypeDefinition.target_kinds`, ordered) and send the record's
+  registered artefact type as `entity_type` and its id as `entity_id`. The bell,
+  the notification list and the email all open `/notifications/:id`, which calls
+  the one browser resolver (`modules/notificationTargets.ts`): it tries the
+  type's kinds in order and opens the first whose data the notification carries
+  (the `record` kind opens the record through the owning module's
+  `artefactPaths`), else shows the full message. `GET /notifications/{id}`
+  returns `subject_available` (false for a project the person can no longer open,
+  by `link_nesting.can_open_project`, or an organisation they have left), and the
+  detail page then states that access ended instead of ending on an error. A kind only the module can
+  open goes in `ModuleDefinition.notification_target_kinds` with a resolver on
+  `TierAModuleDefinition.notificationTargets`; kinds for a type that core's enum
+  defines but the module owns (Compliance's) go in
+  `ModuleDefinition.notification_targets`. `test_notification_targets.py` fails
+  for a type with no kind or a kind outside the vocabulary,
+  `notificationTargetKinds.json` must equal the backend vocabulary, and
+  `notificationTargets.stories.tsx` fails for a kind with no resolver or one that
+  opens no mounted route.
 - **`on_artefact_changed`** is called with an `ArtefactChange` (`artefact_type`,
   `artefact_id`, `project_id`, `kind` of `content_changed` or `archived`,
   `summary`, `actor_id`) by `services.artefact_changes.notify_artefact_changed`,
@@ -1257,11 +1275,11 @@ flowchart LR
 
 - `search_providers[artefact_type] = ArtefactSearchProvider(from_clause, columns, fields, where, status_labels, organization_owned, open_owner_type)`.
   `columns` (`SearchColumns`) says which SQL expression is the id, owning project, code, title, status,
-  archived flag and last change; `fields` (`SearchField(key, label, column)`) are the **extra** text columns
+  archived flag and last change; `fields` (`SearchField(key, label, column, markdown=False)`) are the **extra** text columns
   the search may match. **Fields are opt-in:** a column you do not list is never matched, so a personal-data or
   consent-sensitive column is excluded by leaving it out. Reuse a `key` and `label` another type uses
   (`description`, `rationale`) so the field picker lists it once; `id`, `title` and `tags` are built by core
-  (every taggable type is searched on tags with no provider work). A versioned record is read through its
+  (every taggable type is searched on tags with no provider work). `markdown=True` marks a column that holds Markdown: a result's snippet then shows its plain text (diagram source included) instead of the marks. A versioned record is read through its
   current version: `services.search_core.versioned_provider` builds the provider for you.
 - `organization_owned=True` for a type that can belong to the organisation (`project_id` NULL) and is shown
   through projects: such a record is found only through a project allowed to see it, using the same visibility
@@ -1355,6 +1373,7 @@ Read left to right: the same provider defines the columns of the file out and th
 - **Organisation-owned rows.** A type the organisation can own (a Persona shared by every project) lists those rows in the project's table too. Give the provider `organization_owned(record) -> bool`: core then writes such a row with the organisation-qualified code (`ACME-PER-001`, always qualified, since its bare code could equal a project record's), and, because `find` searches the project's own records only, an import never changes one from a project (the row is reported as an unknown code). An organisation's own records are exported and imported at the organisation level.
 - **A write path the import can share.** A module's create/update that commits (a `*_from_payload` the endpoint calls) is split into a `stage_*` function that validates, writes and audits without committing, and a thin wrapper that commits and returns the API shape; the endpoint calls the wrapper and the provider the `stage_*` (see `modules/stakeholders/_*_shared.py`, `modules/context_strategy/edits.py`). Build the endpoint's own request payload (`PersonaCreate`, `StakeholderUpdate`) from the cells and turn a refusal into the row's error, so its length limits and tenancy checks apply unchanged.
 - **Format.** First column `code` (core writes it, qualified by the project code outside the request project or where the organisation enforces it). A person is one cell: an email, or `Name (Organisation group)` (`parse_principal_cell`, `PrincipalCells` for export). Enums by label, dates `YYYY-MM-DD`, instants UTC and export-only. Core adds the `'` formula guard on write and strips it on read; a provider never does.
+- **Sorting.** Every list of a registered type offers the keys `code`, `title`, `created` and `modified` and its own columns, ascending or descending, with **code ascending** as the default (`services/list_sort.py`, the Export, grid and record-list report receive `sort` and `order`). The engine derives them: `code` from `code_of`, `created` and `modified` from the record's `created_at` and `updated_at`, `title` from the column named by `RecordTableProvider.title_column` (default `"title"`; `"name"`, `"question"` where that is the column), and any other key from a column's cell text. A type whose rows are not plain records (a row assembled from several tables) supplies `created` and `modified` in `RecordTableProvider.sort_keys`. "Modified" is the record row's own `updated_at`, so a versioned type's `apply_*_new_version` must set it (`record.updated_at = now`). A key a type does not offer is ignored, never an error; a column the personal-data policy leaves out cannot be sorted by. `backend/tests/test_list_sort.py` fails for a provider whose title column does not exist.
 - **Approval gates.** A type with an approval gate sets `approval_gated=True` and gives its `status` no `parse`: a file creates drafts and edits content, it never approves (`tests/test_record_tables.py` fails otherwise).
 - **Personal data.** Classify a column with `sensitivity` (`personal`, `contact`, `free_text_people`); core leaves a tagged column out of every export and import unless the organisation's policy (its override, else the server default, else excluded) allows the tag **and** the person holds `export_personal_data` (`services/record_policy.py`). Never add a per-module check; the tag is the whole contract. Never expose a Restricted-classified value as a column.
 - **PDF and Word: the Record list report.** A provider's table is also a report (`GET /projects/{id}/reports/record-list?record_type=<type>&format=json|pdf|docx|csv`, `services/record_list_report.py`), listed in the report catalogue under the platform (`module_key` `platform`), not a module, with one `record_type` parameter holding exactly the types the caller may list. It adds no code per type: it renders `build_table`, so it shows the columns and rows the CSV export would. `format=csv` is the export's file byte for byte; a file (not the on-screen run) is audited as `records_exported`. A column colours its cells in PDF and Word with `RecordColumn.tones` (`{cell text: tone}`, tones as `report_model.TONE_FILL`); the text still names the value. The same MCP tool (`get_record_list_report`) serves every type.
@@ -1409,6 +1428,144 @@ The core types an organisation dashboard offers are the metric tile, gauge, char
 
 Pages are `organization_dashboards` rows with their viewers in `organization_dashboard_viewers`. The built-in Overview page exists before it is stored and is stored on its first edit; it cannot be renamed, moved or deleted. A page with no viewers is shown to every member, otherwise to the viewers (a user, or an organisation group by effective membership) and to organisation administrators, who always see and change every page. One predicate (`org_dashboards.can_view`) decides the list, the page read and the figures request, and a page the caller may not see is a 404 on every route. The viewer reference is a mandatory principal reference, so deleting a group that restricts a page needs a replacement and never widens who may see it. An import never widens a page either: a viewer that cannot be matched stands as the importing user. Pages travel in the organisation bundle (`organization_dashboards`, viewers by email or group name). A page is organisation-scoped with no project analogue, so there is no nested-project fallback; the route segment `dashboard-<id>` is reserved for pages, so a module section key never starts with it.
 
+### 4l11. Org Resources sections
+
+Org Resources (`/orgs/:orgId/resources/:group?/:section?`, `pages/OrgResourcesPage.tsx`) is where an organisation keeps what it owns and shares with its projects, as opposed to Organisation Settings (configuration) and the Organisation Overview (computed figures). A module adds a section through one declaration, never an edit to a core file: `TierAModuleDefinition.orgResourceSections[{key, label, subComponent?, group?, render({orgId})}]`, the shape of `orgAdminSections`.
+
+- The page offers a section only while the organisation has the module enabled and, when the section names a `subComponent`, that sub-component on. It reads `GET /orgs/{id}/enabled-modules`, which every organisation member may call (module keys and the sub-components that are off, nothing else), so a person who is not an administrator sees the same sections; the administrator-only `GET /orgs/{id}/modules` is never needed. The page decides nothing about access: each section's endpoints enforce their permission.
+- **What belongs here.** Resources holds what the organisation owns and shares, including libraries that grow (record lists, templates, the architecture symbol library: an uploaded-asset library of hundreds, with its own filter panel and folders); Settings holds small vocabularies, scoring and defaults. A module's library page is one panel that Resources and the project's settings both render, so the project gets the same filters.
+- Core owns two sections, **Reports** (`components/OrgReportsResources.tsx`: layouts and packs, snippets and the report configuration, the last offered only where the administrator-only settings can be read) and **Tags**; they follow the modules' sections. Everything else is a module's: a module's organisation record list or library (Strategy, Personas, the Feedback inbox, architecture elements and collections and the symbol library, decision templates) is an `orgResourceSections` entry; a status view over projects belongs with the entity it reports on (Compliance's are tabs of the Standards page, below); its vocabularies, scoring and defaults stay in `orgAdminSections` (Organisation Settings).
+- Keys are unique across modules and distinct from the page's own core sections (`CORE_ORG_RESOURCE_GROUP_KEYS`: `reports`, `tags`) and from every `orgAdminSections` key; a colliding section is dropped with a console error rather than shadowing another. Sections sharing a `group` become one expandable entry (`modules/adminMenu.ts`).
+- A record opened from a section links back to it with `orgResourcesPath(orgId, sectionKey)`, keeping the section keys in a small module file (`orgResourceKeys.ts`) so a detail page does not import the module definition.
+- The earlier addresses of what moved here (`/orgs/:orgId/overview/<section key>`, `/orgs/:orgId/admin/reports`, `/admin/tags` and a module's Settings section) do not redirect: they existed only on the branch that introduced this page or were retired with it (`docs/decisions.md`). Settings and Resources keys stay disjoint, and a story guards it.
+
+#### Compliance's status views
+
+The organisation-wide Compliance views (By standard, Outstanding) are tabs of the Standards page (`/standards`, `/standards/by-standard`, `/standards/outstanding`; `modules/compliance/ComplianceStatusPage.tsx`, `StandardsTabs.tsx`), not Org Resources sections: standards are an entity of their own beside projects, and these are cross-project views of them. Each tab is a `ListPageLayout` with an Organisation filter (shown only for a person who may read the status of more than one organisation, `?org=`; no choice reads every organisation, and Export needs one chosen) and every other filter in the address, so the summary widget's tiles open the tab already narrowed. `GET /api/v1/compliance/nav-visibility` returns `status_organization_ids`, the organisations where the caller holds the Compliance Manager gate those endpoints enforce; the tab strip and the filter list only those.
+
+```mermaid
+flowchart LR
+    SW["Overview: Compliance summary tiles"] -->|"?org=&category=…"| OT["Outstanding tab"]
+    SW -->|"?org=&groupBy=…"| BS["By standard tab"]
+    L["Standards tab (list)"] --- BS --- OT
+```
+
+### 4l12. Record code prefixes
+
+An organisation, or one project, can choose the prefix new records of a type are numbered with (`ADR-006` for `DEC-006`). A module adds a type with no per-module code in core: it declares the built-in prefix on `ModuleDefinition.default_code_prefixes[type]` (2 to 5 capital letters), or gives the reason the type has no `PREFIX-nnn` code in `no_code_prefix`; `backend/tests/test_code_prefixes.py` fails for a registered type with neither, and for two types sharing a built-in prefix. Core types are in `services/code_prefixes.py`; the requirement is outside the mechanism (its code is built from the component and category prefixes).
+
+```mermaid
+flowchart LR
+    G["generate_unique_code(db, owner, type, default)"] --> E{"effective_prefix"}
+    E -->|"owner project sets one"| P["project"]
+    E -->|"else nearest parent project that does"| PP["parent project"]
+    E -->|"else the organisation sets one"| O["organisation"]
+    E -->|"else"| D["built-in default"]
+```
+
+- **No call site changes.** `generate_unique_code` resolves the prefix itself (the argument is the default), so every create path, import and the Actions generator follow an override. The counter is per type, not per prefix, so a change never reuses a number; a stored code never changes. An organisation-owned record resolves from the organisation's overrides only. One read per owner is memoised on the session and dropped at commit or rollback.
+- **Tables.** `organization_code_prefixes` and `project_code_prefixes`, a sparse `(owner, artefact_type, prefix)` map: no row follows the next tier. Resolution is per type (a child project inherits instead of silently reverting).
+- **Rules** (`code_rules.record_prefix_error`, `services/code_prefixes.set_override`): 2 to 5 letters A-Z, so a qualified code still splits on its first hyphen and a code is always letters, a hyphen and a number; not the organisation's code or a project's code; the effective prefixes of all types in a scope are unique. A write is checked in every scope it changes (the organisation and every project for an organisation change; the project and its descendants for a project change), for the type being changed only, so a collision that predates the write cannot block an unrelated edit.
+- **One reading of a code.** A code is `PREFIX-nnn` with at least three digits (`code_rules.RECORD_CODE_PATTERN`; `split_record_label` for a summary label). The frontend twin (`components/artefactCode.ts`) is held to it by shared vectors (`artefactCodeCases.json`, read by both a story and a backend test). A compliance clause label (`ISO-27001 v2.0 · A.5.15 ...`) is never split. A parser must not assume a fixed prefix: use these, never a per-type literal.
+- **API.** `GET/PUT/DELETE /api/v1/orgs/{id}/code-prefixes[/{type}]` (read by any member, written by an organisation administrator) and `/api/v1/projects/{id}/code-prefixes[/{type}]` (read by a project member, written through `require_project_manage`). A row carries the effective prefix, the tier that decided it (a parent project by tier only, never by name), and what clearing returns to. The list leaves out the types of a module the scope cannot use. Every change is audited (`code_prefix_set`, `code_prefix_cleared`: type and prefixes only).
+- **Bundles and templates.** The project bundle carries `code_prefixes` (the project's own), the organisation bundle the organisation's own (a merge adds only types the target has not set). An entry that no longer fits (a type not registered, a prefix now taken) is skipped with a warning; a project made from a template copies the template's own.
+- **UI.** `RecordCodePrefixPanel` in Organisation Settings (Projects group) and in Project Admin overview; the record types are grouped into Core and one foldable section per module (the API returns each row's `module_key` and `module_name`), the inherited value is the placeholder with its tier, and a restore control returns to it.
+
+### 4l15. Lifecycle states: configuration and enforcement
+
+A module gives a record type a state path with `ModuleDefinition.lifecycles[type] = LifecycleDefinition(label, path, transitions, labels, optional, gated, entry_guard)` (`app/modules/registry.py`). `transitions` is built from the table the type's own transition function enforces (`services.lifecycles.table_from_enum`), so there is one source. `optional` lists the states a project may turn off (default none, so a type opts in; never the first or last of `path`, an off-path state or a gated one: `validate_definition`, checked for every registered type by `backend/tests/test_lifecycles.py`); `gated` lists states whose move needs a permission or a second person's decision of its own; `entry_guard(db, user, project, record_id, state)` raises a 403 when the person may not move the record into `state` (the type's own move endpoints' checks, called through their helpers), which lets a skip of steps check every step it passes over. A type without one cannot have steps skipped, and `backend/tests/test_lifecycle_skip.py` requires one for every registered type. A core file never names a module's states.
+
+```mermaid
+flowchart LR
+    M["transition function"] --> C["services.lifecycles.check_move"]
+    C --> R["resolve_project_lifecycles"]
+    R --> P["project choice (own, else nearest ancestor)"]
+    R --> O["organisation required states (minus exempt projects)"]
+    C --> E["effective_moves: turned-off states stepped over"]
+    E -->|"legal"| S["skipped states returned for their checks"]
+    E -->|"illegal"| X["ValueError naming the allowed states"]
+```
+
+- **Enforcement.** A type's `_transition` calls `check_move(db, project_id, type, current, target)` in place of its own table lookup. It returns the turned-off states the move passes over, so a type can still apply their checks (a Risk applies the guards of every passed-over state). A record the organisation owns (`project_id` is `None`) keeps the full path.
+- **Resolution** (`resolve_project_lifecycles`, four queries per call): the project's own row for the type, else the nearest ancestor's (the `resolve_effective_action_types` shape; an empty list is an explicit choice), else every state on; then the organisation's required states are added back unless the project is exempt (the exemption row names the project and may cover its nested children). A stored choice is kept when a requirement overrides it, so removing the requirement gives it back.
+- **A list response** that carries legal next states (`RiskOut`, `RequestOut.allowed_next_statuses`) resolves the lifecycle once per request and project (`lifecycle_for`, `next_states`), never per record; `backend/tests/test_scaling_shapes.py` guards it.
+- **Tables.** `project_lifecycle_settings` (one row per project and type, `disabled_states`), `organization_lifecycle_requirements` (one row per type and state) and `organization_lifecycle_exemptions` (one row per type and project, `include_children`).
+- **API.** `GET /api/v1/projects/{id}/lifecycles` (any project member; the effective path, legal moves and the caller's right to change them, for the modules enabled in the project), `PUT .../lifecycles/{type}` (`manage_project_lifecycles`, no server-administrator bypass; a required state is refused with 409), and under `/api/v1/orgs/{id}/lifecycles` the organisation's read, `PUT /{type}` for the required states and `POST`/`DELETE /{type}/exemptions` (`manage_org_lifecycles`). Every change is one `lifecycle_settings` audit event (type and state keys only).
+- **Bundles and templates.** The project bundle carries `lifecycles` (the project's own rows); an import stores the choice as written, since a required state beats it when the path is resolved, and skips an unknown type or a state that cannot be turned off with a warning. The organisation bundle carries `lifecycle_requirements` and `lifecycle_exemptions` (a project by its bundle reference; a merge keeps the target's own requirement of a type). A project made from a template copies the template's own rows.
+- **Frontend.** `hooks/useProjectLifecycle` reads the project's lifecycle once per record page: `visibleSteps`, `nextOnPath` (Promote goes to the next step that is on), `lastOnPath` and `canMove(from, to, base)` (an actions-menu row appears where the server accepts the move; `base` is the answer while the configuration is unknown). Settings are `ProjectLifecyclesPanel` (Project administration) and `OrgLifecyclesPanel` (Organisation administration); a module's page passes its own path and type key and imports nothing from another module.
+- **Skipping steps on one record.** A person may move a record to a later step of its path with a reason (`check_move(..., record_id=)`, `skip_moves`). The request carries the percent-encoded reason in `X-Lifecycle-Skip-Reason`; `deps.capture_lifecycle_skip` (mounted on every module router in `main.py`) authenticates the caller and stores a `SkipRequest` on the session, so each type's move endpoint runs unchanged. The move is accepted when the project allows skipping (`resolve_skip_policy`: its own choice, else the nearest ancestor's, else off, unless the organisation forbids it and the project is not exempt), the target is a later main-path step the path does not already allow, no gated or organisation-required step is passed over, and the type's `entry_guard` accepts the person for every enabled step passed over. It writes one `steps_skipped` audit event (from, to, skipped keys and labels, reason) and returns the steps passed over, so a Risk still applies their checks. Tables `project_lifecycle_skip_settings`, `organization_lifecycle_skip_policies` and `organization_lifecycle_skip_exemptions`; API `PUT /projects/{id}/lifecycles/skip` and `GET`/`PUT /orgs/{id}/lifecycles/skip` with `POST`/`DELETE .../skip/exemptions` (the same two permissions as the rest); the project bundle and the organisation bundle carry `lifecycle_skip`. The frontend reads `skip_transitions` from the one project read (`useProjectLifecycle().skipTargets`) and draws the **Skip steps…** row through `useSkipSteps`; the page's `move` makes the target's own request inside `withLifecycleSkip`, which sets the header.
+
+- **Approval separation.** Whether the person who created a record may approve it is a setting per record type with an approval step (`services/approval_separation.py`). The types are read from the registry (`approval_gates`: every `LifecycleDefinition` with a gated state, whose `record_model` names the model holding `creator_id`, plus the core `requirement` and `change_request`), so a module that registers a gated lifecycle is covered with no core edit. `resolve_separation` gives a project's rule (its own choice, else the nearest ancestor's, else the default "creator may approve"; an organisation requirement beats the choice unless the project is exempt). A module's approval endpoint or approve function calls `enforce_record_approval(db, user=, artefact_type=, record=, comment=)` after its permission check: another person approving clears the record's mark, the creator is refused (403) when a separate approver is required, and otherwise the record is marked (`record_self_approvals`, shown as **Self-approved** by `RecordHeader`'s `approval` prop from `useApprovalStatus`) with one `self_approved` audit event, a comment being required when the permission was set on purpose (`ResolvedSeparation.deliberate`). Tables `project_approval_separation_settings`, `organization_approval_separation_requirements` and `organization_approval_separation_exemptions`; API `GET`/`PUT /projects/{id}/approval-separation[/{type}]`, `GET /projects/{id}/approval-separation/status/{type}/{record}`, `GET`/`PUT /orgs/{id}/approval-separation[/{type}]` with `POST`/`DELETE .../{type}/exemptions` and `GET /orgs/{id}/approval-separation/status/{type}/{record}` (an organisation-owned record), under the lifecycle permissions; the project bundle carries `approval_separation` and the organisation bundle `approval_separation_requirements` and `approval_separation_exemptions`; the mark is not bundled (a history fact). A new type with an approval step registers a gated lifecycle (with `record_model`), calls the check at its approval and shows `approval` on its record header; `backend/tests/test_approval_separation.py` fails for a gated type whose model has no `creator_id`.
+- **Adding a type:** declare its `LifecycleDefinition` (with an `entry_guard`), call `check_move(..., record_id=record.id)` in its transition function, use `lifecycle_for` for any list that returns legal next states, and read `useProjectLifecycle` in its detail page. Requirements and change requests declare none (no optional state), so they keep their fixed path.
+
+### 4l13. External references on every record
+
+A record can point to the same work in an outside tool (a Jira epic, a ServiceNow ticket, a customer's register), and be found from either side. One core table, `external_references`, serves every registered artefact type, keyed by the type string like tags and placements, so a module adds a type with no per-module code. A module declares nothing for it; the only optional hook is a sub-component keyed `external_references` (`services.external_references.EXTERNAL_REFERENCES_SUBCOMPONENT_KEY`), which lets an administrator switch the feature off for that module's types (the endpoints then answer 404 and stored references are kept; Product Feedback declares it).
+
+```mermaid
+flowchart LR
+    R["record (any type)"] -->|"artefact_type + artefact_id"| X["external_references"]
+    X -->|"org_system_id (organisation-owned record)"| O["external_system_definitions"]
+    X -->|"project_system_id (project record)"| P["project_external_systems"]
+    P -->|"org_type_id"| O
+    O -->|"url_template with {key}"| L["link"]
+    X -->|"url, else template + key"| L
+```
+
+- **Systems are one list for every type.** The organisation's `external_system_definitions` (name, order, active flag, optional `url_template`); a project's `project_external_systems` overrides, adds, and hides entries (a `ProjectDefinitionSuppression` tombstone), exactly as every `TypeVocabulary`, with the nested-project fallback (a child with no configuration of its own shows its nearest ancestor's list). `TypeVocabulary(extra_columns=("url_template",))` carries the template through effective lists, inherited copies and bundles; an override of null follows the organisation's template. Seeded for a new organisation by `run_on_org_created_hooks` (generic, not a module hook).
+- **The reference.** `artefact_type`, `artefact_id` (no foreign key; the owner calls `forget_record_references` when it deletes a record for good, and the owning project and organisation cascade), the system (organisation entry for an organisation-owned record, the project's row for a project record, a CHECK ties the tier to the owner), `key`, optional `url`, `note` and `role` (`origin` or `delivery`). At most 50 per record; a key or a URL is required.
+- **Links.** `url` and a template are http or https only, checked at every entry (API, bundle, record-table import) and again by `link_for`, which also URL-encodes the key into the template, so a `javascript:` or `data:` value can never become a link.
+- **API.** `GET/POST/PATCH/DELETE /api/v1/projects/{id}/artefacts/{type}/{id}/external-references[/{reference}]` (read follows the record, a record the caller cannot open is a 404; changes need the authority for tagging, `services.tags.can_tag`; each writes `reference_added`, `reference_updated` or `reference_removed`, never the key or link). `/api/v1/orgs/{id}/external-systems` (read by members, written by an organisation administrator) and `/api/v1/projects/{id}/external-systems` (read by members, written with project settings authority), both from the shared `services.vocabulary_endpoints` registrars, which take the gates and the schemas of the list.
+- **Bundles and templates.** The organisation bundle carries `external_systems` (the list with templates); the project bundle carries the project's own rows and hidden defaults, imported before any module imports a record and hidden afterwards. A template project copies its systems (`copy_project_systems`). Records carry their references by system name, never id (`record_references` / `restore_record_references`, with `prime_record_references` for an export's one read), beside tags and places wherever a bundle row is written or read; a system the target lacks becomes an entry of the target project's own, with a warning. The project import creates the systems before the first record is imported.
+- **Surfaces (nothing per type).** Every registered type takes part with no code; `services/external_reference_surfaces.py` holds them.
+
+```mermaid
+flowchart TB
+    T["external_references"] --> F["List filter: external_system, external_key<br/>(TagFilter, requirement list)"]
+    T --> C["Shared column external_refs<br/>(export, import, both tiers)"]
+    T --> S["Search field external_refs (opt-in)"]
+    T --> RP["Report field external_refs"]
+    T --> PG["Page read for a list column"]
+    T --> LK["Look-up by outside key"]
+    T --> B["Project bundle: external_references"]
+    T --> M["MCP: get, add, update, remove, find"]
+```
+
+  - *Filter.* `external_system` (repeatable, a system's display name, case-insensitive; an organisation entry and a project's own entry of that name both match) and `external_key` (a fragment). Either alone is enough; both must hold for the same reference. `TagFilter` carries them, so every list that takes it, its export and a record-list report narrow the same rows; the requirement list has its own parameters of the same names. The condition is one SQL `EXISTS` on an alias of the table.
+  - *Column.* `external_refs` is `SYSTEM:KEY; SYSTEM:KEY`, added by the record-table engine beside the placements column on both tiers, never by a provider. An import makes the record carry exactly the keys in the cell: a reference already there with the same system and key is untouched (its link, note and role stay), the others are removed or added bare, each with its audit event. A system name is read by its longest offered name, a `;` or `\` in a key is escaped with a backslash, and a changed cell needs the authority for tagging (at the organisation tier, the right to create or update the type's records).
+  - *Search and reports.* The search field `external_refs` matches a key or a system's name (never a note or link) and is opt-in like the placements field; the report field of the same key is free text and groups one group per reference.
+  - *Page read and look-up.* `GET /projects/{id}/external-references/{type}?id=` returns a page's references in a few statements, leaving out a record the caller cannot open; `GET /projects/{id}/records/by-external-reference?key=&system=&artefact_type=` finds the records carrying a key exactly, through the caller's visibility rules like the tag look-up, for an integration or an agent.
+  - *MCP.* `get_artefact_external_references`, `find_artefacts_by_external_reference` and, in write mode, `add_`, `update_` and `remove_artefact_external_reference`; `list_requirements` takes the filter.
+  - *Scale.* The perf generator writes references for every type (`ratios.references_per_record`, through `add_tags` and the requirement generator), and the statements behind a list, its export, the page read and the bundle stay flat as records gain references.
+- **Product Feedback.** Its requests' references are rows of this table (`references.py` adapts a request to it; the request API shape is unchanged and gains `link`); its own tables for systems and references are gone (the data migration moves the rows and is reversible).
+
+### 4l14. Markdown text and diagrams
+
+A long text field can be written in Markdown, including Mermaid diagrams. One reader and one view are shared, so a field adopts it with a prop, not new code.
+
+```mermaid
+flowchart LR
+    S["stored value: Markdown source"] --> V["MarkdownView (screen)"]
+    S --> T["services.markdown_text (server)"]
+    V -->|"fenced mermaid block"| D["MermaidDiagram (lazy)"]
+    D --> R["utils/mermaidRender"]
+    T --> L["limits: size, depth, diagrams"]
+    T --> P["plain text: lists, search, notifications"]
+```
+
+- **The stored value is the author's Markdown source**, never rewritten and never HTML. The screen reads it with markdown-it (`utils/markdownIt.ts`: raw HTML off, links limited to https, http and mailto, a single line break kept, nesting capped) and builds React elements (`MarkdownView`); nothing is inserted as markup.
+- **Editing.** `TextAreaField` takes `markdown` and renders `MarkdownEditor`: Write (the source, a formatting toolbar from `ToolbarButton`, growing with the text) and Preview (the same view readers see). The toolbar's edits are pure functions in `utils/markdownEdit.ts`.
+- **Diagrams.** A fenced block whose info string starts with `mermaid` is drawn by `MermaidDiagram`: the library loads on first use only (`scripts/check_mermaid_lazy.py` fails the build if it joins the start-up files), runs in strict mode with SVG text labels, and the result is shown as an `<img>` of a data URI so a diagram can never run script. The DejaVu Sans font is registered on the page (so Mermaid measures with it) and embedded in the drawing (an image cannot use page fonts). The drawing carries a text alternative (the diagram type) and the source in an expandable block; a diagram that fails shows its source and the reason.
+- **One contract with the server.** `frontend/src/utils/mermaidRenderConfig.json` holds the engine version (equal to the exact `mermaid` pin; a story checks it), the font and the limits (source size, edges, drawn elements, time). `services/markdown_text.py` applies the same source limit and `backend/tests/test_markdown_text.py` fails if they differ, so the screen and the server refuse the same diagrams.
+- **Server.** `services.markdown_text`: `validate_markdown` / `markdown_limit(max_chars)` (a pydantic validator: size, control characters, depth below the reader's own cut-off, at most 20 diagrams of at most 20,000 characters), `plain_text` (for list cells, search snippets and notifications, which never show raw Markdown; diagrams as nothing, a label or their source) and `mermaid_sources` (for the report renderer).
+
+- **Every long-text column is declared.** A module lists the long free-text columns of its tables on `ModuleDefinition.markdown_fields` (`markdown_columns(Model, "a", "b", limit=...)`) or names them in `plain_text_fields` with a reason; core tables are in `services/long_text_core.py`. `backend/tests/test_long_text_inventory.py` fails for a `Text` column (or a string of 1,000 characters or more) that is neither, for a `SearchField` over a Markdown column without `markdown=True`. `backend/scripts/generate_long_text_inventory.py` prints the table of decisions on demand. A new table therefore cannot add a long-text column that is silently plain.
+- **The declaration is the write limit.** `services.markdown_fields` installs a session `before_flush` hook: a new or changed declared attribute is checked with `validate_markdown` (size, control characters, depth, diagrams) and refused with a 422, so an endpoint, a file import, a bundle import and an MCP tool store what each other would. Only a changed attribute is checked, so an older, longer value is refused only when that field is edited.
+- **Plain text for one line.** A cell, card or subtitle shows `markdownPlainText` (`utils/markdownPlain`), a notification body and a search snippet `plain_text`, and the record-list report's screen, PDF and Word cell of a `RecordColumn(markdown=True)` its plain text; the CSV keeps the source, since it is the import file.
+- **Equations.** A `MarkdownField(math=True)` field (the requirement's description, reasoning and clarification and a change request's proposed copies) is read with an extra markdown-it rule (`utils/markdownMath`: `\( x \)` inline, `$$ x $$` display, the delimiters `splitMath` and the report engine use; an opener with no closer stays text) and drawn by `MathEquation` (KaTeX, loaded on first use). Such a field has every view: Visual draws each equation as an indivisible node (stored as the raw delimited TeX, so nothing inside it is escaped), Write edits the source and Preview draws the result.
+- **Comments and notes.** A comment, a review or decision note, a justification or a reason is Markdown with the lower note limit and the Write and Preview editor (`markdown="simple"`). A version's one-line change note stays plain text.
+- **Pictures.** A picture in a record's text is `![alt](attachment:<file id> "caption")`, an attachment of the same record and never an outside address (so opening a record requests nothing from another site, and the file's own access rules and confidential mark still decide who sees it). A field accepts pictures when its declaration carries `images=MarkdownImages(artefact_type, Model.record_id_column)` (or `resolve=`, a function from the row to the record id, for a row that reaches the record through another: a change request's proposed text is the requirement's own); the type must have a `RecordAttachmentProvider`, and a comment or configuration field simply omits it. `services.markdown_fields` refuses a picture in a field without the declaration, more than 20 pictures, a caption over 200 characters, an address that is not a lower-case file id, and (`services.markdown_images.require_attached`) a file that is not attached to the record that holds the text; only a picture new to an edit is checked, so removing an attachment never blocks an edit of the rest. A record that does not exist yet has no attachments, so a create form has no Picture button. **Screen:** `MarkdownView` draws the picture through `MarkdownPicture` (the authenticated file endpoint, lazily, a figure with its caption when alone on a line, the alternative text when the file cannot be loaded); `DetailLayout`'s `pictures` prop (the page's attachment list and upload) gives every Markdown field in the page, the edit form included, a Picture button (`PicturePicker`: choose an attachment, or upload one that is attached and chosen at once, then optional alternative text and caption) and, in Visual, paste and drop of a picture file. **Plain text** shows the alternative text. **Reports:** `record_markdown_blocks(pictures=)` prints a picture alone on a line as an `Image` through the run's own record-attachment rules (`report_layout_eval.record_pictures`: the record's non-confidential attachments only, counted against the run's picture caps); a confidential, foreign or non-picture file prints its alternative text. The CSV keeps the source. **Bundles:** the text carries the source file id; `apply_project_data` runs inside `services.markdown_images.importing_images`, which defers the ownership check, notes every file the import creates (by name and bytes) and, once the records and their attachments exist, rewrites each reference to the new attachment of the same record (a file that did not arrive leaves the alternative text). No attachment import path needs to know about pictures.
+
 ### 4l3. Components on every record
 
 Any registered artefact type can sit in the project's component/category tree through one shared table, `artefact_placements`, with no per-module code (`services/placements.py`, `routers/placements.py`). A module adds nothing except declaring a type that cannot be placed.
@@ -1425,7 +1582,7 @@ flowchart LR
 | Piece | Where | Rule |
 | --- | --- | --- |
 | Table | `models/placement.py` | A plain registry-validated type string like `artefact_tags`, project-scoped, cascading with the project; unique per record, component and category. |
-| Requirement | `COLUMN_PLACED_TYPES` | Keeps its own `component_id`/`category_id` (the prefix forms its code); `pairs_for_records` gives one resolved view for every type. |
+| Requirement | `COLUMN_PLACED_TYPES` | Keeps its own `component_id`/`category_id` (the prefix forms its code) as its primary place. Its further places are **aliases** (`requirement_aliases`, below), each with a code of its own; `pairs_for_records` gives one resolved view for every type, the primary place first and then the active aliases, and `placed_ids`, the count helpers and `reassign_category` treat an alias as a place. |
 | `ModuleDefinition.not_placeable[type] = reason` | The module that owns the type | A type that exists only inside a structure of its own (the three Compliance assessment types). The API answers 422; no column, filter, search field or bundle entry is offered. |
 | Organisation-owned records | | Cannot be placed: a component belongs to one project. |
 | Authority | `placements.can_place` | The authority to tag the type; an approved requirement's lock does not apply. |
@@ -1433,10 +1590,29 @@ flowchart LR
 | Export and import | `services/record_tables.py` | The engine adds a shared `placements` column (prefixes, `;`-separated) to every type's table except the requirement's, and applies an import through `set_record_placements` after the type's own create or update. A module adds no column. |
 | Bundles | `record_placements` / `restore_record_placements` | Carried by prefix in each bundle row beside the tags; a test fails when a file bundles tags without placements. |
 | Search and reports | `placements` field | Reserved in search (opt-in); a normal text field in `field_catalogue` for every placeable type. |
-| Frontend | `TagField`, `RecordTags`, `TagFilterField`, `DirectoryTable` | `ComponentField`, `RecordPlacements` and `ComponentFilterField` are rendered by the tag components, so every form, record page and list with tags has them; a list passes `placements` to `DirectoryTable` for the Components column. A page with its own component filter (the requirements list) passes `components={false}` to `TagFilterField`. |
+| Frontend | `TagField`, `RecordTags`, `TagFilterField`, `DirectoryTable` | `ComponentField` and `ComponentFilterField` are rendered by the tag components, and `RecordTags` draws the record's places in its one chip row,, so every form, record page and list with tags has them; a list passes `placements` to `DirectoryTable` for the Components column. A page with its own component filter (the requirements list) passes `components={false}` to `TagFilterField`. |
 | Scaling | | Placements are read for a page at once (`placements_for_records`, `GET .../placements/{type}`); `perf_dataset.records.add_tags` also places each batch, so generators need no extra call. |
 
 The taxonomy endpoints keep the tree consistent: deleting a category moves its placements to the replacement, and deleting a component that records sit in is refused.
+
+**Requirement aliases.** A requirement sits in one primary place and, optionally, further places (`models/requirement_alias.py`, `services/requirement_aliases.py`, `routers/requirement_aliases.py`). Each further place is a component and a category and gets an **alias code** (`HW-IF-017`) from that pair's prefixes, numbered from the project's one requirement counter, so a code is never reused and never collides with a primary code. An alias names the same record: one set of content, versions, approval, comments, links and attachments.
+
+```mermaid
+flowchart LR
+    Q["Requirement<br/>own place + own code"] --> A["requirement_aliases<br/>pair + alias code"]
+    A --> R["Any code finds the one record:<br/>by-code look-up, link finder, search, CSV import, MCP"]
+    A --> M["Make independent:<br/>a new draft takes the alias code"]
+    S["Setting: allowed or disabled<br/>project, ancestor project, organisation"] -. "new aliases only" .-> A
+```
+
+| Piece | Rule |
+| --- | --- |
+| Setting | `Organization.requirement_aliases` (default `allowed`) and `Project.requirement_aliases` (`NULL` follows the nearest ancestor project that sets one, then the organisation). Not tied to any module. Disabled stops new aliases only; existing ones keep resolving, stay listed and can be made independent one by one or in bulk. |
+| Authority | Adding or retiring a place is placement, so it needs the authority to tag a requirement and ignores an approved requirement's lock. Promoting moves the primary place and follows the lock; make independent needs the editing roles. |
+| Retiring | Taking a requirement out of a place retires the alias: the code is never reused and still resolves, with a notice (`alias_state` of the by-code look-up). Deleting a category with a replacement moves an alias or, when the requirement already sits in the target, retires it; a component or category still holding an alias cannot be deleted without one. |
+| Promoting | Swaps the primary and alias places and their codes, so each code still matches the prefixes of the place it names and no code is lost. |
+| Make independent | Creates a new requirement (a draft, owned by the person who acted) that takes the alias code and the current content; copies tags, comments (keeping their author and time, with a "Copied from" marker), attachments (a direct upload is stored again, so removing it from one requirement never removes it from the other) and links, each made through `create_link_for_artefact` so the approved-link lock and the organisation's change-request setting apply to the other end. A link refused is reported in `skipped`, never forced. The copy is joined to the original by a symmetric type without a direction ("Related to"); an organisation with none is asked to choose. Each copied link carries a `note` ("Copied from SW-PERF-001") shown in the Links panel. |
+| Surfaces | Create form (`RequirementAliasField`, `additional_places`), record page (`RequirementPlaces`), list filter and search (match an alias place or code), CSV export and import (`additional_places` by prefix, `alias_codes`; a row named by an alias code updates the one record), project and organisation bundles and templates (aliases and the setting), the Requirements report (a requirement is listed under each place with that place's code and a "Same as" reference; `primary_places_only` lists it once), the `alias_codes` report field, the MCP tools, the scaling probe and the dataset generator (`aliases_per_requirement`). |
 
 ### 4l8. Record comments and pinned threads
 
@@ -2031,6 +2207,32 @@ flowchart LR
   TeX, so the same equation per record is typeset once.
 - **Extending.** A new renderer (ODT) calls `typeset`, `omml`, `png_of`, `source_of` and `report_model.text_runs`; nothing
   else in the layout needs to change. A provider marks a field math-capable with `text_field(..., math=True)` or `from_search(..., math_fields=)`.
+
+### 4r2. Custom reports: Markdown and diagrams
+
+A record's Markdown field, and the Markdown a layout's author writes, print formatted in every format: headings, emphasis, links, nested lists, quotations, code, tables and Mermaid diagrams.
+
+```mermaid
+flowchart LR
+    T["Markdown text<br/>(record field or layout text)"] --> R{"which reader"}
+    R -->|"author text"| A["narrow inline reading<br/>(existing layouts print as before)"]
+    R -->|"record field"| S["the screen's reading<br/>(CommonMark, tables, HTML as text)"]
+    A --> W["report_markdown walk"]
+    S --> W
+    W --> B["blocks: Heading, Paragraph, lists,<br/>Quote, CodeBlock, Grid, Image"]
+    W -->|"mermaid fence"| D["DiagramBudget → converter /diagram"]
+    D -->|"SVG"| F["svg_styles flatten → sanitise"]
+    F --> B
+    D -.->|"cannot be drawn"| C["CodeBlock of the source + warning"]
+    C --> B
+    B --> O["PDF · Word · OpenDocument · HTML"]
+```
+
+- **Where a field prints formatted.** A text-block paragraph that is only `{{alias.field}}`, where the field is declared Markdown (`ReportField.markdown`; `from_search` takes it from the search declaration, which `test_long_text_inventory.py` ties to the column declaration, so a new Markdown column needs nothing here). Headings in the value are shifted two levels. A value is read as the screen reads it and is never filled in or scanned for placeholders. In a sentence or a table cell the field shows its words (`markdown_text.plain_text`); a spreadsheet keeps the source; a math-capable field keeps its text as written in those places.
+- **Blocks.** `CodeBlock` (text, language, optional label), `Quote`, and `levels` and `ordered` on `BulletList` and `NumberedList` (read through `report_model.list_entries`; flat lists are unchanged). A Markdown table is a `Grid`. A renderer that handles a list, a code block or a quotation handles it for every format; `tests/test_report_markdown_formats.py` asserts each from the written file.
+- **Diagrams.** `report_diagram.DiagramBudget.draw` asks the converter (`POST /diagram`, internal network only) for the SVG of the text, with the Mermaid version, font and limits of the screen (`converter/diagram_config.json`, held equal to `frontend/src/utils/mermaidRenderConfig.json` by `tests/test_diagram_config.py`). The reply is untrusted: `svg_styles.flatten_styles` turns the drawing's style sheet into attributes (the sanitiser removes style elements), then `report_svg.sanitize_svg` allow-lists it. The drawing is sized from its `viewBox`, given its own identifiers and cached by the hash of the Mermaid version, theme and text. PDF, Word and OpenDocument print it as a picture at print resolution (`Image.raster`); HTML keeps the vector inline.
+- **Bounds and failure.** At most 40 diagrams and 150 seconds of drawing per run; after the converter itself fails, the rest of the run does not try again. A diagram that cannot be drawn (no converter, a refused diagram, a timeout, an exhausted budget) prints as a labelled block of its source and adds one warning; the run never fails for it.
+- **Extending.** A module report that prints long text calls `record_markdown_blocks(text, diagrams=..., warn=...)`; nothing else changes. A new diagram type needs nothing: add one to `converter/tests/diagram_corpus.json` and regenerate the reference (`frontend/scripts/generate-diagram-reference.mjs`). Raising the Mermaid version is one change in five places, each checked: the `mermaid` pin in `frontend/package.json`, `mermaidRenderConfig.json`, `converter/diagram_config.json`, `converter/requirements.txt` (the `mermaidx` release that bundles it) and `report_diagram.MERMAID_VERSION`.
 
 ### 4s. Custom reports: background runs (Module 10 Phase 10)
 
@@ -2664,6 +2866,14 @@ A parameter whose allowed values differ by project or organisation (the scoring 
   registered artefact types the report names (`backend/tests/test_report_record_codes.py` fails for a
   report that declares none, or an unregistered type). A custom view renders the server's `code`
   string and does not format it again.
+- **Ordering records: ask `ctx.order_records`.** A report orders the records it lists **by code or by title, ascending**, never by
+  the order a list on screen was sorted to. `ReportDefinition.record_order` (`"code"`, the default, or `"title"`) says which and
+  `ReportContext.order_records(records, code=, title=, group=)` applies it in one place (digit runs by value, `REQ-2` before
+  `REQ-10`; `group` is a grouping the report owns, such as the project's name in an organisation-wide run). A collector does not
+  call `sorted`, `.sort` or `order_by` on a record's code, title or name itself. A table that is a ranking on purpose (highest
+  score first, longest overdue first, a log oldest first) orders itself and marks that line `# ranked: <why>`; an ordering inside
+  one cell or a fixed structure carries `# not-a-list: <why>`. `backend/tests/test_report_record_order.py` reads every report
+  collector and fails for a record ordering with neither the shared call nor a marker.
 - **Naming another record: ask `ctx.can_view`.** `ReportContext.viewer_id` is the person the report is run for (set by every
   route, layout and widget run). A collector that names a record of another type, which a project member may lack `view`
   on (a Pain Point in Product Feedback's problem-demand report), checks `ctx.can_view(db, artefact_type, project_id)`

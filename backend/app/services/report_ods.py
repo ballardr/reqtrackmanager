@@ -1,22 +1,18 @@
 """
 Module: services.report_ods
 
-Renders the `Sheet`s of a table-family report to an OpenDocument Spreadsheet (ODS) file: the ODS counterpart of
-the XLSX renderer in `report_render`, with the same content and safety.
-
-Each sheet is a tab with a bold header row (repeated when printed, frozen on screen) and sized columns.
+Renders the `Sheet`s of a table-family report to an OpenDocument Spreadsheet (ODS), the counterpart of the XLSX
+renderer in `report_render`. Each sheet is a tab with a bold header row (repeated when printed, frozen on screen).
 
 Design decisions:
-- **Cells are text.** Every cell is a `string` value (`office:value-type="string"`) with no `table:formula`
-  attribute, so a spreadsheet never evaluates it whatever it looks like; the caller has already put a value that
-  starts with `=`, `+`, `-`, `@`, tab or CR through `csv_safe` and cut it at the cell limit.
-- **Streamed.** The rows are written to the zip a few hundred at a time, so a background run of several hundred
-  thousand rows is proportional to the size of the file, not to a tree of cell objects (`report_odf`).
-- Sheet names arrive already cleaned and unique (`report_render.unique_names`); they are escaped here as
-  attributes in any case.
-- The frozen header is a view setting in `settings.xml`; a reader that ignores it still shows every row.
+- Every cell is a `string` value with no `table:formula`, so a spreadsheet never evaluates it; the caller has already
+  applied `csv_safe` and the cell limit.
+- Rows stream to the zip a few hundred at a time, so a run of hundreds of thousands of rows scales with the file size
+  (`report_odf`).
+- Sheet names arrive cleaned and unique (`report_render.unique_names`) and are still escaped as attributes.
+- The frozen header is a `settings.xml` view setting; a reader that ignores it still shows every row.
 
-Dependencies: `services.report_odf` (package, escaping), `services.csv_safety`, `services.report_model`.
+Dependencies: `services.report_odf`, `services.csv_safety`, `services.report_model`.
 """
 
 from __future__ import annotations

@@ -1,18 +1,10 @@
 """
 Module: modules.decisions.perf_dataset
 
-The dataset generator for the `decision` artefact type: decisions with an owner, a decision maker once decided,
-comments, tags, and links to requirements and risks.
-
-Responsibilities:
-- Write `decisions`, `decision_comments`, cross-type `artefact_links`, tags and audit events, and the project's
-  `decision` sequence counter.
-
-Design decisions:
-- A decision carries its content on the row (it has no version table), so one record is one row.
-- The decision type is one of the project's own types, or its nearest ancestor's when the project has none (the
-  fallback the application applies to its decision types).
-
+The dataset generator for the `decision` type: decisions (one row each, no
+version table) with an owner, a decision maker once decided, comments, tags,
+links to requirements and risks, audit events and the sequence counter. The
+decision type is one of the project's own, else its nearest ancestor's.
 Dependencies: `perf_dataset.records`, this module's models, `services.project_hierarchy`.
 """
 
@@ -23,9 +15,8 @@ from datetime import timedelta
 from sqlalchemy import select
 
 from app.modules.decisions.enums import DecisionStatus
-from app.modules.decisions.export import DECISION_CODE_PREFIX
 from app.modules.decisions.models import Decision, DecisionComment, DecisionTypeDefinition
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
+from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import PerfProjectContext
 from app.services.perf_dataset.records import RecordBatch, add_comments, add_tags, created_at, link_to_earlier, pick_weighted
@@ -80,6 +71,7 @@ def generate_decisions(ctx: PerfProjectContext) -> dict[str, int]:
                 "consequences": textgen.paragraphs(rng, empty_chance=0.3, short_max=2),
                 "assumptions": textgen.paragraphs(rng, empty_chance=0.4, short_max=2),
                 "constraints": textgen.paragraphs(rng, empty_chance=0.5, short_max=2),
+                "document": textgen.paragraphs(rng, empty_chance=0.7, short_max=4),
                 "is_archived": archived, "archived_at": created + timedelta(days=90) if archived else None,
                 "archived_by": creator if archived else None,
             },

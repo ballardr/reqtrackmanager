@@ -3,15 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, PERSONAS, selectServerManagementGroup } from "./helpers";
 
 /**
- * Job to be done: a server admin can relabel the word "organisation"
- * deployment-wide (`ServerSettings.org_label_singular`/`org_label_plural`,
- * `GET/PUT /api/v1/system/branding`) to a custom term (e.g. "Tenant"), and
- * that term shows up in the app's primary chrome — nav, page titles, list
- * column headers — without needing per-organisation configuration.
+ * Job to be done: a server admin can relabel the word "organisation" deployment-wide
+ * (`ServerSettings.org_label_singular`/`org_label_plural`, `GET/PUT /api/v1/system/branding`) to a custom term
+ * (e.g. "Tenant"), which shows in the primary chrome (nav, page titles, list column headers) without
+ * per-organisation configuration.
  *
- * Global setting — mutates deployment-wide state, so it always restores the
- * original values in `afterAll`, the same pattern `self-signup.spec.ts` uses
- * for `ServerSettings.signup_mode`.
+ * Global setting: `afterAll` restores the original values, as `self-signup.spec.ts` does for `signup_mode`.
  */
 
 const apiBaseUrl = "http://localhost:8000";
@@ -83,10 +80,8 @@ test.describe("deployment-wide organisation label override", () => {
 
     await test.step("the nav rail now reads the custom label", async () => {
       await page.reload();
-      // exact: true — the nav rail's own "My {org label}" link (linking to
-      // the personal org directory, /orgs) now also contains "Tenants" as
-      // a substring ("My tenants"), so a non-exact match would resolve to
-      // both it and this server-admin-only "Tenants" directory link.
+      // exact: true: the nav rail's "My {org label}" link (to /orgs) also contains "Tenants" as a substring ("My
+      // tenants"), so a non-exact match would resolve to both it and the server-admin "Tenants" directory link.
       await expect(page.getByRole("link", { name: "Tenants", exact: true })).toBeVisible();
     });
 

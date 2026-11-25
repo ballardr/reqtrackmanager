@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { chooseMarkdownView, markdownField } from "../markdownViews";
 import {
   apiHeaders, createDisposableProject, ensureExpanded, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PASSWORD, PERSONAS, selectOrgAdminGroup,
 } from "./helpers";
@@ -43,11 +44,16 @@ test.describe("project overview widgets", () => {
       expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(2);
     });
 
+    // The default overview holds the widgets of every module the stack enables by default, so the count is read, not assumed.
+    let initialWidgets = 0;
     await test.step("Customise overview turns the page into the editor, with the actions in a bar that stays on screen", async () => {
       await page.getByRole("button", { name: "Customise overview" }).click();
       const editor = page.locator('[data-overview-editor="project"]');
       await expect(editor.getByRole("button", { name: "Save" })).toBeVisible();
-      await expect(editor.getByText("11 of 24 widgets")).toBeVisible();
+      const counter = editor.getByText(/^\d+ of 24 widgets$/);
+      await expect(counter).toBeVisible();
+      initialWidgets = Number((await counter.innerText()).match(/^\d+/)![0]);
+      expect(initialWidgets).toBeGreaterThan(5);
       // Nothing is edited yet, so there is nothing to restore.
       await expect(editor.getByRole("button", { name: "Restore default" })).toHaveCount(0);
     });
@@ -67,7 +73,7 @@ test.describe("project overview widgets", () => {
       await panel.getByRole("textbox", { name: "Title" }).fill("Notes");
       await panel.getByRole("textbox", { name: "Text" }).fill("Code freeze on **Friday**.");
       await panel.getByRole("button", { name: "Done" }).click();
-      await expect(editor.getByText("13 of 24 widgets")).toBeVisible();
+      await expect(editor.getByText(`${initialWidgets + 2} of 24 widgets`)).toBeVisible();
       await expect(page.locator('[data-widget-type="gauge"]').getByRole("img", { name: "Requirement load: 2, Warning" })).toBeVisible();
       await expect(page.locator('[data-widget-type="text"] strong')).toHaveText("Friday");
     });
@@ -102,7 +108,7 @@ test.describe("project overview widgets", () => {
       const note = page.locator('[data-widget-type="text"]');
       await note.getByRole("button", { name: "Move Notes", exact: true }).focus();
       await page.keyboard.press("ArrowLeft");
-      await expect(page.getByText(/Notes moved to position \d+ of 13/)).toBeAttached();
+      await expect(page.getByText(new RegExp(`Notes moved to position \\d+ of ${initialWidgets + 2}`))).toBeAttached();
       const corner = note.getByRole("button", { name: "Resize Notes" });
       const width = (await note.boundingBox())!.width;
       await corner.focus();
@@ -127,6 +133,48 @@ test.describe("project overview widgets", () => {
       await expect(page.getByText("Overview restored to the default.")).toBeVisible();
       await expect(page.locator('[data-widget-id="cr-rejected"]')).toBeVisible();
       await expect(page.locator('[data-widget-type="gauge"]')).toHaveCount(0);
+    });
+  });
+
+  test("a text note is written in Markdown, previewed, and draws a diagram", async ({ page }) => {
+    test.setTimeout(120_000);
+    const email = PERSONAS.orgAdminAlphaBeta.email;
+    const project = await createDisposableProject(page.request, email, "E2E Overview Markdown", ORG_NAMES.alpha);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await loginAs(page, email);
+    await page.goto(`/projects/${project.projectId}`);
+    await page.getByRole("button", { name: "Customise overview" }).click();
+    const editor = page.locator('[data-overview-editor="project"]');
+    const note = [
+      "## Release plan", "", "| Step | Owner |", "| --- | --- |", "| Build | Ada |", "", "- Freeze on **Friday**",
+      "", "```mermaid", "flowchart LR", "  A[Build] --> B[Release]", "```",
+    ].join("\n");
+
+    await test.step("the Text field offers Write and Preview, and Preview shows the formatting and the diagram", async () => {
+      await editor.getByRole("combobox", { name: "Add widget" }).selectOption("text");
+      const panel = page.getByRole("dialog", { name: /^Settings:/ });
+      await panel.getByRole("textbox", { name: "Title" }).fill("Plan");
+      await panel.getByRole("textbox", { name: "Text" }).fill(note);
+      await chooseMarkdownView(markdownField(panel), "Preview");
+      await expect(panel.getByRole("heading", { name: "Release plan" })).toBeVisible();
+      await expect(panel.getByRole("cell", { name: "Ada" })).toBeVisible();
+      await expect(panel.getByRole("img", { name: "Diagram: flowchart" })).toBeVisible({ timeout: 30_000 });
+      await chooseMarkdownView(markdownField(panel), "Write");
+      await panel.getByRole("button", { name: "Done" }).click();
+    });
+
+    await test.step("saved, the note is formatted for everyone and the diagram is an image, not live markup", async () => {
+      await editor.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByText("Overview saved.")).toBeVisible();
+      await page.reload();
+      const widget = page.locator('[data-widget-type="text"]');
+      await expect(widget.getByRole("heading", { name: "Release plan" })).toBeVisible();
+      await expect(widget.getByRole("cell", { name: "Build" })).toBeVisible();
+      await expect(widget.locator("strong")).toHaveText("Friday");
+      const diagram = widget.getByRole("img", { name: "Diagram: flowchart" });
+      await expect(diagram).toBeVisible({ timeout: 30_000 });
+      expect(await diagram.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);
+      expect(await widget.locator("svg").count()).toBe(0);
     });
   });
 

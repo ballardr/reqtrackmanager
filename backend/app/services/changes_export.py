@@ -3,25 +3,23 @@ Module: services.changes_export
 
 The project History page as a file: the filtered timeline as CSV, PDF, Word, ODF or HTML.
 
-Responsibilities:
-- Turn the entries of `services.changes` into one report table (`build_history_result`) with the columns
-  Time (UTC), Type, Event, Action, Record code, Record, Person.
-- Apply the personal-data rule of the record exports: the Person column is a `personal` column, left out
-  unless the organisation's policy and the caller's `export_personal_data` permission allow it
-  (`services.record_policy.tag_decisions`), and the file says so in a note.
-- Write the CSV (`history_csv`, formula-guarded like every export) and audit one export event with counts and
-  filter keys only (`audit_history_export`).
+Responsibilities: turn the entries of `services.changes` into one report table (`build_history_result`;
+Time (UTC), Type, Event, Action, Record code, Record, Person); apply the record exports' personal-data rule
+(the Person column is `personal`, omitted unless the organisation policy and the caller's
+`export_personal_data` permission allow it, `services.record_policy.tag_decisions`, with a note in the file);
+write the CSV (`history_csv`, formula-guarded) and audit one export event with counts and filter keys only
+(`audit_history_export`).
 
 Design decisions:
 - The history is not a registered record type (an event is never authored or imported), so it has no
-  `RecordTableProvider`, no Import and no `code` first column; this is the one list whose Export is its own
-  route (docs/decisions.md). Every other rule of "Every Record List Exports" holds: filters respected, formula
-  guard, personal data governed by the one policy, one audit event with no cell values.
-- Times are UTC ISO 8601 instants (past instants), never converted on the server.
-- A record is named by its code through `services.codes.display_code` (the project's own code bare unless the
-  organisation enforces it), and by its title; a record the caller may not open has no code or title.
+  `RecordTableProvider`, Import or `code` column and its Export is its own route (docs/decisions.md). Every
+  other export rule holds: filters respected, formula guard, one personal-data policy, one audit event with
+  no cell values.
+- Times are UTC ISO 8601 instants, never converted on the server.
+- A record is named by `services.codes.display_code` (bare in its own project unless the organisation enforces
+  it) and its title; a record the caller may not open has neither.
 
-External dependencies: `services.changes`, `services.codes`, `services.record_policy`, `services.report_framework`.
+Dependencies: `services.changes`, `services.codes`, `services.record_policy`, `services.report_framework`.
 """
 
 from __future__ import annotations

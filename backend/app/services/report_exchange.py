@@ -1,46 +1,27 @@
 """
 Module: services.report_exchange
 
-Report layouts and packs as a single `.zip` file a person can keep, send or attach, and bring into another project,
-organisation or installation.
+Report layouts and packs as a single `.zip` file to keep, send or import into another project, organisation or
+installation. File layout: `manifest.json`, `reports.json` (`layouts`, `packs`, `images`), `files/<n>_<name>` pictures.
 
 Responsibilities:
-- `build_export`: the selected layouts and packs (and the layouts the packs name) as a file.
-- `read_file`: opens an uploaded file defensively and returns its parts; nothing is stored.
-- `plan_import` / `apply_import`: what importing the file into one tier would create, rename, skip or refuse, and doing
-  it in the caller's transaction (the caller commits) with one audit event.
-
-File layout: `manifest.json` (kind, format version, counts), `reports.json` (`layouts`, `packs`, `images`) and
-`files/<n>_<name>` (one per picture). The layout and pack entries are the project bundle's own
-(`report_layout_bundle.layout_entry`, `report_pack_bundle.pack_entry`), so a field added to a layout reaches the file
-with no change here.
+- `build_export`; `read_file` (opens an upload defensively, stores nothing); `plan_import` / `apply_import` (what
+  importing into one tier would create, rename, skip or refuse, then doing it in the caller's transaction with one
+  audit event of counts and keys).
 
 Design decisions:
-- **One serialiser.** Import goes through the bundle importers (`import_layout_entry`, `import_pack_entry`), which
-  validate every tree again and use the normal create path. Nothing here reads or writes a layout's content itself.
-- **The file is untrusted input.** Size, entry count, entry names (only the three known shapes; a name is never used
-  as a path), a per-entry and total uncompressed cap read with a cap (a header that lies cannot inflate more), a
-  compression-ratio limit, item and version counts, and every picture re-sniffed and (SVG) re-sanitised exactly as an
-  upload to the library is. An EPS or PDF is never converted from a file: an exported picture is already a raster or SVG.
-- **No people in the file.** The author emails the bundle carries are dropped: a file travels beyond the organisation.
-  The importer is the author of what it creates; version times in the file are information only.
-- **Current version by default.** `include_history` carries every published version (never a draft); the importer renumbers
-  them 1..n. Without it the current version becomes version 1, noted "Imported from file".
-- **Never a silent replace.** A name the target tier owns is renamed "<name> (copy)" or skipped (the caller's choice);
-  one that matches an inherited report is allowed and warned about, as any project report is.
-- **Packs bring their layouts.** Exporting a pack also exports the layouts it names that its source scope can reach
-  (unless asked not to), with the saved sets as that scope sees them. Import creates layouts first and re-points a
-  pack's entries at a renamed layout.
-- **Pictures.** Each is stored in the target tier's library (a project's for a project import, the organisation's for an
-  organisation import) as the target's own, so a file never references another organisation's library. An organisation
-  picture that already belongs to the importing organisation is reused by reference. A layout whose picture cannot be
-  stored is dropped with a reason, like any invalid version.
-- **Not carried:** ids, owners, pack membership of a layout the pack does not name, placements, favourites, drafts, and
-  who may run a report; they belong to the target. A layout holds no Restricted-classified value.
-- The audit event holds counts and keys only, never layout text or names.
+- One serialiser: entries are the bundle's own and import uses its importers, which validate every tree again.
+- The file is untrusted: size, entry count, entry names (never used as paths), capped reads against lying headers,
+  a compression-ratio limit, and every picture re-sniffed and (SVG) re-sanitised. EPS and PDF are never converted here.
+- No people travel: author emails are dropped and the importer is the author; version times are information only.
+- The current version becomes version 1; `include_history` carries published versions (never drafts), renumbered.
+- Never a silent replace: a taken name becomes "<name> (copy)" or is skipped. A pack also exports the layouts it
+  names, and import re-points its entries at renamed layouts.
+- Pictures are stored in the target tier's library, never referencing another organisation's.
+- Not carried: ids, owners, placements, favourites, drafts, run permissions.
 
-Dependencies: `services.report_layout_bundle`, `services.report_pack_bundle`, `services.report_layout_scope`,
-`services.report_pack_scope`, `services.report_images`, `services.bundle_common`.
+Dependencies: `report_layout_bundle`, `report_pack_bundle`, `report_layout_scope`, `report_pack_scope`,
+`report_images`, `bundle_common`.
 """
 
 from __future__ import annotations

@@ -5,7 +5,8 @@
  * load their whole filtered set in one request, so the order is applied in the browser; the keys are the column keys and
  * the sort lives in the URL (`useUrlSort`). A column with no natural order (none here) stays unsortable.
  */
-import type { SortValue } from "../../utils/sortRows";
+import { TIME_SORT_KEYS } from "../../hooks/useListSort";
+import { instantOf, TIME_SORT_VALUES, type SortValue } from "../../utils/sortRows";
 import {
   ARCHITECTURE_STATUS_LABEL, BASELINE_KIND_LABEL, BASELINE_TYPE_LABEL, DIAGRAM_KIND_LABEL, STATE_KIND_LABEL, type ArchitectureConnection, type ArchitectureDiagram,
   type ArchitectureElement, type ArchitectureState, type ProjectBaseline, type DiagramKind, type StateMachineDiagram,
@@ -24,6 +25,7 @@ function endText(connection: ArchitectureConnection, end: "source" | "target"): 
 /** Sortable columns of the Elements list; `parentName` resolves an element's parent for the Parent column. */
 export function elementSortValues(parentName: (e: ArchitectureElement) => string): Values<ArchitectureElement> {
   return {
+    ...TIME_SORT_VALUES,
     code: (e) => e.unique_code,
     name: (e) => e.name,
     type: (e) => e.element_type_name,
@@ -37,6 +39,7 @@ export function elementSortValues(parentName: (e: ArchitectureElement) => string
 
 /** Sortable columns of the Connections list. */
 export const CONNECTION_SORT_VALUES: Values<ArchitectureConnection> = {
+  ...TIME_SORT_VALUES,
   code: (c) => c.unique_code,
   name: (c) => c.name || null,
   type: (c) => c.connection_type_name,
@@ -71,6 +74,8 @@ export const rowContents = (row: DiagramListRow): number => (row.kind === "block
 
 /** Sortable columns of the merged Diagrams list. */
 export const DIAGRAM_ROW_SORT_VALUES: Values<DiagramListRow> = {
+  created: (r) => instantOf(r.source.created_at),
+  modified: (r) => instantOf(r.source.updated_at),
   code: (r) => common(r).unique_code,
   name: (r) => common(r).name,
   type: (r) => DIAGRAM_KIND_LABEL[r.kind satisfies DiagramKind],
@@ -83,6 +88,7 @@ export const DIAGRAM_ROW_SORT_VALUES: Values<DiagramListRow> = {
 
 /** Sortable columns of the project-wide States list. */
 export const STATE_SORT_VALUES: Values<ArchitectureState> = {
+  ...TIME_SORT_VALUES,
   code: (s) => s.unique_code,
   name: (s) => s.name,
   diagram: (s) => `${s.state_machine_diagram_code} ${s.state_machine_diagram_name}`,
@@ -105,8 +111,8 @@ export const BASELINE_SORT_VALUES: Values<ProjectBaseline> = {
   records: baselineRecordCount,
 };
 
-export const ELEMENT_SORT_KEYS = ["code", "name", "type", "folder", "parent", "owner", "connections", "status"] as const;
-export const CONNECTION_SORT_KEYS = ["code", "name", "type", "folder", "source", "target", "protocol", "status"] as const;
-export const DIAGRAM_SORT_KEYS = ["code", "name", "type", "folder", "scope", "boxes", "toggles", "status"] as const;
+export const ELEMENT_SORT_KEYS = ["code", "name", "type", "folder", "parent", "owner", "connections", "status", ...TIME_SORT_KEYS] as const;
+export const CONNECTION_SORT_KEYS = ["code", "name", "type", "folder", "source", "target", "protocol", "status", ...TIME_SORT_KEYS] as const;
+export const DIAGRAM_SORT_KEYS = ["code", "name", "type", "folder", "scope", "boxes", "toggles", "status", ...TIME_SORT_KEYS] as const;
 export const BASELINE_SORT_KEYS = ["name", "kind", "stage", "taken", "by", "records"] as const;
-export const STATE_SORT_KEYS = ["code", "name", "diagram", "kind", "element"] as const;
+export const STATE_SORT_KEYS = ["code", "name", "diagram", "kind", "element", ...TIME_SORT_KEYS] as const;

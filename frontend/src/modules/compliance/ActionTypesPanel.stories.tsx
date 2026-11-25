@@ -3,7 +3,7 @@ import { useState } from "react";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { ActionTypesPanel } from "./ActionTypesPanel";
 import * as complianceApi from "./api";
 import type { ComplianceActionType } from "./types";
@@ -11,21 +11,10 @@ import type { ComplianceActionType } from "./types";
 const ORG_ID = "org-1";
 
 /**
- * `ActionTypesPanel` itself owns no state — `items`/`onReload` are owned by
- * its parent (`ComplianceAdminPanel`, see that component's own
- * `reloadActionTypes`) so the Standards tab's required-action editor can
- * share the same list without the two tabs drifting apart (see this
- * component's own docstring). This harness reproduces that exact
- * "onReload re-fetches and the parent re-renders with fresh items" wiring
- * in isolation, rather than passing a `fn()` that doesn't actually update
- * anything — the same "assert a real round trip" bar `ComplianceAdminPanel
- * .stories.tsx` holds its own stories to.
- *
- * All of `DefinitionList`'s own generic rename/reorder/delete-with-reassign
- * mechanics are already covered by `DefinitionList.stories.tsx` — these
- * stories only exercise what's specific to this panel: that each action
- * wires to the *compliance* action-type endpoints with the right path and
- * payload.
+ * `ActionTypesPanel` owns no state: `items` and `onReload` belong to its parent so the Standards tab's required-action editor
+ * shares the same list. This harness wires `onReload` to re-fetch and re-render with fresh items, so the stories assert a real
+ * round trip. The generic rename, reorder and delete-with-reassign mechanics are covered by `DefinitionList.stories.tsx`; these
+ * stories exercise only that each action reaches the compliance action-type endpoints with the right path and payload.
  */
 function mockActionTypeApis(initial: ComplianceActionType[]) {
   let items = initial;
@@ -101,8 +90,9 @@ export const AddActionType: Story = {
   render: () => <Harness initial={[{ id: "at-1", organization_id: ORG_ID, name: "Review", sort_order: 0 }]} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(canvas.getByPlaceholderText("Action type name"), "Evidence review");
-    await userEvent.click(canvas.getByRole("button", { name: "Add action type" }));
+    const dialog = await openAddDialog(canvas, "Add action type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Action type name" }), "Evidence review");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/compliance/action-types`,

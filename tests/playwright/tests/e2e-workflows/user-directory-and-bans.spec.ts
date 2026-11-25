@@ -5,22 +5,13 @@ import { apiHeaders, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PASSWORD
 const API = "http://localhost:8000/api/v1";
 
 /**
- * Job to be done: a server admin can review orphaned accounts (no org
- * membership at all — C-A-13's "orphaned account" clarification) across
- * the whole deployment (tenant-blind, per I-M-05), deactivate/reactivate
- * them, and ban an orphaned account so no org admin can grant it a role
- * again without an explicit unban.
+ * Job to be done: a server admin reviews orphaned accounts (no org membership, C-A-13) across the whole
+ * deployment (tenant-blind, per I-M-05), deactivates and reactivates them, and bans one so no org admin can
+ * grant it a role without an explicit unban.
  *
- * Uses its own disposable orphaned account (created as an Alpha member via
- * the API, then removed from Alpha), not the shared `orphan` persona:
- * no-org-user, two-factor-auth, org-login-2fa-handoff and
- * compliance-standards-management all log in as that persona in parallel,
- * and this spec's deactivate/ban steps made their logins 401 (2026-10-04).
- * The account is looked up by its unique name via the directory's search,
- * so it's found however many orphans earlier runs left (the list pages at
- * 30). Cleanup deactivates it, dropping it from the default view. The
- * non-server-admin checks go straight to the API rather than logging the
- * page out and back in.
+ * Uses its own disposable orphaned account (an Alpha member created via the API, then removed from Alpha), not
+ * the shared `orphan` persona, which other specs log in as in parallel. The account is found by name through
+ * the directory search (the list pages at 30). Cleanup deactivates it. Non-server-admin checks call the API.
  */
 test.describe("server-admin user directory: orphaned accounts, deactivation, bans", () => {
   installCleanupHook();
@@ -58,21 +49,8 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       await expect(filterPanel).toBeVisible();
       await expect(table).toBeVisible();
       const panelBox = await filterPanel.boundingBox();
-      // Pre-existing bug found running the full suite together (unrelated
-      // to any of the follow-up UX batch's 7 PRs — this file and
-      // `DirectoryTable.tsx`/`ServerManagementPage.tsx` are all untouched
-      // by that batch): the server admin's Users table has enough columns
-      // that at the suite's default 1280px viewport it needs its own
-      // internal horizontal scroll (`DirectoryTable.tsx` wraps every
-      // `<table>` in an unnamed `overflow-x: auto` `<div>`). `<table>`'s
-      // own `boundingBox()` reports its full, unclipped *content* width
-      // (wider than the panel above it) rather than the visible width of
-      // that scroll wrapper — a false positive for "narrower than the
-      // panel" that has nothing to do with the actual page layout, which
-      // is correct (this table's own scroll wrapper is exactly as wide as
-      // the filter panel, confirmed live). Measuring the scroll wrapper
-      // (the table's immediate parent) instead of the table element
-      // itself matches what a viewer actually sees.
+      // `DirectoryTable.tsx` wraps the wide Users table in an `overflow-x: auto` `<div>` and `<table>`'s
+      // `boundingBox()` reports its full content width, so the scroll wrapper (the parent) is measured.
       const tableBox = await table.locator("xpath=..").boundingBox();
       expect(panelBox).not.toBeNull();
       expect(tableBox).not.toBeNull();
@@ -128,12 +106,9 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       expect(resp.status()).toBe(403);
     });
 
-    // Deactivate/ban/grant-admin now sit behind one `ActionMenu` kebab per
-    // row instead of separate always-visible buttons (style guide "Pattern:
-    // action menu", same consolidation as OrgAdminPage.tsx's Users table).
-    // The kebab's accessible name is the row's own display name, and the
-    // `Popover` menu it opens is portalled to `document.body`, so it's
-    // looked up at the page level, not scoped to `row`.
+    // Deactivate, ban and grant-admin sit behind one `ActionMenu` kebab per row (style guide "Pattern:
+    // action menu"). The kebab is named by the row's display name and its `Popover` menu is portalled
+    // to `document.body`, so it is looked up at the page level, not scoped to `row`.
     async function openOrphanActionsMenu() {
       await page.getByRole("button", { name: `${orphan.name}'s actions` }).click();
       const menu = page.getByRole("menu", { name: `${orphan.name}'s actions` });

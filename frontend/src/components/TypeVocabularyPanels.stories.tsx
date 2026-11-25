@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError } from "../api/client";
-import { withToast } from "../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../testing/storybook-helpers";
 import {
   type EffectiveTypeRow,
   type OrgTypeRow,
@@ -101,8 +101,8 @@ export const OrgTierLabelsComeFromTheNoun: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByDisplayValue("Alpha")).toBeInTheDocument());
-    await expect(canvas.getByPlaceholderText("Widget type name")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Add Widget type" })).toBeInTheDocument();
+    const dialog = await openAddDialog(canvas, "Add Widget type");
+    await expect(dialog.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
   },
 };
 
@@ -112,9 +112,9 @@ export const OrgTierAddAndToggle: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByPlaceholderText("Widget type name"));
-    await userEvent.type(canvas.getByPlaceholderText("Widget type name"), "Beta");
-    await userEvent.click(canvas.getByRole("button", { name: "Add Widget type" }));
+    const dialog = await openAddDialog(canvas, "Add Widget type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Beta");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Beta")).toBeInTheDocument());
 
     const toggle = await canvas.findByRole("switch", { name: "Active: Alpha" });

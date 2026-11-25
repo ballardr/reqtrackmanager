@@ -27,6 +27,9 @@ from app.services.perf_dataset.context import insert_rows, uuid_from
 from app.services.perf_dataset.spec import ProfileError, build_spec
 from tests.conftest import auth_headers, create_component_and_category, create_project
 
+# One of the slowest files of the suite; a quick local run leaves it out with `-m "not slow"` (CI runs everything).
+pytestmark = pytest.mark.slow
+
 _PROFILES_FILE = Path(__file__).resolve().parents[2] / "perf" / "datasets" / "profiles.yaml"
 
 #: Registered artefact types whose generator is still to be written. Shrinks only: a type that gains a generator
@@ -38,7 +41,7 @@ SMALL = {
     "tiers": {"T0": 30, "T1": 100},
     "ratios": {
         "actions": 0.3, "comments": 1.5, "tags_per_requirement": 1.2, "versions_per_requirement": 2.0, "tag_vocabulary": 8,
-        "placements_per_record": 1.0,
+        "placements_per_record": 1.0, "references_per_record": 1.0,
         "records": {
             "change_request": 0.3, "risk": 0.4, "decision": 0.3, "pain_point": 0.4, "strategy": 0.2, "future_state": 0.2,
             "guiding_principle": 0.2, "open_question": 0.2, "persona": 0.2, "stakeholder": 0.3, "stakeholder_need": 0.3,
@@ -497,6 +500,11 @@ def test_generator_populates_every_column_the_api_create_path_populates(client, 
         json={"name": "Second", "reasoning": "Because.", "component_id": component_id, "category_id": category_id, "keywords": []},
     ).json()
     assert client.post(f"{base}/requirements/{first['id']}/comments", headers=headers, json={"body": "A comment."}).status_code == 201
+    jira = next(s for s in client.get(f"{base}/external-systems", headers=headers).json() if s["name"] == "Jira")
+    assert client.post(
+        f"{base}/artefacts/requirement/{first['id']}/external-references", headers=headers,
+        json={"system_id": jira["id"], "key": "API-1", "note": "n", "role": "origin", "url": "https://t.example/1"},
+    ).status_code == 201
     link_type = next(t for t in client.get(f"/api/v1/orgs/{org_id}/link-types", headers=headers).json() if not t.get("dedicated_endpoint"))
     assert (
         client.post(
@@ -543,6 +551,9 @@ def test_generator_populates_every_column_the_api_create_path_populates(client, 
             ("audit_events", "project_id = :p AND entity_type = 'requirement_link'", {"p": uuid.UUID(project["id"])}, {"p": uuid.UUID(generated)}),
             ("audit_events", "project_id = :p AND entity_type = 'requirement_action'", {"p": uuid.UUID(project["id"])}, {"p": uuid.UUID(generated)}),
             ("audit_events", "project_id = :p AND action = 'tagged'", {"p": uuid.UUID(project["id"])}, {"p": uuid.UUID(generated)}),
+            ("audit_events", "project_id = :p AND action = 'reference_added'", {"p": uuid.UUID(project["id"])}, {"p": uuid.UUID(generated)}),
+            ("external_references", "project_id = :p", {"p": uuid.UUID(project["id"])}, {"p": uuid.UUID(generated)}),
+            ("project_external_systems", "project_id = :p", {"p": uuid.UUID(project["id"])}, {"p": uuid.UUID(generated)}),
             (
                 "artefact_links",
                 "source_type = 'requirement' AND source_id IN (SELECT id FROM requirements WHERE project_id = :p)",
@@ -629,12 +640,17 @@ def test_every_generated_type_populates_the_columns_its_api_create_path_populate
 
     api = Api()
     generated = get_perf_generators()
+    jira = next(s for s in api.get(f"/projects/{project_id}/external-systems") if s["name"] == "Jira")
     for artefact_type, probe in get_scaling_probes().items():
         if artefact_type not in generated or artefact_type in ("requirement", "requirement_action"):
             continue
         ids = probe.create(api, project_id, 0, 2)
         if probe.has_comments:
             api.post(f"/projects/{project_id}/{probe.list_path}/{ids[0]}/comments", {"body": "A comment."})
+        api.post(
+            f"/projects/{project_id}/artefacts/{artefact_type}/{ids[0]}/external-references",
+            {"system_id": jira["id"], "key": "API-1", "note": "n", "role": "delivery", "url": "https://t.example/1"},
+        )
 
     db = SessionLocal()
     try:

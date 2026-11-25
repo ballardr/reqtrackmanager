@@ -1,12 +1,10 @@
 /**
  * Module: components/ImageStretchWarning
  *
- * A note under an image block's size fields when Width and Height are both set to a ratio unlike the picture's, so the
- * picture would print stretched. A warning, not an error: stretching is the author's choice.
- *
- * Responsibilities:
- * - Read the picture's pixel size from the library and compare it with the block's size (`utils/imageStretch`).
- * - Say nothing while the size is unknown (reading, an SVG, a failed read) or the ratios agree.
+ * A note under an image block's size fields when Width and Height are both set to a ratio unlike the picture's, so
+ * it would print stretched. A warning, not an error. It reads the picture's pixel size from the library and
+ * compares it (`utils/imageStretch`); it says nothing while the size is unknown (reading, an SVG, a failed read) or
+ * the ratios agree.
  */
 import type { ReportImageLibrary } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";

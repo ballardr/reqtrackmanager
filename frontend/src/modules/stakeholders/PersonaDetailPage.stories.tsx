@@ -9,6 +9,7 @@ import { buildPersona } from "./fixtures";
 import { PersonaDetailPage } from "./PersonaDetailPage";
 import type { Persona } from "./types";
 import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
+import { currentLifecycleStep } from "../../testing/lifecycleTrack";
 
 const PROJECT_ID = "project-1";
 const PERSONA_ID = "persona-1";
@@ -73,9 +74,11 @@ export const ActiveOffersRetire: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Field Technician" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Activate" })).not.toBeInTheDocument();
-    await expect(canvas.getByText("Active", { exact: true })).toBeInTheDocument();
+    const names = await recordActionNames(canvas, "Persona");
+    await expect(names).toContain("Retire");
+    await expect(names).not.toContain("Promote to Active");
+    await expect(canvas.queryByRole("button", { name: "Next step: Active" })).not.toBeInTheDocument();
+    await expect(currentLifecycleStep(canvasElement)).toBe("Active");
     await expect(canvas.getByText("Offline access.")).toBeInTheDocument();
   },
 };
@@ -84,8 +87,11 @@ export const DraftOffersActivateAndRetire: Story = {
   beforeEach: () => mockDetailApis(buildPersona({ status: "draft" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Activate" })).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Next step: Active" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Persona");
+    await expect(names[0]).toBe("Promote to Active");
+    await expect(names).toContain("Retire");
+    await expect(currentLifecycleStep(canvasElement)).toBe("Draft");
   },
 };
 
@@ -93,8 +99,11 @@ export const RetiredOffersReactivateAndStaysEditable: Story = {
   beforeEach: () => mockDetailApis(buildPersona({ status: "retired" })),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Reactivate" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Persona actions" })).toBeInTheDocument());
+    const names = await recordActionNames(canvas, "Persona");
+    await expect(names).toContain("Reactivate");
+    await expect(names).not.toContain("Retire");
+    await expect(currentLifecycleStep(canvasElement)).toBe("Retired");
     // No approval gate, so no content lock.
     await expect(canvas.getByRole("button", { name: "Edit" })).toBeInTheDocument();
   },
@@ -107,15 +116,32 @@ export const RetireAsksForConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Retire" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Retire" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Persona actions" }));
+    await chooseRecordAction(canvas, "Persona", "Retire");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Retire this Persona?" }));
     await userEvent.type(dialog.getByLabelText("Transition comment"), "Replaced by a newer persona");
     await userEvent.click(dialog.getByRole("button", { name: "Retire" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}/retire`, { comment: "Replaced by a newer persona" }),
     );
-    await waitFor(() => expect(canvas.getByText("Retired", { exact: true })).toBeInTheDocument());
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Retired"));
+  },
+};
+
+export const PromoteActivatesFromTheNextStep: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildPersona({ status: "draft" }));
+    spyOn(api, "post").mockResolvedValue(buildPersona({ status: "active" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Next step: Active" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Next step: Active" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Promote to Active" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Activate this Persona?" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Activate" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}/activate`, { comment: null }));
+    await waitFor(() => expect(currentLifecycleStep(canvasElement)).toBe("Active"));
   },
 };
 
@@ -273,7 +299,7 @@ export const OwnerCanBeAnOrgGroup: Story = {
     await userEvent.type(picker.getByLabelText("Persona owner"), "platform");
     await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}`, { owner: { type: "org_group", id: "group-1" } }));
-    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument());
   },
 };
 
@@ -303,8 +329,8 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
-    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Unassign: Persona owner" }));
+    await expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Clear: Persona owner" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}`, { owner: null }));
   },
 };
@@ -321,7 +347,7 @@ export const VersionHistoryUsesLabels: Story = {
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
     await expect(canvas.getAllByText("Draft").length).toBeGreaterThan(0);
     // History shows who owned each version, naming a group with its kind.
-    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group, 3 members")).toBeInTheDocument();
   },
 };
 

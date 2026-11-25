@@ -9,6 +9,7 @@
  * list during a move must not hang the page).
  */
 import type { TreeSelectNode } from "../../components/TreeSelect";
+import type { FolderNode } from "../../utils/reportFolders";
 import type { StakeholderGroup, StakeholderGroupRef } from "./types";
 
 /** A group with its children, for `TreeView`. */
@@ -28,6 +29,31 @@ export function buildGroupTree(groups: StakeholderGroup[]): GroupNode[] {
     (parent ? parent.children : roots).push(node);
   }
   return roots;
+}
+
+/**
+ * The group tree as `FolderTreeList` nodes: a group with child groups is a folder, one without is an item, and every
+ * node carries its group as `item` so a parent can be the chosen row too. A node's id is the group's id, so the
+ * folders a person collapsed survive a reload of the list.
+ *
+ * @param nodes The forest `buildGroupTree` returns, in display order.
+ * @returns The same shape as `FolderNode`s, in the same order.
+ */
+export function groupFolderNodes(nodes: GroupNode[]): FolderNode<GroupNode>[] {
+  return nodes.map((n) => ({
+    id: n.id,
+    kind: n.children.length > 0 ? "folder" : "item",
+    name: n.name,
+    path: n.id,
+    item: n,
+    count: n.children.length,
+    children: groupFolderNodes(n.children),
+  }));
+}
+
+/** The ids of every group that has child groups (the folders of `groupFolderNodes`). */
+export function parentGroupIds(nodes: GroupNode[]): string[] {
+  return nodes.flatMap((n) => (n.children.length > 0 ? [n.id, ...parentGroupIds(n.children)] : []));
 }
 
 /** Ancestors of `groupId`, nearest first. */

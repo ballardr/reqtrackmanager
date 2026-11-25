@@ -1,26 +1,20 @@
 /**
  * Module: testing/statBlockGeometry
  *
- * The shared "is this block of stats tidy?" assertion. A stat block (a flat
- * `StatBar`, a grouped `StatBar`, or a `.grid-metrics` grid of `StatCard`s /
- * `MetricTile`s) can look fine in a short isolated story and still come out
- * ragged once there are many entries, long labels or a narrow container. The
- * 25-figure summary report did exactly that, as did the org-overview and
- * compliance stat rows before it. This reads real layout and returns what is
- * wrong, so Storybook play functions and Playwright specs fail on it instead
- * of someone spotting it in a screenshot.
- *
- * Self-contained on purpose (no imports, helpers inside the function) so
- * Playwright can ship it into the page with `page.evaluate`, and the same
- * rules therefore apply in Storybook (real Chromium) and in the e2e suite.
+ * The shared "is this block of stats tidy?" assertion. A stat block (a flat or
+ * grouped `StatBar`, or a `.grid-metrics` grid of `StatCard`s / `MetricTile`s)
+ * can look fine in a short story and come out ragged with many entries, long
+ * labels or a narrow container. This reads real layout and returns what is
+ * wrong, for Storybook play functions and Playwright specs.
+ * Self-contained (no imports, helpers inside the function) so Playwright can
+ * ship it with `page.evaluate`; the same rules apply in Storybook and e2e.
  *
  * Rules, per block (`[data-stat-block]`, `.stat-groups`, `.grid-metrics`):
  * - nothing overflows the block horizontally;
- * - entries in one visual row share a top and a height (equal-height rows);
- * - the number of distinct left edges equals the widest row (columns line up;
- *   a ragged flex-wrap produces more);
- * - no label wraps onto more than three lines (a longer one has swamped its
- *   number: shorten it or group the block).
+ * - entries in one visual row share a top and a height;
+ * - the number of distinct left edges equals the widest row (a ragged flex-wrap
+ *   produces more);
+ * - no label wraps onto more than three lines (shorten it or group the block).
  *
  * @param root Element to search; defaults to the whole document.
  * @returns Human-readable violations; empty when every block is tidy.

@@ -1,25 +1,20 @@
 """
 Module: services.membership_notifications
 
-Tells a project's managers when someone *without* a manager/administrator
-role on that project changed its membership through an org-level route.
+Tells a project's managers when someone without a manager or administrator role on that project changed its
+membership through an organisation-level route.
 
-Responsibilities:
-- Decide whether an actor bypassed the project's own managers
-  (`actor_bypasses_project_managers`), evaluated *before* the mutation so a
-  self-revocation cannot hide the bypass.
-- Notify every effective project manager/administrator except the actor
-  (`notify_managers_of_member_change`), merging repeated changes by the same
-  actor into one unread notification so a bulk add does not spam managers.
+Responsibilities: decide whether an actor bypassed the project's managers (`actor_bypasses_project_managers`),
+evaluated before the mutation so a self-revocation cannot hide it; notify every effective project manager or
+administrator except the actor (`notify_managers_of_member_change`), merging repeated changes by one actor into
+one unread notification so a bulk add does not spam managers.
 
 Design decisions:
-- Recipients come from `rbac.get_project_users_by_role`, so inherited and
-  group-derived managers count, matching change-request notification targeting.
-- Coalescing keys on (recipient, type, project, actor) for unread rows created
-  within `COALESCE_WINDOW`; the body keeps one line per change, capped, so no
-  schema change is needed to carry a count.
-- The audit event the caller already writes stays the system of record; this
-  is a detective control, never a gate.
+- Recipients come from `rbac.get_project_users_by_role`, so inherited and group-derived managers count, as in
+  change-request targeting.
+- Coalescing keys on (recipient, type, project, actor) for unread rows within `COALESCE_WINDOW`; the body keeps
+  one capped line per change, so no schema change carries a count.
+- The caller's audit event remains the system of record; this is a detective control, never a gate.
 
 Dependencies: `services.notifications.notify`, `services.rbac`.
 """

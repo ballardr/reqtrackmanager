@@ -1,0 +1,112 @@
+"""
+Module: services.long_text_core
+
+Which long free-text columns of the core tables hold Markdown, and which stay plain text and why.
+
+Responsibilities: declare for every long-text column of a core table (a `Text` column, or a string of 1,000
+characters or more) either a `MarkdownField` or a reason it stays plain; a module declares its own tables'
+columns on its `ModuleDefinition` (`markdown_fields`, `plain_text_fields`) and nothing here names a module's
+table; feed the inventory (`scripts/generate_long_text_inventory.py`) and the write-time limits
+(`services.markdown_fields`).
+
+Design decisions:
+- A new long-text column fails `tests/test_long_text_inventory.py` until declared here or on its module.
+- Markdown is the default. A column stays plain only for text drawn inside a shape or fixed layout (a footer
+  line), configuration text shown in a picker or tooltip, a version's one-line change note (shown in histories,
+  audit events and notifications), or a system-generated message.
+- A requirement's description, reasoning and clarification, a change request's proposed copies and reason, and
+  the descriptive fields of other record types hold equations, so they are `math=True`. Comments, one-line
+  notes and text from a shared comment or checklist control stay without.
+
+Dependencies: the core models and `modules.registry`.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy.orm import object_session
+
+from app.models.announcement import Announcement
+from app.models.change_request import (
+    ChangeRequest,
+    ChangeRequestProposedLink,
+    ChangeRequestTask,
+    ChangeRequestVersion,
+    ChangeRequestVote,
+    ReviewComment,
+)
+from app.models.project import StageReviewResponse
+from app.models.record_comment import RecordComment
+from app.models.requirement import RequirementReview, RequirementVersion
+from app.models.requirement_action import RequirementAction
+from app.modules.registry import MarkdownField, MarkdownImages, markdown_columns
+
+
+def _proposed_requirement_id(version: ChangeRequestVersion) -> Any:
+    """The requirement a change request version proposes to change (its pictures are that requirement's attachments), or
+    `None` for a request for a new requirement.
+
+    Args:
+        version: A change request version row, possibly not yet flushed (its `change_request_id` may be set with the
+            relationship still empty).
+
+    Returns:
+        The requirement's id, or `None`.
+    """
+    request = version.change_request
+    if request is None and version.change_request_id is not None:
+        session = object_session(version)
+        request = session.get(ChangeRequest, version.change_request_id) if session is not None else None
+    return None if request is None else request.requirement_id
+
+
+#: Comments and short notes are bounded lower than a described record.
+NOTE_LIMIT = 20_000
+
+CORE_MARKDOWN_FIELDS: tuple[MarkdownField, ...] = (
+    *markdown_columns(Announcement, "body"),
+    *markdown_columns(
+        RequirementVersion, "reasoning", "clarification", "description", math=True,
+        images=MarkdownImages("requirement", RequirementVersion.requirement_id),
+    ),
+    *markdown_columns(RequirementAction, "description", images=MarkdownImages("requirement_action", RequirementAction.id)),
+    *markdown_columns(RequirementReview, "comment", limit=NOTE_LIMIT),
+    *markdown_columns(
+        ChangeRequestVersion, "proposed_reasoning", "proposed_clarification", "proposed_description", math=True,
+        # The proposed text starts as the requirement's own, so its pictures are the requirement's attachments.
+        images=MarkdownImages("requirement", resolve=lambda version: _proposed_requirement_id(version)),
+    ),
+    *markdown_columns(ChangeRequestVersion, "proposed_action_description"),
+    *markdown_columns(ChangeRequestVersion, "reason", limit=NOTE_LIMIT, math=True),
+    *markdown_columns(ChangeRequestProposedLink, "outcome_reason", limit=NOTE_LIMIT),
+    *markdown_columns(ChangeRequestTask, "description"),
+    *markdown_columns(ChangeRequestVote, "comment", limit=NOTE_LIMIT),
+    *markdown_columns(ChangeRequest, "decision_note", limit=NOTE_LIMIT),
+    *markdown_columns(ReviewComment, "body", limit=NOTE_LIMIT),
+    *markdown_columns(StageReviewResponse, "comment", limit=NOTE_LIMIT),
+    *markdown_columns(RecordComment, "body", limit=NOTE_LIMIT),
+)
+
+_CHANGE_NOTE = "A version's one-line change note, listed in version histories, audit events and notifications."
+_PICKER = "Configuration text shown in pickers and tooltips, which cannot draw block formatting."
+
+CORE_PLAIN_TEXT_FIELDS: dict[str, str] = {
+    "notifications.body": "System-generated message text, shown in the bell, the list and an email as plain text.",
+    "organizations.report_footer_text": "A line printed in a report's page footer, which is fixed plain text.",
+    "organizations.email_footer_address": "The address block printed in the footer of every email, which is plain text.",
+    "server_settings.email_footer_address": "The address block printed in the footer of every email, which is plain text.",
+    "policy_document_versions.change_note": _CHANGE_NOTE,
+    "requirement_versions.change_note": _CHANGE_NOTE,
+    "projects.summary": (
+        "Shown in project cards, pickers and the project header, which are one-line plain-text surfaces; limited to "
+        "2,000 characters."
+    ),
+    "custom_role_definitions.description": _PICKER,
+    "module_role_definitions.description": _PICKER + " Defined in the module's code.",
+    "report_layouts.description": _PICKER,
+    "report_packs.description": _PICKER,
+    "report_snippets.description": _PICKER,
+    "scoring_custom_axes.description": _PICKER,
+    "scoring_levels.description": _PICKER,
+}

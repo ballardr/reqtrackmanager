@@ -2,17 +2,11 @@ import type { UiPreferenceValue } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 
 /**
- * Generic read/write access to one key in the current user's
- * `ui_preferences` bag (`User.ui_preferences` on the backend) — the
- * general-purpose key/value store for lightweight, low-stakes UI display
- * preferences (tile/list view mode, nav-rail collapse, collapsible-section
- * state, and whatever similar preference comes next) that don't warrant
- * their own dedicated field. `useAuth()`'s `user` is the single source of
- * truth; there's no separate local state to keep in sync with it, so a
- * change made anywhere is reflected everywhere this hook reads that same
- * key, instantly. Values may be any JSON (`UiPreferenceValue`); callers
- * storing structured data must validate what they read, since the bag is
- * open-ended and a stale or hand-edited value is possible.
+ * Generic read/write access to one key in the current user's `ui_preferences` bag (`User.ui_preferences` on the
+ * backend), the key/value store for low-stakes UI display preferences (view mode, nav-rail collapse,
+ * collapsible-section state) that need no dedicated field. `useAuth()`'s `user` is the single source of truth, so a
+ * change made anywhere is reflected everywhere the same key is read. Values may be any JSON
+ * (`UiPreferenceValue`); callers storing structured data must validate what they read, since the bag is open-ended.
  */
 export function useUiPreference<T extends UiPreferenceValue>(key: string, defaultValue: T): [T, (value: T) => void] {
   const { user, setUiPreference } = useAuth();
