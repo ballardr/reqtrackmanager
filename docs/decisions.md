@@ -20358,3 +20358,10 @@ Every job in `.github/workflows/ci.yml` that can run on a developer host was run
 | `nav-labels`, `server-org-lifecycle` (flaky, passed alone) | A non-exact link name also matched "Requirements due for review" when that entry showed; the organisation name was read on the list page while the administration page was still loading | The spec matches the link name exactly; the spec waits for the administration page's heading |
 
 No timeout was raised, no retry or database reseed was used as a fix, and no check was baselined or suppressed. Time shapes: none. SOC 2: no control changed.
+
+## Sign-in and active-user metrics
+
+- **Change (Decided by: User, asked for after the question whether the platform counts sessions and logins).** `login_attempts_total` gains an `auth_method` label (`password` or `sso`) and is incremented inside `services.audit.log_login`, so every recorded attempt is counted once. It previously counted password and second-factor attempts only: single sign-on attempts and the sign-up sign-in were missing. The new `active_users` gauge counts distinct users with an authenticated request in the last five minutes (session token or personal access token, so a service user counts too).
+- **Why a gauge of users, not sessions (Decided by: Agent).** Access tokens are stateless JWTs with no session table; a session count would need a new table written on every request. A per-worker in-memory map avoids a schema change, a write on the read path and a new personal-data column. The cost is that the count is per worker: exact with one worker (the demonstration default), a lower bound with `max` and an upper bound with `sum` across several.
+- **Privacy.** The map holds user ids in worker memory only; the scrape and the demonstration bundle carry the count, never an identifier. `auth_method` is on the bundle allow-list with the values `password` and `sso` only.
+- **Consequences.** Dashboards or alerts that selected `login_attempts_total{result=...}` keep working (a selector without the new label still matches); a query that grouped by all labels gains the second one. Time shapes: none. SOC 2: no control changed.

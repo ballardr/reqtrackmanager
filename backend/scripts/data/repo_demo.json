@@ -10691,8 +10691,8 @@
      {
       "reference": "CC3.3",
       "name": "Considers the potential for fraud in assessing risk",
-      "control": "Fraud-risk consideration folded into the risk assessment methodology; technical fraud-relevant controls (e.g. self-approval prevention) exist in the product",
-      "evidence": "[policies/risk-assessment-policy.md](policies/risk-assessment-policy.md); e.g. a change request's submitter cannot approve their own request (enforced in `backend/app/routers/change_requests.py`, tested in `tests/playwright/tests/e2e-workflows/change-request-approval-separation.spec.ts`)",
+      "control": "Fraud-risk consideration folded into the risk assessment methodology; technical fraud-relevant controls exist in the product, among them a configurable requirement that a record's creator cannot approve it (off by default; project or organisation setting; self-approvals marked and audited)",
+      "evidence": "[policies/risk-assessment-policy.md](policies/risk-assessment-policy.md); approval separation enforced in `backend/app/services/approval_separation.py`, tested in `backend/tests/test_approval_separation.py` and `tests/playwright/tests/approval-separation.spec.ts`",
       "status": "in_progress",
       "status_note": "",
       "policies": [
@@ -10793,7 +10793,7 @@
       "reference": "CC6.3",
       "name": "Role-based access consistent with least privilege and segregation of duties",
       "control": "Org roles (org_admin, project_creator, member) and project roles (project manager, project administrator, stakeholder, member), independently scoped; server admin explicitly does not inherit organization content access; server-tier roles are explicit route allow-lists, and organisation creation and deletion are held by two independent roles (`SUBSCRIPTION_MANAGER`, `SUBSCRIPTION_REMOVAL_AUTHORITY`) so provisioning and destruction can be segregated; the global search authorises each project and record type (genuine role, module on, `view`) before it queries and omits rather than redacts, so counts disclose nothing",
-      "evidence": "`backend/app/services/rbac.py`; `backend/app/models/enums.py`; `backend/app/services/search.py`; `backend/tests/test_server_subscription_roles.py`",
+      "evidence": "`backend/app/services/rbac.py`; `backend/app/models/enums.py`; `backend/app/services/search.py`; `backend/tests/test_server_subscription_roles.py`; `backend/app/services/approval_separation.py` (a record's creator may be refused as its approver)",
       "status": "compliant",
       "status_note": "A follow-up review found and fixed two endpoints (`deactivate_org_user`, `archive_org_user`) that scoped the caller's role correctly but not the *target* of the action to the same organization — see [policies/access-control-policy.md](policies/access-control-policy.md)",
       "policies": []
@@ -11025,6 +11025,12 @@
    "policy": "access-control-policy",
    "title": "A service user's token is a single-factor bearer credential",
    "statement": "A service user has no sign-in and so cannot hold a second factor, and an organisation's two-factor requirement does not apply to it (item 12). The compensating controls are that an administrator issues every token, each is scoped to one organisation (optionally to projects), has an expiry within the organisation's cap, is revocable per token and in bulk, dies with deactivation, and that the access review flags a service user with no responsible principal or with administrator rights. An organisation that wants no such credential simply creates none.",
+   "type": "Security"
+  },
+  {
+   "policy": "access-control-policy",
+   "title": "Approval separation is off unless configured, and does not cover every approval",
+   "statement": "With the default, a person holding an approval permission may approve a record they created (marked Self-approved, audited); an organisation that needs segregation of duties must require a separate approver for the record types concerned. The setting does not yet cover the compliance assessment approval or the Pain Point acceptance step, which are not registered as approval steps, and it compares user accounts only (the creator of a record is always a user). A baseline that approves several requirements applies the rule to each and is refused as a whole when one was created by the person baselining and a separate approver is required.",
    "type": "Security"
   },
   {

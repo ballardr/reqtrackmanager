@@ -8,13 +8,21 @@ event occurs, rather than inferred generically from HTTP traffic, so the
 figures reflect real domain events (requirement lifecycle, change request
 outcomes, login attempts).
 
+`login_attempts_total` is incremented by `services.audit.log_login`, so every recorded sign-in attempt (password,
+second factor, single sign-on, sign-up) is counted once and the two cannot drift apart. Its labels are the outcome and
+the method, never an address or an account.
+
+`active_users` counts the distinct signed-in users that made an authenticated request in the last
+`ACTIVE_USER_WINDOW_SECONDS`. Each worker keeps an in-memory map of user id to last request time that never leaves the
+process; only the count is exported, so no identifier reaches `/metrics`.
+
 `db_statements_total` is the exception: it is incremented from a SQLAlchemy
 engine event (`instrument_engine`), because every database statement, from
 any code path, must be counted. Its only label is the statement's operation,
 never a table name, id or SQL text, so cardinality stays at five series and
 nothing Restricted reaches the unauthenticated `/metrics` output.
 
-The `worker_*` and `db_pool_*` gauges describe the process that sets them, so
+The `worker_*`, `db_pool_*` and `active_users` gauges describe the process that sets them, so
 in multi-process mode they use `liveall` (one series per live worker, labelled
 with its `pid`). `multiprocess` cannot export the standard process collector,
 so `update_worker_gauges` (run on a timer by `app.main`) refreshes them; only
@@ -26,6 +34,8 @@ import os
 import re
 import resource
 import sys
+import time
+import uuid
 from pathlib import Path
 
 from prometheus_client import Counter, Gauge, Histogram, multiprocess
@@ -56,7 +66,64 @@ change_requests_rejected_total = Counter("change_requests_rejected_total", "Chan
 secret_decrypt_failures_total = Counter(
     "secret_decrypt_failures_total", "Stored secrets that could not be decrypted with the configured keys"
 )
-login_attempts_total = Counter("login_attempts_total", "Login attempts", ["result"])
+LOGIN_RESULTS = ("success", "failure", "throttled")
+LOGIN_METHODS = ("password", "sso")
+login_attempts_total = Counter(
+    "login_attempts_total", "Login attempts, by outcome and method (password includes the second factor)",
+    ["result", "auth_method"],
+)
+# Create every series up front so rate()/increase() see a 0 baseline. A single-sign-on attempt is never throttled.
+for _method in LOGIN_METHODS:
+    for _result in LOGIN_RESULTS:
+        if not (_method == "sso" and _result == "throttled"):
+            login_attempts_total.labels(result=_result, auth_method=_method)
+
+
+def count_login_attempt(*, success: bool, kind: str) -> None:
+    """Counts one recorded sign-in attempt in `login_attempts_total`.
+
+    Args:
+        success: Whether authentication succeeded.
+        kind: The attempt's `LoginEvent.kind`: `password`, `second_factor`, `sso` or `throttled`.
+    """
+    result = "throttled" if kind == "throttled" else ("success" if success else "failure")
+    login_attempts_total.labels(result=result, auth_method="sso" if kind == "sso" else "password").inc()
+
+
+ACTIVE_USER_WINDOW_SECONDS = 300
+active_users = Gauge(
+    "active_users",
+    "Distinct signed-in users that made an authenticated request in the last 5 minutes, per worker",
+    multiprocess_mode="liveall",
+)
+_last_seen: dict[uuid.UUID, float] = {}
+
+
+def record_user_activity(user_id: uuid.UUID) -> None:
+    """Notes that a user made an authenticated request now.
+
+    Called for every request that resolves a user. The map is in this worker's memory only and is never exported.
+
+    Args:
+        user_id: The authenticated user's id.
+    """
+    _last_seen[user_id] = time.monotonic()
+
+
+def count_active_users(window_seconds: float = ACTIVE_USER_WINDOW_SECONDS) -> int:
+    """Returns how many distinct users this worker saw within the window, and forgets the others.
+
+    Args:
+        window_seconds: How far back a request counts as activity.
+
+    Returns:
+        The number of distinct users with a request inside the window.
+    """
+    cutoff = time.monotonic() - window_seconds
+    for user_id, seen in list(_last_seen.items()):  # a snapshot: request threads add entries meanwhile
+        if seen < cutoff:
+            _last_seen.pop(user_id, None)
+    return len(_last_seen)
 
 # 1 while the last file-storage write probe succeeded, 0 while it is failing (services/storage_health.py).
 # `livemostrecent` so a multi-worker scrape reports the leader's latest probe, not a stale worker's.
@@ -144,13 +211,14 @@ def read_resident_memory_bytes() -> int:
 
 
 def update_worker_gauges(engine: Engine) -> None:
-    """Refreshes this worker's memory and database-pool gauges.
+    """Refreshes this worker's memory, database-pool and active-user gauges.
 
     Args:
         engine: The engine whose pool is reported. A pool without checkout
             counters (`NullPool`) reports zeros.
     """
     worker_resident_memory_bytes.set(read_resident_memory_bytes())
+    active_users.set(count_active_users())
     pool = engine.pool
     checked_out = pool.checkedout() if hasattr(pool, "checkedout") else 0
     idle = pool.checkedin() if hasattr(pool, "checkedin") else 0

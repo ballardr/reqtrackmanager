@@ -211,7 +211,7 @@ flowchart LR
     T --> V["demo.sh --view-metrics"]
 ```
 
-**What the metrics can say.** Request count and latency per route template, method and status (`http_requests_total`, `http_request_duration_seconds`), shed requests, requirement and change request transitions, sign-in results (`login_attempts_total`), database statements by operation, and pool and memory gauges. They show which screens' routes are used and how the server behaves. They cannot say who did something or why: no metric carries a user, record, title, code or search text. Pair them with Microsoft Clarity (below) for on-screen behaviour, matching the two by time only.
+**What the metrics can say.** Request count and latency per route template, method and status (`http_requests_total`, `http_request_duration_seconds`), shed requests, requirement and change request transitions, sign-in results by method (`login_attempts_total{result,auth_method}`: password or single sign-on), the number of signed-in users with a request in the last five minutes (`active_users`, one series per worker: exact with the default single worker, and with several workers the maximum is a lower bound and the sum an upper bound), database statements by operation, and pool and memory gauges. They show which screens' routes are used and how the server behaves. They cannot say who did something or why: no metric carries a user, record, title, code or search text. Pair them with Microsoft Clarity (below) for on-screen behaviour, matching the two by time only.
 
 **The bundle.** `scripts/demo.sh --export-metrics [path]` (default `demo-metrics-<UTC timestamp>.tar.gz` in the current directory) writes:
 

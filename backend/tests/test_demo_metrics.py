@@ -238,6 +238,7 @@ def test_windows_do_not_duplicate_points_across_a_long_range(tmp_path):
     {"__name__": "x_total", "path": "/api/v1/search?q=secret"},
     {"__name__": "x_total", "method": "GET", "status_code": "twenty"},
     {"__name__": "x_total", "operation": "drop table"},
+    {"__name__": "login_attempts_total", "result": "success", "auth_method": "a@example.com"},
 ])
 def test_a_series_with_a_forbidden_label_name_or_value_refuses_the_bundle_naming_only_the_label(tmp_path, labels):
     series = GOOD + [{"metric": labels, "value": lambda t: 1.0}]

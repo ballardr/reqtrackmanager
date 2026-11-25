@@ -939,7 +939,7 @@ The platform should expose and record the following metrics:
 - database statement counts by operation (`db_statements_total{operation}`, from a SQLAlchemy engine event in `app/metrics.py`; operation-only labels so no table names, ids or SQL reach the unauthenticated endpoint). Request rate comes from `http_requests_total`
 - requirement workflow metrics such as created, updated, approved, completed, and archived counts
 - change request metrics such as submitted, approved, rejected, and review duration
-- user activity metrics such as login attempts, active sessions, and failed authentication attempts
+- user activity metrics such as login attempts, active users, and failed authentication attempts: `login_attempts_total{result,auth_method}` is incremented once per recorded sign-in attempt by `services.audit.log_login` (password, second factor, single sign-on, sign-up), and `active_users{pid}` is the number of distinct users with an authenticated request in the last five minutes. Access tokens are stateless, so the platform has no session list to count; each worker keeps its own in-memory map of user to last request time and exports only the count, so with several workers the maximum is a lower bound and the sum an upper bound
 - notification delivery and read metrics
 - storage usage for uploaded files and backup health
 

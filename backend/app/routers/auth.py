@@ -23,7 +23,6 @@ from app.auth_backends.native import NativeAuthBackend
 from app.config import get_settings
 from app.database import SessionLocal, get_db
 from app.deps import get_client_ip, get_current_session_user, get_current_user
-from app.metrics import login_attempts_total
 from app.models.enums import OrgRole, SignupMode
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, PendingInvite, UserOrgRole
@@ -110,7 +109,6 @@ def login(
     wait = login_throttle.seconds_to_wait(db, email_attempted, request_ip)
     if wait:
         log_login(db, user_id=None, email_attempted=email_attempted, ip_address=request_ip, success=False, kind="throttled")
-        login_attempts_total.labels(result="throttled").inc()
         db.commit()
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
@@ -125,7 +123,6 @@ def login(
         ip_address=request_ip,
         success=result.success,
     )
-    login_attempts_total.labels(result="success" if result.success else "failure").inc()
     db.commit()
     background_tasks.add_task(resolve_and_store_login_location, login_event.id, request_ip)
     if result.reset_required or result.confirmation_required:
@@ -358,7 +355,6 @@ def verify_2fa(
     claims = decode_access_token(payload.challenge_token)
     if not claims or claims.get("purpose") != "2fa_challenge" or "sub" not in claims:
         log_login(db, user_id=None, email_attempted="(invalid 2fa challenge)", ip_address=request_ip, success=False, kind="second_factor")
-        login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     user = db.get(User, UUID(claims["sub"]))
@@ -372,7 +368,6 @@ def verify_2fa(
             email_attempted=user.email if user else "(invalid 2fa challenge)",
             ip_address=request_ip, success=False, kind="second_factor"
         )
-        login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     # Lock the row: parallel guesses would otherwise each read the same counter and advance it once between them.
@@ -381,7 +376,6 @@ def verify_2fa(
     # `/login` challenge against the bounded 6-digit TOTP keyspace would otherwise converge on a bypass.
     if user.failed_2fa_locked_until is not None and user.failed_2fa_locked_until > datetime.now(UTC):
         log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False, kind="second_factor")
-        login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Too many failed attempts. Try again later.")
     if not totp.consume_code(user, payload.code):
@@ -390,11 +384,9 @@ def verify_2fa(
             user.failed_2fa_locked_until = datetime.now(UTC) + timedelta(minutes=_settings.two_factor_lockout_minutes)
             user.failed_2fa_attempts = 0
         log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False, kind="second_factor")
-        login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code.")
     login_event = log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True, kind="second_factor")
-    login_attempts_total.labels(result="success").inc()
     user.last_login_at = datetime.now(UTC)
     user.failed_2fa_attempts = 0
     user.failed_2fa_locked_until = None

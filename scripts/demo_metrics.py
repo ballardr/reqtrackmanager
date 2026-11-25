@@ -74,6 +74,7 @@ LABEL_RULES: dict[str, re.Pattern[str]] = {
     "le": re.compile(r"^(\+Inf|\d+(\.\d+)?)$"),
     "operation": re.compile(r"^(select|insert|update|delete|other)$"),
     "result": re.compile(r"^[a-z_]{1,32}$"),
+    "auth_method": re.compile(r"^(password|sso)$"),
     "state": re.compile(r"^[a-z_]{1,32}$"),
     "pid": re.compile(r"^\d{1,10}$"),
     "job": re.compile(r"^[A-Za-z0-9_.:-]{1,64}$"),
@@ -91,7 +92,8 @@ http_request_duration_seconds_{bucket,sum,count}  request latency per route temp
 caddy_http_requests_total{server,handler,code,method}   the HTTPS proxy's requests by status code (no host or path)
 requests_shed_total                               requests refused with 503 because no slot freed in time
 requirements_*_total, change_requests_*_total     lifecycle transitions (created, updated, approved, completed, archived)
-login_attempts_total{result}                      sign-in outcomes
+login_attempts_total{result,auth_method}          sign-in outcomes by method (password or sso)
+active_users                                      distinct signed-in users with a request in the last 5 minutes, per worker (pid)
 db_statements_total{operation}                    database statements by operation
 db_pool_connections{state}, worker_resident_memory_bytes   pool and memory gauges per worker (pid)
 storage_write_healthy                             1 while file storage accepts writes

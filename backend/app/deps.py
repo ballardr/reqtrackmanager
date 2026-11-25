@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.metrics import record_user_activity
 from app.models.organization import Organization
 from app.models.pat import PersonalAccessToken
 from app.models.user import User
@@ -127,6 +128,8 @@ def _require_policies_accepted(user: User, db: Session, request: Request) -> Use
 def _resolve_user_from_token(token: str | None, db: Session, request: Request) -> User:
     """Decodes and validates a bearer token, returning the active user it names.
 
+    Records the user as active (`metrics.record_user_activity`) once the credential is valid.
+
     Dispatches to `_resolve_user_from_pat` for Personal Access Tokens (`rtm_pat_` prefix, see
     `security.PAT_PREFIX`) and otherwise validates a session JWT. A session JWT never sets
     `request.state.pat_allowed_org_ids`, which lets `services/rbac.py` tell "not a PAT, no restriction"
@@ -147,7 +150,9 @@ def _resolve_user_from_token(token: str | None, db: Session, request: Request) -
     if not token:
         raise _UNAUTHORIZED
     if token.startswith(PAT_PREFIX):
-        return _require_policies_accepted(_resolve_user_from_pat(token, db, request), db, request)
+        pat_user = _resolve_user_from_pat(token, db, request)
+        record_user_activity(pat_user.id)
+        return _require_policies_accepted(pat_user, db, request)
     claims = decode_access_token(token)
     if not claims or "sub" not in claims or claims.get("purpose") != "access":
         # Rejects 2FA challenge tokens (services/totp.py / routers/auth.py):
@@ -162,6 +167,7 @@ def _resolve_user_from_token(token: str | None, db: Session, request: Request) -
         # 2FA disable (see User.token_version) — reject even though the
         # signature/expiry are otherwise valid.
         raise _UNAUTHORIZED
+    record_user_activity(user.id)
     return _require_policies_accepted(user, db, request)
 
 
