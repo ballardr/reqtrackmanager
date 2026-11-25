@@ -67,7 +67,8 @@ export const RuleTwoAWrappedControlIsReported: Story = {
   render: () => (
     <div style={{ width: 600 }}>
       <Grid columns="minmax(0, 1fr) max-content">
-        <input className="input" aria-label="Name" defaultValue="Name" />
+        {/* A fixed height makes the input the tallest control on every platform, so the button is the one reported. */}
+        <input className="input" aria-label="Name" defaultValue="Name" style={{ height: 48 }} />
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", width: 200 }}>
           <span>{STRESS_TEXT.name}</span>
           <button className="btn" aria-label="Edit row">Edit</button>
