@@ -1,0 +1,55 @@
+# Scheduled flake hunt for the Storybook suite (docs/development.md, "Finding flaky tests").
+#
+# Runs every story in a random order with the runner's CPUs kept busy, which is what exposes a story that measures
+# or acts before the page has settled. It runs apart from pull requests, so it adds nothing to their duration. A
+# failure names the shuffle seed and the story, and is resolved at its cause (wait for the state the story needs), never
+# with a retry, a longer timeout or a skip. The backend suite is shuffled by every CI run instead (ci.yml, `--shuffle-seed`).
+name: Flake hunt
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stories-shuffled-under-load:
+    name: Storybook shard ${{ matrix.shard }} of 3, shuffled under load
+    runs-on: ubuntu-latest
+    # The Playwright image's tag must match frontend/package-lock.json's `playwright` version (ci.yml, frontend-shard).
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Check Playwright image matches lockfile
+        run: python3 "$GITHUB_WORKSPACE/scripts/check-playwright-image-sync.py"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # One busy loop per CPU slows the browser and the page's timers the way a loaded developer host does; the loops
+      # end with the job.
+      - name: Run this shard's stories shuffled, with every CPU busy
+        run: |
+          seed="${GITHUB_RUN_ID}"
+          echo "Shuffle seed: $seed (reproduce with: npx vitest run --project=storybook --sequence.shuffle --sequence.seed=$seed)"
+          for _ in $(seq "$(nproc)"); do (while :; do :; done) & done
+          timeout 1800 npx vitest run --project=storybook --shard=${{ matrix.shard }}/3 \
+            --sequence.shuffle --sequence.seed="$seed"

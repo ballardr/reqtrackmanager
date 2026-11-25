@@ -1070,6 +1070,8 @@ const SNAP = { snapGrid: 20, snapInvertKey: "Shift" } as const;
 async function dragBy(canvasElement: HTMLElement, name: string, dx: number, dy: number, onMove: ReturnType<typeof fn>, user: { pointer: (actions: Parameters<typeof userEvent.pointer>[0]) => Promise<unknown> } = userEvent) {
   const canvas = within(canvasElement);
   const node = await canvas.findByLabelText(name);
+  // The zoom and the node's place are read only once the opening fit has stopped moving the view.
+  await settled(canvasElement);
   const frame = node.closest(".react-flow__node") as HTMLElement;
   // The drawn width over the node's own width is the zoom.
   const zoom = frame.getBoundingClientRect().width / 160;
