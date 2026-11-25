@@ -230,7 +230,10 @@ jobs:
           echo "Storybook shards: $SHARDS"
           [ "$SHARDS" = "success" ]
 
+      # The full history lets a pull request's changed stories be found against its base (the repeat step below).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - name: Fix git safe.directory for containerized steps
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -285,6 +288,29 @@ jobs:
               sys.exit(1)
           print("vitest didn't exit cleanly, but vitest-report.xml shows every test passed — treating as success.")
           PY
+
+      # A story the pull request adds or changes (or whose component it changes) runs five more times, so one that fails
+      # one run in a few fails here and not on `main` after the merge. A failure is a race to fix at its cause, never
+      # with a retry, a longer timeout or a skip.
+      - name: Repeat the changed stories
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          python3 ../scripts/changed_tests.py frontend --base "$BASE_REF" > ../changed-stories.txt
+          cat ../changed-stories.txt
+          if [ ! -s ../changed-stories.txt ]; then
+            echo "No story changed; nothing to repeat."
+            exit 0
+          fi
+          for run in 1 2 3 4 5; do
+            echo "::group::Repeat $run of 5"
+            timeout 900 npx vitest run --project=storybook $(cat ../changed-stories.txt) || {
+              echo "::error::A changed story failed on repeat $run of 5: it is flaky. Fix the race, do not retry."
+              exit 1
+            }
+            echo "::endgroup::"
+          done
 
       - name: Frontend coverage summary
         if: always()
@@ -358,7 +384,10 @@ jobs:
       # check run). Badge publishing needs contents: write and runs in the publish-badges job.
       checks: write
     steps:
+      # The full history lets a pull request's changed tests be found against its base (the repeat step below).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
@@ -444,6 +473,29 @@ jobs:
           docker compose cp backend:/app/coverage.xml ./coverage.xml
           docker compose cp backend:/app/pytest-report.xml ./pytest-report.xml
           docker compose cp backend:/app/htmlcov ./htmlcov
+
+      # A test file the pull request adds or changes runs three more times, so a test that depends on
+      # row order, timing or another test's leftovers fails here and not on `main` after the merge. The cap keeps a very large pull request inside the job's ceiling; the files left out are named in a warning.
+      - name: Repeat the changed tests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          files=$(python3 scripts/changed_tests.py backend --base "$BASE_REF")
+          if [ -z "$files" ]; then
+            echo "No backend test changed; nothing to repeat."
+            exit 0
+          fi
+          echo "$files"
+          cd tests/container
+          for run in 1 2 3; do
+            echo "::group::Repeat $run of 3"
+            docker compose exec -T backend python -m pytest -n 4 -p no:cacheprovider -q $files || {
+              echo "::error::A changed backend test failed on repeat $run of 3: it is flaky. Fix the cause, do not retry."
+              exit 1
+            }
+            echo "::endgroup::"
+          done
 
       # Duration and slowest tests in the job summary, so a slower suite is seen on the run that slowed it. The budget is
       # the target, a warning and never a failure (see scripts/junit_timing_summary.py).

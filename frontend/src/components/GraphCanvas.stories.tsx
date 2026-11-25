@@ -21,6 +21,17 @@ const EDGES: GraphCanvasEdge[] = [
   { id: "e3", source: "sensor", target: "cloud", label: "Bridged", dashed: true, color: "#b7791f" },
 ];
 
+/** Waits until the opening fit has finished moving the view, so a box's measured place is where it stays. */
+const settled = async (root: HTMLElement) => {
+  const transform = () => (root.querySelector(".react-flow__viewport") as HTMLElement | null)?.style.transform ?? "";
+  let last = "";
+  for (let tries = 0; tries < 40; tries += 1) {
+    const now = transform();
+    if (now !== "" && now === last) return;
+    last = now;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+};
 /** Hosts the canvas with real state, as a consumer would, and prints what was selected and moved. */
 function Host(props: Partial<GraphCanvasProps>) {
   const [nodes, setNodes] = useState(NODES);
@@ -119,6 +130,7 @@ export const AnUndoneMoveReturnsTheBox: Story = {
     const canvas = within(canvasElement);
     const node = await canvas.findByLabelText("Sensor, node");
     const styleOf = () => /transform: [^;]*/.exec(node.closest(".react-flow__node")?.getAttribute("style") ?? "")?.[0] ?? "";
+    await settled(canvasElement);
     const before = styleOf();
     const box = node.getBoundingClientRect();
     const x = box.left + box.width / 2;
@@ -157,6 +169,7 @@ export const PointerDrag: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     const node = await canvas.findByLabelText("Cloud service, node");
+    await settled(canvasElement);
     const box = node.getBoundingClientRect();
     const x = box.left + box.width / 2;
     const y = box.top + box.height / 2;
@@ -902,6 +915,7 @@ export const DraggingAFreeLeaderEndReportsThePosition: Story = {
       expect(found).not.toBeNull();
       return found as HTMLElement;
     });
+    await settled(canvasElement);
     const box = end.getBoundingClientRect();
     const x = box.left + box.width / 2;
     const y = box.top + box.height / 2;
@@ -1338,17 +1352,6 @@ const APPROACH_NODES: GraphCanvasNode[] = [
 const handleOf = (node: HTMLElement, point: string) => node.querySelector(`.react-flow__handle[data-handleid="${point}"]`) as HTMLElement;
 /** Whether a handle is drawn: hidden ones keep their size and stay in the page, so only the opacity tells. */
 const drawn = (node: HTMLElement) => getComputedStyle(handleOf(node, "top")).opacity === "1";
-/** Waits until the opening fit has finished moving the view, so a box's measured place is where it stays. */
-const settled = async (root: HTMLElement) => {
-  const transform = () => (root.querySelector(".react-flow__viewport") as HTMLElement | null)?.style.transform ?? "";
-  let last = "";
-  for (let tries = 0; tries < 40; tries += 1) {
-    const now = transform();
-    if (now !== "" && now === last) return;
-    last = now;
-    await new Promise((resolve) => setTimeout(resolve, 120));
-  }
-};
 /** Where a pointer a few screen pixels outside the box's left edge, level with its middle, is. */
 const justLeftOf = (node: HTMLElement, gap = 10) => {
   const r = node.getBoundingClientRect();
