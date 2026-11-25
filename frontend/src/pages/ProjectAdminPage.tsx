@@ -444,10 +444,8 @@ export function ProjectAdminPage() {
       const updated = await api.put<ProjectModuleSubComponent>(
         `/api/v1/projects/${projectId}/modules/${moduleKey}/subcomponents/${subcomponentKey}`, { enabled },
       );
-      setProjectModuleSubComponents((prev) => ({
-        ...prev,
-        [moduleKey]: (prev[moduleKey] ?? []).map((s) => (s.subcomponent_key === subcomponentKey ? updated : s)),
-      }));
+      // A sub-component that requires this one changes state with it, so the module's whole list is read again.
+      await refreshProjectModuleSubComponents(moduleKey);
       if (projectId) refreshProjectEnabledModules(projectId);
       showToast(
         enabled
@@ -2091,6 +2089,7 @@ export function ProjectAdminPage() {
                     subItems: subComponents.map((sub) => ({
                       key: sub.subcomponent_key,
                       name: sub.name,
+                      hint: sub.blocked_by.length > 0 ? strings.common.moduleSubComponentBlocked(sub.blocked_by) : undefined,
                       control: (
                         <ToggleSwitch
                           checked={sub.effective_enabled}

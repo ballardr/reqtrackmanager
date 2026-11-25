@@ -1683,10 +1683,12 @@ const overriddenModule: ProjectModuleEnablement = {
 const usingOrgDefaultSubComponent: ProjectModuleSubComponent = {
   module_key: "context_strategy", subcomponent_key: "pain_point", name: "Pain Point",
   effective_enabled: true, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: true,
+  blocked_by: [],
 };
 const overriddenSubComponent: ProjectModuleSubComponent = {
   module_key: "context_strategy", subcomponent_key: "strategy", name: "Strategy",
   effective_enabled: false, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: false,
+  blocked_by: [],
 };
 
 /** The Tags group shows the project's tag vocabulary; where a tag is used opens from its record count. */
@@ -1788,6 +1790,39 @@ export const ModulesTabToggleSubComponent: Story = {
   },
 };
 
+/** A sub-component that requires one which is off is inactive: its row says what it is waiting on, and its own switch stays set. */
+export const ModulesTabNamesWhatABlockedSubComponentWaitsOn: Story = {
+  beforeEach: () => {
+    const sub = (key: string, name: string, overrides: Partial<ProjectModuleSubComponent> = {}): ProjectModuleSubComponent => ({
+      module_key: "traceability", subcomponent_key: key, name,
+      effective_enabled: true, org_default_enabled: true, org_hard_enabled: true, has_project_override: false, project_override_enabled: null,
+      blocked_by: [], ...overrides,
+    });
+    mockProjectAdminApis({
+      projectModules: [{
+        module_key: "traceability", name: "Traceability & Governance", effective_enabled: true,
+        org_default_enabled: true, org_hard_enabled: true, has_project_override: false, project_override_enabled: null,
+      }],
+      projectModuleSubComponents: {
+        traceability: [
+          sub("traceability_rules", "Traceability rules", { effective_enabled: false, has_project_override: true, project_override_enabled: false }),
+          sub("traceability_exceptions", "Traceability exceptions", { effective_enabled: false, blocked_by: ["Traceability rules"] }),
+          sub("traceability_matrices", "Traceability matrices"),
+        ],
+      },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "3 components · 1 on" }));
+    await expect(canvas.getByText("Inactive until Traceability rules is on.")).toBeInTheDocument();
+    await expect(canvas.getAllByText(/Inactive until/)).toHaveLength(1);
+    await expect(canvas.getByRole("switch", { name: "Enable Traceability exceptions (Traceability & Governance) for this project" })).not.toBeChecked();
+    await expect(canvas.getByRole("switch", { name: "Enable Traceability matrices (Traceability & Governance) for this project" })).toBeChecked();
+  },
+};
+
 /** A module's organisation-only sub-component (Product Feedback's request inbox) is not in the project's list, so
  * the module shows only its project-level switches. */
 export const ModulesTabOmitsOrganisationOnlySubComponent: Story = {
@@ -1795,6 +1830,7 @@ export const ModulesTabOmitsOrganisationOnlySubComponent: Story = {
     const projectLevel = (key: string, name: string): ProjectModuleSubComponent => ({
       module_key: "product_feedback", subcomponent_key: key, name,
       effective_enabled: true, org_default_enabled: true, org_hard_enabled: true, has_project_override: false, project_override_enabled: null,
+      blocked_by: [],
     });
     mockProjectAdminApis({
       projectModules: [{

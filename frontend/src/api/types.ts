@@ -2499,6 +2499,9 @@ export interface OrgModuleSubComponent {
   enabled: boolean;
   default_project_enabled: boolean;
   has_org_override: boolean;
+  /** Display names of the sub-components it requires that are not in effect for the organisation; empty when
+   * nothing blocks it. While any is listed this one has no effect, and its own switch is kept. */
+  blocked_by: string[];
 }
 
 /** A module an organisation can use (`GET /orgs/{id}/enabled-modules`, readable by every member): its key and the
@@ -2565,6 +2568,9 @@ export interface ProjectModuleSubComponent {
   org_hard_enabled: boolean;
   has_project_override: boolean;
   project_override_enabled: boolean | null;
+  /** Display names of the sub-components it requires that are not in effect in the project; empty when nothing
+   * blocks it. While any is listed `effective_enabled` is false whatever its own switch says. */
+  blocked_by: string[];
 }
 
 /** One currently-enabled module, as returned by `GET /projects/{id}/enabled-

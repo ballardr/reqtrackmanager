@@ -131,7 +131,8 @@ def get_all_permissions(db: Session, organization_id: uuid.UUID) -> list[Permiss
     `organization_id`: every registered artefact type x every
     `PermissionLevel` x (the sub-type wildcard, plus every current
     sub-type value that artefact type's registered provider returns for
-    this organisation, if any), followed by `ADMINISTRATIVE_PERMISSIONS`.
+    this organisation, if any), followed by `ADMINISTRATIVE_PERMISSIONS` and the atoms modules contribute
+    (`ModuleDefinition.administrative_permissions`).
 
     Org-scoped, unlike `app.modules.registry.get_all_registered_artefact_
     types` (a process-wide set): the sub-type dimension is per-organisation
@@ -184,6 +185,10 @@ def get_all_permissions(db: Session, organization_id: uuid.UUID) -> list[Permiss
         permissions.append(
             Permission(key=key, label=key.replace("_", " ").title(), artefact_type=None, level=None, subtype=None)
         )
+    from app.modules.registry import get_module_administrative_permissions
+
+    for _, atom in get_module_administrative_permissions():
+        permissions.append(Permission(key=atom.key, label=atom.label, artefact_type=None, level=None, subtype=None))
     return permissions
 
 

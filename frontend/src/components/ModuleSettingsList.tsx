@@ -10,7 +10,8 @@
  *   project page an on/off `ToggleSwitch`, without this component knowing either's semantics.
  * - `ModuleAvailabilitySelect` is one three-state control, because the default for new projects has no effect while
  *   the module is off, so only three states exist.
- * - Sub-components start collapsed because most administrators never change them.
+ * - Sub-components start collapsed because most administrators never change them; one that has no effect says why in a
+ *   `hint` under its name.
  */
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -20,11 +21,13 @@ import { InlineSelect } from "./LabeledSelect";
 
 const strings = t();
 
-/** One sub-component row: a name and its control. */
+/** One sub-component row: a name, its control and, when it has no effect, why. */
 export interface ModuleSettingsSubItem {
   key: string;
   name: string;
   control: ReactNode;
+  /** Shown under the name, for example which required component is off. */
+  hint?: ReactNode;
 }
 
 /** One module row. `muted` greys the row (e.g. not on the org's plan). */
@@ -90,7 +93,10 @@ function ModuleSettingsRow({ item }: { item: ModuleSettingsItem }) {
             <ul id={subListId} className="module-settings-sublist">
               {item.subItems.map((sub) => (
                 <li key={sub.key} className="module-settings-main">
-                  <span>{sub.name}</span>
+                  <div className="module-settings-text">
+                    <span>{sub.name}</span>
+                    {sub.hint && <span className="text-muted module-settings-small">{sub.hint}</span>}
+                  </div>
                   <div className="module-settings-control">{sub.control}</div>
                 </li>
               ))}

@@ -90,6 +90,7 @@ from app.models.user import User
 from app.modules.registry import (
     get_all_registered_artefact_types,
     get_module,
+    get_module_administrative_permissions,
     is_module_enabled,
     is_module_enabled_for_project,
     is_module_subcomponent_enabled,
@@ -3310,9 +3311,11 @@ def get_effective_permissions(
 
     permissions: set[str] = set()
 
+    module_atoms = [atom for _, atom in get_module_administrative_permissions()]
     org_roles = get_effective_org_roles(db, user_id, organization_id)
     for role in org_roles:
         permissions |= set(_ORG_ROLE_PERMISSIONS.get(role, ()))
+        permissions |= {atom.key for atom in module_atoms if role in atom.org_roles}
 
     if project_id is not None:
         project_roles = get_effective_project_roles(db, user_id, project_id)
@@ -3324,6 +3327,7 @@ def get_effective_permissions(
             permissions.add(MANAGE_PROJECT_REPORT_LAYOUTS)
         if project_roles & _PROJECT_LIFECYCLE_ROLES:
             permissions.add(MANAGE_PROJECT_LIFECYCLES)
+        permissions |= {atom.key for atom in module_atoms if project_roles & set(atom.project_roles)}
 
     permissions |= _module_role_permission_grants(
         db, user_id, organization_id=organization_id, project_id=project_id,

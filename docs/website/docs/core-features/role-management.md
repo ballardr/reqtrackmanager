@@ -62,6 +62,8 @@ Granting an existing role — fixed, module, or custom — to a user or an organ
 
 `manage_org_lifecycles` and `manage_project_lifecycles` are permission atoms in the same list. They let their holder require lifecycle states and exempt projects (organisation), or choose which optional states a project uses (project); see [Lifecycles](lifecycles.md). They are separate so a project can be trusted with its own process without being able to change what every project in the organisation must keep. Organisation admins hold both, and project administrators hold the project one in their project.
 
+An installed module can add permission atoms of its own to the same list (Traceability & Governance adds `manage_org_governance`, `manage_project_governance`, `manage_org_traceability`, `manage_project_traceability` and `approve_traceability_exceptions`). They follow the same pattern: an organisation atom and a project atom for each area so a project can be trusted with its own policy, held by organisation admins, and in their own project by project administrators and managers, or granted through the module's own roles or a custom role.
+
 `publish_organization_templates` is another permission atom in the list. It lets its holder make a project both a template and visible to the whole organisation; a project manager can set either alone but not both. Organisation admins hold it, and it can be given to others through a custom role.
 
 ## The shared resource permission

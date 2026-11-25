@@ -248,6 +248,8 @@ not own (link graph, tags, comments, History, search, record lists) answers "not
 module's own routes do. A file or report that spans several types reads `service.enabled_record_types` and leaves the
 switched-off ones out.
 
+**A sub-component that needs another.** `ModuleSubComponentDefinition.requires` names sibling sub-components it cannot work without (Traceability exceptions require Traceability rules). A dependent is **not in effect** while any requirement is not (switched off at the organisation, off in the project, or itself waiting on one), at every tier: `is_module_subcomponent_enabled` and `is_org_module_subcomponent_enabled` return `False`, so every gate, nav entry and list that already asks them follows with no per-module code. Its own switch and its rows are never changed, so switching the requirement back on restores it with nothing lost. `ModuleDefinition` rejects an unknown key, a reference to itself and a cycle when it is built. Both sub-component list endpoints return `blocked_by`, the display names of the unmet requirements (`unmet_subcomponent_requirements`, `unmet_org_subcomponent_requirements`; the module-level switch is not counted, so a switched-off module lists none), and the shared `ModuleSettingsList` shows "Inactive until X is on." under the row. The dependent's own control stays usable.
+
 ```mermaid
 flowchart TD
     WM{"Whole module enabled?"}
@@ -384,6 +386,11 @@ class ModuleDefinition:
     get_router: Callable[[], APIRouter | None]   # called once; None if no HTTP endpoints
     roles: tuple[ModuleRoleDefinition, ...] = ()  # module-contributed RBAC roles
     sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
+    administrative_permissions: tuple[ModuleAdministrativePermission, ...] = ()  # bare permission atoms the module adds (§4l16)
+    record_subtypes: dict[str, RecordSubtypeResolver] = {}  # {artefact type: record -> sub-type key} (§4l16)
+    review_adapters: dict[str, ReviewAdapter] = {}  # {artefact type: how the review engine reads its schedule} (§4l16)
+    baseline_check_providers: tuple[BaselineCheckProvider, ...] = ()  # checks run before a baseline (§4l16)
+    policy_resolvers: tuple[PolicyResolver, ...] = ()  # which policy applies at each core engine seam (§4l16)
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     demand_party_providers: dict[str, Callable[[Session, UUID, Sequence[UUID]], dict[UUID, list[DemandParty]]]] = {}  # who a record stands for (§4e2)
@@ -1497,6 +1504,29 @@ flowchart LR
 
 - **Approval separation.** Whether the person who created a record may approve it is a setting per record type with an approval step (`services/approval_separation.py`). The types are read from the registry (`approval_gates`: every `LifecycleDefinition` with a gated state, whose `record_model` names the model holding `creator_id`, plus the core `requirement` and `change_request`), so a module that registers a gated lifecycle is covered with no core edit. `resolve_separation` gives a project's rule (its own choice, else the nearest ancestor's, else the default "creator may approve"; an organisation requirement beats the choice unless the project is exempt). A module's approval endpoint or approve function calls `enforce_record_approval(db, user=, artefact_type=, record=, comment=)` after its permission check: another person approving clears the record's mark, the creator is refused (403) when a separate approver is required, and otherwise the record is marked (`record_self_approvals`, shown as **Self-approved** by `RecordHeader`'s `approval` prop from `useApprovalStatus`) with one `self_approved` audit event, a comment being required when the permission was set on purpose (`ResolvedSeparation.deliberate`). Tables `project_approval_separation_settings`, `organization_approval_separation_requirements` and `organization_approval_separation_exemptions`; API `GET`/`PUT /projects/{id}/approval-separation[/{type}]`, `GET /projects/{id}/approval-separation/status/{type}/{record}`, `GET`/`PUT /orgs/{id}/approval-separation[/{type}]` with `POST`/`DELETE .../{type}/exemptions` and `GET /orgs/{id}/approval-separation/status/{type}/{record}` (an organisation-owned record), under the lifecycle permissions; the project bundle carries `approval_separation` and the organisation bundle `approval_separation_requirements` and `approval_separation_exemptions`; the mark is not bundled (a history fact). A new type with an approval step registers a gated lifecycle (with `record_model`), calls the check at its approval and shows `approval` on its record header; `backend/tests/test_approval_separation.py` fails for a gated type whose model has no `creator_id`.
 - **Adding a type:** declare its `LifecycleDefinition` (with an `entry_guard`), call `check_move(..., record_id=record.id)` in its transition function, use `lifecycle_for` for any list that returns legal next states, and read `useProjectLifecycle` in its detail page. Requirements and change requests declare none (no optional state), so they keep their fixed path.
+
+### 4l16. Engine seams, module permission atoms and record sub-types (Traceability & Governance Phase 1)
+
+Four core engines (lifecycle move, approval check, review, baseline check) are extended by modules without core importing one. Each seam lives in core `services/` with the record type's own behaviour as its default; a module registers what applies on top. `app/modules/seams.py` holds the contracts, `app/services/governance_seams.py` resolves them for one project.
+
+```mermaid
+flowchart LR
+    T["record type's own behaviour (default)"] --> S["core seam"]
+    S -->|"module and sub-component in effect"| R["registered resolver, check or adapter"]
+    S -->|"none registered, none answers, or module off"| T
+```
+
+| Field on `ModuleDefinition` | Contract | Read through |
+|---|---|---|
+| `policy_resolvers` | `PolicyResolver(seam, resolve(db, project_id, type) -> policy or None, sub_component)`; `seam` is a `GovernanceSeam` (`lifecycle`, `approval`, `review`, `baseline`) | `governance_seams.resolve_policy`: first active resolver with a non-`None` answer, else `None` (the built-in default applies) |
+| `baseline_check_providers` | `BaselineCheckProvider(key, name, artefact_types, check(db, context, ids_by_type) -> failures, sub_component)` | `governance_seams.baseline_checks_for_project`, keyed `<module>:<key>`; one failing check refuses the whole baseline |
+| `review_adapters` | `ReviewAdapter(schedule, due_reviews(db, project_id, as_of))`; `schedule` is `review_record` (a review row clears the due list) or `next_review_date` (a review writes the next date) | `governance_seams.review_adapter_for_project` |
+| `record_subtypes` | `resolver(db, project_id, ids) -> {id: sub-type key}`, in bulk | `registry.resolve_record_subtypes`; core registers the requirement action's type in `services/record_subtypes_core.py` |
+| `administrative_permissions` | `ModuleAdministrativePermission(key, label, org_roles, project_roles)` | `get_all_permissions` (vocabulary) and `get_effective_permissions` (holders) |
+
+- **A registration applies to a project only while its module is on and, when it names a `sub_component`, that one is in effect** (`governance_seams.registration_active`), so switching a part off removes its contribution. `ModuleDefinition` rejects a registration that names a sub-component the module does not declare, and a duplicate check or atom key.
+- **Administrative atoms** are bare lower-case keys (no `:`), unique across core's `ADMINISTRATIVE_PERMISSIONS` and every module (`get_module_administrative_permissions` skips a duplicate with a warning, so a module can never widen who holds a core atom). The roles a `ModuleAdministrativePermission` names hold it in their organisation (`org_roles`, organisation administrators by default, in every project) or their own project (`project_roles`); a module role or custom role can list it in `permissions` as for any atom. Core's list never names a module's atom.
+- **A contract holds only what every registrant needs now.** The phase that builds a seam extends its contract and the policy object it returns.
 
 ### 4l13. External references on every record
 

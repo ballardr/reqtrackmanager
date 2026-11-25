@@ -32,6 +32,7 @@ from app.modules.registry import (
     list_enabled_module_roles,
     resolve_default_project_enabled,
     resolve_org_subcomponent_state,
+    unmet_subcomponent_requirements,
 )
 from app.schemas.org import (
     ManifestNavEntryOut,
@@ -364,6 +365,7 @@ def _project_subcomponent_out(
         org_hard_enabled=org_enabled and is_module_enabled(db, project.organization_id, module_key),
         has_project_override=project_row is not None,
         project_override_enabled=project_row.enabled if project_row is not None else None,
+        blocked_by=[needed.name for needed in unmet_subcomponent_requirements(db, project.id, module_key, sub.key)],
     )
 
 

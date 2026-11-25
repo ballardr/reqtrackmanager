@@ -12,17 +12,17 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phase 1 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-1 / 19 phases complete. Phase 1 is next.
+2 / 19 phases complete. Phase 1b is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
 | 0 | Exploratory: audit of existing approval, review and lifecycle code; remaining decisions | both | [x] Done 2026-11-25 |
-| 1 | Module skeleton, sub-components, `requires`, governable-type registry | shared | [ ] Not started |
+| 1 | Module skeleton, sub-components, `requires`, engine registration points | shared | [x] Done 2026-11-26 |
 | 1b | Governance profiles: organisation policy sets that enforce, default or opt in per project | Governance | [ ] Not started |
 | 2 | Lifecycle policies (extend the shipped lifecycle engine) | Governance | [ ] Not started |
 | 3 | Approval policies (one check seam plus approver roles) | Governance | [ ] Not started |
@@ -291,7 +291,7 @@ two modes, organisation default (Q26). Migration order: Q27. `requires`: Q28. Mo
 
 **Exit criteria met:** audit complete, every open item answered by the user, results above.
 
-## Phase 1 — Module skeleton, sub-components, engine registration hooks
+## Phase 1 — Module skeleton, sub-components, engine registration hooks (done 2026-11-26)
 
 **Scope:** `backend/app/modules/traceability/` and `frontend/src/modules/traceability/`;
 `ModuleDefinition` with the ten `sub_components`; the `requires` field with tests across the project, organisation and
@@ -303,6 +303,23 @@ module roles. No separate governable-type list (F11).
 **Why / risk / outcome:** one registration point so later phases add behaviour without touching core files. The risk is the
 core-boundary failure mode: no core file imports from `modules/traceability/`, and no per-module value is added to a core
 enum or column. Outcome: the module can be enabled with every part independently switchable and dependency-checked.
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 1"; contracts in `docs/modules.md` §2a and §4l16):**
+
+- `backend/app/modules/traceability/` and `frontend/src/modules/traceability/module.ts`: ten sub-components, `requires` on
+  `traceability_exceptions` and `cross_project_traceability`, four role definitions, `default_enabled=False`.
+- `requires` on `ModuleSubComponentDefinition`, resolved at the project and organisation tiers, validated when
+  `ModuleDefinition` is built, reported as `blocked_by` by both sub-component list endpoints and shown by
+  `ModuleSettingsList` ("Inactive until X is on.").
+- `modules/seams.py` (contracts) and `services/governance_seams.py` (project resolution): `policy_resolvers`,
+  `baseline_check_providers`, `review_adapters`, `record_subtypes` and `administrative_permissions` on `ModuleDefinition`; core
+  registers the requirement action's type (`services/record_subtypes_core.py`).
+- **Deviation from this plan's wording:** the five atoms are `ModuleDefinition.administrative_permissions`, not additions to core's
+  `ADMINISTRATIVE_PERMISSIONS` (that would hand-edit a core file per module). The seam contracts are minimal; Phases 2 to 5
+  extend them. Not built here, by design: the requirement sub-type (Phase 10), any seam consumer (Phases 2 to 5, 7).
+- Tests: `tests/test_module_subcomponent_requires.py`, `tests/test_governance_seams.py`,
+  `app/modules/traceability/tests/test_traceability_module.py`; stories for `ModuleSettingsList`, Org Admin and Project Admin;
+  Playwright `traceability-sub-component-requires.spec.ts`.
 
 ## Phase 1b — Governance profiles
 

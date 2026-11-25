@@ -1990,7 +1990,7 @@ export const ModulesSectionHardDisabledModuleShowsOff: Story = {
 
 const fixtureSubComponent = (overrides: Partial<OrgModuleSubComponent> = {}): OrgModuleSubComponent => ({
   module_key: "fake_module", subcomponent_key: "widget", name: "Widget",
-  default_enabled: true, enabled: true, default_project_enabled: true, has_org_override: false,
+  default_enabled: true, enabled: true, default_project_enabled: true, has_org_override: false, blocked_by: [],
   ...overrides,
 });
 
@@ -2025,6 +2025,30 @@ export const ModulesSectionSubComponentAvailability: Story = {
       )
     );
     await expect(within(document.body).getByText("Widget: Off")).toBeInTheDocument();
+  },
+};
+
+/** A sub-component whose requirement is off names it under its row; its own availability select keeps the value that was set. */
+export const ModulesSectionNamesWhatABlockedSubComponentWaitsOn: Story = {
+  beforeEach: () =>
+    mockOrgAdminApis({
+      modules: [entitledEnabledModule],
+      moduleSubComponents: {
+        fake_module: [
+          fixtureSubComponent({ subcomponent_key: "rules", name: "Rules", enabled: false, default_project_enabled: false, has_org_override: true }),
+          fixtureSubComponent({ subcomponent_key: "exceptions", name: "Exceptions", blocked_by: ["Rules"] }),
+          fixtureSubComponent({ subcomponent_key: "matrices", name: "Matrices" }),
+        ],
+      },
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "3 components · 1 off" }));
+    await expect(canvas.getByText("Inactive until Rules is on.")).toBeInTheDocument();
+    await expect(canvas.getAllByText(/Inactive until/)).toHaveLength(1);
+    await expect(canvas.getByRole("combobox", { name: "Exceptions (Fake Module) availability" })).toHaveValue("default_on");
   },
 };
 

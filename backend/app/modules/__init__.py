@@ -23,6 +23,7 @@ from app.modules.decisions.module import MODULE_DEFINITION as _DECISIONS_MODULE
 from app.modules.product_feedback.module import MODULE_DEFINITION as _PRODUCT_FEEDBACK_MODULE
 from app.modules.risk_management.module import MODULE_DEFINITION as _RISK_MANAGEMENT_MODULE
 from app.modules.stakeholders.module import MODULE_DEFINITION as _STAKEHOLDERS_MODULE
+from app.modules.traceability.module import MODULE_DEFINITION as _TRACEABILITY_MODULE
 
 _registry.INSTALLED_MODULES.append(_COMPLIANCE_MODULE)
 _registry.INSTALLED_MODULES.append(_DECISIONS_MODULE)
@@ -31,3 +32,4 @@ _registry.INSTALLED_MODULES.append(_STAKEHOLDERS_MODULE)
 _registry.INSTALLED_MODULES.append(_RISK_MANAGEMENT_MODULE)
 _registry.INSTALLED_MODULES.append(_PRODUCT_FEEDBACK_MODULE)
 _registry.INSTALLED_MODULES.append(_ARCHITECTURE_MODULE)
+_registry.INSTALLED_MODULES.append(_TRACEABILITY_MODULE)

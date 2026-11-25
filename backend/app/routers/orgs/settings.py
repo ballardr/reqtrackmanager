@@ -29,8 +29,10 @@ from app.modules.registry import (
     get_module_registry,
     is_module_enabled,
     is_module_entitled,
+    is_org_module_subcomponent_enabled,
     resolve_default_project_enabled,
     resolve_org_subcomponent_state,
+    unmet_org_subcomponent_requirements,
 )
 from app.schemas.email import TestEmailRequest
 from app.schemas.org import (
@@ -317,7 +319,7 @@ def list_org_enabled_modules(
             continue
         disabled = [
             sub.key for sub in definition.sub_components
-            if not (resolve_org_subcomponent_state(db, organization_id, definition.key, sub.key) or (True, True))[0]
+            if not is_org_module_subcomponent_enabled(db, organization_id, definition.key, sub.key)
         ]
         result.append(OrgEnabledModuleOut(module_key=definition.key, disabled_sub_components=disabled))
     return result
@@ -432,6 +434,9 @@ def list_org_module_subcomponents(
                 rows_by_key[sub.key].default_project_enabled if sub.key in rows_by_key else sub.default_enabled
             ),
             has_org_override=sub.key in rows_by_key,
+            blocked_by=[
+                needed.name for needed in unmet_org_subcomponent_requirements(db, organization_id, module_key, sub.key)
+            ],
         )
         for sub in definition.sub_components
     ]
@@ -504,6 +509,9 @@ def update_org_module_subcomponent_default(
         module_key=module_key, subcomponent_key=subcomponent_key, name=subcomponent.name,
         default_enabled=subcomponent.default_enabled, enabled=row.enabled,
         default_project_enabled=row.default_project_enabled, has_org_override=True,
+        blocked_by=[
+            needed.name for needed in unmet_org_subcomponent_requirements(db, organization_id, module_key, subcomponent_key)
+        ],
     )
 
 

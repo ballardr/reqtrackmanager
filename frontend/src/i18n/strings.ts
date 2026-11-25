@@ -5235,6 +5235,8 @@ const en = {
     showLess: "Less",
     // `ModuleSettingsList`'s collapsed sub-component disclosure.
     moduleComponentsSummary: (count: number) => `${count} component${count === 1 ? "" : "s"}`,
+    // A sub-component that requires others which are off: it has no effect until they are on, and its own switch is kept.
+    moduleSubComponentBlocked: (names: string[]) => `Inactive until ${names.join(" and ")} ${names.length === 1 ? "is" : "are"} on.`,
   },
 };
 

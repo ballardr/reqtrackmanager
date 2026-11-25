@@ -540,7 +540,8 @@ class ModuleSubComponentOut(BaseModel):
 
     `default_enabled` is the registry's default; `enabled` is the org's hard floor (and the effective state for
     org-scoped artefacts); `default_project_enabled` is the value copied into new projects. `has_org_override`
-    is whether the org has its own row at all.
+    is whether the org has its own row at all. `blocked_by` names the sub-components it requires that are not in
+    effect for the organisation, so it has no effect until they are; empty when nothing blocks it.
     """
 
     module_key: str
@@ -550,6 +551,7 @@ class ModuleSubComponentOut(BaseModel):
     enabled: bool
     default_project_enabled: bool
     has_org_override: bool
+    blocked_by: list[str] = []
 
 
 class ModuleSubComponentDefaultUpdate(BaseModel):
@@ -571,7 +573,8 @@ class ProjectModuleSubComponentOut(BaseModel):
     `org_default_enabled` is the org's `default_project_enabled` (what a
     new project gets); `org_hard_enabled` is the org's hard floor (whole
     module and this sub-component both on) — `False` means no project
-    value can turn it on. Mirrors `ProjectModuleEnablementOut`.
+    value can turn it on. Mirrors `ProjectModuleEnablementOut`. `blocked_by` names the sub-components it requires
+    that are not in effect in the project, so it has no effect until they are; empty when nothing blocks it.
     """
 
     module_key: str
@@ -582,6 +585,7 @@ class ProjectModuleSubComponentOut(BaseModel):
     org_hard_enabled: bool
     has_project_override: bool
     project_override_enabled: bool | None = None
+    blocked_by: list[str] = []
 
 
 class ProjectModuleSubComponentEnablementUpdate(BaseModel):

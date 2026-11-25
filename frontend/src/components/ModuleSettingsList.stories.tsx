@@ -64,6 +64,37 @@ export const OrgStyle: Story = {
   },
 };
 
+/** A sub-component that has no effect says why under its name, and several requirements are listed together. */
+export const BlockedSubComponent: Story = {
+  args: {
+    items: [
+      {
+        key: "traceability", name: "Traceability & Governance",
+        control: <ToggleSwitch checked label="Enable Traceability & Governance for this project" onChange={fn()} />,
+        subSummary: "3 components · 1 on",
+        subItems: [
+          { key: "rules", name: "Traceability rules", control: <ToggleSwitch checked={false} label="Enable Traceability rules" onChange={fn()} /> },
+          {
+            key: "exceptions", name: "Traceability exceptions", hint: "Inactive until Traceability rules is on.",
+            control: <ToggleSwitch checked={false} label="Enable Traceability exceptions" onChange={fn()} />,
+          },
+          {
+            key: "cross", name: "Cross-project traceability", hint: "Inactive until Traceability rules and Requirement types are on.",
+            control: <ToggleSwitch checked={false} label="Enable Cross-project traceability" onChange={fn()} />,
+          },
+        ],
+      },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "3 components · 1 on" }));
+    await expect(canvas.getByText("Inactive until Traceability rules is on.")).toBeInTheDocument();
+    await expect(canvas.getByText("Inactive until Traceability rules and Requirement types are on.")).toBeInTheDocument();
+    await expect(canvas.getByRole("switch", { name: "Enable Traceability exceptions" })).not.toBeChecked();
+  },
+};
+
 /** Project-style list: a plain on/off switch per module. */
 export const ProjectStyle: Story = {
   args: {
@@ -107,7 +138,15 @@ export const LongText: Story = {
       render={(long) => (
         <ModuleSettingsList
           items={[
-            { key: "a", name: stressText(long, "Compliance"), version: "0.1.0", description: stressText(long, "Manage standards.", "summary"), control: <ModuleAvailabilitySelect value="default_on" label="A availability" onChange={fn()} /> },
+            {
+              key: "a", name: stressText(long, "Compliance"), version: "0.1.0", description: stressText(long, "Manage standards.", "summary"),
+              control: <ModuleAvailabilitySelect value="default_on" label="A availability" onChange={fn()} />,
+              subSummary: "1 component · all on",
+              subItems: [{
+                key: "a1", name: stressText(long, "Rules"), hint: stressText(long, "Inactive until Standards is on.", "summary"),
+                control: <ModuleAvailabilitySelect value="off" label="A1 availability" onChange={fn()} />,
+              }],
+            },
             { key: "b", name: stressText(long, "Decisions", "word"), version: "0.1.0", hint: stressText(long, "Not on this plan.", "name"), control: <ModuleAvailabilitySelect value="opt_in" label="B availability" onChange={fn()} /> },
             { key: "c", name: "Risks", version: "0.1.0", control: <ModuleAvailabilitySelect value="off" label="C availability" onChange={fn()} /> },
           ]}
@@ -116,6 +155,10 @@ export const LongText: Story = {
     />
   ),
   play: async ({ canvasElement }) => {
+    // Both renders (short and long text) start collapsed; open each so the sub-component rows are measured.
+    for (const disclosure of within(canvasElement).getAllByRole("button", { name: "1 component · all on" })) {
+      await userEvent.click(disclosure);
+    }
     await expectStressStable(canvasElement);
   },
 };

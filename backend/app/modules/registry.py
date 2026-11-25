@@ -32,6 +32,14 @@ from sqlalchemy.orm import DeclarativeBase, Session
 
 from app.config import get_settings
 from app.models.enums import LinkFlow, LinkNestingScope
+from app.modules.seams import (
+    BaselineCheckProvider,
+    GovernanceSeam,
+    ModuleAdministrativePermission,
+    PolicyResolver,
+    RecordSubtypeResolver,
+    ReviewAdapter,
+)
 
 if TYPE_CHECKING:
     from alembic.config import Config
@@ -228,6 +236,10 @@ class ModuleSubComponentDefinition:
             and its states). A key equal to a type name serves it implicitly.
             Core reads of a record (link graph, tags, search, record tables,
             overview) treat a type as switched off when its sub-component is.
+        requires: Keys of other sub-components of the same module this one needs. While any of them is not in effect
+            (switched off, or itself waiting on one that is) this one is not in effect either, at every tier, and
+            its own switch and stored rows are kept. The settings lists name what it is waiting on.
+            `ModuleDefinition` rejects an unknown key, a reference to itself and a cycle.
     """
 
     key: str
@@ -235,6 +247,7 @@ class ModuleSubComponentDefinition:
     default_enabled: bool = True
     organization_only: bool = False
     artefact_types: tuple[str, ...] = ()
+    requires: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2543,6 +2556,17 @@ class ModuleDefinition:
         mcp_guidance: Markdown guidance for AI agents on this module's MCP tools,
             embedded in the generated `module-tools.md`; required when the module
             declares MCP tools. Omit per-tool parameter lists.
+        administrative_permissions: `ModuleAdministrativePermission`s: bare permission atoms the module adds to the
+            vocabulary, held by the organisation and project roles each names (`get_module_administrative_permissions`).
+            Core's `ADMINISTRATIVE_PERMISSIONS` never names a module's atom.
+        record_subtypes: Maps an artefact type (any registered type, including a core one the module gives a sub-type)
+            to a `RecordSubtypeResolver` returning each record's sub-type key, so a rule or policy can say "a
+            Verification action" without core knowing the module (`resolve_record_subtypes`).
+        review_adapters: Maps an artefact type to the `ReviewAdapter` the review engine reads its schedule through.
+        baseline_check_providers: `BaselineCheckProvider`s run before a baseline is taken
+            (`services.governance_seams.baseline_checks_for_project`).
+        policy_resolvers: `PolicyResolver`s answering which policy applies at each core `GovernanceSeam`
+            (`services.governance_seams.resolve_policy`).
     """
 
     key: str
@@ -2626,6 +2650,55 @@ class ModuleDefinition:
     overview_widgets: dict[str, OverviewWidgetType] = field(default_factory=dict)
     org_overview_metrics: dict[str, OverviewMetric] = field(default_factory=dict)
     org_overview_widgets: dict[str, OverviewWidgetType] = field(default_factory=dict)
+    administrative_permissions: tuple[ModuleAdministrativePermission, ...] = field(default=())
+    record_subtypes: dict[str, RecordSubtypeResolver] = field(default_factory=dict)
+    review_adapters: dict[str, ReviewAdapter] = field(default_factory=dict)
+    baseline_check_providers: tuple[BaselineCheckProvider, ...] = field(default=())
+    policy_resolvers: tuple[PolicyResolver, ...] = field(default=())
+
+    def __post_init__(self) -> None:
+        """Rejects a sub-component `requires` list that names an unknown key, the sub-component itself or forms a cycle,
+        and a registration that names a sub-component the module does not declare.
+
+        Raises:
+            ValueError: On the first problem found, naming the module and key.
+        """
+        declared = {sub.key: sub for sub in self.sub_components}
+        for sub in self.sub_components:
+            for needed in sub.requires:
+                if needed == sub.key:
+                    raise ValueError(f"Module {self.key!r}: sub-component {sub.key!r} cannot require itself.")
+                if needed not in declared:
+                    raise ValueError(f"Module {self.key!r}: sub-component {sub.key!r} requires unknown {needed!r}.")
+        for sub in self.sub_components:
+            if _requires_cycle(declared, sub.key):
+                raise ValueError(f"Module {self.key!r}: sub-component {sub.key!r} is part of a requires cycle.")
+        named = [(p.sub_component, "policy resolver") for p in self.policy_resolvers]
+        named += [(c.sub_component, f"baseline check {c.key!r}") for c in self.baseline_check_providers]
+        for sub_key, what in named:
+            if sub_key is not None and sub_key not in declared:
+                raise ValueError(f"Module {self.key!r}: {what} names undeclared sub-component {sub_key!r}.")
+        check_keys = [c.key for c in self.baseline_check_providers]
+        if len(set(check_keys)) != len(check_keys):
+            raise ValueError(f"Module {self.key!r}: duplicate baseline check key.")
+        atom_keys = [a.key for a in self.administrative_permissions]
+        if len(set(atom_keys)) != len(atom_keys):
+            raise ValueError(f"Module {self.key!r}: duplicate administrative permission key.")
+
+
+def _requires_cycle(declared: Mapping[str, ModuleSubComponentDefinition], start: str) -> bool:
+    """Whether following `requires` from `start` returns to `start`."""
+    seen: set[str] = set()
+    stack = list(declared[start].requires)
+    while stack:
+        key = stack.pop()
+        if key == start:
+            return True
+        if key in seen or key not in declared:
+            continue
+        seen.add(key)
+        stack.extend(declared[key].requires)
+    return False
 
 
 # First-party modules, always loaded regardless of `allow_external_modules`.
@@ -3086,12 +3159,13 @@ def is_module_subcomponent_enabled(
        -> `False`; a disabled module cascades to every sub-component.
     2. The organisation's hard floor (`resolve_org_subcomponent_state`'s
        `enabled`) is `False` -> `False`; no project value can cross it.
-    2b. The sub-component is `organization_only` -> `True`; no project row or
+    2b. The sub-component is `organization_only` -> the organisation's state; no project row or
         default is consulted.
     3. The project's own `ProjectModuleSubComponentEnablement` row. Projects
        get one at creation (`snapshot_project_module_state`) and before an org
        default changes (`freeze_projects_subcomponent_default`).
     4. No project row -> the organisation's `default_project_enabled`.
+    5. Whatever the result of 2b to 4, `False` while any sub-component it `requires` is not in effect.
 
     Unregistered keys resolve to `False`, not an error.
 
@@ -3104,6 +3178,16 @@ def is_module_subcomponent_enabled(
     Returns:
         The effective enabled state.
     """
+    if not is_module_enabled_for_project(db, project_id, module_key):
+        return False
+    return _project_subcomponent_in_effect(db, project_id, module_key, subcomponent_key)
+
+
+def _project_subcomponent_in_effect(
+    db: Session, project_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> bool:
+    """Steps 2 to 5 of `is_module_subcomponent_enabled`: a sub-component's state in a project whose module is on, with
+    the module-level switch left out so a requirement can be reported separately from it."""
     # Deferred import: `app.services.rbac` imports this module at load time;
     # reuses its project -> organisation resolution helper.
     from app.services.rbac import _project_organization_id
@@ -3111,22 +3195,46 @@ def is_module_subcomponent_enabled(
     organization_id = _project_organization_id(db, project_id)
     if organization_id is None:
         return False
-    if not is_module_enabled_for_project(db, project_id, module_key):
-        return False
-
+    definition = _find_subcomponent_definition(module_key, subcomponent_key)
     org_state = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
-    if org_state is None:
+    if definition is None or org_state is None:
         return False
     org_enabled, org_default_project_enabled = org_state
     if not org_enabled:
         return False
 
-    if (definition := _find_subcomponent_definition(module_key, subcomponent_key)) and definition.organization_only:
-        return True
-    project_override = _project_subcomponent_override(db, project_id, module_key, subcomponent_key)
-    if project_override is not None:
-        return project_override.enabled
-    return org_default_project_enabled
+    if definition.organization_only:
+        own = True
+    else:
+        project_override = _project_subcomponent_override(db, project_id, module_key, subcomponent_key)
+        own = project_override.enabled if project_override is not None else org_default_project_enabled
+    return own and not unmet_subcomponent_requirements(db, project_id, module_key, subcomponent_key)
+
+
+def unmet_subcomponent_requirements(
+    db: Session, project_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> list[ModuleSubComponentDefinition]:
+    """The sub-components `subcomponent_key` `requires` that are not in effect in the project, in declaration order.
+    The module-level switch is not counted, so a switched-off module reports none.
+
+    Args:
+        db: An active database session.
+        project_id: The project to resolve for.
+        module_key: The declaring module's registry key.
+        subcomponent_key: The sub-component whose requirements are checked.
+
+    Returns:
+        The unmet requirements; empty when it requires nothing, all are in effect or the key is unregistered.
+    """
+    definition = _find_subcomponent_definition(module_key, subcomponent_key)
+    if definition is None:
+        return []
+    unmet: list[ModuleSubComponentDefinition] = []
+    for key in definition.requires:
+        needed = _find_subcomponent_definition(module_key, key)
+        if needed is not None and not _project_subcomponent_in_effect(db, project_id, module_key, key):
+            unmet.append(needed)
+    return unmet
 
 
 def is_org_module_subcomponent_enabled(
@@ -3136,7 +3244,8 @@ def is_org_module_subcomponent_enabled(
     sub-component of an **org-scoped** artefact (e.g. Context & Strategy's
     org-level Strategy records), which has no project tier at all. The
     organisation's own hard `enabled` lever is the effective value; its
-    `default_project_enabled` only matters for projects.
+    `default_project_enabled` only matters for projects. A sub-component it `requires` that is not in effect
+    makes it not in effect.
 
     Args:
         db: An active database session.
@@ -3151,8 +3260,36 @@ def is_org_module_subcomponent_enabled(
     """
     if not is_module_enabled(db, organization_id, module_key):
         return False
+    return _org_subcomponent_in_effect(db, organization_id, module_key, subcomponent_key)
+
+
+def _org_subcomponent_in_effect(
+    db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> bool:
+    """The organisation tier of a sub-component with the module-level switch left out: its `enabled` lever and every
+    requirement in effect."""
     org_state = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
-    return org_state is not None and org_state[0]
+    return (
+        org_state is not None
+        and org_state[0]
+        and not unmet_org_subcomponent_requirements(db, organization_id, module_key, subcomponent_key)
+    )
+
+
+def unmet_org_subcomponent_requirements(
+    db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> list[ModuleSubComponentDefinition]:
+    """The organisation-tier counterpart of `unmet_subcomponent_requirements`: the requirements of `subcomponent_key`
+    that the organisation has switched off or that are themselves waiting on one."""
+    definition = _find_subcomponent_definition(module_key, subcomponent_key)
+    if definition is None:
+        return []
+    unmet: list[ModuleSubComponentDefinition] = []
+    for key in definition.requires:
+        needed = _find_subcomponent_definition(module_key, key)
+        if needed is not None and not _org_subcomponent_in_effect(db, organization_id, module_key, key):
+            unmet.append(needed)
+    return unmet
 
 
 def report_enabled_for_project(db: Session, project_id: uuid.UUID, module_key: str, report: ReportDefinition) -> bool:
@@ -4606,6 +4743,80 @@ def get_subtypes(db: Session, organization_id: uuid.UUID, artefact_type: str) ->
     if provider is None:
         return []
     return provider(db, organization_id)
+
+
+def get_module_administrative_permissions() -> list[tuple[str, ModuleAdministrativePermission]]:
+    """Every module's `administrative_permissions` as `(module_key, atom)` in registry order. An atom whose key is
+    already claimed (by core's `ADMINISTRATIVE_PERMISSIONS` or an earlier module) is skipped, so a duplicate can never
+    widen who holds a core atom."""
+    from app.services.permissions import ADMINISTRATIVE_PERMISSIONS
+
+    taken = set(ADMINISTRATIVE_PERMISSIONS)
+    atoms: list[tuple[str, ModuleAdministrativePermission]] = []
+    for key, definition in get_module_registry().items():
+        for atom in definition.administrative_permissions:
+            if atom.key in taken:
+                logger.warning("Module %r administrative permission %r is already claimed; skipped", key, atom.key)
+                continue
+            taken.add(atom.key)
+            atoms.append((key, atom))
+    return atoms
+
+
+def get_record_subtype_resolvers() -> dict[str, tuple[str | None, RecordSubtypeResolver]]:
+    """`{artefact type: (module key or None, resolver)}` for every type whose records have a sub-type: core's own
+    (`services.record_subtypes_core`, module key `None`) plus each module's `record_subtypes`. A type claimed twice keeps
+    the first registration."""
+    from app.services.record_subtypes_core import CORE_RECORD_SUBTYPES
+
+    merged: dict[str, tuple[str | None, RecordSubtypeResolver]] = {
+        artefact_type: (None, resolver) for artefact_type, resolver in CORE_RECORD_SUBTYPES.items()
+    }
+    for key, definition in get_module_registry().items():
+        for artefact_type, resolver in definition.record_subtypes.items():
+            merged.setdefault(artefact_type, (key, resolver))
+    return merged
+
+
+def resolve_record_subtypes(
+    db: Session, project_id: uuid.UUID, artefact_type: str, record_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, str]:
+    """Each of `record_ids`' sub-type key (`RecordSubtypeResolver`), in bulk; a record with none is absent.
+
+    A type with no resolver, or whose owning module is not enabled for the project, gives `{}`.
+    """
+    entry = get_record_subtype_resolvers().get(artefact_type)
+    if entry is None or not record_ids:
+        return {}
+    module_key, resolver = entry
+    if module_key is not None and not is_module_enabled_for_project(db, project_id, module_key):
+        return {}
+    return resolver(db, project_id, record_ids)
+
+
+def get_review_adapters() -> dict[str, tuple[str, ReviewAdapter]]:
+    """`{artefact type: (module key, ReviewAdapter)}` for every type a module registered a review schedule for. A type
+    claimed twice keeps the first registration."""
+    merged: dict[str, tuple[str, ReviewAdapter]] = {}
+    for key, definition in get_module_registry().items():
+        for artefact_type, adapter in definition.review_adapters.items():
+            merged.setdefault(artefact_type, (key, adapter))
+    return merged
+
+
+def get_baseline_check_providers() -> list[tuple[str, BaselineCheckProvider]]:
+    """Every module's `baseline_check_providers` as `(module_key, provider)` in registry order."""
+    return [(key, provider) for key, definition in get_module_registry().items() for provider in definition.baseline_check_providers]
+
+
+def get_policy_resolvers(seam: GovernanceSeam) -> list[tuple[str, PolicyResolver]]:
+    """Every module's `PolicyResolver` for `seam` as `(module_key, resolver)` in registry order."""
+    return [
+        (key, resolver)
+        for key, definition in get_module_registry().items()
+        for resolver in definition.policy_resolvers
+        if resolver.seam == seam
+    ]
 
 
 def get_all_registered_entity_scopes() -> dict[str, EntityScopeDefinition]:

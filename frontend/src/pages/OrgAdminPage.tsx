@@ -1227,10 +1227,9 @@ export function OrgAdminPage() {
         `/api/v1/orgs/${orgId}/modules/${moduleKey}/subcomponents/${subcomponentKey}`,
         fromModuleAvailability(availability),
       );
-      setOrgModuleSubComponents((prev) => ({
-        ...prev,
-        [moduleKey]: (prev[moduleKey] ?? []).map((s) => (s.subcomponent_key === subcomponentKey ? updated : s)),
-      }));
+      // A sub-component that requires this one changes state with it, so the module's whole list is read again.
+      const subs = await api.get<OrgModuleSubComponent[]>(`/api/v1/orgs/${orgId}/modules/${moduleKey}/subcomponents`);
+      setOrgModuleSubComponents((prev) => ({ ...prev, [moduleKey]: subs }));
       showToast(strings.orgAdmin.moduleAvailabilityToast(updated.name, MODULE_AVAILABILITY_LABEL[availability]));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
@@ -2992,6 +2991,7 @@ export function OrgAdminPage() {
                       subItems: subComponents.map((sub) => ({
                         key: sub.subcomponent_key,
                         name: sub.name,
+                        hint: sub.blocked_by.length > 0 ? strings.common.moduleSubComponentBlocked(sub.blocked_by) : undefined,
                         control: (
                           <ModuleAvailabilitySelect
                             value={toModuleAvailability(sub.enabled, sub.default_project_enabled)}
