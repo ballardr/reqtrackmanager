@@ -9,7 +9,8 @@
  * - Read the project's lifecycles and save one type's choice at a time (`LifecyclesApi`); `api` is injectable for stories.
  * - Show a state the organisation requires as locked with its reason (never an editable box that fails on save), and a
  *   project the organisation exempts as free to turn it off.
- * - Offer the project's one switch for skipping steps on a record, locked when the organisation forbids it.
+ * - Offer the project's one switch for skipping steps on a record, locked when the organisation or a governance profile forbids it.
+ * - Name the governance profiles that require a state or forbid skipping, and keep such a state locked for a project the organisation exempts (an exemption lifts only the organisation's own requirement).
  * - Show the Approval section (`ApprovalSeparationSection`) after the types.
  *
  * Design decisions: there is no Custom or reset control; a nested project that has made no choice shows a read-only note that it follows its parent, and its first change becomes its own choice. Only a type with at least one optional state is listed; an approval state is never offered. The
@@ -101,7 +102,8 @@ function SkipStepsRow({
           label={text.allowSkip} checked={skip.chosen} help={strings.help.lifecycleSkip}
           disabled={!canManage || skip.forbidden} onChange={(on) => void onSave(on)}
         />
-        {skip.forbidden && <Badge>{text.skipBannedByOrganisation}</Badge>}
+        {skip.forbidden && skip.forbidden_by_profiles.length === 0 && <Badge>{text.skipBannedByOrganisation}</Badge>}
+        {skip.forbidden_by_profiles.length > 0 && <Badge>{text.skipBannedByProfiles(skip.forbidden_by_profiles)}</Badge>}
         {skip.exempt && <Badge tone="info">{text.skipExempt}</Badge>}
         {skip.source === "parent_project" && <Badge>{text.skipInherited}</Badge>}
       </div>
@@ -118,6 +120,7 @@ function LifecycleTypeRow({
   const optional = lifecycle.path.filter((s) => s.optional);
   const disabled = new Set(lifecycle.disabled);
   const required = new Set(lifecycle.required);
+  const requiredBy = (key: string): string[] => lifecycle.required_by_profiles[key] ?? [];
   const steps = lifecycle.path.filter((s) => !disabled.has(s.key)).map((s) => ({ key: s.key, label: s.label }));
 
   function toggle(key: string, use: boolean) {
@@ -138,10 +141,12 @@ function LifecycleTypeRow({
           <div key={state.key} className="stack" style={{ gap: "var(--space-1)" }}>
             <CheckboxField
               label={text.useState(state.label)} checked={!disabled.has(state.key)} help={strings.help.lifecycleStates}
-              disabled={!canManage || (required.has(state.key) && !lifecycle.exempt)}
+              disabled={!canManage || (required.has(state.key) && (requiredBy(state.key).length > 0 || !lifecycle.exempt))}
               onChange={(use) => toggle(state.key, use)}
             />
-            {required.has(state.key) && <Badge>{text.requiredByOrganisation}</Badge>}
+            {requiredBy(state.key).length > 0
+              ? <Badge>{text.requiredByProfiles(requiredBy(state.key))}</Badge>
+              : required.has(state.key) && <Badge>{text.requiredByOrganisation}</Badge>}
           </div>
         ))}
         {lifecycle.exempt && <Badge tone="info">{text.exempt}</Badge>}

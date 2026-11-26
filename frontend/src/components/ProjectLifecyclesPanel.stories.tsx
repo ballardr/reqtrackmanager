@@ -62,6 +62,34 @@ export const AnExemptProjectMayTurnARequiredStateOff: Story = {
   },
 };
 
+/** A governance profile's requirement names the profile and stays locked even for a project the organisation exempts. */
+export const AGovernanceProfilesRequirementIsNamedAndLocked: Story = {
+  args: {
+    api: buildLifecyclesApi(buildProjectLifecycles([
+      buildPainPointLifecycle({ required: ["triaged"], required_by_profiles: { triaged: ["Regulated delivery"] }, exempt: true }),
+    ])),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("checkbox", { name: "Use Triaged" })).toBeDisabled();
+    await expect(canvas.getByText("Required by governance profile: Regulated delivery")).toBeInTheDocument();
+  },
+};
+
+/** A governance profile's ban on skipping steps names the profile. */
+export const AGovernanceProfilesBanOnSkippingIsNamed: Story = {
+  args: {
+    api: buildLifecyclesApi(buildProjectLifecycles([buildPainPointLifecycle()], {
+      skip: buildProjectSkip({ forbidden: true, forbidden_by_profiles: ["Regulated delivery"] }),
+    })),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("checkbox", { name: "Allow skipping steps" })).toBeDisabled();
+    await expect(canvas.getByText("Not allowed by governance profile: Regulated delivery")).toBeInTheDocument();
+  },
+};
+
 export const ANestedProjectNamesTheInheritedChoice: Story = {
   args: {
     api: buildLifecyclesApi(buildProjectLifecycles([

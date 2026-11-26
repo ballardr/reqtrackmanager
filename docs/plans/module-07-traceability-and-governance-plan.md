@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k) and Phase 7.5 (steps a to g) done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g) and Phase 8 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-10 / 23 phases complete. Phase 8 is next.
+11 / 23 phases complete. Phase 9 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -31,8 +31,8 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 6 | Governance Health (on demand and two snapshot modes) + Governance MCP tools | Governance | [x] Done 2026-11-26 |
 | 7 | Move existing types onto the engine: 7a Risk reviews, 7b Decisions, 7c Context & Strategy, 7d Requirements, 7e Compliance approval, 7f Architecture lifecycles, 7g Stakeholders lifecycles, 7h Compliance reviews, 7i Project stages and phases, 7j Component tracks, 7k Pain Point acceptance | Governance | [x] Done 2026-11-26 (7a to 7k) |
 | 7.5 | Stage governance follow-ups and flexible states (stage Health, allowed phases, phase and deadline reminders on the review engine, a profile-required workflow, custom states for other types, Compliance approval path) | Governance | [x] Done 2026-11-26 (a to g) |
-| 8 | Governance frontend UI | Governance | [ ] Not started |
-| 9 | Governance docs website coverage | Governance | [ ] Not started — depends on Phase 8 |
+| 8 | Governance frontend UI | Governance | [x] Done 2026-11-26 |
+| 9 | Governance docs website coverage | Governance | [ ] Not started |
 | 10 | Requirement types (moved from Module 5 Phase 1) | Traceability | [ ] Not started |
 | 11 | Traceability rule configuration, including the requirement hierarchy | Traceability | [ ] Not started |
 | 12 | Enforcement levels, status and baseline hand-off | Traceability | [ ] Not started |
@@ -778,7 +778,7 @@ reset (they are system moves with no caller, so decide whether a reset is a move
 `test_compliance_approval_workflow.py`, `test_compliance_approval_engine.py` unchanged, plus the lifecycle registration and a project
 that turns the submit step off.
 
-**Exit criteria:** each build step above is done with its tests, docs and decisions entry, or the user has answered the decision step
+**Exit criteria:** each build step above is done with its tests, docs and decisions entry, or the user has answered the decision step with "not now" and that is recorded; the status table counts the phase when every step is done or recorded as declined.
 
 **Built (2026-11-26).** Decisions and deviations are in `docs/decisions.md`, "Module 7 Phase 7.5".
 
@@ -788,7 +788,6 @@ that turns the submit step off.
 - **7.5g (Decided by: User).** The Compliance assessment approval state is a registered lifecycle; the plan's path was corrected to include Not assessed and Requires re-assessment.
 - **Deviations from this phase's wording:** `unavailable_phases` instead of `allowed_phase_ids`; the workflow policy is profile-only and uses the lifecycle part; the policy's default owner joins the phase reminder recipients.
 - Tests: `modules/traceability/tests/test_governance_health_stages.py`, `test_governance_stage_phase_review.py`, `test_governance_stage_workflow_policy.py`; `tests/test_stage_allowed_phases.py`, `test_stage_review_deadline_reminder.py`, `test_review_engine.py`; `modules/compliance/tests/test_compliance_approval_lifecycle.py`; stories for the unavailable phase and the Playwright spec `stage-allowed-phases.spec.ts`.
-with "not now" and that is recorded; the status table counts the phase when every step is done or recorded as declined.
 
 ## Phase 8 — Governance frontend UI
 
@@ -798,6 +797,15 @@ its mode and target, add exemptions, see which projects it binds and which have 
 profile set each policy and why, plus the Governance Health view with its mode setting. Module-contributed through `TierAModuleDefinition`
 render-prop fields. Sub-component toggles show their dependencies. Playwright e2e and
 Storybook coverage; label maps; `help` on every non-obvious field.
+
+**Built (2026-11-26; account in `docs/decisions.md`, "Module 7 Phase 8"; screens in `docs/modules.md` §4l17):**
+
+- **Registration.** `modules/traceability/module.ts`: a project route for the Governance Health page, an organisation and a project administration group "Governance", each policy section gated on its sub-component; a backend `ModuleFrontendManifest` nav entry tied to `governance_health` and the `gauge` navigation icon.
+- **Organisation.** Profiles (list, New profile, delete; a profile opens in place with Overview (details, reach, exemptions of an Enforced profile, impact per project), Lifecycle (required states, forbidding skipping steps, the required stage workflow), Approval, Review and Baseline tabs) and the default health mode.
+- **Project.** Profiles with the choice switch, Approval policy, Review policy, Baseline policy with the baseline preview, Health settings, and the Governance Health page.
+- **Shared.** `PolicyTable` (style guide "Pattern: policy table"), `ApproverRolesField`, `ReviewSettingsFields`, `BaselineSettingsFields`, `ProfileTargetsField`. The core Lifecycles panel names the governance profile that requires a state or forbids skipping steps.
+- **Deviations from this phase's wording (Decided by: Agent):** a project's lifecycle policy stays in the core Lifecycles group instead of a second Governance screen; the Traceability half's sections are Phase 16.
+- Tests: Storybook stories for every component, `modules/traceability/tests/test_traceability_module.py` (navigation entry), `tests/playwright/tests/modules/traceability/governance.spec.ts`.
 
 ## Phase 9 — Governance docs website coverage
 

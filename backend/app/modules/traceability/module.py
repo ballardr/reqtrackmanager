@@ -6,6 +6,8 @@ sub-components in two halves, the permission atoms and roles that administer the
 organisation and project APIs and bundles, and the engine registration points the later parts plug into.
 
 Registered contributions:
+- Frontend: a project nav entry for Governance Health, shown while the `governance_health` part is in effect; the policy
+  and profile screens are administration sections registered by the module's `module.ts`.
 - Governance health (`health`, `health_router`): the project's figures per record category, reviews due and baseline check
   results, live or from a snapshot; the hourly `health_snapshots` job refreshes interval snapshots. MCP tools and guidance
   (`mcp_tools`, `mcp_guidance.md`) configure governance and read the health.
@@ -48,6 +50,7 @@ from fastapi import APIRouter
 from app.models.enums import OrgRole, ProjectRole
 from app.modules.registry import (
     ModuleDefinition,
+    ModuleFrontendManifest,
     ModuleOrgBundleHooks,
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
@@ -148,6 +151,13 @@ MODULE_DEFINITION = ModuleDefinition(
                 "made from the template, which names its own."
             ),
         },
+    ),
+    frontend_manifest=ModuleFrontendManifest(
+        tier="installed",
+        nav_label="Governance Health",
+        nav_path=f"/projects/{{project_id}}/modules/{TRACEABILITY_MODULE_KEY}/health",
+        nav_icon="gauge",
+        nav_sub_component=GOVERNANCE_HEALTH,
     ),
     sub_components=(
         ModuleSubComponentDefinition(key=LIFECYCLE_POLICIES, name="Lifecycle policies"),

@@ -15,13 +15,14 @@ export default meta;
 
 type Story = StoryObj<typeof SettingsForm>;
 
-function Harness({ fail }: { fail?: boolean }) {
+function Harness({ fail, confirm }: { fail?: boolean; confirm?: boolean }) {
   const [saved, setSaved] = useState("Original");
   const [value, setValue] = useState("Original");
   return (
     <SettingsForm
       dirty={value !== saved}
       successMessage="Settings saved."
+      confirm={confirm ? { when: true, title: "Apply setting", message: "This affects every project.", confirmLabel: "Apply setting" } : undefined}
       onSave={async () => {
         if (fail) throw new Error("The server refused the change.");
         setSaved(value);
@@ -56,5 +57,23 @@ export const FailureStaysBesideSave: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await expect(await canvas.findByRole("alert")).toHaveTextContent("The server refused the change.");
     await expect(canvas.getByLabelText("Title")).toHaveValue("Original edited");
+  },
+};
+
+/** A save with a wide effect asks first: cancelling saves nothing, confirming saves. */
+export const AsksBeforeSaving: Story = {
+  render: () => <Harness confirm />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const save = canvas.getByRole("button", { name: "Save" });
+    await userEvent.type(canvas.getByLabelText("Title"), " edited");
+    await userEvent.click(save);
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Apply setting" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await expect(save).toBeEnabled();
+    await userEvent.click(save);
+    await userEvent.click(within(await within(document.body).findByRole("dialog", { name: "Apply setting" })).getByRole("button", { name: "Apply setting" }));
+    await expect(await within(document.body).findByText("Settings saved.")).toBeInTheDocument();
+    await expect(save).toBeDisabled();
   },
 };

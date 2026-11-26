@@ -1646,7 +1646,28 @@ flowchart TD
   - **Modes.** `governance_health_defaults` (organisation) and `governance_health_settings` (project; a null mode or interval follows the organisation) hold the choice; `governance_health_snapshots` holds one row per project. `snapshot_on_change` finds a change from the audit trail (an event of a provider's type or a governance policy change newer than `computed_at`, which is taken before reading) and recomputes lazily on the next read; `snapshot_interval` is refreshed by the hourly `health_snapshots` job when `interval_hours` (1, 6, 12, 24, 48, 72, 120, 168, 240 or 336) has elapsed. A refresh takes `pg_try_advisory_xact_lock` for the project, and a reader that cannot take it serves the stored snapshot flagged `stale`. The system's own refresh writes no audit event (derived data); a person's Refresh now and every settings change do.
   - **API** (module on, `governance_health` on): organisation `GET`/`PUT /health-defaults` (`manage_org_governance`); project `GET /health` (any member), `POST /health/refresh` (`manage_project_governance`; 409 on demand or while another refresh runs), `GET`/`PUT /health/settings` (`PUT` replaces every field; `manage_project_governance`). The settings read carries `on_demand_record_limit` (300) and `checks_enabled`: with baseline checks enabled, on demand leaves the 1 s list budget at about 300 records (the checks capture every baseline record, about 3 ms each: 8 s at 2,500 records, 40 s at 12,000, 150 s at 50,000), while the figures alone stay under 0.5 s at 50,000 records, so a snapshot mode is advised for a larger project with checks (`health.ON_DEMAND_GUIDANCE_RECORDS`; the `governance_health` perf scenario re-measures it). Project bundle keys `governance_health_settings` (template configuration) and `governance_health_runner` (the person's email; excluded from templates; applied on import only to a member of the project), organisation bundle key `governance_health_default` (a merge keeps the organisation's own).
   - **MCP.** `modules/traceability/mcp_tools.py` declares 29 tools (health, project policy, the organisation's profiles and policy) with `mcp_guidance.md`. Deleting a profile and adding or removing an exemption have no tool (they lift an enforced control and stay a person's act); no tool approves or finalises a baseline.
-- **Not built yet:** the profile screens (frontend), enforcement by the Requirement and Change Request endpoints of the lifecycle policy (their migration step), and the interval's use by Risk and the requirement review route (Phases 7a and 7d).
+- **Screens (`frontend/src/modules/traceability/`, registered in its `module.ts`).** The organisation's Governance group holds Profiles (a profile opens in place with Overview, Lifecycle, Approval, Review and Baseline tabs; a tab for a part that is off is left out) and Health (the default mode). A project's Governance group holds Profiles (the choice per Opt-in or Default profile), Approval policy, Review policy, Baseline policy (with a preview of the checks) and Health (mode, interval, check runner); each policy section shows only while its part is in effect. Governance Health is a project page and navigation entry (`ModuleFrontendManifest`, tied to `governance_health`). A per-record-type policy is one `PolicyTable` (docs/ux-style-guide.md, "Pattern: policy table"); a project's lifecycle policy stays in the core Lifecycles group, which names the profiles that require a state.
+
+```mermaid
+flowchart LR
+    subgraph ORG["Organisation administration: Governance"]
+        OP["Profiles"] --> OT["Profile tabs: Overview, Lifecycle, Approval, Review, Baseline"]
+        OH["Health default"]
+    end
+    subgraph PRJ["Project administration: Governance"]
+        PP["Profiles (choices)"]
+        PA["Approval policy"]
+        PR["Review policy"]
+        PB["Baseline policy and preview"]
+        PH["Health settings"]
+    end
+    PG["Governance Health page (navigation entry)"]
+    OT -->|"policy reaches the project"| PA
+    OT --> PR
+    OT --> PB
+    OH -->|"default for"| PH
+    PH -->|"mode"| PG
+```
 
 ### 4l13. External references on every record
 

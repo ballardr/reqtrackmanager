@@ -95,6 +95,20 @@ def test_module_declares_ten_sub_components_with_requires():
     assert [key for key, s in subs.items() if s.requires] == ["traceability_exceptions", "cross_project_traceability"]
 
 
+def test_project_nav_entry_leads_to_governance_health_and_names_its_part(client, admin_token, org_id):
+    """A project sees one nav entry, the health page, tied to the `governance_health` part so the rail can hide it while that
+    part is off."""
+    _enable_module(client, admin_token, org_id)
+    project = create_project(client, admin_token, org_id, "Governance Nav Project")
+    resp = client.get(f"/api/v1/projects/{project['id']}/enabled-modules", headers=auth_headers(admin_token))
+    assert resp.status_code == 200, resp.text
+    manifest = {m["module_key"]: m for m in resp.json()}[TRACEABILITY_MODULE_KEY]["frontend_manifest"]
+    assert manifest["nav_path"] == f"/projects/{project['id']}/modules/{TRACEABILITY_MODULE_KEY}/health"
+    assert manifest["nav_label"] == "Governance Health"
+    assert manifest["nav_sub_component"] == "governance_health"
+    assert manifest["tier"] == "installed"
+
+
 def test_module_declares_four_roles_in_two_pairs():
     definition = get_module(TRACEABILITY_MODULE_KEY)
     assert definition is not None

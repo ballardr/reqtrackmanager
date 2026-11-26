@@ -14,6 +14,7 @@ import {
   Anchor,
   CircleHelp,
   Compass,
+  Gauge,
   Lightbulb,
   type LucideIcon,
   MessagesSquare,
@@ -44,6 +45,7 @@ const ICONS_BY_NAME: Record<string, LucideIcon> = {
   target: Target,
   "messages-square": MessagesSquare,
   lightbulb: Lightbulb,
+  gauge: Gauge,
 };
 
 /** The generic fallback `nav_icon`'s backend default resolves to (`"puzzle"`), so an unrecognised name (for example a third-party module's) still renders an icon. */
