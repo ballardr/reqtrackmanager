@@ -132,6 +132,8 @@ Before the deadline, the project's stakeholders who have not yet responded, and 
 
 A phase the project turned off (for example the Review step, under **Project Admin → Workflows and phases**) is shown unavailable in the phase picker of a stage and of a component's track, so only moves the project allows are offered. An organisation can also require a stage workflow through a governance profile: new stages then start in it and the project cannot hide it.
 
+A project's [baseline policy](../modules/governance-module/baseline-policies.md) can add checks that must pass before a stage enters a locked phase: a failing check refuses the baseline, nothing is approved or locked, and the page lists every record and check at fault.
+
 Once a stage's work is delivered, a project manager moves it to a Closed phase, optionally marking every approved requirement targeting it as completed.
 
 ## Where this fits

@@ -68,6 +68,7 @@ test.describe("Governance", () => {
 
     await test.step("the project's review policy shows the interval", async () => {
       await selectProjectAdminGroup(page, "Review policy", "Governance");
+      await expect(page.getByRole("heading", { name: "Review policy", level: 2 })).toBeVisible();
       const row = page.getByRole("row", { name: /Requirement/ });
       await expect(row.getByText("90")).toBeVisible();
     });
@@ -83,6 +84,11 @@ test.describe("Governance", () => {
     await createProfile(page, optIn, "Opt-in");
     await page.getByRole("link", { name: "Profiles" }).or(page.getByRole("button", { name: "Profiles" })).first().click();
     await createProfile(page, byDefault, "Default");
+
+    // The chevron beside the profile name switches to another profile without returning to the list.
+    await page.getByRole("button", { name: "Switch profile" }).click();
+    await page.getByRole("link", { name: optIn }).click();
+    await expect(page.getByRole("heading", { name: optIn })).toBeVisible();
 
     await page.goto(projectAdminUrl(project.id));
     await selectProjectAdminGroup(page, "Profiles", "Governance");
@@ -110,6 +116,7 @@ test.describe("Governance", () => {
       await page.getByRole("link", { name: "Governance Health", exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/traceability/health$`));
       await expect(page.getByRole("heading", { name: "Governance Health", level: 1 })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Categories", level: 2 })).toBeVisible();
       await expect(page.getByRole("button", { name: "Refresh now" })).toHaveCount(0);
     });
 

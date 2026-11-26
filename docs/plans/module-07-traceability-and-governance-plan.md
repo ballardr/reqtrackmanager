@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g) and Phase 8 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phase 8 and Phase 9 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-11 / 23 phases complete. Phase 9 is next.
+12 / 23 phases complete. Phase 10 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -32,7 +32,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 7 | Move existing types onto the engine: 7a Risk reviews, 7b Decisions, 7c Context & Strategy, 7d Requirements, 7e Compliance approval, 7f Architecture lifecycles, 7g Stakeholders lifecycles, 7h Compliance reviews, 7i Project stages and phases, 7j Component tracks, 7k Pain Point acceptance | Governance | [x] Done 2026-11-26 (7a to 7k) |
 | 7.5 | Stage governance follow-ups and flexible states (stage Health, allowed phases, phase and deadline reminders on the review engine, a profile-required workflow, custom states for other types, Compliance approval path) | Governance | [x] Done 2026-11-26 (a to g) |
 | 8 | Governance frontend UI | Governance | [x] Done 2026-11-26 |
-| 9 | Governance docs website coverage | Governance | [ ] Not started |
+| 9 | Governance docs website coverage | Governance | [x] Done 2026-11-26 |
 | 10 | Requirement types (moved from Module 5 Phase 1) | Traceability | [ ] Not started |
 | 11 | Traceability rule configuration, including the requirement hierarchy | Traceability | [ ] Not started |
 | 12 | Enforcement levels, status and baseline hand-off | Traceability | [ ] Not started |
@@ -820,7 +820,13 @@ Tracked as its own phase (**Decided by: User**, 2026-09-21; scope **Decided by: 
 - Screenshots per the docs-website standard (1440×900, seeded demo data, alt text plus a
   one-line caption, no explanatory prose): baseline policy settings and the Health view.
 
-**Status:** not started; depends on Phase 8.
+**Built (2026-11-26; account in `docs/decisions.md`, "Module 7 Phase 9"):**
+
+- A nested category "Traceability & Governance module" under Modules (`docs/website/docs/modules/governance-module/`): Overview, Profiles, Lifecycle and approval policies, Review policies, Baseline policies, Governance health, AI assistant (MCP) integration, Known limitations; seven Mermaid diagrams, all parsed with `scripts/mermaid_parse.mjs`. The Modules overview, Roadmap, Glossary, Lifecycles, Stages and baselining and the MCP overview point at it.
+- Screenshots `governance-profile.png`, `governance-baseline-policy.png` and `governance-health.png` (1440×900, demo dataset).
+- **Deviations from this phase's wording (Decided by: Agent):** one page became a category; the rule-satisfaction diagram shows the check-provider registry because Traceability rules are not built (Phase 17 updates it); Known limitations says the Traceability sub-components do nothing yet.
+- **UI review (Decided by: User, mid-phase):** Governance sections are headed cards and the health page's sections are cards, so tables no longer sit as white squares on the page background; the style guide's "Pattern: policy table" states the rule.
+- Tests: `tests/playwright/tests/modules/traceability/governance.spec.ts` asserts the card headings; `npm run build` in `docs/website` and `scripts/check_doc_links.py` pass.
 
 ## Phase 10 — Requirement types (`requirement_types`)
 

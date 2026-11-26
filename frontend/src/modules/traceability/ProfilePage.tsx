@@ -1,8 +1,8 @@
 /**
  * Module: modules/traceability/ProfilePage
  *
- * One governance profile inside the organisation's Profiles section: the record header (name, mode, a Profiles back
- * control) over a tab for the profile's Overview (details, reach, exemptions, effect on projects) and one tab per policy
+ * One governance profile inside the organisation's Profiles section: the record header (name with a switcher to the
+ * organisation's other profiles, mode, a Profiles back control) over a tab for the profile's Overview (details, reach, exemptions, effect on projects) and one tab per policy
  * part (Lifecycle, Approval, Review, Baseline).
  *
  * Responsibilities:
@@ -20,6 +20,7 @@ import { useCallback, useId, useState } from "react";
 import { api, ApiError } from "../../api/client";
 import type { OrgModuleSubComponent } from "../../api/types";
 import { Badge } from "../../components/Badge";
+import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { LoadFailed } from "../../components/LoadFailed";
 import { RecordHeader } from "../../components/RecordHeader";
 import { Spinner } from "../../components/Spinner";
@@ -89,6 +90,8 @@ export function ProfilePage({ orgId, profileId, onBack }: { orgId: string; profi
     return <LoadFailed message={strings.requestFailure.loadFailed("The profile")} onRetry={() => { setState("loading"); void load(); }} />;
   }
 
+  const loadProfileOptions = async (): Promise<EntitySwitcherOption[]> =>
+    (await profileApi.list(orgId)).map((p) => ({ id: p.id, label: p.name, href: `?profile=${p.id}` }));
   const offered = TABS.filter((tab) => tab.subComponent === null || enabled.has(tab.subComponent));
   const tabs: TabDef<TabKey>[] = offered.map(({ key, label }) => ({ key, label }));
   const active: TabKey = tabParam !== "" && offered.some((tab) => tab.key === tabParam) ? tabParam : "overview";
@@ -99,6 +102,7 @@ export function ProfilePage({ orgId, profileId, onBack }: { orgId: string; profi
         headingLevel="h2" recordLabel="Profile" title={profile.name}
         badges={<Badge tone={PROFILE_MODE_TONE[profile.mode]}>{PROFILE_MODE_LABEL[profile.mode]}</Badge>}
         subtitle={profile.description || undefined}
+        titleAddon={<EntitySwitcher label="Switch profile" currentId={profile.id} loadOptions={loadProfileOptions} reloadKey={profile.name} />}
         back={{ onClick: onBack, label: "Profiles" }}
       />
       <Tabs idPrefix={idPrefix} tabs={tabs} active={active} onChange={setTab} />

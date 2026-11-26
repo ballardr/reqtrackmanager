@@ -30,6 +30,10 @@ A link of the type Allocated to from a requirement to an element of the architec
 
 A short plain-text message written by a server administrator (for the whole platform) or an organisation administrator (for that organisation), with a severity (shown by colour, icon and name) and a start (now by default) and an optional end time. It shows on the login pages when flagged, and as a banner after sign-in that can be made not dismissible, and can be sent once as a notification. See [Server administration](../workflows/server-administration.md#messages) and [Administering an organisation](../workflows/administering-an-organisation.md#messages).
 
+#### Approval policy
+
+A governance setting that names roles which may also approve a record type. It only adds approvers and never removes a default one. See [Lifecycle and approval policies](../modules/governance-module/lifecycle-and-approval-policies.md#approval-policy).
+
 #### Attach point
 
 One of the eight points on the edge of a box (the four corners and the four midpoints) where a line meets it. A box shows its points only while the pointer is near it, while it is selected and while a line is drawn nearby. Left automatic, a line uses the point nearest its other end; the end of a selected line can be dragged to another point on the same box. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
@@ -41,6 +45,10 @@ The record of security- and administration-relevant events (logins, permission g
 #### Baseline
 
 A permanent snapshot of every requirement that was in draft or reviewed status at the moment a project stage was approved. Answers "what did we commit to" reliably, even after later changes. See [Change requests and baselines](../concepts/change-requests-and-baselines.md). A baseline can also hold a module's records (the architecture), and can be taken manually without a stage; see [Baselines](../modules/system-architecture-module/baselines.md).
+
+#### Baseline check
+
+A test that must pass before a baseline is taken, chosen by a project's baseline policy. A failing check refuses the whole baseline and lists every failure. See [Baseline policies](../modules/governance-module/baseline-policies.md).
 
 #### Boundary box
 
@@ -57,6 +65,10 @@ The formal, versioned history of a requirement or change request: who changed wh
 #### Change request
 
 The only way to modify a locked (Approved or Completed) requirement: a proposal with its own reasoning, targeted fields, and an explicit approve/reject decision from a project manager or administrator. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
+
+#### Check runner
+
+The person a project's baseline checks run as when [Governance health](#governance-health) is kept as a snapshot. See [Governance health](../modules/governance-module/governance-health.md#baseline-checks-and-who-runs-them).
 
 #### Choice
 
@@ -162,6 +174,14 @@ The ringed dot where a state machine diagram ends. A final state has no outgoing
 
 The part of a Pain Point's scores that applies to the whole Pain Point: every criterion's level, and the default for the criteria scored per persona. A persona that differs adds its own levels, which override General for that persona. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#scoring-a-pain-point).
 
+#### Governance health
+
+What a project has achieved against its governance: progress per record type, reviews due and baseline check results, computed on demand or kept as a snapshot. See [Governance health](../modules/governance-module/governance-health.md).
+
+#### Governance profile
+
+A named set of lifecycle, approval, review and baseline policy that an organisation applies to projects. Its mode is Enforced, Default or Opt-in. See [Profiles](../modules/governance-module/profiles.md).
+
 #### Guard
 
 Another name for a [condition](#condition-guard) on a transition.
@@ -224,7 +244,7 @@ A diagram written as text in a fenced `mermaid` block of a Markdown field and dr
 
 #### Module
 
-A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
+A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, Risk Management, Product Feedback and Traceability & Governance are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
 
 #### Navigation name
 

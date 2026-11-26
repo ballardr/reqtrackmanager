@@ -24,6 +24,7 @@ import { useParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { Badge } from "../../components/Badge";
 import { CellText } from "../../components/CellText";
+import { CollapsibleSection } from "../../components/CollapsibleSection";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { LoadFailed } from "../../components/LoadFailed";
 import { ProgressMeter } from "../../components/ProgressMeter";
@@ -224,18 +225,15 @@ export function GovernanceHealthPage() {
           <span>{health.source === "live" ? "Live figures, read when this page opened." : `Snapshot taken ${new Date(health.computed_at).toLocaleString()}.`}</span>
           {health.stale && <Badge tone="warning">Stale</Badge>}
         </div>
-        <section className="stack">
-          <h2 style={{ margin: 0 }}>Categories</h2>
+        <CollapsibleSection sectionKey="governance-health-categories" title="Categories" collapsible={false}>
           <CategoriesTable categories={health.categories} />
-        </section>
-        <section className="stack">
-          <h2 style={{ margin: 0 }}>Reviews due</h2>
+        </CollapsibleSection>
+        <CollapsibleSection sectionKey="governance-health-reviews-due" title="Reviews due" collapsible={false}>
           <ReviewsTable reviews={health.reviews} />
-        </section>
-        <section className="stack">
-          <h2 style={{ margin: 0 }}>Baseline checks</h2>
+        </CollapsibleSection>
+        <CollapsibleSection sectionKey="governance-health-baseline-checks" title="Baseline checks" collapsible={false}>
           <ChecksSection health={health} labels={labels} />
-        </section>
+        </CollapsibleSection>
       </>
     );
   }

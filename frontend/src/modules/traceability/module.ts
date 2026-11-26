@@ -1,5 +1,6 @@
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 
+import { CollapsibleSection } from "../../components/CollapsibleSection";
 import type { TierAModuleDefinition } from "../types";
 import { GovernanceHealthPage } from "./GovernanceHealthPage";
 import { OrgHealthDefaultsPanel } from "./OrgHealthDefaultsPanel";
@@ -31,6 +32,19 @@ import { ProjectReviewPanel } from "./ProjectReviewPanel";
 /** The Governance settings share one expandable entry in the project and organisation admin menus. */
 const GOVERNANCE_ADMIN_GROUP = { key: "governance", label: "Governance" };
 
+/**
+ * Draws a Governance settings panel as a headed card, like every core administration section, so its tables and forms
+ * sit on the card surface (docs/ux-style-guide.md, Principle 1) and its sub-headings follow a section heading.
+ *
+ * @param key The section's key.
+ * @param title The section's heading.
+ * @param panel The panel to draw inside the card.
+ * @returns The card element.
+ */
+function inCard(key: string, title: string, panel: ReactNode): ReactNode {
+  return createElement(CollapsibleSection, { sectionKey: key, title, collapsible: false, children: panel });
+}
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "traceability",
   routes: [
@@ -41,14 +55,14 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "governance-profiles",
       label: "Profiles",
       group: GOVERNANCE_ADMIN_GROUP,
-      render: ({ orgId }) => createElement(OrgProfilesPanel, { orgId }),
+      render: ({ orgId }) => inCard("governance-profiles", "Profiles", createElement(OrgProfilesPanel, { orgId })),
     },
     {
       key: "governance-health",
       label: "Health",
       subComponent: "governance_health",
       group: GOVERNANCE_ADMIN_GROUP,
-      render: ({ orgId }) => createElement(OrgHealthDefaultsPanel, { orgId }),
+      render: ({ orgId }) => inCard("governance-health", "Health", createElement(OrgHealthDefaultsPanel, { orgId })),
     },
   ],
   projectAdminSections: [
@@ -56,35 +70,35 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "governance-profiles",
       label: "Profiles",
       group: GOVERNANCE_ADMIN_GROUP,
-      render: ({ projectId }) => createElement(ProjectProfilesPanel, { projectId }),
+      render: ({ projectId }) => inCard("governance-profiles", "Profiles", createElement(ProjectProfilesPanel, { projectId })),
     },
     {
       key: "governance-approval",
       label: "Approval policy",
       subComponent: "approval_policies",
       group: GOVERNANCE_ADMIN_GROUP,
-      render: ({ projectId }) => createElement(ProjectApprovalPanel, { projectId }),
+      render: ({ projectId }) => inCard("governance-approval", "Approval policy", createElement(ProjectApprovalPanel, { projectId })),
     },
     {
       key: "governance-review",
       label: "Review policy",
       subComponent: "review_policies",
       group: GOVERNANCE_ADMIN_GROUP,
-      render: ({ projectId }) => createElement(ProjectReviewPanel, { projectId }),
+      render: ({ projectId }) => inCard("governance-review", "Review policy", createElement(ProjectReviewPanel, { projectId })),
     },
     {
       key: "governance-baseline",
       label: "Baseline policy",
       subComponent: "baseline_policies",
       group: GOVERNANCE_ADMIN_GROUP,
-      render: ({ projectId }) => createElement(ProjectBaselinePanel, { projectId }),
+      render: ({ projectId }) => inCard("governance-baseline", "Baseline policy", createElement(ProjectBaselinePanel, { projectId })),
     },
     {
       key: "governance-health",
       label: "Health",
       subComponent: "governance_health",
       group: GOVERNANCE_ADMIN_GROUP,
-      render: ({ projectId }) => createElement(ProjectHealthSettingsPanel, { projectId }),
+      render: ({ projectId }) => inCard("governance-health", "Health", createElement(ProjectHealthSettingsPanel, { projectId })),
     },
   ],
 };

@@ -21,6 +21,7 @@ function mockProfile(subComponents = SUB_COMPONENTS) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith("/modules/traceability/subcomponents")) return subComponents;
     if (path.endsWith("/approval")) return { types: [], role_options: [] };
+    if (path.endsWith("/modules/traceability/profiles")) return [ENFORCED_PROFILE, DEFAULT_PROFILE];
     const found = profileScreenResponse(path, ENFORCED_PROFILE);
     if (found !== undefined) return found;
     return {};
@@ -39,6 +40,29 @@ export const ShowsTheOverview: Story = {
     }
     await userEvent.click(canvas.getByRole("button", { name: /Profiles/ }));
     await expect(args.onBack).toHaveBeenCalled();
+  },
+};
+
+/** A chevron beside the name lists the organisation's other profiles and opens one by its address. */
+export const SwitchesToAnotherProfile: Story = {
+  beforeEach: () => mockProfile(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Switch profile" }));
+    const other = await within(document.body).findByRole("link", { name: DEFAULT_PROFILE.name });
+    await expect(other).toHaveAttribute("href", `/?profile=${DEFAULT_PROFILE.id}`);
+    await expect(within(document.body).queryByRole("link", { name: ENFORCED_PROFILE.name })).not.toBeInTheDocument();
+  },
+};
+
+/** The back control is drawn as a link, not a bordered button. */
+export const BackIsALink: Story = {
+  beforeEach: () => mockProfile(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const back = await canvas.findByRole("button", { name: /Profiles/ });
+    await expect(back).toHaveClass("link-button");
+    await expect(back).not.toHaveClass("btn");
   },
 };
 

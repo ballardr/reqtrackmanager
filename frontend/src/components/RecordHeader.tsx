@@ -109,7 +109,7 @@ export function RecordHeader({
           {back && ("to" in back ? (
             <Link {...listBackTarget(back.to)}>{BACK_ARROW}{backName ?? back.label}</Link>
           ) : (
-            <button type="button" className="btn" onClick={back.onClick}>{BACK_ARROW}{back.label}</button>
+            <button type="button" className="link-button" onClick={back.onClick}>{BACK_ARROW}{back.label}</button>
           ))}
           {returnTo}
         </div>

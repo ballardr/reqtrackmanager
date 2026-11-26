@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api, ApiError } from "../../api/client";
 import { expectStressStable, stressText } from "../../testing/stressFixtures";
 import { TextStress } from "../../testing/TextStress";
-import { withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { GovernanceHealthPage } from "./GovernanceHealthPage";
 import type { Health } from "./types";
 
@@ -45,7 +45,7 @@ const SNAPSHOT: Health = {
 const meta: Meta<typeof GovernanceHealthPage> = {
   title: "Modules/Governance/GovernanceHealthPage",
   component: GovernanceHealthPage,
-  decorators: [withToast(), withRouter(`/projects/${PROJECT_ID}/modules/traceability/health`, ROUTE)],
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} })), withToast(), withRouter(`/projects/${PROJECT_ID}/modules/traceability/health`, ROUTE)],
 };
 export default meta;
 
@@ -59,6 +59,9 @@ export const Live: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { level: 1, name: "Governance health" })).toBeInTheDocument();
+    for (const name of ["Categories", "Reviews due", "Baseline checks"]) {
+      await expect(canvas.getByRole("heading", { level: 2, name })).toBeInTheDocument();
+    }
     await expect(canvas.getByText("Live figures, read when this page opened.")).toBeInTheDocument();
     const categories = canvas.getByRole("table", { name: "Progress by record category" });
     await expect(within(categories).getByText("62% (5 of 8)")).toBeInTheDocument();

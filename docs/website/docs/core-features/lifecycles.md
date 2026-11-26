@@ -52,6 +52,8 @@ An organisation administrator opens **Organisation administration, Lifecycles** 
 
 To let one project keep its own choice, select **Exempt a project** under the type, choose the project and, if its nested projects are exempt too, **Include nested projects**. Removing the exemption makes the requirement bind the project again.
 
+An organisation can also require states, forbid skipping steps and require a stage workflow through a [governance profile](../modules/governance-module/lifecycle-and-approval-policies.md#lifecycle-policy), which can be Enforced, a Default or Opt-in, and a project's page names the profile behind each requirement.
+
 ## Skipping steps on one record
 
 Sometimes one record needs to move past steps the project keeps on, without changing the project's settings. Skipping is **off by default**.
