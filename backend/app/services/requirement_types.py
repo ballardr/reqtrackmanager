@@ -8,8 +8,8 @@ Responsibilities:
   fallback to the nearest configured ancestor) as a `TypeVocabulary`.
 - Seed the default list, ranked 1 to 3, for a new organisation (`seed_org_defaults`).
 - Resolve the type id a payload names to the project type row a version stores (`resolve_requirement_type`).
-- Read the type names of many versions at once (`type_names`) and the type name of each requirement in bulk for a
-  record sub-type (`requirement_subtypes`).
+- Read the type names of many versions at once (`type_names`) and the type name and rank of each requirement in bulk
+  (`requirement_subtypes`, `requirement_ranks`).
 
 Design decisions:
 - The list order is for display; `rank` is the priority (lower is higher, equal ranks are peers, null is unranked) that
@@ -184,6 +184,31 @@ def requirement_subtypes(
     ).all()
     names = type_names(db, [type_id for _requirement_id, type_id in rows])
     return {requirement_id: names[type_id] for requirement_id, type_id in rows if type_id in names}
+
+
+def requirement_ranks(
+    db: Session, project_id: uuid.UUID, record_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, int]:
+    """Each requirement's type rank, for the requirements of `project_id` among `record_ids`.
+
+    Args:
+        db: Active session.
+        project_id: The project the requirements belong to.
+        record_ids: Requirement ids.
+
+    Returns:
+        `{requirement id: rank}`; a requirement with no type, or whose type is unranked, is absent.
+    """
+    rows = db.execute(
+        select(Requirement.id, RequirementVersion.project_type_id)
+        .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
+        .where(
+            Requirement.id.in_(record_ids), Requirement.project_id == project_id,
+            RequirementVersion.valid_to.is_(None), RequirementVersion.project_type_id.is_not(None),
+        )
+    ).all()
+    ranks = type_ranks(db, [type_id for _requirement_id, type_id in rows])
+    return {requirement_id: ranks[type_id] for requirement_id, type_id in rows if type_id in ranks}
 
 
 def copy_project_requirement_types(db: Session, source: Project, target: Project):

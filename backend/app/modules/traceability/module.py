@@ -73,6 +73,8 @@ from app.modules.traceability import (
     health,
     lifecycle_policy,
     review_policy,
+    rule_fields,
+    rules,
     stage_workflow_policy,
 )
 from app.modules.traceability._shared import (
@@ -142,7 +144,7 @@ MODULE_DEFINITION = ModuleDefinition(
         export=bundle.export_project_data, import_=bundle.import_project_data,
         template_configuration_keys=frozenset({
             bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY, bundle.BASELINE_POLICY_KEY,
-            bundle.HEALTH_SETTINGS_KEY,
+            bundle.HEALTH_SETTINGS_KEY, bundle.RULES_KEY, bundle.HIDDEN_RULES_KEY,
         }),
         template_excluded={
             bundle.HEALTH_RUNNER_KEY: (
@@ -222,10 +224,15 @@ MODULE_DEFINITION = ModuleDefinition(
             export_rows=review_policy.export_rows, import_rows=review_policy.import_rows, sub_component=REVIEW_POLICIES,
         ),
         ProfileContributor(
+            key="traceability_rules", name="Traceability rules", count_rows=rules.count_rows,
+            export_rows=rules.export_rows, import_rows=rules.import_rows, sub_component=TRACEABILITY_RULES,
+        ),
+        ProfileContributor(
             key="baseline", name="Baseline policy", count_rows=baseline_policy.count_rows,
             export_rows=baseline_policy.export_rows, import_rows=baseline_policy.import_rows, sub_component=BASELINE_POLICIES,
         ),
     ),
+    rule_condition_fields=rule_fields.FIELDS,
     stage_workflow_references=stage_workflow_policy.references,
     principal_references=(
         PrincipalReference(
@@ -235,7 +242,7 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     activity_metadata_types={
         "governance_profile": "structure", "governance_approval_policy": "structure", "governance_review_policy": "structure",
-        "governance_baseline_policy": "structure", "governance_health_settings": "structure",
+        "governance_baseline_policy": "structure", "governance_traceability_rule": "structure", "governance_health_settings": "structure",
         "governance_health_default": "structure", "governance_health": "structure",
     },
     scheduled_jobs=(ModuleScheduledJob(job_id="health_snapshots", hour=None, minute=7, run=health.run_scheduled_refresh),),

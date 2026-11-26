@@ -8,7 +8,8 @@ can own.
 
 Responsibilities:
 - Define the frozen dataclasses `ModuleDefinition` carries (`administrative_permissions`, `record_subtypes`,
-  `review_adapters`, `baseline_check_providers`, `policy_resolvers`, `profile_contributors`, `health_providers`);
+  `review_adapters`, `baseline_check_providers`, `policy_resolvers`, `profile_contributors`, `health_providers`,
+  `rule_condition_fields`);
   `registry.py` merges them
   and `services.governance_seams` resolves them for a project.
 
@@ -504,6 +505,32 @@ class HealthProvider:
     measure: Callable[[Session, uuid.UUID], HealthMeasure | None]
     sub_component: str | None = None
     open_to_members: bool = False
+
+
+@dataclass(frozen=True)
+class RuleConditionField:
+    """One property of a record that a traceability rule's "applies when" condition may test.
+
+    Attributes:
+        key: The stable field key stored in rules (`"requirement_type_rank"`); unique across every module.
+        label: Formal display name for the rule editor.
+        value_kind: `"text"` (compared as text, ignoring case) or `"number"` (compared as whole numbers).
+        values: `(db, project_id, artefact_type, record_ids) -> {record id: values}`, read in bulk for the records of one
+            project; a record with no value is absent (or maps to an empty list). A record may hold several values (a tag
+            set), and a condition holds when any of them satisfies it.
+        options: Optional `(db, project_id, artefact_type) -> value choices` the editor offers; `None` when any value may
+            be typed.
+        artefact_types: The record types the field applies to; empty means every registered type.
+        sub_component: A sub-component of the registering module that must be in effect for the field to apply.
+    """
+
+    key: str
+    label: str
+    value_kind: Literal["text", "number"]
+    values: Callable[[Session, uuid.UUID, str, Sequence[uuid.UUID]], Mapping[uuid.UUID, Sequence[str | int]]]
+    options: Callable[[Session, uuid.UUID, str], Sequence[str]] | None = None
+    artefact_types: tuple[str, ...] = ()
+    sub_component: str | None = None
 
 
 RecordSubtypeResolver = Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], dict[uuid.UUID, str]]

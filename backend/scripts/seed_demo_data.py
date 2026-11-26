@@ -1766,7 +1766,9 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
     profile requires the Reviewed step of a requirement, lets Stakeholders decide change requests, sends a requirement's
     review reminder 14 days ahead with a 90-day review interval and refuses a stage baseline that holds a requirement
     with no description or one the person taking the baseline may not approve; the Opt-in profile forbids skipping steps
-    and makes new stages start in a safety-critical workflow.
+    and makes new stages start in a safety-critical workflow. The Enforced profile expects every Project Requirement to
+    link to a Stakeholder Requirement (a warning) and the Default profile every Stakeholder Requirement to link to a
+    Business Requirement (informational).
     The organisation keeps governance health as a snapshot refreshed every 12 hours, and the offered project keeps its own
     as a snapshot recomputed after a change."""
     enable_module(headers, org_id, "traceability")
@@ -1804,10 +1806,37 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
         headers=headers, timeout=30,
     ).raise_for_status()
     httpx.post(
+        f"{base}/{enforced.json()['id']}/rules",
+        json={
+            "name": "Project requirements derive from stakeholder requirements",
+            "description": "Every Project Requirement links to at least one Stakeholder Requirement.",
+            "source_type": "requirement", "source_subtype": "Project Requirement", "level": "warning",
+            "requires": {
+                "op": "link", "direction": "outgoing", "min": 1,
+                "targets": [{"artefact_type": "requirement", "subtype": "Stakeholder Requirement"}],
+            },
+        },
+        headers=headers, timeout=30,
+    ).raise_for_status()
+    engineering = httpx.post(
         base, json={
             "name": "Engineering baseline", "description": "Shared practice a project may leave.",
             "mode": "default", "target_kind": "all_projects",
         }, headers=headers, timeout=30,
+    )
+    engineering.raise_for_status()
+    httpx.post(
+        f"{base}/{engineering.json()['id']}/rules",
+        json={
+            "name": "Stakeholder requirements trace to a business requirement",
+            "description": "Every Stakeholder Requirement links to a Business Requirement.",
+            "source_type": "requirement", "source_subtype": "Stakeholder Requirement", "level": "informational",
+            "requires": {
+                "op": "link", "direction": "outgoing", "min": 1,
+                "targets": [{"artefact_type": "requirement", "subtype": "Business Requirement"}],
+            },
+        },
+        headers=headers, timeout=30,
     ).raise_for_status()
     safety = httpx.post(
         base, json={

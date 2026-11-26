@@ -2,7 +2,8 @@
 Module: modules.traceability.enums
 
 Closed vocabularies of the module: how a governance profile binds a project, which projects it reaches, what it does for
-one project, how a profile's stage workflow binds a project, and how a project's governance health is kept.
+one project, how a profile's stage workflow binds a project, how firmly a traceability rule is expected to hold and how a project's
+governance health is kept.
 
 Responsibilities:
 - Name each value once; the model stores the value as a plain string and the services validate against these.
@@ -69,6 +70,18 @@ class StageWorkflowMode(str, Enum):
 
     DEFAULT = "default"
     RESTRICT = "restrict"
+
+
+class RuleLevel(str, Enum):
+    """How firmly a traceability rule is expected to hold.
+
+    `INFORMATIONAL` reports a record that breaks the rule, `WARNING` highlights it and `REQUIRED` is the level a baseline
+    check can refuse a baseline for (only where baseline policies are in effect). Traceability itself never blocks.
+    """
+
+    INFORMATIONAL = "informational"
+    WARNING = "warning"
+    REQUIRED = "required"
 
 
 #: The refresh cadences a project may choose for interval snapshots, in hours: hourly, a few times a day, then whole days

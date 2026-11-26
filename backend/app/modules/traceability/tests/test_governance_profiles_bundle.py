@@ -230,6 +230,6 @@ def test_choices_and_policy_rows_are_template_configuration():
     hooks = definition.project_bundle_hooks
     assert hooks is not None and hooks.template_configuration_keys == {
         bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY, bundle.BASELINE_POLICY_KEY,
-        bundle.HEALTH_SETTINGS_KEY,
+        bundle.HEALTH_SETTINGS_KEY, bundle.RULES_KEY, bundle.HIDDEN_RULES_KEY,
     }
     assert not hooks.template_record_keys and set(hooks.template_excluded) == {bundle.HEALTH_RUNNER_KEY}

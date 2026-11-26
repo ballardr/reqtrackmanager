@@ -38,6 +38,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.modules import registry
 from app.modules.seams import ProfileContributor
+from app.modules.traceability import rules
 from app.modules.traceability.enums import ProfileMode, ProfileOutcome, ProfileTargetKind
 from app.modules.traceability.models import (
     EXEMPTION_REASON_MAX_LENGTH,
@@ -255,11 +256,12 @@ def set_targets(
 
 
 def delete_profile(db: Session, *, profile: GovernanceProfile, actor_id: uuid.UUID) -> None:
-    """Deletes a profile with its targets, exemptions, choices and policy rows."""
+    """Deletes a profile with its targets, exemptions, choices and policy rows, and every project's hiding of its rules."""
     log_event(
         db, entity_type=AUDIT_ENTITY_TYPE, entity_id=profile.id, action="deleted", actor_id=actor_id,
         organization_id=profile.organization_id, detail={"name": profile.name, "mode": profile.mode},
     )
+    rules.forget_profile_rules(db, profile.id)
     db.delete(profile)
     db.flush()
 

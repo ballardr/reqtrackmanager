@@ -4,7 +4,8 @@ Module: modules.traceability.router
 Organisation-scoped API of governance profiles, mounted at `/api/v1/orgs/{organization_id}/modules/traceability`:
 create, read, rename and delete a profile, set the projects it reaches, add and remove exemptions from an Enforced
 profile, see which projects a profile binds, offers or has been opted out of, and set a profile's lifecycle, approval,
-review and baseline policy, and the organisation's default way of keeping governance health (`health_router`).
+review and baseline policy and its traceability rules (`rules_router`), and the organisation's default way of keeping
+governance health (`health_router`).
 
 Design decisions:
 - A profile's lifecycle, approval, review and baseline policy routes also need their sub-component to be in effect for the organisation.
@@ -38,6 +39,7 @@ from app.modules.traceability import (
     profile_resolution,
     profiles,
     review_policy,
+    rules_router,
     stage_workflow_policy,
 )
 from app.modules.traceability._shared import (
@@ -96,6 +98,7 @@ from app.services.rbac import require_org_module_enabled, require_org_subcompone
 router = APIRouter(prefix=f"/api/v1/orgs/{{organization_id}}/modules/{TRACEABILITY_MODULE_KEY}", tags=["traceability"])
 
 router.include_router(health_router.org_routes)
+router.include_router(rules_router.org_routes)
 
 _module_on = require_org_module_enabled(TRACEABILITY_MODULE_KEY)
 _manage = require_permission(MANAGE_ORG_GOVERNANCE, server_admin_bypass=False)

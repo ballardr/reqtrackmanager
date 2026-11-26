@@ -42,6 +42,7 @@ from app.modules.seams import (
     ProfileContributor,
     RecordSubtypeResolver,
     ReviewAdapter,
+    RuleConditionField,
 )
 
 if TYPE_CHECKING:
@@ -2601,6 +2602,9 @@ class ModuleDefinition:
             and imported by the profile mechanism without per-table code (`get_profile_contributors`).
         health_providers: `HealthProvider`s: how each of the module's record types reports its progress to the
             governance health view (`get_health_providers`; core registers the Requirement's and the Change Request's).
+        rule_condition_fields: `RuleConditionField`s: record properties a traceability rule's "applies when" condition may
+            test (`get_rule_condition_fields`); a module adds its own (a status, a classification) with no edit to the
+            rule code.
         stage_workflow_references: `references(db, workflow_id)` returns the names of what refers to an organisation stage
             workflow (a governance profile that requires it), so the workflow cannot be deleted while it is referenced
             (`get_stage_workflow_references`). `None` for a module that refers to none.
@@ -2696,6 +2700,7 @@ class ModuleDefinition:
     policy_resolvers: tuple[PolicyResolver, ...] = field(default=())
     profile_contributors: tuple[ProfileContributor, ...] = field(default=())
     health_providers: tuple[HealthProvider, ...] = field(default=())
+    rule_condition_fields: tuple[RuleConditionField, ...] = field(default=())
     stage_workflow_references: Callable[[Session, uuid.UUID], list[str]] | None = None
 
     def __post_init__(self) -> None:
@@ -2719,6 +2724,7 @@ class ModuleDefinition:
         named += [(c.sub_component, f"baseline check {c.key!r}") for c in self.baseline_check_providers]
         named += [(c.sub_component, f"profile contributor {c.key!r}") for c in self.profile_contributors]
         named += [(h.sub_component, f"health provider {h.key!r}") for h in self.health_providers]
+        named += [(f.sub_component, f"rule condition field {f.key!r}") for f in self.rule_condition_fields]
         for sub_key, what in named:
             if sub_key is not None and sub_key not in declared:
                 raise ValueError(f"Module {self.key!r}: {what} names undeclared sub-component {sub_key!r}.")
@@ -2728,6 +2734,9 @@ class ModuleDefinition:
         health_keys = [h.key for h in self.health_providers]
         if len(set(health_keys)) != len(health_keys):
             raise ValueError(f"Module {self.key!r}: duplicate health provider key.")
+        field_keys = [f.key for f in self.rule_condition_fields]
+        if len(set(field_keys)) != len(field_keys):
+            raise ValueError(f"Module {self.key!r}: duplicate rule condition field key.")
         contributor_keys = [c.key for c in self.profile_contributors]
         if len(set(contributor_keys)) != len(contributor_keys):
             raise ValueError(f"Module {self.key!r}: duplicate profile contributor key.")
@@ -4892,6 +4901,19 @@ def get_health_providers() -> list[tuple[str, HealthProvider]]:
     providers: list[tuple[str, HealthProvider]] = [("", p) for p in CORE_HEALTH_PROVIDERS]
     providers.extend((key, p) for key, definition in get_module_registry().items() for p in definition.health_providers)
     return providers
+
+
+def get_rule_condition_fields() -> dict[str, tuple[str, RuleConditionField]]:
+    """`{field key: (module key, field)}` for every `RuleConditionField` a module registers; a key claimed twice keeps the
+    first registration."""
+    merged: dict[str, tuple[str, RuleConditionField]] = {}
+    for key, definition in get_module_registry().items():
+        for condition_field in definition.rule_condition_fields:
+            if condition_field.key in merged:
+                logger.warning("Module %r rule condition field %r is already claimed; skipped", key, condition_field.key)
+                continue
+            merged[condition_field.key] = (key, condition_field)
+    return merged
 
 
 def get_profile_contributors() -> list[tuple[str, ProfileContributor]]:

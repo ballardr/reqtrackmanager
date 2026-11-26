@@ -86,7 +86,7 @@ class _Walk:
     truncated: bool = False
 
 
-def _core_summaries(
+def core_summaries(
     db: Session, project_ids: list[uuid.UUID], artefact_type: str, ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, ArtefactSummary]:
     """Summaries of the core-type records (requirements, actions, change requests) among `ids` that
@@ -212,7 +212,7 @@ class ArtefactResolver:
             if not viewable:
                 pass
             elif artefact_type in CORE_ARTEFACT_TYPES:
-                found = _core_summaries(self._db, [p.id for p in viewable], artefact_type, todo)
+                found = core_summaries(self._db, [p.id for p in viewable], artefact_type, todo)
             else:
                 found, remaining = {}, list(todo)
                 for scope_project in viewable:

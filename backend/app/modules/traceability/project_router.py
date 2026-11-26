@@ -6,7 +6,7 @@ profiles reach the project and what each does for it, the project's opt-out of a
 Opt-in profile, the project's approval policy (the roles that may also approve a record type, with where each comes from) and its
 review policy (the interval, reminder lead and default owner of a record type, with where each comes from) and its
 baseline policy (the checks that run before a baseline, with where each comes from) with a preview of what they say now,
-and the project's governance health with its settings (`health_router`).
+and the project's governance health with its settings (`health_router`) and its traceability rules (`rules_router`).
 
 Design decisions:
 - Reading is open to every member of a project the module is on for, because a person asking why a policy applies needs
@@ -41,6 +41,7 @@ from app.modules.traceability import (
     profile_resolution,
     profiles,
     review_policy,
+    rules_router,
 )
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
@@ -96,6 +97,7 @@ from app.services.rbac import (
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{TRACEABILITY_MODULE_KEY}", tags=["traceability"])
 
 router.include_router(health_router.project_routes)
+router.include_router(rules_router.project_routes)
 
 _view = require_project_module_enabled(TRACEABILITY_MODULE_KEY)
 _manage = require_permission(MANAGE_PROJECT_GOVERNANCE, server_admin_bypass=False)

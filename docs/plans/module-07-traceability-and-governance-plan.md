@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phases 8, 9 and 10 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phases 8, 9, 10 and 11 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-13 / 23 phases complete. Phase 11 is next.
+14 / 23 phases complete. Phase 12 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -34,7 +34,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 8 | Governance frontend UI | Governance | [x] Done 2026-11-26 |
 | 9 | Governance docs website coverage | Governance | [x] Done 2026-11-26 |
 | 10 | Requirement types (moved from Module 5 Phase 1) | Traceability | [x] Done 2026-11-26 |
-| 11 | Traceability rule configuration, including the requirement hierarchy | Traceability | [ ] Not started |
+| 11 | Traceability rule configuration, including the requirement hierarchy | Traceability | [x] Done 2026-11-26 |
 | 12 | Enforcement levels, status and baseline hand-off | Traceability | [ ] Not started |
 | 13 | Traceability exceptions | Traceability | [ ] Not started |
 | 14 | Cross-project traceability | Traceability | [ ] Not started |
@@ -875,6 +875,14 @@ profile (Q30) with hide and restore (Q14) and take the nested fallback.
 whether relationships exist or can be created. Test that first: a project with the part off
 behaves identically for relationship creation to one that never enabled it. Also test a tree that is deep, wide, and
 conditional on a sub-type of a record in an ancestor project.
+
+**Built (2026-11-26; account in `docs/decisions.md`, "Module 7 Phase 11"; contract in `docs/modules.md` §4l17):**
+
+- `modules/traceability/`: `rule_tree.py` (the tree, its limits, parsing, canonical JSON, evaluation of scope and requirement trees; no database), `rule_fields.py` (the built-in condition fields), `rule_evaluation.py` (the evaluator), `rules.py` (writes with audit, `effective_rules`, hide and restore, the derived hierarchy, bundles), `rule_presets.py`, `rule_schemas.py`, `rules_router.py` (a profile's rules under `manage_org_traceability`, a project's under `manage_project_traceability`); table `governance_traceability_rules` in unreleased migration `0210` (edited in place: a local database that already ran it needs the table); `traceability_rules` registered as a profile contributor; the project bundle carries the project's own rules and the profile rules it hides (template configuration).
+- **Generic extension points:** `ModuleDefinition.rule_condition_fields` (`RuleConditionField`); core `services/record_summaries.py` (list and read summaries for any record type; `link_graph.core_summaries` made public) and `requirement_types.requirement_ranks`.
+- **Deviations from this plan's wording (Decided by: Agent):** conditions test component, category and tag by name and a status through the record's summary; a link type is stored by id and travels by name; rules of a profile name only organisation-wide link types; a rule of an Enforced profile cannot be hidden; evaluation counts links into other projects only when asked (Phase 14 gates it); the enforcement level is stored and returned and gets its behaviour in Phase 12; an evaluation route returns counts only (the per-record status is Phase 12).
+- Not built here, by design: the screens and the hierarchy view (Phase 16), MCP tools (Phase 15), status and the baseline check (Phase 12), the docs website page (Phase 17), the scaling probe and perf scenario for evaluation (Phase 18).
+- Tests: `tests/test_traceability_rule_tree.py`, `tests/test_traceability_rules.py` (module test directory); the template-keys test is extended.
 
 ## Phase 12 — Enforcement levels, status and baseline hand-off
 

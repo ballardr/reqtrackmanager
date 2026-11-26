@@ -11,7 +11,8 @@ Responsibilities:
 - Organisation import: create the profiles first (projects import afterwards and name them), then add their targets and
   exemptions when every project exists. A merge keeps the organisation's own profile of the same name and adds only the
   names it lacks.
-- Project export and import: the project's own choices, by profile name, its own approval policy rows (roles by kind
+- Project export and import: the project's own choices, by profile name, its own traceability rules (link types by name) and
+  the profile rules it hides (by profile and rule name), its own approval policy rows (roles by kind
   and key, a custom role by name), its own review policy rows (the default owner by email or group name), its own
   baseline policy (check keys and required field keys) and its governance health settings (mode and interval, and the
   baseline check runner by email).
@@ -49,7 +50,7 @@ from app.models.organization import Organization, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
 from app.modules import registry
-from app.modules.traceability import approval_policy, baseline_policy, health, profiles, review_policy
+from app.modules.traceability import approval_policy, baseline_policy, health, profiles, review_policy, rules
 from app.modules.traceability.enums import HEALTH_INTERVAL_HOURS, HealthMode, ProfileMode, ProfileTargetKind
 from app.modules.traceability.models import (
     GovernanceProfile,
@@ -66,6 +67,8 @@ CHOICES_KEY = "governance_profile_choices"
 APPROVAL_POLICIES_KEY = approval_policy.PROJECT_ROWS_KEY
 REVIEW_POLICIES_KEY = review_policy.PROJECT_ROWS_KEY
 BASELINE_POLICY_KEY = baseline_policy.PROJECT_ROW_KEY
+RULES_KEY = rules.PROJECT_ROWS_KEY
+HIDDEN_RULES_KEY = rules.HIDDEN_KEY
 HEALTH_SETTINGS_KEY = "governance_health_settings"
 HEALTH_RUNNER_KEY = "governance_health_runner"
 HEALTH_DEFAULT_KEY = "governance_health_default"
@@ -223,6 +226,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         APPROVAL_POLICIES_KEY: approval_policy.export_project_rows(db, project),
         REVIEW_POLICIES_KEY: review_policy.export_project_rows(db, project),
         BASELINE_POLICY_KEY: baseline_policy.export_project_row(db, project),
+        RULES_KEY: rules.export_project_rows(db, project),
+        HIDDEN_RULES_KEY: rules.export_hidden(db, project),
         **_export_health_settings(db, project),
     }, {}
 
@@ -281,10 +286,13 @@ def import_project_data(
     name. A name the organisation lacks, an Enforced profile and a choice the profile's mode does not take are reported
     and skipped, so an import never relaxes what the organisation enforces. The project's own approval policy rows are
     written as exported; they only add approvers, so no organisation policy is relaxed. The review policy rows likewise only
-    tighten (the shortest interval and longest lead apply). The baseline policy only adds checks and required fields."""
+    tighten (the shortest interval and longest lead apply). The baseline policy only adds checks and required fields. A project's
+    own rules add expectations and a hidden rule is skipped for an Enforced profile, so neither relaxes what is enforced."""
     approval_policy.import_project_rows(db, project, data.get(APPROVAL_POLICIES_KEY) or [], warnings.add)
     review_policy.import_project_rows(db, project, data.get(REVIEW_POLICIES_KEY) or [], warnings.add)
     baseline_policy.import_project_row(db, project, data.get(BASELINE_POLICY_KEY), warnings.add)
+    rules.import_project_rows(db, project, data.get(RULES_KEY) or [], warnings.add)
+    rules.import_hidden(db, project, data.get(HIDDEN_RULES_KEY) or [], warnings.add)
     _import_health_settings(db, project, data, current_user, warnings)
     for entry in data.get(CHOICES_KEY) or []:
         name = str(entry.get("profile", ""))

@@ -32,6 +32,10 @@ Design decisions:
   the owner's checks run before a stage baseline, a manual baseline or both; they stay with the owner's checks, so a profile
   that asks for a stage check never makes a project's manual check run before stage baselines. A project's row with no
   checks is a choice that stops the nearest ancestor's applying.
+- A traceability rule is one row per rule, owned by a profile or a project (a check constraint admits exactly one), with its
+  scope and requirement trees as validated JSON documents (`rule_tree`) because a tree has no fixed shape to normalise. Types
+  and link types are named by key and id inside the document; a record type, a sub-type name, a link type id are not foreign
+  keys, so a rename or removal is found when the rule is read and reported as a problem, never as a failed query.
 - A stage workflow policy is one row per profile (a profile requires at most one workflow) naming an organisation workflow
   and a mode; a project does not own one, because it already chooses its own workflows.
 - Governance health keeps three small tables: the organisation's default mode (`governance_health_defaults`), a project's
@@ -60,6 +64,8 @@ from app.models.principal import principal_check_constraint, principal_id_column
 PROFILE_NAME_MAX_LENGTH = 200
 PROFILE_DESCRIPTION_MAX_LENGTH = 500
 EXEMPTION_REASON_MAX_LENGTH = 500
+RULE_NAME_MAX_LENGTH = 200
+RULE_DESCRIPTION_MAX_LENGTH = 500
 
 
 class GovernanceProfile(UUIDPKMixin, TimestampMixin, Base):
@@ -364,6 +370,52 @@ class GovernanceBaselineRequiredField(UUIDPKMixin, TimestampMixin, Base):
     )
     artefact_type: Mapped[str] = mapped_column(String(64))
     field_key: Mapped[str] = mapped_column(String(100))
+
+
+class GovernanceTraceabilityRule(UUIDPKMixin, TimestampMixin, Base):
+    """One traceability rule: which links a record of one type is expected to carry, set by a profile or by a project.
+
+    Attributes:
+        profile_id: The owning profile, or `None` for a project's own rule.
+        project_id: The owning project, or `None` for a profile's rule.
+        name: Unique among the owner's rules, ignoring case.
+        description: A short summary of what the rule is for.
+        source_type: The registered record type the rule applies to.
+        source_subtype: A sub-type of that type (`record_subtypes`) the rule is limited to, or `None` for every record.
+        level: A `RuleLevel` value.
+        enabled: Whether the rule is evaluated; a disabled rule is kept.
+        sort_order: Position among the owner's rules (display order).
+        applies_when: The scope tree (`rule_tree`), or `None` for every record of the source type.
+        requires: The requirement tree (`rule_tree`).
+        schema_version: The version of the tree document format (`rule_tree.SCHEMA_VERSION`).
+    """
+
+    __tablename__ = "governance_traceability_rules"
+    __table_args__ = (
+        CheckConstraint("(profile_id IS NULL) <> (project_id IS NULL)", name="ck_governance_traceability_rules_one_owner"),
+        CheckConstraint(
+            "level IN ('informational', 'warning', 'required')", name="ck_governance_traceability_rules_level",
+        ),
+        UniqueConstraint("profile_id", "name", name="uq_governance_traceability_rules_profile"),
+        UniqueConstraint("project_id", "name", name="uq_governance_traceability_rules_project"),
+    )
+
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_profiles.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(RULE_NAME_MAX_LENGTH))
+    description: Mapped[str] = mapped_column(String(RULE_DESCRIPTION_MAX_LENGTH), default="")
+    source_type: Mapped[str] = mapped_column(String(64))
+    source_subtype: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    level: Mapped[str] = mapped_column(String(16))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    applies_when: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    requires: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class GovernanceHealthDefault(UUIDPKMixin, TimestampMixin, Base):

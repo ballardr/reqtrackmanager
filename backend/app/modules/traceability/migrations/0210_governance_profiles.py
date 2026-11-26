@@ -6,7 +6,8 @@ Create Date: 2026-11-26
 
 Organisation policy sets with their targets, exemptions and per-project choices, the policy tables a profile or a
 project owns (including the stage workflow a profile requires), and governance health's defaults, settings and
-snapshots. Nothing is seeded: with no profile every project's governance is unchanged. Guarded so a database built from
+snapshots, and the traceability rules a profile or a project owns. Nothing is seeded: with no profile every project's
+governance is unchanged. Guarded so a database built from
 the current models passes.
 """
 
@@ -237,6 +238,33 @@ def upgrade() -> None:
     )
     op.execute(
         """
+        CREATE TABLE IF NOT EXISTS governance_traceability_rules (
+            id UUID PRIMARY KEY,
+            profile_id UUID REFERENCES governance_profiles(id) ON DELETE CASCADE,
+            project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+            name VARCHAR(200) NOT NULL,
+            description VARCHAR(500) NOT NULL DEFAULT '',
+            source_type VARCHAR(64) NOT NULL,
+            source_subtype VARCHAR(200),
+            level VARCHAR(16) NOT NULL,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            applies_when JSONB,
+            requires JSONB NOT NULL,
+            schema_version INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT ck_governance_traceability_rules_one_owner CHECK ((profile_id IS NULL) <> (project_id IS NULL)),
+            CONSTRAINT ck_governance_traceability_rules_level CHECK (level IN ('informational', 'warning', 'required')),
+            CONSTRAINT uq_governance_traceability_rules_profile UNIQUE (profile_id, name),
+            CONSTRAINT uq_governance_traceability_rules_project UNIQUE (project_id, name)
+        )
+        """
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_traceability_rules_profile_id ON governance_traceability_rules (profile_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_governance_traceability_rules_project_id ON governance_traceability_rules (project_id)")
+    op.execute(
+        """
         CREATE TABLE IF NOT EXISTS governance_health_defaults (
             id UUID PRIMARY KEY,
             organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -287,6 +315,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS governance_traceability_rules")
     op.execute("DROP TABLE IF EXISTS governance_health_snapshots")
     op.execute("DROP TABLE IF EXISTS governance_health_settings")
     op.execute("DROP TABLE IF EXISTS governance_health_defaults")
