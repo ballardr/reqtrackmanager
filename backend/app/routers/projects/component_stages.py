@@ -32,6 +32,7 @@ from app.schemas.stage_workflow import (
     ComponentTrackOut,
     ComponentTrackUpdate,
     StageTransitionRequest,
+    UnavailablePhaseOut,
 )
 from app.services import approval_policy
 from app.services import component_stages as cs
@@ -43,7 +44,14 @@ from app.services.rbac import (
     require_project_manage,
     require_project_view,
 )
-from app.services.stage_workflows import WorkflowConflict, move_touches_locked_phase, phase_index, start_phase
+from app.services.stage_workflows import (
+    PhaseMoves,
+    WorkflowConflict,
+    move_touches_locked_phase,
+    phase_index,
+    phases_by_workflow,
+    start_phase,
+)
 
 router = APIRouter(tags=["projects-component-stages"])
 
@@ -70,6 +78,8 @@ def _phases_out(db: Session, project: Project, user: User) -> ComponentPhasesOut
     owners = [principal_ref(t.state.owner_type, t.state.owner_id) for t in tracks if t.state is not None]
     labels = principal_labels(db, owners)
     manager = can_manage_project_settings(db, user, project)
+    moves = PhaseMoves(db, project.id, "component_stage")
+    workflow_phases = phases_by_workflow(db, list(workflow_ids))
     member_cache: dict[tuple[str, UUID], bool] = {}
     out: list[ComponentTrackOut] = []
     for t in tracks:
@@ -88,6 +98,10 @@ def _phases_out(db: Session, project: Project, user: User) -> ComponentPhasesOut
             not_applicable=t.not_applicable, customised=t.state is not None, owner=owner,
             approved_at=t.state.approved_at if t.state else None, completed_at=t.state.completed_at if t.state else None,
             previous_closed=t.previous_closed, can_move=can_move,
+            unavailable_phases=[
+                UnavailablePhaseOut(phase_id=u.phase_id, reason=u.reason, turned_off=u.turned_off)
+                for u in moves.unavailable(workflow_phases[t.workflow_id], t.phase_id)
+            ],
         ))
     return ComponentPhasesOut(mode=mode, own_mode=own, inherited=inherited, tracks=out)
 

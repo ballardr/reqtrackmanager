@@ -82,6 +82,7 @@ import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { downloadBlob } from "../utils/download";
 import { sortRows } from "../utils/sortRows";
+import { phaseOptions } from "../utils/phaseOptions";
 import { reportLayoutApi } from "../api/reportLayouts";
 import { reportPackApi } from "../api/reportPacks";
 import { reportPlacementApi } from "../api/reportPlacements";
@@ -1479,12 +1480,11 @@ export function ProjectAdminPage() {
                 <InlineSelect
                   ariaLabel={strings.stageWorkflows.changePhaseAria(s.name)} value={s.phase_id} placeholder={null} maxWidth={220}
                   onChange={(next) => requestStageMove(s, next)}
-                  options={(stageWorkflows.find((w) => w.id === s.workflow_id)?.phases ?? [{ id: s.phase_id, name: s.phase_name, kind: s.phase_kind }])
-                    .map((p) => {
-                      // Entering or leaving a locked phase needs a project manager: show the choice as unavailable, with why.
-                      const locked = !s.can_lock && p.id !== s.phase_id && (p.kind === "locked" || s.phase_kind === "locked");
-                      return { value: p.id, label: locked ? strings.stageWorkflows.lockedNeedsManager(p.name) : p.name, disabled: locked };
-                    })}
+                  options={phaseOptions(
+                    strings.stageWorkflows,
+                    stageWorkflows.find((w) => w.id === s.workflow_id)?.phases ?? [{ id: s.phase_id, name: s.phase_name, kind: s.phase_kind }],
+                    s, Boolean(s.can_lock),
+                  )}
                 />
               </div>
             </div>

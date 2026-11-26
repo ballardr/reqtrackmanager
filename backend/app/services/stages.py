@@ -3,17 +3,34 @@ Module: services.stages
 
 Project stage business logic added for Massif (v3): the review-deadline
 "assumed approval" sweep (C-R-05) and completion tracking (C-P-02).
+
+Responsibilities:
+- `auto_approve_overdue_stage_reviews`: the daily action that approves a stage in review whose deadline passed.
+- `STAGE_REVIEW_ADAPTER`: the review engine's reading of a stage's review deadline (type `stage_review`), so the
+  stakeholders who have not responded, and the managers, are reminded once before the deadline.
+- `complete_stage`: completion tracking.
+
+Design decisions:
+- The auto-approval is an action and stays here; the reminder before it belongs to the review engine, so the review
+  policy's lead and default owner apply to it.
+- A deadline is an instant; the reminder's due date is its UTC date, because the reminder has no person whose day it could
+  use. A deadline that has already passed is not reminded: the auto-approval acts on it.
+- Those reminded are the project's stakeholders who have not responded to the stage (the role that may respond; the
+  review notification itself goes to every member), plus the project managers, or the review policy's default owner in
+  their place. A stakeholder who rejected has responded and is not reminded; the managers still are.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from collections.abc import Sequence
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.enums import ProjectRole, RequirementStatus, StagePhaseKind, StageReviewResponseChoice
 from app.models.notification import Notification, NotificationType
@@ -21,7 +38,7 @@ from app.models.project import Project, ProjectStage, StageReviewResponse
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.stage_workflow import ComponentStageState, StageWorkflowPhase
 from app.models.user import User
-from app.modules.seams import BaselinePolicy, GovernanceSeam
+from app.modules.seams import BaselinePolicy, DueReview, GovernanceSeam, ReminderMark, ReviewAdapter, ReviewReminder
 from app.services import governance_seams
 from app.services.audit import log_event
 from app.services.baseline import BaselineRefused
@@ -29,7 +46,7 @@ from app.services.codes import qualify
 from app.services.component_stages import tracked_component_ids
 from app.services.lookups import project_or_404
 from app.services.notifications import notify
-from app.services.rbac import get_effective_project_managers, get_project_member_user_ids
+from app.services.rbac import get_effective_project_managers, get_project_member_user_ids, get_project_users_by_role
 from app.services.stage_workflows import first_phase_of_kind, move_stage, phases_of
 
 logger = logging.getLogger(__name__)
@@ -208,3 +225,78 @@ def complete_stage(
             requirement.is_completed = True
             requirement.completed_at = now
             requirement.completed_by = actor.id
+
+
+# --- the review engine's adapter for a stage's review deadline -------------------------------------------
+
+
+def _deadline_stages(db: Session, *where: ColumnElement[bool]) -> list[ProjectStage]:
+    """Stages in a review phase that have a deadline, narrowed by `where`."""
+    return list(db.scalars(
+        select(ProjectStage).join(StageWorkflowPhase, StageWorkflowPhase.id == ProjectStage.phase_id)
+        .where(StageWorkflowPhase.kind == StagePhaseKind.REVIEW, ProjectStage.review_deadline.is_not(None), *where)
+    ).all())
+
+
+def _stage_review_due(db: Session, project_id: UUID, as_of: date) -> list[DueReview]:
+    """The project's stages in review whose deadline falls on or before `as_of` (UTC date), earliest first."""
+    stages = _deadline_stages(db, ProjectStage.project_id == project_id)
+    return sorted(
+        (DueReview(s.id, s.review_deadline.date()) for s in stages if s.review_deadline is not None and s.review_deadline.date() <= as_of),
+        key=lambda d: d.due_on,
+    )
+
+
+def _stage_review_pending(db: Session) -> list[ReviewReminder]:
+    """Across every project, the stages in review whose deadline is ahead and has not been reminded for its current value."""
+    now = datetime.now(UTC)
+    stages = _deadline_stages(db, ProjectStage.review_deadline > now)
+    projects = {p.id: p for p in db.scalars(select(Project).where(Project.id.in_({s.project_id for s in stages}))).all()} if stages else {}
+    reminders: list[ReviewReminder] = []
+    for stage in stages:
+        project = projects.get(stage.project_id)
+        deadline = stage.review_deadline
+        if project is None or project.is_archived or deadline is None or stage.review_deadline_reminded_for == deadline.date():
+            continue
+        reminders.append(ReviewReminder(
+            artefact_id=stage.id, project_id=stage.project_id, due_on=deadline.date(), title=f"{project.name}: {stage.name}",
+            code="", entity=("project_stage", str(stage.id)), reminded_for=stage.review_deadline_reminded_for, kind="due",
+            detail=deadline.isoformat(),
+        ))
+    return reminders
+
+
+def _stage_review_mark(db: Session, marks: Sequence[ReminderMark], when: datetime) -> None:
+    """Records the reminders sent by stamping the deadline date each was sent for."""
+    for stage in db.scalars(select(ProjectStage).where(ProjectStage.id.in_({m.artefact_id for m in marks}))).all():
+        stage.review_deadline_reminded_for = next(m.due_on for m in marks if m.artefact_id == stage.id)
+    db.flush()
+
+
+def _stage_review_non_responders(db: Session, reminder: ReviewReminder) -> set[UUID]:
+    """The stakeholders of the project who have not responded to the stage's review."""
+    if reminder.project_id is None:
+        return set()
+    stakeholders = get_project_users_by_role(db, reminder.project_id, ProjectRole.STAKEHOLDER)
+    responded = set(db.scalars(select(StageReviewResponse.user_id).where(StageReviewResponse.stage_id == reminder.artefact_id)).all())
+    return stakeholders - responded
+
+
+def _stage_review_message(reminder: ReviewReminder, overdue: bool) -> tuple[str, str]:
+    """The notification `(title, body)` of the reminder before a stage's review deadline."""
+    return (
+        f"{reminder.title}: review deadline approaching",
+        f"The review deadline is {reminder.detail}. The stage is approved automatically at the deadline unless a "
+        "stakeholder rejects it.",
+    )
+
+
+STAGE_REVIEW_ADAPTER = ReviewAdapter(
+    schedule="next_review_date", due_reviews=_stage_review_due, pending_reminders=_stage_review_pending,
+    mark_reminded=_stage_review_mark, notification_type=NotificationType.STAGE_REVIEW_DEADLINE.value,
+    message=_stage_review_message, also_notify=_stage_review_non_responders,
+)
+"""How the review engine reads a stage's review deadline (registered in `services.reviews.CORE_REVIEW_ADAPTERS` as
+`stage_review`)."""
+
+STAGE_REVIEW_TYPE = "stage_review"

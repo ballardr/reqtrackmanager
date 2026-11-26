@@ -50,6 +50,7 @@ from app.services.stage_workflows import (
     effective_workflows,
     phases_by_workflow,
     workflow_in_use,
+    workflow_policy,
     workflow_usage,
     write_workflow,
 )
@@ -152,7 +153,13 @@ def list_project_workflows(
     project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """The workflows this project may use: the organisation's it has not hidden, then its own (or its nearest ancestor's)."""
-    return _out(db, effective_workflows(db, project_or_404(db, project_id)), project_id)
+    project = project_or_404(db, project_id)
+    outs = _out(db, effective_workflows(db, project), project_id)
+    policy = workflow_policy(db, project)
+    if policy is not None:
+        for out in outs:
+            out.required_by = list(policy.required.get(out.id, ()))
+    return outs
 
 
 @project_router.post("", response_model=WorkflowOut, status_code=status.HTTP_201_CREATED)
@@ -224,6 +231,12 @@ def delete_project_workflow(
     workflow = db.get(StageWorkflow, workflow_id)
     if workflow is None or workflow.organization_id != project.organization_id or workflow.project_id not in (None, project.id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Workflow not found.")
+    policy = workflow_policy(db, project)
+    if policy is not None and workflow.id in policy.required:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This workflow is required by {', '.join(policy.required[workflow.id])}, so it cannot be hidden.",
+        )
     usable = effective_workflows(db, project)
     if workflow.id in {w.id for w in usable} and len(usable) == 1:
         raise HTTPException(status.HTTP_409_CONFLICT, "A project needs at least one workflow, so the last cannot be removed.")

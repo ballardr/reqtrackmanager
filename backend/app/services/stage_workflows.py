@@ -17,7 +17,12 @@ Design decisions:
   A role the project's approval policy names for requirements also admits its holders to the locked phases
   (**Decided by: User**).
 - Nested projects use the `resolve_effective_action_types` shape plus the additive organisation tier (**Decided by: Agent**).
+- Governance policy (`GovernanceSeam.STAGE_WORKFLOW`) may require organisation workflows: they stay available and cannot be
+  hidden, the one it names starts new stages, and a restricting policy leaves a project only those; a stage that already
+  follows another workflow is never moved, and an organisation workflow that a profile requires cannot be deleted.
 - A workflow in use cannot be deleted; a phase in use can be renamed but not removed or given another kind.
+- The phases a stage or track may not move to are answered from the same resolved lifecycle `apply_phase_move` checks
+  (`PhaseMoves`), resolved once per request, so a picker offers exactly the moves the endpoint accepts.
 """
 
 from __future__ import annotations
@@ -34,7 +39,8 @@ from app.models.enums import ProjectRole, StagePhaseKind
 from app.models.project import Project, ProjectStage
 from app.models.stage_workflow import MAX_WORKFLOW_NAME_LENGTH, ComponentStageState, StageWorkflow, StageWorkflowPhase
 from app.models.user import User
-from app.services import approval_policy, definition_suppression
+from app.modules.seams import GovernanceSeam, StageWorkflowPolicy
+from app.services import approval_policy, definition_suppression, governance_seams
 from app.services.audit import log_event
 from app.services.project_hierarchy import get_project_chain_ids
 
@@ -113,16 +119,30 @@ def start_phase(db: Session, workflow_id: uuid.UUID) -> StageWorkflowPhase:
     return phase
 
 
+def workflow_policy(db: Session, project: Project) -> StageWorkflowPolicy | None:
+    """What governance policy asks of the project's stage workflows, or `None` when none applies (the built-in choice)."""
+    policy = governance_seams.resolve_project_policy(db, project.id, GovernanceSeam.STAGE_WORKFLOW)
+    return policy if isinstance(policy, StageWorkflowPolicy) else None
+
+
 def effective_workflows(db: Session, project: Project) -> list[StageWorkflow]:
     """The workflows a project may use: the organisation's (minus the ones it hid) first, then the
-    project's own, or the nearest ancestor's when it has none."""
+    project's own, or the nearest ancestor's when it has none.
+
+    Governance policy (`workflow_policy`) adds the workflows it requires, even one the project hid, and, where it restricts
+    the project, leaves only those.
+    """
     org_rows = db.scalars(
         select(StageWorkflow)
         .where(StageWorkflow.organization_id == project.organization_id, StageWorkflow.project_id.is_(None))
         .order_by(StageWorkflow.sort_order, StageWorkflow.name)
     ).all()
     hidden = definition_suppression.get_suppressed_ids(db, project.id, WORKFLOW_KIND)
-    result = [w for w in org_rows if w.id not in hidden]
+    policy = workflow_policy(db, project)
+    required = set(policy.required) if policy is not None else set()
+    result = [w for w in org_rows if w.id not in hidden or w.id in required]
+    if policy is not None and policy.restricted_by:
+        return [w for w in result if w.id in required]
     for pid in get_project_chain_ids(db, project.id):
         own = db.scalars(
             select(StageWorkflow).where(StageWorkflow.project_id == pid).order_by(StageWorkflow.sort_order, StageWorkflow.name)
@@ -134,10 +154,15 @@ def effective_workflows(db: Session, project: Project) -> list[StageWorkflow]:
 
 
 def default_workflow(db: Session, project: Project) -> StageWorkflow:
-    """The workflow a new stage starts in: the first effective one. An organisation with none at all
-    (its Standard workflow was removed and the project has no workflow of its own) gets Standard
-    again, so a stage can always be created."""
+    """The workflow a new stage starts in: the one governance policy names when the project may use it, else the first
+    effective one. An organisation with none at all (its Standard workflow was removed and the project has no workflow of
+    its own) gets Standard again, so a stage can always be created."""
     effective = effective_workflows(db, project)
+    policy = workflow_policy(db, project)
+    if policy is not None and policy.default_workflow_id is not None:
+        named = next((w for w in effective if w.id == policy.default_workflow_id), None)
+        if named is not None:
+            return named
     if effective:
         return effective[0]
     existing = db.scalar(
@@ -350,6 +375,12 @@ def delete_workflow(db: Session, workflow: StageWorkflow, actor_id: uuid.UUID | 
     if workflow_in_use(db, workflow.id):
         raise WorkflowConflict("A stage follows this workflow, so it cannot be deleted.")
     if workflow.project_id is None:
+        from app.modules.registry import get_stage_workflow_references  # deferred: the registry reads core definitions
+
+        referenced_by = get_stage_workflow_references(db, workflow.id)
+        if referenced_by:
+            raise WorkflowConflict(f"This workflow is required by {', '.join(referenced_by)}, so it cannot be deleted.")
+    if workflow.project_id is None:
         definition_suppression.forget_definition(db, WORKFLOW_KIND, workflow.id)
     log_event(
         db, entity_type="stage_workflow", entity_id=workflow.id, action="deleted", actor_id=actor_id,
@@ -368,6 +399,79 @@ def first_phase_of_kind(phases: Sequence[StageWorkflowPhase], kind: StagePhaseKi
 
 
 PhaseHolder = ProjectStage | ComponentStageState
+
+
+@dataclass(frozen=True)
+class UnavailablePhase:
+    """A phase a stage or track cannot move to now.
+
+    Attributes:
+        phase_id: The phase.
+        reason: Why, in a sentence.
+        turned_off: Whether its kind is turned off in the project (rather than not reachable from the current kind).
+    """
+
+    phase_id: uuid.UUID
+    reason: str
+    turned_off: bool = False
+
+
+class PhaseMoves:
+    """Which phases a stage or a component's track may move to, resolved once for a project and a lifecycle type.
+
+    A move to a phase of the current kind is always allowed; a move to another kind is allowed when the project's
+    effective lifecycle (`services.lifecycles.lifecycle_for`) accepts it, which is the check `apply_phase_move` makes.
+    The locked phases a caller may not enter (`can_lock`) are a separate rule and are not part of this answer.
+
+    Attributes:
+        db: Active session (read only).
+        project_id: The project whose lifecycle applies.
+        artefact_type: `project_stage` or `component_stage`.
+    """
+
+    def __init__(self, db: Session, project_id: uuid.UUID, artefact_type: str) -> None:
+        self.db = db
+        self.project_id = project_id
+        self.artefact_type = artefact_type
+        self._by_kind: dict[StagePhaseKind, dict[StagePhaseKind, tuple[str, bool]]] = {}
+
+    def _unavailable_kinds(self, current: StagePhaseKind) -> dict[StagePhaseKind, tuple[str, bool]]:
+        """The kinds a holder in a phase of kind `current` cannot move to, each with its reason and whether it is turned off."""
+        if current not in self._by_kind:
+            from app.services.lifecycles import lifecycle_for, next_states  # deferred: it reads the registry
+
+            resolved = lifecycle_for(self.db, self.project_id, self.artefact_type)
+            labels = resolved.definition.labels
+            allowed = {current.value, *next_states(resolved, current.value)}
+            reasons: dict[StagePhaseKind, tuple[str, bool]] = {}
+            for kind in StagePhaseKind:
+                if kind.value in allowed:
+                    continue
+                name = labels.get(kind.value, kind.value)
+                off = kind.value in resolved.disabled
+                reasons[kind] = (
+                    f"{name} phases are turned off in this project." if off
+                    else f"A {labels.get(current.value, current.value)} phase cannot move to a {name} phase.",
+                    off,
+                )
+            self._by_kind[current] = reasons
+        return self._by_kind[current]
+
+    def unavailable(self, phases: Sequence[StageWorkflowPhase], current_phase_id: uuid.UUID) -> list[UnavailablePhase]:
+        """The phases of a workflow the holder in `current_phase_id` cannot move to.
+
+        Args:
+            phases: The holder's workflow's phases in order.
+            current_phase_id: The holder's current phase (never listed).
+
+        Returns:
+            The unavailable phases in workflow order; empty when every other phase is reachable.
+        """
+        current = next((p for p in phases if p.id == current_phase_id), None)
+        if current is None:
+            return []
+        reasons = self._unavailable_kinds(current.kind)
+        return [UnavailablePhase(p.id, *reasons[p.kind]) for p in phases if p.id != current.id and p.kind in reasons]
 
 
 def may_lock_phases(

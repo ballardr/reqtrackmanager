@@ -1,8 +1,9 @@
 """
 Module: services.scheduler
 
-APScheduler wiring for the date-driven background checks: the requirement review-due notification sweep (C-R-08), the
-project-stage review-deadline auto-approval sweep (C-R-05) and the phase schedule reminder sweep.
+APScheduler wiring for the date-driven background checks: the review reminder sweep (C-R-08; requirement reviews and, through
+the review engine, every other type's reviews and the phase schedules of stages and component tracks) and the project-stage
+review-deadline auto-approval sweep (C-R-05).
 
 Design decisions:
 - Runs in-process in the single backend uvicorn process through `AsyncIOScheduler`, sharing the app's event loop; there is
@@ -21,7 +22,6 @@ from app.database import SessionLocal
 from app.modules.registry import ModuleScheduledJob, get_all_module_scheduled_jobs
 from app.services.credential_reset import purge_spent_tokens
 from app.services.reviews import send_due_review_reminders
-from app.services.stage_phase_plans import send_phase_reminders
 from app.services.stages import auto_approve_overdue_stage_reviews
 
 _scheduler: AsyncIOScheduler | None = None
@@ -41,15 +41,6 @@ def _run_stage_auto_approval() -> None:
     db = SessionLocal()
     try:
         auto_approve_overdue_stage_reviews(db)
-    finally:
-        db.close()
-
-
-def _run_phase_reminders() -> None:
-    """Opens a DB session and runs the stage and component phase schedule sweep (upcoming and overdue phases)."""
-    db = SessionLocal()
-    try:
-        send_phase_reminders(db)
     finally:
         db.close()
 
@@ -85,7 +76,6 @@ def start_scheduler() -> None:
     _scheduler = AsyncIOScheduler()
     _scheduler.add_job(_run_review_reminders, CronTrigger(hour=1, minute=0), id="review_reminders")
     _scheduler.add_job(_run_stage_auto_approval, CronTrigger(hour=1, minute=15), id="stage_auto_approval")
-    _scheduler.add_job(_run_phase_reminders, CronTrigger(hour=1, minute=20), id="phase_reminders")
     _scheduler.add_job(_run_credential_token_purge, CronTrigger(hour=1, minute=30), id="credential_token_purge")
     for module_key, job in get_all_module_scheduled_jobs():
         _scheduler.add_job(

@@ -34,7 +34,7 @@ from app.schemas.project import (
     StageReviewResponseCreate,
     StageReviewResponseOut,
 )
-from app.schemas.stage_workflow import StageTransitionRequest, StageUsageOut
+from app.schemas.stage_workflow import StageTransitionRequest, StageUsageOut, UnavailablePhaseOut
 from app.services import approval_policy
 from app.services.audit import log_event
 from app.services.baseline import BaselineRefused, refusal_detail
@@ -50,6 +50,7 @@ from app.services.rbac import (
 )
 from app.services.stage_usage import stages_in_use
 from app.services.stage_workflows import (
+    PhaseMoves,
     WorkflowConflict,
     default_workflow,
     effective_workflows,
@@ -59,6 +60,7 @@ from app.services.stage_workflows import (
     new_stage,
     phase_index,
     phase_kind_of,
+    phases_by_workflow,
     start_phase,
 )
 
@@ -77,9 +79,10 @@ _manage_or_lock = require_project_manage_or(_holds_lock_policy_role)
 
 
 def _stages_out(db: Session, stages: list[ProjectStage], viewer: User | None = None) -> list[ProjectStageOut]:
-    """Stage responses with each stage's workflow and phase names, read in two queries.
+    """Stage responses with each stage's workflow and phase names, read in a fixed number of queries.
 
-    With a `viewer`, each carries whether that person may enter or leave a locked phase (`can_lock`).
+    With a `viewer`, each carries whether that person may enter or leave a locked phase (`can_lock`). Each carries the
+    phases it cannot move to under the project's lifecycle (`unavailable_phases`).
     """
     project = db.get(Project, stages[0].project_id) if viewer is not None and stages else None
     can_lock = bool(
@@ -92,6 +95,8 @@ def _stages_out(db: Session, stages: list[ProjectStage], viewer: User | None = N
         w.id: w.name for w in db.scalars(select(StageWorkflow).where(StageWorkflow.id.in_(workflow_ids))).all()
     } if workflow_ids else {}
     labels = principal_labels(db, [principal_ref(s.owner_type, s.owner_id) for s in stages])
+    moves = PhaseMoves(db, stages[0].project_id, "project_stage") if stages else None
+    workflow_phases = phases_by_workflow(db, list(workflow_ids))
     out = []
     for stage in stages:
         phase = phases[stage.phase_id]
@@ -103,6 +108,10 @@ def _stages_out(db: Session, stages: list[ProjectStage], viewer: User | None = N
             approved_at=stage.approved_at, completed_at=stage.completed_at, completed_by=stage.completed_by,
             review_deadline=stage.review_deadline, can_lock=can_lock,
             owner=labels.get((owner_ref.type.value, owner_ref.id)) if owner_ref is not None else None,
+            unavailable_phases=[
+                UnavailablePhaseOut(phase_id=u.phase_id, reason=u.reason, turned_off=u.turned_off)
+                for u in (moves.unavailable(workflow_phases[stage.workflow_id], stage.phase_id) if moves else ())
+            ],
         ))
     return out
 
@@ -325,6 +334,7 @@ def set_stage_review_deadline(
         raise HTTPException(status.HTTP_409_CONFLICT, "A review deadline can only be set while the stage is in a review phase.")
     db.execute(delete(StageReviewResponse).where(StageReviewResponse.stage_id == stage.id))
     stage.review_deadline = payload.review_deadline
+    stage.review_deadline_reminded_for = None
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="review_deadline_set",
               actor_id=current_user.id, project_id=project.id,
               detail={"review_deadline": payload.review_deadline.isoformat() if payload.review_deadline else None})

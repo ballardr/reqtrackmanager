@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k) done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k) and Phase 7.5 (steps a to g) done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-9 / 23 phases complete. Phase 7.5 is next, then Phase 8.
+10 / 23 phases complete. Phase 8 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -30,7 +30,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 5 | Baseline policies and the check-provider extension point | Governance | [x] Done 2026-11-26 |
 | 6 | Governance Health (on demand and two snapshot modes) + Governance MCP tools | Governance | [x] Done 2026-11-26 |
 | 7 | Move existing types onto the engine: 7a Risk reviews, 7b Decisions, 7c Context & Strategy, 7d Requirements, 7e Compliance approval, 7f Architecture lifecycles, 7g Stakeholders lifecycles, 7h Compliance reviews, 7i Project stages and phases, 7j Component tracks, 7k Pain Point acceptance | Governance | [x] Done 2026-11-26 (7a to 7k) |
-| 7.5 | Stage governance follow-ups and flexible states (stage Health, allowed phases, phase and deadline reminders on the review engine, a profile-required workflow, custom states for other types, Compliance approval path) | Governance | [ ] Not started |
+| 7.5 | Stage governance follow-ups and flexible states (stage Health, allowed phases, phase and deadline reminders on the review engine, a profile-required workflow, custom states for other types, Compliance approval path) | Governance | [x] Done 2026-11-26 (a to g) |
 | 8 | Governance frontend UI | Governance | [ ] Not started |
 | 9 | Governance docs website coverage | Governance | [ ] Not started — depends on Phase 8 |
 | 10 | Requirement types (moved from Module 5 Phase 1) | Traceability | [ ] Not started |
@@ -779,6 +779,15 @@ reset (they are system moves with no caller, so decide whether a reset is a move
 that turns the submit step off.
 
 **Exit criteria:** each build step above is done with its tests, docs and decisions entry, or the user has answered the decision step
+
+**Built (2026-11-26).** Decisions and deviations are in `docs/decisions.md`, "Module 7 Phase 7.5".
+
+- **7.5a to 7.5d.** Stage and track Health providers (`open_to_members`, `measure` may return `None`); `unavailable_phases` on stage and track responses with `stage_workflows.PhaseMoves` and the shared `utils/phaseOptions.ts`; `stage_phase` and `stage_review` as core review adapters (contract: `ReviewReminder.kind` and `detail`, `ReviewAdapter.reminder_day` and `project_lead_days`), `STAGE_REVIEW_DEADLINE`, migration `0211`; the module's own phase sweep and its scheduler job are gone.
+- **7.5e (Decided by: User).** `GovernanceSeam.STAGE_WORKFLOW`, `StageWorkflowPolicy`, `stage_workflow_policy.py`, the `stage_workflow` profile contributor in the `lifecycle_policies` part, `default` and `restrict` modes, `ModuleDefinition.stage_workflow_references`, routes and MCP tools; the table is in the unreleased migration `0210`.
+- **7.5f (Decided by: User): design only.** [custom-record-states-plan.md](custom-record-states-plan.md): pilot Persona, Stakeholder and Stakeholder Need, with a role per state, a rule before a move, time in a state and a scheduled move in the first release.
+- **7.5g (Decided by: User).** The Compliance assessment approval state is a registered lifecycle; the plan's path was corrected to include Not assessed and Requires re-assessment.
+- **Deviations from this phase's wording:** `unavailable_phases` instead of `allowed_phase_ids`; the workflow policy is profile-only and uses the lifecycle part; the policy's default owner joins the phase reminder recipients.
+- Tests: `modules/traceability/tests/test_governance_health_stages.py`, `test_governance_stage_phase_review.py`, `test_governance_stage_workflow_policy.py`; `tests/test_stage_allowed_phases.py`, `test_stage_review_deadline_reminder.py`, `test_review_engine.py`; `modules/compliance/tests/test_compliance_approval_lifecycle.py`; stories for the unavailable phase and the Playwright spec `stage-allowed-phases.spec.ts`.
 with "not now" and that is recorded; the status table counts the phase when every step is done or recorded as declined.
 
 ## Phase 8 — Governance frontend UI

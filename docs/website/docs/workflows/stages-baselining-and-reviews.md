@@ -18,7 +18,7 @@ sidebar_position: 6
 Each stage row has a phase picker listing the phases of its workflow (with the standard workflow: Scoping, Review, Approved, Completed, Archived). Choose any phase; moves are free in either direction.
 
 1. Choose a Review phase (**Review** in the standard workflow). Optionally set a **review deadline**.
-2. While in review, stakeholders record an explicit approve/reject response. If the deadline passes with no rejection, the stage moves to the next Locked phase — silence is treated as approval. An explicit rejection blocks it and leaves it for a manager to resolve.
+2. While in review, stakeholders record an explicit approve/reject response. Stakeholders who have not responded and the project managers are reminded before the deadline. If the deadline passes with no rejection, the stage moves to the next Locked phase — silence is treated as approval. An explicit rejection blocks it and leaves it for a manager to resolve.
 3. Choose a Locked phase (**Approved**) — baselines every non-archived requirement still in draft or reviewed status (snapshotting its current version) and locks them: from this point, they can only change via a [change request](./change-requests.md).
 4. Once the stage's work is delivered, choose a Closed phase (**Completed**). The dialog offers to mark every approved requirement targeting the stage as completed too.
 

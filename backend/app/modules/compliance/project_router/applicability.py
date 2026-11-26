@@ -29,6 +29,7 @@ from app.modules.compliance.project_router._shared import (
 from app.modules.compliance.schemas import ProjectComplianceApplicabilityUpdate, ProjectComplianceAssessmentUpdate, ProjectComplianceRequirementOut
 from app.modules.compliance.service import (
     advance_approval_state_on_assessment,
+    approval_moves,
     build_requirement_out,
     get_effective_compliance_officers,
     invalidate_approval_if_in_flight,
@@ -58,7 +59,8 @@ def list_project_compliance_requirements(
         db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
     )
     pcrs = tag_filter.keep(db, project_id, "project_compliance_requirement", pcrs)
-    return [build_requirement_out(pcr, applicability) for pcr in pcrs]
+    moves = approval_moves(db, project_id)
+    return [build_requirement_out(pcr, applicability, moves(pcr)) for pcr in pcrs]
 
 
 @router.get(
@@ -74,7 +76,7 @@ def get_project_compliance_requirement(
     _pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
     )
-    return build_requirement_out(pcr, applicability)
+    return build_requirement_out(pcr, applicability, approval_moves(db, project_id)(pcr))
 
 
 @router.patch(
@@ -124,7 +126,7 @@ def update_requirement_applicability(
     _pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
     )
-    return build_requirement_out(pcr, applicability)
+    return build_requirement_out(pcr, applicability, approval_moves(db, project_id)(pcr))
 
 
 @router.patch(
@@ -181,4 +183,4 @@ def update_requirement_assessment(
     _pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
     )
-    return build_requirement_out(pcr, applicability)
+    return build_requirement_out(pcr, applicability, approval_moves(db, project_id)(pcr))

@@ -2,7 +2,7 @@
 Module: modules.compliance.project_router.assessment_workflow
 
 A project compliance requirement's approval/sign-off workflow
-(§12/§16/§27): submit-for-approval, approve, reject — the latter two
+(§12/§16/§27): submit-for-approval, approve, reject, each move checked through the assessment's lifecycle — the latter two
 reachable through MCP only when both the project's and its
 organisation's `allow_ai_approvals` are enabled (see each function's
 own docstring) — plus its audit history and linked-evidence listing.
@@ -22,17 +22,45 @@ from app.models.notification import NotificationType
 from app.models.user import User
 from app.modules.compliance.approval import require_assessment_approver
 from app.modules.compliance.enums import ComplianceApprovalState
-from app.modules.compliance.models import ARTEFACT_TYPE_EVIDENCE, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, ComplianceEvidence
+from app.modules.compliance.models import (
+    ARTEFACT_TYPE_EVIDENCE,
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
+    ComplianceEvidence,
+    ProjectComplianceRequirement,
+)
 from app.modules.compliance.project_router._shared import _get_pcr_or_404, _require_officer, _require_view
 from app.modules.compliance.schemas import ComplianceApprovalDecisionRequest, ComplianceEvidenceOut, ProjectComplianceRequirementOut
-from app.modules.compliance.service import build_evidence_out, build_requirement_out, get_effective_compliance_officers, load_pcrs_and_applicability
+from app.modules.compliance.service import (
+    approval_moves,
+    build_evidence_out,
+    build_requirement_out,
+    get_effective_compliance_officers,
+    load_pcrs_and_applicability,
+)
 from app.schemas.audit import AuditEventOut
 from app.services import approval_separation, notifications, relationships
 from app.services.audit import log_event
+from app.services.lifecycles import check_move
 from app.services.lookups import project_or_404
 from app.services.rbac import require_ai_approvals_enabled
 
 router = APIRouter(tags=["compliance-project-assessment-workflow"])
+
+
+def _check_approval_move(db: Session, project_id: UUID, pcr: ProjectComplianceRequirement, target: ComplianceApprovalState) -> None:
+    """Enforces the move of an assessment's approval state through its lifecycle (`modules.compliance.lifecycles`), which
+    steps over a state the project turned off.
+
+    Raises:
+        HTTPException: 409 naming the states the assessment may move to when the move is not legal here.
+    """
+    try:
+        check_move(
+            db, project_id, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, pcr.approval_state.value, target.value,
+            record_id=pcr.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
 @router.post(
@@ -44,21 +72,18 @@ def submit_requirement_for_approval(
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
 ):
     """Requests formal approval for this requirement's current assessment (§12): `ASSESSED` -> `PENDING_APPROVAL`; 409
-    from any other `approval_state`, enforcing §12's ordering. It only queues a decision for a person to make, so it is
+    from any other `approval_state` or when the project turned the step off, enforcing §12's ordering through the
+    assessment's lifecycle. It only queues a decision for a person to make, so it is
     not `APPROVAL_ACTION_ROUTE_EXTRA` and needs no `allow_ai_approvals` gate, as core's `submit_change_request`; it is a
     normal MCP write tool gated by the caller's `compliance_officer` or `PROJECT_MANAGER` role."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
-    if pcr.approval_state != ComplianceApprovalState.ASSESSED:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"Cannot submit for approval from state '{pcr.approval_state.value}'; the requirement must be "
-            "'assessed' first.",
-        )
+    previous = pcr.approval_state.value
+    _check_approval_move(db, project_id, pcr, ComplianceApprovalState.PENDING_APPROVAL)
     pcr.approval_state = ComplianceApprovalState.PENDING_APPROVAL
     log_event(
         db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="submitted_for_approval",
         actor_id=current_user.id, project_id=project_id,
-        detail={"previous_approval_state": "assessed", "new_approval_state": "pending_approval"},
+        detail={"previous_approval_state": previous, "new_approval_state": "pending_approval"},
     )
     for recipient_id in get_effective_compliance_officers(db, project_id):
         recipient = db.get(User, recipient_id)
@@ -76,7 +101,7 @@ def submit_requirement_for_approval(
     _pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
     )
-    return build_requirement_out(pcr, applicability)
+    return build_requirement_out(pcr, applicability, approval_moves(db, project_id)(pcr))
 
 
 @router.post(
@@ -88,7 +113,8 @@ def approve_requirement(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Formally approves and signs off this requirement's assessment (§12): `PENDING_APPROVAL` -> `APPROVED`. Gated
+    """Formally approves and signs off this requirement's assessment (§12): `PENDING_APPROVAL` -> `APPROVED` (from
+    `ASSESSED` where the project turned the submit step off). Gated
     through `services.approval_policy` (`compliance.approval.require_assessment_approver`): a `compliance_officer` or
     `PROJECT_MANAGER` as for every mutating endpoint on this router (§11 and §26 name no separate approver role), plus a
     role the project's approval policy names or a holder of the type's `approve_baseline` permission. The person who
@@ -100,12 +126,8 @@ def approve_requirement(
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project_or_404(db, project_id))
-    if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"Cannot approve from state '{pcr.approval_state.value}'; the requirement must be "
-            "'pending_approval' first.",
-        )
+    previous = pcr.approval_state.value
+    _check_approval_move(db, project_id, pcr, ComplianceApprovalState.APPROVED)
     if pcr.assessed_by is not None:
         approval_separation.enforce_approval(
             db, user=current_user, artefact_type=ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, record_id=pcr.id,
@@ -120,7 +142,7 @@ def approve_requirement(
         db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="approved",
         actor_id=current_user.id, project_id=project_id,
         detail={
-            "previous_approval_state": "pending_approval", "new_approval_state": "approved",
+            "previous_approval_state": previous, "new_approval_state": "approved",
             "decision_note": payload.decision_note,
             **({"via": "mcp"} if channel == "mcp" else {}),
         },
@@ -130,7 +152,7 @@ def approve_requirement(
     _pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
     )
-    return build_requirement_out(pcr, applicability)
+    return build_requirement_out(pcr, applicability, approval_moves(db, project_id)(pcr))
 
 
 @router.post(
@@ -142,19 +164,16 @@ def reject_requirement(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Formally rejects this requirement's assessment (§12): `PENDING_APPROVAL` -> `REJECTED`. `decision_note` is
+    """Formally rejects this requirement's assessment (§12): `PENDING_APPROVAL` -> `REJECTED` (from `ASSESSED` where the
+    project turned the submit step off). `decision_note` is
     mandatory (400), as for Non-Compliant and Not Applicable decisions (§16), so a rejection always says why. Gated like
     `approve_requirement`, including the MCP gate; approval separation does not apply to a rejection."""
     require_assessment_approver(db, current_user, project_id)
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project_or_404(db, project_id))
-    if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"Cannot reject from state '{pcr.approval_state.value}'; the requirement must be "
-            "'pending_approval' first.",
-        )
+    previous = pcr.approval_state.value
+    _check_approval_move(db, project_id, pcr, ComplianceApprovalState.REJECTED)
     if not payload.decision_note.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A decision note is required to reject an approval.")
     pcr.approval_state = ComplianceApprovalState.REJECTED
@@ -165,7 +184,7 @@ def reject_requirement(
         db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="rejected",
         actor_id=current_user.id, project_id=project_id,
         detail={
-            "previous_approval_state": "pending_approval", "new_approval_state": "rejected",
+            "previous_approval_state": previous, "new_approval_state": "rejected",
             "decision_note": payload.decision_note,
             **({"via": "mcp"} if channel == "mcp" else {}),
         },
@@ -184,7 +203,7 @@ def reject_requirement(
     _pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
     )
-    return build_requirement_out(pcr, applicability)
+    return build_requirement_out(pcr, applicability, approval_moves(db, project_id)(pcr))
 
 
 @router.get(

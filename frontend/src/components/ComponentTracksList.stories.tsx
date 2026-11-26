@@ -163,3 +163,20 @@ export const WorkflowColumnIsOptionalAndOffByDefault: Story = {
     await expect(heads()).not.toContain("Workflow");
   },
 };
+
+/** A phase the project's lifecycle does not let the track move to is shown unavailable with the reason in its label. */
+export const AnUnavailablePhaseIsNotChoosable: Story = {
+  args: {
+    state: buildComponentPhases({
+      tracks: [buildComponentTrack({
+        component_id: "c1", stage_id: "s1", can_move: true,
+        unavailable_phases: [{ phase_id: "phase-review", reason: "Review phases are turned off in this project.", turned_off: true }],
+      })],
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const picker = within(canvasElement).getByRole("combobox", { name: "Phase of Software in Release 1" });
+    await expect(within(picker).getByRole("option", { name: "Review (turned off in this project)" })).toBeDisabled();
+    await expect(within(picker).getByRole("option", { name: "Completed" })).toBeEnabled();
+  },
+};

@@ -2,7 +2,7 @@
 Module: modules.traceability.enums
 
 Closed vocabularies of the module: how a governance profile binds a project, which projects it reaches, what it does for
-one project, and how a project's governance health is kept.
+one project, how a profile's stage workflow binds a project, and how a project's governance health is kept.
 
 Responsibilities:
 - Name each value once; the model stores the value as a plain string and the services validate against these.
@@ -58,6 +58,17 @@ class ProfileOutcome(str, Enum):
     def applies(self) -> bool:
         """Whether the profile's policy applies to the project."""
         return self in (ProfileOutcome.ENFORCED, ProfileOutcome.DEFAULT, ProfileOutcome.OPTED_IN)
+
+
+class StageWorkflowMode(str, Enum):
+    """How a profile's stage workflow binds the projects it applies to.
+
+    `DEFAULT` makes the workflow the one new stages start in, with the project still free to use others; `RESTRICT` also
+    limits the project to the workflows its profiles name.
+    """
+
+    DEFAULT = "default"
+    RESTRICT = "restrict"
 
 
 #: The refresh cadences a project may choose for interval snapshots, in hours: hourly, a few times a day, then whole days

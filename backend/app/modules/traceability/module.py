@@ -15,7 +15,8 @@ Registered contributions:
   `traceability_rules`: they have no effect while it is off, and their settings are kept.
 - `administrative_permissions`: `manage_org_governance`, `manage_project_governance`, `manage_org_traceability`,
   `manage_project_traceability` and `approve_traceability_exceptions`.
-- `policy_resolvers` and `profile_contributors`: the lifecycle policy (`lifecycle_policy`), the approval policy
+- `policy_resolvers` and `profile_contributors`: the lifecycle policy (`lifecycle_policy`) and, with its part, the stage
+  workflow policy (`stage_workflow_policy`: the organisation workflow a profile requires of stages), the approval policy
   (`approval_policy`: the roles that may also approve a record type), the review policy (`review_policy`: the interval,
   reminder lead and default owner of a record type) and the baseline policy (`baseline_policy`: the checks that run before
   a baseline and the fields a record must have filled) of governance profiles and projects, each in force while its
@@ -69,6 +70,7 @@ from app.modules.traceability import (
     health,
     lifecycle_policy,
     review_policy,
+    stage_workflow_policy,
 )
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
@@ -173,6 +175,10 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
         PolicyResolver(seam=GovernanceSeam.REVIEW, resolve=review_policy.resolve_policy, sub_component=REVIEW_POLICIES),
         PolicyResolver(
+            seam=GovernanceSeam.STAGE_WORKFLOW, resolve_project=stage_workflow_policy.resolve_project_policy,
+            sub_component=LIFECYCLE_POLICIES,
+        ),
+        PolicyResolver(
             seam=GovernanceSeam.BASELINE, resolve_project=baseline_policy.resolve_project_policy, sub_component=BASELINE_POLICIES,
         ),
     ),
@@ -194,6 +200,11 @@ MODULE_DEFINITION = ModuleDefinition(
             sub_component=LIFECYCLE_POLICIES,
         ),
         ProfileContributor(
+            key="stage_workflow", name="Stage workflow policy", count_rows=stage_workflow_policy.count_rows,
+            export_rows=stage_workflow_policy.export_rows, import_rows=stage_workflow_policy.import_rows,
+            sub_component=LIFECYCLE_POLICIES,
+        ),
+        ProfileContributor(
             key="approval", name="Approval policy", count_rows=approval_policy.count_rows,
             export_rows=approval_policy.export_rows, import_rows=approval_policy.import_rows,
             sub_component=APPROVAL_POLICIES,
@@ -207,6 +218,7 @@ MODULE_DEFINITION = ModuleDefinition(
             export_rows=baseline_policy.export_rows, import_rows=baseline_policy.import_rows, sub_component=BASELINE_POLICIES,
         ),
     ),
+    stage_workflow_references=stage_workflow_policy.references,
     principal_references=(
         PrincipalReference(
             model=GovernanceReviewPolicy, field="default_owner", label="governance review policy default owners",

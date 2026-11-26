@@ -332,3 +332,64 @@ def test_an_adapters_sub_component_must_be_effective_for_it_to_apply(client, adm
 def test_an_adapter_that_sends_no_reminders_cannot_set_reminder_options():
     with pytest.raises(ValueError, match="sends no reminders"):
         ReviewAdapter(schedule="review_record", due_reviews=lambda db, project_id, as_of: [], overdue_notification_type="x")
+
+
+def test_an_adapter_says_which_reminder_a_row_is_and_the_day_each_kind_is_judged_against(client, admin_token, org_id, monkeypatch):
+    project = _world(client, admin_token, org_id)
+    record_id = uuid.uuid4()
+    sent: dict[str, date | None] = {"due": None, "overdue": None}
+    day = date(2026, 11, 10)
+
+    def mark(db, marks: list[ReminderMark], when):
+        for m in marks:
+            sent["overdue" if m.overdue else "due"] = m.due_on
+
+    adapter = ReviewAdapter(
+        schedule="next_review_date",
+        due_reviews=lambda db, project_id, as_of: [],
+        pending_reminders=lambda db: [
+            ReviewReminder(
+                artefact_id=record_id, project_id=uuid.UUID(project["id"]), due_on=day - timedelta(days=3), title="Two dates",
+                code="", kind="due", reminded_for=sent["due"], overdue_reminded_for=sent["overdue"], detail="start",
+            ),
+            ReviewReminder(
+                artefact_id=record_id, project_id=uuid.UUID(project["id"]), due_on=day, title="Two dates", code="",
+                kind="overdue", reminded_for=sent["due"], overdue_reminded_for=sent["overdue"], detail="end",
+            ),
+        ],
+        mark_reminded=mark,
+        notification_type=NotificationType.REQUIREMENT_REVIEW_DUE.value,
+        overdue_notification_type=NotificationType.REQUIREMENT_REVIEW_DUE.value,
+        message=lambda reminder, overdue: ("T", f"{reminder.detail} {'overdue' if overdue else 'due'}"),
+        # "due" is judged against the next day, "overdue" against the previous one.
+        reminder_day=lambda now, kind: now.date() + timedelta(days=1 if kind == "due" else -1),
+    )
+    real = registry.get_review_adapters
+    monkeypatch.setattr(registry, "get_review_adapters", lambda: {**real(), "two_dates": ("", adapter)})
+
+    def sweep(at: datetime) -> int:
+        with SessionLocal() as db:
+            return review_engine.send_review_reminders(db, now=at)
+
+    # A "due" date already behind the day is still a "due" reminder (the kind is named, not inferred), and an "overdue"
+    # date that has not passed the earlier day is held back.
+    assert sweep(datetime(2026, 11, 10, 12, 0, tzinfo=UTC)) == 1
+    assert sent == {"due": day - timedelta(days=3), "overdue": None}
+    # Once the earlier day is past the date the "overdue" reminder follows, and each is sent once.
+    assert sweep(datetime(2026, 11, 12, 12, 0, tzinfo=UTC)) == 1
+    assert sent["overdue"] == day
+    assert sweep(datetime(2026, 11, 13, 12, 0, tzinfo=UTC)) == 0
+
+
+def test_an_adapter_names_its_lead_through_one_option_only(client, admin_token, org_id):
+    with pytest.raises(ValueError, match="not both"):
+        ReviewAdapter(
+            schedule="next_review_date", due_reviews=lambda db, project_id, as_of: [],
+            pending_reminders=lambda db: [], mark_reminded=lambda db, marks, when: None, notification_type="x",
+            default_lead_days=3, project_lead_days=lambda db, project_id: 4,
+        )
+    with pytest.raises(ValueError, match="sends no reminders"):
+        ReviewAdapter(
+            schedule="next_review_date", due_reviews=lambda db, project_id, as_of: [],
+            reminder_day=lambda now, kind: now.date(),
+        )

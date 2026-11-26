@@ -36,7 +36,7 @@ External dependencies: `app.modules.compliance.models`, `.enums`, SQLAlchemy.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
@@ -644,15 +644,33 @@ def summarize_project_compliance(
     )
 
 
+def approval_moves(db: Session, project_id: uuid.UUID) -> Callable[[ProjectComplianceRequirement], list[str]]:
+    """A function giving the approval states an assessment may move to in the project, resolved once however many assessments
+    are asked (`services.lifecycles.lifecycle_for`).
+
+    Args:
+        db: The session (read only).
+        project_id: The project of the assessments.
+
+    Returns:
+        `moves(pcr)`: the legal next approval states in path order.
+    """
+    from app.services.lifecycles import lifecycle_for, next_states  # deferred: it reads the registry
+
+    resolved = lifecycle_for(db, project_id, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT)
+    return lambda pcr: next_states(resolved, pcr.approval_state.value)
+
+
 def build_requirement_out(
-    pcr: ProjectComplianceRequirement, applicability: ApplicabilityResolution
+    pcr: ProjectComplianceRequirement, applicability: ApplicabilityResolution, moves: list[str] | None = None,
 ) -> ProjectComplianceRequirementOut:
     """Builds the response schema for one `ProjectComplianceRequirement`
     row, filling in its computed `effective_applicability`/
     `applicability_source` from an already-resolved `applicability` map
     (see `resolve_applicability_for_version`) — used by every `project_
     router.py` endpoint that returns one or more of these rows, so the
-    "computed, not stored" fields are never built ad hoc per call site."""
+    "computed, not stored" fields are never built ad hoc per call site. `moves` are the approval states the row may
+    move to (`approval_moves`), left empty by a caller that does not offer them."""
     effective, source = applicability[pcr.requirement_id]
     return ProjectComplianceRequirementOut(
         id=pcr.id,
@@ -674,6 +692,7 @@ def build_requirement_out(
         decision_note=pcr.decision_note,
         created_at=pcr.created_at,
         updated_at=pcr.updated_at,
+        next_approval_states=moves or [],
     )
 
 

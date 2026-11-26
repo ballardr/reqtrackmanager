@@ -10,10 +10,10 @@ groups (C-U-12), and direct per-user project role assignments.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -203,6 +203,9 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     review_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The UTC date of the deadline last reminded, so a deadline is reminded once; cleared whenever a deadline is set.
+    # Derived, never exported.
+    review_deadline_reminded_for: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class StageReviewResponse(UUIDPKMixin, Base):

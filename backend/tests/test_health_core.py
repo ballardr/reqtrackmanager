@@ -35,8 +35,10 @@ def _definition(**extra) -> ModuleDefinition:
 
 def test_the_core_types_report_first_with_an_empty_module_key():
     providers = get_health_providers()
-    assert [(key, p.key) for key, p in providers[: len(CORE_HEALTH_PROVIDERS)]] == [("", "requirement"), ("", "change_request")]
-    assert {p.artefact_type for _, p in providers} >= {"requirement", "change_request"}
+    assert [(key, p.key) for key, p in providers[: len(CORE_HEALTH_PROVIDERS)]] == [
+        ("", "requirement"), ("", "change_request"), ("", "project_stage"), ("", "component_stage"),
+    ]
+    assert {p.artefact_type for _, p in providers} >= {"requirement", "change_request", "project_stage"}
 
 
 def test_a_measure_counts_only_the_statuses_it_is_given():

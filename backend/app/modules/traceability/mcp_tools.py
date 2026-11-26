@@ -277,6 +277,27 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             params=[_ORG_ID, _PROFILE_ID, _body("forbidden", "boolean", "true forbids skipping.", required=True)],
         ),
         McpToolDefinition(
+            name="get_profile_stage_workflow_policy",
+            description=(
+                "The organisation stage workflow a profile requires of its projects, how it binds them and the workflows it may "
+                "name."
+            ),
+            method="GET", path_template=f"{_ORG}/profiles/{{profile_id}}/stage-workflow", params=[_ORG_ID, _PROFILE_ID],
+        ),
+        McpToolDefinition(
+            name="set_profile_stage_workflow_policy",
+            description=(
+                "Makes a profile require an organisation stage workflow: new stages of its projects start in it and a project "
+                "cannot hide it. In `restrict` mode a project may use only the workflows its profiles name."
+            ),
+            method="PUT", path_template=f"{_ORG}/profiles/{{profile_id}}/stage-workflow",
+            params=[
+                _ORG_ID, _PROFILE_ID,
+                _body("workflow_id", "uuid", "An organisation workflow, from the read's `options`.", required=True),
+                _body("mode", "string", "`default` (new stages start in it; other workflows stay usable) or `restrict`."),
+            ],
+        ),
+        McpToolDefinition(
             name="get_profile_approval_policy",
             description="The roles a profile adds as approvers of each record type, with the roles a policy may name.",
             method="GET", path_template=f"{_ORG}/profiles/{{profile_id}}/approval", params=[_ORG_ID, _PROFILE_ID],

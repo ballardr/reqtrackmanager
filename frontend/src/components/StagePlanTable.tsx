@@ -7,8 +7,9 @@
  *
  * Responsibilities: one row per stage from `utils/deliveryPlan.stageRows`; the phase picker moves a stage through the
  * shared `usePhaseMove` (a closed phase first asks about completing its requirements); a locked phase is shown
- * unavailable with the reason to a person who cannot enter or leave it (the server enforces it); `onSchedule` adds a
- * control to set the current phase's expected range, for a manager.
+ * unavailable with the reason to a person who cannot enter or leave it (the server enforces it), as is a phase the
+ * project's lifecycle does not allow (`utils/phaseOptions`); `onSchedule` adds a control to set the current phase's
+ * expected range, for a manager.
  *
  * Design decision: the same columns and wording as `ComponentTracksList`; a stage's workflow, owner and name are edited
  * in project administration.
@@ -21,6 +22,7 @@ import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { usePhaseMove } from "../hooks/usePhaseMove";
 import { useTableSort } from "../hooks/useTableSort";
 import { formatDay, stageRows, type DeliveryRow } from "../utils/deliveryPlan";
+import { phaseOptions } from "../utils/phaseOptions";
 import { Badge } from "./Badge";
 import { DeliveryTimeline } from "./DeliveryTimeline";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
@@ -82,11 +84,7 @@ export function StagePlanTable({
                 phaseMove.requestMove({ path: `/api/v1/projects/${projectId}/stages/${stage.id}/transition`, phase, noun: "{stage}" });
               }
             }}
-            options={phases.map((p) => {
-              // Entering or leaving a locked phase needs a project manager: show the choice as unavailable, with why.
-              const locked = !stage.can_lock && p.id !== stage.phase_id && (p.kind === "locked" || stage.phase_kind === "locked");
-              return { value: p.id, label: locked ? strings.stageWorkflows.lockedNeedsManager(p.name) : p.name, disabled: locked };
-            })}
+            options={phaseOptions(strings.stageWorkflows, phases, stage, Boolean(stage.can_lock))}
           />
         );
       },

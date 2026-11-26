@@ -5,8 +5,9 @@ Revises: 0209
 Create Date: 2026-11-26
 
 Organisation policy sets with their targets, exemptions and per-project choices, the policy tables a profile or a
-project owns, and governance health's defaults, settings and snapshots. Nothing is seeded: with no profile every
-project's governance is unchanged. Guarded so a database built from the current models passes.
+project owns (including the stage workflow a profile requires), and governance health's defaults, settings and
+snapshots. Nothing is seeded: with no profile every project's governance is unchanged. Guarded so a database built from
+the current models passes.
 """
 
 from collections.abc import Sequence
@@ -166,6 +167,26 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS ix_governance_review_policies_project_id ON governance_review_policies (project_id)")
     op.execute(
         """
+        CREATE TABLE IF NOT EXISTS governance_stage_workflow_policies (
+            id UUID PRIMARY KEY,
+            profile_id UUID NOT NULL REFERENCES governance_profiles(id) ON DELETE CASCADE,
+            workflow_id UUID NOT NULL REFERENCES stage_workflows(id) ON DELETE CASCADE,
+            mode VARCHAR(16) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT ck_governance_stage_workflow_policies_mode CHECK (mode IN ('default', 'restrict')),
+            CONSTRAINT uq_governance_stage_workflow_policies UNIQUE (profile_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_stage_workflow_policies_profile_id ON governance_stage_workflow_policies (profile_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_governance_stage_workflow_policies_workflow_id ON governance_stage_workflow_policies (workflow_id)"
+    )
+    op.execute(
+        """
         CREATE TABLE IF NOT EXISTS governance_baseline_policies (
             id UUID PRIMARY KEY,
             profile_id UUID REFERENCES governance_profiles(id) ON DELETE CASCADE,
@@ -272,6 +293,7 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS governance_baseline_required_fields")
     op.execute("DROP TABLE IF EXISTS governance_baseline_checks")
     op.execute("DROP TABLE IF EXISTS governance_baseline_policies")
+    op.execute("DROP TABLE IF EXISTS governance_stage_workflow_policies")
     op.execute("DROP TABLE IF EXISTS governance_review_policies")
     op.execute("DROP TABLE IF EXISTS governance_approval_policy_roles")
     op.execute("DROP TABLE IF EXISTS governance_approval_policies")

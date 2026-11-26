@@ -245,6 +245,37 @@ class LifecycleSkipSet(BaseModel):
     forbidden: bool
 
 
+class StageWorkflowOptionOut(BaseModel):
+    """An organisation workflow a profile may require."""
+
+    id: UUID
+    name: str
+
+
+class ProfileStageWorkflowOut(BaseModel):
+    """A profile's stage workflow policy.
+
+    Attributes:
+        workflow_id: The organisation workflow the profile requires, `null` for none.
+        workflow_name: Its name.
+        mode: `default` (new stages start in it; other workflows stay usable) or `restrict` (the project may use only the
+            workflows its profiles name).
+        options: The organisation's workflows, to choose from.
+    """
+
+    workflow_id: UUID | None
+    workflow_name: str | None
+    mode: Literal["default", "restrict"]
+    options: list[StageWorkflowOptionOut]
+
+
+class StageWorkflowRequirementSet(BaseModel):
+    """The workflow a profile requires and how it binds."""
+
+    workflow_id: UUID
+    mode: Literal["default", "restrict"] = "default"
+
+
 class ApproverRoleIn(BaseModel):
     """A role an approval policy names.
 

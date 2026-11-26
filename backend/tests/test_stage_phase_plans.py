@@ -10,7 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from app.database import SessionLocal
 from app.services.report_fields import load_records
-from app.services.stage_phase_plans import send_phase_reminders
+from app.services.review_engine import send_review_reminders
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, create_project_group, login
 from tests.stage_helpers import move_stage
 
@@ -51,7 +51,7 @@ def _plans(client, token, project_id) -> dict:
 def _sweep(now: datetime) -> None:
     db = SessionLocal()
     try:
-        send_phase_reminders(db, now)
+        send_review_reminders(db, now=now)
     finally:
         db.close()
 

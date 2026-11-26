@@ -116,6 +116,11 @@ Full stage lifecycle: scoping → PM moves the stage to the Review phase and set
 
 An organisation administrator builds a workflow with a custom locked phase in Organisation Admin → a project stage follows it, and entering the locked phase baselines the requirements whatever the phase is called → leaving it is allowed for the project manager → the project hides the organisation workflow and restores it.
 
+### 10b2. Allowed stage phases
+**Persona:** Org Admin AlphaBeta. **Spec:** `stage-allowed-phases.spec.ts`.
+
+On a disposable project the manager turns the Review step off for stages in Project Admin → Lifecycles (through the API) → the Delivery status phase picker shows the Review phase unavailable with its reason while the other phases stay choosable → a direct attempt to move the stage to the Review phase is refused with 409.
+
 ### 10c. Component phases
 **Persona:** Org Admin AlphaBeta. **Spec:** `component-phases.spec.ts`.
 

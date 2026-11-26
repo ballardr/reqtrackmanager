@@ -98,3 +98,19 @@ export const OptionalColumnsCanBeHidden: Story = {
     await expect(heads()).toContain("Owner");
   },
 };
+
+/** A phase the project's lifecycle turned off is shown unavailable with the reason in its label; the others stay choosable. */
+export const ATurnedOffPhaseIsUnavailable: Story = {
+  args: {
+    stages: [buildStage({
+      id: "s1", name: "Design", can_lock: true,
+      unavailable_phases: [{ phase_id: "phase-review", reason: "Review phases are turned off in this project.", turned_off: true }],
+    })],
+  },
+  play: async ({ canvasElement }) => {
+    const picker = within(canvasElement).getByRole("combobox", { name: "Phase of Design" });
+    const off = within(picker).getByRole("option", { name: "Review (turned off in this project)" });
+    await expect(off).toBeDisabled();
+    await expect(within(picker).getByRole("option", { name: "Approved" })).toBeEnabled();
+  },
+};

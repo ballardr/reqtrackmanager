@@ -10,7 +10,8 @@
  *   "tracks I can move".
  * - Moving a track (a closed phase first asks whether to complete the approved requirements too) is reported
  *   through `onChanged`. The server decides who may move (`can_move`); the list only disables the picker, and a
- *   locked-phase move by someone who cannot make it is not offered.
+ *   locked-phase move by someone who cannot make it is not offered. A phase the project's lifecycle does not allow
+ *   the track to move to is shown unavailable (`utils/phaseOptions`).
  * - With `plans`, it shows progress, expected range and overdue state (`utils/deliveryPlan`) and a timeline view
  *   (`view="timeline"`); `onSchedule` adds a control for the current phase's expected range. Editing a track is
  *   offered only where the host passes `onEdit`.
@@ -24,6 +25,7 @@ import { useOptionalColumns } from "../hooks/useOptionalColumns";
 import { usePhaseMove } from "../hooks/usePhaseMove";
 import { useTableSort } from "../hooks/useTableSort";
 import { formatDay, trackRows, type DeliveryRow } from "../utils/deliveryPlan";
+import { phaseOptions } from "../utils/phaseOptions";
 import { Badge } from "./Badge";
 import { DeliveryTimeline } from "./DeliveryTimeline";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
@@ -123,7 +125,7 @@ export function ComponentTracksList({
           <InlineSelect
             ariaLabel={t.track(nameOf(components, track.component_id), nameOf(stages, track.stage_id))} value={track.phase_id}
             placeholder={null} autoWidth disabled={!track.can_move} onChange={(next) => requestMove(track, next)}
-            options={phases.map((p) => ({ value: p.id, label: p.name }))}
+            options={phaseOptions(strings.stageWorkflows, phases, track)}
           />
         );
       },

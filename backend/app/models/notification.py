@@ -45,6 +45,7 @@ class NotificationType(str, enum.Enum):
     COMMENT_ADDED = "comment_added"
     REQUIREMENT_REVIEW_DUE = "requirement_review_due"
     STAGE_REVIEW_AUTO_APPROVED = "stage_review_auto_approved"
+    STAGE_REVIEW_DEADLINE = "stage_review_deadline"
     # A stage's automatic approval was refused because a baseline check failed (services/stages.py).
     STAGE_BASELINE_REFUSED = "stage_baseline_refused"
     # Phase schedule reminders for a stage or a component's track (services/stage_phase_plans.py).

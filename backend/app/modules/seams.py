@@ -71,12 +71,13 @@ class ModuleAdministrativePermission:
 
 class GovernanceSeam(str, Enum):
     """The core engine seams a module's policy can take part in. The set is closed because each seam is core code
-    (`services.lifecycles.check_move`, the approval check, the review engine, the baseline check)."""
+    (`services.lifecycles.check_move`, the approval check, the review engine, the baseline check, the stage workflow choice)."""
 
     LIFECYCLE = "lifecycle"
     APPROVAL = "approval"
     REVIEW = "review"
     BASELINE = "baseline"
+    STAGE_WORKFLOW = "stage_workflow"
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,25 @@ class LifecyclePolicy:
 
     required: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
     skip_forbidden_by: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class StageWorkflowPolicy:
+    """What governance policy asks of the stage workflows a project may use: the answer of `GovernanceSeam.STAGE_WORKFLOW`
+    (`services.stage_workflows` reads it when it lists the project's workflows and picks the one a new stage starts in).
+
+    Attributes:
+        default_workflow_id: The organisation workflow new stages start in when none is chosen: the first source in
+            precedence order that names one. Existing stages are never moved.
+        required: `{workflow id: names of the profiles requiring it}`. A required workflow is always one the project may
+            use and cannot be hidden. Policies of several profiles are merged by union, so one never removes another's.
+        restricted_by: Names of the profiles that limit the project to the required workflows; any one limits it, so the
+            project may then create stages and change workflow only within them.
+    """
+
+    default_workflow_id: uuid.UUID | None = None
+    required: Mapping[uuid.UUID, tuple[str, ...]] = field(default_factory=dict)
+    restricted_by: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -223,6 +243,11 @@ class ReviewReminder:
             reminder for the same date.
         overdue_reminded_for: The due date the "overdue" reminder was last sent for, or `None`. Used only by a type that
             sets `ReviewAdapter.overdue_notification_type`.
+        kind: `"due"` or `"overdue"` when the adapter itself says which reminder this is, `None` to let the engine infer it
+            from `due_on` (a date that has passed is overdue, for a type with an overdue notification). A row with two
+            dates yields two reminders, each with its own `due_on` and `kind`; an `"overdue"` one is sent only once its date
+            has passed and has no lead window.
+        detail: Text the adapter's own `message` shows (a schedule range); the engine's wording ignores it.
     """
 
     artefact_id: uuid.UUID
@@ -236,6 +261,8 @@ class ReviewReminder:
     entity: tuple[str, str] | None = None
     reminded_for: date | None = None
     overdue_reminded_for: date | None = None
+    kind: Literal["due", "overdue"] | None = None
+    detail: str = ""
 
     def __post_init__(self) -> None:
         if self.project_id is None and self.organization_id is None:
@@ -283,6 +310,12 @@ class ReviewAdapter:
             default owner or the fallback (Compliance: its officers). `None` adds nobody.
         default_lead_days: The type's own reminder lead, used in place of the project's default lead when neither the
             record nor the policy sets one. `None` follows the project's default.
+        project_lead_days: `project_lead_days(db, project_id)` returns the project's lead for this type (a schedule's own
+            setting), used in place of the project's default review lead; the policy's lead still overrides it. Cannot be
+            combined with `default_lead_days`.
+        reminder_day: `reminder_day(now, kind)` returns the calendar day a reminder of that kind is compared with, given the
+            sweep's instant. `None` compares with the UTC date. A type whose dates are in the planner's own day uses it to
+            judge "due" against the latest day anywhere and "overdue" against the earliest.
         sub_component: The sub-component of the registering module that must also be effective in a project for the
             adapter to apply; `None` means the module being on is enough.
     """
@@ -297,6 +330,8 @@ class ReviewAdapter:
     fallback_recipients: Callable[[Session, ReviewReminder], set[uuid.UUID]] | None = None
     also_notify: Callable[[Session, ReviewReminder], set[uuid.UUID]] | None = None
     default_lead_days: int | None = None
+    project_lead_days: Callable[[Session, uuid.UUID], int | None] | None = None
+    reminder_day: Callable[[datetime, Literal["due", "overdue"]], date] | None = None
     sub_component: str | None = None
 
     def __post_init__(self) -> None:
@@ -307,10 +342,12 @@ class ReviewAdapter:
             x is not None
             for x in (
                 self.overdue_notification_type, self.message, self.fallback_recipients, self.also_notify,
-                self.default_lead_days,
+                self.default_lead_days, self.project_lead_days, self.reminder_day,
             )
         ):
             raise ValueError("A review adapter that sends no reminders cannot set reminder options.")
+        if self.default_lead_days is not None and self.project_lead_days is not None:
+            raise ValueError("A review adapter sets default_lead_days or project_lead_days, not both.")
 
 
 @dataclass(frozen=True)
@@ -452,16 +489,21 @@ class HealthProvider:
         kind: `completion` headlines the share that is done; `outstanding` headlines the count that is not (a question
             still open).
         measure: `measure(db, project_id)` returns the project's own records of the type (never a related project's) as a
-            `HealthMeasure`. It reads in bulk, never commits and never lists records one at a time.
+            `HealthMeasure`, or `None` when the project reports no figure for the category (a switch that governs it is
+            off). It reads in bulk, never commits and never lists records one at a time.
         sub_component: As `PolicyResolver.sub_component`.
+        open_to_members: The figure describes something every member of the project may see (the project's stages), not
+            records a `view` permission on `artefact_type` governs, so the view shows it to every member. `artefact_type`
+            then names the audit entity type whose events change the figure.
     """
 
     key: str
     label: str
     artefact_type: str
     kind: Literal["completion", "outstanding"]
-    measure: Callable[[Session, uuid.UUID], HealthMeasure]
+    measure: Callable[[Session, uuid.UUID], HealthMeasure | None]
     sub_component: str | None = None
+    open_to_members: bool = False
 
 
 RecordSubtypeResolver = Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], dict[uuid.UUID, str]]

@@ -52,6 +52,7 @@ from app.services.stage_workflows import (
     effective_workflows,
     may_lock_phases,
     phase_index,
+    phases_by_workflow,
     start_phase,
 )
 
@@ -227,7 +228,8 @@ def project_tracks(db: Session, project: Project) -> list[Track]:
         (r.component_id, r.stage_id): r
         for r in db.scalars(select(ComponentStageState).where(ComponentStageState.project_id == project.id)).all()
     }
-    starts = {s.id: start_phase(db, s.workflow_id).id for s in stages}
+    workflow_phases = phases_by_workflow(db, list({s.workflow_id for s in stages}))
+    starts = {s.id: workflow_phases[s.workflow_id][0].id for s in stages}
     phases = phase_index(db, set(starts.values()) | {s.phase_id for s in stages} | {r.phase_id for r in rows.values()})
     tracks: list[Track] = []
     for component in components:

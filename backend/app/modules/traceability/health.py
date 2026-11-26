@@ -269,6 +269,8 @@ class CategoryFigure:
         kind: `completion` or `outstanding` (what the category headlines).
         total: Records that count.
         done: Records that have reached the settled outcome.
+        open_to_members: Every member of the project sees the figure (`HealthProvider.open_to_members`), not only a person
+            who may read `artefact_type`.
     """
 
     key: str
@@ -277,6 +279,7 @@ class CategoryFigure:
     kind: Literal["completion", "outstanding"]
     total: int
     done: int
+    open_to_members: bool = False
 
     @property
     def outstanding(self) -> int:
@@ -372,7 +375,8 @@ def compute_categories(db: Session, project: Project) -> list[CategoryFigure]:
         project: The project.
 
     Returns:
-        One figure per `HealthProvider` whose module and sub-component are in effect and whose type is enabled.
+        One figure per `HealthProvider` whose module and sub-component are in effect, whose type is enabled and whose
+        `measure` reports a figure for the project.
     """
     figures: list[CategoryFigure] = []
     for module_key, provider in registry.get_health_providers():
@@ -380,10 +384,13 @@ def compute_categories(db: Session, project: Project) -> list[CategoryFigure]:
             continue
         if not registry.artefact_type_enabled_for_project(db, provider.artefact_type, project.id):
             continue
-        measure: HealthMeasure = provider.measure(db, project.id)
+        measure: HealthMeasure | None = provider.measure(db, project.id)
+        if measure is None:
+            continue
         figures.append(CategoryFigure(
             key=f"{module_key}:{provider.key}" if module_key else provider.key, label=provider.label,
             artefact_type=provider.artefact_type, kind=provider.kind, total=measure.total, done=measure.done,
+            open_to_members=provider.open_to_members,
         ))
     return figures
 
@@ -397,19 +404,17 @@ def compute_reviews(db: Session, project: Project, today: date) -> list[ReviewFi
         today: The calendar day compared with (the caller's day live, the UTC day for a stored snapshot).
 
     Returns:
-        One figure per type with a schedule in effect, in type-name order, including types with nothing due.
+        One figure per record type with a schedule in effect, in type-name order, including types with nothing due. A
+        schedule that is not a record type's (a stage's phases, a standard's review) is not a figure: no viewer may read it.
     """
-    counts: dict[str, int] = {}
-    for artefact_type, _ in due_reviews(db, project.id, today):
-        counts[artefact_type] = counts.get(artefact_type, 0) + 1
     providers = registry.get_record_table_providers()
+    counts: dict[str, int] = {}
+    for artefact_type, _ in due_reviews(db, project.id, today, providers.keys()):
+        counts[artefact_type] = counts.get(artefact_type, 0) + 1
     return [
-        ReviewFigure(
-            artefact_type=t, label=providers[t].label if t in providers else registry.get_artefact_type_label(t),
-            due=counts.get(t, 0),
-        )
+        ReviewFigure(artefact_type=t, label=providers[t].label, due=counts.get(t, 0))
         for t in sorted(registry.get_review_adapters())
-        if governance_seams.review_adapter_for_project(db, project.id, t) is not None
+        if t in providers and governance_seams.review_adapter_for_project(db, project.id, t) is not None
     ]
 
 
@@ -452,7 +457,8 @@ def figures_to_json(figures: Figures) -> dict[str, Any]:
     """The JSON stored in a snapshot (counts and keys only)."""
     return {
         "categories": [
-            {"key": c.key, "label": c.label, "artefact_type": c.artefact_type, "kind": c.kind, "total": c.total, "done": c.done}
+            {"key": c.key, "label": c.label, "artefact_type": c.artefact_type, "kind": c.kind, "total": c.total, "done": c.done,
+             "open_to_members": c.open_to_members}
             for c in figures.categories
         ],
         "reviews": [{"artefact_type": r.artefact_type, "label": r.label, "due": r.due} for r in figures.reviews],
@@ -718,7 +724,7 @@ def restrict_to_viewer(db: Session, project: Project, viewer: User, figures: Fig
         if (kept := tuple(t for t in c.types if readable(t.artefact_type)))
     )
     return Figures(
-        categories=tuple(c for c in figures.categories if readable(c.artefact_type)),
+        categories=tuple(c for c in figures.categories if c.open_to_members or readable(c.artefact_type)),
         reviews=tuple(r for r in figures.reviews if readable(r.artefact_type)),
         checks=ChecksFigure(figures.checks.status, checks),
     )

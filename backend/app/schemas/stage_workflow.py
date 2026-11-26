@@ -59,6 +59,8 @@ class WorkflowOut(BaseModel):
     phases: list[PhaseOut]
     in_use: bool
     used_by: WorkflowUsageOut
+    # In a project's list, the names of the governance profiles that require the workflow (it cannot be hidden).
+    required_by: list[str] = Field(default_factory=list)
 
 
 class HiddenWorkflowOut(BaseModel):
@@ -95,6 +97,16 @@ class ComponentTrackUpdate(BaseModel):
     owner: PrincipalRef | None = None
 
 
+class UnavailablePhaseOut(BaseModel):
+    """A phase of the workflow a stage or track cannot move to now, with the reason a picker shows. A phase of the
+    workflow that is neither the current one nor listed here is reachable."""
+
+    phase_id: UUID
+    reason: str
+    # True when the phase's kind is turned off in the project, false when it is not reachable from the current kind.
+    turned_off: bool = False
+
+
 class ComponentTrackOut(BaseModel):
     """One component's standing in one stage (a component with no stored row shows the stage's defaults)."""
 
@@ -112,6 +124,7 @@ class ComponentTrackOut(BaseModel):
     completed_at: datetime | None = None
     previous_closed: bool
     can_move: bool
+    unavailable_phases: list[UnavailablePhaseOut] = Field(default_factory=list)
 
 
 class ComponentPhasesOut(BaseModel):

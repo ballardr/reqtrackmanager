@@ -27,6 +27,7 @@ from app.models.project import MAX_REPORT_NAME_LENGTH
 # here, as `orgs.py` imports `MoveDirection` from this module.
 from app.schemas.org import ModuleRoleGrantOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.stage_workflow import UnavailablePhaseOut
 from app.services.taxonomy import clean_name, clean_prefix
 
 # Fixed, documented set of overridable terminology keys (C-C-03). Not a
@@ -434,6 +435,9 @@ class ProjectStageOut(BaseModel):
     # Whether the caller may move the stage into or out of a locked phase (a project manager), so a picker can show
     # the locked phases as unavailable instead of failing after the choice; the server enforces it regardless.
     can_lock: bool = False
+    # The phases of the stage's workflow it cannot move to under the project's lifecycle (a kind the project turned off),
+    # each with its reason; independent of `can_lock`.
+    unavailable_phases: list[UnavailablePhaseOut] = []
 
 
 class StageReviewDeadlineSet(BaseModel):

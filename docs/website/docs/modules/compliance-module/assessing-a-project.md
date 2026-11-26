@@ -39,6 +39,8 @@ stateDiagram-v2
     RequiresReassessment --> Assessed: re-assess
 ```
 
+A project can turn off the **Pending approval** step under **Project Admin → Lifecycles**: an assessed requirement is then approved or rejected directly, still only by a person who may approve and, where the organisation requires it, not by the person who assessed it. A reassessment or a material change still returns an approved assessment to Assessed or Requires re-assessment, whatever the project turned off.
+
 Every applicability/status/approval change is logged to the same audit trail every other ReqTrackManager mutation goes through, viewable per-requirement as its own compliance history.
 
 ## Overall status and dashboards

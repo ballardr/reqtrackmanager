@@ -62,6 +62,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.modules.compliance.approval import ASSESSMENT_APPROVAL_GATES
+from app.modules.compliance.lifecycles import LIFECYCLES
 from app.modules.compliance.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
@@ -430,6 +431,7 @@ MODULE_DEFINITION = ModuleDefinition(
     get_project_router=get_project_router,
     get_global_router=get_global_router,
     approval_gates=ASSESSMENT_APPROVAL_GATES,
+    lifecycles=LIFECYCLES,
     no_lifecycle={
         "compliance_requirement": (
             "A requirement of a standard version has no status of its own: its version is Draft, Published or Retired, "
@@ -441,10 +443,6 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
         "compliance_required_action_assessment": (
             "A required action's assessment is complete or not, with a due date; it has no path of steps."
-        ),
-        "project_compliance_requirement": (
-            "The assessment's approval state is its own column with automatic resets on reassessment; its approval takes "
-            "the approval engine through `approval_gates`."
         ),
     },
     review_adapters={REVIEW_ARTEFACT_TYPE: COMPLIANCE_REVIEW_ADAPTER},

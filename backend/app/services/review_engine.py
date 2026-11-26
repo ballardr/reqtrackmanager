@@ -24,6 +24,9 @@ Design decisions:
   the adapter's fallback (the project managers by default), so a due review never goes unannounced.
 - A type with a separate "overdue" notice (`ReviewAdapter.overdue_notification_type`) gets one "due" and one "overdue"
   reminder per due date; a type without one gets a single reminder per due date.
+- A type whose rows carry two dates (a phase's start and end) says which reminder each is (`ReviewReminder.kind`) instead of
+  leaving the engine to infer it from one date, and may name the day each kind is judged against
+  (`ReviewAdapter.reminder_day`), so a date in the planner's own day is reminded neither early nor late anywhere.
 - An interval is the longest gap, never a fixed schedule: a type that stores the next review date stays free to set an
   earlier one.
 
@@ -34,6 +37,7 @@ Dependencies: `modules.registry` and `services.governance_seams` (registrations 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
@@ -122,13 +126,17 @@ def reminder_open(due_on: date, lead_days: int, today: date) -> bool:
     return today >= due_on - timedelta(days=lead_days)
 
 
-def due_reviews(db: Session, project_id: uuid.UUID, as_of: date) -> list[tuple[str, DueReview]]:
+def due_reviews(
+    db: Session, project_id: uuid.UUID, as_of: date, artefact_types: Collection[str] | None = None,
+) -> list[tuple[str, DueReview]]:
     """The records of a project whose review is due on or before `as_of`.
 
     Args:
         db: An active database session.
         project_id: The project.
         as_of: The calendar day to compare with (`effective_today()` for a caller).
+        artefact_types: Only these types, or every type with an adapter when `None`; a caller that shows only some types
+            passes them so the others are not read.
 
     Returns:
         `(artefact type, due review)` for each type with an adapter in effect, types in name order and each type's records
@@ -136,6 +144,8 @@ def due_reviews(db: Session, project_id: uuid.UUID, as_of: date) -> list[tuple[s
     """
     out: list[tuple[str, DueReview]] = []
     for artefact_type in sorted(registry.get_review_adapters()):
+        if artefact_types is not None and artefact_type not in artefact_types:
+            continue
         adapter = governance_seams.review_adapter_for_project(db, project_id, artefact_type)
         if adapter is not None:
             out.extend((artefact_type, due) for due in adapter.due_reviews(db, project_id, as_of))
@@ -195,7 +205,7 @@ def _message(adapter: ReviewAdapter, reminder: ReviewReminder, overdue: bool) ->
     )
 
 
-def send_review_reminders(db: Session, today: date | None = None) -> int:
+def send_review_reminders(db: Session, today: date | None = None, now: datetime | None = None) -> int:
     """The daily reminder sweep over every adapter that hands over its reminders.
 
     For each record whose reminder window has opened and that has not been reminded for its current due date (separately
@@ -205,13 +215,15 @@ def send_review_reminders(db: Session, today: date | None = None) -> int:
 
     Args:
         db: An active database session.
-        today: The day to compare with; defaults to the UTC date, because the sweep has no caller whose day it could use.
+        today: The day to compare with; defaults to the UTC date of `now`, because the sweep has no caller whose day it
+            could use. An adapter's `reminder_day` takes precedence for the reminders it describes.
+        now: The instant of the sweep; defaults to the current time.
 
     Returns:
         The number of records reminded.
     """
-    today = today or datetime.now(UTC).date()
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
+    today = today or now.date()
     reminded = 0
     for artefact_type, (module_key, adapter) in sorted(registry.get_review_adapters().items()):
         if adapter.pending_reminders is None or adapter.mark_reminded is None or adapter.notification_type is None:
@@ -235,17 +247,30 @@ def send_review_reminders(db: Session, today: date | None = None) -> int:
                     policies[scope] = ReviewPolicy()
             if not active[scope]:
                 continue
-            overdue = adapter.overdue_notification_type is not None and reminder.due_on < today
+            day = today
+            if reminder.kind is None:
+                overdue = adapter.overdue_notification_type is not None and reminder.due_on < today
+            else:
+                overdue = reminder.kind == "overdue"
+                if adapter.reminder_day is not None:
+                    day = adapter.reminder_day(now, reminder.kind)
+                if overdue and reminder.due_on >= day:
+                    continue
             if (reminder.overdue_reminded_for if overdue else reminder.reminded_for) == reminder.due_on:
                 continue
             if scope not in lead_defaults:
-                lead_defaults[scope] = (
-                    adapter.default_lead_days if adapter.default_lead_days is not None
-                    else db.scalar(select(Project.review_reminder_lead_days_default).where(Project.id == project_id))
-                    if project_id is not None else None
-                )
+                if adapter.default_lead_days is not None:
+                    lead_defaults[scope] = adapter.default_lead_days
+                elif project_id is None:
+                    lead_defaults[scope] = None
+                elif adapter.project_lead_days is not None:
+                    lead_defaults[scope] = adapter.project_lead_days(db, project_id)
+                else:
+                    lead_defaults[scope] = db.scalar(
+                        select(Project.review_reminder_lead_days_default).where(Project.id == project_id)
+                    )
             lead = reminder_lead_days(reminder.lead_days, policies[scope], lead_defaults[scope])
-            if not reminder_open(reminder.due_on, lead, today):
+            if not overdue and not reminder_open(reminder.due_on, lead, day):
                 continue
             recipient_ids = _recipients(db, adapter, reminder, policies[scope], managers)
             title, body = _message(adapter, reminder, overdue)

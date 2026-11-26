@@ -71,7 +71,7 @@ Reminders are sent once per date, by a daily check:
 - **Overdue:** the current phase whose expected end has passed everywhere.
 - **Completed:** sent as soon as a phase that had a range is completed, never to the person who moved it.
 
-The recipient is the stage's **owner** (a user, or every member of a group) or, for a component's track, the track's owner first; with no owner, the project managers. Each type can be switched off per person under **Preferences**. Changing a date sends its reminder again.
+The recipient is the stage's **owner** (a user, or every member of a group) or, for a component's track, the track's owner first; with no owner, the review policy's default owner when the organisation sets one, then the project managers. The review policy's reminder lead, when set, replaces the project's reminder lead time. Each type can be switched off per person under **Preferences**. Changing a date sends its reminder again.
 
 ```mermaid
 flowchart LR
@@ -127,6 +127,10 @@ Anyone who can create a stage can also rename it inline or delete it. Deleting a
 ## Review deadlines and stage completion
 
 A stage in a Review phase can be given a **review deadline**: stakeholders record an explicit approve/reject response before it passes, and if the deadline passes with no rejection, the stage moves to the workflow's next Locked phase — silence is treated as approval. An explicit rejection blocks it and leaves it for a manager to resolve manually. A workflow with no Locked phase is left alone.
+
+Before the deadline, the project's stakeholders who have not yet responded, and the project managers, receive one **review deadline approaching** notification (7 days ahead by default; the review policy of the organisation can change the lead). Changing the deadline sends it again. A deadline that has already passed is not reminded; the stage is approved automatically as above.
+
+A phase the project turned off (for example the Review step, under **Project Admin → Workflows and phases**) is shown unavailable in the phase picker of a stage and of a component's track, so only moves the project allows are offered. An organisation can also require a stage workflow through a governance profile: new stages then start in it and the project cannot hide it.
 
 Once a stage's work is delivered, a project manager moves it to a Closed phase, optionally marking every approved requirement targeting it as completed.
 

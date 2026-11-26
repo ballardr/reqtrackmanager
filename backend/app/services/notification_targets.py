@@ -50,6 +50,7 @@ CORE_TARGET_KINDS: frozenset[str] = frozenset(
 
 _STAGE_TYPES = (
     "stage_scoping", "stage_review", "stage_approved", "stage_completed", "stage_review_auto_approved",
+    "stage_review_deadline",
     "stage_baseline_refused",
     "stage_phase_upcoming", "stage_phase_overdue", "stage_phase_completed",
 )

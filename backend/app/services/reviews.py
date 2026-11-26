@@ -9,6 +9,8 @@ Responsibilities:
   whose review date has passed and that no later review has cleared. The lists compare with the caller's calendar day.
 - `REQUIREMENT_REVIEW_ADAPTER` (`CORE_REVIEW_ADAPTERS`): the requirement's due list, the reminders still to send and how
   one is recorded, for `services.review_engine`.
+- `CORE_REVIEW_ADAPTERS` also registers the phase schedules of stages and component tracks (`stage_phase`) and a stage's
+  review deadline (`stage_review`).
 - `send_due_review_reminders`: the daily sweep entry point, which hands the work to the engine.
 
 Design decisions:
@@ -47,6 +49,8 @@ from app.services.principals import (
     principal_ref,
 )
 from app.services.rbac import project_group_ids_for_user
+from app.services.stage_phase_plans import PHASE_SCHEDULE_TYPE, STAGE_PHASE_REVIEW_ADAPTER
+from app.services.stages import STAGE_REVIEW_ADAPTER, STAGE_REVIEW_TYPE
 
 # A calendar date begins earliest at UTC+14, 14 hours before UTC midnight of that date.
 _EARLIEST_DAY_START = timedelta(hours=14)
@@ -200,7 +204,10 @@ REQUIREMENT_REVIEW_ADAPTER = ReviewAdapter(
     mark_reminded=_mark_reminded, notification_type=NotificationType.REQUIREMENT_REVIEW_DUE.value,
 )
 
-CORE_REVIEW_ADAPTERS: dict[str, ReviewAdapter] = {"requirement": REQUIREMENT_REVIEW_ADAPTER}
+CORE_REVIEW_ADAPTERS: dict[str, ReviewAdapter] = {
+    "requirement": REQUIREMENT_REVIEW_ADAPTER, PHASE_SCHEDULE_TYPE: STAGE_PHASE_REVIEW_ADAPTER,
+    STAGE_REVIEW_TYPE: STAGE_REVIEW_ADAPTER,
+}
 """The review adapters of the core record types, registered with `modules.registry.get_review_adapters` (module key `""`)."""
 
 

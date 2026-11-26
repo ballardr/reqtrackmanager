@@ -420,6 +420,8 @@ class ProjectComplianceRequirementOut(BaseModel):
     decision_note: str
     created_at: datetime
     updated_at: datetime
+    # The approval states the assessment may move to now under the project's lifecycle (a turned-off step is stepped over).
+    next_approval_states: list[str] = []
 
 
 class ComplianceRequiredActionAssessmentUpdate(BaseModel):

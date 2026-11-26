@@ -188,9 +188,12 @@ def test_the_policy_lists_the_types_with_a_review_schedule(client, admin_token):
     types = client.get(_profile_url(org["id"], profile["id"]), headers=auth_headers(token)).json()["types"]
     assert [(t["artefact_type"], t["label"], t["module_key"]) for t in types] == [
         ("compliance_review", "Compliance review", "compliance"), ("requirement", "Requirement", ""),
+        ("stage_phase", "Stage phase", ""), ("stage_review", "Stage review", ""),
     ]
     assert types[1]["settings"] == {"interval_days": None, "lead_days": None, "default_owner": None}
-    assert [t["artefact_type"] for t in _policy(client, token, project["id"])["types"]] == ["compliance_review", "requirement"]
+    assert [t["artefact_type"] for t in _policy(client, token, project["id"])["types"]] == [
+        "compliance_review", "requirement", "stage_phase", "stage_review",
+    ]
     # A type with no review schedule is not found; a risk is listed only where Risk Management is on.
     _set_profile(client, token, org["id"], profile["id"], "decision", {"interval_days": 5}, status=404)
     _set_project(client, token, project["id"], "no_such_type", {}, status=404)

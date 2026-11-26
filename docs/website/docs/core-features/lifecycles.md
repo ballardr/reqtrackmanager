@@ -26,6 +26,7 @@ flowchart LR
 | Requirement | Reviewed |
 | Project stage, Component stage | Review (the kind of phase; a workflow's own phase names are unchanged) |
 | Element, Connection, Diagram, State machine diagram (Architecture) | Proposed |
+| Compliance requirement assessment | Pending approval (the submit-for-approval step) |
 
 A start state, an end state, a state outside the main path (Rejected, Withdrawn, Retired) and an **approval** state (Approved) are never optional. With the review steps of a Decision turned off, it goes from Draft to Approved through the same approval dialog, and only a person who holds the approval permission can do it.
 

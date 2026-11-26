@@ -479,6 +479,7 @@ export type CoreNotificationType =
   | "comment_added"
   | "requirement_review_due"
   | "stage_review_auto_approved"
+  | "stage_review_deadline"
   | "stage_baseline_refused"
   | "stage_phase_upcoming"
   | "stage_phase_overdue"
@@ -1588,6 +1589,15 @@ export interface ProjectStage {
   owner: Principal | null;
   /** Whether the caller may move the stage into or out of a locked phase (a project manager). */
   can_lock?: boolean;
+  /** The phases of the stage's workflow it cannot move to under the project's lifecycle. */
+  unavailable_phases?: UnavailablePhase[];
+}
+
+/** A phase a stage or track cannot move to now, with the reason; `turned_off` when its kind is off in the project. */
+export interface UnavailablePhase {
+  phase_id: string;
+  reason: string;
+  turned_off: boolean;
 }
 
 export type StageReviewResponseChoice = "approved" | "rejected";
@@ -1610,6 +1620,8 @@ export interface ComponentTrack {
   previous_closed: boolean;
   /** Whether the caller may move the track (a project manager, or its owner). */
   can_move: boolean;
+  /** The phases of the track's workflow it cannot move to under the project's lifecycle. */
+  unavailable_phases?: UnavailablePhase[];
 }
 
 /** The expected range (calendar dates) and actual dates (UTC instants) of one phase of a stage, or of a component's track. */

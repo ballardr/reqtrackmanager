@@ -545,7 +545,7 @@ def test_a_project_export_import_carries_its_settings_and_a_runner_who_is_a_memb
 def test_every_declared_tool_is_in_the_manifest_and_none_lifts_a_control_or_approves():
     manifest = {t.name: t for t in build_mcp_tool_manifest() if t.name.startswith("traceability_")}
     declared = {f"traceability_{t.name}" for t in build_mcp_tools()}
-    assert set(manifest) == declared and len(declared) == 29
+    assert set(manifest) == declared and len(declared) == 31
     assert not [n for n in declared if "delete" in n or "exemption" in n or "approve_" in n or "reject" in n]
     assert manifest["traceability_get_governance_health"].mutates is False
     assert manifest["traceability_set_governance_health_settings"].mutates is True

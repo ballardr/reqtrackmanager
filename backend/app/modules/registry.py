@@ -2601,6 +2601,9 @@ class ModuleDefinition:
             and imported by the profile mechanism without per-table code (`get_profile_contributors`).
         health_providers: `HealthProvider`s: how each of the module's record types reports its progress to the
             governance health view (`get_health_providers`; core registers the Requirement's and the Change Request's).
+        stage_workflow_references: `references(db, workflow_id)` returns the names of what refers to an organisation stage
+            workflow (a governance profile that requires it), so the workflow cannot be deleted while it is referenced
+            (`get_stage_workflow_references`). `None` for a module that refers to none.
     """
 
     key: str
@@ -2693,6 +2696,7 @@ class ModuleDefinition:
     policy_resolvers: tuple[PolicyResolver, ...] = field(default=())
     profile_contributors: tuple[ProfileContributor, ...] = field(default=())
     health_providers: tuple[HealthProvider, ...] = field(default=())
+    stage_workflow_references: Callable[[Session, uuid.UUID], list[str]] | None = None
 
     def __post_init__(self) -> None:
         """Rejects a sub-component `requires` list that names an unknown key, the sub-component itself or forms a cycle,
@@ -4891,6 +4895,16 @@ def get_health_providers() -> list[tuple[str, HealthProvider]]:
 def get_profile_contributors() -> list[tuple[str, ProfileContributor]]:
     """Every module's `profile_contributors` as `(module_key, contributor)` in registry order."""
     return [(key, c) for key, definition in get_module_registry().items() for c in definition.profile_contributors]
+
+
+def get_stage_workflow_references(db: Session, workflow_id: uuid.UUID) -> list[str]:
+    """The names of everything that refers to the organisation stage workflow, from every module that declares a
+    `stage_workflow_references` hook, in registry order."""
+    names: list[str] = []
+    for definition in get_module_registry().values():
+        if definition.stage_workflow_references is not None:
+            names.extend(definition.stage_workflow_references(db, workflow_id))
+    return names
 
 
 def get_policy_resolvers(seam: GovernanceSeam) -> list[tuple[str, PolicyResolver]]:

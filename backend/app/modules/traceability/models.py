@@ -32,6 +32,8 @@ Design decisions:
   the owner's checks run before a stage baseline, a manual baseline or both; they stay with the owner's checks, so a profile
   that asks for a stage check never makes a project's manual check run before stage baselines. A project's row with no
   checks is a choice that stops the nearest ancestor's applying.
+- A stage workflow policy is one row per profile (a profile requires at most one workflow) naming an organisation workflow
+  and a mode; a project does not own one, because it already chooses its own workflows.
 - Governance health keeps three small tables: the organisation's default mode (`governance_health_defaults`), a project's
   own mode, interval and check runner (`governance_health_settings`, a null mode or interval meaning "follow the
   organisation") and the project's latest snapshot (`governance_health_snapshots`, one row, derived data). A snapshot holds
@@ -266,6 +268,32 @@ class GovernanceReviewPolicy(UUIDPKMixin, TimestampMixin, Base):
     lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     default_owner_type: Mapped[str | None] = principal_type_column(nullable=True)
     default_owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+
+
+class GovernanceStageWorkflowPolicy(UUIDPKMixin, TimestampMixin, Base):
+    """The organisation stage workflow a profile requires of the projects it applies to.
+
+    Attributes:
+        profile_id: The profile (one row at most).
+        workflow_id: The organisation workflow; deleting it is refused while a profile requires it, and the row goes with
+            it as a safety net.
+        mode: `default` (new stages start in it, other workflows stay usable) or `restrict` (the project may use only the
+            workflows its profiles name), validated against `enums.StageWorkflowMode`.
+    """
+
+    __tablename__ = "governance_stage_workflow_policies"
+    __table_args__ = (
+        UniqueConstraint("profile_id", name="uq_governance_stage_workflow_policies"),
+        CheckConstraint("mode IN ('default', 'restrict')", name="ck_governance_stage_workflow_policies_mode"),
+    )
+
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_profiles.id", ondelete="CASCADE"), index=True
+    )
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stage_workflows.id", ondelete="CASCADE"), index=True
+    )
+    mode: Mapped[str] = mapped_column(String(16))
 
 
 class GovernanceBaselinePolicy(UUIDPKMixin, TimestampMixin, Base):

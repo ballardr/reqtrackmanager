@@ -145,7 +145,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
@@ -648,6 +648,9 @@ class ProjectComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     decision_note: Mapped[str] = mapped_column(Text, default="")
+    # The person approval must be separate from (`approval.record_context`): the lifecycle engine reads a gated type's
+    # creator through this name.
+    creator_id = synonym("assessed_by")
 
 
 class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):

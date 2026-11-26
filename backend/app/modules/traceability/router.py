@@ -38,6 +38,7 @@ from app.modules.traceability import (
     profile_resolution,
     profiles,
     review_policy,
+    stage_workflow_policy,
 )
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
@@ -47,7 +48,7 @@ from app.modules.traceability._shared import (
     REVIEW_POLICIES,
     TRACEABILITY_MODULE_KEY,
 )
-from app.modules.traceability.enums import ProfileMode, ProfileOutcome, ProfileTargetKind
+from app.modules.traceability.enums import ProfileMode, ProfileOutcome, ProfileTargetKind, StageWorkflowMode
 from app.modules.traceability.models import GovernanceProfile
 from app.modules.traceability.profiles import TargetSpec
 from app.modules.traceability.schemas import (
@@ -77,6 +78,7 @@ from app.modules.traceability.schemas import (
     ProfileProjectOut,
     ProfileReviewOut,
     ProfileReviewTypeOut,
+    ProfileStageWorkflowOut,
     ProfileTargetIn,
     ProfileTargetOut,
     ProfileTargetsSet,
@@ -84,6 +86,8 @@ from app.modules.traceability.schemas import (
     RequiredFieldIn,
     ReviewSettingsIn,
     ReviewSettingsOut,
+    StageWorkflowOptionOut,
+    StageWorkflowRequirementSet,
 )
 from app.services import approval_policy as core_approval
 from app.services.principals import principal_out
@@ -314,6 +318,50 @@ def set_profile_lifecycle_required(
     )
     db.commit()
     return _lifecycle_out(db, profile)
+
+
+def _stage_workflow_out(db: Session, profile: GovernanceProfile) -> ProfileStageWorkflowOut:
+    """The profile's stage workflow policy as the API shape."""
+    policy = stage_workflow_policy.profile_policy(db, profile)
+    return ProfileStageWorkflowOut(
+        workflow_id=policy.workflow_id, workflow_name=policy.workflow_name,
+        mode="restrict" if policy.mode is StageWorkflowMode.RESTRICT else "default",
+        options=[StageWorkflowOptionOut(id=o.id, name=o.name) for o in policy.options],
+    )
+
+
+@router.get("/profiles/{profile_id}/stage-workflow", response_model=ProfileStageWorkflowOut, dependencies=_lifecycle_guards)
+def get_profile_stage_workflow(
+    organization_id: UUID, profile_id: UUID, current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileStageWorkflowOut:
+    """The organisation stage workflow a profile requires of the projects it applies to, and how it binds them."""
+    return _stage_workflow_out(db, _profile_or_404(db, organization_id, profile_id))
+
+
+@router.put("/profiles/{profile_id}/stage-workflow", response_model=ProfileStageWorkflowOut, dependencies=_lifecycle_guards)
+def set_profile_stage_workflow(
+    organization_id: UUID, profile_id: UUID, payload: StageWorkflowRequirementSet,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileStageWorkflowOut:
+    """Makes a profile require an organisation workflow: new stages of the projects it applies to start in it and the
+    project cannot hide it; in `restrict` mode the project may use only the workflows its profiles name."""
+    profile = _profile_or_404(db, organization_id, profile_id)
+    stage_workflow_policy.set_requirement(
+        db, profile=profile, workflow_id=payload.workflow_id, mode=StageWorkflowMode(payload.mode), actor_id=current_user.id,
+    )
+    db.commit()
+    return _stage_workflow_out(db, profile)
+
+
+@router.delete("/profiles/{profile_id}/stage-workflow", response_model=ProfileStageWorkflowOut, dependencies=_lifecycle_guards)
+def clear_profile_stage_workflow(
+    organization_id: UUID, profile_id: UUID, current_user: User = Depends(_manage), db: Session = Depends(get_db),
+) -> ProfileStageWorkflowOut:
+    """Removes a profile's stage workflow requirement."""
+    profile = _profile_or_404(db, organization_id, profile_id)
+    stage_workflow_policy.clear_requirement(db, profile=profile, actor_id=current_user.id)
+    db.commit()
+    return _stage_workflow_out(db, profile)
 
 
 def approver_role_outs(roles: Sequence[ApproverRole], labels: dict[tuple[str, str], str]) -> list[ApproverRoleOut]:
